@@ -39,6 +39,10 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorCommandStatus>? CommandStateChanged;
 
+    public event EventHandler<EditorStatus>? EditorStatusChanged;
+
+    public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
+
     public event EventHandler<string>? OpenLinkRequested;
 
     public event EventHandler<DroppedFiles>? FilesDropped;
@@ -67,6 +71,15 @@ internal sealed class EditorHostController : IDisposable
     public bool IsReady => State == EditorLifecycleState.Ready;
 
     public bool IsDocumentLoaded => IsReady && _documentLoaded;
+
+    public Point EditorPointToScreen(EditorContextMenuRequest request)
+    {
+        var devicePoint = EditorCoordinateConverter.CssToDevicePoint(
+            request.ClientX,
+            request.ClientY,
+            _webView.DeviceDpi);
+        return _webView.PointToScreen(devicePoint);
+    }
 
     public async Task InitializeAsync()
     {
@@ -182,9 +195,12 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ExecuteCommand(string command, string? text = null)
+    public void ExecuteCommand(
+        string command,
+        string? text = null,
+        bool applyToCurrentTextBlockWhenEmpty = false)
     {
-        EnqueueOrRun(() => Post("command", new { command, text }));
+        EnqueueOrRun(() => Post("command", new { command, text, applyToCurrentTextBlockWhenEmpty }));
     }
 
     public async Task<bool> ExecuteCommandAsync(
@@ -455,6 +471,16 @@ internal sealed class EditorHostController : IDisposable
                 break;
             case "commandStateChanged":
                 CommandStateChanged?.Invoke(this, EditorCommandStatus.FromPayload(message.Payload));
+                break;
+            case "editorStatusChanged":
+                EditorStatusChanged?.Invoke(this, EditorStatus.FromPayload(message.Payload));
+                break;
+            case "contextMenuRequested":
+                ContextMenuRequested?.Invoke(
+                    this,
+                    new EditorContextMenuRequest(
+                        message.Payload.GetProperty("clientX").GetDouble(),
+                        message.Payload.GetProperty("clientY").GetDouble()));
                 break;
             case "openLink":
                 var url = message.Payload.GetProperty("url").GetString();

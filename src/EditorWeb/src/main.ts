@@ -3,6 +3,7 @@ import {
   createEditor,
   executeEditorCommand,
   getEditorCommandState,
+  getEditorStatus,
   getMarkdown,
   isAllowedLink,
   replaceEditorDocument,
@@ -69,6 +70,15 @@ function sendCommandState(): void {
   send('commandStateChanged', getEditorCommandState(editor))
 }
 
+function sendEditorStatus(): void {
+  send('editorStatusChanged', getEditorStatus(editor))
+}
+
+function sendEditorState(): void {
+  sendCommandState()
+  sendEditorStatus()
+}
+
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', () => {
     if (suppressUpdate || compositionActive) {
@@ -81,7 +91,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     revision += 1
     send('dirtyChanged', { dirty: true })
     sendOutline()
-    sendCommandState()
+    sendEditorState()
   })
 
   targetEditor.on('selectionUpdate', () => {
@@ -90,7 +100,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
       })
-      sendCommandState()
+      sendEditorState()
     }
   })
 
@@ -105,7 +115,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
       revision += 1
       send('dirtyChanged', { dirty: true })
       sendOutline()
-      sendCommandState()
+      sendEditorState()
     }
     compositionChanged = false
   })
@@ -126,6 +136,20 @@ editorMount.addEventListener('click', (event) => {
 
   event.preventDefault()
   send('openLink', { url })
+})
+
+editorMount.addEventListener('contextmenu', (event) => {
+  event.preventDefault()
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (resolved) {
+    const selection = editor.state.selection
+    if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
+      editor.commands.setTextSelection(resolved.pos)
+    }
+  }
+  editor.commands.focus()
+  sendEditorState()
+  send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
 })
 
 editorMount.addEventListener('dragover', (event) => {
@@ -182,7 +206,7 @@ function handleMessage(value: unknown): void {
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
       sendOutline()
-      sendCommandState()
+      sendEditorState()
       break
     }
     case 'requestSnapshot':
@@ -194,6 +218,7 @@ function handleMessage(value: unknown): void {
         text?: unknown
         clientX?: unknown
         clientY?: unknown
+        applyToCurrentTextBlockWhenEmpty?: unknown
       }
       if (typeof payload?.command === 'string') {
         const coordinates = typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
@@ -204,11 +229,12 @@ function handleMessage(value: unknown): void {
           payload.command,
           typeof payload.text === 'string' ? payload.text : undefined,
           coordinates,
+          payload.applyToCurrentTextBlockWhenEmpty === true,
         )
         if (message.requestId) {
           send('commandResult', { success }, message.requestId)
         }
-        sendCommandState()
+        sendEditorState()
       }
       break
     }

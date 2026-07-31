@@ -201,4 +201,60 @@ public sealed class EditorProtocolTests
         Assert.IsFalse(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error));
         Assert.AreEqual("Message payload is invalid.", error);
     }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsEditorStatusAndContextMenuRequest()
+    {
+        var documentId = Guid.NewGuid();
+        var editorStatus = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "editorStatusChanged",
+              "documentId": "{{documentId}}",
+              "revision": 2,
+              "payload": {
+                "characterCount": 12,
+                "selectedCharacterCount": 3,
+                "blockType": "heading2",
+                "line": 4,
+                "column": 6
+              }
+            }
+            """;
+        var contextMenu = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "contextMenuRequested",
+              "documentId": "{{documentId}}",
+              "revision": 2,
+              "payload": { "clientX": 120.5, "clientY": 80 }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(editorStatus, out _, out var statusError), statusError);
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(contextMenu, out _, out var menuError), menuError);
+    }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_RejectsInvalidEditorStatus()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "editorStatusChanged",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 2,
+              "payload": {
+                "characterCount": -1,
+                "selectedCharacterCount": 0,
+                "blockType": "unknown",
+                "line": 0,
+                "column": 1
+              }
+            }
+            """;
+
+        Assert.IsFalse(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error));
+        Assert.AreEqual("Message payload is invalid.", error);
+    }
 }

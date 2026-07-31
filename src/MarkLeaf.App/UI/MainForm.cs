@@ -37,6 +37,12 @@ internal sealed partial class MainForm : Form
     private readonly SplitContainer _workspaceSplit;
     private readonly SplitContainer _outlineSplit;
     private readonly ToolStripStatusLabel _statusLabel = new("正在准备编辑器");
+    private readonly ToolStripStatusLabel _characterCountLabel = new("字数 0");
+    private readonly ToolStripStatusLabel _blockTypeLabel = new("正文");
+    private readonly ToolStripStatusLabel _positionLabel = new("行 1，列 1");
+    private readonly ToolStripStatusLabel _encodingLabel = new("UTF-8");
+    private readonly ToolStripStatusLabel _newLineLabel = new("CRLF");
+    private readonly ToolStripStatusLabel _modeLabel = new("可视化");
     private bool _settingsSaved;
     private bool _focusMode;
     private bool _workspaceVisibleBeforeFocus = true;
@@ -45,6 +51,8 @@ internal sealed partial class MainForm : Form
     private bool _editorCommandSmokeStarted;
     private bool _documentSmokeStarted;
     private EditorCommandStatus _editorCommandStatus = EditorCommandStatus.Empty;
+    private EditorStatus _editorStatus = EditorStatus.Empty;
+    private bool _editorContextMenuActive;
 
     public MainForm(
         LaunchOptions options,
@@ -174,6 +182,8 @@ internal sealed partial class MainForm : Form
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorCommandSmoke(message);
         _editorHost.DirtyChanged += OnEditorDirtyChanged;
         _editorHost.CommandStateChanged += OnEditorCommandStateChanged;
+        _editorHost.EditorStatusChanged += OnEditorStatusChanged;
+        _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.OpenLinkRequested += OnOpenLinkRequested;
         _editorHost.FilesDropped += OnEditorFilesDropped;
         _editorHost.PasteImageRequested += OnEditorPasteImageRequested;
@@ -240,7 +250,12 @@ internal sealed partial class MainForm : Form
         _statusLabel.Spring = true;
         _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
         strip.Items.Add(_statusLabel);
-        strip.Items.Add(new ToolStripStatusLabel("阶段 5"));
+        strip.Items.Add(_characterCountLabel);
+        strip.Items.Add(_blockTypeLabel);
+        strip.Items.Add(_positionLabel);
+        strip.Items.Add(_encodingLabel);
+        strip.Items.Add(_newLineLabel);
+        strip.Items.Add(_modeLabel);
         return strip;
     }
 
@@ -456,8 +471,10 @@ internal sealed partial class MainForm : Form
             default:
                 if (_editorHost?.IsDocumentLoaded == true && TryMapEditorCommand(command, out var editorCommand))
                 {
-                    _editorHost.ExecuteCommand(editorCommand);
-                    SetStatus($"已发送命令：{command}");
+                    _editorHost.ExecuteCommand(
+                        editorCommand,
+                        applyToCurrentTextBlockWhenEmpty: _editorContextMenuActive && IsInlineFormatCommand(command));
+                    SetStatus(CommandStatusFormatter.FormatExecuted(command));
                     break;
                 }
 
@@ -663,6 +680,60 @@ internal sealed partial class MainForm : Form
 
         _editorCommandStatus = status;
         _menuService.RefreshStates();
+    }
+
+    private void OnEditorStatusChanged(object? sender, EditorStatus status)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnEditorStatusChanged(sender, status));
+            return;
+        }
+
+        _editorStatus = status;
+        RefreshPersistentStatusBar();
+    }
+
+    private void OnEditorContextMenuRequested(object? sender, EditorContextMenuRequest request)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnEditorContextMenuRequested(sender, request));
+            return;
+        }
+
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        var screenPoint = _editorHost.EditorPointToScreen(request);
+        try
+        {
+            _editorContextMenuActive = true;
+            _menuService.ShowEditorContextMenu(Handle, screenPoint);
+        }
+        finally
+        {
+            _editorContextMenuActive = false;
+        }
+    }
+
+    private static bool IsInlineFormatCommand(AppCommand command) =>
+        command is AppCommand.ToggleBold or AppCommand.ToggleItalic;
+
+    private void RefreshPersistentStatusBar()
+    {
+        _characterCountLabel.Text = StatusBarFormatter.FormatCharacterCount(_editorStatus);
+        _blockTypeLabel.Text = StatusBarFormatter.FormatBlockType(_editorStatus.BlockType);
+        _positionLabel.Text = StatusBarFormatter.FormatPosition(_editorStatus);
+        _encodingLabel.Text = _document is null
+            ? "UTF-8"
+            : StatusBarFormatter.FormatEncoding(_document.Encoding, _document.HasBom);
+        _newLineLabel.Text = _document is null
+            ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
+            : StatusBarFormatter.FormatNewLine(_document.NewLine);
+        _modeLabel.Text = "可视化";
     }
 
     private void OnOpenLinkRequested(object? sender, string url)

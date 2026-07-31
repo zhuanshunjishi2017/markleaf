@@ -5,6 +5,7 @@ import {
   createEditor,
   executeEditorCommand,
   getEditorCommandState,
+  getEditorStatus,
   getMarkdown,
   replaceEditorDocument,
   sanitizePastedHtml,
@@ -270,6 +271,19 @@ describe('paragraph menu commands', () => {
     expect(executeEditorCommand(editor, 'toggleBold')).toBe(true)
     expect(executeEditorCommand(editor, 'toggleItalic')).toBe(true)
     expect(getMarkdown(editor)).toMatch(/\*\*[*_]中文格式[*_]\*\*/)
+  })
+
+  it('applies context-menu inline formatting to the current text block without a selection', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'first line\n\nsecond line')
+    editors.push(editor)
+    editor.commands.setTextSelection(3)
+
+    expect(executeEditorCommand(editor, 'toggleBold', undefined, undefined, true)).toBe(true)
+    expect(getMarkdown(editor)).toContain('**first line**\n\nsecond line')
+    expect(editor.state.selection.empty).toBe(true)
+    expect(editor.state.selection.from).toBe(3)
   })
 
   it('inserts a GFM table', () => {
@@ -573,6 +587,36 @@ describe('command state synchronization', () => {
     expect(getEditorCommandState(editor).headingLevel).toBe(3)
     editor.commands.toggleBulletList()
     expect(getEditorCommandState(editor).bulletList).toBe(true)
+  })
+})
+
+describe('editor status synchronization', () => {
+  it('counts visible Unicode characters and the selected range', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '中文 😀 test')
+    editors.push(editor)
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+
+    const status = getEditorStatus(editor)
+    expect(status.characterCount).toBe(7)
+    expect(status.selectedCharacterCount).toBe(2)
+    expect(status.blockType).toBe('paragraph')
+  })
+
+  it('reports the current block and cursor line and column', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '# 标题\n\n第二段')
+    editors.push(editor)
+    editor.commands.setTextSelection(2)
+    expect(getEditorStatus(editor).blockType).toBe('heading1')
+
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+    const status = getEditorStatus(editor)
+    expect(status.blockType).toBe('paragraph')
+    expect(status.line).toBe(2)
+    expect(status.column).toBeGreaterThan(1)
   })
 })
 

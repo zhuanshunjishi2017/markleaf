@@ -374,7 +374,9 @@ internal sealed partial class MainForm
     private void LoadDocumentIntoEditor(MarkdownDocument document)
     {
         _editorCommandStatus = EditorCommandStatus.Empty;
+        _editorStatus = EditorStatus.Empty;
         _editorHost?.LoadDocument(document.Id, document.Revision, document.Markdown);
+        RefreshPersistentStatusBar();
         UpdateDocumentChrome();
     }
 

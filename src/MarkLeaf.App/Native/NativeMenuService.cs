@@ -5,6 +5,25 @@ namespace MarkLeaf.Native;
 
 internal sealed class NativeMenuService : IDisposable
 {
+    internal static readonly AppCommand[] EditorContextCommands =
+    [
+        AppCommand.ToggleBold,
+        AppCommand.ToggleItalic,
+        AppCommand.SetParagraph,
+        AppCommand.SetHeading1,
+        AppCommand.SetHeading2,
+        AppCommand.SetHeading3,
+        AppCommand.SetHeading4,
+        AppCommand.SetHeading5,
+        AppCommand.SetHeading6,
+        AppCommand.ToggleBulletList,
+        AppCommand.ToggleOrderedList,
+        AppCommand.ToggleTaskList,
+        AppCommand.Cut,
+        AppCommand.Copy,
+        AppCommand.Paste,
+    ];
+
     private readonly CommandRouter _router;
     private nint _menu;
     private nint _window;
@@ -77,6 +96,44 @@ internal sealed class NativeMenuService : IDisposable
 
     public void Dispose() => Detach();
 
+    public void ShowEditorContextMenu(nint window, Point screenPoint)
+    {
+        var menu = BuildEditorContextMenu();
+        try
+        {
+            foreach (var command in EditorContextCommands)
+            {
+                var state = _router.GetState(command);
+                NativeMethods.EnableMenuItem(
+                    menu,
+                    (uint)command,
+                    NativeMethods.MfByCommand | (state.IsEnabled ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
+                NativeMethods.CheckMenuItem(
+                    menu,
+                    (uint)command,
+                    NativeMethods.MfByCommand | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
+            }
+
+            NativeMethods.SetForegroundWindow(window);
+            var selectedCommand = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                window,
+                0);
+            NativeMethods.PostMessage(window, NativeMethods.WmNull, 0, 0);
+            if (selectedCommand != 0)
+            {
+                _router.TryExecuteById((int)selectedCommand);
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
     private static nint BuildMainMenu()
     {
         var root = CreateMenu(false);
@@ -139,6 +196,45 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.Find, "查找(&F)\tCtrl+F");
             AppendCommand(menu, AppCommand.Replace, "替换(&H)\tCtrl+H");
+            return menu;
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
+        }
+    }
+
+    private static nint BuildEditorContextMenu()
+    {
+        var menu = CreateMenu(true);
+        try
+        {
+            AppendCommand(menu, AppCommand.ToggleBold, "粗体");
+            AppendCommand(menu, AppCommand.ToggleItalic, "斜体");
+            AppendSeparator(menu);
+
+            AppendCommand(menu, AppCommand.SetParagraph, "正文");
+
+            var headings = CreateMenu(true);
+            AppendCommand(headings, AppCommand.SetHeading1, "一级标题");
+            AppendCommand(headings, AppCommand.SetHeading2, "二级标题");
+            AppendCommand(headings, AppCommand.SetHeading3, "三级标题");
+            AppendCommand(headings, AppCommand.SetHeading4, "四级标题");
+            AppendCommand(headings, AppCommand.SetHeading5, "五级标题");
+            AppendCommand(headings, AppCommand.SetHeading6, "六级标题");
+            AppendPopup(menu, "标题", headings);
+
+            var lists = CreateMenu(true);
+            AppendCommand(lists, AppCommand.ToggleBulletList, "无序列表");
+            AppendCommand(lists, AppCommand.ToggleOrderedList, "有序列表");
+            AppendCommand(lists, AppCommand.ToggleTaskList, "任务列表");
+            AppendPopup(menu, "列表", lists);
+
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.Cut, "剪切");
+            AppendCommand(menu, AppCommand.Copy, "复制");
+            AppendCommand(menu, AppCommand.Paste, "粘贴");
             return menu;
         }
         catch

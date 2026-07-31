@@ -17,6 +17,8 @@ public static class EditorProtocol
         "snapshot",
         "selectionChanged",
         "commandStateChanged",
+        "editorStatusChanged",
+        "contextMenuRequested",
         "outlineChanged",
         "requestSave",
         "openLink",
@@ -146,6 +148,9 @@ public static class EditorProtocol
             "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String),
             "selectionChanged" => HasIntegerProperty(payload, "from") && HasIntegerProperty(payload, "to"),
             "commandStateChanged" => HasCommandStatePayload(payload),
+            "editorStatusChanged" => HasEditorStatusPayload(payload),
+            "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
+                && HasNonNegativeNumber(payload, "clientY"),
             "outlineChanged" => HasProperty(payload, "headings", JsonValueKind.Array),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
@@ -197,6 +202,45 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "inTable")
             && HasNullableEnum(payload, "tableAlign", "left", "center", "right")
             && HasBooleanProperty(payload, "imageSelected");
+    }
+
+    private static bool HasEditorStatusPayload(JsonElement payload)
+    {
+        return HasNonNegativeInteger(payload, "characterCount")
+            && HasNonNegativeInteger(payload, "selectedCharacterCount")
+            && HasAllowedBlockType(payload)
+            && HasPositiveInteger(payload, "line")
+            && HasPositiveInteger(payload, "column");
+    }
+
+    private static bool HasAllowedBlockType(JsonElement payload)
+    {
+        if (!HasProperty(payload, "blockType", JsonValueKind.String))
+        {
+            return false;
+        }
+
+        return payload.GetProperty("blockType").GetString() is
+            "paragraph" or "heading1" or "heading2" or "heading3" or "heading4" or "heading5" or "heading6"
+            or "blockquote" or "codeBlock" or "bulletList" or "orderedList" or "taskList" or "table" or "image";
+    }
+
+    private static bool HasNonNegativeInteger(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+            && number >= 0;
+    }
+
+    private static bool HasPositiveInteger(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+            && number > 0;
     }
 
     private static bool HasAllowedUrl(JsonElement payload)

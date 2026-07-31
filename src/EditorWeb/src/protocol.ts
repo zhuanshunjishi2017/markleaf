@@ -20,6 +20,8 @@ export type EditorMessage = {
     | 'snapshot'
     | 'selectionChanged'
     | 'commandStateChanged'
+    | 'editorStatusChanged'
+    | 'contextMenuRequested'
     | 'outlineChanged'
     | 'requestSave'
     | 'openLink'

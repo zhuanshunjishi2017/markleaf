@@ -232,6 +232,15 @@ export type EditorCommandState = {
   imageSelected: boolean
 }
 
+export type EditorStatus = {
+  characterCount: number
+  selectedCharacterCount: number
+  blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
+    | 'blockquote' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image'
+  line: number
+  column: number
+}
+
 export const editorExtensions = [
   StarterKit.configure({
     link: false,
@@ -329,6 +338,44 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   }
 }
 
+export function getEditorStatus(editor: Editor): EditorStatus {
+  const selection = editor.state.selection
+  const documentText = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', '\n')
+  const selectedText = selection.empty
+    ? ''
+    : editor.state.doc.textBetween(selection.from, selection.to, '\n', '\n')
+  const textBeforeCursor = editor.state.doc.textBetween(0, selection.from, '\n', '\n')
+  const lines = textBeforeCursor.split('\n')
+
+  return {
+    characterCount: countVisibleCharacters(documentText),
+    selectedCharacterCount: countVisibleCharacters(selectedText),
+    blockType: getCurrentBlockType(editor),
+    line: lines.length,
+    column: Array.from(lines.at(-1) ?? '').length + 1,
+  }
+}
+
+function countVisibleCharacters(text: string): number {
+  return Array.from(text).filter(character => !/\s/u.test(character)).length
+}
+
+function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
+  if (getSelectedImage(editor)) return 'image'
+  if (editor.isActive('table')) return 'table'
+  if (editor.isActive('taskList')) return 'taskList'
+  if (editor.isActive('bulletList')) return 'bulletList'
+  if (editor.isActive('orderedList')) return 'orderedList'
+  if (editor.isActive('codeBlock')) return 'codeBlock'
+  if (editor.isActive('blockquote')) return 'blockquote'
+  for (let level = 1; level <= 6; level += 1) {
+    if (editor.isActive('heading', { level })) {
+      return `heading${level}` as EditorStatus['blockType']
+    }
+  }
+  return 'paragraph'
+}
+
 export function sanitizePastedHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
   parsed.querySelectorAll('script, style, iframe, object, embed, svg, math, img').forEach((node) => node.remove())
@@ -357,6 +404,7 @@ export function executeEditorCommand(
   command: string,
   text?: string,
   coordinates?: { left: number; top: number },
+  applyToCurrentTextBlockWhenEmpty = false,
 ): boolean {
   const chain = editor.chain().focus()
   const commands: Record<string, () => boolean> = {
@@ -364,8 +412,8 @@ export function executeEditorCommand(
     redo: () => chain.redo().run(),
     deleteSelection: () => chain.deleteSelection().run(),
     pasteText: () => typeof text === 'string' && editor.view.pasteText(text),
-    toggleBold: () => chain.toggleBold().run(),
-    toggleItalic: () => chain.toggleItalic().run(),
+    toggleBold: () => toggleInlineMark(editor, 'bold', applyToCurrentTextBlockWhenEmpty),
+    toggleItalic: () => toggleInlineMark(editor, 'italic', applyToCurrentTextBlockWhenEmpty),
     setLink: () => {
       if (!text || !isAllowedLink(text)) {
         return false
@@ -462,6 +510,26 @@ export function executeEditorCommand(
   }
 
   return commands[command]?.() ?? false
+}
+
+function toggleInlineMark(
+  editor: Editor,
+  mark: 'bold' | 'italic',
+  applyToCurrentTextBlockWhenEmpty: boolean,
+): boolean {
+  const selection = editor.state.selection
+  if (!applyToCurrentTextBlockWhenEmpty || !selection.empty || !selection.$from.parent.isTextblock) {
+    const chain = editor.chain().focus()
+    return mark === 'bold' ? chain.toggleBold().run() : chain.toggleItalic().run()
+  }
+
+  const cursor = selection.from
+  const block = { from: selection.$from.start(), to: selection.$from.end() }
+  const chain = editor.chain().focus().setTextSelection(block)
+  if (mark === 'bold') {
+    return chain.toggleBold().setTextSelection(cursor).run()
+  }
+  return chain.toggleItalic().setTextSelection(cursor).run()
 }
 
 export function rotateSelectedImageClockwise(editor: Editor): boolean {
