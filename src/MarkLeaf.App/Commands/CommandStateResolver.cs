@@ -15,7 +15,6 @@ public static class CommandStateResolver
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
-            AppCommand.CleanUnreferencedAssets => new(context.DocumentSaved && context.EditorReady),
             AppCommand.ExportDocument => new(false),
             AppCommand.Undo => new(context.EditorReady && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && context.CanRedo),

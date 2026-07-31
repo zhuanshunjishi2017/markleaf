@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MarkLeaf.Documents;
 using MarkLeaf.Services.Logging;
 using MarkLeaf.UI.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -21,7 +22,6 @@ internal sealed class EditorHostController : IDisposable
     private readonly Dictionary<string, TaskCompletionSource<bool>> _commandRequests =
         new(StringComparer.Ordinal);
     private readonly Stopwatch _initializationTimer = new();
-    private string? _assetDirectory;
     private CancellationTokenSource? _initializationCancellation;
     private CancellationTokenSource? _readyTimeoutCancellation;
     private bool _eventsAttached;
@@ -220,26 +220,6 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void UpdateImagePaths(IReadOnlyDictionary<string, string> mappings)
-    {
-        if (mappings.Count == 0)
-        {
-            return;
-        }
-
-        EnqueueOrRun(() => Post("updateImagePaths", new { mappings }));
-    }
-
-    public void SetAssetDirectory(string directory)
-    {
-        _assetDirectory = Path.GetFullPath(directory);
-        Directory.CreateDirectory(_assetDirectory);
-        if (_webView.CoreWebView2 is null)
-        {
-            return;
-        }
-    }
-
     public async Task<string> GetSelectedTextAsync(CancellationToken cancellationToken = default)
     {
         if (_webView.CoreWebView2 is null)
@@ -335,21 +315,27 @@ internal sealed class EditorHostController : IDisposable
     private void OnAssetResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs eventArgs)
     {
         var core = _webView.CoreWebView2;
-        if (core is null || _assetDirectory is null || !Uri.TryCreate(eventArgs.Request.Uri, UriKind.Absolute, out var uri))
+        if (core is null || !Uri.TryCreate(eventArgs.Request.Uri, UriKind.Absolute, out var uri))
         {
             return;
         }
 
-        var fileName = Path.GetFileName(Uri.UnescapeDataString(uri.AbsolutePath));
-        if (string.IsNullOrWhiteSpace(fileName))
+        var encodedPath = uri.Query.StartsWith("?path=", StringComparison.Ordinal)
+            ? uri.Query[6..]
+            : string.Empty;
+        string path;
+        try
+        {
+            path = Path.GetFullPath(Uri.UnescapeDataString(encodedPath).Replace('/', Path.DirectorySeparatorChar));
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
         {
             eventArgs.Response = core.Environment.CreateWebResourceResponse(
                 Stream.Null, 404, "Not Found", "Content-Type: text/plain");
             return;
         }
 
-        var path = Path.Combine(_assetDirectory, fileName);
-        if (!File.Exists(path))
+        if (!ImageAssetService.IsSupportedImagePath(path) || !File.Exists(path))
         {
             eventArgs.Response = core.Environment.CreateWebResourceResponse(
                 Stream.Null, 404, "Not Found", "Content-Type: text/plain");

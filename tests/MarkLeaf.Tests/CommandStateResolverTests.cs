@@ -28,8 +28,6 @@ public sealed class CommandStateResolverTests
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SaveDocument, editorReady).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SaveDocument, documentReady).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.InsertImage, documentReady).IsEnabled);
-        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CleanUnreferencedAssets, documentReady).IsEnabled);
-        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.CleanUnreferencedAssets, editorReady).IsEnabled);
     }
 
     [TestMethod]

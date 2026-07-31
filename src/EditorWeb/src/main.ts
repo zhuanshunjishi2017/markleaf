@@ -6,7 +6,6 @@ import {
   getMarkdown,
   isAllowedLink,
   replaceEditorDocument,
-  updateImagePaths,
 } from './editor'
 import {
   isHostMessage,
@@ -209,16 +208,6 @@ function handleMessage(value: unknown): void {
         if (message.requestId) {
           send('commandResult', { success }, message.requestId)
         }
-        sendCommandState()
-      }
-      break
-    }
-    case 'updateImagePaths': {
-      const payload = message.payload as { mappings?: unknown }
-      if (payload?.mappings && typeof payload.mappings === 'object') {
-        suppressUpdate = true
-        updateImagePaths(editor, payload.mappings as Record<string, string>)
-        suppressUpdate = false
         sendCommandState()
       }
       break

@@ -31,7 +31,6 @@ public static class EditorProtocol
         "loadDocument",
         "requestSnapshot",
         "command",
-        "updateImagePaths",
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()

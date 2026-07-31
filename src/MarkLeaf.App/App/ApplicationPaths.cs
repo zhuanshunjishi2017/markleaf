@@ -4,7 +4,7 @@ internal sealed record ApplicationPaths(
     string DataDirectory,
     string SettingsFile,
     string LogDirectory,
-    string DraftAssetsDirectory)
+    string ClipboardImageCacheDirectory)
 {
     public static ApplicationPaths Create(string? overrideRoot = null)
     {
@@ -18,6 +18,6 @@ internal sealed record ApplicationPaths(
             root,
             Path.Combine(root, "settings.json"),
             Path.Combine(root, "Logs"),
-            Path.Combine(root, "DraftAssets"));
+            Path.Combine(AppContext.BaseDirectory, "Cache", "ClipboardImages"));
     }
 }

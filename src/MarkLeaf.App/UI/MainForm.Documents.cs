@@ -68,12 +68,23 @@ internal sealed partial class MainForm
         {
             SetStatus("正在打开文档...");
             var opened = await _documentFileService.OpenAsync(path);
+            var originalMarkdown = opened.Markdown;
+            opened.Markdown = _imageAssetService.NormalizeLocalImagePaths(opened.Markdown, opened.FilePath);
+            await ResolveMissingImagesAsync(opened);
+            opened.IsDirty = !string.Equals(originalMarkdown, opened.Markdown, StringComparison.Ordinal);
             StopWatchingDocument();
             _document = opened;
             LoadDocumentIntoEditor(opened);
             StartWatchingDocument(opened.FilePath!);
             _logger.Info($"Document opened: {DescribePath(opened.FilePath)}; encoding={opened.Encoding.WebName}; bom={opened.HasBom}; newline={DescribeNewLine(opened.NewLine)}.");
-            SetStatus(opened.IsReadOnly ? "已打开只读文档" : "文档已打开");
+            if (opened.IsDirty)
+            {
+                SetStatus("图片路径已更新，请保存文档");
+            }
+            else if (_imageAssetService.FindMissingImages(opened.Markdown, opened.FilePath).Count == 0)
+            {
+                SetStatus(opened.IsReadOnly ? "已打开只读文档" : "文档已打开");
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -91,6 +102,82 @@ internal sealed partial class MainForm
             _documentOperationInProgress = false;
             _menuService.RefreshStates();
         }
+    }
+
+    private async Task ResolveMissingImagesAsync(MarkdownDocument document)
+    {
+        var missingImages = _imageAssetService.FindMissingImages(document.Markdown, document.FilePath);
+        if (missingImages.Count == 0)
+        {
+            return;
+        }
+
+        var names = string.Join(
+            "\r\n",
+            missingImages.Take(50).Select(image => "- " + image.FileName));
+        if (missingImages.Count > 50)
+        {
+            names += $"\r\n- 另有 {missingImages.Count - 50} 个文件未列出";
+        }
+
+        var choice = MessageBox.Show(
+            this,
+            $"加载文档时发现 {missingImages.Count} 张图片缺失：\r\n\r\n{names}\r\n\r\n" +
+            "是否现在逐一查找并替换这些图片？替换后请保存文档。",
+            "图片文件缺失",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Error,
+            MessageBoxDefaultButton.Button1);
+        if (choice != DialogResult.Yes)
+        {
+            SetStatus($"文档已加载，但有 {missingImages.Count} 张图片缺失");
+            return;
+        }
+
+        var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var missingImage in missingImages)
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Filter = ImageFilter,
+                CheckFileExists = true,
+                Multiselect = false,
+                RestoreDirectory = true,
+                Title = $"查找替换图片：{missingImage.FileName}",
+                FileName = missingImage.FileName,
+            };
+            var missingDirectory = Path.GetDirectoryName(missingImage.ResolvedPath);
+            if (missingDirectory is not null && Directory.Exists(missingDirectory))
+            {
+                dialog.InitialDirectory = missingDirectory;
+            }
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                continue;
+            }
+
+            try
+            {
+                await ImageAssetService.ValidateImageFileAsync(dialog.FileName);
+                replacements[missingImage.Reference] = ImageAssetService.ToMarkdownPath(dialog.FileName);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                MessageBox.Show(
+                    this,
+                    $"所选文件不能替换“{missingImage.FileName}”。\r\n\r\n{exception.Message}",
+                    "图片替换失败",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        document.Markdown = ImageAssetService.ReplaceImagePaths(document.Markdown, replacements);
+        var remaining = _imageAssetService.FindMissingImages(document.Markdown, document.FilePath);
+        SetStatus(remaining.Count == 0
+            ? $"已替换 {replacements.Count} 张缺失图片，请保存文档"
+            : $"已替换 {replacements.Count} 张图片，仍缺失 {remaining.Count} 张");
     }
 
     private async Task<bool> SaveDocumentAsync(bool saveAs, bool forceOverwrite = false)
@@ -130,29 +217,23 @@ internal sealed partial class MainForm
 
         _documentOperationInProgress = true;
         EditorSnapshot? snapshot = null;
-        AssetMigration? assetMigration = null;
-        var documentSaved = false;
         try
         {
             SetStatus("正在获取最新编辑内容...");
             snapshot = await _editorHost.RequestSnapshotAsync();
-            assetMigration = await _imageAssetService.PrepareMigrationAsync(
-                _document,
-                targetPath,
-                snapshot.Markdown);
+            var markdown = _imageAssetService.NormalizeLocalImagePaths(
+                snapshot.Markdown,
+                _document.FilePath ?? targetPath);
             SetStatus("正在安全保存...");
             await _documentFileService.SaveAsync(
                 _document,
-                assetMigration.Markdown,
+                markdown,
                 snapshot.Revision,
                 targetPath,
                 forceOverwrite);
-            documentSaved = true;
 
             _document.Revision = Math.Max(snapshot.Revision, _editorSession.ConfirmedRevision);
             _document.IsDirty = _document.Revision > snapshot.Revision;
-            _editorHost.SetAssetDirectory(assetMigration.TargetDirectory);
-            _editorHost.UpdateImagePaths(assetMigration.PathMappings);
             StopWatchingDocument();
             StartWatchingDocument(_document.FilePath!);
             UpdateDocumentChrome();
@@ -162,10 +243,6 @@ internal sealed partial class MainForm
         }
         catch (ExternalDocumentChangedException)
         {
-            if (assetMigration is not null)
-            {
-                ImageAssetService.RollbackMigration(assetMigration);
-            }
             _logger.Warning($"Save blocked by external modification: {DescribePath(targetPath)}.");
             return await ResolveExternalSaveConflictAsync(
                 targetPath,
@@ -173,10 +250,6 @@ internal sealed partial class MainForm
         }
         catch (OperationCanceledException exception)
         {
-            if (assetMigration is not null)
-            {
-                ImageAssetService.RollbackMigration(assetMigration);
-            }
             _logger.Error("Latest editor snapshot request timed out.", exception);
             MessageBox.Show(
                 this,
@@ -189,10 +262,6 @@ internal sealed partial class MainForm
         }
         catch (DocumentSaveException exception)
         {
-            if (assetMigration is not null)
-            {
-                ImageAssetService.RollbackMigration(assetMigration);
-            }
             _logger.Error($"Document save failed: {DescribePath(targetPath)}.", exception);
             var recovery = exception.RecoveryFilePath is null
                 ? string.Empty
@@ -206,24 +275,6 @@ internal sealed partial class MainForm
                 MessageBoxIcon.Error);
             SetStatus("保存失败，编辑内容仍保留");
             return false;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            if (!documentSaved && assetMigration is not null)
-            {
-                ImageAssetService.RollbackMigration(assetMigration);
-            }
-            _logger.Error($"Image resource migration failed: {DescribePath(targetPath)}.", exception);
-            MessageBox.Show(
-                this,
-                documentSaved
-                    ? "文档已经保存，但编辑器未能刷新图片资源映射。请重新打开文档。\r\n\r\n" + exception.Message
-                    : "无法迁移文档图片资源，文档没有写入磁盘。\r\n\r\n" + exception.Message,
-                "MarkLeaf",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-            SetStatus(documentSaved ? "文档已保存，图片资源刷新失败" : "保存失败：图片资源迁移失败");
-            return documentSaved;
         }
         finally
         {
@@ -323,9 +374,7 @@ internal sealed partial class MainForm
     private void LoadDocumentIntoEditor(MarkdownDocument document)
     {
         _editorCommandStatus = EditorCommandStatus.Empty;
-        _editorHost?.SetAssetDirectory(_imageAssetService.GetAssetDirectory(document));
         _editorHost?.LoadDocument(document.Id, document.Revision, document.Markdown);
-        document.IsDirty = false;
         UpdateDocumentChrome();
     }
 
@@ -546,7 +595,6 @@ internal sealed partial class MainForm
             using var stream = new MemoryStream();
             bitmap.Save(stream, ImageFormat.Png);
             var imported = await _imageAssetService.ImportBytesAsync(
-                _document,
                 stream.ToArray(),
                 ".png");
             await InsertImportedImageAsync(imported, "粘贴图片");
@@ -600,7 +648,7 @@ internal sealed partial class MainForm
         {
             try
             {
-                var imported = await _imageAssetService.ImportFileAsync(_document, path);
+                var imported = await _imageAssetService.ImportFileAsync(path);
                 if (await InsertImportedImageAsync(
                         imported,
                         Path.GetFileNameWithoutExtension(path),
@@ -619,74 +667,7 @@ internal sealed partial class MainForm
             }
         }
 
-        SetStatus(importedCount > 0 ? $"已导入 {importedCount} 张图片" : "未找到可导入的图片");
-    }
-
-    private Task CleanUnreferencedAssetsAsync()
-    {
-        if (_document is null || _editorHost?.IsDocumentLoaded != true || _documentOperationInProgress)
-        {
-            return Task.CompletedTask;
-        }
-
-        if (_document.FilePath is null || _document.IsDirty)
-        {
-            MessageBox.Show(
-                this,
-                "为避免永久删除仍被已保存版本引用的图片，请先保存文档，再执行资源清理。",
-                "清理未引用资源",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            SetStatus("清理已取消：请先保存文档");
-            return Task.CompletedTask;
-        }
-
-        try
-        {
-            var unusedAssets = _imageAssetService.FindUnreferencedAssets(_document, _document.Markdown);
-            if (unusedAssets.Count == 0)
-            {
-                MessageBox.Show(
-                    this,
-                    "当前文档没有可清理的未引用图片。",
-                    "清理未引用资源",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                SetStatus("没有未引用图片");
-                return Task.CompletedTask;
-            }
-
-            var confirmation = MessageBox.Show(
-                this,
-                $"将永久删除当前资源目录中的 {unusedAssets.Count} 个未引用图片文件。\r\n\r\n" +
-                "此操作不会移动到回收站，且无法撤销。是否继续？",
-                "永久删除未引用资源",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2);
-            if (confirmation != DialogResult.Yes)
-            {
-                SetStatus("已取消资源清理");
-                return Task.CompletedTask;
-            }
-
-            var deletedAssets = _imageAssetService.DeleteUnreferencedAssets(_document, _document.Markdown);
-            _logger.Info($"Permanently deleted {deletedAssets.Count} unreferenced image assets by explicit command.");
-            SetStatus($"已永久删除 {deletedAssets.Count} 个未引用图片");
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.Error("Manual unused image cleanup failed.", exception);
-            MessageBox.Show(
-                this,
-                "未能完成资源清理。部分文件可能已被删除。\r\n\r\n" + exception.Message,
-                "清理未引用资源",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-            SetStatus("资源清理失败");
-        }
-
-        return Task.CompletedTask;
+        SetStatus(importedCount > 0 ? $"已插入 {importedCount} 张图片" : "未找到可插入的图片");
     }
 
     private async Task<bool> InsertImportedImageAsync(
@@ -700,16 +681,15 @@ internal sealed partial class MainForm
             return false;
         }
 
-        _editorHost.SetAssetDirectory(_imageAssetService.GetAssetDirectory(_document));
         var inserted = await _editorHost.ExecuteCommandAsync(
             "insertImage",
-            imported.RelativePath + "\n" + alt,
+            imported.MarkdownPath + "\n" + alt,
             clientX,
             clientY);
         if (!inserted)
         {
             _logger.Warning($"Editor rejected imported image: {DescribePath(imported.PhysicalPath)}.");
-            SetStatus("图片已复制，但未能插入文档");
+            SetStatus("未能插入图片");
             return false;
         }
 

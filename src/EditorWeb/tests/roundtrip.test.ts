@@ -8,7 +8,6 @@ import {
   getMarkdown,
   replaceEditorDocument,
   sanitizePastedHtml,
-  updateImagePaths,
 } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -344,44 +343,16 @@ describe('paragraph menu commands', () => {
     expect(getMarkdown(editor).match(/- \[ \]/g)).toHaveLength(1)
   })
 
-  it('updates image paths without creating an undo step', () => {
+  it('renders absolute image paths through the isolated asset host', () => {
     const element = document.createElement('div')
     document.body.append(element)
-    const editor = createEditor(element, '![draft](draft.png)')
-    editors.push(editor)
-
-    expect(editor.can().undo()).toBe(false)
-    expect(updateImagePaths(editor, { 'draft.png': 'notes.assets/draft.png' })).toBe(true)
-    expect(getMarkdown(editor)).toContain('notes.assets/draft.png')
-    expect(editor.can().undo()).toBe(false)
-  })
-
-  it('keeps migrated image paths when undoing the preceding user edit', () => {
-    const element = document.createElement('div')
-    document.body.append(element)
-    const editor = createEditor(element, '![draft](draft.png)\n\nbase')
-    editors.push(editor)
-    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
-    editor.commands.insertContent('temporary')
-
-    updateImagePaths(editor, { 'draft.png': 'notes.assets/draft.png' })
-    expect(editor.commands.undo()).toBe(true)
-
-    const markdown = getMarkdown(editor)
-    expect(markdown).toContain('notes.assets/draft.png')
-    expect(markdown).not.toContain('temporary')
-  })
-
-  it('renders managed image paths through the isolated asset host', () => {
-    const element = document.createElement('div')
-    document.body.append(element)
-    const editor = createEditor(element, '![diagram](notes.assets/my%20image.png)')
+    const editor = createEditor(element, '![diagram](C:/Pictures/my%20image.png)')
     editors.push(editor)
 
     const image = element.querySelector('img')
-    expect(image?.getAttribute('src')).toBe('https://assets.local/my%20image.png')
-    expect(image?.getAttribute('data-markleaf-path')).toMatch(/notes\.assets\/my(?:%20| )image\.png/)
-    expect(getMarkdown(editor)).toMatch(/notes\.assets\/my(?:%20| )image\.png/)
+    expect(image?.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fmy%20image.png')
+    expect(image?.getAttribute('data-markleaf-path')).toMatch(/C:\/Pictures\/my(?:%20| )image\.png/)
+    expect(getMarkdown(editor)).toMatch(/C:\/Pictures\/my(?:%20| )image\.png/)
   })
 
   it('inserts an image node through the host command payload', () => {
@@ -390,9 +361,9 @@ describe('paragraph menu commands', () => {
     const editor = createEditor(element, '')
     editors.push(editor)
 
-    expect(executeEditorCommand(editor, 'insertImage', 'image.png\npasted image')).toBe(true)
-    expect(element.querySelector('img')?.getAttribute('src')).toBe('https://assets.local/image.png')
-    expect(getMarkdown(editor)).toContain('![pasted image](image.png)')
+    expect(executeEditorCommand(editor, 'insertImage', 'C:/Pictures/image.png\npasted image')).toBe(true)
+    expect(element.querySelector('img')?.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fimage.png')
+    expect(getMarkdown(editor)).toContain('![pasted image](C:/Pictures/image.png)')
   })
 
   it('exposes four corner resize handles and reports image selection state', () => {

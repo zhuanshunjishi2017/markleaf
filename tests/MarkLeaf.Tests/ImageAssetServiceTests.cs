@@ -7,16 +7,22 @@ namespace MarkLeaf.Tests;
 public sealed class ImageAssetServiceTests
 {
     private static readonly byte[] MinimalPng =
-        [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0];
+    [
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d,
+    ];
+
     private string _testDirectory = null!;
+    private string _cacheDirectory = null!;
     private ImageAssetService _service = null!;
 
     [TestInitialize]
     public void Initialize()
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), "MarkLeaf.ImageTests", Guid.NewGuid().ToString("N"));
+        _cacheDirectory = Path.Combine(_testDirectory, "install", "Cache", "ClipboardImages");
         Directory.CreateDirectory(_testDirectory);
-        _service = new ImageAssetService(Path.Combine(_testDirectory, "drafts"));
+        _service = new ImageAssetService(_cacheDirectory);
     }
 
     [TestCleanup]
@@ -29,105 +35,28 @@ public sealed class ImageAssetServiceTests
     }
 
     [TestMethod]
-    public async Task ImportFileAsync_UsesIsolatedDraftDirectoryAndResolvesCollision()
+    public async Task ImportFileAsync_UsesOriginalAbsolutePathWithoutCopying()
     {
         var source = Path.Combine(_testDirectory, "source image.png");
         await File.WriteAllBytesAsync(source, MinimalPng);
-        var document = new MarkdownDocument();
 
-        var first = await _service.ImportFileAsync(document, source);
-        var second = await _service.ImportFileAsync(document, source);
+        var imported = await _service.ImportFileAsync(source);
 
-        Assert.AreEqual("source image.png", first.RelativePath);
-        Assert.AreEqual("source image-2.png", second.RelativePath);
-        Assert.IsTrue(first.PhysicalPath.StartsWith(
-            Path.Combine(_testDirectory, "drafts", document.Id.ToString("N")),
-            StringComparison.OrdinalIgnoreCase));
-        Assert.AreEqual("https://assets.local/source%20image.png", first.VirtualUrl);
+        Assert.AreEqual(Path.GetFullPath(source), imported.PhysicalPath);
+        Assert.AreEqual(ImageAssetService.ToMarkdownPath(source), imported.MarkdownPath);
+        Assert.IsFalse(Directory.Exists(_cacheDirectory));
     }
 
     [TestMethod]
-    public async Task ImportFileAsync_RejectsUnsupportedFile()
+    public async Task ImportBytesAsync_WritesClipboardImageIntoInstallCache()
     {
-        var source = Path.Combine(_testDirectory, "payload.svg");
-        await File.WriteAllTextAsync(source, "<svg><script /></svg>", Encoding.UTF8);
+        var first = await _service.ImportBytesAsync(MinimalPng, ".png");
+        var second = await _service.ImportBytesAsync(MinimalPng, ".png");
 
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(
-            () => _service.ImportFileAsync(new MarkdownDocument(), source));
-    }
-
-    [TestMethod]
-    public async Task PrepareMigrationAsync_MovesDraftReferencesIntoDocumentAssetsWithoutDeletingDraft()
-    {
-        var document = new MarkdownDocument();
-        var imported = await _service.ImportBytesAsync(document, MinimalPng, ".png");
-        var targetDocument = Path.Combine(_testDirectory, "notes.md");
-        var markdown = $"![粘贴图片]({imported.RelativePath})";
-
-        var migration = await _service.PrepareMigrationAsync(document, targetDocument, markdown);
-
-        StringAssert.Contains(migration.Markdown, "notes.assets/");
-        Assert.HasCount(1, migration.CopiedFiles);
-        Assert.IsTrue(File.Exists(migration.CopiedFiles[0]));
-        Assert.IsTrue(File.Exists(imported.PhysicalPath));
-        Assert.HasCount(1, migration.PathMappings);
-    }
-
-    [TestMethod]
-    public async Task PrepareMigrationAsync_SaveAsCopiesAllAssetsAndRenamesCollision()
-    {
-        var originalDocumentPath = Path.Combine(_testDirectory, "original.md");
-        var originalAssets = ImageAssetService.GetDocumentAssetDirectory(originalDocumentPath);
-        Directory.CreateDirectory(originalAssets);
-        await File.WriteAllBytesAsync(Path.Combine(originalAssets, "diagram.png"), MinimalPng);
-        var document = new MarkdownDocument { FilePath = originalDocumentPath };
-        var targetDocumentPath = Path.Combine(_testDirectory, "copy.md");
-        var targetAssets = ImageAssetService.GetDocumentAssetDirectory(targetDocumentPath);
-        Directory.CreateDirectory(targetAssets);
-        await File.WriteAllBytesAsync(Path.Combine(targetAssets, "diagram.png"), [9]);
-
-        var migration = await _service.PrepareMigrationAsync(
-            document,
-            targetDocumentPath,
-            "![图](original.assets/diagram.png)");
-
-        StringAssert.Contains(migration.Markdown, "copy.assets/diagram-2.png");
-        Assert.IsTrue(File.Exists(Path.Combine(targetAssets, "diagram-2.png")));
-        Assert.IsTrue(File.Exists(Path.Combine(originalAssets, "diagram.png")));
-    }
-
-    [TestMethod]
-    public async Task RollbackMigration_RemovesOnlyNewCopies()
-    {
-        var document = new MarkdownDocument();
-        var imported = await _service.ImportBytesAsync(document, MinimalPng, ".png");
-        var migration = await _service.PrepareMigrationAsync(
-            document,
-            Path.Combine(_testDirectory, "target.md"),
-            $"![图]({imported.RelativePath})");
-
-        ImageAssetService.RollbackMigration(migration);
-
-        Assert.IsFalse(File.Exists(migration.CopiedFiles[0]));
-        Assert.IsTrue(File.Exists(imported.PhysicalPath));
-    }
-
-    [TestMethod]
-    public async Task PrepareMigrationAsync_FailureRollsBackCopiesCreatedEarlierInTheBatch()
-    {
-        var document = new MarkdownDocument();
-        var draftDirectory = _service.GetAssetDirectory(document);
-        Directory.CreateDirectory(draftDirectory);
-        await File.WriteAllBytesAsync(Path.Combine(draftDirectory, "a-valid.png"), MinimalPng);
-        await File.WriteAllTextAsync(Path.Combine(draftDirectory, "z-invalid.png"), "not an image");
-        var targetDocument = Path.Combine(_testDirectory, "notes.md");
-
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(() =>
-            _service.PrepareMigrationAsync(document, targetDocument, "![image](a-valid.png)"));
-
-        var targetAssets = ImageAssetService.GetDocumentAssetDirectory(targetDocument);
-        Assert.IsFalse(Directory.Exists(targetAssets) && Directory.EnumerateFiles(targetAssets).Any());
-        Assert.IsTrue(File.Exists(Path.Combine(draftDirectory, "a-valid.png")));
+        Assert.AreEqual(_cacheDirectory, Path.GetDirectoryName(first.PhysicalPath));
+        Assert.AreNotEqual(first.PhysicalPath, second.PhysicalPath);
+        Assert.IsTrue(File.Exists(first.PhysicalPath));
+        Assert.AreEqual(ImageAssetService.ToMarkdownPath(first.PhysicalPath), first.MarkdownPath);
     }
 
     [TestMethod]
@@ -136,59 +65,51 @@ public sealed class ImageAssetServiceTests
         var source = Path.Combine(_testDirectory, "payload.png");
         await File.WriteAllTextAsync(source, "not an image", Encoding.UTF8);
 
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(
-            () => _service.ImportFileAsync(new MarkdownDocument(), source));
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => _service.ImportFileAsync(source));
     }
 
     [TestMethod]
-    public async Task FindUnreferencedAssets_ReturnsOnlyManagedFilesMissingFromMarkdown()
+    public void NormalizeLocalImagePaths_ConvertsRelativeReferencesToAbsolutePaths()
     {
-        var documentPath = Path.Combine(_testDirectory, "notes.md");
-        var assets = ImageAssetService.GetDocumentAssetDirectory(documentPath);
-        Directory.CreateDirectory(assets);
-        await File.WriteAllBytesAsync(Path.Combine(assets, "used image.png"), MinimalPng);
-        await File.WriteAllBytesAsync(Path.Combine(assets, "unused.png"), MinimalPng);
-        var document = new MarkdownDocument { FilePath = documentPath };
+        var documentPath = Path.Combine(_testDirectory, "notes", "document.md");
+        var imagePath = Path.Combine(_testDirectory, "notes", "images", "示例 图片.png");
 
-        var unused = _service.FindUnreferencedAssets(
-            document,
-            "![used](notes.assets/used%20image.png)\n![external](../elsewhere.png)");
+        var normalized = _service.NormalizeLocalImagePaths(
+            "![示例](images/%E7%A4%BA%E4%BE%8B%20%E5%9B%BE%E7%89%87.png)",
+            documentPath);
 
-        Assert.HasCount(1, unused);
-        Assert.AreEqual("unused.png", Path.GetFileName(unused[0]));
-        Assert.IsTrue(File.Exists(unused[0]));
+        StringAssert.Contains(normalized, ImageAssetService.ToMarkdownPath(imagePath));
     }
 
     [TestMethod]
-    public async Task FindUnreferencedAssets_DoesNotDeleteFileWhenReferenceIsRemoved()
+    public async Task FindMissingImages_ListsMissingLocalFilesAndIgnoresRemoteUrls()
     {
-        var document = new MarkdownDocument();
-        var imported = await _service.ImportBytesAsync(document, MinimalPng, ".png");
+        var existing = Path.Combine(_testDirectory, "existing.png");
+        await File.WriteAllBytesAsync(existing, MinimalPng);
+        var missing = Path.Combine(_testDirectory, "missing image.png");
+        var markdown = $"![existing]({ImageAssetService.ToMarkdownPath(existing)})\n" +
+            $"![missing]({ImageAssetService.ToMarkdownPath(missing)})\n" +
+            "![remote](https://example.com/image.png)";
 
-        var unused = _service.FindUnreferencedAssets(document, string.Empty);
+        var result = _service.FindMissingImages(markdown, Path.Combine(_testDirectory, "document.md"));
 
-        CollectionAssert.Contains(unused.ToArray(), imported.PhysicalPath);
-        Assert.IsTrue(File.Exists(imported.PhysicalPath));
+        Assert.HasCount(1, result);
+        Assert.AreEqual("missing image.png", result[0].FileName);
+        Assert.AreEqual(Path.GetFullPath(missing), result[0].ResolvedPath);
     }
 
     [TestMethod]
-    public async Task DeleteUnreferencedAssets_PermanentlyDeletesOnlyUnusedManagedImages()
+    public void ReplaceImagePaths_RewritesOnlySelectedImageReferences()
     {
-        var documentPath = Path.Combine(_testDirectory, "notes.md");
-        var assets = ImageAssetService.GetDocumentAssetDirectory(documentPath);
-        Directory.CreateDirectory(assets);
-        var usedPath = Path.Combine(assets, "used.png");
-        var unusedPath = Path.Combine(assets, "unused.png");
-        await File.WriteAllBytesAsync(usedPath, MinimalPng);
-        await File.WriteAllBytesAsync(unusedPath, MinimalPng);
-        var document = new MarkdownDocument { FilePath = documentPath };
+        const string missing = "C:/old/missing.png";
+        var replacement = Path.Combine(_testDirectory, "replacement.png");
+        var markdown = $"![missing]({missing})\n![kept](C:/old/kept.png)";
 
-        var deleted = _service.DeleteUnreferencedAssets(
-            document,
-            "![used](notes.assets/used.png)");
+        var updated = ImageAssetService.ReplaceImagePaths(
+            markdown,
+            new Dictionary<string, string> { [missing] = ImageAssetService.ToMarkdownPath(replacement) });
 
-        CollectionAssert.AreEqual(new[] { unusedPath }, deleted.ToArray());
-        Assert.IsTrue(File.Exists(usedPath));
-        Assert.IsFalse(File.Exists(unusedPath));
+        StringAssert.Contains(updated, ImageAssetService.ToMarkdownPath(replacement));
+        StringAssert.Contains(updated, "C:/old/kept.png");
     }
 }

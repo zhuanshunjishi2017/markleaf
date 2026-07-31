@@ -280,44 +280,14 @@ export function replaceEditorDocument(editor: Editor, element: HTMLElement, cont
   return createEditor(element, content)
 }
 
-export function updateImagePaths(editor: Editor, mappings: Record<string, string>): boolean {
-  let transaction = editor.state.tr
-  let changed = false
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name !== 'image' || typeof node.attrs.src !== 'string') {
-      return
-    }
-
-    const markdownPath = node.attrs.src as string
-    const updatedPath = mappings[markdownPath]
-    if (!updatedPath) {
-      return
-    }
-
-    transaction = transaction.setNodeMarkup(position, undefined, {
-      ...node.attrs,
-      src: updatedPath,
-    })
-    changed = true
-  })
-
-  if (changed) {
-    transaction.setMeta('addToHistory', false)
-    editor.view.dispatch(transaction)
-  }
-  return changed
-}
-
-export function toVirtualImageUrl(relativePath: string): string {
-  const normalized = relativePath.replace(/\\/g, '/')
-  const rawFileName = normalized.split('/').pop() ?? normalized
-  let fileName = rawFileName
+export function toVirtualImageUrl(markdownPath: string): string {
+  let decodedPath = markdownPath
   try {
-    fileName = decodeURIComponent(rawFileName)
+    decodedPath = decodeURIComponent(markdownPath)
   } catch {
     // Invalid percent escapes remain literal and are safely encoded below.
   }
-  return `https://assets.local/${encodeURIComponent(fileName)}`
+  return `https://assets.local/image?path=${encodeURIComponent(decodedPath)}`
 }
 
 export function getMarkdown(editor: Editor): string {

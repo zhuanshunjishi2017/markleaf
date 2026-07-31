@@ -108,7 +108,6 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.SaveDocument, "保存(&S)\tCtrl+S");
             AppendCommand(menu, AppCommand.SaveDocumentAs, "另存为(&A)...\tCtrl+Shift+S");
             AppendCommand(menu, AppCommand.ExportDocument, "导出(&E)...");
-            AppendCommand(menu, AppCommand.CleanUnreferencedAssets, "清理未引用资源(&C)...");
             AppendSeparator(menu);
 
             var recent = CreateMenu(true);

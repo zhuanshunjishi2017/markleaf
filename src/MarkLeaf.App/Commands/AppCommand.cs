@@ -8,7 +8,6 @@ public enum AppCommand
     SaveDocument,
     SaveDocumentAs,
     ExportDocument,
-    CleanUnreferencedAssets,
     Exit,
 
     Undo = 0x1101,

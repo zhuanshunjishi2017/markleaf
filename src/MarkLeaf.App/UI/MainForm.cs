@@ -58,7 +58,7 @@ internal sealed partial class MainForm : Form
         _settings = settings;
         _settingsService = settingsService;
         _logger = logger;
-        _imageAssetService = new ImageAssetService(paths.DraftAssetsDirectory);
+        _imageAssetService = new ImageAssetService(paths.ClipboardImageCacheDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
         _menuService = new NativeMenuService(_commandRouter);
@@ -417,9 +417,6 @@ internal sealed partial class MainForm : Form
                 break;
             case AppCommand.SaveDocumentAs:
                 _ = SaveDocumentAsync(saveAs: true);
-                break;
-            case AppCommand.CleanUnreferencedAssets:
-                _ = CleanUnreferencedAssetsAsync();
                 break;
             case AppCommand.Cut:
                 _ = ExecuteClipboardCopyAsync(cut: true);
