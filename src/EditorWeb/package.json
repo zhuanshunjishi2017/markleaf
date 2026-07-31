@@ -1,0 +1,29 @@
+{
+  "name": "@markleaf/editor-web-prototype",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@tiptap/core": "3.29.2",
+    "@tiptap/extension-image": "3.29.2",
+    "@tiptap/extension-link": "3.29.2",
+    "@tiptap/extension-table": "3.29.2",
+    "@tiptap/extension-task-item": "3.29.2",
+    "@tiptap/extension-task-list": "3.29.2",
+    "@tiptap/markdown": "3.29.2",
+    "@tiptap/starter-kit": "3.29.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "jsdom": "27.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.2.4",
+    "vitest": "4.0.15"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

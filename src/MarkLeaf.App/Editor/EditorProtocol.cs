@@ -1,0 +1,281 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace MarkLeaf.Editor;
+
+public static class EditorProtocol
+{
+    public const int Version = 1;
+    public const int MaximumMessageBytes = 1024 * 1024;
+
+    private static readonly HashSet<string> AllowedEditorMessageTypes =
+    [
+        "ready",
+        "documentLoaded",
+        "commandResult",
+        "dirtyChanged",
+        "snapshot",
+        "selectionChanged",
+        "commandStateChanged",
+        "outlineChanged",
+        "requestSave",
+        "openLink",
+        "dropFiles",
+        "pasteImage",
+        "findResult",
+        "error",
+    ];
+
+    private static readonly HashSet<string> AllowedHostMessageTypes =
+    [
+        "loadDocument",
+        "requestSnapshot",
+        "command",
+        "updateImagePaths",
+    ];
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public static string SerializeHostMessage(
+        string type,
+        Guid documentId,
+        long revision,
+        object? payload = null,
+        string? requestId = null)
+    {
+        if (!AllowedHostMessageTypes.Contains(type))
+        {
+            throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported host message type.");
+        }
+
+        return JsonSerializer.Serialize(
+            new HostMessage(
+                Version,
+                type,
+                requestId,
+                documentId.ToString(),
+                revision,
+                payload),
+            JsonOptions);
+    }
+
+    public static bool TryDeserializeEditorMessage(
+        string json,
+        out EditorMessage? message,
+        out string? error)
+    {
+        message = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            error = "Message is empty.";
+            return false;
+        }
+
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > MaximumMessageBytes)
+        {
+            error = "Message exceeds the size limit.";
+            return false;
+        }
+
+        try
+        {
+            message = JsonSerializer.Deserialize<EditorMessage>(json, JsonOptions);
+            if (message is null)
+            {
+                error = "Message is null.";
+                return false;
+            }
+
+            if (message.ProtocolVersion != Version)
+            {
+                error = "Unsupported protocol version.";
+                message = null;
+                return false;
+            }
+
+            if (!AllowedEditorMessageTypes.Contains(message.Type))
+            {
+                error = "Unsupported editor message type.";
+                message = null;
+                return false;
+            }
+
+            if (!Guid.TryParse(message.DocumentId, out _))
+            {
+                error = "Document ID is invalid.";
+                message = null;
+                return false;
+            }
+
+            if (message.Revision < 0)
+            {
+                error = "Revision cannot be negative.";
+                message = null;
+                return false;
+            }
+
+            if (!HasValidPayload(message))
+            {
+                error = "Message payload is invalid.";
+                message = null;
+                return false;
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "Message JSON is invalid.";
+            return false;
+        }
+    }
+
+    private static bool HasValidPayload(EditorMessage message)
+    {
+        var payload = message.Payload;
+        return message.Type switch
+        {
+            "ready" or "documentLoaded" => IsMissingOrObject(payload),
+            "dirtyChanged" => HasProperty(payload, "dirty", JsonValueKind.True, JsonValueKind.False),
+            "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String),
+            "selectionChanged" => HasIntegerProperty(payload, "from") && HasIntegerProperty(payload, "to"),
+            "commandStateChanged" => HasCommandStatePayload(payload),
+            "outlineChanged" => HasProperty(payload, "headings", JsonValueKind.Array),
+            "openLink" => HasAllowedUrl(payload),
+            "dropFiles" => HasBoundedCount(payload)
+                && HasNonNegativeNumber(payload, "clientX")
+                && HasNonNegativeNumber(payload, "clientY"),
+            "commandResult" => HasProperty(payload, "success", JsonValueKind.True, JsonValueKind.False),
+            "pasteImage" => IsMissingOrObject(payload),
+            "error" => HasProperty(payload, "message", JsonValueKind.String),
+            _ => payload.ValueKind == JsonValueKind.Object,
+        };
+    }
+
+    private static bool IsMissingOrObject(JsonElement payload)
+    {
+        return payload.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Object;
+    }
+
+    private static bool HasProperty(JsonElement payload, string name, params JsonValueKind[] allowedKinds)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && allowedKinds.Contains(value.ValueKind);
+    }
+
+    private static bool HasIntegerProperty(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt64(out var number)
+            && number >= 0;
+    }
+
+    private static bool HasCommandStatePayload(JsonElement payload)
+    {
+        return HasBooleanProperty(payload, "canUndo")
+            && HasBooleanProperty(payload, "canRedo")
+            && HasBooleanProperty(payload, "hasSelection")
+            && HasBooleanProperty(payload, "paragraph")
+            && HasNullableHeadingLevel(payload)
+            && HasBooleanProperty(payload, "bold")
+            && HasBooleanProperty(payload, "italic")
+            && HasBooleanProperty(payload, "link")
+            && HasBooleanProperty(payload, "blockquote")
+            && HasBooleanProperty(payload, "codeBlock")
+            && HasBooleanProperty(payload, "bulletList")
+            && HasBooleanProperty(payload, "orderedList")
+            && HasBooleanProperty(payload, "taskList")
+            && HasBooleanProperty(payload, "inTable")
+            && HasNullableEnum(payload, "tableAlign", "left", "center", "right")
+            && HasBooleanProperty(payload, "imageSelected");
+    }
+
+    private static bool HasAllowedUrl(JsonElement payload)
+    {
+        if (!HasProperty(payload, "url", JsonValueKind.String))
+        {
+            return false;
+        }
+
+        var value = payload.GetProperty("url").GetString();
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" or "mailto";
+    }
+
+    private static bool HasStringArray(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var values)
+            && values.ValueKind == JsonValueKind.Array
+            && values.GetArrayLength() is > 0 and <= 32
+            && values.EnumerateArray().All(value => value.ValueKind == JsonValueKind.String);
+    }
+
+    private static bool HasBoundedCount(JsonElement payload)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("count", out var count)
+            && count.ValueKind == JsonValueKind.Number
+            && count.TryGetInt32(out var value)
+            && value is > 0 and <= 32;
+    }
+
+    private static bool HasNonNegativeNumber(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetDouble(out var number)
+            && double.IsFinite(number)
+            && number >= 0;
+    }
+
+    private static bool HasBooleanProperty(JsonElement payload, string name)
+    {
+        return HasProperty(payload, name, JsonValueKind.True, JsonValueKind.False);
+    }
+
+    private static bool HasNullableHeadingLevel(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object
+            || !payload.TryGetProperty("headingLevel", out var value))
+        {
+            return false;
+        }
+
+        return value.ValueKind == JsonValueKind.Null
+            || value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var level)
+            && level is >= 1 and <= 6;
+    }
+
+    private static bool HasNullableEnum(JsonElement payload, string name, params string[] allowedValues)
+    {
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty(name, out var value))
+        {
+            return false;
+        }
+
+        return value.ValueKind == JsonValueKind.Null
+            || value.ValueKind == JsonValueKind.String
+            && allowedValues.Contains(value.GetString(), StringComparer.Ordinal);
+    }
+
+    private sealed record HostMessage(
+        int ProtocolVersion,
+        string Type,
+        string? RequestId,
+        string DocumentId,
+        long Revision,
+        object? Payload);
+}

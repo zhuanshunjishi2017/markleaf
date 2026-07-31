@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+TestResults/
+artifacts/
+.artifacts/
+.pnpm-store/
+src/MarkLeaf.Prototype/EditorWeb/

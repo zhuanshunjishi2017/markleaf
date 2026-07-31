@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://assets.local data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MarkLeaf Editor</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="editor" aria-label="Markdown 可视化编辑区"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
