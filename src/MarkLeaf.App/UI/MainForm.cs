@@ -62,6 +62,7 @@ internal sealed partial class MainForm : Form
     private EditorStatus _editorStatus = EditorStatus.Empty;
     private bool _editorContextMenuActive;
     private bool _workspaceListViewActive;
+    private bool _initialDocumentOpened;
     private WorkspaceDocumentSortOrder _workspaceDocumentSortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
     private Button _workspaceAddButton = null!;
     private Button _workspaceFolderButton = null!;
@@ -399,6 +400,12 @@ internal sealed partial class MainForm : Form
             await _editorHost.InitializeAsync();
         }
 
+        if (!string.IsNullOrWhiteSpace(_options.InitialDocumentPath))
+        {
+            _initialDocumentOpened = true;
+            await OpenDocumentPathAsync(_options.InitialDocumentPath);
+        }
+
         if (!string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
             && Directory.Exists(_settings.Workspace.LastFolder))
         {
@@ -468,6 +475,16 @@ internal sealed partial class MainForm : Form
             return new CommandState(_workspaceRoot is not null);
         }
 
+        if (command is AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow)
+        {
+            return new CommandState(true);
+        }
+
+        if (command == AppCommand.Paste)
+        {
+            return new CommandState(_editorHost?.IsDocumentLoaded == true && HasClipboardContent());
+        }
+
         var context = new CommandContext(
             DocumentAvailable: _document is not null,
             EditorReady: _editorHost?.IsDocumentLoaded == true,
@@ -476,7 +493,7 @@ internal sealed partial class MainForm : Form
             HasSelection: _editorCommandStatus.HasSelection,
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
-            SourceMode: false,
+            SourceMode: _editorCommandStatus.SourceMode,
             ParagraphActive: _editorCommandStatus.Paragraph,
             HeadingLevel: _editorCommandStatus.HeadingLevel,
             BoldActive: _editorCommandStatus.Bold,
@@ -496,12 +513,33 @@ internal sealed partial class MainForm : Form
             && context.EditorReady
             && IsEditorCommand(command)
             && command != AppCommand.InsertImage
+            && command is not AppCommand.Cut
+                and not AppCommand.Copy
+                and not AppCommand.CopyMarkdown
+                and not AppCommand.CopyPlainText
+                and not AppCommand.Paste
+            && command is not AppCommand.Find and not AppCommand.Replace and not AppCommand.ToggleSourceMode
             && !TryMapEditorCommand(command, out _))
         {
             return new CommandState(false, state.IsChecked);
         }
 
         return state;
+    }
+
+    private static bool HasClipboardContent()
+    {
+        try
+        {
+            return Clipboard.ContainsText(TextDataFormat.UnicodeText)
+                || Clipboard.ContainsImage()
+                || Clipboard.ContainsFileDropList()
+                || Clipboard.ContainsData(DataFormats.Html);
+        }
+        catch (ExternalException)
+        {
+            return false;
+        }
     }
 
     private void ExecuteCommand(AppCommand command)
@@ -511,8 +549,14 @@ internal sealed partial class MainForm : Form
             case AppCommand.NewDocument:
                 _ = NewDocumentAsync();
                 break;
+            case AppCommand.NewWindow:
+                StartNewWindow();
+                break;
             case AppCommand.OpenDocument:
                 _ = OpenDocumentAsync();
+                break;
+            case AppCommand.OpenDocumentInNewWindow:
+                OpenDocumentInNewWindow();
                 break;
             case AppCommand.OpenFolder:
                 _ = SelectWorkspaceFolderAsync();
@@ -527,13 +571,28 @@ internal sealed partial class MainForm : Form
                 _ = SaveDocumentAsync(saveAs: true);
                 break;
             case AppCommand.Cut:
-                _ = ExecuteClipboardCopyAsync(cut: true);
+                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: true);
                 break;
             case AppCommand.Copy:
-                _ = ExecuteClipboardCopyAsync(cut: false);
+                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: false);
+                break;
+            case AppCommand.CopyMarkdown:
+                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Markdown, cut: false);
+                break;
+            case AppCommand.CopyPlainText:
+                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.PlainText, cut: false);
                 break;
             case AppCommand.Paste:
                 _ = PasteClipboardContentAsync();
+                break;
+            case AppCommand.Find:
+                _editorHost?.ExecuteCommand("find");
+                break;
+            case AppCommand.Replace:
+                _editorHost?.ExecuteCommand("replace");
+                break;
+            case AppCommand.ToggleSourceMode:
+                _editorHost?.ExecuteCommand("toggleSourceMode");
                 break;
             case AppCommand.ToggleSidebar:
                 _sidebarSplit.Panel1Collapsed = !_sidebarSplit.Panel1Collapsed;
@@ -599,6 +658,48 @@ internal sealed partial class MainForm : Form
         _focusMode = false;
         _sidebarSplit.Panel1Collapsed = !_sidebarVisibleBeforeFocus;
         SetStatus("专注模式已关闭");
+    }
+
+    private void OpenDocumentInNewWindow()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = DocumentFilter,
+            CheckFileExists = true,
+            Multiselect = false,
+            RestoreDirectory = true,
+            Title = "在新窗口中打开 Markdown 文档",
+        };
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            StartNewWindow(dialog.FileName);
+        }
+    }
+
+    private void StartNewWindow(string? documentPath = null)
+    {
+        try
+        {
+            var executable = Environment.ProcessPath
+                ?? throw new InvalidOperationException("无法确定 MarkLeaf 可执行文件路径。");
+            var startInfo = new System.Diagnostics.ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+            };
+            if (!string.IsNullOrWhiteSpace(documentPath))
+            {
+                startInfo.ArgumentList.Add("--open-document");
+                startInfo.ArgumentList.Add(Path.GetFullPath(documentPath));
+            }
+            System.Diagnostics.Process.Start(startInfo);
+            SetStatus(documentPath is null ? "已打开新窗口" : "文档已在新窗口中打开");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            _logger.Error("Could not start a new MarkLeaf window.", exception);
+            MessageBox.Show(this, "无法打开新窗口。\r\n\r\n" + exception.Message, "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void ShowShortcutHelp()
@@ -736,6 +837,7 @@ internal sealed partial class MainForm : Form
     {
         if (_editorSmokeStarted
             || !string.IsNullOrWhiteSpace(_options.DocumentSmokeInputPath)
+            || _initialDocumentOpened
             || _editorHost?.IsDocumentLoaded != false)
         {
             return;
@@ -775,6 +877,7 @@ internal sealed partial class MainForm : Form
         }
 
         _editorCommandStatus = status;
+        RefreshPersistentStatusBar();
         _menuService.RefreshStates();
     }
 
@@ -829,7 +932,7 @@ internal sealed partial class MainForm : Form
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
-        _modeLabel.Text = "可视化";
+        _modeLabel.Text = _editorCommandStatus.SourceMode ? "源码" : "可视化";
     }
 
     private void OnOpenLinkRequested(object? sender, string url)
@@ -851,7 +954,7 @@ internal sealed partial class MainForm : Form
         }
     }
 
-    private async Task ExecuteClipboardCopyAsync(bool cut)
+    private async Task ExecuteClipboardCopyAsync(ClipboardCopyMode mode, bool cut)
     {
         if (_editorHost?.IsDocumentLoaded != true)
         {
@@ -860,14 +963,29 @@ internal sealed partial class MainForm : Form
 
         try
         {
-            var selectedText = await _editorHost.GetSelectedTextAsync();
-            if (string.IsNullOrEmpty(selectedText))
+            var selection = await _editorHost.RequestSelectionExportAsync();
+            if (string.IsNullOrEmpty(selection.Text)
+                && string.IsNullOrEmpty(selection.Markdown)
+                && string.IsNullOrEmpty(selection.Html))
             {
                 SetStatus("当前没有可复制的文本");
                 return;
             }
 
-            Clipboard.SetText(selectedText, TextDataFormat.UnicodeText);
+            var text = mode switch
+            {
+                ClipboardCopyMode.Markdown => selection.Markdown,
+                ClipboardCopyMode.PlainText => selection.Text,
+                _ => selection.Text,
+            };
+            var data = new DataObject();
+            data.SetData(DataFormats.UnicodeText, text);
+            data.SetData(DataFormats.Text, text);
+            if (mode == ClipboardCopyMode.Formatted && !string.IsNullOrEmpty(selection.Html))
+            {
+                data.SetData(DataFormats.Html, ClipboardHtmlFormatter.Create(selection.Html));
+            }
+            Clipboard.SetDataObject(data, true);
             if (cut)
             {
                 _editorHost.ExecuteCommand("deleteSelection");
@@ -900,6 +1018,17 @@ internal sealed partial class MainForm : Form
             {
                 await ImportClipboardBitmapAsync();
                 return;
+            }
+
+            if (!_editorCommandStatus.SourceMode
+                && Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml))
+            {
+                if (!string.IsNullOrWhiteSpace(clipboardHtml))
+                {
+                    _editorHost.ExecuteCommand("pasteHtml", ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
+                    SetStatus("已粘贴格式化内容");
+                    return;
+                }
             }
 
             if (!Clipboard.ContainsText())

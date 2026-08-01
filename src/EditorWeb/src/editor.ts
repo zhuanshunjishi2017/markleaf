@@ -1,5 +1,8 @@
-import { Editor, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, ResizableNodeView } from '@tiptap/core'
 import { Selection } from '@tiptap/pm/state'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { DOMSerializer } from '@tiptap/pm/model'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { TableKit } from '@tiptap/extension-table'
@@ -18,6 +21,40 @@ type ImageMetadata = {
   height: number | null
   rotation: 0 | 90 | 180 | 270
 }
+
+const findHighlightKey = new PluginKey<FindHighlightState>('markleaf-find-highlight')
+type TextMatch = { from: number; to: number }
+type FindHighlightState = { matches: TextMatch[]; current: number }
+
+const FindHighlight = Extension.create({
+  name: 'markleafFindHighlight',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: findHighlightKey,
+      state: {
+        init: (): FindHighlightState => ({ matches: [], current: -1 }),
+        apply(transaction, previous): FindHighlightState {
+          const update = transaction.getMeta(findHighlightKey) as FindHighlightState | undefined
+          if (update) return update
+          if (!transaction.docChanged) return previous
+          return { matches: [], current: -1 }
+        },
+      },
+      props: {
+        decorations(state) {
+          const highlight = findHighlightKey.getState(state) ?? { matches: [], current: -1 }
+          return DecorationSet.create(state.doc, highlight.matches.map((match, index) => Decoration.inline(
+            match.from,
+            match.to,
+            { class: index === highlight.current
+              ? 'markleaf-find-match markleaf-find-match-current'
+              : 'markleaf-find-match' },
+          )))
+        },
+      },
+    })]
+  },
+})
 
 function parseImageMetadata(title: unknown): ImageMetadata {
   if (typeof title !== 'string') {
@@ -266,6 +303,7 @@ export const editorExtensions = [
       breaks: false,
     },
   }),
+  FindHighlight,
 ]
 
 export function createEditor(element: HTMLElement, content = ''): Editor {
@@ -302,6 +340,111 @@ export function toVirtualImageUrl(markdownPath: string): string {
 
 export function getMarkdown(editor: Editor): string {
   return editor.getMarkdown()
+}
+
+export type FindResult = { current: number; total: number }
+export type SelectionExport = { text: string; markdown: string; html: string }
+
+export function exportEditorSelection(editor: Editor): SelectionExport {
+  const selection = editor.state.selection
+  if (selection.empty) return { text: '', markdown: '', html: '' }
+  const slice = editor.state.doc.slice(selection.from, selection.to)
+  const container = document.createElement('div')
+  container.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(slice.content))
+  const temporary = document.createElement('div')
+  const selectionEditor = createEditor(temporary, container.innerHTML)
+  const markdown = getMarkdown(selectionEditor)
+  selectionEditor.destroy()
+  return {
+    text: slice.content.textBetween(0, slice.content.size, '\n', '\n'),
+    markdown,
+    html: container.innerHTML,
+  }
+}
+
+export function findInEditor(
+  editor: Editor,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  backwards = false,
+): FindResult {
+  const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
+  if (matches.length === 0) {
+    setFindHighlights(editor, [], -1)
+    return { current: 0, total: 0 }
+  }
+  const previous = findHighlightKey.getState(editor.state)
+  const sameMatches = previous?.matches.length === matches.length
+    && previous.matches.every((match, index) => match.from === matches[index]?.from && match.to === matches[index]?.to)
+  const previousIndex = sameMatches ? previous?.current ?? -1 : -1
+  const current = backwards
+    ? (previousIndex <= 0 ? matches.length - 1 : previousIndex - 1)
+    : (previousIndex + 1) % matches.length
+  setFindHighlights(editor, matches, current)
+  scrollCurrentMatchIntoView(editor)
+  return { current: current + 1, total: matches.length }
+}
+
+export function replaceCurrentInEditor(
+  editor: Editor,
+  query: string,
+  replacement: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+): FindResult {
+  const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
+  const highlight = findHighlightKey.getState(editor.state)
+  const selected = highlight?.current === undefined ? undefined : matches[highlight.current]
+  if (selected) editor.commands.insertContentAt(selected, replacement)
+  return findInEditor(editor, query, caseSensitive, wholeWord)
+}
+
+export function replaceAllInEditor(
+  editor: Editor,
+  query: string,
+  replacement: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+): number {
+  const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
+  if (matches.length === 0) return 0
+  const transaction = editor.state.tr
+  for (const match of [...matches].reverse()) transaction.insertText(replacement, match.from, match.to)
+  editor.view.dispatch(transaction)
+  setFindHighlights(editor, [], -1)
+  return matches.length
+}
+
+export function clearFindHighlights(editor: Editor): void {
+  setFindHighlights(editor, [], -1)
+}
+
+function setFindHighlights(editor: Editor, matches: TextMatch[], current: number): void {
+  editor.view.dispatch(editor.state.tr.setMeta(findHighlightKey, { matches, current }))
+}
+
+function scrollCurrentMatchIntoView(editor: Editor): void {
+  const current = editor.view.dom.querySelector<HTMLElement>('.markleaf-find-match-current')
+  current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+}
+
+function findEditorMatches(editor: Editor, query: string, caseSensitive: boolean, wholeWord: boolean) {
+  if (!query) return []
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const expression = new RegExp(
+    wholeWord ? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])` : escaped,
+    caseSensitive ? 'gu' : 'giu',
+  )
+  const matches: Array<{ from: number; to: number }> = []
+  editor.state.doc.descendants((node, position) => {
+    if (!node.isTextblock) return
+    for (const match of node.textContent.matchAll(expression)) {
+      matches.push({ from: position + 1 + match.index, to: position + 1 + match.index + match[0].length })
+    }
+    return false
+  })
+  return matches
 }
 
 export function getEditorCommandState(editor: Editor): EditorCommandState {
@@ -413,6 +556,7 @@ export function executeEditorCommand(
     redo: () => chain.redo().run(),
     deleteSelection: () => chain.deleteSelection().run(),
     pasteText: () => typeof text === 'string' && editor.view.pasteText(text),
+    pasteHtml: () => typeof text === 'string' && editor.view.pasteHTML(text),
     toggleBold: () => toggleInlineMark(editor, 'bold', applyToCurrentTextBlockWhenEmpty),
     toggleItalic: () => toggleInlineMark(editor, 'italic', applyToCurrentTextBlockWhenEmpty),
     setLink: () => {

@@ -21,6 +21,8 @@ internal sealed class NativeMenuService : IDisposable
         AppCommand.ToggleTaskList,
         AppCommand.Cut,
         AppCommand.Copy,
+        AppCommand.CopyMarkdown,
+        AppCommand.CopyPlainText,
         AppCommand.Paste,
     ];
 
@@ -165,7 +167,9 @@ internal sealed class NativeMenuService : IDisposable
         try
         {
             AppendCommand(menu, AppCommand.NewDocument, "新建(&N)\tCtrl+N");
+            AppendCommand(menu, AppCommand.NewWindow, "新建窗口(&W)");
             AppendCommand(menu, AppCommand.OpenDocument, "打开(&O)...\tCtrl+O");
+            AppendCommand(menu, AppCommand.OpenDocumentInNewWindow, "在新窗口中打开...");
             AppendCommand(menu, AppCommand.OpenFolder, "打开文件夹(&F)...");
             AppendCommand(menu, AppCommand.CloseFolder, "关闭文件夹(&C)");
             AppendSeparator(menu);
@@ -199,6 +203,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.Cut, "剪切(&T)\tCtrl+X");
             AppendCommand(menu, AppCommand.Copy, "复制(&C)\tCtrl+C");
+            AppendCommand(menu, AppCommand.CopyMarkdown, "复制为 Markdown 源码(&M)");
+            AppendCommand(menu, AppCommand.CopyPlainText, "复制为纯文本(&L)");
             AppendCommand(menu, AppCommand.Paste, "粘贴(&P)\tCtrl+V");
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.Find, "查找(&F)\tCtrl+F");
@@ -217,31 +223,33 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ToggleBold, "粗体");
-            AppendCommand(menu, AppCommand.ToggleItalic, "斜体");
+            AppendCommand(menu, AppCommand.ToggleBold, "粗体(&B)");
+            AppendCommand(menu, AppCommand.ToggleItalic, "斜体(&I)");
             AppendSeparator(menu);
 
-            AppendCommand(menu, AppCommand.SetParagraph, "正文");
+            AppendCommand(menu, AppCommand.SetParagraph, "正文(&P)");
 
             var headings = CreateMenu(true);
-            AppendCommand(headings, AppCommand.SetHeading1, "一级标题");
-            AppendCommand(headings, AppCommand.SetHeading2, "二级标题");
-            AppendCommand(headings, AppCommand.SetHeading3, "三级标题");
-            AppendCommand(headings, AppCommand.SetHeading4, "四级标题");
-            AppendCommand(headings, AppCommand.SetHeading5, "五级标题");
-            AppendCommand(headings, AppCommand.SetHeading6, "六级标题");
-            AppendPopup(menu, "标题", headings);
+            AppendCommand(headings, AppCommand.SetHeading1, "一级标题(&1)");
+            AppendCommand(headings, AppCommand.SetHeading2, "二级标题(&2)");
+            AppendCommand(headings, AppCommand.SetHeading3, "三级标题(&3)");
+            AppendCommand(headings, AppCommand.SetHeading4, "四级标题(&4)");
+            AppendCommand(headings, AppCommand.SetHeading5, "五级标题(&5)");
+            AppendCommand(headings, AppCommand.SetHeading6, "六级标题(&6)");
+            AppendPopup(menu, "标题(&H)", headings);
 
             var lists = CreateMenu(true);
-            AppendCommand(lists, AppCommand.ToggleBulletList, "无序列表");
-            AppendCommand(lists, AppCommand.ToggleOrderedList, "有序列表");
-            AppendCommand(lists, AppCommand.ToggleTaskList, "任务列表");
-            AppendPopup(menu, "列表", lists);
+            AppendCommand(lists, AppCommand.ToggleBulletList, "无序列表(&B)");
+            AppendCommand(lists, AppCommand.ToggleOrderedList, "有序列表(&O)");
+            AppendCommand(lists, AppCommand.ToggleTaskList, "任务列表(&T)");
+            AppendPopup(menu, "列表(&L)", lists);
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.Cut, "剪切");
-            AppendCommand(menu, AppCommand.Copy, "复制");
-            AppendCommand(menu, AppCommand.Paste, "粘贴");
+            AppendCommand(menu, AppCommand.Cut, "剪切(&T)");
+            AppendCommand(menu, AppCommand.Copy, "复制(&C)");
+            AppendCommand(menu, AppCommand.CopyMarkdown, "复制为 Markdown 源码(&M)");
+            AppendCommand(menu, AppCommand.CopyPlainText, "复制为纯文本(&L)");
+            AppendCommand(menu, AppCommand.Paste, "粘贴(&P)");
             return menu;
         }
         catch

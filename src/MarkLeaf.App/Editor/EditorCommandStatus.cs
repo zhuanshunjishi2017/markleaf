@@ -18,11 +18,12 @@ internal sealed record EditorCommandStatus(
     bool TaskList,
     bool InTable,
     string? TableAlign,
-    bool ImageSelected)
+    bool ImageSelected,
+    bool SourceMode)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false,
-        false, false, null, false);
+        false, false, null, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -46,6 +47,7 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("tableAlign").ValueKind == JsonValueKind.Null
                 ? null
                 : payload.GetProperty("tableAlign").GetString(),
-            payload.GetProperty("imageSelected").GetBoolean());
+            payload.GetProperty("imageSelected").GetBoolean(),
+            payload.GetProperty("sourceMode").GetBoolean());
     }
 }

@@ -39,6 +39,8 @@ public sealed class CommandStateResolverTests
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.Undo, unavailable).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Undo, available).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Copy, available).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyMarkdown, available).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyPlainText, available).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleBold, available).IsEnabled);
     }
 
@@ -104,6 +106,26 @@ public sealed class CommandStateResolverTests
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.RotateImageClockwise, selectedImage).IsEnabled);
     }
 
+    [TestMethod]
+    public void Resolve_SourceModeAndNewWindowCommandsExposeExpectedState()
+    {
+        var context = CreateContext(editorReady: true, sourceMode: true);
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.NewWindow, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.OpenDocumentInNewWindow, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSourceMode, context).IsChecked);
+    }
+
+    [TestMethod]
+    public void Resolve_FindReplaceAndSourceModeAreEnabledWhenEditorIsReady()
+    {
+        var context = CreateContext(editorReady: true);
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Find, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Replace, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSourceMode, context).IsEnabled);
+    }
+
     private static CommandContext CreateContext(
         bool editorReady = false,
         bool canUndo = false,
@@ -111,7 +133,8 @@ public sealed class CommandStateResolverTests
         bool sidebarVisible = true,
         bool focusMode = false,
         bool documentAvailable = false,
-        bool documentSaved = false)
+        bool documentSaved = false,
+        bool sourceMode = false)
     {
         return new CommandContext(
             DocumentAvailable: documentAvailable,
@@ -121,7 +144,7 @@ public sealed class CommandStateResolverTests
             HasSelection: hasSelection,
             SidebarVisible: sidebarVisible,
             FocusMode: focusMode,
-            SourceMode: false,
+            SourceMode: sourceMode,
             DocumentSaved: documentSaved);
     }
 }

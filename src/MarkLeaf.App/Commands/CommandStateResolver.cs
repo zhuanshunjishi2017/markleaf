@@ -6,7 +6,8 @@ public static class CommandStateResolver
     {
         return command switch
         {
-            AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowAbout or AppCommand.OpenFolder => new(true),
+            AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowAbout or AppCommand.OpenFolder
+                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow => new(true),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
@@ -17,7 +18,8 @@ public static class CommandStateResolver
             AppCommand.ExportDocument => new(false),
             AppCommand.Undo => new(context.EditorReady && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && context.CanRedo),
-            AppCommand.Cut or AppCommand.Copy => new(context.EditorReady && context.HasSelection),
+            AppCommand.Cut or AppCommand.Copy or AppCommand.CopyMarkdown or AppCommand.CopyPlainText =>
+                new(context.EditorReady && context.HasSelection),
             AppCommand.Paste or AppCommand.Find or AppCommand.Replace => new(context.EditorReady),
 
             AppCommand.SetParagraph => new(context.EditorReady, context.ParagraphActive),

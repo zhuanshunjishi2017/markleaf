@@ -23,6 +23,7 @@ internal sealed partial class MainForm
         Rename,
         Delete,
         Open,
+        OpenInNewWindow,
         CopyPath,
         OpenLocation,
     }
@@ -485,6 +486,10 @@ internal sealed partial class MainForm
         try
         {
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.Open, "打开(O)");
+            if (!entry.IsDirectory)
+            {
+                AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenInNewWindow, "在新窗口中打开(W)");
+            }
             AppendNativeMenuSeparator(menu);
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, "新建文件(N)");
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, "新建文件夹(F)");
@@ -500,6 +505,9 @@ internal sealed partial class MainForm
             {
                 case WorkspacePopupCommand.Open:
                     await OpenWorkspaceEntryAsync(entry);
+                    break;
+                case WorkspacePopupCommand.OpenInNewWindow:
+                    StartNewWindow(entry.FullPath);
                     break;
                 case WorkspacePopupCommand.NewFile:
                     await CreateWorkspaceEntryAsync(targetDirectory, false);

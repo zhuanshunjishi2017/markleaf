@@ -10,9 +10,11 @@ public sealed class FileLogger : IAppLogger, IDisposable
     public FileLogger(string logDirectory)
     {
         Directory.CreateDirectory(logDirectory);
-        var path = Path.Combine(logDirectory, $"markleaf-{DateTime.Now:yyyyMMdd}.log");
+        var path = Path.Combine(
+            logDirectory,
+            $"markleaf-{DateTime.Now:yyyyMMdd}-{Environment.ProcessId}-{Guid.NewGuid():N}.log");
         _writer = new StreamWriter(
-            new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read),
+            new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete),
             new UTF8Encoding(false))
         {
             AutoFlush = true,
@@ -44,4 +46,3 @@ public sealed class FileLogger : IAppLogger, IDisposable
         }
     }
 }
-

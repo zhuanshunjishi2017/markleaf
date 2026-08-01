@@ -10,6 +10,10 @@ import {
   replaceEditorDocument,
   resetEditorViewport,
   sanitizePastedHtml,
+  findInEditor,
+  exportEditorSelection,
+  replaceAllInEditor,
+  replaceCurrentInEditor,
 } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -32,6 +36,23 @@ function roundTrip(markdown: string): string {
   editors.push(editor)
   return getMarkdown(editor)
 }
+
+describe('selection export', () => {
+  it('exports formatted HTML, Markdown source, and plain text independently', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'before **bold** after')
+    editors.push(editor)
+    const boldPosition = editor.state.doc.textContent.indexOf('bold') + 1
+    editor.commands.setTextSelection({ from: boldPosition, to: boldPosition + 4 })
+
+    const selection = exportEditorSelection(editor)
+
+    expect(selection.text).toBe('bold')
+    expect(selection.markdown).toContain('**bold**')
+    expect(selection.html).toContain('<strong>bold</strong>')
+  })
+})
 
 describe('Markdown semantic round trip', () => {
   it('preserves the Stage 5 golden document semantically', () => {
@@ -210,6 +231,36 @@ describe('editing history', () => {
 
     expect(editor.getHTML()).toContain('<em>中文斜体</em>')
     expect(getMarkdown(editor)).toMatch(/[*_]中文斜体[*_]/)
+  })
+})
+
+describe('find and replace', () => {
+  it('finds text across blocks with case and whole-word options', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'Leaf leaf\n\nleaflet leaf')
+    editors.push(editor)
+
+    const selectionBefore = editor.state.selection
+    expect(findInEditor(editor, 'leaf', false, true)).toEqual({ current: 1, total: 3 })
+    expect(editor.state.selection.eq(selectionBefore)).toBe(true)
+    expect(element.querySelectorAll('.markleaf-find-match')).toHaveLength(3)
+    expect(element.querySelectorAll('.markleaf-find-match-current')).toHaveLength(1)
+    expect(findInEditor(editor, 'leaf', true, true)).toEqual({ current: 1, total: 2 })
+    expect(element.querySelectorAll('.markleaf-find-match')).toHaveLength(2)
+  })
+
+  it('replaces the active match and all remaining matches', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'leaf leaf\n\nleaf')
+    editors.push(editor)
+
+    findInEditor(editor, 'leaf', true, false)
+    replaceCurrentInEditor(editor, 'leaf', 'branch', true, false)
+    expect(getMarkdown(editor)).toContain('branch leaf')
+    expect(replaceAllInEditor(editor, 'leaf', 'tree', true, false)).toBe(2)
+    expect(getMarkdown(editor)).toContain('branch tree\n\ntree')
   })
 })
 

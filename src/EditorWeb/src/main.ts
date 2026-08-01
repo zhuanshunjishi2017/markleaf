@@ -1,14 +1,20 @@
 import './styles.css'
 import {
   createEditor,
+  clearFindHighlights,
   executeEditorCommand,
+  exportEditorSelection,
+  findInEditor,
   getEditorCommandState,
   getEditorStatus,
   getMarkdown,
   isAllowedLink,
+  replaceAllInEditor,
+  replaceCurrentInEditor,
   replaceEditorDocument,
   resetEditorViewport,
 } from './editor'
+import { SourceEditor } from './source-editor'
 import {
   isHostMessage,
   postToHost,
@@ -23,6 +29,19 @@ if (!editorElement) {
   throw new Error('Editor mount element was not found.')
 }
 const editorMount = editorElement
+const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
+const findBar = document.querySelector<HTMLFormElement>('#find-bar')!
+const findInput = document.querySelector<HTMLInputElement>('#find-input')!
+const replaceInput = document.querySelector<HTMLInputElement>('#replace-input')!
+const caseInput = document.querySelector<HTMLInputElement>('#find-case')!
+const wholeInput = document.querySelector<HTMLInputElement>('#find-whole')!
+const findResult = document.querySelector<HTMLElement>('#find-result')!
+const findPrevious = document.querySelector<HTMLButtonElement>('#find-previous')!
+const findNext = document.querySelector<HTMLButtonElement>('#find-next')!
+const replaceOne = document.querySelector<HTMLButtonElement>('#replace-one')!
+const replaceAll = document.querySelector<HTMLButtonElement>('#replace-all')!
+const findClose = document.querySelector<HTMLButtonElement>('#find-close')!
+const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 let documentId: string = crypto.randomUUID()
 let revision = 0
@@ -31,6 +50,9 @@ let compositionChanged = false
 let suppressUpdate = false
 let lastOutlinePosition: number | null | undefined
 let outlineTimer = 0
+let sourceEditor: SourceEditor | null = null
+let sourceMode = false
+let replaceMode = false
 
 let editor = createEditor(editorMount)
 
@@ -106,10 +128,26 @@ function sendOutlineSelectionFromScroll(): void {
 }
 
 function sendCommandState(): void {
-  send('commandStateChanged', getEditorCommandState(editor))
+  const sourceSelection = sourceEditor?.view.state.selection.main
+  send('commandStateChanged', {
+    ...getEditorCommandState(editor),
+    hasSelection: sourceSelection ? !sourceSelection.empty : getEditorCommandState(editor).hasSelection,
+    sourceMode,
+  })
 }
 
 function sendEditorStatus(): void {
+  if (sourceEditor) {
+    const text = sourceEditor.getText()
+    send('editorStatusChanged', {
+      characterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
+      selectedCharacterCount: 0,
+      blockType: 'paragraph',
+      line: 1,
+      column: 1,
+    })
+    return
+  }
   send('editorStatusChanged', getEditorStatus(editor))
 }
 
@@ -163,6 +201,131 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
 bindEditorEvents(editor)
 
+function markSourceChanged(documentChanged: boolean): void {
+  if (documentChanged) {
+    revision += 1
+    send('dirtyChanged', { dirty: true })
+  }
+  sendEditorState()
+}
+
+function getSelectionExport(): { text: string; markdown: string; html: string } {
+  if (sourceEditor) {
+    const text = sourceEditor.getSelectedText()
+    return { text, markdown: text, html: '' }
+  }
+  return exportEditorSelection(editor)
+}
+
+function getActiveMarkdown(): string {
+  return sourceEditor?.getText() ?? getMarkdown(editor)
+}
+
+function setSourceMode(enabled: boolean): void {
+  if (enabled === sourceMode) return
+  if (enabled) {
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged)
+    editorMount.hidden = true
+    sourceMount.hidden = false
+    sourceMode = true
+    sourceEditor.focus()
+  } else {
+    const markdown = sourceEditor?.getText() ?? getMarkdown(editor)
+    sourceEditor?.destroy()
+    sourceEditor = null
+    suppressUpdate = true
+    editor = replaceEditorDocument(editor, editorMount, markdown)
+    bindEditorEvents(editor)
+    suppressUpdate = false
+    sourceMount.hidden = true
+    editorMount.hidden = false
+    sourceMode = false
+    scheduleOutline()
+    sendOutlineSelectionFromCursor()
+    editor.commands.focus()
+  }
+  sendEditorState()
+}
+
+function showFindBar(showReplace: boolean): void {
+  replaceMode = showReplace
+  findBar.hidden = false
+  replaceInput.hidden = !showReplace
+  replaceOne.hidden = !showReplace
+  replaceAll.hidden = !showReplace
+  findInput.focus()
+  findInput.select()
+  updateFindResult(false)
+}
+
+function closeFindBar(): void {
+  findBar.hidden = true
+  if (!sourceMode) clearFindHighlights(editor)
+  if (sourceMode) sourceEditor?.focus()
+  else editor.commands.focus()
+}
+
+function updateFindResult(backwards: boolean): void {
+  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : findInput
+  const result = sourceMode
+    ? sourceEditor?.find(findInput.value, caseInput.checked, wholeInput.checked, backwards) ?? { current: 0, total: 0 }
+    : findInEditor(editor, findInput.value, caseInput.checked, wholeInput.checked, backwards)
+  findResult.textContent = `${result.current}/${result.total}`
+  send('findResult', result)
+  activeInput.focus()
+}
+
+function replaceCurrent(): void {
+  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : replaceInput
+  const result = sourceMode
+    ? sourceEditor?.replaceCurrent(findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+      ?? { current: 0, total: 0 }
+    : replaceCurrentInEditor(editor, findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+  findResult.textContent = `${result.current}/${result.total}`
+  send('findResult', result)
+  activeInput.focus()
+}
+
+function replaceEveryMatch(): void {
+  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : replaceInput
+  const count = sourceMode
+    ? sourceEditor?.replaceAll(findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked) ?? 0
+    : replaceAllInEditor(editor, findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+  findResult.textContent = count === 0 ? '0/0' : `已替换 ${count} 处`
+  send('findResult', { current: count, total: count, replaced: count })
+  activeInput.focus()
+}
+
+findBar.addEventListener('submit', event => {
+  event.preventDefault()
+  updateFindResult(false)
+})
+findInput.addEventListener('input', () => updateFindResult(false))
+caseInput.addEventListener('change', () => updateFindResult(false))
+wholeInput.addEventListener('change', () => updateFindResult(false))
+findPrevious.addEventListener('click', () => updateFindResult(true))
+findNext.addEventListener('click', () => updateFindResult(false))
+replaceOne.addEventListener('click', replaceCurrent)
+replaceAll.addEventListener('click', replaceEveryMatch)
+findClose.addEventListener('click', closeFindBar)
+sourceToggle.addEventListener('click', () => setSourceMode(!sourceMode))
+window.addEventListener('keydown', event => {
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault()
+    showFindBar(false)
+    return
+  }
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'h') {
+    event.preventDefault()
+    showFindBar(true)
+    return
+  }
+  if (event.key === 'Escape' && !findBar.hidden) {
+    event.preventDefault()
+    closeFindBar()
+  }
+})
+
 let scrollFrame = 0
 window.addEventListener('scroll', () => {
   if (scrollFrame !== 0) {
@@ -199,6 +362,13 @@ editorMount.addEventListener('contextmenu', (event) => {
     }
   }
   editor.commands.focus()
+  sendEditorState()
+  send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
+})
+
+sourceMount.addEventListener('contextmenu', (event) => {
+  event.preventDefault()
+  sourceEditor?.focus()
   sendEditorState()
   send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
 })
@@ -252,6 +422,11 @@ function handleMessage(value: unknown): void {
       documentId = message.documentId
       revision = message.revision
       suppressUpdate = true
+      sourceEditor?.destroy()
+      sourceEditor = null
+      sourceMode = false
+      sourceMount.hidden = true
+      editorMount.hidden = false
       editor = replaceEditorDocument(editor, editorMount, payload.markdown)
       bindEditorEvents(editor)
       resetEditorViewport(editor, editorMount)
@@ -263,7 +438,7 @@ function handleMessage(value: unknown): void {
       break
     }
     case 'requestSnapshot':
-      send('snapshot', { markdown: getMarkdown(editor) }, message.requestId)
+      send('snapshot', { markdown: getActiveMarkdown() }, message.requestId)
       break
     case 'command': {
       const payload = message.payload as {
@@ -274,16 +449,37 @@ function handleMessage(value: unknown): void {
         applyToCurrentTextBlockWhenEmpty?: unknown
       }
       if (typeof payload?.command === 'string') {
+        if (payload.command === 'find' || payload.command === 'replace') {
+          showFindBar(payload.command === 'replace')
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'toggleSourceMode') {
+          setSourceMode(!sourceMode)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'exportSelection') {
+          send('selectionExport', getSelectionExport(), message.requestId)
+          break
+        }
         const coordinates = typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
           ? { left: payload.clientX, top: payload.clientY }
           : undefined
-        const success = executeEditorCommand(
-          editor,
-          payload.command,
-          typeof payload.text === 'string' ? payload.text : undefined,
-          coordinates,
-          payload.applyToCurrentTextBlockWhenEmpty === true,
-        )
+        const commandText = typeof payload.text === 'string' ? payload.text : undefined
+        const success = sourceMode
+          ? payload.command === 'deleteSelection'
+            ? sourceEditor?.deleteSelection() ?? false
+            : payload.command === 'pasteText' && commandText !== undefined
+              ? sourceEditor?.replaceSelection(commandText) ?? false
+              : false
+          : executeEditorCommand(
+            editor,
+            payload.command,
+            commandText,
+            coordinates,
+            payload.applyToCurrentTextBlockWhenEmpty === true,
+          )
         if (message.requestId) {
           send('commandResult', { success }, message.requestId)
         }

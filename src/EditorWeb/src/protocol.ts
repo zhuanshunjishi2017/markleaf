@@ -29,6 +29,7 @@ export type EditorMessage = {
     | 'dropFiles'
     | 'pasteImage'
     | 'findResult'
+    | 'selectionExport'
     | 'error'
   requestId?: string
   documentId: string

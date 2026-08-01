@@ -20,6 +20,68 @@ body {
   background: #ffffff;
 }
 
+.find-bar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #d0d7de;
+  background: #f6f8fa;
+  font-size: 13px;
+}
+
+.find-fields,
+.find-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.find-fields {
+  flex-wrap: wrap;
+}
+
+.find-actions {
+  padding-left: 188px;
+}
+
+.find-bar[hidden],
+.find-bar [hidden] {
+  display: none;
+}
+
+.find-bar input[type='text'] {
+  width: 180px;
+  padding: 5px 7px;
+  border: 1px solid #8c959f;
+  border-radius: 3px;
+  font: inherit;
+}
+
+.find-bar button {
+  padding: 4px 9px;
+  font: inherit;
+}
+
+.markleaf-find-match {
+  border-radius: 2px;
+  background: #fff3a3;
+  box-shadow: 0 0 0 1px #e2c94f;
+}
+
+.markleaf-find-match-current {
+  background: #ffcb69;
+  box-shadow: 0 0 0 2px #d98200;
+}
+
+#source-editor {
+  height: 100vh;
+}
+
 #editor {
   padding: 44px 56px 96px;
 }

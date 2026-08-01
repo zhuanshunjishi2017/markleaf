@@ -35,4 +35,14 @@ public sealed class LaunchOptionsTests
         Assert.AreEqual(report, options.DocumentSmokeOutputPath);
         Assert.AreEqual(report, options.DocumentSmokeReportPath);
     }
+
+    [TestMethod]
+    public void Parse_ReadsInitialDocumentForNewWindow()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "window.md");
+
+        var options = LaunchOptions.Parse(["--open-document", path]);
+
+        Assert.AreEqual(Path.GetFullPath(path), options.InitialDocumentPath);
+    }
 }

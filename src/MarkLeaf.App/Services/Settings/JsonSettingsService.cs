@@ -59,22 +59,31 @@ public sealed class JsonSettingsService : ISettingsService
             ?? throw new InvalidOperationException("Settings path has no parent directory.");
         Directory.CreateDirectory(directory);
 
-        var temporaryFile = _settingsFile + ".tmp";
-        await using (var stream = new FileStream(
+        var temporaryFile = _settingsFile + $".{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await using var stream = new FileStream(
             temporaryFile,
-            FileMode.Create,
+            FileMode.CreateNew,
             FileAccess.Write,
             FileShare.None,
             4096,
-            FileOptions.Asynchronous | FileOptions.WriteThrough))
-        {
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
             await JsonSerializer
                 .SerializeAsync(stream, settings, _jsonOptions, cancellationToken)
                 .ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            stream.Flush(flushToDisk: true);
+            stream.Close();
+            File.Move(temporaryFile, _settingsFile, true);
         }
-
-        File.Move(temporaryFile, _settingsFile, true);
+        finally
+        {
+            if (File.Exists(temporaryFile))
+            {
+                File.Delete(temporaryFile);
+            }
+        }
     }
 
     private static AppSettings MigrateVersion1(AppSettings settings)

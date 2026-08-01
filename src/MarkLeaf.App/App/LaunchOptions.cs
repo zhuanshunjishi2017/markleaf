@@ -14,7 +14,8 @@ internal sealed record LaunchOptions(
     string? EditorCommandReportPath,
     string? DocumentSmokeInputPath,
     string? DocumentSmokeOutputPath,
-    string? DocumentSmokeReportPath)
+    string? DocumentSmokeReportPath,
+    string? InitialDocumentPath)
 {
     public static LaunchOptions Parse(string[] args)
     {
@@ -32,6 +33,7 @@ internal sealed record LaunchOptions(
         string? documentSmokeInputPath = null;
         string? documentSmokeOutputPath = null;
         string? documentSmokeReportPath = null;
+        string? initialDocumentPath = null;
 
         for (var index = 0; index < args.Length - 1; index++)
         {
@@ -81,6 +83,9 @@ internal sealed record LaunchOptions(
                 case "--document-smoke-report":
                     documentSmokeReportPath = Path.GetFullPath(args[++index]);
                     break;
+                case "--open-document":
+                    initialDocumentPath = Path.GetFullPath(args[++index]);
+                    break;
             }
         }
 
@@ -98,6 +103,7 @@ internal sealed record LaunchOptions(
             editorCommandReportPath,
             documentSmokeInputPath,
             documentSmokeOutputPath,
-            documentSmokeReportPath);
+            documentSmokeReportPath,
+            initialDocumentPath);
     }
 }

@@ -26,6 +26,7 @@ public static class EditorProtocol
         "dropFiles",
         "pasteImage",
         "findResult",
+        "selectionExport",
         "error",
     ];
 
@@ -154,6 +155,8 @@ public static class EditorProtocol
                 && HasNonNegativeNumber(payload, "clientY"),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
+            "findResult" => HasFindResultPayload(payload),
+            "selectionExport" => HasSelectionExportPayload(payload),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
@@ -203,7 +206,23 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "taskList")
             && HasBooleanProperty(payload, "inTable")
             && HasNullableEnum(payload, "tableAlign", "left", "center", "right")
-            && HasBooleanProperty(payload, "imageSelected");
+            && HasBooleanProperty(payload, "imageSelected")
+            && HasBooleanProperty(payload, "sourceMode");
+    }
+
+    private static bool HasFindResultPayload(JsonElement payload)
+    {
+        return HasNonNegativeInteger(payload, "current")
+            && HasNonNegativeInteger(payload, "total")
+            && (!payload.TryGetProperty("replaced", out var replaced)
+                || replaced.ValueKind == JsonValueKind.Number && replaced.TryGetInt32(out var count) && count >= 0);
+    }
+
+    private static bool HasSelectionExportPayload(JsonElement payload)
+    {
+        return HasProperty(payload, "text", JsonValueKind.String)
+            && HasProperty(payload, "markdown", JsonValueKind.String)
+            && HasProperty(payload, "html", JsonValueKind.String);
     }
 
     private static bool HasEditorStatusPayload(JsonElement payload)

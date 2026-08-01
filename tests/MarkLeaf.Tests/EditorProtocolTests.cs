@@ -103,7 +103,8 @@ public sealed class EditorProtocolTests
                 "taskList": true,
                 "inTable": true,
                 "tableAlign": "center",
-                "imageSelected": true
+                "imageSelected": true,
+                "sourceMode": false
               }
             }
             """;
@@ -283,5 +284,60 @@ public sealed class EditorProtocolTests
 
         Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(outline, out _, out var outlineError), outlineError);
         Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(selection, out _, out var selectionError), selectionError);
+    }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsFindResult()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "findResult",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 3,
+              "payload": { "current": 2, "total": 5, "replaced": 1 }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
+    }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsSelectionExport()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "selectionExport",
+              "requestId": "selection-1",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 3,
+              "payload": {
+                "text": "leaf",
+                "markdown": "**leaf**",
+                "html": "<strong>leaf</strong>"
+              }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
+    }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_RejectsIncompleteSelectionExport()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "selectionExport",
+              "requestId": "selection-1",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 3,
+              "payload": { "text": "leaf", "markdown": "leaf" }
+            }
+            """;
+
+        Assert.IsFalse(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error));
+        Assert.AreEqual("Message payload is invalid.", error);
     }
 }

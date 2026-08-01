@@ -21,6 +21,8 @@ internal sealed class EditorHostController : IDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, TaskCompletionSource<bool>> _commandRequests =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource<EditorSelectionExport>> _selectionExportRequests =
+        new(StringComparer.Ordinal);
     private readonly Stopwatch _initializationTimer = new();
     private CancellationTokenSource? _initializationCancellation;
     private CancellationTokenSource? _readyTimeoutCancellation;
@@ -241,16 +243,34 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public async Task<string> GetSelectedTextAsync(CancellationToken cancellationToken = default)
+    public async Task<EditorSelectionExport> RequestSelectionExportAsync(
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
     {
-        if (_webView.CoreWebView2 is null)
+        var requestId = Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<EditorSelectionExport>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _selectionExportRequests.Add(requestId, completion);
+        EnqueueOrRun(() =>
         {
-            return string.Empty;
-        }
+            var registeredId = _session.RegisterRequest("selectionExport", requestId);
+            Post("command", new { command = "exportSelection" }, registeredId);
+        });
 
-        var json = await _webView.CoreWebView2.ExecuteScriptAsync(
-            "window.getSelection()?.toString() ?? ''").WaitAsync(cancellationToken);
-        return System.Text.Json.JsonSerializer.Deserialize<string>(json) ?? string.Empty;
+        using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(10));
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            timeoutCancellation.Token,
+            cancellationToken);
+        using var registration = linkedCancellation.Token.Register(
+            () => completion.TrySetCanceled(linkedCancellation.Token));
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            _selectionExportRequests.Remove(requestId);
+        }
     }
 
     public void Dispose()
@@ -273,6 +293,11 @@ internal sealed class EditorHostController : IDisposable
             request.TrySetCanceled();
         }
         _commandRequests.Clear();
+        foreach (var request in _selectionExportRequests.Values)
+        {
+            request.TrySetCanceled();
+        }
+        _selectionExportRequests.Clear();
         DetachCoreEvents();
     }
 
@@ -562,6 +587,21 @@ internal sealed class EditorHostController : IDisposable
                 else
                 {
                     _logger.Warning("Rejected unmatched editor command response.");
+                }
+                break;
+            case "selectionExport":
+                if (_session.CompleteRequest(message.RequestId, "selectionExport")
+                    && message.RequestId is not null
+                    && _selectionExportRequests.TryGetValue(message.RequestId, out var exportCompletion))
+                {
+                    exportCompletion.TrySetResult(new EditorSelectionExport(
+                        message.Payload.GetProperty("text").GetString() ?? string.Empty,
+                        message.Payload.GetProperty("markdown").GetString() ?? string.Empty,
+                        message.Payload.GetProperty("html").GetString() ?? string.Empty));
+                }
+                else
+                {
+                    _logger.Warning("Rejected unmatched editor selection export response.");
                 }
                 break;
             case "error":

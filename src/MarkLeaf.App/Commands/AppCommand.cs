@@ -3,7 +3,9 @@ namespace MarkLeaf.Commands;
 public enum AppCommand
 {
     NewDocument = 0x1001,
+    NewWindow,
     OpenDocument,
+    OpenDocumentInNewWindow,
     OpenFolder,
     CloseFolder,
     SaveDocument,
@@ -23,6 +25,8 @@ public enum AppCommand
     Redo,
     Cut,
     Copy,
+    CopyMarkdown,
+    CopyPlainText,
     Paste,
     Find,
     Replace,

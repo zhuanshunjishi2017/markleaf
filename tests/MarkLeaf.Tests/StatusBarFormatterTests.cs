@@ -57,6 +57,8 @@ public sealed class StatusBarFormatterTests
                 Commands.AppCommand.ToggleTaskList,
                 Commands.AppCommand.Cut,
                 Commands.AppCommand.Copy,
+                Commands.AppCommand.CopyMarkdown,
+                Commands.AppCommand.CopyPlainText,
                 Commands.AppCommand.Paste,
             },
             Native.NativeMenuService.EditorContextCommands);
