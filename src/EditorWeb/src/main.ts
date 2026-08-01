@@ -7,6 +7,7 @@ import {
   getMarkdown,
   isAllowedLink,
   replaceEditorDocument,
+  resetEditorViewport,
 } from './editor'
 import {
   isHostMessage,
@@ -28,6 +29,8 @@ let revision = 0
 let compositionActive = false
 let compositionChanged = false
 let suppressUpdate = false
+let lastOutlinePosition: number | null | undefined
+let outlineTimer = 0
 
 let editor = createEditor(editorMount)
 
@@ -57,13 +60,49 @@ function sendWithAdditionalObjects(
 }
 
 function sendOutline(): void {
-  const headings: Array<{ level: number; text: string }> = []
-  editor.state.doc.descendants((node) => {
+  const headings: Array<{ level: number; text: string; position: number }> = []
+  editor.state.doc.descendants((node, position) => {
     if (node.type.name === 'heading') {
-      headings.push({ level: node.attrs.level as number, text: node.textContent })
+      headings.push({ level: node.attrs.level as number, text: node.textContent, position })
     }
   })
   send('outlineChanged', { headings })
+}
+
+function scheduleOutline(): void {
+  window.clearTimeout(outlineTimer)
+  outlineTimer = window.setTimeout(sendOutline, 250)
+}
+
+function sendOutlineSelection(position: number | null): void {
+  if (position === lastOutlinePosition) {
+    return
+  }
+  lastOutlinePosition = position
+  send('outlineSelectionChanged', { position })
+}
+
+function sendOutlineSelectionFromCursor(): void {
+  const cursor = editor.state.selection.from
+  let activePosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name === 'heading' && position < cursor) {
+      activePosition = position
+    }
+  })
+  sendOutlineSelection(activePosition)
+}
+
+function sendOutlineSelectionFromScroll(): void {
+  const headings = Array.from(editor.view.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
+  if (headings.length === 0) {
+    sendOutlineSelection(null)
+    return
+  }
+
+  const threshold = Math.max(80, window.innerHeight * 0.2)
+  const active = headings.filter(heading => heading.getBoundingClientRect().top <= threshold).at(-1) ?? headings[0]!
+  sendOutlineSelection(editor.view.posAtDOM(active, 0))
 }
 
 function sendCommandState(): void {
@@ -90,7 +129,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
     revision += 1
     send('dirtyChanged', { dirty: true })
-    sendOutline()
+    scheduleOutline()
     sendEditorState()
   })
 
@@ -101,6 +140,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
         to: targetEditor.state.selection.to,
       })
       sendEditorState()
+      sendOutlineSelectionFromCursor()
     }
   })
 
@@ -114,7 +154,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     if (compositionChanged) {
       revision += 1
       send('dirtyChanged', { dirty: true })
-      sendOutline()
+      scheduleOutline()
       sendEditorState()
     }
     compositionChanged = false
@@ -122,6 +162,17 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 }
 
 bindEditorEvents(editor)
+
+let scrollFrame = 0
+window.addEventListener('scroll', () => {
+  if (scrollFrame !== 0) {
+    return
+  }
+  scrollFrame = window.requestAnimationFrame(() => {
+    scrollFrame = 0
+    sendOutlineSelectionFromScroll()
+  })
+}, { passive: true })
 
 editorMount.addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) {
@@ -203,10 +254,12 @@ function handleMessage(value: unknown): void {
       suppressUpdate = true
       editor = replaceEditorDocument(editor, editorMount, payload.markdown)
       bindEditorEvents(editor)
+      resetEditorViewport(editor, editorMount)
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
       sendOutline()
       sendEditorState()
+      sendOutlineSelectionFromCursor()
       break
     }
     case 'requestSnapshot':

@@ -8,6 +8,7 @@ import {
   getEditorStatus,
   getMarkdown,
   replaceEditorDocument,
+  resetEditorViewport,
   sanitizePastedHtml,
 } from '../src/editor'
 
@@ -286,6 +287,34 @@ describe('paragraph menu commands', () => {
     expect(editor.state.selection.from).toBe(3)
   })
 
+  it('scrolls to an AST position supplied by the outline tree', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '# First\n\n## Second')
+    editors.push(editor)
+    const secondHeadingPosition = editor.state.doc.content.size - 'Second'.length - 2
+    const heading = element.querySelector<HTMLElement>('h2')!
+    Object.defineProperty(document, 'scrollingElement', { configurable: true, value: document.documentElement })
+    document.documentElement.scrollTop = 400
+    const selectionBefore = editor.state.selection.from
+    vi.spyOn(heading, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 120,
+      top: 120,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    })
+
+    expect(executeEditorCommand(editor, 'scrollToPosition', String(secondHeadingPosition))).toBe(true)
+    expect(editor.state.selection.from).toBe(selectionBefore)
+    expect(document.documentElement.scrollTop).toBe(508)
+    expect(heading.classList.contains('markleaf-outline-highlight')).toBe(true)
+  })
+
   it('inserts a GFM table', () => {
     const element = document.createElement('div')
     document.body.append(element)
@@ -517,6 +546,7 @@ describe('paragraph menu commands', () => {
     document.body.append(element)
     const editor = createEditor(element, '分隔线上方')
     editors.push(editor)
+    editor.commands.setTextSelection(editor.state.doc.content.size)
 
     expect(executeEditorCommand(editor, 'insertHorizontalRule')).toBe(true)
     expect(getMarkdown(editor)).toMatch(/分隔线上方\n\n---/)
@@ -636,6 +666,22 @@ describe('document history isolation', () => {
     expect(second.commands.undo()).toBe(false)
     expect(getMarkdown(second)).toContain('第二个文件')
     expect(getMarkdown(second)).not.toContain('第一个文件')
+  })
+
+  it('resets the editor viewport after loading another document', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '# New document')
+    editors.push(editor)
+    Object.defineProperty(document, 'scrollingElement', { configurable: true, value: document.documentElement })
+    document.documentElement.scrollTop = 600
+    element.scrollTop = 200
+
+    resetEditorViewport(editor, element)
+
+    expect(document.documentElement.scrollTop).toBe(0)
+    expect(element.scrollTop).toBe(0)
+    expect(editor.state.selection.from).toBe(1)
   })
 })
 

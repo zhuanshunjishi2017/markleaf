@@ -52,6 +52,23 @@ body {
   margin: 1.7em 0 0.65em;
 }
 
+.markleaf-document .markleaf-outline-highlight {
+  animation: markleaf-outline-highlight 1.8s ease-out forwards;
+}
+
+@keyframes markleaf-outline-highlight {
+  0%,
+  25% {
+    background-color: #fff176;
+    box-shadow: 0 0 0 4px #fff176;
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
 .markleaf-document h1 {
   font-size: 2rem;
   margin-top: 0;
@@ -248,4 +265,5 @@ body {
   *::after {
     scroll-behavior: auto !important;
   }
+
 }

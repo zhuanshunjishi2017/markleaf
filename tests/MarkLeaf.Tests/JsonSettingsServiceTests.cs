@@ -27,6 +27,11 @@ public sealed class JsonSettingsServiceTests
                     WorkspaceWidth = 260,
                     OutlineWidth = 240,
                 },
+                Workspace = new WorkspaceSettings
+                {
+                    LastFolder = @"D:\Notes",
+                    RecentFolders = [@"D:\Notes", @"D:\Archive"],
+                },
             };
 
             await service.SaveAsync(expected);
@@ -36,6 +41,8 @@ public sealed class JsonSettingsServiceTests
             Assert.AreEqual(144, actual.MainWindow.Dpi);
             Assert.AreEqual(260, actual.MainWindow.WorkspaceWidth);
             Assert.IsTrue(actual.MainWindow.IsMaximized);
+            Assert.AreEqual(@"D:\Notes", actual.Workspace.LastFolder);
+            CollectionAssert.AreEqual(new[] { @"D:\Notes", @"D:\Archive" }, actual.Workspace.RecentFolders);
             Assert.IsFalse(File.Exists(file + ".tmp"));
         }
         finally
@@ -44,6 +51,33 @@ public sealed class JsonSettingsServiceTests
             {
                 Directory.Delete(root, true);
             }
+        }
+    }
+
+    [TestMethod]
+    public async Task Load_Version2Settings_AddsWorkspaceDefaults()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "schemaVersion": 2,
+              "mainWindow": { "width": 1280, "height": 800, "dpi": 96 }
+            }
+            """);
+
+        try
+        {
+            var settings = await new JsonSettingsService(file, new TestLogger()).LoadAsync();
+
+            Assert.AreEqual(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
+            Assert.IsNotNull(settings.Workspace);
+            Assert.IsEmpty(settings.Workspace.RecentFolders);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
         }
     }
 

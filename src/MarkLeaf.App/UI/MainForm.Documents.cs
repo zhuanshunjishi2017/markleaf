@@ -34,6 +34,8 @@ internal sealed partial class MainForm
 
         StopWatchingDocument();
         _document = _documentFileService.CreateNew();
+        _workspaceTree.SelectedPath = null;
+        _workspaceDocumentList.SelectedPath = null;
         LoadDocumentIntoEditor(_document);
         SetStatus("已新建文档");
     }
@@ -74,6 +76,8 @@ internal sealed partial class MainForm
             opened.IsDirty = !string.Equals(originalMarkdown, opened.Markdown, StringComparison.Ordinal);
             StopWatchingDocument();
             _document = opened;
+            _workspaceTree.SelectedPath = opened.FilePath;
+            _workspaceDocumentList.SelectedPath = opened.FilePath;
             LoadDocumentIntoEditor(opened);
             StartWatchingDocument(opened.FilePath!);
             _logger.Info($"Document opened: {DescribePath(opened.FilePath)}; encoding={opened.Encoding.WebName}; bom={opened.HasBom}; newline={DescribeNewLine(opened.NewLine)}.");
@@ -86,7 +90,8 @@ internal sealed partial class MainForm
                 SetStatus(opened.IsReadOnly ? "已打开只读文档" : "文档已打开");
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or System.Text.DecoderFallbackException)
         {
             _logger.Error($"Document open failed: {DescribePath(path)}.", exception);
             MessageBox.Show(

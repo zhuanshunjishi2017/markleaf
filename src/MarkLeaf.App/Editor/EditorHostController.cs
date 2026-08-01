@@ -9,12 +9,12 @@ namespace MarkLeaf.Editor;
 
 internal sealed class EditorHostController : IDisposable
 {
-    private static readonly Uri EditorUri = new("https://editor.local/index.html");
     private readonly WebView2 _webView;
     private readonly EditorLoadingView _loadingView;
     private readonly EditorSession _session;
     private readonly IAppLogger _logger;
     private readonly string _editorWebPath;
+    private readonly Uri _editorUri;
     private readonly Action _stateChanged;
     private readonly Queue<Action> _readyActions = new();
     private readonly Dictionary<string, TaskCompletionSource<EditorSnapshot>> _snapshotRequests =
@@ -43,6 +43,10 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
 
+    public event EventHandler<EditorOutline>? OutlineChanged;
+
+    public event EventHandler<int?>? OutlineSelectionChanged;
+
     public event EventHandler<string>? OpenLinkRequested;
 
     public event EventHandler<DroppedFiles>? FilesDropped;
@@ -62,6 +66,7 @@ internal sealed class EditorHostController : IDisposable
         _session = session;
         _logger = logger;
         _editorWebPath = editorWebPath;
+        _editorUri = CreateVersionedEditorUri(editorWebPath);
         _stateChanged = stateChanged;
         _loadingView.RetryRequested += (_, _) => _ = RetryAsync();
     }
@@ -109,7 +114,7 @@ internal sealed class EditorHostController : IDisposable
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
             ShowLoading("正在加载编辑器…", "正在载入本地编辑器资源。");
             NotifyStateChanged();
-            _webView.Source = EditorUri;
+            _webView.Source = _editorUri;
             BeginReadyTimeout();
         }
         catch (OperationCanceledException exception)
@@ -311,6 +316,15 @@ internal sealed class EditorHostController : IDisposable
         _eventsAttached = true;
     }
 
+    private static Uri CreateVersionedEditorUri(string editorWebPath)
+    {
+        var indexPath = Path.Combine(editorWebPath, "index.html");
+        var version = File.Exists(indexPath)
+            ? File.GetLastWriteTimeUtc(indexPath).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new Uri($"https://editor.local/index.html?v={version}");
+    }
+
     private void DetachCoreEvents()
     {
         var core = _webView.CoreWebView2;
@@ -481,6 +495,16 @@ internal sealed class EditorHostController : IDisposable
                     new EditorContextMenuRequest(
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble()));
+                break;
+            case "outlineChanged":
+                OutlineChanged?.Invoke(this, EditorOutline.FromPayload(message.Payload));
+                break;
+            case "outlineSelectionChanged":
+                OutlineSelectionChanged?.Invoke(
+                    this,
+                    message.Payload.GetProperty("position").ValueKind == System.Text.Json.JsonValueKind.Null
+                        ? null
+                        : message.Payload.GetProperty("position").GetInt32());
                 break;
             case "openLink":
                 var url = message.Payload.GetProperty("url").GetString();

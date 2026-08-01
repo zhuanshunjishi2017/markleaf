@@ -29,6 +29,9 @@ importers:
       '@tiptap/markdown':
         specifier: 3.29.2
         version: 3.29.2(@tiptap/core@3.29.2(@tiptap/pm@3.29.2))(@tiptap/pm@3.29.2)
+      '@tiptap/pm':
+        specifier: 3.29.2
+        version: 3.29.2
       '@tiptap/starter-kit':
         specifier: 3.29.2
         version: 3.29.2

@@ -25,12 +25,15 @@ internal sealed class NativeMenuService : IDisposable
     ];
 
     private readonly CommandRouter _router;
+    private readonly Func<IReadOnlyList<string>> _recentWorkspaceProvider;
     private nint _menu;
     private nint _window;
+    private nint _recentWorkspaceMenu;
 
-    public NativeMenuService(CommandRouter router)
+    public NativeMenuService(CommandRouter router, Func<IReadOnlyList<string>> recentWorkspaceProvider)
     {
         _router = router;
+        _recentWorkspaceProvider = recentWorkspaceProvider;
     }
 
     public void Attach(nint window)
@@ -70,6 +73,8 @@ internal sealed class NativeMenuService : IDisposable
                 NativeMethods.MfByCommand | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
         }
 
+        RefreshRecentWorkspaces();
+
         if (_window != 0)
         {
             NativeMethods.DrawMenuBar(_window);
@@ -92,6 +97,7 @@ internal sealed class NativeMenuService : IDisposable
         NativeMethods.DestroyMenu(_menu);
         _menu = 0;
         _window = 0;
+        _recentWorkspaceMenu = 0;
     }
 
     public void Dispose() => Detach();
@@ -134,7 +140,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static nint BuildMainMenu()
+    private nint BuildMainMenu()
     {
         var root = CreateMenu(false);
         try
@@ -153,7 +159,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static nint BuildFileMenu()
+    private nint BuildFileMenu()
     {
         var menu = CreateMenu(true);
         try
@@ -161,15 +167,16 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.NewDocument, "新建(&N)\tCtrl+N");
             AppendCommand(menu, AppCommand.OpenDocument, "打开(&O)...\tCtrl+O");
             AppendCommand(menu, AppCommand.OpenFolder, "打开文件夹(&F)...");
+            AppendCommand(menu, AppCommand.CloseFolder, "关闭文件夹(&C)");
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.SaveDocument, "保存(&S)\tCtrl+S");
             AppendCommand(menu, AppCommand.SaveDocumentAs, "另存为(&A)...\tCtrl+Shift+S");
             AppendCommand(menu, AppCommand.ExportDocument, "导出(&E)...");
             AppendSeparator(menu);
 
-            var recent = CreateMenu(true);
-            AppendDisabledText(recent, "(暂无最近文件)");
-            AppendPopup(menu, "最近文件(&R)", recent);
+            _recentWorkspaceMenu = CreateMenu(true);
+            AppendDisabledText(_recentWorkspaceMenu, "(暂无最近项目)");
+            AppendPopup(menu, "最近项目(&R)", _recentWorkspaceMenu);
 
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.Exit, "退出(&X)");
@@ -308,8 +315,7 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ToggleWorkspace, "工作区侧栏(&W)");
-            AppendCommand(menu, AppCommand.ToggleOutline, "文档大纲(&O)");
+            AppendCommand(menu, AppCommand.ToggleSidebar, "显示侧栏(&B)");
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ToggleFocusMode, "专注模式(&F)\tF11");
             AppendCommand(menu, AppCommand.ToggleSourceMode, "源码模式(&S)");
@@ -343,6 +349,33 @@ internal sealed class NativeMenuService : IDisposable
     {
         var menu = popup ? NativeMethods.CreatePopupMenu() : NativeMethods.CreateMenu();
         return menu != 0 ? menu : throw new Win32Exception();
+    }
+
+    private void RefreshRecentWorkspaces()
+    {
+        if (_recentWorkspaceMenu == 0)
+        {
+            return;
+        }
+
+        var count = NativeMethods.GetMenuItemCount(_recentWorkspaceMenu);
+        for (var index = count - 1; index >= 0; index--)
+        {
+            NativeMethods.DeleteMenu(_recentWorkspaceMenu, (uint)index, NativeMethods.MfByPosition);
+        }
+
+        var folders = _recentWorkspaceProvider().Take(8).ToArray();
+        if (folders.Length == 0)
+        {
+            AppendDisabledText(_recentWorkspaceMenu, "(暂无最近项目)");
+            return;
+        }
+
+        for (var index = 0; index < folders.Length; index++)
+        {
+            var command = (AppCommand)((int)AppCommand.OpenRecentWorkspace1 + index);
+            AppendCommand(_recentWorkspaceMenu, command, $"{index + 1}  {folders[index]}");
+        }
     }
 
     private static void AppendCommand(nint menu, AppCommand command, string text)

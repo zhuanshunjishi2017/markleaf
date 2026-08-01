@@ -257,4 +257,31 @@ public sealed class EditorProtocolTests
         Assert.IsFalse(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error));
         Assert.AreEqual("Message payload is invalid.", error);
     }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsOutlinePositionsAndSelection()
+    {
+        var documentId = Guid.NewGuid();
+        var outline = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "outlineChanged",
+              "documentId": "{{documentId}}",
+              "revision": 2,
+              "payload": { "headings": [{ "level": 2, "text": "Section", "position": 12 }] }
+            }
+            """;
+        var selection = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "outlineSelectionChanged",
+              "documentId": "{{documentId}}",
+              "revision": 2,
+              "payload": { "position": 12 }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(outline, out _, out var outlineError), outlineError);
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(selection, out _, out var selectionError), selectionError);
+    }
 }

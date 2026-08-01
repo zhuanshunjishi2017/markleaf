@@ -23,6 +23,7 @@ export type EditorMessage = {
     | 'editorStatusChanged'
     | 'contextMenuRequested'
     | 'outlineChanged'
+    | 'outlineSelectionChanged'
     | 'requestSave'
     | 'openLink'
     | 'dropFiles'

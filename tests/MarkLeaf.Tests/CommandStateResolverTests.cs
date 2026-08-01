@@ -45,12 +45,11 @@ public sealed class CommandStateResolverTests
     [TestMethod]
     public void Resolve_ViewCommandsExposeCheckedStateAndRespectFocusMode()
     {
-        var normal = CreateContext(workspaceVisible: true, outlineVisible: false);
-        var focused = CreateContext(workspaceVisible: false, outlineVisible: false, focusMode: true);
+        var normal = CreateContext(sidebarVisible: true);
+        var focused = CreateContext(sidebarVisible: false, focusMode: true);
 
-        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleWorkspace, normal));
-        Assert.AreEqual(new CommandState(true, false), CommandStateResolver.Resolve(AppCommand.ToggleOutline, normal));
-        Assert.AreEqual(new CommandState(false, false), CommandStateResolver.Resolve(AppCommand.ToggleWorkspace, focused));
+        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, normal));
+        Assert.AreEqual(new CommandState(false, false), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, focused));
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleFocusMode, focused));
     }
 
@@ -63,8 +62,7 @@ public sealed class CommandStateResolverTests
             CanUndo: true,
             CanRedo: false,
             HasSelection: true,
-            WorkspaceVisible: true,
-            OutlineVisible: true,
+            SidebarVisible: true,
             FocusMode: false,
             SourceMode: false,
             ParagraphActive: false,
@@ -110,8 +108,7 @@ public sealed class CommandStateResolverTests
         bool editorReady = false,
         bool canUndo = false,
         bool hasSelection = false,
-        bool workspaceVisible = true,
-        bool outlineVisible = true,
+        bool sidebarVisible = true,
         bool focusMode = false,
         bool documentAvailable = false,
         bool documentSaved = false)
@@ -122,8 +119,7 @@ public sealed class CommandStateResolverTests
             CanUndo: canUndo,
             CanRedo: false,
             HasSelection: hasSelection,
-            WorkspaceVisible: workspaceVisible,
-            OutlineVisible: outlineVisible,
+            SidebarVisible: sidebarVisible,
             FocusMode: focusMode,
             SourceMode: false,
             DocumentSaved: documentSaved);

@@ -2,11 +2,20 @@ namespace MarkLeaf.Services.Settings;
 
 public sealed class AppSettings
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     public WindowSettings MainWindow { get; set; } = new();
+
+    public WorkspaceSettings Workspace { get; set; } = new();
+}
+
+public sealed class WorkspaceSettings
+{
+    public string? LastFolder { get; set; }
+
+    public List<string> RecentFolders { get; set; } = [];
 }
 
 public sealed class WindowSettings

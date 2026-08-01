@@ -40,7 +40,8 @@ public sealed class JsonSettingsService : ISettingsService
                 .ConfigureAwait(false);
             return settings?.SchemaVersion switch
             {
-                AppSettings.CurrentSchemaVersion => settings,
+                AppSettings.CurrentSchemaVersion => NormalizeCurrent(settings),
+                2 => MigrateVersion2(settings),
                 1 => MigrateVersion1(settings),
                 _ => new AppSettings(),
             };
@@ -84,7 +85,23 @@ public sealed class JsonSettingsService : ISettingsService
         window.WorkspaceWidth = WindowPlacementCalculator.ToLogicalPixels(window.WorkspaceWidth, window.Dpi);
         window.OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(window.OutlineWidth, window.Dpi);
         settings.MainWindow = window;
+        settings.Workspace ??= new WorkspaceSettings();
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
+        return settings;
+    }
+
+    private static AppSettings MigrateVersion2(AppSettings settings)
+    {
+        settings.Workspace ??= new WorkspaceSettings();
+        settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
+        return settings;
+    }
+
+    private static AppSettings NormalizeCurrent(AppSettings settings)
+    {
+        settings.MainWindow ??= new WindowSettings();
+        settings.Workspace ??= new WorkspaceSettings();
+        settings.Workspace.RecentFolders ??= [];
         return settings;
     }
 }

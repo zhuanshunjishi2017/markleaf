@@ -1,7 +1,7 @@
 # MarkLeaf
 
 MarkLeaf 是一个按阶段开发的 Windows 原生轻量化 Markdown 编辑器。当前正式应用
-已完成阶段 6.5，正在推进阶段 7，用于验证以下技术组合：
+已推进到阶段 7，用于验证以下技术组合：
 
 - C# + .NET 10 WinForms
 - Microsoft WebView2
@@ -11,7 +11,7 @@ MarkLeaf 是一个按阶段开发的 Windows 原生轻量化 Markdown 编辑器�
 正式功能范围、架构约束和阶段门参见
 `Windows原生Markdown编辑器开发指南.md`。
 
-## 正式应用（阶段 7 开发中）
+## 正式应用（阶段 7）
 
 正式应用已经具备 WebView2 生命周期、安全通信、单文档安全保存，以及基础 Markdown
 可视化编辑、撤销/重做、命令状态同步、IME 保护和安全粘贴。运行：
@@ -22,7 +22,7 @@ dotnet build .\MarkLeaf.slnx --no-restore
 dotnet run --project .\src\MarkLeaf.App\MarkLeaf.App.csproj
 ```
 
-阶段 6 已支持表格、任务列表和图片。图片使用本机绝对路径；剪贴板位图写入应用目录下的 `Cache/ClipboardImages`。阶段 6.5 已补全状态栏和编辑区原生右键菜单，阶段 7 开始实现工作区文件树与文档大纲。
+阶段 6 已支持表格、任务列表和图片。图片使用本机绝对路径；剪贴板位图写入应用目录下的 `Cache/ClipboardImages`。阶段 6.5 已补全状态栏和编辑区原生右键菜单。阶段 7 已加入异步工作区文件树、最近项目、基本文件操作、AST 大纲同步和 DPI Shell 文件图标。
 
 ## 阶段 0 原型运行
 

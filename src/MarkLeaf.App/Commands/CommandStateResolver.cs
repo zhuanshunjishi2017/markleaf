@@ -6,10 +6,9 @@ public static class CommandStateResolver
     {
         return command switch
         {
-            AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowAbout => new(true),
+            AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowAbout or AppCommand.OpenFolder => new(true),
 
-            AppCommand.ToggleWorkspace => new(!context.FocusMode, context.WorkspaceVisible),
-            AppCommand.ToggleOutline => new(!context.FocusMode, context.OutlineVisible),
+            AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
             AppCommand.ToggleSourceMode => new(context.EditorReady, context.SourceMode),
 
@@ -47,7 +46,6 @@ public static class CommandStateResolver
             AppCommand.AlignTableRight => new(context.EditorReady && context.InTable, context.TableAlign == "right"),
 
             AppCommand.NewDocument or AppCommand.OpenDocument => new(context.EditorReady),
-            AppCommand.OpenFolder => new(false),
             _ => new(context.EditorReady),
         };
     }

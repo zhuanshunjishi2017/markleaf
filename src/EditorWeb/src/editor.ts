@@ -1,4 +1,5 @@
 import { Editor, ResizableNodeView } from '@tiptap/core'
+import { Selection } from '@tiptap/pm/state'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { TableKit } from '@tiptap/extension-table'
@@ -273,7 +274,7 @@ export function createEditor(element: HTMLElement, content = ''): Editor {
     extensions: editorExtensions,
     content,
     contentType: 'markdown',
-    autofocus: 'end',
+    autofocus: false,
     editorProps: {
       attributes: {
         class: 'markleaf-document',
@@ -493,6 +494,30 @@ export function executeEditorCommand(
       heading?.scrollIntoView({ block: 'start' })
       return heading !== undefined
     },
+    scrollToPosition: () => {
+      const position = Number.parseInt(text ?? '', 10)
+      if (!Number.isInteger(position) || position < 0 || position > editor.state.doc.content.size) {
+        return false
+      }
+
+      const node = editor.view.nodeDOM(position)
+      const heading = node instanceof HTMLElement && /^H[1-6]$/.test(node.tagName)
+        ? node
+        : null
+      if (!heading) {
+        return false
+      }
+
+      const currentTop = document.scrollingElement?.scrollTop
+        ?? document.documentElement.scrollTop
+        ?? document.body.scrollTop
+      const lineHeight = Number.parseFloat(window.getComputedStyle(heading).lineHeight)
+      const topOffset = Number.isFinite(lineHeight) ? lineHeight / 2 : 12
+      const top = Math.max(0, currentTop + heading.getBoundingClientRect().top - topOffset)
+      scrollPageTo(top)
+      highlightOutlineHeading(heading)
+      return true
+    },
     stage5Smoke: () => {
       editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size })
       editor.commands.toggleBold()
@@ -510,6 +535,43 @@ export function executeEditorCommand(
   }
 
   return commands[command]?.() ?? false
+}
+
+export function resetEditorViewport(editor: Editor, editorMount: HTMLElement): void {
+  editor.view.dispatch(editor.state.tr.setSelection(Selection.atStart(editor.state.doc)))
+  const reset = () => {
+    editorMount.scrollTop = 0
+    scrollPageTo(0)
+  }
+
+  reset()
+  window.requestAnimationFrame(() => window.requestAnimationFrame(reset))
+}
+
+function scrollPageTo(top: number): void {
+  const scrollingElement = document.scrollingElement ?? document.documentElement
+  scrollingElement.scrollTop = top
+  document.body.scrollTop = top
+}
+
+function highlightOutlineHeading(heading: HTMLElement): void {
+  const animate = heading.animate?.bind(heading)
+  if (animate) {
+    for (const animation of heading.getAnimations()) {
+      animation.cancel()
+    }
+    animate([
+      { backgroundColor: '#fff176', boxShadow: '0 0 0 4px #fff176', offset: 0 },
+      { backgroundColor: '#fff176', boxShadow: '0 0 0 4px #fff176', offset: 0.25 },
+      { backgroundColor: 'transparent', boxShadow: '0 0 0 4px transparent', offset: 1 },
+    ], { duration: 1800, easing: 'ease-out' })
+    return
+  }
+
+  heading.classList.remove('markleaf-outline-highlight')
+  void heading.offsetWidth
+  heading.classList.add('markleaf-outline-highlight')
+  window.setTimeout(() => heading.classList.remove('markleaf-outline-highlight'), 1800)
 }
 
 function toggleInlineMark(

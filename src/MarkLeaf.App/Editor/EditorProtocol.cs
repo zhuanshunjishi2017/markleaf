@@ -20,6 +20,7 @@ public static class EditorProtocol
         "editorStatusChanged",
         "contextMenuRequested",
         "outlineChanged",
+        "outlineSelectionChanged",
         "requestSave",
         "openLink",
         "dropFiles",
@@ -151,7 +152,8 @@ public static class EditorProtocol
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY"),
-            "outlineChanged" => HasProperty(payload, "headings", JsonValueKind.Array),
+            "outlineChanged" => HasOutlinePayload(payload),
+            "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
@@ -213,6 +215,25 @@ public static class EditorProtocol
             && HasPositiveInteger(payload, "column");
     }
 
+    private static bool HasOutlinePayload(JsonElement payload)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("headings", out var headings)
+            && headings.ValueKind == JsonValueKind.Array
+            && headings.GetArrayLength() <= 10000
+            && headings.EnumerateArray().All(heading =>
+                heading.ValueKind == JsonValueKind.Object
+                && heading.TryGetProperty("level", out var level)
+                && level.TryGetInt32(out var levelValue)
+                && levelValue is >= 1 and <= 6
+                && heading.TryGetProperty("text", out var text)
+                && text.ValueKind == JsonValueKind.String
+                && (text.GetString()?.Length ?? 0) <= 1000
+                && heading.TryGetProperty("position", out var position)
+                && position.TryGetInt32(out var positionValue)
+                && positionValue >= 0);
+    }
+
     private static bool HasAllowedBlockType(JsonElement payload)
     {
         if (!HasProperty(payload, "blockType", JsonValueKind.String))
@@ -232,6 +253,16 @@ public static class EditorProtocol
             && value.ValueKind == JsonValueKind.Number
             && value.TryGetInt32(out var number)
             && number >= 0;
+    }
+
+    private static bool HasNullableNonNegativeInteger(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty(name, out var value)
+            && (value.ValueKind == JsonValueKind.Null
+                || value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt32(out var number)
+                && number >= 0);
     }
 
     private static bool HasPositiveInteger(JsonElement payload, string name)

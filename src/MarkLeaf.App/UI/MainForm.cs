@@ -11,6 +11,7 @@ using MarkLeaf.Services.ExternalLinks;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
+using MarkLeaf.Workspace;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace MarkLeaf.UI;
@@ -27,15 +28,23 @@ internal sealed partial class MainForm : Form
     private readonly EditorSession _editorSession = new();
     private readonly DocumentFileService _documentFileService = new();
     private readonly ImageAssetService _imageAssetService;
+    private readonly WorkspaceService _workspaceService = new();
+    private readonly WorkspaceTreeView _workspaceTree;
+    private readonly WorkspaceDocumentListView _workspaceDocumentList;
+    private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
+    private readonly OutlineTreeView _outlineTree;
     private EditorHostController? _editorHost;
     private MarkdownDocument? _document;
     private FileSystemWatcher? _documentWatcher;
+    private FileSystemWatcher? _workspaceWatcher;
+    private readonly WorkspaceChangeDebouncer _workspaceChangeDebouncer;
+    private CancellationTokenSource? _workspaceLoadCancellation;
+    private string? _workspaceRoot;
     private readonly System.Windows.Forms.Timer _externalChangeTimer = new() { Interval = 600 };
     private bool _documentOperationInProgress;
     private bool _closeApproved;
     private int _effectiveDpi;
-    private readonly SplitContainer _workspaceSplit;
-    private readonly SplitContainer _outlineSplit;
+    private readonly SplitContainer _sidebarSplit;
     private readonly ToolStripStatusLabel _statusLabel = new("正在准备编辑器");
     private readonly ToolStripStatusLabel _characterCountLabel = new("字数 0");
     private readonly ToolStripStatusLabel _blockTypeLabel = new("正文");
@@ -45,14 +54,17 @@ internal sealed partial class MainForm : Form
     private readonly ToolStripStatusLabel _modeLabel = new("可视化");
     private bool _settingsSaved;
     private bool _focusMode;
-    private bool _workspaceVisibleBeforeFocus = true;
-    private bool _outlineVisibleBeforeFocus = true;
+    private bool _sidebarVisibleBeforeFocus = true;
     private bool _editorSmokeStarted;
     private bool _editorCommandSmokeStarted;
     private bool _documentSmokeStarted;
     private EditorCommandStatus _editorCommandStatus = EditorCommandStatus.Empty;
     private EditorStatus _editorStatus = EditorStatus.Empty;
     private bool _editorContextMenuActive;
+    private bool _workspaceListViewActive;
+    private WorkspaceDocumentSortOrder _workspaceDocumentSortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
+    private Button _workspaceAddButton = null!;
+    private Button _workspaceFolderButton = null!;
 
     public MainForm(
         LaunchOptions options,
@@ -69,7 +81,16 @@ internal sealed partial class MainForm : Form
         _imageAssetService = new ImageAssetService(paths.ClipboardImageCacheDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
-        _menuService = new NativeMenuService(_commandRouter);
+        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces);
+        _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
+            TimeSpan.FromMilliseconds(500),
+            QueueWorkspaceRefresh);
+        _workspaceTree = new WorkspaceTreeView();
+        _workspaceDocumentList = new WorkspaceDocumentListView();
+        _outlineTree = new OutlineTreeView();
+        _outlineTree.ConfigureTypography(_effectiveDpi);
+        _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
+        _workspaceTree.ConfigureTypography(_effectiveDpi);
 
         Text = "MarkLeaf";
         StartPosition = FormStartPosition.Manual;
@@ -91,11 +112,15 @@ internal sealed partial class MainForm : Form
 
         Bounds = new Rectangle(placement.Left, placement.Top, placement.Width, placement.Height);
 
-        _outlineSplit = CreateEditorAndOutlineSplit(placement.OutlineWidth);
-        _workspaceSplit = CreateWorkspaceSplit(placement.WorkspaceWidth, _outlineSplit);
+        _sidebarSplit = CreateSidebarSplit(placement.WorkspaceWidth);
 
-        Controls.Add(_workspaceSplit);
+        Controls.Add(_sidebarSplit);
         Controls.Add(CreateStatusBar());
+        if (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
+            || !Directory.Exists(settings.Workspace.LastFolder))
+        {
+            _sidebarSplit.Panel1Collapsed = true;
+        }
 
         Shown += async (_, _) => await OnMainFormShownAsync(placement.IsMaximized);
         FormClosing += OnMainFormClosing;
@@ -107,10 +132,13 @@ internal sealed partial class MainForm : Form
             }
 
             _logger.Info($"Main window DPI changed: {args.DeviceDpiOld} -> {args.DeviceDpiNew}.");
+            _workspaceTree.ConfigureTypography(_effectiveDpi);
+            _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
+            _outlineTree.ConfigureTypography(_effectiveDpi);
         };
     }
 
-    private SplitContainer CreateWorkspaceSplit(int workspaceWidth, Control content)
+    private SplitContainer CreateSidebarSplit(int sidebarWidth)
     {
         var split = new SplitContainer
         {
@@ -123,29 +151,33 @@ internal sealed partial class MainForm : Form
             Panel2MinSize = 500,
             IsSplitterFixed = false,
         };
-        split.Panel1.Controls.Add(CreateSidePanel("工作区", CreateWorkspaceTree()));
-        split.Panel2.Controls.Add(content);
-        split.HandleCreated += (_, _) => SetSplitterDistanceSafely(split, workspaceWidth, FixedPanel.Panel1);
+        split.Panel1.Controls.Add(CreateSidebarTabs());
+        split.Panel2.Controls.Add(CreateEditorHost());
+        split.HandleCreated += (_, _) => SetSplitterDistanceSafely(split, sidebarWidth, FixedPanel.Panel1);
         return split;
     }
 
-    private SplitContainer CreateEditorAndOutlineSplit(int outlineWidth)
+    private Control CreateSidebarTabs()
     {
-        var split = new SplitContainer
+        var tabs = new TabControl
         {
             Dock = DockStyle.Fill,
-            Size = new Size(1060, 740),
-            Orientation = Orientation.Vertical,
-            FixedPanel = FixedPanel.Panel2,
-            SplitterWidth = 1,
-            Panel1MinSize = 500,
-            Panel2MinSize = 160,
-            IsSplitterFixed = false,
+            Padding = new Point(12, 6),
         };
-        split.Panel1.Controls.Add(CreateEditorHost());
-        split.Panel2.Controls.Add(CreateSidePanel("大纲", CreateOutlineTree()));
-        split.HandleCreated += (_, _) => SetSplitterDistanceSafely(split, outlineWidth, FixedPanel.Panel2);
-        return split;
+        tabs.TabPages.Add(CreateSidebarPage("工作区", CreateWorkspacePanel()));
+        tabs.TabPages.Add(CreateSidebarPage("大纲", CreateOutlineTree()));
+        return tabs;
+    }
+
+    private static TabPage CreateSidebarPage(string title, Control content)
+    {
+        var page = new TabPage(title)
+        {
+            Padding = Padding.Empty,
+            BackColor = SystemColors.Window,
+        };
+        page.Controls.Add(content);
+        return page;
     }
 
     private Control CreateEditorHost()
@@ -184,60 +216,97 @@ internal sealed partial class MainForm : Form
         _editorHost.CommandStateChanged += OnEditorCommandStateChanged;
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
+        _editorHost.OutlineChanged += OnEditorOutlineChanged;
+        _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;
         _editorHost.OpenLinkRequested += OnOpenLinkRequested;
         _editorHost.FilesDropped += OnEditorFilesDropped;
         _editorHost.PasteImageRequested += OnEditorPasteImageRequested;
         return panel;
     }
 
-    private Control CreateSidePanel(string title, Control content)
+    private WorkspaceTreeView CreateWorkspaceTree()
     {
-        var header = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 34,
-            Text = title,
-            Padding = new Padding(10, 0, 0, 0),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-            BackColor = SystemColors.Control,
-            ForeColor = SystemColors.ControlText,
-        };
-        var panel = new Panel
+        _workspaceTree.NodeExpanding += async (_, args) =>
+            await LoadWorkspaceDirectoryAsync(args.Entry.FullPath, _workspaceLoadCancellation?.Token ?? CancellationToken.None);
+        _workspaceTree.NodeActivated += async (_, args) => await ActivateWorkspaceTreeEntryAsync(args.Entry);
+        _workspaceTree.NodeContextRequested += (_, args) =>
+            _ = ShowWorkspaceEntryMenuAsync(args.Entry, args.ScreenPoint);
+        return _workspaceTree;
+    }
+
+    private Control CreateWorkspacePanel()
+    {
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            ColumnCount = 1,
+            RowCount = 2,
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+
+        var content = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
             BackColor = SystemColors.Window,
         };
-        panel.Controls.Add(content);
-        panel.Controls.Add(header);
-        return panel;
-    }
+        content.Controls.Add(CreateWorkspaceTree());
+        _workspaceDocumentList.Visible = false;
+        _workspaceDocumentList.DocumentActivated += async (_, path) => await ActivateWorkspaceDocumentAsync(path);
+        _workspaceDocumentList.DocumentContextRequested += (_, args) =>
+            _ = ShowWorkspaceEntryMenuAsync(
+                new WorkspaceEntry(args.Document.Name, args.Document.FullPath, false),
+                args.ScreenPoint);
+        content.Controls.Add(_workspaceDocumentList);
 
-    private TreeView CreateWorkspaceTree()
-    {
-        var tree = CreateTreeView();
-        tree.Nodes.Add("尚未打开工作区");
-        return tree;
-    }
-
-    private TreeView CreateOutlineTree()
-    {
-        var tree = CreateTreeView();
-        tree.Nodes.Add("暂无文档大纲");
-        return tree;
-    }
-
-    private static TreeView CreateTreeView()
-    {
-        return new TreeView
+        var buttons = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BorderStyle = BorderStyle.None,
-            ShowLines = false,
-            HideSelection = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = SystemColors.Control,
+        };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56F));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+        buttons.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        _workspaceAddButton = CreateWorkspaceFooterButton("新增", async (_, _) => await CreateUntitledWorkspaceDocumentAsync());
+        _workspaceAddButton.Enabled = false;
+        _workspaceFolderButton = CreateWorkspaceFooterButton("未打开工作区", async (_, _) => await ShowWorkspaceFolderMenuAsync());
+        _workspaceFolderButton.Enabled = false;
+        buttons.Controls.Add(_workspaceAddButton, 0, 0);
+        buttons.Controls.Add(_workspaceFolderButton, 1, 0);
+        buttons.Controls.Add(CreateWorkspaceFooterButton("树/列表", (_, _) => ToggleWorkspaceView()), 2, 0);
+
+        layout.Controls.Add(content, 0, 0);
+        layout.Controls.Add(buttons, 0, 1);
+        return layout;
+    }
+
+    private static Button CreateWorkspaceFooterButton(string text, EventHandler clickHandler)
+    {
+        var button = new Button
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            FlatStyle = FlatStyle.System,
+            Text = text,
             TabStop = true,
         };
+        button.Click += clickHandler;
+        return button;
+    }
+
+    private OutlineTreeView CreateOutlineTree()
+    {
+        _outlineTree.NodeActivated += (_, position) => ActivateOutlinePosition(position);
+        return _outlineTree;
     }
 
     private StatusStrip CreateStatusBar()
@@ -304,7 +373,10 @@ internal sealed partial class MainForm : Form
         if (disposing)
         {
             StopWatchingDocument();
+            StopWatchingWorkspace();
             _externalChangeTimer.Dispose();
+            _workspaceChangeDebouncer.Dispose();
+            _workspaceLoadCancellation?.Dispose();
             _editorHost?.Dispose();
             _menuService.Dispose();
         }
@@ -325,6 +397,12 @@ internal sealed partial class MainForm : Form
         if (_editorHost is not null)
         {
             await _editorHost.InitializeAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
+            && Directory.Exists(_settings.Workspace.LastFolder))
+        {
+            await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
         }
 
         if (!string.IsNullOrWhiteSpace(_options.SmokeCommand))
@@ -366,8 +444,7 @@ internal sealed partial class MainForm : Form
         {
             Command = command.ToString(),
             Executed = executed,
-            WorkspaceVisible = !_workspaceSplit.Panel1Collapsed,
-            OutlineVisible = !_outlineSplit.Panel2Collapsed,
+            SidebarVisible = !_sidebarSplit.Panel1Collapsed,
             FocusMode = _focusMode,
             Status = _statusLabel.Text,
         };
@@ -380,14 +457,24 @@ internal sealed partial class MainForm : Form
 
     private CommandState GetCommandState(AppCommand command)
     {
+        if (command is >= AppCommand.OpenRecentWorkspace1 and <= AppCommand.OpenRecentWorkspace8)
+        {
+            var index = (int)command - (int)AppCommand.OpenRecentWorkspace1;
+            return new CommandState(index < GetRecentWorkspaces().Count);
+        }
+
+        if (command == AppCommand.CloseFolder)
+        {
+            return new CommandState(_workspaceRoot is not null);
+        }
+
         var context = new CommandContext(
             DocumentAvailable: _document is not null,
             EditorReady: _editorHost?.IsDocumentLoaded == true,
             CanUndo: _editorCommandStatus.CanUndo,
             CanRedo: _editorCommandStatus.CanRedo,
             HasSelection: _editorCommandStatus.HasSelection,
-            WorkspaceVisible: !_workspaceSplit.Panel1Collapsed,
-            OutlineVisible: !_outlineSplit.Panel2Collapsed,
+            SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
             SourceMode: false,
             ParagraphActive: _editorCommandStatus.Paragraph,
@@ -427,6 +514,12 @@ internal sealed partial class MainForm : Form
             case AppCommand.OpenDocument:
                 _ = OpenDocumentAsync();
                 break;
+            case AppCommand.OpenFolder:
+                _ = SelectWorkspaceFolderAsync();
+                break;
+            case AppCommand.CloseFolder:
+                CloseWorkspace();
+                break;
             case AppCommand.SaveDocument:
                 _ = SaveDocumentAsync(saveAs: false);
                 break;
@@ -442,13 +535,13 @@ internal sealed partial class MainForm : Form
             case AppCommand.Paste:
                 _ = PasteClipboardContentAsync();
                 break;
-            case AppCommand.ToggleWorkspace:
-                _workspaceSplit.Panel1Collapsed = !_workspaceSplit.Panel1Collapsed;
-                SetStatus(_workspaceSplit.Panel1Collapsed ? "工作区侧栏已隐藏" : "工作区侧栏已显示");
-                break;
-            case AppCommand.ToggleOutline:
-                _outlineSplit.Panel2Collapsed = !_outlineSplit.Panel2Collapsed;
-                SetStatus(_outlineSplit.Panel2Collapsed ? "文档大纲已隐藏" : "文档大纲已显示");
+            case AppCommand.ToggleSidebar:
+                _sidebarSplit.Panel1Collapsed = !_sidebarSplit.Panel1Collapsed;
+                if (!_sidebarSplit.Panel1Collapsed && _workspaceRoot is null)
+                {
+                    ShowNoWorkspacePlaceholder();
+                }
+                SetStatus(_sidebarSplit.Panel1Collapsed ? "侧栏已隐藏" : "侧栏已显示");
                 break;
             case AppCommand.ToggleFocusMode:
                 ToggleFocusMode();
@@ -469,6 +562,12 @@ internal sealed partial class MainForm : Form
                 Close();
                 break;
             default:
+                if (TryGetRecentWorkspace(command, out var workspacePath))
+                {
+                    _ = OpenWorkspaceAsync(workspacePath);
+                    break;
+                }
+
                 if (_editorHost?.IsDocumentLoaded == true && TryMapEditorCommand(command, out var editorCommand))
                 {
                     _editorHost.ExecuteCommand(
@@ -490,18 +589,15 @@ internal sealed partial class MainForm : Form
     {
         if (!_focusMode)
         {
-            _workspaceVisibleBeforeFocus = !_workspaceSplit.Panel1Collapsed;
-            _outlineVisibleBeforeFocus = !_outlineSplit.Panel2Collapsed;
-            _workspaceSplit.Panel1Collapsed = true;
-            _outlineSplit.Panel2Collapsed = true;
+            _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
+            _sidebarSplit.Panel1Collapsed = true;
             _focusMode = true;
             SetStatus("专注模式已开启");
             return;
         }
 
         _focusMode = false;
-        _workspaceSplit.Panel1Collapsed = !_workspaceVisibleBeforeFocus;
-        _outlineSplit.Panel2Collapsed = !_outlineVisibleBeforeFocus;
+        _sidebarSplit.Panel1Collapsed = !_sidebarVisibleBeforeFocus;
         SetStatus("专注模式已关闭");
     }
 
@@ -932,12 +1028,12 @@ internal sealed partial class MainForm : Form
             Dpi = _effectiveDpi,
             IsMaximized = WindowState == FormWindowState.Maximized,
             WorkspaceWidth = WindowPlacementCalculator.ToLogicalPixels(
-                _workspaceSplit.SplitterDistance,
+                _sidebarSplit.SplitterDistance,
                 _effectiveDpi),
-            OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(
-                Math.Max(0, _outlineSplit.Width - _outlineSplit.SplitterDistance - _outlineSplit.SplitterWidth),
-                _effectiveDpi),
+            OutlineWidth = _settings.MainWindow.OutlineWidth,
         };
+        _settings.Workspace.LastFolder = _workspaceRoot;
+        _settings.Workspace.RecentFolders = GetRecentWorkspaces().ToList();
 
         try
         {
@@ -966,8 +1062,8 @@ internal sealed partial class MainForm : Form
             Bounds.Width,
             Bounds.Height,
             EffectiveDpi = _effectiveDpi,
-            WorkspaceWidth = _workspaceSplit.SplitterDistance,
-            OutlineWidth = Math.Max(0, _outlineSplit.Width - _outlineSplit.SplitterDistance - _outlineSplit.SplitterWidth),
+            WorkspaceWidth = _sidebarSplit.SplitterDistance,
+            OutlineWidth = 0,
             WindowState = WindowState.ToString(),
         };
         File.WriteAllText(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
