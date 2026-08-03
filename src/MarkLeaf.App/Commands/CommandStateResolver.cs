@@ -10,7 +10,8 @@ public static class CommandStateResolver
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow => new(true),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
-            AppCommand.ToggleFocusMode => new(true, context.FocusMode),
+            AppCommand.ViewTree or AppCommand.ViewList => new(true),
+            AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
             AppCommand.ToggleSourceMode => new(context.EditorReady, context.SourceMode),
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
@@ -29,8 +30,10 @@ public static class CommandStateResolver
             AppCommand.SetHeading4 => new(context.EditorReady, context.HeadingLevel == 4),
             AppCommand.SetHeading5 => new(context.EditorReady, context.HeadingLevel == 5),
             AppCommand.SetHeading6 => new(context.EditorReady, context.HeadingLevel == 6),
+            AppCommand.PromoteHeading or AppCommand.DemoteHeading => new(context.EditorReady),
             AppCommand.ToggleBold => new(context.EditorReady, context.BoldActive),
             AppCommand.ToggleItalic => new(context.EditorReady, context.ItalicActive),
+            AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode => new(context.EditorReady),
             AppCommand.InsertLink => new(context.EditorReady, context.LinkActive),
             AppCommand.InsertImage => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.RotateImageClockwise => new(context.EditorReady && context.ImageSelected),
@@ -46,6 +49,8 @@ public static class CommandStateResolver
             AppCommand.AlignTableLeft => new(context.EditorReady && context.InTable, context.TableAlign == "left"),
             AppCommand.AlignTableCenter => new(context.EditorReady && context.InTable, context.TableAlign == "center"),
             AppCommand.AlignTableRight => new(context.EditorReady && context.InTable, context.TableAlign == "right"),
+            AppCommand.SetSerifStyle or AppCommand.SetSansStyle or AppCommand.SetPrintStyle
+                or AppCommand.SetRetroPrintStyle => new(context.EditorReady),
 
             AppCommand.NewDocument or AppCommand.OpenDocument => new(context.EditorReady),
             _ => new(context.EditorReady),

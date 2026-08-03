@@ -16,10 +16,13 @@ internal sealed partial class MainForm
         NewFolder,
         ShowInExplorer,
         Refresh,
-        SortFileNameAscending,
-        SortFileNameDescending,
-        SortModifiedTimeAscending,
-        SortModifiedTimeDescending,
+        SortByFileName,
+        SortByModifiedTime,
+        SortAscending,
+        SortDescending,
+        ViewList,
+        ViewTree,
+        CloseFolder,
         Rename,
         Delete,
         Open,
@@ -101,7 +104,6 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation?.Dispose();
         _workspaceLoadCancellation = new CancellationTokenSource();
         _workspaceRoot = fullPath;
-        UpdateWorkspaceFooter(fullPath);
         AddRecentWorkspace(fullPath);
         if (!_focusMode)
         {
@@ -133,7 +135,6 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation = null;
         StopWatchingWorkspace();
         _workspaceRoot = null;
-        UpdateWorkspaceFooter(null);
         _settings.Workspace.LastFolder = null;
         _sidebarVisibleBeforeFocus = false;
         ShowNoWorkspacePlaceholder();
@@ -169,73 +170,28 @@ internal sealed partial class MainForm
         SetStatus(_workspaceListViewActive ? "已切换到文档列表" : "已切换到树状结构");
     }
 
-    private void UpdateWorkspaceFooter(string? workspacePath)
+    private async Task ShowWorkspaceFolderMenuAtAsync(Point screenPoint)
     {
-        if (_workspaceAddButton is null || _workspaceFolderButton is null)
-        {
-            return;
-        }
-
-        var hasWorkspace = !string.IsNullOrWhiteSpace(workspacePath);
-        _workspaceAddButton.Enabled = hasWorkspace;
-        _workspaceFolderButton.Enabled = hasWorkspace;
-        if (!hasWorkspace)
-        {
-            _workspaceFolderButton.Text = "未打开工作区";
-            _workspaceFolderButton.Tag = null;
-            return;
-        }
-
-        var trimmedPath = workspacePath!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var folderName = Path.GetFileName(trimmedPath);
-        _workspaceFolderButton.Text = string.IsNullOrWhiteSpace(folderName) ? workspacePath : folderName;
-        _workspaceFolderButton.Tag = workspacePath;
-    }
-
-    private async Task ShowWorkspaceFolderMenuAsync()
-    {
-        if (_workspaceFolderButton.Tag is not string workspacePath)
-        {
-            return;
-        }
-
+        if (string.IsNullOrWhiteSpace(_workspaceRoot)) return;
         var menu = BuildWorkspaceFolderMenu();
         try
         {
-            var screenPoint = _workspaceFolderButton.PointToScreen(new Point(0, _workspaceFolderButton.Height));
-            var command = ShowNativeWorkspaceMenu(menu, screenPoint);
-            switch (command)
+            switch (ShowNativeWorkspaceMenu(menu, screenPoint))
             {
-                case WorkspacePopupCommand.NewFile:
-                    await CreateWorkspaceEntryAsync(workspacePath, false);
-                    break;
-                case WorkspacePopupCommand.NewFolder:
-                    await CreateWorkspaceEntryAsync(workspacePath, true);
-                    break;
-                case WorkspacePopupCommand.ShowInExplorer:
-                    ShowWorkspaceInExplorer(workspacePath);
-                    break;
-                case WorkspacePopupCommand.Refresh:
-                    await RefreshWorkspaceViewsAsync();
-                    break;
-                case WorkspacePopupCommand.SortFileNameAscending:
-                    SetWorkspaceDocumentSortOrder(WorkspaceDocumentSortOrder.FileNameAscending);
-                    break;
-                case WorkspacePopupCommand.SortFileNameDescending:
-                    SetWorkspaceDocumentSortOrder(WorkspaceDocumentSortOrder.FileNameDescending);
-                    break;
-                case WorkspacePopupCommand.SortModifiedTimeAscending:
-                    SetWorkspaceDocumentSortOrder(WorkspaceDocumentSortOrder.ModifiedTimeAscending);
-                    break;
-                case WorkspacePopupCommand.SortModifiedTimeDescending:
-                    SetWorkspaceDocumentSortOrder(WorkspaceDocumentSortOrder.ModifiedTimeDescending);
-                    break;
+                case WorkspacePopupCommand.NewFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false); break;
+                case WorkspacePopupCommand.NewFolder: await CreateWorkspaceEntryAsync(_workspaceRoot, true); break;
+                case WorkspacePopupCommand.ShowInExplorer: ShowWorkspaceInExplorer(_workspaceRoot); break;
+                case WorkspacePopupCommand.ViewList: if (!_workspaceListViewActive) ToggleWorkspaceView(); break;
+                case WorkspacePopupCommand.ViewTree: if (_workspaceListViewActive) ToggleWorkspaceView(); break;
+                case WorkspacePopupCommand.SortByFileName: SetWorkspaceSortField(false); break;
+                case WorkspacePopupCommand.SortByModifiedTime: SetWorkspaceSortField(true); break;
+                case WorkspacePopupCommand.SortAscending: SetWorkspaceSortDirection(false); break;
+                case WorkspacePopupCommand.SortDescending: SetWorkspaceSortDirection(true); break;
+                case WorkspacePopupCommand.Refresh: await RefreshWorkspaceViewsAsync(); break;
+                case WorkspacePopupCommand.CloseFolder: CloseWorkspace(); break;
             }
         }
-        finally
-        {
-            NativeMethods.DestroyMenu(menu);
-        }
+        finally { NativeMethods.DestroyMenu(menu); }
     }
 
     private nint BuildWorkspaceFolderMenu()
@@ -243,22 +199,23 @@ internal sealed partial class MainForm
         var menu = CreateNativePopupMenu();
         try
         {
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, "新建文件");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, "新建文件夹");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, "在文件资源管理器中显示...");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Refresh, "刷新");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, "新建文件(&N)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, "新建文件夹(&F)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, "在文件资源管理器中显示...(&O)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewTree, "树结构(&T)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewList, "文档列表(&L)");
             AppendNativeMenuSeparator(menu);
 
             var sortMenu = CreateNativePopupMenu();
-            var fileNameMenu = CreateNativePopupMenu();
-            var modifiedTimeMenu = CreateNativePopupMenu();
-            AppendNativeSortCommand(fileNameMenu, WorkspacePopupCommand.SortFileNameAscending, "升序", WorkspaceDocumentSortOrder.FileNameAscending);
-            AppendNativeSortCommand(fileNameMenu, WorkspacePopupCommand.SortFileNameDescending, "降序", WorkspaceDocumentSortOrder.FileNameDescending);
-            AppendNativeSortCommand(modifiedTimeMenu, WorkspacePopupCommand.SortModifiedTimeAscending, "升序", WorkspaceDocumentSortOrder.ModifiedTimeAscending);
-            AppendNativeSortCommand(modifiedTimeMenu, WorkspacePopupCommand.SortModifiedTimeDescending, "降序", WorkspaceDocumentSortOrder.ModifiedTimeDescending);
-            AppendNativePopup(sortMenu, "文件名", fileNameMenu);
-            AppendNativePopup(sortMenu, "修改时间", modifiedTimeMenu);
-            AppendNativePopup(menu, "排序方式", sortMenu);
+            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByFileName, "文件名(&N)", false);
+            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByModifiedTime, "修改时间(&M)", true);
+            AppendNativeMenuSeparator(sortMenu);
+            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortAscending, "升序(&A)", false);
+            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortDescending, "降序(&D)", true);
+            AppendNativePopup(menu, "排序方式(&S)", sortMenu);
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Refresh, "刷新(&E)");
+            AppendNativeMenuSeparator(menu);
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.CloseFolder, "关闭文件夹(&C)");
             return menu;
         }
         catch
@@ -268,20 +225,44 @@ internal sealed partial class MainForm
         }
     }
 
-    private void AppendNativeSortCommand(
-        nint menu,
-        WorkspacePopupCommand command,
-        string text,
-        WorkspaceDocumentSortOrder sortOrder)
+    private void AppendNativeSortFieldCommand(nint menu, WorkspacePopupCommand command, string text, bool modifiedTime)
     {
-        var flags = NativeMethods.MfString
-            | (_workspaceDocumentSortOrder == sortOrder ? NativeMethods.MfChecked : NativeMethods.MfUnchecked);
+        var isModified = _workspaceDocumentSortOrder is WorkspaceDocumentSortOrder.ModifiedTimeAscending
+            or WorkspaceDocumentSortOrder.ModifiedTimeDescending;
+        var flags = NativeMethods.MfString | (isModified == modifiedTime ? NativeMethods.MfChecked : NativeMethods.MfUnchecked);
         AppendNativeMenu(menu, flags, (nuint)command, text);
+    }
+
+    private void AppendNativeSortDirectionCommand(nint menu, WorkspacePopupCommand command, string text, bool descending)
+    {
+        var isDescending = _workspaceDocumentSortOrder is WorkspaceDocumentSortOrder.FileNameDescending
+            or WorkspaceDocumentSortOrder.ModifiedTimeDescending;
+        var flags = NativeMethods.MfString | (isDescending == descending ? NativeMethods.MfChecked : NativeMethods.MfUnchecked);
+        AppendNativeMenu(menu, flags, (nuint)command, text);
+    }
+
+    private void SetWorkspaceSortField(bool modifiedTime)
+    {
+        var descending = _workspaceDocumentSortOrder is WorkspaceDocumentSortOrder.FileNameDescending
+            or WorkspaceDocumentSortOrder.ModifiedTimeDescending;
+        SetWorkspaceDocumentSortOrder(modifiedTime
+            ? (descending ? WorkspaceDocumentSortOrder.ModifiedTimeDescending : WorkspaceDocumentSortOrder.ModifiedTimeAscending)
+            : (descending ? WorkspaceDocumentSortOrder.FileNameDescending : WorkspaceDocumentSortOrder.FileNameAscending));
+    }
+
+    private void SetWorkspaceSortDirection(bool descending)
+    {
+        var modifiedTime = _workspaceDocumentSortOrder is WorkspaceDocumentSortOrder.ModifiedTimeAscending
+            or WorkspaceDocumentSortOrder.ModifiedTimeDescending;
+        SetWorkspaceDocumentSortOrder(modifiedTime
+            ? (descending ? WorkspaceDocumentSortOrder.ModifiedTimeDescending : WorkspaceDocumentSortOrder.ModifiedTimeAscending)
+            : (descending ? WorkspaceDocumentSortOrder.FileNameDescending : WorkspaceDocumentSortOrder.FileNameAscending));
     }
 
     private void SetWorkspaceDocumentSortOrder(WorkspaceDocumentSortOrder sortOrder)
     {
         _workspaceDocumentSortOrder = sortOrder;
+        _workspaceTree.SetSortOrder(sortOrder);
         ApplyWorkspaceDocumentSort();
         SetStatus($"工作区文档已按{GetWorkspaceSortDescription(sortOrder)}排列");
     }

@@ -13,12 +13,14 @@ internal sealed class OutlineTreeView : Control
         public List<OutlineNode> Children { get; } = [];
     }
 
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right };
+    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
-    private Font _primaryFont = new("宋体-简", 11F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _secondaryFont = new("宋体-简", 11F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
     private int? _selectedPosition;
+    private int? _hoveredPosition;
     private int _primaryRowHeight;
     private int _secondaryRowHeight;
 
@@ -30,7 +32,7 @@ internal sealed class OutlineTreeView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
-        BackColor = SystemColors.Window;
+        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
@@ -84,12 +86,15 @@ internal sealed class OutlineTreeView : Control
     {
         var previousPrimary = _primaryFont;
         var previousSecondary = _secondaryFont;
-        _primaryFont = new Font("宋体-简", 11F, FontStyle.Regular, GraphicsUnit.Point);
-        _secondaryFont = new Font("宋体-简", 11F, FontStyle.Regular, GraphicsUnit.Point);
+        var previousSelected = _selectedFont;
+        _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
         previousPrimary.Dispose();
         previousSecondary.Dispose();
+        previousSelected.Dispose();
         UpdateScrollBar();
         Invalidate();
     }
@@ -118,8 +123,16 @@ internal sealed class OutlineTreeView : Control
             var selected = node.Item.Position == _selectedPosition;
             if (selected)
             {
-                using var selectionBrush = new SolidBrush(Color.FromArgb(232, 232, 232));
+                using var selectionBrush = new SolidBrush(
+                    node.Item.Position == _hoveredPosition
+                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
+                        : Color.FromArgb(0xCC, 0xED, 0xD9));
                 eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
+            }
+            else if (node.Item.Position == _hoveredPosition)
+            {
+                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
             }
 
             var indent = ScaleForDpi(18) * node.Depth;
@@ -140,7 +153,7 @@ internal sealed class OutlineTreeView : Control
             DrawNodeText(
                 eventArgs.Graphics,
                 string.IsNullOrWhiteSpace(node.Item.Text) ? "(无标题)" : node.Item.Text,
-                node.Item.Level <= 2 ? _primaryFont : _secondaryFont,
+                selected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
                 textBounds);
         }
     }
@@ -167,6 +180,28 @@ internal sealed class OutlineTreeView : Control
 
         SelectedPosition = node.Item.Position;
         NodeActivated?.Invoke(this, node.Item.Position);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs eventArgs)
+    {
+        base.OnMouseMove(eventArgs);
+        var row = HitTestRow(eventArgs.Location);
+        var hoveredPosition = row?.Node.Item.Position;
+        if (_hoveredPosition != hoveredPosition)
+        {
+            _hoveredPosition = hoveredPosition;
+            Invalidate();
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs eventArgs)
+    {
+        base.OnMouseLeave(eventArgs);
+        if (_hoveredPosition is not null)
+        {
+            _hoveredPosition = null;
+            Invalidate();
+        }
     }
 
     protected override void OnMouseWheel(MouseEventArgs eventArgs)
@@ -234,6 +269,7 @@ internal sealed class OutlineTreeView : Control
         {
             _primaryFont.Dispose();
             _secondaryFont.Dispose();
+            _selectedFont.Dispose();
         }
         base.Dispose(disposing);
     }

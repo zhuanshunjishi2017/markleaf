@@ -15,13 +15,18 @@ internal sealed class WorkspaceTreeView : Control
         public List<WorkspaceNode> Children { get; } = [];
     }
 
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right };
+    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
     private readonly List<(WorkspaceNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _treeFont = new("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _rootTitleFont = new("Microsoft YaHei UI", 12F, FontStyle.Bold, GraphicsUnit.Point);
     private WorkspaceNode? _root;
     private string? _placeholderText = "暂未打开工作区";
     private string? _selectedPath;
+    private string? _hoveredPath;
+    private bool _rootTitleHovered;
     private int _rowHeight;
+    private int _rootTitleHeight;
+    private WorkspaceDocumentSortOrder _sortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
 
     public WorkspaceTreeView()
     {
@@ -31,7 +36,7 @@ internal sealed class WorkspaceTreeView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
-        BackColor = SystemColors.Window;
+        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
@@ -41,6 +46,7 @@ internal sealed class WorkspaceTreeView : Control
     public event EventHandler<WorkspaceTreeNodeEventArgs>? NodeExpanding;
     public event EventHandler<WorkspaceTreeNodeEventArgs>? NodeActivated;
     public event EventHandler<WorkspaceTreeContextEventArgs>? NodeContextRequested;
+    public event EventHandler<WorkspaceTreeContextEventArgs>? WorkspaceMenuRequested;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -61,9 +67,13 @@ internal sealed class WorkspaceTreeView : Control
     public void ConfigureTypography(int dpi)
     {
         var previousFont = _treeFont;
+        var previousRootFont = _rootTitleFont;
         _treeFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.5F);
+        _rootTitleFont = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold, GraphicsUnit.Point);
+        _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.75F);
+        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 2F);
         previousFont.Dispose();
+        previousRootFont.Dispose();
         UpdateScrollBar();
         Invalidate();
     }
@@ -98,9 +108,13 @@ internal sealed class WorkspaceTreeView : Control
 
         var existing = node.Children.ToDictionary(child => child.Entry.FullPath, StringComparer.OrdinalIgnoreCase);
         node.Children.Clear();
-        foreach (var entry in entries)
+        foreach (var entry in SortEntries(entries))
         {
             var child = new WorkspaceNode(entry, node.Depth + 1);
+            if (node == _root)
+            {
+                child = new WorkspaceNode(entry, 0);
+            }
             if (existing.TryGetValue(entry.FullPath, out var previous))
             {
                 child.Expanded = previous.Expanded;
@@ -114,6 +128,59 @@ internal sealed class WorkspaceTreeView : Control
         node.ErrorText = null;
         UpdateScrollBar();
         Invalidate();
+    }
+
+    public void SetSortOrder(WorkspaceDocumentSortOrder sortOrder)
+    {
+        _sortOrder = sortOrder;
+        foreach (var node in EnumerateAllNodes().Where(node => node.Entry.IsDirectory))
+        {
+            node.Children.Sort(CompareNodes);
+        }
+        UpdateScrollBar();
+        Invalidate();
+    }
+
+    private IEnumerable<WorkspaceEntry> SortEntries(IReadOnlyList<WorkspaceEntry> entries)
+        => entries.OrderBy(entry => entry, Comparer<WorkspaceEntry>.Create((left, right) => CompareEntries(left, right)));
+
+    private int CompareNodes(WorkspaceNode left, WorkspaceNode right) => CompareEntries(left.Entry, right.Entry);
+
+    private int CompareEntries(WorkspaceEntry left, WorkspaceEntry right)
+    {
+        if (left.IsDirectory != right.IsDirectory)
+        {
+            return left.IsDirectory ? -1 : 1;
+        }
+
+        var result = _sortOrder switch
+        {
+            WorkspaceDocumentSortOrder.FileNameAscending => StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name),
+            WorkspaceDocumentSortOrder.FileNameDescending => StringComparer.CurrentCultureIgnoreCase.Compare(right.Name, left.Name),
+            WorkspaceDocumentSortOrder.ModifiedTimeAscending => GetLastWriteTime(left).CompareTo(GetLastWriteTime(right)),
+            _ => GetLastWriteTime(right).CompareTo(GetLastWriteTime(left)),
+        };
+        return result != 0
+            ? result
+            : StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
+    }
+
+    private static DateTime GetLastWriteTime(WorkspaceEntry entry)
+    {
+        try
+        {
+            return entry.IsDirectory
+                ? Directory.GetLastWriteTime(entry.FullPath)
+                : File.GetLastWriteTime(entry.FullPath);
+        }
+        catch (IOException)
+        {
+            return DateTime.MinValue;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
+        }
     }
 
     public void SetLoadError(string directory, string message)
@@ -165,6 +232,26 @@ internal sealed class WorkspaceTreeView : Control
         }
 
         BuildVisibleRows();
+        if (_root is not null)
+        {
+            var titleBounds = new Rectangle(
+                0,
+                -_scrollBar.Value,
+                ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
+                _rootTitleHeight);
+            if (titleBounds.Bottom > 0 && titleBounds.Top < ClientSize.Height)
+            {
+                if (_rootTitleHovered)
+                {
+                    using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                    eventArgs.Graphics.FillRectangle(hoverBrush, titleBounds);
+                }
+                DrawText(eventArgs.Graphics, _root.Entry.Name,
+                    new Rectangle(ScaleForDpi(20), titleBounds.Top,
+                        Math.Max(0, titleBounds.Width - ScaleForDpi(24)), titleBounds.Height),
+                    ForeColor, _rootTitleFont);
+            }
+        }
         foreach (var (node, bounds) in _visibleRows)
         {
             if (bounds.Bottom <= 0 || bounds.Top >= ClientSize.Height)
@@ -173,8 +260,16 @@ internal sealed class WorkspaceTreeView : Control
             }
             if (PathEquals(node.Entry.FullPath, _selectedPath))
             {
-                using var selectionBrush = new SolidBrush(Color.FromArgb(232, 232, 232));
+                using var selectionBrush = new SolidBrush(
+                    PathEquals(node.Entry.FullPath, _hoveredPath)
+                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
+                        : Color.FromArgb(0xCC, 0xED, 0xD9));
                 eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
+            }
+            else if (PathEquals(node.Entry.FullPath, _hoveredPath))
+            {
+                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
             }
 
             var indent = ScaleForDpi(18) * node.Depth;
@@ -197,8 +292,25 @@ internal sealed class WorkspaceTreeView : Control
     {
         base.OnMouseDown(eventArgs);
         var row = HitTestRow(eventArgs.Location);
+        if (_root is not null && RootTitleBounds().Contains(eventArgs.Location))
+        {
+            Focus();
+            if (eventArgs.Button is MouseButtons.Left or MouseButtons.Right)
+            {
+                WorkspaceMenuRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
+                    _root.Entry,
+                    PointToScreen(eventArgs.Location)));
+            }
+            return;
+        }
         if (row is null)
         {
+            if (eventArgs.Button == MouseButtons.Right && _root is not null)
+            {
+                WorkspaceMenuRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
+                    _root.Entry,
+                    PointToScreen(eventArgs.Location)));
+            }
             return;
         }
         Focus();
@@ -228,6 +340,31 @@ internal sealed class WorkspaceTreeView : Control
         else
         {
             NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(node.Entry));
+        }
+    }
+
+    protected override void OnMouseMove(MouseEventArgs eventArgs)
+    {
+        base.OnMouseMove(eventArgs);
+        var rootTitleHovered = _root is not null && RootTitleBounds().Contains(eventArgs.Location);
+        var row = HitTestRow(eventArgs.Location);
+        var hoveredPath = rootTitleHovered ? null : row?.Node.Entry.FullPath;
+        if (_rootTitleHovered != rootTitleHovered || !PathEquals(hoveredPath, _hoveredPath))
+        {
+            _rootTitleHovered = rootTitleHovered;
+            _hoveredPath = hoveredPath;
+            Invalidate();
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs eventArgs)
+    {
+        base.OnMouseLeave(eventArgs);
+        if (_hoveredPath is not null || _rootTitleHovered)
+        {
+            _hoveredPath = null;
+            _rootTitleHovered = false;
+            Invalidate();
         }
     }
 
@@ -293,6 +430,7 @@ internal sealed class WorkspaceTreeView : Control
         if (disposing)
         {
             _treeFont.Dispose();
+            _rootTitleFont.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -323,7 +461,7 @@ internal sealed class WorkspaceTreeView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = -_scrollBar.Value;
+        var top = _root is null ? 0 : _rootTitleHeight - _scrollBar.Value;
         var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
         foreach (var node in EnumerateVisibleNodes())
         {
@@ -351,9 +489,12 @@ internal sealed class WorkspaceTreeView : Control
         {
             yield break;
         }
-        foreach (var node in EnumerateVisibleNodes(_root))
+        foreach (var node in _root.Children)
         {
-            yield return node;
+            foreach (var visible in EnumerateVisibleNodes(node))
+            {
+                yield return visible;
+            }
         }
     }
 
@@ -397,7 +538,7 @@ internal sealed class WorkspaceTreeView : Control
         return EnumerateAllNodes().FirstOrDefault(node => PathEquals(node.Entry.FullPath, path));
     }
 
-    private int GetContentHeight() => EnumerateVisibleNodes().Count() * _rowHeight;
+    private int GetContentHeight() => (_root is null ? 0 : _rootTitleHeight) + EnumerateVisibleNodes().Count() * _rowHeight;
 
     private void UpdateScrollBar()
     {
@@ -458,12 +599,18 @@ internal sealed class WorkspaceTreeView : Control
         graphics.FillPolygon(brush, points);
     }
 
-    private void DrawText(Graphics graphics, string text, Rectangle bounds, Color color)
+    private Rectangle RootTitleBounds() => new(
+        0,
+        -_scrollBar.Value,
+        ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
+        _rootTitleHeight);
+
+    private void DrawText(Graphics graphics, string text, Rectangle bounds, Color color, Font? font = null)
     {
         TextRenderer.DrawText(
             graphics,
             text,
-            _treeFont,
+            font ?? _treeFont,
             bounds,
             color,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis

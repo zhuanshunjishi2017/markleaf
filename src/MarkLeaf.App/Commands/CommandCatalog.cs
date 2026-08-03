@@ -25,7 +25,6 @@ public static class CommandCatalog
             [Keys.Control | Keys.D4] = AppCommand.SetHeading4,
             [Keys.Control | Keys.D5] = AppCommand.SetHeading5,
             [Keys.Control | Keys.D6] = AppCommand.SetHeading6,
-            [Keys.F11] = AppCommand.ToggleFocusMode,
         };
 
     public static IReadOnlyDictionary<Keys, AppCommand> ShortcutMap => Shortcuts;

@@ -12,7 +12,7 @@ public sealed class CommandStateResolverTests
 
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Exit, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ShowShortcuts, context).IsEnabled);
-        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleFocusMode, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ShowStatusBar, context).IsEnabled);
     }
 
     [TestMethod]
@@ -52,7 +52,7 @@ public sealed class CommandStateResolverTests
 
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, normal));
         Assert.AreEqual(new CommandState(false, false), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, focused));
-        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleFocusMode, focused));
+        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ShowStatusBar, focused));
     }
 
     [TestMethod]

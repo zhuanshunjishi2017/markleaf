@@ -9,6 +9,8 @@ public sealed class AppSettings
     public WindowSettings MainWindow { get; set; } = new();
 
     public WorkspaceSettings Workspace { get; set; } = new();
+
+    public string MarkdownStyle { get; set; } = "serif";
 }
 
 public sealed class WorkspaceSettings

@@ -91,11 +91,28 @@ body {
   min-height: calc(100vh - 140px);
   margin: 0 auto;
   outline: none;
-  font-family: "Times New Roman", "宋体-简", "Songti SC", SimSun, serif;
+  font-family: "Times New Roman", "宋体-简", "宋体", "Songti SC", SimSun, serif;
   font-size: 16px;
   line-height: 1.72;
   caret-color: #237a4b;
   font-synthesis: weight style;
+}
+
+.markleaf-document::selection,
+.markleaf-document *::selection,
+.ProseMirror::selection,
+.ProseMirror *::selection,
+.cm-editor::selection,
+.cm-content::selection,
+.cm-content *::selection {
+  background: #2ea263;
+  color: #ffffff;
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: #2ea263 !important;
+  color: #ffffff !important;
 }
 
 .markleaf-document em {
@@ -251,6 +268,217 @@ body {
   color: #237a4b;
 }
 
+/* Alternate document presentation styles selected from the Format menu. */
+#editor.markleaf-style-sans .markleaf-document {
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+#editor.markleaf-style-print .markleaf-document {
+  color: #000000;
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+#editor.markleaf-style-print {
+  padding: 44px 56px 96px;
+}
+
+#editor.markleaf-style-print .markleaf-document h1,
+#editor.markleaf-style-print .markleaf-document h2,
+#editor.markleaf-style-print .markleaf-document h3,
+#editor.markleaf-style-print .markleaf-document h4,
+#editor.markleaf-style-print .markleaf-document h5,
+#editor.markleaf-style-print .markleaf-document h6 {
+  color: #000000;
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 2;
+}
+
+#editor.markleaf-style-print .markleaf-document h1 {
+  font-size: 24px;
+  text-align: center;
+  line-height: 3;
+}
+
+#editor.markleaf-style-print .markleaf-document h2 {
+  font-size: 20px;
+  text-align: center;
+  line-height: 2;
+}
+
+#editor.markleaf-style-print .markleaf-document h3 {
+  font-size: 16px;
+  text-align: left;
+  line-height: 2;
+}
+
+#editor.markleaf-style-print .markleaf-document h4,
+#editor.markleaf-style-print .markleaf-document h5,
+#editor.markleaf-style-print .markleaf-document h6 {
+  font-size: 14px;
+  text-align: left;
+  line-height: 1.75;
+}
+
+#editor.markleaf-style-print .markleaf-document p {
+  margin: 0;
+  text-indent: 2em;
+}
+
+#editor.markleaf-style-print .markleaf-document strong,
+#editor.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+/* Keep retro typography authoritative after all inherited modern-print rules. */
+#editor.markleaf-style-retro-print .markleaf-document strong,
+#editor.markleaf-style-retro-print .markleaf-document b,
+#editor.markleaf-style-retro-print .markleaf-document li strong,
+#editor.markleaf-style-retro-print .markleaf-document li b,
+#editor.markleaf-style-retro-print .markleaf-document blockquote strong,
+#editor.markleaf-style-retro-print .markleaf-document blockquote b {
+  font-family: "汇文港黑", "汉仪中黑简", "黑体", sans-serif !important;
+  font-weight: normal;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document ul,
+#editor.markleaf-style-retro-print .markleaf-document ol,
+#editor.markleaf-style-retro-print .markleaf-document li,
+#editor.markleaf-style-retro-print .markleaf-document li > p,
+#editor.markleaf-style-retro-print .markleaf-document li::marker {
+  font-family: KingHwaOldSong, "宋体-简", "宋体", serif !important;
+}
+
+#editor.markleaf-style-print .markleaf-document blockquote {
+  margin: 0;
+  padding: 0 0 0 1em;
+  color: #808080;
+  border-left: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document blockquote p {
+  text-indent: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document a {
+  color: #808080;
+  text-decoration: underline;
+}
+
+#editor.markleaf-style-print .markleaf-document table {
+  width: auto;
+  margin: 1em auto;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+#editor.markleaf-style-print .markleaf-document table p {
+  text-indent: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document th,
+#editor.markleaf-style-print .markleaf-document td {
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+#editor.markleaf-style-print .markleaf-document code,
+#editor.markleaf-style-print .markleaf-document pre code {
+  font-family: "Courier New", monospace;
+  line-height: 1.25;
+}
+
+#editor.markleaf-style-print .markleaf-document pre {
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  background: #f0f0f0;
+}
+
+#editor.markleaf-style-print .markleaf-document ul,
+#editor.markleaf-style-print .markleaf-document ol {
+  padding-left: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document ul ul,
+#editor.markleaf-style-print .markleaf-document ul ol,
+#editor.markleaf-style-print .markleaf-document ol ul,
+#editor.markleaf-style-print .markleaf-document ol ol {
+  margin-left: 1em;
+}
+
+/* Print overrides keep Latin fonts first and prevent synthetic emphasis. */
+#editor.markleaf-style-print .markleaf-document {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+}
+
+#editor.markleaf-style-print .markleaf-document strong,
+#editor.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+#editor.markleaf-style-print .markleaf-document em,
+#editor.markleaf-style-print .markleaf-document i {
+  font-family: "Times New Roman", "楷体", "KaiTi", serif;
+  font-style: italic;
+  font-synthesis: none;
+}
+
+#editor.markleaf-style-print .markleaf-document hr {
+  width: 7em;
+  height: 1px;
+  margin: 1.5em auto;
+  background: #000000;
+}
+
+/* Final print typography overrides. */
+#editor.markleaf-style-print .markleaf-document p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  text-indent: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document blockquote {
+  margin: 0.5em 0;
+  padding: 0 1em;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+#editor.markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  color: #000000;
+  text-indent: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document > p,
+#editor.markleaf-style-print .markleaf-document > ul > li > p,
+#editor.markleaf-style-print .markleaf-document > ol > li > p {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  text-indent: 2em;
+}
+
+#editor.markleaf-style-print .markleaf-document p {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  text-indent: 2em;
+}
+
+#editor.markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  text-indent: 2em;
+}
+
+#editor.markleaf-style-print .markleaf-document li > p {
+  text-indent: 0 !important;
+}
+
 .ProseMirror-selectednode {
   outline: 2px solid #79aa8d;
 }
@@ -321,6 +549,20 @@ body {
   }
 }
 
+#editor.markleaf-style-print {
+  padding: 44px 56px 96px;
+}
+
+#editor.markleaf-style-print .markleaf-document h1,
+#editor.markleaf-style-print .markleaf-document h2,
+#editor.markleaf-style-print .markleaf-document h3,
+#editor.markleaf-style-print .markleaf-document h4,
+#editor.markleaf-style-print .markleaf-document h5,
+#editor.markleaf-style-print .markleaf-document h6 {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -328,4 +570,106 @@ body {
     scroll-behavior: auto !important;
   }
 
+}
+
+/* Print list layout: indent markers while keeping item text flush with them. */
+#editor.markleaf-style-print .markleaf-document ul,
+#editor.markleaf-style-print .markleaf-document ol {
+  margin-left: 0;
+  padding-left: 2em;
+}
+
+#editor.markleaf-style-print .markleaf-document li {
+  padding-left: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document li > p {
+  text-indent: 0;
+}
+
+#editor.markleaf-style-print .markleaf-document li > ul,
+#editor.markleaf-style-print .markleaf-document li > ol {
+  margin-left: 0;
+  padding-left: 1em;
+}
+
+/* List item text must remain flush after its marker. */
+#editor.markleaf-style-print .markleaf-document ul > li > p,
+#editor.markleaf-style-print .markleaf-document ol > li > p,
+#editor.markleaf-style-print .markleaf-document li li > p {
+  text-indent: 0 !important;
+}
+
+/* Retro print inherits the modern print layout and replaces typography only. */
+#editor.markleaf-style-retro-print .markleaf-document,
+#editor.markleaf-style-retro-print .markleaf-document p {
+  font-family: KingHwaOldSong, "宋体-简", "宋体", serif;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document h1,
+#editor.markleaf-style-retro-print .markleaf-document h2,
+#editor.markleaf-style-retro-print .markleaf-document h3,
+#editor.markleaf-style-retro-print .markleaf-document h4,
+#editor.markleaf-style-retro-print .markleaf-document h5,
+#editor.markleaf-style-retro-print .markleaf-document h6,
+#editor.markleaf-style-retro-print .markleaf-document strong,
+#editor.markleaf-style-retro-print .markleaf-document b {
+  font-family: "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document h1 {
+  font-family: "朝华标题A", "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document em,
+#editor.markleaf-style-retro-print .markleaf-document i {
+  font-family: "汇文正楷", "楷体", "KaiTi", serif;
+  font-style: normal;
+  font-synthesis: none;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document blockquote p {
+  font-family: "汇文仿宋", "仿宋", "FangSong", serif;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document code,
+#editor.markleaf-style-retro-print .markleaf-document pre code {
+  font-family: "朝华打字机", "Courier New", monospace;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document code:not(pre code) {
+  background: transparent;
+}
+
+#editor.markleaf-style-retro-print .markleaf-document pre {
+  background: transparent;
+  border: 1px dashed #000000;
+  border-radius: 0;
+}
+
+/* Modern print typeface updates. */
+
+#editor.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document h1 {
+  font-family: "Times New Roman", "方正小标宋简体", "华文中宋", serif;
+  font-weight: bold;
+  font-synthesis: none;
+}
+
+
+/* Both print styles use true two-sided paragraph justification. */
+#editor.markleaf-style-print .markleaf-document p {
+  text-align: justify;
+}
+
+#editor.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document code:not(pre code) {
+  background: transparent;
+}
+
+/* Final modern-print typography overrides. */
+
+#editor.markleaf-style-print .markleaf-document strong,
+#editor.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
 }

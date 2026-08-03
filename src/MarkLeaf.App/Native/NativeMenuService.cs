@@ -150,6 +150,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendPopup(root, "文件(&F)", BuildFileMenu());
             AppendPopup(root, "编辑(&E)", BuildEditMenu());
             AppendPopup(root, "段落(&P)", BuildParagraphMenu());
+            AppendPopup(root, "格式(&F)", BuildFormatMenu());
             AppendPopup(root, "视图(&V)", BuildViewMenu());
             AppendPopup(root, "帮助(&H)", BuildHelpMenu());
             return root;
@@ -276,11 +277,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendPopup(menu, "标题(&H)", headings);
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ToggleBold, "粗体(&B)\tCtrl+B");
-            AppendCommand(menu, AppCommand.ToggleItalic, "斜体(&I)\tCtrl+I");
-            AppendCommand(menu, AppCommand.InsertLink, "插入链接(&K)...\tCtrl+K");
-            AppendCommand(menu, AppCommand.InsertImage, "插入图片(&M)...");
-            AppendCommand(menu, AppCommand.RotateImageClockwise, "顺时针旋转图片(&R)");
+            AppendCommand(menu, AppCommand.PromoteHeading, "提升标题级别(&I)\tCtrl+.");
+            AppendCommand(menu, AppCommand.DemoteHeading, "降低标题级别(&D)\tCtrl+,");
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ToggleQuote, "引用(&Q)");
             AppendCommand(menu, AppCommand.ToggleCodeBlock, "代码块(&C)");
@@ -318,14 +316,39 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
+    private static nint BuildFormatMenu()
+    {
+        var menu = CreateMenu(true);
+        AppendCommand(menu, AppCommand.ToggleBold, "加粗(&B)\tCtrl+B");
+        AppendCommand(menu, AppCommand.ToggleItalic, "斜体(&I)\tCtrl+I");
+        AppendCommand(menu, AppCommand.ToggleUnderline, "下划线(&U)\tCtrl+U");
+        AppendCommand(menu, AppCommand.ToggleStrike, "删除线(&S)");
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.ToggleInlineCode, "行内代码(&C)");
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.InsertLink, "插入超链接(&K)...\tCtrl+K");
+        AppendCommand(menu, AppCommand.InsertImage, "插入图片(&M)...");
+        AppendCommand(menu, AppCommand.RotateImageClockwise, "顺时针旋转图片(&R)");
+        AppendSeparator(menu);
+        var styles = CreateMenu(true);
+        AppendCommand(styles, AppCommand.SetSerifStyle, "默认(衬线字体)");
+        AppendCommand(styles, AppCommand.SetSansStyle, "默认(无衬线字体)");
+        AppendCommand(styles, AppCommand.SetPrintStyle, "印刷物(现代)");
+        AppendCommand(styles, AppCommand.SetRetroPrintStyle, "印刷物(复古)");
+        AppendPopup(menu, "样式(&Y)", styles);
+        return menu;
+    }
+
     private static nint BuildViewMenu()
     {
         var menu = CreateMenu(true);
         try
         {
             AppendCommand(menu, AppCommand.ToggleSidebar, "显示侧栏(&B)");
+            AppendCommand(menu, AppCommand.ViewTree, "树结构(&T)");
+            AppendCommand(menu, AppCommand.ViewList, "文档列表(&L)");
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ToggleFocusMode, "专注模式(&F)\tF11");
+            AppendCommand(menu, AppCommand.ShowStatusBar, "显示状态栏(&S)");
             AppendCommand(menu, AppCommand.ToggleSourceMode, "源码模式(&S)");
             return menu;
         }

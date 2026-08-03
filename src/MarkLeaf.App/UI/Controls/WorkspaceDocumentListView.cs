@@ -5,12 +5,13 @@ namespace MarkLeaf.UI.Controls;
 
 internal sealed class WorkspaceDocumentListView : Control
 {
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right };
+    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
     private readonly List<WorkspaceDocumentEntry> _documents = [];
     private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _visibleRows = [];
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _documentFont = new("Microsoft YaHei UI", 11F, FontStyle.Bold, GraphicsUnit.Point);
     private string? _selectedPath;
+    private string? _hoveredPath;
     private int _rowHeight;
 
     public WorkspaceDocumentListView()
@@ -21,7 +22,7 @@ internal sealed class WorkspaceDocumentListView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
-        BackColor = SystemColors.Window;
+        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
@@ -30,6 +31,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
     public event EventHandler<string>? DocumentActivated;
     public event EventHandler<WorkspaceDocumentContextEventArgs>? DocumentContextRequested;
+    public event EventHandler<WorkspaceBackgroundContextEventArgs>? BackgroundContextRequested;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -104,8 +106,16 @@ internal sealed class WorkspaceDocumentListView : Control
 
             if (PathEquals(document.FullPath, _selectedPath))
             {
-                using var selectionBrush = new SolidBrush(Color.FromArgb(232, 232, 232));
+                using var selectionBrush = new SolidBrush(
+                    PathEquals(document.FullPath, _hoveredPath)
+                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
+                        : Color.FromArgb(0xCC, 0xED, 0xD9));
                 eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
+            }
+            else if (PathEquals(document.FullPath, _hoveredPath))
+            {
+                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
             }
 
             DrawDocument(eventArgs.Graphics, document, bounds);
@@ -119,6 +129,11 @@ internal sealed class WorkspaceDocumentListView : Control
         var row = HitTestRow(eventArgs.Location);
         if (row is null)
         {
+            if (eventArgs.Button == MouseButtons.Right)
+            {
+                BackgroundContextRequested?.Invoke(this, new WorkspaceBackgroundContextEventArgs(
+                    PointToScreen(eventArgs.Location)));
+            }
             return;
         }
 
@@ -132,6 +147,28 @@ internal sealed class WorkspaceDocumentListView : Control
         else if (eventArgs.Button == MouseButtons.Left)
         {
             DocumentActivated?.Invoke(this, row.Value.Document.FullPath);
+        }
+    }
+
+    protected override void OnMouseMove(MouseEventArgs eventArgs)
+    {
+        base.OnMouseMove(eventArgs);
+        var row = HitTestRow(eventArgs.Location);
+        var hoveredPath = row?.Document.FullPath;
+        if (!PathEquals(hoveredPath, _hoveredPath))
+        {
+            _hoveredPath = hoveredPath;
+            Invalidate();
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs eventArgs)
+    {
+        base.OnMouseLeave(eventArgs);
+        if (_hoveredPath is not null)
+        {
+            _hoveredPath = null;
+            Invalidate();
         }
     }
 
@@ -205,7 +242,7 @@ internal sealed class WorkspaceDocumentListView : Control
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + ScaleForDpi(2);
         var metadataBounds = new Rectangle(
             bounds.Left + horizontalPadding,
-            bounds.Top + topPadding,
+            bounds.Top + topPadding + ScaleForDpi(4),
             availableWidth,
             metadataHeight);
         var modifiedText = WorkspaceDocumentTimeFormatter.Format(document.LastWriteTime, DateTime.Now);
@@ -245,7 +282,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
         var documentBounds = new Rectangle(
             metadataBounds.Left,
-            metadataBounds.Bottom + ScaleForDpi(5),
+            bounds.Top + topPadding + metadataHeight + ScaleForDpi(6),
             metadataBounds.Width,
             (int)Math.Ceiling(_documentFont.GetHeight(DeviceDpi)) + ScaleForDpi(2));
         DrawText(
@@ -356,5 +393,10 @@ internal sealed class WorkspaceDocumentContextEventArgs(
     Point screenPoint) : EventArgs
 {
     public WorkspaceDocumentEntry Document { get; } = document;
+    public Point ScreenPoint { get; } = screenPoint;
+}
+
+internal sealed class WorkspaceBackgroundContextEventArgs(Point screenPoint) : EventArgs
+{
     public Point ScreenPoint { get; } = screenPoint;
 }

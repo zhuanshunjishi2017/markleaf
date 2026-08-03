@@ -459,6 +459,19 @@ function handleMessage(value: unknown): void {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'setStyle') {
+          const style = payload.text === 'sans' || payload.text === 'print' || payload.text === 'retro-print'
+            ? payload.text
+            : 'serif'
+          editorMount.classList.remove('markleaf-style-sans', 'markleaf-style-print', 'markleaf-style-retro-print')
+          if (style === 'retro-print') {
+            editorMount.classList.add('markleaf-style-print', 'markleaf-style-retro-print')
+          } else if (style !== 'serif') {
+            editorMount.classList.add(`markleaf-style-${style}`)
+          }
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'exportSelection') {
           send('selectionExport', getSelectionExport(), message.requestId)
           break
