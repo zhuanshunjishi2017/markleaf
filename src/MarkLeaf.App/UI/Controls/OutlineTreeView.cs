@@ -1,5 +1,6 @@
 using MarkLeaf.Editor;
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 
 namespace MarkLeaf.UI.Controls;
 
@@ -19,6 +20,7 @@ internal sealed class OutlineTreeView : Control
     private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _arrowFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
     private int? _selectedPosition;
     private int? _hoveredPosition;
     private int _primaryRowHeight;
@@ -87,14 +89,17 @@ internal sealed class OutlineTreeView : Control
         var previousPrimary = _primaryFont;
         var previousSecondary = _secondaryFont;
         var previousSelected = _selectedFont;
+        var previousArrowFont = _arrowFont;
         _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _arrowFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
         previousPrimary.Dispose();
         previousSecondary.Dispose();
         previousSelected.Dispose();
+        previousArrowFont.Dispose();
         UpdateScrollBar();
         Invalidate();
     }
@@ -109,7 +114,7 @@ internal sealed class OutlineTreeView : Control
                 eventArgs.Graphics,
                 "暂无文档大纲",
                 _secondaryFont,
-                new Rectangle(ScaleForDpi(20), 0, ClientSize.Width - ScaleForDpi(24), _secondaryRowHeight));
+                new Rectangle(ScaleForDpi(24), 0, ClientSize.Width - ScaleForDpi(28), _secondaryRowHeight));
             return;
         }
         BuildVisibleRows();
@@ -120,26 +125,23 @@ internal sealed class OutlineTreeView : Control
                 continue;
             }
 
-            var selected = node.Item.Position == _selectedPosition;
-            if (selected)
+            var isSelected = node.Item.Position == _selectedPosition;
+            var isHovered = node.Item.Position == _hoveredPosition;
+            if (isHovered)
             {
-                using var selectionBrush = new SolidBrush(
-                    node.Item.Position == _hoveredPosition
-                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
-                        : Color.FromArgb(0xCC, 0xED, 0xD9));
-                eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
-            }
-            else if (node.Item.Position == _hoveredPosition)
-            {
-                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
-                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
+                using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
+                var bgBounds = new Rectangle(
+                    bounds.X + ScaleForDpi(4), bounds.Y,
+                    Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
             }
 
             var indent = ScaleForDpi(18) * node.Depth;
-            var expanderBounds = new Rectangle(ScaleForDpi(4) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
+            var expanderBounds = new Rectangle(ScaleForDpi(8) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
             {
-                DrawExpander(eventArgs.Graphics, expanderBounds, node.Expanded, selected);
+                DrawExpander(eventArgs.Graphics, expanderBounds, node.Expanded, isSelected);
             }
 
             var textBounds = new Rectangle(
@@ -148,12 +150,12 @@ internal sealed class OutlineTreeView : Control
                 Math.Max(
                     0,
                     ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0)
-                        - expanderBounds.Right - ScaleForDpi(4)),
+                        - expanderBounds.Right - ScaleForDpi(8)),
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
                 string.IsNullOrWhiteSpace(node.Item.Text) ? "(无标题)" : node.Item.Text,
-                selected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
+                isSelected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
                 textBounds);
         }
     }
@@ -169,7 +171,7 @@ internal sealed class OutlineTreeView : Control
         }
 
         var (node, _) = row.Value;
-        var expanderRight = ScaleForDpi(20) + ScaleForDpi(18) * node.Depth;
+        var expanderRight = ScaleForDpi(24) + ScaleForDpi(18) * node.Depth;
         if (eventArgs.X <= expanderRight && node.Children.Count > 0)
         {
             node.Expanded = !node.Expanded;
@@ -270,6 +272,7 @@ internal sealed class OutlineTreeView : Control
             _primaryFont.Dispose();
             _secondaryFont.Dispose();
             _selectedFont.Dispose();
+            _arrowFont.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -378,23 +381,14 @@ internal sealed class OutlineTreeView : Control
 
     private void DrawExpander(Graphics graphics, Rectangle bounds, bool expanded, bool selected)
     {
-        var center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-        var size = ScaleForDpi(4);
-        var points = expanded
-            ? new[]
-            {
-                new Point(center.X - size, center.Y - size / 2),
-                new Point(center.X + size, center.Y - size / 2),
-                new Point(center.X, center.Y + size),
-            }
-            : new[]
-            {
-                new Point(center.X - size / 2, center.Y - size),
-                new Point(center.X - size / 2, center.Y + size),
-                new Point(center.X + size, center.Y),
-            };
-        using var brush = new SolidBrush(SystemColors.ControlDarkDark);
-        graphics.FillPolygon(brush, points);
+        TextRenderer.DrawText(
+            graphics,
+            expanded ? "" : "",
+            _arrowFont,
+            bounds,
+            SystemColors.ControlDarkDark,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
     private void DrawNodeText(Graphics graphics, string text, Font font, Rectangle bounds)
@@ -407,6 +401,18 @@ internal sealed class OutlineTreeView : Control
             ForeColor,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                 | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+    }
+
+    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
+    {
+        var d = radius * 2;
+        var path = new GraphicsPath();
+        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);

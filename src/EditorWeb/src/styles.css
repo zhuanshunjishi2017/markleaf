@@ -16,6 +16,10 @@ body,
   margin: 0;
 }
 
+#editor {
+  cursor: text;
+}
+
 body {
   background: #ffffff;
 }
@@ -94,7 +98,7 @@ body {
   font-family: "Times New Roman", "宋体-简", "宋体", "Songti SC", SimSun, serif;
   font-size: 16px;
   line-height: 1.72;
-  caret-color: #237a4b;
+  caret-color: #E4AE0F;
   font-synthesis: weight style;
 }
 
@@ -105,14 +109,14 @@ body {
 .cm-editor::selection,
 .cm-content::selection,
 .cm-content *::selection {
-  background: #2ea263;
-  color: #ffffff;
+  background: #FCEFCD;
+  color: currentColor;
 }
 
 .cm-editor .cm-selectionBackground,
 .cm-editor.cm-focused .cm-selectionBackground {
-  background-color: #2ea263 !important;
-  color: #ffffff !important;
+  background-color: #FCEFCD !important;
+  color: currentColor !important;
 }
 
 .markleaf-document em {
@@ -172,7 +176,7 @@ body {
   margin-left: 0;
   padding-left: 1em;
   color: #57606a;
-  border-left: 3px solid #9ac5ac;
+  border-left: 3px solid #FCEFCD;
 }
 
 .markleaf-document hr {
@@ -265,7 +269,7 @@ body {
 }
 
 .markleaf-document a {
-  color: #237a4b;
+  color: #E4AE0F;
 }
 
 /* Alternate document presentation styles selected from the Format menu. */
@@ -480,7 +484,7 @@ body {
 }
 
 .ProseMirror-selectednode {
-  outline: 2px solid #79aa8d;
+  outline: 2px solid #FCEFCD;
 }
 
 .markleaf-image-node {
@@ -512,8 +516,8 @@ body {
   height: 12px;
   border: 2px solid #ffffff;
   border-radius: 50%;
-  background: #237a4b;
-  box-shadow: 0 0 0 1px #237a4b;
+  background: #E4AE0F;
+  box-shadow: 0 0 0 1px #E4AE0F;
 }
 
 .markleaf-image-node.ProseMirror-selectednode .markleaf-image-resize-handle,

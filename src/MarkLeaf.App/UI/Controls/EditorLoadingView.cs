@@ -27,10 +27,10 @@ internal sealed class EditorLoadingView : TableLayoutPanel
         {
             AutoSize = true,
             Anchor = AnchorStyles.None,
-            Text = "正在准备编辑器…",
             Font = new Font("Segoe UI", 16F, FontStyle.Regular),
             ForeColor = SystemColors.ControlText,
             Margin = new Padding(0, 0, 0, 10),
+            Visible = false,
         };
         _progress = new ProgressBar
         {
@@ -40,14 +40,15 @@ internal sealed class EditorLoadingView : TableLayoutPanel
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 32,
             Margin = new Padding(0, 0, 0, 12),
+            Visible = false,
         };
         _detail = new Label
         {
             AutoSize = true,
             Anchor = AnchorStyles.None,
-            Text = "WebView2 加载完成后，Markdown 文档将在此处显示。",
             Font = new Font("Segoe UI", 9F, FontStyle.Regular),
             ForeColor = SystemColors.GrayText,
+            Visible = false,
         };
         _retryButton = new Button
         {
@@ -71,17 +72,18 @@ internal sealed class EditorLoadingView : TableLayoutPanel
 
     public void ShowLoading(string title, string detail)
     {
-        _title.Text = title;
-        _detail.Text = detail;
-        _progress.Visible = true;
-        _progress.Style = ProgressBarStyle.Marquee;
+        _title.Visible = false;
+        _detail.Visible = false;
+        _progress.Visible = false;
         _retryButton.Visible = false;
     }
 
     public void ShowFailure(string detail)
     {
         _title.Text = "编辑器启动失败";
+        _title.Visible = true;
         _detail.Text = detail;
+        _detail.Visible = true;
         _progress.Visible = false;
         _retryButton.Visible = true;
     }

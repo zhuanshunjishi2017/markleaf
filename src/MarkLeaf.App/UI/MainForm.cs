@@ -46,6 +46,13 @@ internal sealed partial class MainForm : Form
     private int _effectiveDpi;
     private readonly SplitContainer _sidebarSplit;
     private StatusStrip? _statusStrip;
+    private readonly ToolStripButton _viewToggleButton = new("")
+    {
+        Font = new Font("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point),
+        AutoSize = false,
+        Width = 32,
+        Margin = new Padding(2, 0, 4, 0),
+    };
     private readonly ToolStripStatusLabel _statusLabel = new("正在准备编辑器");
     private readonly ToolStripStatusLabel _characterCountLabel = new("字数 0");
     private readonly ToolStripStatusLabel _blockTypeLabel = new("正文");
@@ -97,6 +104,13 @@ internal sealed partial class MainForm : Form
         _workspaceTree.ConfigureTypography(_effectiveDpi);
 
         Text = "MarkLeaf";
+        ShowIcon = true;
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "App", "App.ico");
+        if (File.Exists(iconPath))
+        {
+            try { Icon = new Icon(iconPath); }
+            catch { /* icon file may be malformed; title bar will use default */ }
+        }
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.Dpi;
         MinimumSize = new Size(900, 600);
@@ -283,6 +297,11 @@ internal sealed partial class MainForm : Form
         return _outlineTree;
     }
 
+    private void UpdateViewToggleIcon()
+    {
+        _viewToggleButton.Text = _workspaceListViewActive ? "" : "";
+    }
+
     private StatusStrip CreateStatusBar()
     {
         var strip = new StatusStrip
@@ -290,6 +309,10 @@ internal sealed partial class MainForm : Form
             SizingGrip = false,
             ShowItemToolTips = true,
         };
+        _viewToggleButton.Click += (_, _) => ToggleWorkspaceView();
+        _viewToggleButton.ToolTipText = "切换视图";
+        UpdateViewToggleIcon();
+        strip.Items.Add(_viewToggleButton);
         _statusLabel.Spring = true;
         _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
         strip.Items.Add(_statusLabel);
@@ -479,6 +502,9 @@ internal sealed partial class MainForm : Form
             HeadingLevel: _editorCommandStatus.HeadingLevel,
             BoldActive: _editorCommandStatus.Bold,
             ItalicActive: _editorCommandStatus.Italic,
+            UnderlineActive: _editorCommandStatus.Underline,
+            StrikeActive: _editorCommandStatus.Strike,
+            InlineCodeActive: _editorCommandStatus.InlineCode,
             LinkActive: _editorCommandStatus.Link,
             QuoteActive: _editorCommandStatus.Blockquote,
             CodeBlockActive: _editorCommandStatus.CodeBlock,
@@ -551,6 +577,9 @@ internal sealed partial class MainForm : Form
                 break;
             case AppCommand.SaveDocumentAs:
                 _ = SaveDocumentAsync(saveAs: true);
+                break;
+            case AppCommand.ExportDocument:
+                _ = ExportDocumentAsync();
                 break;
             case AppCommand.Cut:
                 _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: true);
@@ -785,6 +814,11 @@ internal sealed partial class MainForm : Form
             AppCommand.Redo => "redo",
             AppCommand.ToggleBold => "toggleBold",
             AppCommand.ToggleItalic => "toggleItalic",
+            AppCommand.ToggleUnderline => "toggleUnderline",
+            AppCommand.ToggleStrike => "toggleStrike",
+            AppCommand.ToggleInlineCode => "toggleCode",
+            AppCommand.PromoteHeading => "promoteHeading",
+            AppCommand.DemoteHeading => "demoteHeading",
             AppCommand.SetParagraph => "setParagraph",
             AppCommand.SetHeading1 => "setHeading1",
             AppCommand.SetHeading2 => "setHeading2",
@@ -834,6 +868,8 @@ internal sealed partial class MainForm : Form
     {
         return command is >= AppCommand.Undo and <= AppCommand.Replace
             || command is >= AppCommand.SetParagraph and <= AppCommand.DeleteTable
+            || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
+                or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command == AppCommand.ToggleSourceMode;
     }
 
@@ -864,6 +900,113 @@ internal sealed partial class MainForm : Form
             _document.Markdown = "段落命令";
         }
         LoadDocumentIntoEditor(_document);
+    }
+
+    private void ShowExportCompleteDialog(string fileName, string filePath, string folderPath)
+    {
+        var openButton = new TaskDialogButton("打开");
+        openButton.Click += (_, _) => ExternalLinkService.OpenLocal(filePath);
+
+        var openFolderButton = new TaskDialogButton("打开所在文件夹");
+        openFolderButton.Click += (_, _) => ExternalLinkService.OpenLocal(folderPath);
+
+        var page = new TaskDialogPage
+        {
+            Caption = "MarkLeaf",
+            Icon = TaskDialogIcon.Information,
+            Heading = "导出完成",
+            Text = $"{fileName}\n已导出到：\n{filePath}",
+            Buttons = { openButton, openFolderButton, TaskDialogButton.Close },
+        };
+
+        TaskDialog.ShowDialog(this, page);
+    }
+
+    private async Task ExportDocumentAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document is null)
+        {
+            return;
+        }
+
+        var docName = _document.FilePath is not null
+            ? Path.GetFileName(_document.FilePath)
+            : "未命名文档";
+        var defaultName = _document.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : "未命名文档";
+        using var dialog = new ExportDialog(docName, defaultName, _markdownStyle);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var options = dialog.Options;
+        if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
+        {
+            SetStatus("导出路径不能为空");
+            return;
+        }
+
+        var exportDir = Path.GetDirectoryName(options.OutputPath);
+        if (!string.IsNullOrWhiteSpace(exportDir) && !Directory.Exists(exportDir))
+        {
+            Directory.CreateDirectory(exportDir);
+        }
+
+        try
+        {
+            SetStatus("正在生成导出内容…");
+            var html = await _editorHost.RequestExportAsync(
+                options.Format,
+                options.Style,
+                options.HtmlHeader,
+                options.HtmlFooter);
+
+            if (string.IsNullOrEmpty(html))
+            {
+                SetStatus("导出失败：编辑器未返回内容");
+                return;
+            }
+
+            var outputPath = options.OutputPath;
+            if (!Path.HasExtension(outputPath))
+            {
+                outputPath = Path.ChangeExtension(
+                    outputPath,
+                    options.Format == "pdf" ? ".pdf" : ".html");
+            }
+
+            if (options.Format == "pdf")
+            {
+                SetStatus("正在生成 PDF…");
+                var pdfBytes = await _editorHost.PrintExportToPdfAsync(
+                    html,
+                    options.PaperSize,
+                    options.Landscape,
+                    options.MarginTop,
+                    options.MarginBottom,
+                    options.MarginLeft,
+                    options.MarginRight);
+                await File.WriteAllBytesAsync(outputPath, pdfBytes);
+            }
+            else
+            {
+                await File.WriteAllTextAsync(outputPath, html, System.Text.Encoding.UTF8);
+            }
+
+            SetStatus("文档已导出");
+            _logger.Info($"Document exported: {options.Format}/{options.Style} → {outputPath}");
+
+            var exportedName = Path.GetFileName(outputPath);
+            ShowExportCompleteDialog(exportedName, outputPath, exportDir!);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.Error($"Export failed: {options.OutputPath}.", exception);
+            MessageBox.Show(this, "导出失败。\r\n\r\n" + exception.Message, "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void InsertLink()

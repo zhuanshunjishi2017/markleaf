@@ -27,6 +27,7 @@ public static class EditorProtocol
         "pasteImage",
         "findResult",
         "selectionExport",
+        "exportContent",
         "error",
     ];
 
@@ -157,6 +158,7 @@ public static class EditorProtocol
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
             "findResult" => HasFindResultPayload(payload),
             "selectionExport" => HasSelectionExportPayload(payload),
+            "exportContent" => HasProperty(payload, "html", JsonValueKind.String),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")

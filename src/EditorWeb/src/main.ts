@@ -476,6 +476,21 @@ function handleMessage(value: unknown): void {
           send('selectionExport', getSelectionExport(), message.requestId)
           break
         }
+        if (payload.command === 'exportDocument') {
+          if (typeof payload.text === 'string') {
+            let options: { format?: unknown; style?: unknown; header?: unknown; footer?: unknown }
+            try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
+            const style = typeof options.style === 'string'
+              && (options.style === 'sans' || options.style === 'print' || options.style === 'retro-print')
+              ? options.style : 'serif'
+            const format = typeof options.format === 'string' ? options.format : 'html'
+            const header = typeof options.header === 'string' ? options.header : ''
+            const footer = typeof options.footer === 'string' ? options.footer : ''
+            const html = generateExportHtml(style, format, header, footer)
+            send('exportContent', { html }, message.requestId)
+          }
+          break
+        }
         const coordinates = typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
           ? { left: payload.clientX, top: payload.clientY }
           : undefined
@@ -514,3 +529,388 @@ window.addEventListener('unhandledrejection', () => {
 })
 
 send('ready')
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function generateExportHtml(style: string, format: string, header: string, footer: string): string {
+  const rawBodyHtml = sourceMode
+    ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
+    : editor.getHTML()
+  const bodyHtml = rawBodyHtml.replace(
+    /https:\/\/assets\.local\/image\?path=([^"']+)/g,
+    (_, encoded: string) => {
+      try { return decodeURIComponent(encoded) } catch { return encoded }
+    },
+  )
+  const isPdf = format === 'pdf'
+  const isPrint = style === 'print' || style === 'retro-print'
+  const isSans = style === 'sans'
+  const rootClass = [
+    isPrint ? 'markleaf-style-print' : '',
+    style === 'retro-print' ? 'markleaf-style-retro-print' : '',
+    isSans ? 'markleaf-style-sans' : '',
+    isPdf ? 'markleaf-export-pdf' : '',
+  ].filter(Boolean).join(' ')
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarkLeaf 导出文档</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #ffffff; }
+.markleaf-document {
+  width: min(100%, 820px);
+  margin: 0 auto;
+  padding: 44px 56px 96px;
+  outline: none;
+  font-family: "Times New Roman", "\\5B8B\\4F53-\\7B80", "\\5B8B\\4F53", "Songti SC", SimSun, serif;
+  font-size: 16px;
+  line-height: 1.72;
+}
+.markleaf-document h1, .markleaf-document h2, .markleaf-document h3,
+.markleaf-document h4, .markleaf-document h5, .markleaf-document h6 {
+  color: #1f2328;
+  line-height: 1.3;
+  margin: 1.7em 0 0.65em;
+}
+.markleaf-document h1 {
+  font-size: 2rem;
+  margin-top: 0;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid #d8dee4;
+}
+.markleaf-document h2 { font-size: 1.5rem; }
+.markleaf-document h3 { font-size: 1.25rem; }
+.markleaf-document h4 { font-size: 1.1rem; }
+.markleaf-document h5 { font-size: 1rem; }
+.markleaf-document h6 { font-size: 0.95rem; }
+.markleaf-document p, .markleaf-document ul, .markleaf-document ol,
+.markleaf-document blockquote, .markleaf-document pre, .markleaf-document table {
+  margin: 0.85em 0;
+}
+.markleaf-document blockquote {
+  margin-left: 0;
+  padding-left: 1em;
+  color: #57606a;
+  border-left: 3px solid #FCEFCD;
+}
+.markleaf-document hr {
+  height: 1px;
+  margin: 1.6em 0;
+  border: 0;
+  background: #d8dee4;
+}
+.markleaf-document code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
+  background: #f3f4f5;
+}
+.markleaf-document pre {
+  overflow-x: auto;
+  padding: 16px 18px;
+  border: 1px solid #d8dee4;
+  border-radius: 4px;
+  background: #f6f8fa;
+}
+.markleaf-document pre code { padding: 0; background: transparent; }
+.markleaf-document table {
+  width: 100%;
+  border-collapse: collapse;
+  line-height: 1.42;
+}
+.markleaf-document th, .markleaf-document td {
+  padding: 3px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid #d0d7de;
+}
+.markleaf-document table p { margin: 0; }
+.markleaf-document th { font-weight: 600; background: #f6f8fa; }
+.markleaf-document ul[data-type='taskList'] {
+  margin: 0.65em 0;
+  padding-left: 0;
+  list-style: none;
+}
+.markleaf-document ul[data-type='taskList'] > li {
+  display: flex;
+  gap: 0.55em;
+  align-items: flex-start;
+}
+.markleaf-document ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  margin-top: 0.25em;
+  line-height: 1;
+  user-select: none;
+}
+.markleaf-document ul[data-type='taskList'] > li > label input { display: block; margin: 0; }
+.markleaf-document ul[data-type='taskList'] > li > div { flex: 1 1 auto; min-width: 0; }
+.markleaf-document ul[data-type='taskList'] > li > div > p { margin: 0; }
+.markleaf-document ul[data-type='taskList'] > li + li { margin-top: 0.28em; }
+.markleaf-document a { color: #E4AE0F; }
+.markleaf-document em { font-style: italic; }
+.markleaf-image-frame { display: inline-block; max-width: 100%; vertical-align: top; }
+.markleaf-image-content { display: block; max-width: 100%; }
+
+/* ---- sans ---- */
+.markleaf-style-sans .markleaf-document {
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+/* ---- print (shared by modern and retro) ---- */
+.markleaf-style-print .markleaf-document {
+  color: #000000;
+  font-family: "Times New Roman", "\\5B8B\\4F53-\\7B80", "\\5B8B\\4F53", serif;
+  font-size: 16px;
+  line-height: 1.75;
+}
+.markleaf-style-print .markleaf-document h1,
+.markleaf-style-print .markleaf-document h2,
+.markleaf-style-print .markleaf-document h3,
+.markleaf-style-print .markleaf-document h4,
+.markleaf-style-print .markleaf-document h5,
+.markleaf-style-print .markleaf-document h6 {
+  color: #000000;
+  font-family: "Helvetica", "\\6C49\\4EEA\\4E2D\\9ED1\\7B80", "\\9ED1\\4F53", sans-serif;
+  font-weight: normal;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 2;
+}
+.markleaf-style-print .markleaf-document h1 {
+  font-size: 24px;
+  text-align: center;
+  line-height: 3;
+}
+.markleaf-style-print .markleaf-document h2 {
+  font-size: 20px;
+  text-align: center;
+  line-height: 2;
+}
+.markleaf-style-print .markleaf-document h3 {
+  font-size: 16px;
+  text-align: left;
+  line-height: 2;
+}
+.markleaf-style-print .markleaf-document h4,
+.markleaf-style-print .markleaf-document h5,
+.markleaf-style-print .markleaf-document h6 {
+  font-size: 14px;
+  text-align: left;
+  line-height: 1.75;
+}
+.markleaf-style-print .markleaf-document p {
+  margin: 0;
+  text-indent: 2em;
+  text-align: justify;
+  font-family: "Times New Roman", "\\5B8B\\4F53-\\7B80", "\\5B8B\\4F53", serif;
+}
+.markleaf-style-print .markleaf-document strong,
+.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "\\6C49\\4EEA\\4E2D\\9ED1\\7B80", "\\9ED1\\4F53", sans-serif;
+  font-weight: normal;
+}
+.markleaf-style-print .markleaf-document em,
+.markleaf-style-print .markleaf-document i {
+  font-family: "Times New Roman", "\\6977\\4F53", "KaiTi", serif;
+  font-style: italic;
+  font-synthesis: none;
+}
+.markleaf-style-print .markleaf-document blockquote {
+  margin: 0.5em 0;
+  padding: 0 1em;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+  box-decoration-break: clone;
+}
+.markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "\\4EFF\\5B8B", "FangSong", serif;
+  color: #000000;
+  text-indent: 2em;
+}
+.markleaf-style-print .markleaf-document a {
+  color: #808080;
+  text-decoration: underline;
+}
+.markleaf-style-print .markleaf-document table {
+  width: auto;
+  margin: 1em auto;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+}
+.markleaf-style-print .markleaf-document table p { text-indent: 0; }
+.markleaf-style-print .markleaf-document th,
+.markleaf-style-print .markleaf-document td {
+  border: 1px solid #000000;
+  background: transparent;
+}
+.markleaf-style-print .markleaf-document code,
+.markleaf-style-print .markleaf-document pre code {
+  font-family: "Courier New", monospace;
+  line-height: 1.25;
+}
+.markleaf-style-print .markleaf-document pre {
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  background: #f0f0f0;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-decoration-break: clone;
+}
+.markleaf-style-print .markleaf-document pre code {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.markleaf-style-print .markleaf-document ul,
+.markleaf-style-print .markleaf-document ol {
+  margin-left: 0;
+  padding-left: 2em;
+}
+.markleaf-style-print .markleaf-document li { padding-left: 0; }
+.markleaf-style-print .markleaf-document li > p { text-indent: 0 !important; }
+.markleaf-style-print .markleaf-document li > ul,
+.markleaf-style-print .markleaf-document li > ol {
+  margin-left: 0;
+  padding-left: 1em;
+}
+.markleaf-style-print .markleaf-document hr {
+  width: 7em;
+  height: 1px;
+  margin: 1.5em auto;
+  background: #000000;
+}
+
+/* ---- modern-print only (excludes retro) ---- */
+.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document h1 {
+  font-family: "Times New Roman", "\\65B9\\6B63\\5C0F\\6807\\5B8B\\7B80\\4F53", "\\534E\\6587\\4E2D\\5B8B", serif;
+  font-weight: bold;
+  font-synthesis: none;
+}
+.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document code:not(pre code) {
+  background: transparent;
+}
+
+/* ---- retro-print (inherits all print layout, overrides only typography) ---- */
+.markleaf-style-retro-print .markleaf-document,
+.markleaf-style-retro-print .markleaf-document p {
+  font-family: KingHwaOldSong, "\\5B8B\\4F53-\\7B80", "\\5B8B\\4F53", serif;
+}
+.markleaf-style-retro-print .markleaf-document h1,
+.markleaf-style-retro-print .markleaf-document h2,
+.markleaf-style-retro-print .markleaf-document h3,
+.markleaf-style-retro-print .markleaf-document h4,
+.markleaf-style-retro-print .markleaf-document h5,
+.markleaf-style-retro-print .markleaf-document h6,
+.markleaf-style-retro-print .markleaf-document strong,
+.markleaf-style-retro-print .markleaf-document b {
+  font-family: "\\6C47\\6587\\6E2F\\9ED1", "\\6C49\\4EEA\\4E2D\\9ED1\\7B80", "\\9ED1\\4F53", sans-serif;
+  font-weight: normal;
+}
+.markleaf-style-retro-print .markleaf-document h1 {
+  font-family: "\\671D\\534E\\6807\\9898A", "\\6C47\\6587\\6E2F\\9ED1", "\\6C49\\4EEA\\4E2D\\9ED1\\7B80", "\\9ED1\\4F53", sans-serif;
+}
+.markleaf-style-retro-print .markleaf-document em,
+.markleaf-style-retro-print .markleaf-document i {
+  font-family: "\\6C47\\6587\\6B63\\6977", "\\6977\\4F53", "KaiTi", serif;
+  font-style: normal;
+  font-synthesis: none;
+}
+.markleaf-style-retro-print .markleaf-document blockquote p {
+  font-family: "\\6C47\\6587\\4EFF\\5B8B", "\\4EFF\\5B8B", "FangSong", serif;
+}
+.markleaf-style-retro-print .markleaf-document code,
+.markleaf-style-retro-print .markleaf-document pre code {
+  font-family: "\\671D\\534E\\6253\\5B57\\673A", "Courier New", monospace;
+}
+.markleaf-style-retro-print .markleaf-document code:not(pre code) { background: transparent; }
+.markleaf-style-retro-print .markleaf-document pre {
+  background: transparent;
+  border: 1px dashed #000000;
+  border-radius: 0;
+  box-decoration-break: clone;
+}
+.markleaf-style-retro-print .markleaf-document ul,
+.markleaf-style-retro-print .markleaf-document ol,
+.markleaf-style-retro-print .markleaf-document li,
+.markleaf-style-retro-print .markleaf-document li > p,
+.markleaf-style-retro-print .markleaf-document li::marker {
+  font-family: KingHwaOldSong, "\\5B8B\\4F53-\\7B80", "\\5B8B\\4F53", serif !important;
+}
+
+/* ---- PDF export: let print-dialog margins control spacing ---- */
+.markleaf-export-pdf .markleaf-document {
+  padding-left: 5px;
+  padding-right: 5px;
+  width: 100%;
+}
+.markleaf-export-pdf.markleaf-style-print .markleaf-document {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+.markleaf-export-pdf .export-header,
+.markleaf-export-pdf .export-footer {
+  padding-left: 5px;
+  padding-right: 5px;
+  width: 100%;
+}
+
+/* PDF export: prevent horizontal overflow (scrollbars) and wrap long lines. */
+.markleaf-export-pdf .markleaf-document pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  overflow-x: hidden;
+  box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document pre code {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+.markleaf-export-pdf .markleaf-document blockquote {
+  box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document table {
+  width: 100%;
+  table-layout: fixed;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.export-header, .export-footer {
+  width: min(100%, 820px);
+  margin: 0 auto;
+  padding: 8px 56px;
+}
+.export-header { border-bottom: 1px solid #d8dee4; }
+.export-footer { border-top: 1px solid #d8dee4; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div id="export-root"${rootClass ? ` class="${rootClass}"` : ''}>
+${header ? `<div class="export-header">${header}</div>` : ''}
+<div class="markleaf-document">${bodyHtml}</div>
+${footer ? `<div class="export-footer">${footer}</div>` : ''}
+</div>
+</body>
+</html>`
+}

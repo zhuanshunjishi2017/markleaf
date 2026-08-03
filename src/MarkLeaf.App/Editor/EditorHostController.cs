@@ -23,6 +23,8 @@ internal sealed class EditorHostController : IDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, TaskCompletionSource<EditorSelectionExport>> _selectionExportRequests =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource<string>> _exportRequests =
+        new(StringComparer.Ordinal);
     private readonly Stopwatch _initializationTimer = new();
     private CancellationTokenSource? _initializationCancellation;
     private CancellationTokenSource? _readyTimeoutCancellation;
@@ -273,6 +275,134 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
+    public async Task<string> RequestExportAsync(
+        string format,
+        string style,
+        string header,
+        string footer,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var requestId = Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _exportRequests.Add(requestId, completion);
+        var options = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            format,
+            style,
+            header,
+            footer,
+        });
+        EnqueueOrRun(() =>
+        {
+            var registeredId = _session.RegisterRequest("exportContent", requestId);
+            Post("command", new { command = "exportDocument", text = options }, registeredId);
+        });
+
+        using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            timeoutCancellation.Token,
+            cancellationToken);
+        using var registration = linkedCancellation.Token.Register(
+            () => completion.TrySetCanceled(linkedCancellation.Token));
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            _exportRequests.Remove(requestId);
+        }
+    }
+
+    public async Task<byte[]> PrintExportToPdfAsync(
+        string html,
+        string paperSize,
+        bool landscape,
+        float marginTop,
+        float marginBottom,
+        float marginLeft,
+        float marginRight,
+        CancellationToken cancellationToken = default)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(tempPath, html, System.Text.Encoding.UTF8, cancellationToken);
+
+        try
+        {
+            using var printForm = new Form
+            {
+                Width = 1,
+                Height = 1,
+                ShowInTaskbar = false,
+                FormBorderStyle = FormBorderStyle.None,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-32000, -32000),
+            };
+            var printView = new WebView2 { Dock = DockStyle.Fill };
+            printForm.Controls.Add(printView);
+            printForm.Show();
+
+            var environment = await CoreWebView2Environment.CreateAsync();
+            await printView.EnsureCoreWebView2Async(environment);
+            var core = printView.CoreWebView2
+                ?? throw new InvalidOperationException("PDF print WebView2 failed to initialize.");
+
+            var loadComplete = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<CoreWebView2NavigationCompletedEventArgs>? handler = null;
+            handler = (_, args) =>
+            {
+                core.NavigationCompleted -= handler;
+                if (args.IsSuccess)
+                    loadComplete.TrySetResult(true);
+                else
+                    loadComplete.TrySetException(
+                        new InvalidOperationException($"PDF export page failed to load: {args.WebErrorStatus}"));
+            };
+            core.NavigationCompleted += handler;
+            core.Navigate(new Uri(tempPath).AbsoluteUri);
+            await loadComplete.Task.WaitAsync(cancellationToken);
+
+            var settings = core.Environment.CreatePrintSettings();
+            var (widthIn, heightIn) = PaperSizeToInches(paperSize, landscape);
+            settings.PageWidth = widthIn;
+            settings.PageHeight = heightIn;
+            settings.MarginTop = marginTop / 25.4f;
+            settings.MarginBottom = marginBottom / 25.4f;
+            settings.MarginLeft = marginLeft / 25.4f;
+            settings.MarginRight = marginRight / 25.4f;
+            settings.ShouldPrintBackgrounds = true;
+
+            var pdfTempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.pdf");
+            await core.PrintToPdfAsync(pdfTempPath, settings);
+            var pdfBytes = await File.ReadAllBytesAsync(pdfTempPath, cancellationToken);
+            try { File.Delete(pdfTempPath); } catch { }
+            return pdfBytes;
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch { }
+        }
+    }
+
+    private static (double Width, double Height) PaperSizeToInches(string name, bool landscape)
+    {
+        var (wMm, hMm) = name switch
+        {
+            "A3" => (297.0, 420.0),
+            "A5" => (148.0, 210.0),
+            "Letter" => (215.9, 279.4),
+            "Legal" => (215.9, 355.6),
+            "B4" => (250.0, 353.0),
+            "B5" => (176.0, 250.0),
+            _ => (210.0, 297.0),
+        };
+        var widthIn = (landscape ? hMm : wMm) / 25.4;
+        var heightIn = (landscape ? wMm : hMm) / 25.4;
+        return (widthIn, heightIn);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -298,6 +428,11 @@ internal sealed class EditorHostController : IDisposable
             request.TrySetCanceled();
         }
         _selectionExportRequests.Clear();
+        foreach (var request in _exportRequests.Values)
+        {
+            request.TrySetCanceled();
+        }
+        _exportRequests.Clear();
         DetachCoreEvents();
     }
 
@@ -602,6 +737,19 @@ internal sealed class EditorHostController : IDisposable
                 else
                 {
                     _logger.Warning("Rejected unmatched editor selection export response.");
+                }
+                break;
+            case "exportContent":
+                if (_session.CompleteRequest(message.RequestId, "exportContent")
+                    && message.RequestId is not null
+                    && _exportRequests.TryGetValue(message.RequestId, out var exportContentCompletion))
+                {
+                    exportContentCompletion.TrySetResult(
+                        message.Payload.GetProperty("html").GetString() ?? string.Empty);
+                }
+                else
+                {
+                    _logger.Warning("Rejected unmatched editor export content response.");
                 }
                 break;
             case "error":

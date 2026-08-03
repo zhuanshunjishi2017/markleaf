@@ -30,6 +30,7 @@ export type EditorMessage = {
     | 'pasteImage'
     | 'findResult'
     | 'selectionExport'
+    | 'exportContent'
     | 'error'
   requestId?: string
   documentId: string

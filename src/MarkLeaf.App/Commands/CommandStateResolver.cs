@@ -16,7 +16,7 @@ public static class CommandStateResolver
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
-            AppCommand.ExportDocument => new(false),
+            AppCommand.ExportDocument => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.Undo => new(context.EditorReady && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && context.CanRedo),
             AppCommand.Cut or AppCommand.Copy or AppCommand.CopyMarkdown or AppCommand.CopyPlainText =>
@@ -33,7 +33,9 @@ public static class CommandStateResolver
             AppCommand.PromoteHeading or AppCommand.DemoteHeading => new(context.EditorReady),
             AppCommand.ToggleBold => new(context.EditorReady, context.BoldActive),
             AppCommand.ToggleItalic => new(context.EditorReady, context.ItalicActive),
-            AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode => new(context.EditorReady),
+            AppCommand.ToggleUnderline => new(context.EditorReady, context.UnderlineActive),
+            AppCommand.ToggleStrike => new(context.EditorReady, context.StrikeActive),
+            AppCommand.ToggleInlineCode => new(context.EditorReady, context.InlineCodeActive),
             AppCommand.InsertLink => new(context.EditorReady, context.LinkActive),
             AppCommand.InsertImage => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.RotateImageClockwise => new(context.EditorReady && context.ImageSelected),

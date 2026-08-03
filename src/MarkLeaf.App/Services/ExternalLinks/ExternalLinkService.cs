@@ -19,4 +19,9 @@ internal static class ExternalLinkService
 
         Process.Start(new ProcessStartInfo(value) { UseShellExecute = true });
     }
+
+    public static void OpenLocal(string path)
+    {
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
 }

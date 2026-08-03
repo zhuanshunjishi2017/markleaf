@@ -10,6 +10,9 @@ internal sealed record EditorCommandStatus(
     int? HeadingLevel,
     bool Bold,
     bool Italic,
+    bool Underline,
+    bool Strike,
+    bool InlineCode,
     bool Link,
     bool Blockquote,
     bool CodeBlock,
@@ -22,7 +25,7 @@ internal sealed record EditorCommandStatus(
     bool SourceMode)
 {
     public static EditorCommandStatus Empty { get; } = new(
-        false, false, false, false, null, false, false, false, false, false, false, false,
+        false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
         false, false, null, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
@@ -37,6 +40,9 @@ internal sealed record EditorCommandStatus(
                 : payload.GetProperty("headingLevel").GetInt32(),
             payload.GetProperty("bold").GetBoolean(),
             payload.GetProperty("italic").GetBoolean(),
+            payload.GetProperty("underline").GetBoolean(),
+            payload.GetProperty("strike").GetBoolean(),
+            payload.GetProperty("code").GetBoolean(),
             payload.GetProperty("link").GetBoolean(),
             payload.GetProperty("blockquote").GetBoolean(),
             payload.GetProperty("codeBlock").GetBoolean(),

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI.Controls;
@@ -18,12 +19,13 @@ internal sealed class WorkspaceTreeView : Control
     private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
     private readonly List<(WorkspaceNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _treeFont = new("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _rootTitleFont = new("Microsoft YaHei UI", 12F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _iconFont = new("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _arrowFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
     private WorkspaceNode? _root;
     private string? _placeholderText = "暂未打开工作区";
     private string? _selectedPath;
     private string? _hoveredPath;
-    private bool _rootTitleHovered;
     private int _rowHeight;
     private int _rootTitleHeight;
     private WorkspaceDocumentSortOrder _sortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
@@ -68,12 +70,18 @@ internal sealed class WorkspaceTreeView : Control
     {
         var previousFont = _treeFont;
         var previousRootFont = _rootTitleFont;
+        var previousIconFont = _iconFont;
+        var previousArrowFont = _arrowFont;
         _treeFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _rootTitleFont = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold, GraphicsUnit.Point);
+        _rootTitleFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+        _iconFont = new Font("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
+        _arrowFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
         _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.75F);
-        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 2F);
+        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + ScaleForDpi(4);
         previousFont.Dispose();
         previousRootFont.Dispose();
+        previousIconFont.Dispose();
+        previousArrowFont.Dispose();
         UpdateScrollBar();
         Invalidate();
     }
@@ -226,7 +234,7 @@ internal sealed class WorkspaceTreeView : Control
         if (_root is null)
         {
             DrawText(eventArgs.Graphics, _placeholderText ?? string.Empty,
-                new Rectangle(ScaleForDpi(12), 0, Math.Max(0, ClientSize.Width - ScaleForDpi(24)), _rowHeight),
+                new Rectangle(ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
                 SystemColors.GrayText);
             return;
         }
@@ -241,15 +249,11 @@ internal sealed class WorkspaceTreeView : Control
                 _rootTitleHeight);
             if (titleBounds.Bottom > 0 && titleBounds.Top < ClientSize.Height)
             {
-                if (_rootTitleHovered)
-                {
-                    using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
-                    eventArgs.Graphics.FillRectangle(hoverBrush, titleBounds);
-                }
                 DrawText(eventArgs.Graphics, _root.Entry.Name,
-                    new Rectangle(ScaleForDpi(20), titleBounds.Top,
-                        Math.Max(0, titleBounds.Width - ScaleForDpi(24)), titleBounds.Height),
-                    ForeColor, _rootTitleFont);
+                    new Rectangle(ScaleForDpi(24), titleBounds.Top + ScaleForDpi(4),
+                        Math.Max(0, titleBounds.Width - ScaleForDpi(28)),
+                        titleBounds.Height - ScaleForDpi(8)),
+                    Color.FromArgb(0x55, 0x55, 0x55), _rootTitleFont);
             }
         }
         foreach (var (node, bounds) in _visibleRows)
@@ -258,30 +262,43 @@ internal sealed class WorkspaceTreeView : Control
             {
                 continue;
             }
-            if (PathEquals(node.Entry.FullPath, _selectedPath))
+            var isSelected = !node.Entry.IsDirectory && PathEquals(node.Entry.FullPath, _selectedPath);
+            var isHovered = PathEquals(node.Entry.FullPath, _hoveredPath);
+            var bgBounds = new Rectangle(
+                bounds.X + ScaleForDpi(4), bounds.Y,
+                Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
+            if (isSelected && isHovered)
             {
-                using var selectionBrush = new SolidBrush(
-                    PathEquals(node.Entry.FullPath, _hoveredPath)
-                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
-                        : Color.FromArgb(0xCC, 0xED, 0xD9));
-                eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
+                using var brush = new SolidBrush(Color.FromArgb(0xD0, 0xD0, 0xD0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
             }
-            else if (PathEquals(node.Entry.FullPath, _hoveredPath))
+            else if (isSelected)
             {
-                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
-                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
+                using var brush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
+            }
+            else if (isHovered)
+            {
+                using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
             }
 
             var indent = ScaleForDpi(18) * node.Depth;
-            var expanderBounds = new Rectangle(ScaleForDpi(4) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
+            var expanderBounds = new Rectangle(ScaleForDpi(8) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
             if (node.Entry.IsDirectory)
             {
                 DrawExpander(eventArgs.Graphics, expanderBounds, node.Expanded);
             }
+            var iconAdvance = ScaleForDpi(18);
+            var iconBounds = new Rectangle(expanderBounds.Right, bounds.Top, iconAdvance, bounds.Height);
+            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, ForeColor, _iconFont);
             var textBounds = new Rectangle(
-                expanderBounds.Right,
+                iconBounds.Right,
                 bounds.Top,
-                Math.Max(0, bounds.Width - expanderBounds.Right - ScaleForDpi(4)),
+                Math.Max(0, bounds.Width - iconBounds.Right - ScaleForDpi(8)),
                 bounds.Height);
             DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, ForeColor);
 
@@ -295,7 +312,7 @@ internal sealed class WorkspaceTreeView : Control
         if (_root is not null && RootTitleBounds().Contains(eventArgs.Location))
         {
             Focus();
-            if (eventArgs.Button is MouseButtons.Left or MouseButtons.Right)
+            if (eventArgs.Button == MouseButtons.Right)
             {
                 WorkspaceMenuRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
                     _root.Entry,
@@ -315,7 +332,6 @@ internal sealed class WorkspaceTreeView : Control
         }
         Focus();
         var node = row.Value.Node;
-        SelectedPath = node.Entry.FullPath;
         if (eventArgs.Button == MouseButtons.Right)
         {
             NodeContextRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
@@ -339,6 +355,7 @@ internal sealed class WorkspaceTreeView : Control
         }
         else
         {
+            SelectedPath = node.Entry.FullPath;
             NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(node.Entry));
         }
     }
@@ -346,12 +363,10 @@ internal sealed class WorkspaceTreeView : Control
     protected override void OnMouseMove(MouseEventArgs eventArgs)
     {
         base.OnMouseMove(eventArgs);
-        var rootTitleHovered = _root is not null && RootTitleBounds().Contains(eventArgs.Location);
         var row = HitTestRow(eventArgs.Location);
-        var hoveredPath = rootTitleHovered ? null : row?.Node.Entry.FullPath;
-        if (_rootTitleHovered != rootTitleHovered || !PathEquals(hoveredPath, _hoveredPath))
+        var hoveredPath = row?.Node.Entry.FullPath;
+        if (!PathEquals(hoveredPath, _hoveredPath))
         {
-            _rootTitleHovered = rootTitleHovered;
             _hoveredPath = hoveredPath;
             Invalidate();
         }
@@ -360,10 +375,9 @@ internal sealed class WorkspaceTreeView : Control
     protected override void OnMouseLeave(EventArgs eventArgs)
     {
         base.OnMouseLeave(eventArgs);
-        if (_hoveredPath is not null || _rootTitleHovered)
+        if (_hoveredPath is not null)
         {
             _hoveredPath = null;
-            _rootTitleHovered = false;
             Invalidate();
         }
     }
@@ -397,10 +411,24 @@ internal sealed class WorkspaceTreeView : Control
         switch (eventArgs.KeyCode)
         {
             case Keys.Up:
-                SelectedPath = nodes[Math.Max(0, index <= 0 ? 0 : index - 1)].Entry.FullPath;
+                for (var i = Math.Max(0, index - 1); i >= 0; i--)
+                {
+                    if (!nodes[i].Entry.IsDirectory)
+                    {
+                        SelectedPath = nodes[i].Entry.FullPath;
+                        break;
+                    }
+                }
                 break;
             case Keys.Down:
-                SelectedPath = nodes[Math.Min(nodes.Length - 1, index < 0 ? 0 : index + 1)].Entry.FullPath;
+                for (var i = Math.Min(nodes.Length - 1, index + 1); i < nodes.Length; i++)
+                {
+                    if (!nodes[i].Entry.IsDirectory)
+                    {
+                        SelectedPath = nodes[i].Entry.FullPath;
+                        break;
+                    }
+                }
                 break;
             case Keys.Left when index >= 0 && nodes[index].Entry.IsDirectory:
                 nodes[index].Expanded = false;
@@ -431,6 +459,8 @@ internal sealed class WorkspaceTreeView : Control
         {
             _treeFont.Dispose();
             _rootTitleFont.Dispose();
+            _iconFont.Dispose();
+            _arrowFont.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -578,25 +608,26 @@ internal sealed class WorkspaceTreeView : Control
         }
     }
 
+    private static string GetIconChar(WorkspaceNode node)
+    {
+        if (node.Entry.IsDirectory)
+        {
+            return node.Expanded ? "" : "";
+        }
+        var ext = Path.GetExtension(node.Entry.Name);
+        return string.Equals(ext, ".txt", StringComparison.OrdinalIgnoreCase) ? "" : "";
+    }
+
     private void DrawExpander(Graphics graphics, Rectangle bounds, bool expanded)
     {
-        var center = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-        var size = ScaleForDpi(4);
-        var points = expanded
-            ? new[]
-            {
-                new Point(center.X - size, center.Y - size / 2),
-                new Point(center.X + size, center.Y - size / 2),
-                new Point(center.X, center.Y + size),
-            }
-            : new[]
-            {
-                new Point(center.X - size / 2, center.Y - size),
-                new Point(center.X - size / 2, center.Y + size),
-                new Point(center.X + size, center.Y),
-            };
-        using var brush = new SolidBrush(SystemColors.ControlDarkDark);
-        graphics.FillPolygon(brush, points);
+        TextRenderer.DrawText(
+            graphics,
+            expanded ? "" : "",
+            _arrowFont,
+            bounds,
+            SystemColors.ControlDarkDark,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
     private Rectangle RootTitleBounds() => new(
@@ -619,6 +650,18 @@ internal sealed class WorkspaceTreeView : Control
 
     private static bool PathEquals(string? left, string? right)
         => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
+    {
+        var d = radius * 2;
+        var path = new GraphicsPath();
+        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
 
     private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);
 }

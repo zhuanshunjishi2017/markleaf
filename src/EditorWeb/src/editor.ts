@@ -259,6 +259,9 @@ export type EditorCommandState = {
   headingLevel: number | null
   bold: boolean
   italic: boolean
+  underline: boolean
+  strike: boolean
+  code: boolean
   link: boolean
   blockquote: boolean
   codeBlock: boolean
@@ -470,6 +473,9 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     headingLevel,
     bold: editor.isActive('bold'),
     italic: editor.isActive('italic'),
+    underline: editor.isActive('underline'),
+    strike: editor.isActive('strike'),
+    code: editor.isActive('code'),
     link: editor.isActive('link'),
     blockquote: editor.isActive('blockquote'),
     codeBlock: editor.isActive('codeBlock'),
@@ -581,8 +587,11 @@ export function executeEditorCommand(
     setHeading4: () => chain.setHeading({ level: 4 }).run(),
     setHeading5: () => chain.setHeading({ level: 5 }).run(),
     setHeading6: () => chain.setHeading({ level: 6 }).run(),
+    toggleUnderline: () => chain.toggleUnderline().run(),
     toggleStrike: () => chain.toggleStrike().run(),
     toggleCode: () => chain.toggleCode().run(),
+    promoteHeading: () => promoteHeadingLevel(editor),
+    demoteHeading: () => demoteHeadingLevel(editor),
     toggleBulletList: () => chain.toggleBulletList().run(),
     toggleOrderedList: () => chain.toggleOrderedList().run(),
     toggleTaskList: () => chain.toggleTaskList().run(),
@@ -736,6 +745,32 @@ function toggleInlineMark(
     return chain.toggleBold().setTextSelection(cursor).run()
   }
   return chain.toggleItalic().setTextSelection(cursor).run()
+}
+
+function promoteHeadingLevel(editor: Editor): boolean {
+  if (editor.isActive('heading', { level: 1 })) {
+    return editor.chain().focus().setParagraph().run()
+  }
+  const levels = [1, 2, 3, 4, 5, 6] as const
+  for (let i = 1; i < levels.length; i++) {
+    if (editor.isActive('heading', { level: levels[i] })) {
+      return editor.chain().focus().toggleHeading({ level: levels[i - 1]! }).run()
+    }
+  }
+  return false
+}
+
+function demoteHeadingLevel(editor: Editor): boolean {
+  const levels = [1, 2, 3, 4, 5, 6] as const
+  for (let i = 0; i < levels.length - 1; i++) {
+    if (editor.isActive('heading', { level: levels[i] })) {
+      return editor.chain().focus().toggleHeading({ level: levels[i + 1]! }).run()
+    }
+  }
+  if (editor.isActive('heading', { level: 6 })) {
+    return false
+  }
+  return editor.chain().focus().toggleHeading({ level: 1 }).run()
 }
 
 export function rotateSelectedImageClockwise(editor: Editor): boolean {

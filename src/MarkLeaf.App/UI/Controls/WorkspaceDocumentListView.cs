@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI.Controls;
@@ -9,10 +10,14 @@ internal sealed class WorkspaceDocumentListView : Control
     private readonly List<WorkspaceDocumentEntry> _documents = [];
     private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _visibleRows = [];
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _documentFont = new("Microsoft YaHei UI", 11F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _documentFont = new("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _folderIconFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+    private string? _workspaceName;
     private string? _selectedPath;
     private string? _hoveredPath;
     private int _rowHeight;
+    private int _rootTitleHeight;
 
     public WorkspaceDocumentListView()
     {
@@ -50,6 +55,13 @@ internal sealed class WorkspaceDocumentListView : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string PlaceholderText { get; set; } = "暂无可用文档";
 
+    public void SetWorkspaceName(string? name)
+    {
+        _workspaceName = name;
+        UpdateScrollBar();
+        Invalidate();
+    }
+
     public void SetDocuments(IReadOnlyList<WorkspaceDocumentEntry> documents)
     {
         _documents.Clear();
@@ -68,13 +80,20 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         var previousMetadata = _metadataFont;
         var previousDocument = _documentFont;
+        var previousFolderIcon = _folderIconFont;
+        var previousRootTitle = _rootTitleFont;
         _metadataFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
-        _documentFont = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold, GraphicsUnit.Point);
-        var verticalPadding = ScaleForDpi(30);
+        _documentFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _folderIconFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+        _rootTitleFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + ScaleForDpi(4);
+        var verticalPadding = ScaleForDpi(21);
         _rowHeight = (int)Math.Ceiling(
             _metadataFont.GetHeight(dpi) + _documentFont.GetHeight(dpi) + verticalPadding);
         previousMetadata.Dispose();
         previousDocument.Dispose();
+        previousFolderIcon.Dispose();
+        previousRootTitle.Dispose();
         UpdateScrollBar();
         Invalidate();
     }
@@ -83,17 +102,39 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         base.OnPaint(eventArgs);
         eventArgs.Graphics.Clear(BackColor);
-        if (_documents.Count == 0)
+        if (_documents.Count == 0 && _workspaceName is null)
         {
             DrawText(
                 eventArgs.Graphics,
                 PlaceholderText,
                 _metadataFont,
-                new Rectangle(ScaleForDpi(12), 0, Math.Max(0, ClientSize.Width - ScaleForDpi(24)), _rowHeight),
+                new Rectangle(ScaleForDpi(16), ScaleForDpi(8), Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
                 SystemColors.GrayText,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
             return;
+        }
+
+        if (_workspaceName is not null)
+        {
+            var titleBounds = new Rectangle(
+                0,
+                -_scrollBar.Value,
+                ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
+                _rootTitleHeight);
+            if (titleBounds.Bottom > 0 && titleBounds.Top < ClientSize.Height)
+            {
+                DrawText(
+                    eventArgs.Graphics,
+                    _workspaceName,
+                    _rootTitleFont,
+                    new Rectangle(ScaleForDpi(14), titleBounds.Top + ScaleForDpi(4),
+                        Math.Max(0, titleBounds.Width - ScaleForDpi(18)),
+                        titleBounds.Height - ScaleForDpi(4)),
+                    Color.FromArgb(0x55, 0x55, 0x55),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
+                        | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            }
         }
 
         BuildVisibleRows();
@@ -104,18 +145,28 @@ internal sealed class WorkspaceDocumentListView : Control
                 continue;
             }
 
-            if (PathEquals(document.FullPath, _selectedPath))
+            var isSelected = PathEquals(document.FullPath, _selectedPath);
+            var isHovered = PathEquals(document.FullPath, _hoveredPath);
+            var bgBounds = new Rectangle(
+                bounds.X + ScaleForDpi(4), bounds.Y,
+                Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
+            if (isSelected && isHovered)
             {
-                using var selectionBrush = new SolidBrush(
-                    PathEquals(document.FullPath, _hoveredPath)
-                        ? Color.FromArgb(0x8B, 0xDE, 0xB1)
-                        : Color.FromArgb(0xCC, 0xED, 0xD9));
-                eventArgs.Graphics.FillRectangle(selectionBrush, bounds);
+                using var brush = new SolidBrush(Color.FromArgb(0xD0, 0xD0, 0xD0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
             }
-            else if (PathEquals(document.FullPath, _hoveredPath))
+            else if (isSelected)
             {
-                using var hoverBrush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
-                eventArgs.Graphics.FillRectangle(hoverBrush, bounds);
+                using var brush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
+            }
+            else if (isHovered)
+            {
+                using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
+                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.FillPath(brush, path);
             }
 
             DrawDocument(eventArgs.Graphics, document, bounds);
@@ -230,6 +281,8 @@ internal sealed class WorkspaceDocumentListView : Control
         {
             _metadataFont.Dispose();
             _documentFont.Dispose();
+            _folderIconFont.Dispose();
+            _rootTitleFont.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -237,9 +290,10 @@ internal sealed class WorkspaceDocumentListView : Control
     private void DrawDocument(Graphics graphics, WorkspaceDocumentEntry document, Rectangle bounds)
     {
         var horizontalPadding = ScaleForDpi(10);
-        var topPadding = ScaleForDpi(6);
+        var topPadding = ScaleForDpi(3);
         var availableWidth = Math.Max(0, bounds.Width - horizontalPadding * 2);
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + ScaleForDpi(2);
+        var iconAdvance = ScaleForDpi(14);
         var metadataBounds = new Rectangle(
             bounds.Left + horizontalPadding,
             bounds.Top + topPadding + ScaleForDpi(4),
@@ -253,16 +307,29 @@ internal sealed class WorkspaceDocumentListView : Control
             Size.Empty,
             TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
         var gap = ScaleForDpi(8);
-        var folderBounds = new Rectangle(
+        var iconBounds = new Rectangle(
             metadataBounds.Left,
             metadataBounds.Top,
-            Math.Max(0, metadataBounds.Width - modifiedWidth - gap),
+            iconAdvance,
+            metadataBounds.Height);
+        var folderBounds = new Rectangle(
+            metadataBounds.Left + iconAdvance,
+            metadataBounds.Top,
+            Math.Max(0, metadataBounds.Width - modifiedWidth - gap - iconAdvance),
             metadataBounds.Height);
         var modifiedBounds = new Rectangle(
-            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth),
+            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth - ScaleForDpi(4)),
             metadataBounds.Top,
             Math.Min(modifiedWidth, metadataBounds.Width),
             metadataBounds.Height);
+        DrawText(
+            graphics,
+            "",
+            _folderIconFont,
+            iconBounds,
+            SystemColors.GrayText,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix
+                | TextFormatFlags.SingleLine);
         DrawText(
             graphics,
             document.FolderName,
@@ -282,7 +349,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
         var documentBounds = new Rectangle(
             metadataBounds.Left,
-            bounds.Top + topPadding + metadataHeight + ScaleForDpi(6),
+            bounds.Top + topPadding + metadataHeight + ScaleForDpi(4),
             metadataBounds.Width,
             (int)Math.Ceiling(_documentFont.GetHeight(DeviceDpi)) + ScaleForDpi(2));
         DrawText(
@@ -298,12 +365,12 @@ internal sealed class WorkspaceDocumentListView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = -_scrollBar.Value;
-        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
+        var top = (_workspaceName is null ? ScaleForDpi(8) : _rootTitleHeight) - _scrollBar.Value;
+        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0) - ScaleForDpi(8);
         foreach (var document in _documents)
         {
-            _visibleRows.Add((document, new Rectangle(0, top, width, _rowHeight)));
-            top += _rowHeight;
+            _visibleRows.Add((document, new Rectangle(ScaleForDpi(4), top, width, _rowHeight)));
+            top += _rowHeight + ScaleForDpi(2);
         }
     }
 
@@ -322,7 +389,8 @@ internal sealed class WorkspaceDocumentListView : Control
 
     private void UpdateScrollBar()
     {
-        var contentHeight = _documents.Count * _rowHeight;
+        var titleOffset = _workspaceName is null ? ScaleForDpi(8) : _rootTitleHeight;
+        var contentHeight = titleOffset + _documents.Count * (_rowHeight + ScaleForDpi(2)) - ScaleForDpi(2);
         _scrollBar.Visible = contentHeight > ClientSize.Height;
         _scrollBar.Minimum = 0;
         _scrollBar.LargeChange = Math.Max(1, ClientSize.Height);
@@ -383,6 +451,18 @@ internal sealed class WorkspaceDocumentListView : Control
         TextFormatFlags flags)
     {
         TextRenderer.DrawText(graphics, text, font, bounds, color, flags);
+    }
+
+    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
+    {
+        var d = radius * 2;
+        var path = new GraphicsPath();
+        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);

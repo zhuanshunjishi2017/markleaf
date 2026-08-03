@@ -1,14 +1,65 @@
+# Build outputs
 **/bin/
 **/obj/
 **/node_modules/
 **/dist/
+**/packages/
+
+# IDE and editors
 .vs/
 .idea/
+.vscode/
 *.user
 *.suo
+*.code-workspace
+*.DotSettings
+*.DotSettings.user
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Logs and temp
 *.log
+*.tmp
+*.tmp_proj
+*.vspscc
+*.vssscc
+
+# Environment
+.env*
+*.env
+
+# Test outputs
 TestResults/
+tests/TestData/*.assets/
+
+# Build artifacts
 artifacts/
 .artifacts/
 .pnpm-store/
+
+# AI agent files
+.claude/
+.codex-build/
+docs/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.cursorrules
+.codebuddy/
+.windsurf/
+.roo/
+.aider*
+.trae/
+.augment/
+.cline/
+.open-repo/
+.github/copilot-instructions.md
+.github/.copilot*
+
+# App resources (generated)
+src/MarkLeaf.App/Resources/App/
+
+# Prototype
 src/MarkLeaf.Prototype/EditorWeb/
