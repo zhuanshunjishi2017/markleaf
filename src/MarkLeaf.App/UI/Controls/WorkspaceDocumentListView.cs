@@ -11,11 +11,12 @@ internal sealed class WorkspaceDocumentListView : Control
     private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _visibleRows = [];
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _documentFont = new("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
-    private Font _folderIconFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _folderIconFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
     private string? _workspaceName;
     private string? _selectedPath;
     private string? _hoveredPath;
+    private string? _contextMenuPath;
     private int _rowHeight;
     private int _rootTitleHeight;
 
@@ -84,7 +85,7 @@ internal sealed class WorkspaceDocumentListView : Control
         var previousRootTitle = _rootTitleFont;
         _metadataFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
         _documentFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
-        _folderIconFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+        _folderIconFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _rootTitleFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
         _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + ScaleForDpi(4);
         var verticalPadding = ScaleForDpi(21);
@@ -162,11 +163,20 @@ internal sealed class WorkspaceDocumentListView : Control
                 using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
                 eventArgs.Graphics.FillPath(brush, path);
             }
-            else if (isHovered)
+            else if (isHovered || PathEquals(document.FullPath, _contextMenuPath))
             {
                 using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
                 using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
                 eventArgs.Graphics.FillPath(brush, path);
+            }
+
+            if (PathEquals(document.FullPath, _contextMenuPath))
+            {
+                using var pen = new Pen(Color.FromArgb(0x55, 0x55, 0x55), 2);
+                using var borderPath = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                eventArgs.Graphics.DrawPath(pen, borderPath);
+                eventArgs.Graphics.SmoothingMode = SmoothingMode.Default;
             }
 
             DrawDocument(eventArgs.Graphics, document, bounds);
@@ -188,15 +198,17 @@ internal sealed class WorkspaceDocumentListView : Control
             return;
         }
 
-        SelectedPath = row.Value.Document.FullPath;
         if (eventArgs.Button == MouseButtons.Right)
         {
+            _contextMenuPath = row.Value.Document.FullPath;
+            Invalidate();
             DocumentContextRequested?.Invoke(this, new WorkspaceDocumentContextEventArgs(
                 row.Value.Document,
                 PointToScreen(eventArgs.Location)));
         }
         else if (eventArgs.Button == MouseButtons.Left)
         {
+            SelectedPath = row.Value.Document.FullPath;
             DocumentActivated?.Invoke(this, row.Value.Document.FullPath);
         }
     }
@@ -287,6 +299,13 @@ internal sealed class WorkspaceDocumentListView : Control
         base.Dispose(disposing);
     }
 
+    public void ClearContextMenuHighlight()
+    {
+        if (_contextMenuPath is null) return;
+        _contextMenuPath = null;
+        Invalidate();
+    }
+
     private void DrawDocument(Graphics graphics, WorkspaceDocumentEntry document, Rectangle bounds)
     {
         var horizontalPadding = ScaleForDpi(10);
@@ -324,7 +343,7 @@ internal sealed class WorkspaceDocumentListView : Control
             metadataBounds.Height);
         DrawText(
             graphics,
-            "",
+            SystemIconProvider.FolderIcon,
             _folderIconFont,
             iconBounds,
             SystemColors.GrayText,

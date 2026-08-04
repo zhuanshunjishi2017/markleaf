@@ -20,7 +20,7 @@ internal sealed class OutlineTreeView : Control
     private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
-    private Font _arrowFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
     private int? _selectedPosition;
     private int? _hoveredPosition;
     private int _primaryRowHeight;
@@ -93,7 +93,7 @@ internal sealed class OutlineTreeView : Control
         _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
-        _arrowFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+        _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
         previousPrimary.Dispose();
@@ -383,7 +383,7 @@ internal sealed class OutlineTreeView : Control
     {
         TextRenderer.DrawText(
             graphics,
-            expanded ? "" : "",
+            expanded ? SystemIconProvider.DownArrow : SystemIconProvider.RightArrow,
             _arrowFont,
             bounds,
             SystemColors.ControlDarkDark,

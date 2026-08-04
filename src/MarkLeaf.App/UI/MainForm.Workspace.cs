@@ -193,6 +193,7 @@ internal sealed partial class MainForm
                 case WorkspacePopupCommand.Refresh: await RefreshWorkspaceViewsAsync(); break;
                 case WorkspacePopupCommand.CloseFolder: CloseWorkspace(); break;
             }
+            ClearWorkspaceContextHighlight();
         }
         finally { NativeMethods.DestroyMenu(menu); }
     }
@@ -512,6 +513,7 @@ internal sealed partial class MainForm
                     await DeleteWorkspaceEntryAsync(entry);
                     break;
             }
+            ClearWorkspaceContextHighlight();
         }
         finally
         {
@@ -569,6 +571,12 @@ internal sealed partial class MainForm
         {
             ShowWorkspaceOperationError(exception);
         }
+    }
+
+    private void ClearWorkspaceContextHighlight()
+    {
+        _workspaceTree.ClearContextMenuHighlight();
+        _workspaceDocumentList.ClearContextMenuHighlight();
     }
 
     private WorkspacePopupCommand? ShowNativeWorkspaceMenu(nint menu, Point screenPoint)

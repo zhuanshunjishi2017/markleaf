@@ -48,7 +48,7 @@ internal sealed partial class MainForm : Form
     private StatusStrip? _statusStrip;
     private readonly ToolStripButton _viewToggleButton = new("")
     {
-        Font = new Font("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point),
+        Font = new Font(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point),
         AutoSize = false,
         Width = 32,
         Margin = new Padding(2, 0, 4, 0),
@@ -299,7 +299,9 @@ internal sealed partial class MainForm : Form
 
     private void UpdateViewToggleIcon()
     {
-        _viewToggleButton.Text = _workspaceListViewActive ? "" : "";
+        _viewToggleButton.Text = _workspaceListViewActive
+            ? SystemIconProvider.ListViewIcon
+            : SystemIconProvider.TreeViewIcon;
     }
 
     private StatusStrip CreateStatusBar()
@@ -748,30 +750,36 @@ internal sealed partial class MainForm : Form
 
     private void ShowShortcutHelp()
     {
-        const string shortcuts =
-            "文件\r\n" +
-            "Ctrl+N  新建    Ctrl+O  打开    Ctrl+S  保存\r\n" +
-            "Ctrl+Shift+S  另存为\r\n\r\n" +
-            "编辑\r\n" +
-            "Ctrl+Z  撤销    Ctrl+Y  重做\r\n" +
-            "Ctrl+F  查找    Ctrl+H  替换\r\n\r\n" +
-            "格式\r\n" +
-            "Ctrl+B  粗体    Ctrl+I  斜体    Ctrl+K  插入链接\r\n" +
-            "Ctrl+1..6  标题级别\r\n\r\n" +
-            "视图\r\n" +
-            "F11  专注模式\r\n\r\n" +
-            "需要编辑器或文档的命令将在相应功能接入后启用。";
-        MessageBox.Show(this, shortcuts, "MarkLeaf 快捷键", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        using var dialog = new ShortcutDialog();
+        dialog.ShowDialog(this);
     }
 
     private void ShowAbout()
     {
-        MessageBox.Show(
-            this,
-            "MarkLeaf\r\n\r\nWindows 原生轻量化 Markdown 编辑器\r\n阶段 6：表格、任务列表与图片",
-            "关于 MarkLeaf",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
+        var displayName = FetchGitHubDisplayName();
+        using var dialog = new AboutDialog(displayName);
+        dialog.ShowDialog(this);
+    }
+
+    private static string? FetchGitHubDisplayName()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("MarkLeaf");
+            var response = client.GetStringAsync("https://api.github.com/users/zhuanshunjishi2017")
+                .GetAwaiter().GetResult();
+            using var doc = System.Text.Json.JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("name", out var name) && name.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return name.GetString();
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 
     private void SetStatus(string text)

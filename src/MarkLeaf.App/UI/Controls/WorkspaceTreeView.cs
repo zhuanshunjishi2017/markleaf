@@ -20,12 +20,13 @@ internal sealed class WorkspaceTreeView : Control
     private readonly List<(WorkspaceNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _treeFont = new("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
-    private Font _iconFont = new("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _arrowFont = new("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _iconFont = new(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
     private WorkspaceNode? _root;
     private string? _placeholderText = "暂未打开工作区";
     private string? _selectedPath;
     private string? _hoveredPath;
+    private string? _contextMenuPath;
     private int _rowHeight;
     private int _rootTitleHeight;
     private WorkspaceDocumentSortOrder _sortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
@@ -74,8 +75,8 @@ internal sealed class WorkspaceTreeView : Control
         var previousArrowFont = _arrowFont;
         _treeFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _rootTitleFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
-        _iconFont = new Font("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
-        _arrowFont = new Font("Segoe Fluent Icons", 8F, FontStyle.Regular, GraphicsUnit.Point);
+        _iconFont = new Font(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
+        _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.75F);
         _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + ScaleForDpi(4);
         previousFont.Dispose();
@@ -279,11 +280,20 @@ internal sealed class WorkspaceTreeView : Control
                 using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
                 eventArgs.Graphics.FillPath(brush, path);
             }
-            else if (isHovered)
+            else if (isHovered || PathEquals(node.Entry.FullPath, _contextMenuPath))
             {
                 using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
                 using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
                 eventArgs.Graphics.FillPath(brush, path);
+            }
+
+            if (PathEquals(node.Entry.FullPath, _contextMenuPath))
+            {
+                using var pen = new Pen(Color.FromArgb(0x55, 0x55, 0x55), 2);
+                using var borderPath = CreateRoundedRect(bgBounds, ScaleForDpi(8));
+                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                eventArgs.Graphics.DrawPath(pen, borderPath);
+                eventArgs.Graphics.SmoothingMode = SmoothingMode.Default;
             }
 
             var indent = ScaleForDpi(18) * node.Depth;
@@ -334,6 +344,8 @@ internal sealed class WorkspaceTreeView : Control
         var node = row.Value.Node;
         if (eventArgs.Button == MouseButtons.Right)
         {
+            _contextMenuPath = node.Entry.FullPath;
+            Invalidate();
             NodeContextRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
                 node.Entry,
                 PointToScreen(eventArgs.Location)));
@@ -463,6 +475,13 @@ internal sealed class WorkspaceTreeView : Control
             _arrowFont.Dispose();
         }
         base.Dispose(disposing);
+    }
+
+    public void ClearContextMenuHighlight()
+    {
+        if (_contextMenuPath is null) return;
+        _contextMenuPath = null;
+        Invalidate();
     }
 
     private void ToggleNode(WorkspaceNode node)
@@ -612,17 +631,21 @@ internal sealed class WorkspaceTreeView : Control
     {
         if (node.Entry.IsDirectory)
         {
-            return node.Expanded ? "" : "";
+            return node.Expanded
+                ? SystemIconProvider.FolderExpandedIcon
+                : SystemIconProvider.FolderCollapsedIcon;
         }
         var ext = Path.GetExtension(node.Entry.Name);
-        return string.Equals(ext, ".txt", StringComparison.OrdinalIgnoreCase) ? "" : "";
+        return string.Equals(ext, ".txt", StringComparison.OrdinalIgnoreCase)
+            ? SystemIconProvider.TextFileIcon
+            : SystemIconProvider.MarkdownFileIcon;
     }
 
     private void DrawExpander(Graphics graphics, Rectangle bounds, bool expanded)
     {
         TextRenderer.DrawText(
             graphics,
-            expanded ? "" : "",
+            expanded ? SystemIconProvider.DownArrow : SystemIconProvider.RightArrow,
             _arrowFont,
             bounds,
             SystemColors.ControlDarkDark,
