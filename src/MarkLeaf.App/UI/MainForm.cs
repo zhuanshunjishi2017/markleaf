@@ -8,6 +8,7 @@ using MarkLeaf.Editor;
 using MarkLeaf.Native;
 using MarkLeaf.Services.Logging;
 using MarkLeaf.Services.ExternalLinks;
+using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
@@ -37,6 +38,8 @@ internal sealed partial class MainForm : Form
     private MarkdownDocument? _document;
     private FileSystemWatcher? _documentWatcher;
     private FileSystemWatcher? _workspaceWatcher;
+    private readonly RecoveryService _recoveryService;
+    private readonly System.Windows.Forms.Timer _recoveryTimer = new() { Interval = 30_000 };
     private readonly WorkspaceChangeDebouncer _workspaceChangeDebouncer;
     private CancellationTokenSource? _workspaceLoadCancellation;
     private string? _workspaceRoot;
@@ -96,6 +99,10 @@ internal sealed partial class MainForm : Form
         _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
             TimeSpan.FromMilliseconds(500),
             QueueWorkspaceRefresh);
+        _recoveryService = new RecoveryService(paths.RecoveryDirectory, logger);
+        _recoveryService.SnapshotSaved += (_, time) =>
+            BeginInvoke(() => SetStatus($"快照已于 {time.LocalDateTime:HH:mm:ss} 保存"));
+        _recoveryTimer.Tick += OnRecoveryTimerTick;
         _workspaceTree = new WorkspaceTreeView();
         _workspaceDocumentList = new WorkspaceDocumentListView();
         _outlineTree = new OutlineTreeView();
@@ -227,6 +234,7 @@ internal sealed partial class MainForm : Form
         _editorHost.Ready += (_, _) => BeginEditorSmokeIfRequested();
         _editorHost.Ready += (_, _) => LoadInitialDocumentIfNeeded();
         _editorHost.Ready += async (_, _) => await BeginDocumentSmokeIfRequestedAsync();
+        _editorHost.Ready += (_, _) => HandleSmokeCrashExit();
         _editorHost.DocumentLoaded += (_, _) => ContinueEditorSmokeAfterLoad();
         _editorHost.DocumentLoaded += (_, _) => BeginEditorCommandSmokeIfRequested();
         _editorHost.DocumentLoaded += async (_, _) => await ContinueDocumentSmokeAfterLoadAsync();
@@ -254,6 +262,8 @@ internal sealed partial class MainForm : Form
             _ = ShowWorkspaceEntryMenuAsync(args.Entry, args.ScreenPoint);
         _workspaceTree.WorkspaceMenuRequested += (_, args) =>
             _ = ShowWorkspaceFolderMenuAtAsync(args.ScreenPoint);
+        _workspaceTree.FilesDropped += (_, args) =>
+            _ = ImportWorkspaceFilesAsync(args.Paths);
         return _workspaceTree;
     }
 
@@ -285,6 +295,8 @@ internal sealed partial class MainForm : Form
                 args.ScreenPoint);
         _workspaceDocumentList.BackgroundContextRequested += (_, args) =>
             _ = ShowWorkspaceFolderMenuAtAsync(args.ScreenPoint);
+        _workspaceDocumentList.FilesDropped += (_, args) =>
+            _ = ImportWorkspaceFilesAsync(args.Paths);
         content.Controls.Add(_workspaceDocumentList);
 
         layout.Controls.Add(content, 0, 0);
@@ -375,6 +387,8 @@ internal sealed partial class MainForm : Form
             StopWatchingWorkspace();
             _externalChangeTimer.Dispose();
             _workspaceChangeDebouncer.Dispose();
+            _recoveryTimer.Dispose();
+            _recoveryService.Dispose();
             _workspaceLoadCancellation?.Dispose();
             _editorHost?.Dispose();
             _menuService.Dispose();
@@ -630,6 +644,9 @@ internal sealed partial class MainForm : Form
             case AppCommand.ShowAbout:
                 ShowAbout();
                 break;
+            case AppCommand.RecoverUnsavedFiles:
+                RecoverUnsavedFiles();
+                break;
             case AppCommand.InsertLink:
                 InsertLink();
                 break;
@@ -780,6 +797,129 @@ internal sealed partial class MainForm : Form
         }
 
         return null;
+    }
+
+    private async void OnRecoveryTimerTick(object? sender, EventArgs eventArgs)
+    {
+        if (_document is null || !_document.IsDirty || _editorHost?.IsDocumentLoaded != true) return;
+        try
+        {
+            _logger.Info("Recovery timer: requesting snapshot...");
+            var snapshot = await _editorHost.RequestSnapshotAsync();
+            await _recoveryService.WriteSnapshotAsync(
+                RecoverySnapshot.FromDocument(_document, snapshot.Markdown));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning("Recovery timer: snapshot request timed out.");
+        }
+        catch (Exception exception)
+        {
+            _logger.Warning($"Recovery timer: {exception.Message}");
+        }
+    }
+
+    private void RecoverUnsavedFiles()
+    {
+        var pending = RecoveryService.GetPendingRecoveries(_paths.RecoveryDirectory, _logger);
+        if (pending.Count == 0)
+        {
+            MessageBox.Show(this, "未发现需要恢复的文件。", "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new RecoveryDialog(pending);
+        dialog.ShowDialog(this);
+
+        switch (dialog.Choice)
+        {
+            case RecoveryChoice.Restore when dialog.SelectedSnapshot is not null:
+                SaveAndOpenRecovery(dialog.SelectedSnapshot);
+                break;
+            case RecoveryChoice.Discard:
+                foreach (var snapshot in pending)
+                {
+                    foreach (var file in Directory.GetFiles(
+                        _paths.RecoveryDirectory,
+                        $"doc-*-{snapshot.DocumentId:N}.*"))
+                    {
+                        try { File.Delete(file); } catch { }
+                    }
+                }
+                break;
+        }
+    }
+
+    private async void SaveAndOpenRecovery(RecoverySnapshot recovery)
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "Markdown 文件 (*.md)|*.md|所有文件 (*.*)|*.*",
+            AddExtension = true,
+            DefaultExt = "md",
+            RestoreDirectory = true,
+            OverwritePrompt = true,
+            Title = "另存恢复文档",
+            FileName = recovery.DocumentPath is not null
+                ? Path.GetFileName(recovery.DocumentPath)
+                : (recovery.DisplayName ?? "未命名.md"),
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _documentOperationInProgress = true;
+        try
+        {
+            var targetPath = dialog.FileName;
+            await File.WriteAllTextAsync(targetPath, recovery.Markdown, System.Text.Encoding.UTF8);
+
+            foreach (var file in Directory.GetFiles(
+                _paths.RecoveryDirectory,
+                $"doc-*-{recovery.DocumentId:N}.*"))
+            {
+                try { File.Delete(file); } catch { }
+            }
+
+            StopWatchingDocument();
+            var opened = await _documentFileService.OpenAsync(targetPath);
+            _document = opened;
+            _workspaceTree.SelectedPath = opened.FilePath;
+            _workspaceDocumentList.SelectedPath = opened.FilePath;
+            LoadDocumentIntoEditor(opened);
+            StartWatchingDocument(opened.FilePath!);
+            _logger.Info($"Recovery snapshot saved and opened: {targetPath}.");
+            SetStatus("已恢复未保存文档");
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Failed to save recovery snapshot.", exception);
+            MessageBox.Show(this,
+                "无法保存恢复文档。\r\n\r\n" + exception.Message,
+                "MarkLeaf",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _documentOperationInProgress = false;
+        }
+    }
+
+    private void HandleSmokeCrashExit()
+    {
+        if (!_options.SmokeCrashExit) return;
+        _logger.Info("Simulating abnormal shutdown for crash recovery test.");
+        SetStatus("将模拟异常退出（5 秒后）");
+
+        var timer = new System.Windows.Forms.Timer { Interval = 5000 };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            timer.Dispose();
+            _logger.Info("Simulating crash exit now.");
+            Environment.FailFast("MarkLeaf smoke crash exit.");
+        };
+        timer.Start();
     }
 
     private void SetStatus(string text)

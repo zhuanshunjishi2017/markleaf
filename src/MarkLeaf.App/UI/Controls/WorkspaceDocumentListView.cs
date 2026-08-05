@@ -28,6 +28,7 @@ internal sealed class WorkspaceDocumentListView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
+        AllowDrop = true;
         BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
@@ -38,6 +39,7 @@ internal sealed class WorkspaceDocumentListView : Control
     public event EventHandler<string>? DocumentActivated;
     public event EventHandler<WorkspaceDocumentContextEventArgs>? DocumentContextRequested;
     public event EventHandler<WorkspaceBackgroundContextEventArgs>? BackgroundContextRequested;
+    public event EventHandler<WorkspaceFilesDroppedEventArgs>? FilesDropped;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -299,6 +301,23 @@ internal sealed class WorkspaceDocumentListView : Control
         base.Dispose(disposing);
     }
 
+    protected override void OnDragEnter(DragEventArgs eventArgs)
+    {
+        base.OnDragEnter(eventArgs);
+        eventArgs.Effect = eventArgs.Data?.GetDataPresent(DataFormats.FileDrop) == true
+            && GetDroppableFiles(eventArgs.Data).Length > 0
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    protected override void OnDragDrop(DragEventArgs eventArgs)
+    {
+        base.OnDragDrop(eventArgs);
+        var paths = GetDroppableFiles(eventArgs.Data);
+        if (paths.Length == 0) return;
+        FilesDropped?.Invoke(this, new WorkspaceFilesDroppedEventArgs(paths));
+    }
+
     public void ClearContextMenuHighlight()
     {
         if (_contextMenuPath is null) return;
@@ -485,6 +504,13 @@ internal sealed class WorkspaceDocumentListView : Control
     }
 
     private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);
+
+    private static string[] GetDroppableFiles(IDataObject? data)
+    {
+        if (data?.GetDataPresent(DataFormats.FileDrop) != true) return [];
+        var paths = data.GetData(DataFormats.FileDrop) as string[];
+        return paths?.Where(WorkspaceTreeView.IsDroppableFile).Take(32).ToArray() ?? [];
+    }
 }
 
 internal sealed class WorkspaceDocumentContextEventArgs(

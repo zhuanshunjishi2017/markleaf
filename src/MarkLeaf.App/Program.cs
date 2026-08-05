@@ -26,6 +26,7 @@ internal static class Program
                 $"Runtime: MarkLeaf {typeof(Program).Assembly.GetName().Version}; " +
                 $".NET {Environment.Version}; {Environment.OSVersion.VersionString}.");
             var settings = settingsService.LoadAsync().GetAwaiter().GetResult();
+
             Application.Run(new MainForm(options, paths, settings, settingsService, logger));
             logger.Info("MarkLeaf stopped normally.");
         }

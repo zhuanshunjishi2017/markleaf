@@ -579,6 +579,46 @@ internal sealed partial class MainForm
         _workspaceDocumentList.ClearContextMenuHighlight();
     }
 
+    private async Task ImportWorkspaceFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (string.IsNullOrWhiteSpace(_workspaceRoot)) return;
+        var importedCount = 0;
+        foreach (var path in paths)
+        {
+            try
+            {
+                var fileName = Path.GetFileName(path);
+                var destination = Path.Combine(_workspaceRoot, fileName);
+                if (PathEquals(destination, path) || File.Exists(destination))
+                {
+                    var withoutExtension = Path.GetFileNameWithoutExtension(fileName);
+                    var extension = Path.GetExtension(fileName);
+                    destination = Path.Combine(_workspaceRoot, $"{withoutExtension} (1){extension}");
+                }
+                File.Copy(path, destination, overwrite: false);
+                importedCount++;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.Warning($"Could not import file into workspace: {DescribePath(path)}; {exception.Message}");
+            }
+        }
+
+        if (importedCount == 0) return;
+        await RefreshWorkspaceViewsAsync();
+
+        foreach (var path in paths)
+        {
+            var fileName = Path.GetFileName(path);
+            var destination = Path.Combine(_workspaceRoot, fileName);
+            if (File.Exists(destination) && await ConfirmDiscardOrSaveAsync())
+            {
+                await OpenDocumentPathAsync(destination);
+            }
+            break; // only open the first file
+        }
+    }
+
     private WorkspacePopupCommand? ShowNativeWorkspaceMenu(nint menu, Point screenPoint)
     {
         NativeMethods.SetForegroundWindow(Handle);

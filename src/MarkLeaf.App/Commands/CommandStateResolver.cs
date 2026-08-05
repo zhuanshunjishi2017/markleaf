@@ -7,7 +7,8 @@ public static class CommandStateResolver
         return command switch
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowAbout or AppCommand.OpenFolder
-                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow => new(true),
+                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
+                or AppCommand.RecoverUnsavedFiles => new(true),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ViewTree or AppCommand.ViewList => new(true),

@@ -172,18 +172,20 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.OpenDocument, "打开(&O)...\tCtrl+O");
             AppendCommand(menu, AppCommand.OpenDocumentInNewWindow, "在新窗口中打开...");
             AppendCommand(menu, AppCommand.OpenFolder, "打开文件夹(&F)...");
-            AppendCommand(menu, AppCommand.CloseFolder, "关闭文件夹(&C)");
-            AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.SaveDocument, "保存(&S)\tCtrl+S");
-            AppendCommand(menu, AppCommand.SaveDocumentAs, "另存为(&A)...\tCtrl+Shift+S");
-            AppendCommand(menu, AppCommand.ExportDocument, "导出(&E)...");
-            AppendSeparator(menu);
 
             _recentWorkspaceMenu = CreateMenu(true);
             AppendDisabledText(_recentWorkspaceMenu, "(暂无最近项目)");
             AppendPopup(menu, "最近项目(&R)", _recentWorkspaceMenu);
 
             AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.SaveDocument, "保存(&S)\tCtrl+S");
+            AppendCommand(menu, AppCommand.SaveDocumentAs, "另存为(&A)...\tCtrl+Shift+S");
+            AppendCommand(menu, AppCommand.ExportDocument, "导出(&E)...");
+            AppendCommand(menu, AppCommand.RecoverUnsavedFiles, "恢复未保存的文件(&U)");
+
+
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.CloseFolder, "关闭文件夹(&C)");
             AppendCommand(menu, AppCommand.Exit, "退出(&X)");
             return menu;
         }
@@ -335,7 +337,7 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(styles, AppCommand.SetSansStyle, "默认(无衬线字体)");
         AppendCommand(styles, AppCommand.SetPrintStyle, "印刷物(现代)");
         AppendCommand(styles, AppCommand.SetRetroPrintStyle, "印刷物(复古)");
-        AppendPopup(menu, "样式(&Y)", styles);
+        AppendPopup(menu, "排版样式(&Y)", styles);
         return menu;
     }
 

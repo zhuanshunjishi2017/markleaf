@@ -20,6 +20,7 @@ public enum AppCommand
     OpenRecentWorkspace6,
     OpenRecentWorkspace7,
     OpenRecentWorkspace8,
+    RecoverUnsavedFiles,
 
     Undo = 0x1101,
     Redo,

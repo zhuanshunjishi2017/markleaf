@@ -2,6 +2,8 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
+using MarkLeaf.Services.Recovery;
+using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
 
 namespace MarkLeaf.UI;
@@ -243,6 +245,7 @@ internal sealed partial class MainForm
             StartWatchingDocument(_document.FilePath!);
             UpdateDocumentChrome();
             _logger.Info($"Document saved safely: {DescribePath(_document.FilePath)}; revision={snapshot.Revision}.");
+            _recoveryService.Delete(_document.Id);
             SetStatus("文档已保存");
             return true;
         }
@@ -373,6 +376,8 @@ internal sealed partial class MainForm
 
         _closeApproved = true;
         StopWatchingDocument();
+        _recoveryTimer.Stop();
+        _recoveryService.DeleteOwnFiles();
         BeginInvoke(Close);
     }
 
@@ -383,6 +388,7 @@ internal sealed partial class MainForm
         _editorHost?.LoadDocument(document.Id, document.Revision, document.Markdown);
         RefreshPersistentStatusBar();
         UpdateDocumentChrome();
+        _recoveryTimer.Start();
     }
 
     private void UpdateDocumentChrome()
@@ -569,7 +575,24 @@ internal sealed partial class MainForm
 
     private async void OnEditorFilesDropped(object? sender, DroppedFiles droppedFiles)
     {
-        await ImportImageFilesAsync(droppedFiles.Paths, droppedFiles.ClientX, droppedFiles.ClientY);
+        var documentPaths = droppedFiles.Paths
+            .Where(path => WorkspaceTreeView.IsDroppableFile(path))
+            .ToArray();
+        var imagePaths = droppedFiles.Paths.Except(documentPaths).ToArray();
+
+        foreach (var path in documentPaths)
+        {
+            if (await ConfirmDiscardOrSaveAsync())
+            {
+                await OpenDocumentPathAsync(path);
+            }
+            break;
+        }
+
+        if (imagePaths.Length > 0)
+        {
+            await ImportImageFilesAsync(imagePaths, droppedFiles.ClientX, droppedFiles.ClientY);
+        }
     }
 
     private async void OnEditorPasteImageRequested(object? sender, EventArgs eventArgs)

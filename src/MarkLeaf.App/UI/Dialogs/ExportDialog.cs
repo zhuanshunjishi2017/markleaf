@@ -53,7 +53,7 @@ internal sealed class ExportDialog : Form
         ("普通", 25.4f, 25.4f, 31.7f, 31.7f),
         ("窄", 12.7f, 12.7f, 12.7f, 12.7f),
         ("宽", 50.8f, 50.8f, 50.8f, 50.8f),
-        ("自定义", 25.4f, 25.4f, 31.7f, 31.7f),
+        ("自定义", 16f, 16f, 16f, 16f),
     ];
 
     public ExportDialog(string documentFileName, string defaultFileName, string currentStyle)
@@ -66,14 +66,14 @@ internal sealed class ExportDialog : Form
             "retro-print" => 3,
             _ => 0,
         };
-        Text = $"导出 — {documentFileName}";
+        Text = $"导出 - {documentFileName}";
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(800, 620);
+        Size = new Size(800, 700);
 
         BuildPdfTab(initialStyleIndex);
         BuildHtmlTab(initialStyleIndex);
@@ -201,7 +201,7 @@ internal sealed class ExportDialog : Form
         var styleRow = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         styleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         styleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        AddRow(styleRow, 0, "渲染样式(&Y)：", _pdfStyle);
+        AddRow(styleRow, 0, "排版样式(&Y)：", _pdfStyle);
         panel.Controls.Add(styleRow, 0, 4);
 
         return panel;
@@ -280,7 +280,7 @@ internal sealed class ExportDialog : Form
         var bottomGrid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         bottomGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bottomGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        AddRow(bottomGrid, 0, "渲染样式(&Y)：", _htmlStyle);
+        AddRow(bottomGrid, 0, "排版样式(&Y)：", _htmlStyle);
         panel.Controls.Add(bottomGrid, 0, 4);
 
         return panel;

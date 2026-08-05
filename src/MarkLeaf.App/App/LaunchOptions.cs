@@ -15,7 +15,8 @@ internal sealed record LaunchOptions(
     string? DocumentSmokeInputPath,
     string? DocumentSmokeOutputPath,
     string? DocumentSmokeReportPath,
-    string? InitialDocumentPath)
+    string? InitialDocumentPath,
+    bool SmokeCrashExit)
 {
     public static LaunchOptions Parse(string[] args)
     {
@@ -34,6 +35,7 @@ internal sealed record LaunchOptions(
         string? documentSmokeOutputPath = null;
         string? documentSmokeReportPath = null;
         string? initialDocumentPath = null;
+        bool smokeCrashExit = false;
 
         for (var index = 0; index < args.Length - 1; index++)
         {
@@ -86,6 +88,9 @@ internal sealed record LaunchOptions(
                 case "--open-document":
                     initialDocumentPath = Path.GetFullPath(args[++index]);
                     break;
+                case "--smoke-crash-exit":
+                    smokeCrashExit = true;
+                    break;
             }
         }
 
@@ -104,6 +109,7 @@ internal sealed record LaunchOptions(
             documentSmokeInputPath,
             documentSmokeOutputPath,
             documentSmokeReportPath,
-            initialDocumentPath);
+            initialDocumentPath,
+            smokeCrashExit);
     }
 }
