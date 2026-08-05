@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/MarkLeaf.App/MarkLeaf.App.csproj" />
+    <Project Path="src/MarkLeaf/MarkLeaf.csproj" />
     <Project Path="src/MarkLeaf.Prototype/MarkLeaf.Prototype.csproj" />
   </Folder>
   <Folder Name="/tests/">

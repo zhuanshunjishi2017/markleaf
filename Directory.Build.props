@@ -4,6 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 应用版本号的单一来源：About 对话框与启动日志均从程序集版本读取。 -->
+    <Version>1.1.0</Version>
   </PropertyGroup>
 </Project>
 

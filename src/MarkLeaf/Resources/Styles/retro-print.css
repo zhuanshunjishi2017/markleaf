@@ -1,0 +1,69 @@
+/* @name: 印刷物(复古) */
+/* @depends: print */
+/* 复古印刷继承现代印刷的全部版式，仅替换排版字体。 */
+
+/* 在全部继承自现代印刷的规则之后，保持复古排版字体为最终权威。 */
+.markleaf-style-retro-print .markleaf-document strong,
+.markleaf-style-retro-print .markleaf-document b,
+.markleaf-style-retro-print .markleaf-document li strong,
+.markleaf-style-retro-print .markleaf-document li b,
+.markleaf-style-retro-print .markleaf-document blockquote strong,
+.markleaf-style-retro-print .markleaf-document blockquote b {
+  font-family: "汇文港黑", "汉仪中黑简", "黑体", sans-serif !important;
+  font-weight: normal;
+}
+
+.markleaf-style-retro-print .markleaf-document ul,
+.markleaf-style-retro-print .markleaf-document ol,
+.markleaf-style-retro-print .markleaf-document li,
+.markleaf-style-retro-print .markleaf-document li > p,
+.markleaf-style-retro-print .markleaf-document li::marker {
+  font-family: KingHwaOldSong, "宋体-简", "宋体", serif !important;
+}
+
+.markleaf-style-retro-print .markleaf-document,
+.markleaf-style-retro-print .markleaf-document p {
+  font-family: KingHwaOldSong, "宋体-简", "宋体", serif;
+}
+
+.markleaf-style-retro-print .markleaf-document h1,
+.markleaf-style-retro-print .markleaf-document h2,
+.markleaf-style-retro-print .markleaf-document h3,
+.markleaf-style-retro-print .markleaf-document h4,
+.markleaf-style-retro-print .markleaf-document h5,
+.markleaf-style-retro-print .markleaf-document h6,
+.markleaf-style-retro-print .markleaf-document strong,
+.markleaf-style-retro-print .markleaf-document b {
+  font-family: "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+.markleaf-style-retro-print .markleaf-document h1 {
+  font-family: "朝华标题A", "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+}
+
+.markleaf-style-retro-print .markleaf-document em,
+.markleaf-style-retro-print .markleaf-document i {
+  font-family: "汇文正楷", "楷体", "KaiTi", serif;
+  font-style: normal;
+  font-synthesis: none;
+}
+
+.markleaf-style-retro-print .markleaf-document blockquote p {
+  font-family: "汇文仿宋", "仿宋", "FangSong", serif;
+}
+
+.markleaf-style-retro-print .markleaf-document code,
+.markleaf-style-retro-print .markleaf-document pre code {
+  font-family: "朝华打字机", "Courier New", monospace;
+}
+
+.markleaf-style-retro-print .markleaf-document code:not(pre code) {
+  background: transparent;
+}
+
+.markleaf-style-retro-print .markleaf-document pre {
+  background: transparent;
+  border: 1px dashed #000000;
+  border-radius: 0;
+}

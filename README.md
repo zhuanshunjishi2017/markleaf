@@ -71,14 +71,14 @@ pnpm --dir .\src\EditorWeb build
 # 构建并运行主应用
 dotnet restore .\MarkLeaf.slnx
 dotnet build .\MarkLeaf.slnx --no-restore
-dotnet run --project .\src\MarkLeaf.App\MarkLeaf.App.csproj
+dotnet run --project .\src\MarkLeaf\MarkLeaf.csproj
 ```
 
 ## 项目结构
 
 ```text
 src/
-├── MarkLeaf.App/          # C# 主应用 (WinForms)
+├── MarkLeaf/              # C# 主应用 (WinForms)
 │   ├── Commands/          # 命令路由与状态解析
 │   ├── Editor/            # WebView2 宿主、通信协议、会话管理
 │   ├── UI/                # 主窗口、控件、对话框

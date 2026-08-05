@@ -59,7 +59,7 @@ AGENTS.md
 .github/.copilot*
 
 # App resources (generated)
-src/MarkLeaf.App/Resources/App/
+src/MarkLeaf/Resources/App/
 
 # Prototype
 src/MarkLeaf.Prototype/EditorWeb/

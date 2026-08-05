@@ -1,0 +1,257 @@
+/* @name: 印刷物(现代) */
+/* 印刷排版同时被“印刷物(复古)”继承（见 retro-print.css 的 @depends）。 */
+
+/* 印刷排版采用固定版心边距：内容区填满可用宽度，左右留白与上下间距
+   固定为 44px/56px/96px（与历史 style.css 中 #editor 的内边距一致），
+   不随页宽响应式收窄。编辑器中由 #editor 的固定内边距承担，导出中由
+   导出文档自身的内边距承担，两种样式均通过继承本规则获得固定边距。 */
+.markleaf-style-print .markleaf-document {
+  width: auto;
+  max-width: none;
+  margin: 0;
+}
+
+/* 无论页宽如何，印刷排版始终使用固定内边距，不启用窄窗的 @media 适配。
+   仅编辑器生效（导出无 #editor）。 */
+#editor.markleaf-style-print {
+  padding: 44px 56px 96px;
+}
+
+.markleaf-style-print .markleaf-document {
+  color: #000000;
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  font-size: var(--ml-font-size);
+  line-height: var(--ml-line-height);
+}
+
+.markleaf-style-print .markleaf-document h1,
+.markleaf-style-print .markleaf-document h2,
+.markleaf-style-print .markleaf-document h3,
+.markleaf-style-print .markleaf-document h4,
+.markleaf-style-print .markleaf-document h5,
+.markleaf-style-print .markleaf-document h6 {
+  color: #000000;
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 2;
+}
+
+.markleaf-style-print .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 1.5);
+  text-align: center;
+  line-height: 3;
+}
+
+.markleaf-style-print .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.25);
+  text-align: center;
+  line-height: 2;
+}
+
+.markleaf-style-print .markleaf-document h3 {
+  font-size: var(--ml-font-size);
+  text-align: left;
+  line-height: 2;
+}
+
+.markleaf-style-print .markleaf-document h4,
+.markleaf-style-print .markleaf-document h5,
+.markleaf-style-print .markleaf-document h6 {
+  font-size: calc(var(--ml-font-size) * 0.875);
+  text-align: left;
+  line-height: 1.75;
+}
+
+.markleaf-style-print .markleaf-document p {
+  margin: 0;
+  text-indent: 2em;
+}
+
+.markleaf-style-print .markleaf-document strong,
+.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+.markleaf-style-print .markleaf-document blockquote {
+  margin: 0;
+  padding: 0 0 0 1em;
+  color: #808080;
+  border-left: 0;
+}
+
+.markleaf-style-print .markleaf-document blockquote p {
+  text-indent: 0;
+}
+
+.markleaf-style-print .markleaf-document a {
+  color: #808080;
+  text-decoration: underline;
+}
+
+.markleaf-style-print .markleaf-document table {
+  width: auto;
+  margin: 1em auto;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+.markleaf-style-print .markleaf-document table p {
+  text-indent: 0;
+}
+
+.markleaf-style-print .markleaf-document th,
+.markleaf-style-print .markleaf-document td {
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+.markleaf-style-print .markleaf-document code,
+.markleaf-style-print .markleaf-document pre code {
+  font-family: "Courier New", monospace;
+  line-height: 1.25;
+}
+
+.markleaf-style-print .markleaf-document pre {
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  background: #f0f0f0;
+}
+
+.markleaf-style-print .markleaf-document ul,
+.markleaf-style-print .markleaf-document ol {
+  padding-left: 0;
+}
+
+.markleaf-style-print .markleaf-document ul ul,
+.markleaf-style-print .markleaf-document ul ol,
+.markleaf-style-print .markleaf-document ol ul,
+.markleaf-style-print .markleaf-document ol ol {
+  margin-left: 1em;
+}
+
+/* 保持既有级联顺序：以下为后续的“最终覆盖”规则，避免改变渲染结果。 */
+.markleaf-style-print .markleaf-document {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+}
+
+.markleaf-style-print .markleaf-document strong,
+.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+.markleaf-style-print .markleaf-document em,
+.markleaf-style-print .markleaf-document i {
+  font-family: "Times New Roman", "楷体", "KaiTi", serif;
+  font-style: italic;
+  font-synthesis: none;
+}
+
+.markleaf-style-print .markleaf-document hr {
+  width: 7em;
+  height: 1px;
+  margin: 1.5em auto;
+  background: #000000;
+}
+
+.markleaf-style-print .markleaf-document p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  text-indent: 0;
+}
+
+.markleaf-style-print .markleaf-document blockquote {
+  margin: 0.5em 0;
+  padding: 0 1em;
+  color: #000000;
+  border: 1px solid #000000;
+  background: transparent;
+}
+
+.markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  color: #000000;
+  text-indent: 0;
+}
+
+.markleaf-style-print .markleaf-document > p,
+.markleaf-style-print .markleaf-document > ul > li > p,
+.markleaf-style-print .markleaf-document > ol > li > p {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  text-indent: 2em;
+}
+
+.markleaf-style-print .markleaf-document p {
+  font-family: "Times New Roman", "宋体-简", "宋体", serif;
+  text-indent: 2em;
+}
+
+.markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  text-indent: 2em;
+}
+
+.markleaf-style-print .markleaf-document li > p {
+  text-indent: 0 !important;
+}
+
+.markleaf-style-print .markleaf-document h1,
+.markleaf-style-print .markleaf-document h2,
+.markleaf-style-print .markleaf-document h3,
+.markleaf-style-print .markleaf-document h4,
+.markleaf-style-print .markleaf-document h5,
+.markleaf-style-print .markleaf-document h6 {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
+
+.markleaf-style-print .markleaf-document ul,
+.markleaf-style-print .markleaf-document ol {
+  margin-left: 0;
+  padding-left: 2em;
+}
+
+.markleaf-style-print .markleaf-document li {
+  padding-left: 0;
+}
+
+.markleaf-style-print .markleaf-document li > p {
+  text-indent: 0;
+}
+
+.markleaf-style-print .markleaf-document li > ul,
+.markleaf-style-print .markleaf-document li > ol {
+  margin-left: 0;
+  padding-left: 1em;
+}
+
+.markleaf-style-print .markleaf-document ul > li > p,
+.markleaf-style-print .markleaf-document ol > li > p,
+.markleaf-style-print .markleaf-document li li > p {
+  text-indent: 0 !important;
+}
+
+/* 仅现代印刷（排除复古）应用的规则。 */
+.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document h1 {
+  font-family: "Times New Roman", "方正小标宋简体", "华文中宋", serif;
+  font-weight: bold;
+  font-synthesis: none;
+}
+
+.markleaf-style-print .markleaf-document p {
+  text-align: justify;
+}
+
+.markleaf-style-print:not(.markleaf-style-retro-print) .markleaf-document code:not(pre code) {
+  background: transparent;
+}
+
+.markleaf-style-print .markleaf-document strong,
+.markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: normal;
+}
