@@ -15,6 +15,7 @@ internal sealed class EditorHostController : IDisposable
     private readonly EditorSession _session;
     private readonly IAppLogger _logger;
     private readonly string _editorWebPath;
+    private readonly string _webView2UserDataDirectory;
     private readonly Uri _editorUri;
     private readonly Action _stateChanged;
     private readonly Queue<Action> _readyActions = new();
@@ -66,6 +67,7 @@ internal sealed class EditorHostController : IDisposable
         EditorSession session,
         IAppLogger logger,
         string editorWebPath,
+        string webView2UserDataDirectory,
         Action stateChanged)
     {
         _webView = webView;
@@ -73,6 +75,7 @@ internal sealed class EditorHostController : IDisposable
         _session = session;
         _logger = logger;
         _editorWebPath = editorWebPath;
+        _webView2UserDataDirectory = webView2UserDataDirectory;
         _editorUri = CreateVersionedEditorUri(editorWebPath);
         _stateChanged = stateChanged;
         _loadingView.RetryRequested += (_, _) => _ = RetryAsync();
@@ -116,7 +119,10 @@ internal sealed class EditorHostController : IDisposable
         try
         {
             _initializationCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            await _webView.EnsureCoreWebView2Async().WaitAsync(_initializationCancellation.Token);
+            Directory.CreateDirectory(_webView2UserDataDirectory);
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: _webView2UserDataDirectory).WaitAsync(_initializationCancellation.Token);
+            await _webView.EnsureCoreWebView2Async(environment).WaitAsync(_initializationCancellation.Token);
             ConfigureCoreWebView2();
 
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
@@ -221,6 +227,11 @@ internal sealed class EditorHostController : IDisposable
         });
     }
 
+    public void ApplyAutoHideScrollbar(bool enabled)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setAutoHideScrollbar", text = enabled ? "1" : "0" }));
+    }
+
     public void SetZoomPercent(int percent)
     {
         var zoomFactor = Math.Clamp(percent, 50, 200) / 100.0;
@@ -232,6 +243,7 @@ internal sealed class EditorHostController : IDisposable
         var payload = new
         {
             baseCss,
+            colorThemeCss = ColorThemeService.GetActiveThemeCss(),
             styles = styles.Select(style => new
             {
                 style.Id,
@@ -389,7 +401,8 @@ internal sealed class EditorHostController : IDisposable
             printForm.Controls.Add(printView);
             printForm.Show();
 
-            var environment = await CoreWebView2Environment.CreateAsync();
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: _webView2UserDataDirectory);
             await printView.EnsureCoreWebView2Async(environment);
             var core = printView.CoreWebView2
                 ?? throw new InvalidOperationException("PDF print WebView2 failed to initialize.");

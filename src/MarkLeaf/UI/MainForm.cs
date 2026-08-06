@@ -36,8 +36,10 @@ internal sealed partial class MainForm : Form
     private readonly WorkspaceDocumentListView _workspaceDocumentList;
     private Control _workspacePanelHost = default!;
     private Control _outlinePanelHost = default!;
+    private Panel _sidebarPanel = default!;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
+    private readonly SidebarTabBar _sidebarTabBar = new();
     private EditorHostController? _editorHost;
     private MarkdownDocument? _document;
     private FileSystemWatcher? _documentWatcher;
@@ -83,6 +85,7 @@ internal sealed partial class MainForm : Form
     private bool _initialDocumentOpened;
     private WorkspaceDocumentSortOrder _workspaceDocumentSortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
     private string _markdownStyle = "serif";
+    private string _colorTheme = "white";
     private int _zoomPercent = 100;
 
     public MainForm(
@@ -98,6 +101,10 @@ internal sealed partial class MainForm : Form
         _markdownStyle = StyleService.TryGetStyle(settings.MarkdownStyle) is not null
             ? settings.MarkdownStyle
             : StyleService.DefaultStyleId;
+        _colorTheme = ColorThemeService.TryGetTheme(settings.ColorTheme) is not null
+            ? settings.ColorTheme
+            : ColorThemeService.All.Count > 0 ? ColorThemeService.All[0].Id : "white";
+        ColorThemeService.SetActiveTheme(_colorTheme);
         _zoomPercent = NearestZoom(settings.Appearance.ZoomPercent);
         _settingsService = settingsService;
         _logger = logger;
@@ -108,7 +115,7 @@ internal sealed partial class MainForm : Form
         _imageAssetService = new ImageAssetService(_paths.DefaultImageDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
-        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent);
+        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme);
         _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
             TimeSpan.FromMilliseconds(500),
             QueueWorkspaceRefresh);
@@ -173,6 +180,7 @@ internal sealed partial class MainForm : Form
             }
 
             _logger.Info($"Main window DPI changed: {args.DeviceDpiOld} -> {args.DeviceDpiNew}.");
+            _sidebarTabBar.ConfigureTypography(_effectiveDpi);
             _workspaceTree.ConfigureTypography(_effectiveDpi);
             _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
             _outlineTree.ConfigureTypography(_effectiveDpi);
@@ -205,7 +213,17 @@ internal sealed partial class MainForm : Form
             Dock = DockStyle.Fill,
             BackColor = Color.White,
         };
+        _sidebarPanel = panel;
+
+        _sidebarTabBar.TabChanged += (_, index) => ShowSidebarView(outline: index == 1);
+        _sidebarTabBar.TabReclicked += (_, index) =>
+        {
+            if (index == 0) ToggleWorkspaceView();
+        };
+        panel.Controls.Add(_sidebarTabBar);
+
         _workspacePanelHost = CreateWorkspacePanel();
+        _workspacePanelHost.Dock = DockStyle.Fill;
         _outlinePanelHost = new Panel
         {
             Dock = DockStyle.Fill,
@@ -241,6 +259,7 @@ internal sealed partial class MainForm : Form
             _editorSession,
             _logger,
             _options.EditorWebRoot ?? Path.Combine(AppContext.BaseDirectory, "EditorWeb"),
+            _paths.WebView2UserDataDirectory,
             OnEditorStateChanged);
         _editorHost.Ready += (_, _) =>
         {
@@ -249,8 +268,9 @@ internal sealed partial class MainForm : Form
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth);
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
-            _editorHost?.ExecuteCommand("setAutoHideScrollbar", _settings.Appearance.AutoHideScrollbars ? "1" : "0");
+            _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
             ApplySidebarAutoHideScrollbar();
+            ApplySidebarColors();
         };
         _editorHost.Ready += (_, _) => BeginEditorSmokeIfRequested();
         _editorHost.Ready += (_, _) => LoadInitialDocumentIfNeeded();
@@ -413,6 +433,12 @@ internal sealed partial class MainForm : Form
                 return;
             }
 
+            if (_menuService.TryGetColorThemeByCommandId((uint)commandId, out var colorThemeId))
+            {
+                SetColorTheme(colorThemeId);
+                return;
+            }
+
             if (_commandRouter.TryExecuteById(commandId))
             {
                 return;
@@ -449,6 +475,7 @@ internal sealed partial class MainForm : Form
         }
 
         TopMost = _settings.Appearance.TopMostWindow;
+        ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
 
         _logger.Info($"Main window shown at DPI {_effectiveDpi}.");
         WriteWindowReport();
@@ -469,6 +496,20 @@ internal sealed partial class MainForm : Form
             && Directory.Exists(_settings.Workspace.LastFolder))
         {
             await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
+
+            if (_settings.File.StartupAction == StartupAction.OpenLastWorkspaceAndFiles
+                && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)
+                && File.Exists(_settings.Workspace.LastFile)
+                && !_initialDocumentOpened)
+            {
+                await OpenDocumentPathAsync(_settings.Workspace.LastFile);
+            }
+        }
+
+        if (_settings.File.StartupAction == StartupAction.NewDocument
+            && !_initialDocumentOpened)
+        {
+            _sidebarSplit.Panel1Collapsed = true;
         }
 
         if (!string.IsNullOrWhiteSpace(_options.SmokeCommand))
@@ -772,6 +813,7 @@ internal sealed partial class MainForm : Form
     private void ShowSidebarView(bool outline)
     {
         _sidebarActiveOutline = outline;
+        _sidebarTabBar.SetSelectedIndexSilently(outline ? 1 : 0);
         _workspacePanelHost.Visible = !outline;
         _outlinePanelHost.Visible = outline;
         _viewToggleButton.Enabled = !outline;
@@ -819,6 +861,63 @@ internal sealed partial class MainForm : Form
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
+    }
+
+    private void SetColorTheme(string themeId)
+    {
+        if (ColorThemeService.TryGetTheme(themeId) is null) return;
+        _colorTheme = themeId;
+        ColorThemeService.SetActiveTheme(themeId);
+        _settings.ColorTheme = themeId;
+        ApplySidebarColors();
+        _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
+        _menuService.RefreshStates();
+        ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
+    }
+
+    private void ApplyWindowDarkMode(bool dark)
+    {
+        DarkModeService.Apply(dark);
+        if (!IsHandleCreated) return;
+        var value = dark ? 1 : 0;
+        NativeMethods.DwmSetWindowAttribute(
+            Handle,
+            NativeMethods.DwmwaUseImmersiveDarkMode,
+            ref value,
+            sizeof(int));
+        // 强制重绘非客户区（标题栏 + 菜单栏）
+        NativeMethods.SetWindowPos(Handle, 0, 0, 0, 0, 0,
+            NativeMethods.SwpNoMove | NativeMethods.SwpNoSize
+            | NativeMethods.SwpNoZOrder | NativeMethods.SwpFrameChanged);
+        NativeMethods.DrawMenuBar(Handle);
+    }
+
+    private void ApplySidebarColors()
+    {
+        var colors = ColorThemeService.GetActiveColors();
+        if (colors.Count == 0) return;
+
+        if (colors.TryGetValue("bg-primary", out var bg))
+            _sidebarPanel.BackColor = bg;
+        if (colors.TryGetValue("bg-hover", out var splitter))
+            _sidebarSplit.BackColor = splitter;
+
+        if (_statusStrip is not null)
+        {
+            if (colors.TryGetValue("bg-hover", out var statusBg))
+                _statusStrip.BackColor = statusBg;
+            if (colors.TryGetValue("text-primary", out var statusText))
+            {
+                _statusStrip.ForeColor = statusText;
+                foreach (ToolStripItem item in _statusStrip.Items)
+                    item.ForeColor = statusText;
+            }
+        }
+
+        _sidebarTabBar.ApplyThemeColors(colors);
+        _workspaceTree.ApplyThemeColors(colors);
+        _workspaceDocumentList.ApplyThemeColors(colors);
+        _outlineTree.ApplyThemeColors(colors);
     }
 
     private void OpenThemeFolder()
@@ -1120,9 +1219,10 @@ internal sealed partial class MainForm : Form
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth);
 
         SetMarkdownStyle(_settings.MarkdownStyle);
+        SetColorTheme(_settings.ColorTheme);
         SetZoomPercent(_settings.Appearance.ZoomPercent);
         TopMost = _settings.Appearance.TopMostWindow;
-        _editorHost?.ExecuteCommand("setAutoHideScrollbar", _settings.Appearance.AutoHideScrollbars ? "1" : "0");
+        _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
         ApplySidebarAutoHideScrollbar();
 
         // 仅在文件关联设置实际变化时才修改注册表。
@@ -1828,6 +1928,7 @@ internal sealed partial class MainForm : Form
             OutlineWidth = _settings.MainWindow.OutlineWidth,
         };
         _settings.Workspace.LastFolder = _workspaceRoot;
+        _settings.Workspace.LastFile = _document?.FilePath;
         _settings.Workspace.RecentFolders = _settings.Workspace.RecentFolders
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1837,6 +1938,7 @@ internal sealed partial class MainForm : Form
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         _settings.MarkdownStyle = _markdownStyle;
+        _settings.ColorTheme = _colorTheme;
         _settings.Appearance.ZoomPercent = _zoomPercent;
 
         try

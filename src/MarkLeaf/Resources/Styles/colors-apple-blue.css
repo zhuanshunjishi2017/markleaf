@@ -1,0 +1,125 @@
+/* @type: color-theme
+   @name: 蓝色(macOS配色) */
+
+:root {
+  --bg-primary:          #FFFFFF;
+  --bg-hover:            #F3F2F8;
+  --bg-selected:         #e7e7ea;
+  --bg-selected-hover:   #dddce0;
+  --text-primary:        #000000;
+  --text-secondary:      #99989D;
+  --text-tertiary:       #8C8C8C;
+  --text-selected:       #FFFFFF;
+  --text-tertiary-selected:     #7CC7FF;
+  --icon:                       #0088FE;
+  --icon-selected:              #FFFFFF;
+  --icon-secondary:      #505864;
+  --scrollbar-idle:      #8B8B8B;
+  --scrollbar-active:    #636363;
+  --theme-light:         #0088FE;
+  --theme-dark:          #0a7bdd;
+}
+
+
+/* ============================================================
+   编辑器颜色覆盖
+   规则按优先级从低到高排列，级联覆写 base.css 中的默认色。
+   ============================================================ */
+
+/* ---- 全局 ---- */
+body,
+.markleaf-document {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.markleaf-document {
+  caret-color: var(--theme-dark);
+}
+
+/* ---- 选区（特异性对齐 base.css 的 .markleaf-document *::selection） ---- */
+.markleaf-document::selection,
+.markleaf-document *::selection,
+.ProseMirror::selection,
+.ProseMirror *::selection,
+.cm-editor::selection,
+.cm-content::selection,
+.cm-content *::selection {
+  background: var(--theme-light);
+  color: var(--text-selected);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+}
+
+/* ---- 查找高亮 ---- */
+.markleaf-find-match {
+  background: var(--theme-light);
+  box-shadow: 0 0 0 1px var(--theme-light);
+}
+
+.markleaf-find-match-current {
+  background: var(--theme-light);
+  box-shadow: 0 0 0 2px var(--theme-dark);
+}
+
+/* ---- 代码块 ---- */
+.markleaf-document pre {
+  background: var(--bg-hover);
+  border: 1px solid var(--bg-selected);
+  border-radius: 6px;
+}
+
+.markleaf-document pre code {
+  color: var(--text-secondary);
+}
+
+/* ---- 行内代码 ---- */
+.markleaf-document code:not(pre code) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* ---- 表格 ---- */
+.markleaf-document table {
+  border-color: var(--bg-selected-hover);
+}
+
+.markleaf-document th {
+  background: var(--bg-hover);
+  border-color: var(--bg-selected-hover);
+}
+
+.markleaf-document td {
+  border-color: var(--bg-selected-hover);
+}
+
+/* ---- 引用 ---- */
+.markleaf-document blockquote {
+  border-left-color: var(--bg-selected);
+  color: var(--text-tertiary);
+}
+
+/* ---- 代码、引用中的选区文字 ---- */
+.markleaf-document pre ::selection,
+.markleaf-document blockquote ::selection {
+  color: var(--text-tertiary-selected);
+}
+
+/* ---- 选中块边框（ProseMirror 选中节点） ---- */
+.ProseMirror-selectednode {
+  outline: 2px solid var(--theme-light);
+}
+
+/* ---- 图片拖拽手柄 ---- */
+.markleaf-image-resize-handle {
+  background: var(--theme-dark);
+  border-color: var(--bg-primary);
+  box-shadow: 0 0 0 1px var(--theme-dark);
+}
+

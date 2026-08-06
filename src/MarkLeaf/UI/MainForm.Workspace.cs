@@ -157,7 +157,6 @@ internal sealed partial class MainForm
             rootName = fullPath;
         }
         _workspaceTree.SetRoot(new WorkspaceEntry(rootName, fullPath, true));
-        _workspaceDocumentList.SetWorkspaceName(rootName);
         await LoadWorkspaceDirectoryAsync(fullPath, _workspaceLoadCancellation.Token);
         await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation.Token);
         if (_workspaceLoadCancellation.IsCancellationRequested || !PathEquals(_workspaceRoot, fullPath))
@@ -188,7 +187,6 @@ internal sealed partial class MainForm
     private void ShowNoWorkspacePlaceholder()
     {
         _workspaceTree.SetPlaceholder("暂未打开工作区");
-        _workspaceDocumentList.SetWorkspaceName(null);
         _workspaceDocumentList.PlaceholderText = "暂未打开工作区";
         _workspaceDocumentList.SelectedPath = null;
         _workspaceDocuments = [];

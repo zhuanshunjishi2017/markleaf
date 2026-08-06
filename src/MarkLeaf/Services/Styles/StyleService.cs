@@ -42,11 +42,13 @@ internal static class StyleService
             _baseCss = File.ReadAllText(basePath);
         }
 
+        var loaded = new List<StyleDefinition>();
         foreach (var file in Directory.GetFiles(stylesDirectory, "*.css")
                      .OrderBy(Path.GetFileName, StringComparer.Ordinal))
         {
             var fileName = Path.GetFileName(file);
-            if (string.Equals(fileName, BaseFileName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(fileName, BaseFileName, StringComparison.OrdinalIgnoreCase)
+                || ColorThemeService.IsColorThemeFile(file))
             {
                 continue;
             }
@@ -54,8 +56,40 @@ internal static class StyleService
             var id = Path.GetFileNameWithoutExtension(fileName);
             var css = File.ReadAllText(file);
             var (displayName, dependsOn) = ParseMetadata(css, id);
-            StylesList.Add(new StyleDefinition(id, displayName, css, dependsOn));
+            loaded.Add(new StyleDefinition(id, displayName, css, dependsOn));
         }
+
+        // 按依赖关系拓扑排序：被依赖的样式先注入，依赖者后注入，
+        // 确保级联优先级与 @depends 声明的意图一致。
+        StylesList.AddRange(TopologicalSort(loaded));
+    }
+
+    private static List<StyleDefinition> TopologicalSort(List<StyleDefinition> styles)
+    {
+        var sorted = new List<StyleDefinition>();
+        var remaining = new List<StyleDefinition>(styles);
+        var added = new HashSet<string>(StringComparer.Ordinal);
+        var changed = true;
+
+        while (remaining.Count > 0 && changed)
+        {
+            changed = false;
+            for (var i = remaining.Count - 1; i >= 0; i--)
+            {
+                var style = remaining[i];
+                if (style.DependsOn is null || added.Contains(style.DependsOn))
+                {
+                    sorted.Add(style);
+                    added.Add(style.Id);
+                    remaining.RemoveAt(i);
+                    changed = true;
+                }
+            }
+        }
+
+        // 剩余项（循环依赖或依赖缺失）追加在末尾。
+        sorted.AddRange(remaining);
+        return sorted;
     }
 
     public static IReadOnlyList<(string Id, string DisplayName)> GetAllStyles()

@@ -1,5 +1,6 @@
-/* @name: 印刷物(复古) */
-/* @depends: print */
+/* @type: typography
+   @name: 教科书(铅字排印)
+   @depends: print */
 /* 复古印刷继承现代印刷的全部版式，仅替换排版字体。 */
 
 /* 在全部继承自现代印刷的规则之后，保持复古排版字体为最终权威。 */
@@ -64,6 +65,6 @@
 
 .markleaf-style-retro-print .markleaf-document pre {
   background: transparent;
-  border: 1px dashed #000000;
+  border: 1px dashed var(--text-primary);
   border-radius: 0;
 }

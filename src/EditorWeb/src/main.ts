@@ -59,7 +59,6 @@ let editor = createEditor(editorMount)
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
-let autoHideScrollbar = false
 let scrollbarHideTimer = 0
 
 function send(type: Parameters<typeof postToHost>[0]['type'], payload?: unknown, requestId?: string): void {
@@ -425,6 +424,7 @@ function handleMessage(value: unknown): void {
     case 'applyStyles': {
       const payload = message.payload as {
         baseCss?: unknown
+        colorThemeCss?: unknown
         styles?: unknown
         activeStyle?: unknown
       }
@@ -436,7 +436,11 @@ function handleMessage(value: unknown): void {
           && typeof (s as { id?: unknown }).id === 'string'
           && typeof (s as { css?: unknown }).css === 'string')
       }
+      // 注入顺序即 DOM 中优先级：base < 颜色主题 < 排版样式
       injectStyleSheet('markleaf-base-style', baseCss)
+      if (typeof payload?.colorThemeCss === 'string') {
+        injectStyleSheet('markleaf-color-theme', payload.colorThemeCss)
+      }
       for (const style of styleCatalog) {
         injectStyleSheet(`markleaf-style-${style.id}`, style.css)
       }
@@ -579,27 +583,49 @@ window.addEventListener(
   { passive: false },
 )
 
-// 自动隐藏滚动条：滚动时显示滑块，停止滚动约 800ms 后隐藏。
+// 自动隐藏滚动条：滚动时或鼠标移至右边缘时显示滑块，停止后约 800ms 隐藏。
+// 同时操作 html 和 body，覆盖不同 overflow 归属场景下的滚动条。
+const isAutoHideScrollbarActive = () =>
+  document.documentElement.classList.contains('markleaf-auto-hide-scrollbar')
+
+const onScrollShow = () => {
+  if (!isAutoHideScrollbarActive()) {
+    return
+  }
+  showScrollbar()
+}
+window.addEventListener('scroll', onScrollShow, { passive: true, capture: true })
+document.addEventListener('scroll', onScrollShow, { passive: true, capture: true })
+
 window.addEventListener(
-  'scroll',
-  () => {
-    if (!autoHideScrollbar) {
+  'mousemove',
+  (event) => {
+    if (!isAutoHideScrollbarActive()) {
       return
     }
-    document.documentElement.classList.add('markleaf-scrolling')
-    window.clearTimeout(scrollbarHideTimer)
-    scrollbarHideTimer = window.setTimeout(() => {
-      document.documentElement.classList.remove('markleaf-scrolling')
-    }, 800)
+    if (event.clientX >= window.innerWidth - 20) {
+      showScrollbar()
+    }
   },
-  { passive: true, capture: true },
+  { passive: true },
 )
 
+function showScrollbar(): void {
+  document.documentElement.classList.add('markleaf-scrolling')
+  document.body.classList.add('markleaf-scrolling')
+  window.clearTimeout(scrollbarHideTimer)
+  scrollbarHideTimer = window.setTimeout(() => {
+    document.documentElement.classList.remove('markleaf-scrolling')
+    document.body.classList.remove('markleaf-scrolling')
+  }, 800)
+}
+
 function applyAutoHideScrollbar(enabled: boolean): void {
-  autoHideScrollbar = enabled
   document.documentElement.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
+  document.body.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
   if (!enabled) {
     document.documentElement.classList.remove('markleaf-scrolling')
+    document.body.classList.remove('markleaf-scrolling')
   }
 }
 

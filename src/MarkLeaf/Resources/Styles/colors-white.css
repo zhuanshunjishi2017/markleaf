@@ -1,0 +1,26 @@
+/* @type: color-theme
+   @name: 白色(默认) */
+
+:root {
+  --bg-primary:          #FFFFFF;
+  --bg-hover:            #F0F0F0;
+  --bg-selected:         #E0E0E0;
+  --bg-selected-hover:   #D0D0D0;
+  --text-primary:        #000000;
+  --text-secondary:      #555555;
+  --text-tertiary:       #6D6D6D;
+  --text-selected:              #000000;
+  --text-tertiary-selected:     #000000;
+  --icon:                       #000000;
+  --icon-selected:              #000000;
+  --icon-secondary:             #808080;
+  --scrollbar-idle:      #8B8B8B;
+  --scrollbar-active:    #636363;
+  --theme-light:         #E0E0E0;
+  --theme-dark:          #D0D0D0;
+}
+
+/* ============================================================
+   默认主题不会覆盖base.css中的颜色
+   ============================================================ */
+

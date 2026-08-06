@@ -98,4 +98,20 @@ internal static class NativeMethods
         public string TypeName;
     }
 
+    // ---- 深色标题栏 ----
+    public const int DwmwaUseImmersiveDarkMode = 20;
+
+    [DllImport("dwmapi.dll", SetLastError = true)]
+    public static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int attrValue, int attrSize);
+
+    // ---- 窗口框架刷新 ----
+    public const uint SwpNoMove = 0x0002;
+    public const uint SwpNoSize = 0x0001;
+    public const uint SwpNoZOrder = 0x0004;
+    public const uint SwpFrameChanged = 0x0020;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter,
+        int x, int y, int cx, int cy, uint uFlags);
+
 }

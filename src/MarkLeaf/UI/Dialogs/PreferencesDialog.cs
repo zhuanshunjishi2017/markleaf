@@ -49,6 +49,7 @@ internal sealed class PreferencesDialog : Form
     private readonly (string Id, string DisplayName)[] _styleOptions;
     private readonly ComboBox _styleCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    private readonly (string Id, string DisplayName)[] _themeOptions;
     private readonly ComboBox _themeCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
     private readonly Button _openThemeFolderButton = new()
@@ -143,8 +144,10 @@ internal sealed class PreferencesDialog : Form
         _styleOptions = StyleService.GetAllStyles().ToArray();
         foreach (var (_, displayName) in _styleOptions)
             _styleCombo.Items.Add(displayName);
-        _themeCombo.Items.Add("白色");
-        _themeCombo.SelectedIndex = 0;
+        _themeOptions = ColorThemeService.All
+            .Select(t => (t.Id, t.DisplayName)).ToArray();
+        foreach (var (_, displayName) in _themeOptions)
+            _themeCombo.Items.Add(displayName);
         foreach (var percent in AppearanceSettings.ZoomPercentOptions)
             _zoomCombo.Items.Add($"{percent}%");
 
@@ -259,6 +262,7 @@ internal sealed class PreferencesDialog : Form
             _settings.General = defaults.General;
             _settings.Image = defaults.Image;
             _settings.MarkdownStyle = defaults.MarkdownStyle;
+            _settings.ColorTheme = defaults.ColorTheme;
             LoadSettingsIntoControls();
             _onResetAll?.Invoke();
         };
@@ -840,6 +844,7 @@ internal sealed class PreferencesDialog : Form
         _prefixRelativeWithDotSlashCheck.Checked = image.PrefixRelativeWithDotSlash;
 
         _styleCombo.SelectedIndex = FindStyleIndex(_settings.MarkdownStyle);
+        _themeCombo.SelectedIndex = FindThemeIndex(_settings.ColorTheme);
     }
 
     private static int ToComboIndex(int value, ComboBox combo)
@@ -883,6 +888,19 @@ internal sealed class PreferencesDialog : Form
         return 0;
     }
 
+    private int FindThemeIndex(string themeId)
+    {
+        for (var index = 0; index < _themeOptions.Length; index++)
+        {
+            if (string.Equals(_themeOptions[index].Id, themeId, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
     private void OnOkClick(object? sender, EventArgs e)
     {
         var file = _settings.File;
@@ -904,6 +922,11 @@ internal sealed class PreferencesDialog : Form
         if (_styleCombo.SelectedIndex >= 0 && _styleCombo.SelectedIndex < _styleOptions.Length)
         {
             _settings.MarkdownStyle = _styleOptions[_styleCombo.SelectedIndex].Id;
+        }
+
+        if (_themeCombo.SelectedIndex >= 0 && _themeCombo.SelectedIndex < _themeOptions.Length)
+        {
+            _settings.ColorTheme = _themeOptions[_themeCombo.SelectedIndex].Id;
         }
 
         var appearance = _settings.Appearance;

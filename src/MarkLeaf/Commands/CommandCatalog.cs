@@ -18,6 +18,14 @@ public static class CommandCatalog
 
     public const int ZoomCommandMax = 0x16FF;
 
+    /// <summary>
+    /// “颜色主题”菜单项的命令 ID 起始值。颜色主题根据 Resources/Styles 目录下
+    /// 标记为 @type: color-theme 的 CSS 文件动态发现，在运行时按序分配。
+    /// </summary>
+    public const int ColorCommandBase = 0x1700;
+
+    public const int ColorCommandMax = 0x17FF;
+
     private static readonly IReadOnlyDictionary<Keys, AppCommand> Shortcuts =
         new Dictionary<Keys, AppCommand>
         {

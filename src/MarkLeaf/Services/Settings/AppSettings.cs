@@ -49,6 +49,8 @@ public sealed class AppSettings
 
     public string MarkdownStyle { get; set; } = "serif";
 
+    public string ColorTheme { get; set; } = "white";
+
     public static AppSettings CreateDefaults()
     {
         return new AppSettings
@@ -134,6 +136,8 @@ public sealed class ImageSettings
 public sealed class WorkspaceSettings
 {
     public string? LastFolder { get; set; }
+
+    public string? LastFile { get; set; }
 
     public List<string> RecentFolders { get; set; } = [];
 

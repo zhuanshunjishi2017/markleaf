@@ -33,26 +33,31 @@ internal sealed class NativeMenuService : IDisposable
     private readonly Func<IReadOnlyList<string>> _recentFileProvider;
     private readonly Func<string> _currentStyleProvider;
     private readonly Func<int> _currentZoomProvider;
+    private readonly Func<string> _currentColorThemeProvider;
     private readonly Dictionary<uint, string> _styleCommandIds = new();
     private readonly Dictionary<uint, int> _zoomCommandIds = new();
+    private readonly Dictionary<uint, string> _colorCommandIds = new();
     private nint _menu;
     private nint _window;
     private nint _recentWorkspaceMenu;
     private nint _styleMenu;
     private nint _zoomMenu;
+    private nint _colorMenu;
 
     public NativeMenuService(
         CommandRouter router,
         Func<IReadOnlyList<string>> recentWorkspaceProvider,
         Func<IReadOnlyList<string>> recentFileProvider,
         Func<string> currentStyleProvider,
-        Func<int> currentZoomProvider)
+        Func<int> currentZoomProvider,
+        Func<string> currentColorThemeProvider)
     {
         _router = router;
         _recentWorkspaceProvider = recentWorkspaceProvider;
         _recentFileProvider = recentFileProvider;
         _currentStyleProvider = currentStyleProvider;
         _currentZoomProvider = currentZoomProvider;
+        _currentColorThemeProvider = currentColorThemeProvider;
     }
 
     public void Attach(nint window)
@@ -95,6 +100,7 @@ internal sealed class NativeMenuService : IDisposable
         RefreshRecentWorkspaces();
         RefreshStyleMenu();
         RefreshZoomMenu();
+        RefreshColorMenu();
 
         if (_window != 0)
         {
@@ -110,6 +116,11 @@ internal sealed class NativeMenuService : IDisposable
     public bool TryGetZoomByCommandId(uint commandId, out int zoomPercent)
     {
         return _zoomCommandIds.TryGetValue(commandId, out zoomPercent);
+    }
+
+    public bool TryGetColorThemeByCommandId(uint commandId, out string colorThemeId)
+    {
+        return _colorCommandIds.TryGetValue(commandId, out colorThemeId!);
     }
 
     public void Detach()
@@ -131,6 +142,7 @@ internal sealed class NativeMenuService : IDisposable
         _recentWorkspaceMenu = 0;
         _styleMenu = 0;
         _zoomMenu = 0;
+        _colorMenu = 0;
     }
 
     public void Dispose() => Detach();
@@ -375,10 +387,9 @@ internal sealed class NativeMenuService : IDisposable
             AppendPopup(menu, "排版样式(&Y)", _styleMenu);
             RefreshStyleMenu();
 
-            var themes = CreateMenu(true);
-            // 颜色主题：功能暂留空，默认选中“白色”，供后续开发。
-            Append(themes, NativeMethods.MfString | NativeMethods.MfChecked, 0, "白色(&W)");
-            AppendPopup(menu, "颜色主题(&C)", themes);
+            _colorMenu = CreateMenu(true);
+            AppendPopup(menu, "颜色主题(&C)", _colorMenu);
+            RefreshColorMenu();
 
             AppendSeparator(menu);
             _zoomMenu = CreateMenu(true);
@@ -472,6 +483,59 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 重建颜色主题子菜单：项目由 ColorThemeService 扫描 Resources/Styles 目录中
+    /// 标记为 @type: color-theme 的 CSS 文件动态发现，
+    /// 命令 ID 从 CommandCatalog.ColorCommandBase 起按序分配，并在当前主题上打勾。
+    /// </summary>
+    private void RefreshColorMenu()
+    {
+        if (_colorMenu == 0)
+        {
+            return;
+        }
+
+        var count = NativeMethods.GetMenuItemCount(_colorMenu);
+        for (var index = count - 1; index >= 0; index--)
+        {
+            NativeMethods.DeleteMenu(_colorMenu, (uint)index, NativeMethods.MfByPosition);
+        }
+
+        _colorCommandIds.Clear();
+        var current = _currentColorThemeProvider();
+        var lightThemes = ColorThemeService.All.Where(t => !t.IsDark).ToArray();
+        var darkThemes = ColorThemeService.All.Where(t => t.IsDark).ToArray();
+
+        foreach (var theme in lightThemes)
+        {
+            if ((uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count) > CommandCatalog.ColorCommandMax)
+                break;
+            AppendColorThemeItem(theme, current);
+        }
+
+        if (lightThemes.Length > 0 && darkThemes.Length > 0)
+            AppendSeparator(_colorMenu);
+
+        foreach (var theme in darkThemes)
+        {
+            if ((uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count) > CommandCatalog.ColorCommandMax)
+                break;
+            AppendColorThemeItem(theme, current);
+        }
+    }
+
+    private void AppendColorThemeItem(ColorTheme theme, string current)
+    {
+        var commandId = (uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count);
+        var isCurrent = string.Equals(theme.Id, current, StringComparison.Ordinal);
+        _colorCommandIds[commandId] = theme.Id;
+        Append(
+            _colorMenu,
+            NativeMethods.MfString | (isCurrent ? NativeMethods.MfChecked : NativeMethods.MfUnchecked),
+            commandId,
+            theme.DisplayName);
+    }
+
     private static nint BuildViewMenu()
     {
         var menu = CreateMenu(true);
@@ -486,7 +550,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.ViewList, "文档列表(&L)");
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowStatusBar, "显示状态栏(&S)");
-            AppendCommand(menu, AppCommand.ToggleSourceMode, "源码模式(&S)");
+            AppendCommand(menu, AppCommand.ToggleSourceMode, "源码模式(&C)");
             return menu;
         }
         catch

@@ -1,5 +1,6 @@
-/* @name: 印刷物(现代) */
-/* 印刷排版同时被“印刷物(复古)”继承（见 retro-print.css 的 @depends）。 */
+/* @type: typography
+   @name: 教科书(单色印刷) */
+/* 印刷排版同时被”印刷物(复古)”继承（见 retro-print.css 的 @depends）。 */
 
 /* 印刷排版采用固定版心边距：内容区填满可用宽度，左右留白与上下间距
    固定为 44px/56px/96px（与历史 style.css 中 #editor 的内边距一致），
@@ -18,7 +19,7 @@
 }
 
 .markleaf-style-print .markleaf-document {
-  color: #000000;
+  color: var(--text-primary);
   font-family: "Times New Roman", "宋体-简", "宋体", serif;
   font-size: var(--ml-font-size);
   line-height: var(--ml-line-height);
@@ -30,7 +31,7 @@
 .markleaf-style-print .markleaf-document h4,
 .markleaf-style-print .markleaf-document h5,
 .markleaf-style-print .markleaf-document h6 {
-  color: #000000;
+  color: var(--text-primary);
   font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
   border: 0;
   padding: 0;
@@ -73,29 +74,24 @@
 .markleaf-style-print .markleaf-document b {
   font-family: "Helvetica", "汉仪中黑简", "黑体", sans-serif;
   font-weight: normal;
+  color: var(--text-primary);
 }
 
-.markleaf-style-print .markleaf-document blockquote {
-  margin: 0;
-  padding: 0 0 0 1em;
-  color: #808080;
-  border-left: 0;
-}
 
 .markleaf-style-print .markleaf-document blockquote p {
   text-indent: 0;
 }
 
 .markleaf-style-print .markleaf-document a {
-  color: #808080;
+  color: var(--text-secondary);
   text-decoration: underline;
 }
 
 .markleaf-style-print .markleaf-document table {
   width: auto;
   margin: 1em auto;
-  color: #000000;
-  border: 1px solid #000000;
+  color: var(--text-primary);
+  border: 1px solid var(--text-primary);
   background: transparent;
 }
 
@@ -105,22 +101,22 @@
 
 .markleaf-style-print .markleaf-document th,
 .markleaf-style-print .markleaf-document td {
-  border: 1px solid #000000;
+  border: 1px solid var(--text-primary);
   background: transparent;
 }
 
 .markleaf-style-print .markleaf-document code,
 .markleaf-style-print .markleaf-document pre code {
   font-family: "Courier New", monospace;
-  line-height: 1.25;
+  line-height: 1.0;
+  color: var(--text-primary);
+}
+/* 代码块 */
+.markleaf-style-print .markleaf-document pre {
+  border: 0px;
+  border-radius: 0;
 }
 
-.markleaf-style-print .markleaf-document pre {
-  padding: 16px 18px;
-  border: 0;
-  border-radius: 0;
-  background: #f0f0f0;
-}
 
 .markleaf-style-print .markleaf-document ul,
 .markleaf-style-print .markleaf-document ol {
@@ -153,10 +149,10 @@
 }
 
 .markleaf-style-print .markleaf-document hr {
-  width: 7em;
+  width: 10em;
   height: 1px;
   margin: 1.5em auto;
-  background: #000000;
+  background: var(--text-primary);
 }
 
 .markleaf-style-print .markleaf-document p {
@@ -167,14 +163,14 @@
 .markleaf-style-print .markleaf-document blockquote {
   margin: 0.5em 0;
   padding: 0 1em;
-  color: #000000;
-  border: 1px solid #000000;
+  color: var(--text-primary);
+  border: 1px solid var(--text-primary);
   background: transparent;
 }
 
 .markleaf-style-print .markleaf-document blockquote p {
   font-family: "Times New Roman", "仿宋", "FangSong", serif;
-  color: #000000;
+  color: var(--text-primary);
   text-indent: 0;
 }
 

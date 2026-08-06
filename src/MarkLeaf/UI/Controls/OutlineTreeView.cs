@@ -21,6 +21,19 @@ internal sealed class OutlineTreeView : Control
     private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
+
+    // Theme colors (defaults match white theme).
+    private Color _bgPrimary = Color.White;
+    private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
+    private Color _bgSelected = Color.FromArgb(0xE0, 0xE0, 0xE0);
+    private Color _bgSelectedHover = Color.FromArgb(0xD0, 0xD0, 0xD0);
+    private Color _textPrimary = Color.Black;
+    private Color _textTertiary = Color.FromArgb(0x6D, 0x6D, 0x6D);
+    private Color _textSelected = Color.Black;
+    private Color _icon = Color.FromArgb(0x80, 0x80, 0x80);
+    private Color _iconSecondary = Color.FromArgb(0x80, 0x80, 0x80);
+    private Color _iconSelected = Color.Black;
+
     private int? _selectedPosition;
     private int? _hoveredPosition;
     private int _primaryRowHeight;
@@ -34,8 +47,8 @@ internal sealed class OutlineTreeView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
-        BackColor = Color.White;
-        ForeColor = SystemColors.WindowText;
+        BackColor = _bgPrimary;
+        ForeColor = _textPrimary;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
         ConfigureTypography(DeviceDpi);
@@ -62,6 +75,23 @@ internal sealed class OutlineTreeView : Control
             EnsureSelectionVisible();
             Invalidate();
         }
+    }
+
+    public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
+    {
+        if (colors.TryGetValue("bg-primary", out var c)) _bgPrimary = c;
+        if (colors.TryGetValue("bg-hover", out c)) _bgHover = c;
+        if (colors.TryGetValue("bg-selected", out c)) _bgSelected = c;
+        if (colors.TryGetValue("bg-selected-hover", out c)) _bgSelectedHover = c;
+        if (colors.TryGetValue("text-primary", out c)) _textPrimary = c;
+        if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
+        if (colors.TryGetValue("text-selected", out c)) _textSelected = c;
+        if (colors.TryGetValue("icon", out c)) _icon = c;
+        if (colors.TryGetValue("icon-selected", out c)) _iconSelected = c;
+        if (colors.TryGetValue("icon-secondary", out c)) _iconSecondary = c;
+        BackColor = _bgPrimary;
+        ForeColor = _textPrimary;
+        Invalidate();
     }
 
     public void SetItems(IReadOnlyList<EditorOutlineItem> items)
@@ -122,7 +152,7 @@ internal sealed class OutlineTreeView : Control
                 eventArgs.Graphics,
                 "暂无文档大纲",
                 _secondaryFont,
-                new Rectangle(ScaleForDpi(24), ScaleForDpi(10), ClientSize.Width - ScaleForDpi(28), _secondaryRowHeight));
+                new Rectangle(this.ScaleForDpi(24), 0, ClientSize.Width - this.ScaleForDpi(28), _secondaryRowHeight));
             return;
         }
         BuildVisibleRows();
@@ -135,18 +165,27 @@ internal sealed class OutlineTreeView : Control
 
             var isSelected = node.Item.Position == _selectedPosition;
             var isHovered = node.Item.Position == _hoveredPosition;
-            if (isHovered)
+            var bgBounds = new Rectangle(
+                bounds.X + this.ScaleForDpi(4), bounds.Y,
+                Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
+            if (isSelected && isHovered)
             {
-                using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
-                var bgBounds = new Rectangle(
-                    bounds.X + ScaleForDpi(4), bounds.Y,
-                    Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
-                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
-                eventArgs.Graphics.FillPath(brush, path);
+                using var brush = new SolidBrush(_bgSelectedHover);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
+            }
+            else if (isSelected)
+            {
+                using var brush = new SolidBrush(_bgSelected);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
+            }
+            else if (isHovered)
+            {
+                using var brush = new SolidBrush(_bgHover);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
 
-            var indent = ScaleForDpi(18) * node.Depth;
-            var expanderBounds = new Rectangle(ScaleForDpi(8) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
+            var indent = this.ScaleForDpi(18) * node.Depth;
+            var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
             {
                 DrawExpander(eventArgs.Graphics, expanderBounds, node.Expanded, isSelected);
@@ -158,7 +197,7 @@ internal sealed class OutlineTreeView : Control
                 Math.Max(
                     0,
                     ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0)
-                        - expanderBounds.Right - ScaleForDpi(4)),
+                        - expanderBounds.Right - this.ScaleForDpi(4)),
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
@@ -179,7 +218,7 @@ internal sealed class OutlineTreeView : Control
         }
 
         var (node, _) = row.Value;
-        var expanderRight = ScaleForDpi(24) + ScaleForDpi(18) * node.Depth;
+        var expanderRight = this.ScaleForDpi(24) + this.ScaleForDpi(18) * node.Depth;
         if (eventArgs.X <= expanderRight && node.Children.Count > 0)
         {
             node.Expanded = !node.Expanded;
@@ -290,7 +329,7 @@ internal sealed class OutlineTreeView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = ScaleForDpi(10) - _scrollBar.Value;
+        var top = 0 - _scrollBar.Value;
         foreach (var node in EnumerateVisibleNodes())
         {
             var height = GetRowHeight(node);
@@ -343,7 +382,7 @@ internal sealed class OutlineTreeView : Control
         }
     }
 
-    private int GetContentHeight() => ScaleForDpi(10) + EnumerateVisibleNodes().Sum(GetRowHeight);
+    private int GetContentHeight() => 0 + EnumerateVisibleNodes().Sum(GetRowHeight);
     private int GetRowHeight(OutlineNode node) => node.Item.Level <= 2 ? _primaryRowHeight : _secondaryRowHeight;
 
     private void UpdateScrollBar()
@@ -394,34 +433,21 @@ internal sealed class OutlineTreeView : Control
             expanded ? SystemIconProvider.DownArrow : SystemIconProvider.RightArrow,
             _arrowFont,
             bounds,
-            SystemColors.ControlDarkDark,
+            _iconSecondary,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                 | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
-    private void DrawNodeText(Graphics graphics, string text, Font font, Rectangle bounds)
+    private void DrawNodeText(Graphics graphics, string text, Font font, Rectangle bounds, Color? color = null)
     {
         TextRenderer.DrawText(
             graphics,
             text,
             font,
             bounds,
-            ForeColor,
+            color ?? ForeColor,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                 | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
-    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
-    {
-        var d = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);
 }

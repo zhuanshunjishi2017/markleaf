@@ -1,4 +1,5 @@
-/* @name: 默认(无衬线字体) */
+/* @type: typography
+   @name: 默认(无衬线字体) */
 .markleaf-style-sans .markleaf-document {
   font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
 }

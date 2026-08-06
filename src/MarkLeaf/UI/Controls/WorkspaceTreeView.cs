@@ -22,6 +22,20 @@ internal sealed class WorkspaceTreeView : Control
     private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _iconFont = new(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
+
+    // Theme colors (defaults match white theme).
+    private Color _bgPrimary = Color.White;
+    private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
+    private Color _themeLight = Color.FromArgb(0xE0, 0xE0, 0xE0);
+    private Color _themeDark = Color.FromArgb(0xD0, 0xD0, 0xD0);
+    private Color _textPrimary = Color.Black;
+    private Color _textSecondary = Color.FromArgb(0x55, 0x55, 0x55);
+    private Color _textTertiary = Color.FromArgb(0x6D, 0x6D, 0x6D);
+    private Color _textSelected = Color.Black;
+    private Color _icon = Color.FromArgb(0x80, 0x80, 0x80);
+    private Color _iconSelected = Color.Black;
+    private Color _iconSecondary = Color.FromArgb(0x80, 0x80, 0x80);
+
     private WorkspaceNode? _root;
     private string? _placeholderText = "暂未打开工作区";
     private string? _selectedPath;
@@ -41,8 +55,8 @@ internal sealed class WorkspaceTreeView : Control
         Dock = DockStyle.Fill;
         TabStop = true;
         AllowDrop = true;
-        BackColor = Color.White;
-        ForeColor = SystemColors.WindowText;
+        BackColor = _bgPrimary;
+        ForeColor = _textPrimary;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
         ConfigureTypography(DeviceDpi);
@@ -78,6 +92,24 @@ internal sealed class WorkspaceTreeView : Control
     [Browsable(false)]
     public bool HasRoot => _root is not null;
 
+    public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
+    {
+        if (colors.TryGetValue("bg-primary", out var c)) _bgPrimary = c;
+        if (colors.TryGetValue("bg-hover", out c)) _bgHover = c;
+        if (colors.TryGetValue("theme-light", out c)) _themeLight = c;
+        if (colors.TryGetValue("theme-dark", out c)) _themeDark = c;
+        if (colors.TryGetValue("text-primary", out c)) _textPrimary = c;
+        if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
+        if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
+        if (colors.TryGetValue("text-selected", out c)) _textSelected = c;
+        if (colors.TryGetValue("icon", out c)) _icon = c;
+        if (colors.TryGetValue("icon-selected", out c)) _iconSelected = c;
+        if (colors.TryGetValue("icon-secondary", out c)) _iconSecondary = c;
+        BackColor = _bgPrimary;
+        ForeColor = _textPrimary;
+        Invalidate();
+    }
+
     public void ConfigureTypography(int dpi)
     {
         var previousFont = _treeFont;
@@ -89,7 +121,7 @@ internal sealed class WorkspaceTreeView : Control
         _iconFont = new Font(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.75F);
-        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + ScaleForDpi(4);
+        _rootTitleHeight = (int)Math.Ceiling(_rootTitleFont.GetHeight(dpi) * 1.75F) + this.ScaleForDpi(4);
         previousFont.Dispose();
         previousRootFont.Dispose();
         previousIconFont.Dispose();
@@ -246,8 +278,8 @@ internal sealed class WorkspaceTreeView : Control
         if (_root is null)
         {
             DrawText(eventArgs.Graphics, _placeholderText ?? string.Empty,
-                new Rectangle(ScaleForDpi(16), ScaleForDpi(10), Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
-                SystemColors.GrayText);
+                new Rectangle(this.ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - this.ScaleForDpi(28)), _rowHeight),
+                _textTertiary);
             return;
         }
 
@@ -256,16 +288,16 @@ internal sealed class WorkspaceTreeView : Control
         {
             var titleBounds = new Rectangle(
                 0,
-                ScaleForDpi(10) - _scrollBar.Value,
+                0 - _scrollBar.Value,
                 ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
                 _rootTitleHeight);
             if (titleBounds.Bottom > 0 && titleBounds.Top < ClientSize.Height)
             {
                 DrawText(eventArgs.Graphics, _root.Entry.Name,
-                    new Rectangle(ScaleForDpi(24), titleBounds.Top + ScaleForDpi(4),
-                        Math.Max(0, titleBounds.Width - ScaleForDpi(28)),
-                        titleBounds.Height - ScaleForDpi(8)),
-                    Color.FromArgb(0x55, 0x55, 0x55), _rootTitleFont);
+                    new Rectangle(this.ScaleForDpi(24), titleBounds.Top + this.ScaleForDpi(4),
+                        Math.Max(0, titleBounds.Width - this.ScaleForDpi(28)),
+                        titleBounds.Height - this.ScaleForDpi(8)),
+                    _textSecondary, _rootTitleFont);
             }
         }
         foreach (var (node, bounds) in _visibleRows)
@@ -278,51 +310,45 @@ internal sealed class WorkspaceTreeView : Control
             var isHovered = PathEquals(node.Entry.FullPath, _hoveredPath)
                 || PathEquals(node.Entry.FullPath, _keyboardHoverPath);
             var bgBounds = new Rectangle(
-                bounds.X + ScaleForDpi(4), bounds.Y,
-                Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
+                bounds.X + this.ScaleForDpi(4), bounds.Y,
+                Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
             if (isSelected && isHovered)
             {
-                using var brush = new SolidBrush(Color.FromArgb(0xD0, 0xD0, 0xD0));
-                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
-                eventArgs.Graphics.FillPath(brush, path);
+                using var brush = new SolidBrush(_themeDark);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
             else if (isSelected)
             {
-                using var brush = new SolidBrush(Color.FromArgb(0xE0, 0xE0, 0xE0));
-                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
-                eventArgs.Graphics.FillPath(brush, path);
+                using var brush = new SolidBrush(_themeLight);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
             else if (isHovered || PathEquals(node.Entry.FullPath, _contextMenuPath))
             {
-                using var brush = new SolidBrush(Color.FromArgb(0xF0, 0xF0, 0xF0));
-                using var path = CreateRoundedRect(bgBounds, ScaleForDpi(8));
-                eventArgs.Graphics.FillPath(brush, path);
+                using var brush = new SolidBrush(_bgHover);
+                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
 
             if (PathEquals(node.Entry.FullPath, _contextMenuPath))
             {
-                using var pen = new Pen(Color.FromArgb(0x55, 0x55, 0x55), 2);
-                using var borderPath = CreateRoundedRect(bgBounds, ScaleForDpi(8));
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                eventArgs.Graphics.DrawPath(pen, borderPath);
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.Default;
+                using var pen = new Pen(_textSecondary, 2);
+                SidebarGdi.DrawRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), pen);
             }
 
-            var indent = ScaleForDpi(18) * node.Depth;
-            var expanderBounds = new Rectangle(ScaleForDpi(8) + indent, bounds.Top, ScaleForDpi(16), bounds.Height);
+            var indent = this.ScaleForDpi(18) * node.Depth;
+            var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Entry.IsDirectory)
             {
                 DrawExpander(eventArgs.Graphics, expanderBounds, node.Expanded);
             }
-            var iconAdvance = ScaleForDpi(18);
+            var iconAdvance = this.ScaleForDpi(18);
             var iconBounds = new Rectangle(expanderBounds.Right, bounds.Top, iconAdvance, bounds.Height);
-            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, ForeColor, _iconFont);
+            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, isSelected ? _iconSelected : _icon, _iconFont);
             var textBounds = new Rectangle(
                 iconBounds.Right,
                 bounds.Top,
-                Math.Max(0, bounds.Width - iconBounds.Right - ScaleForDpi(4)),
+                Math.Max(0, bounds.Width - iconBounds.Right - this.ScaleForDpi(4)),
                 bounds.Height);
-            DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, ForeColor);
+            DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, isSelected ? _textSelected : ForeColor);
 
         }
     }
@@ -555,12 +581,12 @@ internal sealed class WorkspaceTreeView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = ScaleForDpi(10) + (_root is null ? 0 : _rootTitleHeight) - _scrollBar.Value;
+        var top = 0 + (_root is null ? 0 : _rootTitleHeight) - _scrollBar.Value;
         var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
         foreach (var node in EnumerateVisibleNodes())
         {
             _visibleRows.Add((node, new Rectangle(0, top, width, _rowHeight)));
-            top += _rowHeight + ScaleForDpi(2);
+            top += _rowHeight + this.ScaleForDpi(2);
         }
     }
 
@@ -632,8 +658,8 @@ internal sealed class WorkspaceTreeView : Control
         return EnumerateAllNodes().FirstOrDefault(node => PathEquals(node.Entry.FullPath, path));
     }
 
-    private int GetContentHeight() => ScaleForDpi(10) + (_root is null ? 0 : _rootTitleHeight)
-        + EnumerateVisibleNodes().Count() * (_rowHeight + ScaleForDpi(2));
+    private int GetContentHeight() => 0 + (_root is null ? 0 : _rootTitleHeight)
+        + EnumerateVisibleNodes().Count() * (_rowHeight + this.ScaleForDpi(2));
 
     private void UpdateScrollBar()
     {
@@ -694,14 +720,14 @@ internal sealed class WorkspaceTreeView : Control
             expanded ? SystemIconProvider.DownArrow : SystemIconProvider.RightArrow,
             _arrowFont,
             bounds,
-            SystemColors.ControlDarkDark,
+            _iconSecondary,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                 | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
     private Rectangle RootTitleBounds() => new(
         0,
-        ScaleForDpi(10) - _scrollBar.Value,
+        0 - _scrollBar.Value,
         ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
         _rootTitleHeight);
 
@@ -719,20 +745,6 @@ internal sealed class WorkspaceTreeView : Control
 
     private static bool PathEquals(string? left, string? right)
         => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
-
-    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
-    {
-        var d = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);
 
     private static string[] GetDroppableFiles(IDataObject? data)
     {

@@ -5,7 +5,8 @@ internal sealed record ApplicationPaths(
     string SettingsFile,
     string LogDirectory,
     string DefaultImageDirectory,
-    string RecoveryDirectory)
+    string RecoveryDirectory,
+    string WebView2UserDataDirectory)
 {
     public static ApplicationPaths Create(string? overrideRoot = null)
     {
@@ -20,6 +21,7 @@ internal sealed record ApplicationPaths(
             Path.Combine(root, "settings.json"),
             Path.Combine(root, "Logs"),
             Path.Combine(root, "Cache"),
-            Path.Combine(root, "Recovery"));
+            Path.Combine(root, "Recovery"),
+            Path.Combine(root, "Cache", "WebView2"));
     }
 }

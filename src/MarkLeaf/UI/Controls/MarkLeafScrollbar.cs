@@ -16,8 +16,8 @@ internal sealed class MarkLeafScrollbar : Control
     private const int MinThumbHeight = 24;
     private const int ArrowSizeDpi = 18;
 
-    private static readonly Color ThumbIdle = Color.FromArgb(0x8B, 0x8B, 0x8B);
-    private static readonly Color ThumbActive = Color.FromArgb(0x63, 0x63, 0x63);
+    private Color _thumbIdle = Color.FromArgb(0x8B, 0x8B, 0x8B);
+    private Color _thumbActive = Color.FromArgb(0x63, 0x63, 0x63);
 
     private readonly System.Windows.Forms.Timer _arrowTimer = new() { Interval = 50 };
     private readonly Font _arrowFont;
@@ -30,6 +30,7 @@ internal sealed class MarkLeafScrollbar : Control
 
     private bool _autoHide;
     private bool _mouseInControl;
+    private bool _mouseNearRightEdge;
     private bool _thumbHovered;
     private bool _dragging;
     private int _dragThumbOffset;
@@ -43,10 +44,17 @@ internal sealed class MarkLeafScrollbar : Control
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
         TabStop = false;
-        Width = ScaleForDpi(ControlLayoutWidth);
-        BackColor = Color.White;
+        Width = this.ScaleForDpi(ControlLayoutWidth);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 7F, FontStyle.Regular, GraphicsUnit.Point);
         _arrowTimer.Tick += OnArrowTimerTick;
+    }
+
+    public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
+    {
+        if (colors.TryGetValue("bg-primary", out var bg)) BackColor = bg;
+        if (colors.TryGetValue("scrollbar-idle", out var idle)) _thumbIdle = idle;
+        if (colors.TryGetValue("scrollbar-active", out var active)) _thumbActive = active;
+        Invalidate();
     }
 
     [Browsable(false)]
@@ -119,20 +127,29 @@ internal sealed class MarkLeafScrollbar : Control
         set => base.Visible = value;
     }
 
+    public void SetMouseNearRightEdge(bool near)
+    {
+        if (_mouseNearRightEdge != near)
+        {
+            _mouseNearRightEdge = near;
+            Invalidate();
+        }
+    }
+
     public void RaiseScroll(ScrollEventType type)
     {
         Scroll?.Invoke(this, new ScrollEventArgs(type, _value));
     }
 
-    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _dragging || _arrowDirection != 0;
+    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging || _arrowDirection != 0;
 
     private int GetMaximumScrollValue() => Math.Max(0, _maximum - _largeChange + 1);
 
-    private int ArrowHeight() => ScaleForDpi(ArrowSizeDpi);
+    private int ArrowHeight() => this.ScaleForDpi(ArrowSizeDpi);
 
-    private int TrackTop() => ArrowHeight() + ScaleForDpi(ArrowTopSpacing * 2 - TrackTopShift);
+    private int TrackTop() => ArrowHeight() + this.ScaleForDpi(ArrowTopSpacing * 2 - TrackTopShift);
 
-    private int TrackBottom() => ClientSize.Height - ArrowHeight() - ScaleForDpi(ArrowBottomSpacing);
+    private int TrackBottom() => ClientSize.Height - ArrowHeight() - this.ScaleForDpi(ArrowBottomSpacing);
 
     private int TrackHeight() => Math.Max(0, TrackBottom() - TrackTop());
 
@@ -141,7 +158,7 @@ internal sealed class MarkLeafScrollbar : Control
         if (_maximum <= _minimum) return TrackHeight();
         var range = _maximum - _minimum + _largeChange;
         var ratio = (double)_largeChange / range;
-        return Math.Max(ScaleForDpi(MinThumbHeight), (int)(TrackHeight() * ratio));
+        return Math.Max(this.ScaleForDpi(MinThumbHeight), (int)(TrackHeight() * ratio));
     }
 
     private int ThumbTop()
@@ -154,11 +171,11 @@ internal sealed class MarkLeafScrollbar : Control
         return TrackTop() + (int)((_value - _minimum) / (double)maxScroll * available);
     }
 
-    private int ThumbVisualLeft() => ScaleForDpi(ThumbLeftInset);
+    private int ThumbVisualLeft() => this.ScaleForDpi(ThumbLeftInset);
 
-    private int ArrowVisualLeft() => ScaleForDpi(ArrowLeftInset);
+    private int ArrowVisualLeft() => this.ScaleForDpi(ArrowLeftInset);
 
-    private int VisualWidth() => ScaleForDpi(TrackWidth);
+    private int VisualWidth() => this.ScaleForDpi(TrackWidth);
 
     private Rectangle ThumbBounds()
     {
@@ -173,10 +190,10 @@ internal sealed class MarkLeafScrollbar : Control
     }
 
     private Rectangle UpArrowBounds()
-        => new(ArrowVisualLeft(), ScaleForDpi(ArrowTopSpacing), VisualWidth(), ArrowHeight());
+        => new(ArrowVisualLeft(), this.ScaleForDpi(ArrowTopSpacing), VisualWidth(), ArrowHeight());
 
     private Rectangle DownArrowBounds()
-        => new(ArrowVisualLeft(), ClientSize.Height - ArrowHeight() - ScaleForDpi(ArrowBottomSpacing), VisualWidth(), ArrowHeight());
+        => new(ArrowVisualLeft(), ClientSize.Height - ArrowHeight() - this.ScaleForDpi(ArrowBottomSpacing), VisualWidth(), ArrowHeight());
 
     private Rectangle TrackBounds() => new(0, TrackTop(), ClientSize.Width, TrackHeight());
 
@@ -191,22 +208,21 @@ internal sealed class MarkLeafScrollbar : Control
         e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
         if (canScroll && showParts)
         {
-            var upColor = _arrowDirection == -1 ? ThumbActive : ThumbIdle;
+            var upColor = _arrowDirection == -1 ? _thumbActive : _thumbIdle;
             using var upBrush = new SolidBrush(upColor);
             DrawArrowChar(e.Graphics, _arrowFont, upBrush, UpArrowBounds(), SystemIconProvider.ScrollUpArrow);
         }
 
         if (canScroll && showParts)
         {
-            var color = _dragging || _thumbHovered ? ThumbActive : ThumbIdle;
+            var color = _dragging || _thumbHovered ? _thumbActive : _thumbIdle;
             using var brush = new SolidBrush(color);
-            using var path = CreateRoundedRect(ThumbBounds(), ScaleForDpi(ThumbRadius));
-            e.Graphics.FillPath(brush, path);
+            SidebarGdi.FillRoundedRect(e.Graphics, ThumbBounds(), this.ScaleForDpi(ThumbRadius), brush);
         }
 
         if (canScroll && showParts)
         {
-            var downColor = _arrowDirection == 1 ? ThumbActive : ThumbIdle;
+            var downColor = _arrowDirection == 1 ? _thumbActive : _thumbIdle;
             using var downBrush = new SolidBrush(downColor);
             DrawArrowChar(e.Graphics, _arrowFont, downBrush, DownArrowBounds(), SystemIconProvider.ScrollDownArrow);
         }
@@ -368,17 +384,4 @@ internal sealed class MarkLeafScrollbar : Control
         g.FillPath(brush, path);
     }
 
-    private static GraphicsPath CreateRoundedRect(Rectangle bounds, int radius)
-    {
-        var d = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    private int ScaleForDpi(int value) => (int)Math.Round(value * DeviceDpi / 96d);
 }
