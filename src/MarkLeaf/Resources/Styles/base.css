@@ -110,6 +110,8 @@
   padding: 0.12em 0.35em;
   border-radius: 3px;
   background: #f3f4f5;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .markleaf-document pre {
@@ -118,11 +120,17 @@
   border: 1px solid #d8dee4;
   border-radius: 4px;
   background: #f6f8fa;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .markleaf-document pre code {
   padding: 0;
   background: transparent;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .markleaf-document table {

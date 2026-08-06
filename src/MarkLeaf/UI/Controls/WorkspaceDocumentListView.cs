@@ -6,7 +6,7 @@ namespace MarkLeaf.UI.Controls;
 
 internal sealed class WorkspaceDocumentListView : Control
 {
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
+    private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<WorkspaceDocumentEntry> _documents = [];
     private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _visibleRows = [];
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
@@ -29,11 +29,19 @@ internal sealed class WorkspaceDocumentListView : Control
         Dock = DockStyle.Fill;
         TabStop = true;
         AllowDrop = true;
-        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
+        BackColor = Color.White;
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
         ConfigureTypography(DeviceDpi);
+    }
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool AutoHideScrollbar
+    {
+        get => _scrollBar.AutoHide;
+        set => _scrollBar.AutoHide = value;
     }
 
     public event EventHandler<string>? DocumentActivated;
@@ -111,7 +119,7 @@ internal sealed class WorkspaceDocumentListView : Control
                 eventArgs.Graphics,
                 PlaceholderText,
                 _metadataFont,
-                new Rectangle(ScaleForDpi(16), ScaleForDpi(8), Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
+                new Rectangle(ScaleForDpi(16), ScaleForDpi(10), Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
                 SystemColors.GrayText,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
@@ -403,8 +411,8 @@ internal sealed class WorkspaceDocumentListView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = (_workspaceName is null ? ScaleForDpi(8) : _rootTitleHeight) - _scrollBar.Value;
-        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0) - ScaleForDpi(8);
+        var top = (_workspaceName is null ? ScaleForDpi(10) : _rootTitleHeight) - _scrollBar.Value;
+        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0) - ScaleForDpi(4);
         foreach (var document in _documents)
         {
             _visibleRows.Add((document, new Rectangle(ScaleForDpi(4), top, width, _rowHeight)));
@@ -427,7 +435,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
     private void UpdateScrollBar()
     {
-        var titleOffset = _workspaceName is null ? ScaleForDpi(8) : _rootTitleHeight;
+        var titleOffset = _workspaceName is null ? ScaleForDpi(10) : _rootTitleHeight;
         var contentHeight = titleOffset + _documents.Count * (_rowHeight + ScaleForDpi(2)) - ScaleForDpi(2);
         _scrollBar.Visible = contentHeight > ClientSize.Height;
         _scrollBar.Minimum = 0;

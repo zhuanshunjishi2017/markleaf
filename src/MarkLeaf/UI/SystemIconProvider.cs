@@ -10,6 +10,10 @@ internal static class SystemIconProvider
     public static string RightArrow => IsWindows11 ? "" : "";
     public static string DownArrow => IsWindows11 ? "" : "";
 
+    // Scrollbar arrows
+    public static string ScrollUpArrow => IsWindows11 ? "" : "";
+    public static string ScrollDownArrow => IsWindows11 ? "" : "";
+
     // File type icons
     public static string TextFileIcon => IsWindows11 ? "" : "";
     public static string MarkdownFileIcon => IsWindows11 ? "" : "";

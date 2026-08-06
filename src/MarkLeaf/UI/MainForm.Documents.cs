@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services.Recovery;
+using MarkLeaf.Services.Settings;
 using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
 
@@ -382,14 +383,16 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task<bool> ConfirmDiscardOrSaveAsync()
+    private async Task<bool> ConfirmDiscardOrSaveAsync(bool isDocumentSwitch = true)
     {
         if (_document?.IsDirty != true)
         {
             return true;
         }
 
-        if (_settings.File.SaveOnDocumentSwitch && _document.FilePath is not null)
+        if (isDocumentSwitch
+            && _settings.File.SaveOnDocumentSwitch
+            && _document.FilePath is not null)
         {
             return await SaveDocumentAsync(saveAs: false);
         }
@@ -423,7 +426,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (_document?.IsDirty == true && !await ConfirmDiscardOrSaveAsync())
+        if (_document?.IsDirty == true && !await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
         {
             return;
         }
@@ -431,7 +434,12 @@ internal sealed partial class MainForm
         _closeApproved = true;
         StopWatchingDocument();
         _recoveryTimer.Stop();
-        _recoveryService.DeleteOwnFiles();
+        // 用户选择"不保存"（文档仍为脏）时保留该文档的恢复快照，便于之后通过
+        // "文件→恢复未保存的文件"找回；已保存或未修改的文档则清理本进程的恢复文件。
+        if (_document?.IsDirty != true)
+        {
+            _recoveryService.DeleteOwnFiles();
+        }
         BeginInvoke(Close);
     }
 
@@ -691,7 +699,8 @@ internal sealed partial class MainForm
             bitmap.Save(stream, ImageFormat.Png);
             var imported = await _imageAssetService.ImportBytesAsync(
                 stream.ToArray(),
-                ".png");
+                ".png",
+                ResolveClipboardImageTargetDirectory());
             await InsertImportedImageAsync(imported, "粘贴图片");
         }
         catch (Exception exception) when (exception is IOException or ExternalException or InvalidDataException
@@ -743,7 +752,7 @@ internal sealed partial class MainForm
         {
             try
             {
-                var imported = await _imageAssetService.ImportFileAsync(path);
+                var imported = await ImportFileByHandlingAsync(path);
                 if (await InsertImportedImageAsync(
                         imported,
                         Path.GetFileNameWithoutExtension(path),
@@ -763,6 +772,76 @@ internal sealed partial class MainForm
         }
 
         SetStatus(importedCount > 0 ? $"已插入 {importedCount} 张图片" : "未找到可插入的图片");
+    }
+
+    private string GetDefaultImageDirectory()
+    {
+        var directory = _settings.Image.DefaultDirectory;
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            directory = _paths.DefaultImageDirectory;
+        }
+
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private string? GetDocumentAssetsDirectory()
+    {
+        if (_document?.FilePath is not { } documentPath)
+        {
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(documentPath);
+        if (directory is null)
+        {
+            return null;
+        }
+
+        var assets = Path.Combine(directory, Path.GetFileNameWithoutExtension(documentPath) + ".assets");
+        Directory.CreateDirectory(assets);
+        return assets;
+    }
+
+    private string ResolveClipboardImageTargetDirectory()
+    {
+        switch (_settings.Image.ClipboardHandling)
+        {
+            case ClipboardImageHandling.CopyToAssets:
+                if (GetDocumentAssetsDirectory() is { } assets)
+                {
+                    return assets;
+                }
+
+                SetStatus("文档未保存，无法复制到 .assets 目录，图片已保存到默认目录");
+                return GetDefaultImageDirectory();
+            case ClipboardImageHandling.Upload:
+                SetStatus("“上传图片”选项尚未实现，图片已保存到默认目录");
+                return GetDefaultImageDirectory();
+            default:
+                return GetDefaultImageDirectory();
+        }
+    }
+
+    private async Task<ImportedImage> ImportFileByHandlingAsync(string sourcePath)
+    {
+        switch (_settings.Image.FileHandling)
+        {
+            case FileImageHandling.CopyToAssets:
+                if (GetDocumentAssetsDirectory() is { } assets)
+                {
+                    return await _imageAssetService.CopyFileIntoAsync(sourcePath, assets);
+                }
+
+                SetStatus("文档未保存，无法复制到 .assets 目录，图片将引用原位置");
+                break;
+            case FileImageHandling.Upload:
+                SetStatus("“上传图片”选项尚未实现，图片将引用原位置");
+                break;
+        }
+
+        return await _imageAssetService.ImportFileAsync(sourcePath);
     }
 
     private async Task<bool> InsertImportedImageAsync(

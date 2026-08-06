@@ -44,6 +44,7 @@ const findClose = document.querySelector<HTMLButtonElement>('#find-close')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 let documentId: string = crypto.randomUUID()
+let documentLoaded = false
 let revision = 0
 let compositionActive = false
 let compositionChanged = false
@@ -413,7 +414,10 @@ function handleMessage(value: unknown): void {
 
   const message: HostMessage = value
 
-  if (message.type !== 'loadDocument' && message.type !== 'applyStyles' && message.documentId !== documentId) {
+  // 文档尚未加载时，宿主的会话 documentId 还是随机占位值，与前端不一致；
+  // 此时 applyStyles/setAutoHideScrollbar 等文档无关的偏好推送必须放行。
+  if (message.type !== 'loadDocument' && message.type !== 'applyStyles'
+      && documentLoaded && message.documentId !== documentId) {
     return
   }
 
@@ -446,6 +450,7 @@ function handleMessage(value: unknown): void {
         return
       }
       documentId = message.documentId
+      documentLoaded = true
       revision = message.revision
       suppressUpdate = true
       sourceEditor?.destroy()

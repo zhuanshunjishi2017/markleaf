@@ -478,6 +478,10 @@ internal sealed class NativeMenuService : IDisposable
         try
         {
             AppendCommand(menu, AppCommand.ToggleSidebar, "显示侧栏(&B)");
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.SwitchToWorkspace, "工作区(&W)");
+            AppendCommand(menu, AppCommand.SwitchToOutline, "大纲(&O)");
+            AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ViewTree, "树结构(&T)");
             AppendCommand(menu, AppCommand.ViewList, "文档列表(&L)");
             AppendSeparator(menu);

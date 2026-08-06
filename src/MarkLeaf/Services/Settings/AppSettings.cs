@@ -13,6 +13,20 @@ public enum NewLineStyle
     Crlf,
 }
 
+public enum ClipboardImageHandling
+{
+    SaveToDefaultDirectory,
+    CopyToAssets,
+    Upload,
+}
+
+public enum FileImageHandling
+{
+    ReferenceOriginal,
+    CopyToAssets,
+    Upload,
+}
+
 public sealed class AppSettings
 {
     public const int CurrentSchemaVersion = 3;
@@ -31,7 +45,25 @@ public sealed class AppSettings
 
     public GeneralSettings General { get; set; } = new();
 
+    public ImageSettings Image { get; set; } = new();
+
     public string MarkdownStyle { get; set; } = "serif";
+
+    public static AppSettings CreateDefaults()
+    {
+        return new AppSettings
+        {
+            SchemaVersion = CurrentSchemaVersion,
+            MainWindow = new WindowSettings(),
+            Workspace = new WorkspaceSettings(),
+            File = new FileSettings(),
+            Editor = new EditorSettings(),
+            Appearance = new AppearanceSettings(),
+            General = new GeneralSettings(),
+            Image = new ImageSettings(),
+            MarkdownStyle = "serif",
+        };
+    }
 }
 
 public sealed class GeneralSettings
@@ -84,6 +116,19 @@ public sealed class FileSettings
     public bool RecordRecentFolders { get; set; } = true;
 
     public NewLineStyle NewLineStyle { get; set; } = NewLineStyle.Crlf;
+}
+
+public sealed class ImageSettings
+{
+    public ClipboardImageHandling ClipboardHandling { get; set; } = ClipboardImageHandling.SaveToDefaultDirectory;
+
+    public FileImageHandling FileHandling { get; set; } = FileImageHandling.ReferenceOriginal;
+
+    public string DefaultDirectory { get; set; } = string.Empty;
+
+    public bool UseRelativePaths { get; set; } = true;
+
+    public bool PrefixRelativeWithDotSlash { get; set; } = true;
 }
 
 public sealed class WorkspaceSettings

@@ -80,6 +80,8 @@ public enum AppCommand
     ViewList = 0x1304,
     ShowStatusBar = 0x1303,
     ToggleSourceMode = 0x1305,
+    SwitchToWorkspace = 0x1306,
+    SwitchToOutline = 0x1307,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,
@@ -101,6 +103,7 @@ public readonly record struct CommandContext(
     bool SidebarVisible,
     bool FocusMode,
     bool SourceMode,
+    bool OutlineActive = false,
     bool ParagraphActive = false,
     int? HeadingLevel = null,
     bool BoldActive = false,

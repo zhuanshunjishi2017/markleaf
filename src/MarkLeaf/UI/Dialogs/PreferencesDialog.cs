@@ -1,3 +1,4 @@
+using MarkLeaf.Documents;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 
@@ -14,6 +15,10 @@ internal sealed class PreferencesDialog : Form
     private readonly Action? _onClearLogs;
     private readonly Action? _onOpenSettingsJson;
     private readonly Action? _onClearHistory;
+    private readonly Action? _onResetAll;
+
+    private readonly Button _resetAllButton = new()
+    { Text = "重置所有设置(&R)...", AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
 
@@ -70,6 +75,19 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _associateMarkdownCheck;
     private readonly CheckBox _associateTextCheck;
 
+    private readonly ComboBox _clipboardImageCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    private readonly ComboBox _fileImageCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    private readonly TextBox _defaultDirectoryTextBox = new()
+    { Width = 320 };
+    private readonly Button _browseDirectoryButton = new()
+    { Text = "浏览(&B)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    private readonly CheckBox _useRelativePathsCheck;
+    private readonly CheckBox _prefixRelativeWithDotSlashCheck;
+    private readonly Button _imageUploadButton = new()
+    { Text = "图片上传配置(&U)...", AutoSize = true, FlatStyle = FlatStyle.System };
+
     private readonly Button _okButton = new()
     { Text = "确定", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
 
@@ -83,6 +101,19 @@ internal sealed class PreferencesDialog : Form
         "打开上次的工作区和文件",
     ];
 
+    // “上传图片”选项暂未实现，从列表中移除，等后续版本再开放。
+    private static readonly string[] ClipboardImageHandlingItems =
+    [
+        "保存到默认目录",
+        "复制到./文件名.assets路径",
+    ];
+
+    private static readonly string[] FileImageHandlingItems =
+    [
+        "引用原有位置",
+        "复制到./文件名.assets路径",
+    ];
+
     public PreferencesDialog(
         AppSettings settings,
         Action? onRecover = null,
@@ -92,7 +123,8 @@ internal sealed class PreferencesDialog : Form
         Action? onOpenLogFolder = null,
         Action? onClearLogs = null,
         Action? onOpenSettingsJson = null,
-        Action? onClearHistory = null)
+        Action? onClearHistory = null,
+        Action? onResetAll = null)
     {
         _settings = settings;
         _onRecover = onRecover;
@@ -103,6 +135,7 @@ internal sealed class PreferencesDialog : Form
         _onClearLogs = onClearLogs;
         _onOpenSettingsJson = onOpenSettingsJson;
         _onClearHistory = onClearHistory;
+        _onResetAll = onResetAll;
 
         _languageCombo.Items.Add("简体中文");
         _languageCombo.SelectedIndex = 0;
@@ -117,6 +150,17 @@ internal sealed class PreferencesDialog : Form
 
         foreach (var item in StartupActionItems)
             _startupAction.Items.Add(item);
+
+        foreach (var item in ClipboardImageHandlingItems)
+            _clipboardImageCombo.Items.Add(item);
+        foreach (var item in FileImageHandlingItems)
+            _fileImageCombo.Items.Add(item);
+
+        // 相对路径引用暂未实现，先禁用，等后续版本再开放。
+        _useRelativePathsCheck = new CheckBox
+        { Text = "在可用时使用相对路径(&R)", AutoSize = true, FlatStyle = FlatStyle.System, Enabled = false };
+        _prefixRelativeWithDotSlashCheck = new CheckBox
+        { Text = "相对路径前加\"./\"(&S)", AutoSize = true, FlatStyle = FlatStyle.System, Enabled = false };
 
         _autoSaveCheck = new CheckBox
         { Text = "自动保存文件(&A)", AutoSize = true, FlatStyle = FlatStyle.System };
@@ -178,7 +222,7 @@ internal sealed class PreferencesDialog : Form
         _tabs.TabPages.Add(CreateTab("文件", BuildFileTab()));
         _tabs.TabPages.Add(CreateTab("外观", BuildAppearanceTab()));
         _tabs.TabPages.Add(CreateTab("编辑", BuildEditorTab()));
-        _tabs.TabPages.Add(CreateTab("图片", BuildPlaceholder()));
+        _tabs.TabPages.Add(CreateTab("图片", BuildImagesTab()));
         _tabs.TabPages.Add(CreateTab("通用", BuildGeneralTab()));
 
         _okButton.Click += OnOkClick;
@@ -192,6 +236,39 @@ internal sealed class PreferencesDialog : Form
         _clearLogsButton.Click += (_, _) => _onClearLogs?.Invoke();
         _openSettingsJsonButton.Click += (_, _) => _onOpenSettingsJson?.Invoke();
         _clearHistoryButton.Click += (_, _) => _onClearHistory?.Invoke();
+        _resetAllButton.Click += (_, _) =>
+        {
+            if (MessageBox.Show(
+                    this,
+                    "这将把首选项里的所有设置都重置为默认值。是否继续？",
+                    "重置所有设置",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            var defaults = AppSettings.CreateDefaults();
+            _settings.SchemaVersion = defaults.SchemaVersion;
+            _settings.MainWindow = defaults.MainWindow;
+            _settings.Workspace = defaults.Workspace;
+            _settings.File = defaults.File;
+            _settings.Editor = defaults.Editor;
+            _settings.Appearance = defaults.Appearance;
+            _settings.General = defaults.General;
+            _settings.Image = defaults.Image;
+            _settings.MarkdownStyle = defaults.MarkdownStyle;
+            LoadSettingsIntoControls();
+            _onResetAll?.Invoke();
+        };
+        _browseDirectoryButton.Click += (_, _) => BrowseDefaultDirectory();
+        _imageUploadButton.Click += (_, _) => MessageBox.Show(
+            this,
+            "图片上传配置功能将在后续版本中提供。",
+            "MarkLeaf",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
 
         var buttons = new FlowLayoutPanel
         {
@@ -598,6 +675,8 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_openSettingsJsonButton, 0, 0);
+        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(_resetAllButton, 0, 2);
         return panel;
     }
 
@@ -614,6 +693,115 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(Gap(10), 0, 1);
         panel.Controls.Add(_associateTextCheck, 0, 2);
         return panel;
+    }
+
+    private Control BuildImagesTab()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Padding = new Padding(16, 20, 16, 12),
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        panel.Controls.Add(NewLabel("剪切板图片(&C)："), 0, 0);
+        panel.Controls.Add(_clipboardImageCombo, 1, 0);
+        panel.Controls.Add(Gap(20), 0, 1);
+        panel.Controls.Add(Gap(20), 1, 1);
+
+        panel.Controls.Add(NewLabel("来自文件(&F)："), 0, 2);
+        panel.Controls.Add(_fileImageCombo, 1, 2);
+        panel.Controls.Add(Gap(20), 0, 3);
+        panel.Controls.Add(Gap(20), 1, 3);
+
+        panel.Controls.Add(NewLabel("默认目录(&D)："), 0, 4);
+        panel.Controls.Add(BuildDefaultDirectoryPanel(), 1, 4);
+        panel.Controls.Add(Gap(20), 0, 5);
+        panel.Controls.Add(Gap(20), 1, 5);
+
+        panel.Controls.Add(NewLabel("引用方式(&R)："), 0, 6);
+        panel.Controls.Add(BuildReferencePanel(), 1, 6);
+        panel.Controls.Add(Gap(20), 0, 7);
+        panel.Controls.Add(Gap(20), 1, 7);
+
+        panel.Controls.Add(NewLabel("图片上传(&U)："), 0, 8);
+        panel.Controls.Add(_imageUploadButton, 1, 8);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 9);
+
+        return panel;
+    }
+
+    private Control BuildDefaultDirectoryPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.Controls.Add(_defaultDirectoryTextBox, 0, 0);
+        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(_browseDirectoryButton, 0, 2);
+        return panel;
+    }
+
+    private Control BuildReferencePanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.Controls.Add(_useRelativePathsCheck, 0, 0);
+        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(_prefixRelativeWithDotSlashCheck, 0, 2);
+        return panel;
+    }
+
+    private void BrowseDefaultDirectory()
+    {
+        var current = _defaultDirectoryTextBox.Text.Trim();
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "选择默认图片目录",
+            UseDescriptionForTitle = true,
+            SelectedPath = current.Length > 0 && Directory.Exists(current) ? current : string.Empty,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var selected = dialog.SelectedPath;
+        if (string.Equals(selected, current, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // 更换目录后，原本保存在当前默认目录、并被文档引用的图片将不再由应用管理。
+        if (current.Length > 0 && Directory.Exists(current) && ImageAssetService.DirectoryContainsImages(current))
+        {
+            var choice = MessageBox.Show(
+                this,
+                "若更换目录，所有链接到此处的图片将失效。是否继续？",
+                "更换默认图片目录",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (choice != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
+        _defaultDirectoryTextBox.Text = selected;
     }
 
     private void LoadSettingsIntoControls()
@@ -644,7 +832,19 @@ internal sealed class PreferencesDialog : Form
         _associateMarkdownCheck.Checked = _settings.General.AssociateMarkdownFiles;
         _associateTextCheck.Checked = _settings.General.AssociateTextFiles;
 
+        var image = _settings.Image;
+        _clipboardImageCombo.SelectedIndex = ToComboIndex((int)image.ClipboardHandling, _clipboardImageCombo);
+        _fileImageCombo.SelectedIndex = ToComboIndex((int)image.FileHandling, _fileImageCombo);
+        _defaultDirectoryTextBox.Text = image.DefaultDirectory;
+        _useRelativePathsCheck.Checked = image.UseRelativePaths;
+        _prefixRelativeWithDotSlashCheck.Checked = image.PrefixRelativeWithDotSlash;
+
         _styleCombo.SelectedIndex = FindStyleIndex(_settings.MarkdownStyle);
+    }
+
+    private static int ToComboIndex(int value, ComboBox combo)
+    {
+        return value >= 0 && value < combo.Items.Count ? value : 0;
     }
 
     private static int FindZoomIndex(int percent)
@@ -720,6 +920,19 @@ internal sealed class PreferencesDialog : Form
         _settings.General.AssociateMarkdownFiles = _associateMarkdownCheck.Checked;
         _settings.General.AssociateTextFiles = _associateTextCheck.Checked;
 
+        var image = _settings.Image;
+        if (_clipboardImageCombo.SelectedIndex >= 0)
+        {
+            image.ClipboardHandling = (ClipboardImageHandling)_clipboardImageCombo.SelectedIndex;
+        }
+        if (_fileImageCombo.SelectedIndex >= 0)
+        {
+            image.FileHandling = (FileImageHandling)_fileImageCombo.SelectedIndex;
+        }
+        image.DefaultDirectory = _defaultDirectoryTextBox.Text.Trim();
+        image.UseRelativePaths = _useRelativePathsCheck.Checked;
+        image.PrefixRelativeWithDotSlash = _prefixRelativeWithDotSlashCheck.Checked;
+
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -732,15 +945,6 @@ internal sealed class PreferencesDialog : Form
     private static Control Gap(int height)
     {
         return new Panel { Height = height, Dock = DockStyle.None };
-    }
-
-    private static Control BuildPlaceholder()
-    {
-        return new Panel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(12, 8, 0, 8),
-        };
     }
 
     private static TabPage CreateTab(string text, Control content)

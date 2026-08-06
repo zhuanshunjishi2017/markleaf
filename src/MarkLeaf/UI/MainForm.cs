@@ -34,6 +34,8 @@ internal sealed partial class MainForm : Form
     private readonly WorkspaceService _workspaceService = new();
     private readonly WorkspaceTreeView _workspaceTree;
     private readonly WorkspaceDocumentListView _workspaceDocumentList;
+    private Control _workspacePanelHost = default!;
+    private Control _outlinePanelHost = default!;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
     private EditorHostController? _editorHost;
@@ -77,6 +79,7 @@ internal sealed partial class MainForm : Form
     private EditorStatus _editorStatus = EditorStatus.Empty;
     private bool _editorContextMenuActive;
     private bool _workspaceListViewActive;
+    private bool _sidebarActiveOutline;
     private bool _initialDocumentOpened;
     private WorkspaceDocumentSortOrder _workspaceDocumentSortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
     private string _markdownStyle = "serif";
@@ -98,7 +101,11 @@ internal sealed partial class MainForm : Form
         _zoomPercent = NearestZoom(settings.Appearance.ZoomPercent);
         _settingsService = settingsService;
         _logger = logger;
-        _imageAssetService = new ImageAssetService(paths.ClipboardImageCacheDirectory);
+        if (string.IsNullOrWhiteSpace(_settings.Image.DefaultDirectory))
+        {
+            _settings.Image.DefaultDirectory = _paths.DefaultImageDirectory;
+        }
+        _imageAssetService = new ImageAssetService(_paths.DefaultImageDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
         _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent);
@@ -185,34 +192,30 @@ internal sealed partial class MainForm : Form
             Panel2MinSize = 500,
             IsSplitterFixed = false,
         };
-        split.Panel1.Controls.Add(CreateSidebarTabs());
+        split.Panel1.Controls.Add(CreateSidebarPanel());
         split.Panel2.Controls.Add(CreateEditorHost());
         split.HandleCreated += (_, _) => SetSplitterDistanceSafely(split, sidebarWidth, FixedPanel.Panel1);
         return split;
     }
 
-    private Control CreateSidebarTabs()
+    private Control CreateSidebarPanel()
     {
-        var tabs = new TabControl
+        var panel = new Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Point(14, 8),
             BackColor = Color.White,
         };
-        tabs.TabPages.Add(CreateSidebarPage("工作区", CreateWorkspacePanel()));
-        tabs.TabPages.Add(CreateSidebarPage("大纲", CreateOutlineTree()));
-        return tabs;
-    }
-
-    private static TabPage CreateSidebarPage(string title, Control content)
-    {
-        var page = new TabPage(title)
+        _workspacePanelHost = CreateWorkspacePanel();
+        _outlinePanelHost = new Panel
         {
-            Padding = Padding.Empty,
-            BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9),
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
         };
-        page.Controls.Add(content);
-        return page;
+        _outlinePanelHost.Controls.Add(CreateOutlineTree());
+        panel.Controls.Add(_outlinePanelHost);
+        panel.Controls.Add(_workspacePanelHost);
+        ShowSidebarView(outline: false);
+        return panel;
     }
 
     private Control CreateEditorHost()
@@ -247,6 +250,7 @@ internal sealed partial class MainForm : Form
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth);
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
             _editorHost?.ExecuteCommand("setAutoHideScrollbar", _settings.Appearance.AutoHideScrollbars ? "1" : "0");
+            ApplySidebarAutoHideScrollbar();
         };
         _editorHost.Ready += (_, _) => BeginEditorSmokeIfRequested();
         _editorHost.Ready += (_, _) => LoadInitialDocumentIfNeeded();
@@ -309,7 +313,7 @@ internal sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9),
+            BackColor = Color.White,
         };
         content.Controls.Add(CreateWorkspaceTree());
         _workspaceDocumentList.Visible = false;
@@ -572,7 +576,8 @@ internal sealed partial class MainForm : Form
             TableAlign: _editorCommandStatus.TableAlign,
             ImageSelected: _editorCommandStatus.ImageSelected,
             DocumentSaved: _document?.FilePath is not null,
-            StatusBarVisible: _statusStrip?.Visible != false);
+            StatusBarVisible: _statusStrip?.Visible != false,
+            OutlineActive: _sidebarActiveOutline);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
             && context.EditorReady
@@ -670,6 +675,14 @@ internal sealed partial class MainForm : Form
                 }
                 SetStatus(_sidebarSplit.Panel1Collapsed ? "侧栏已隐藏" : "侧栏已显示");
                 break;
+            case AppCommand.SwitchToWorkspace:
+                ShowSidebarView(outline: false);
+                SetStatus("已切换至工作区");
+                break;
+            case AppCommand.SwitchToOutline:
+                ShowSidebarView(outline: true);
+                SetStatus("已切换至大纲");
+                break;
             case AppCommand.ViewTree:
                 if (_workspaceListViewActive) ToggleWorkspaceView();
                 break;
@@ -739,6 +752,38 @@ internal sealed partial class MainForm : Form
         }
 
         _logger.Info($"Command executed: {command}.");
+        _menuService.RefreshStates();
+    }
+
+    private void ResetAllSettingsToDefaults()
+    {
+        _settingsService.SaveAsync(_settings).GetAwaiter().GetResult();
+        SetStatus("所有设置已重置为默认值");
+    }
+
+    private void ApplySidebarAutoHideScrollbar()
+    {
+        var enabled = _settings.Appearance.AutoHideScrollbars;
+        _workspaceTree.AutoHideScrollbar = enabled;
+        _workspaceDocumentList.AutoHideScrollbar = enabled;
+        _outlineTree.AutoHideScrollbar = enabled;
+    }
+
+    private void ShowSidebarView(bool outline)
+    {
+        _sidebarActiveOutline = outline;
+        _workspacePanelHost.Visible = !outline;
+        _outlinePanelHost.Visible = outline;
+        _viewToggleButton.Enabled = !outline;
+        if (outline)
+        {
+            _outlinePanelHost.BringToFront();
+        }
+        else
+        {
+            _workspacePanelHost.BringToFront();
+        }
+
         _menuService.RefreshStates();
     }
 
@@ -1063,7 +1108,8 @@ internal sealed partial class MainForm : Form
             OpenLogFolder,
             ClearLogs,
             OpenSettingsJson,
-            ClearHistory);
+            ClearHistory,
+            ResetAllSettingsToDefaults);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
 
         _recoveryTimer.Interval = Math.Clamp(_settings.File.SnapshotIntervalSeconds, 10, 300) * 1000;
@@ -1077,6 +1123,7 @@ internal sealed partial class MainForm : Form
         SetZoomPercent(_settings.Appearance.ZoomPercent);
         TopMost = _settings.Appearance.TopMostWindow;
         _editorHost?.ExecuteCommand("setAutoHideScrollbar", _settings.Appearance.AutoHideScrollbars ? "1" : "0");
+        ApplySidebarAutoHideScrollbar();
 
         // 仅在文件关联设置实际变化时才修改注册表。
         if (_settings.General.AssociateMarkdownFiles != previousAssociateMarkdown

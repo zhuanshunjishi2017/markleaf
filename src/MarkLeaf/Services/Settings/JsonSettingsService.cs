@@ -116,6 +116,7 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Editor ??= new EditorSettings();
         settings.Appearance ??= new AppearanceSettings();
         settings.General ??= new GeneralSettings();
+        settings.Image ??= new ImageSettings();
         return settings;
     }
 }

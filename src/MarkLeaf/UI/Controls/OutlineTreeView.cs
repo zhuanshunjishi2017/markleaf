@@ -14,7 +14,7 @@ internal sealed class OutlineTreeView : Control
         public List<OutlineNode> Children { get; } = [];
     }
 
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
+    private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
@@ -34,11 +34,19 @@ internal sealed class OutlineTreeView : Control
             true);
         Dock = DockStyle.Fill;
         TabStop = true;
-        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
+        BackColor = Color.White;
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
         ConfigureTypography(DeviceDpi);
+    }
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool AutoHideScrollbar
+    {
+        get => _scrollBar.AutoHide;
+        set => _scrollBar.AutoHide = value;
     }
 
     public event EventHandler<int>? NodeActivated;
@@ -114,7 +122,7 @@ internal sealed class OutlineTreeView : Control
                 eventArgs.Graphics,
                 "暂无文档大纲",
                 _secondaryFont,
-                new Rectangle(ScaleForDpi(24), 0, ClientSize.Width - ScaleForDpi(28), _secondaryRowHeight));
+                new Rectangle(ScaleForDpi(24), ScaleForDpi(10), ClientSize.Width - ScaleForDpi(28), _secondaryRowHeight));
             return;
         }
         BuildVisibleRows();
@@ -150,7 +158,7 @@ internal sealed class OutlineTreeView : Control
                 Math.Max(
                     0,
                     ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0)
-                        - expanderBounds.Right - ScaleForDpi(8)),
+                        - expanderBounds.Right - ScaleForDpi(4)),
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
@@ -282,7 +290,7 @@ internal sealed class OutlineTreeView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = -_scrollBar.Value;
+        var top = ScaleForDpi(10) - _scrollBar.Value;
         foreach (var node in EnumerateVisibleNodes())
         {
             var height = GetRowHeight(node);
@@ -335,7 +343,7 @@ internal sealed class OutlineTreeView : Control
         }
     }
 
-    private int GetContentHeight() => EnumerateVisibleNodes().Sum(GetRowHeight);
+    private int GetContentHeight() => ScaleForDpi(10) + EnumerateVisibleNodes().Sum(GetRowHeight);
     private int GetRowHeight(OutlineNode node) => node.Item.Level <= 2 ? _primaryRowHeight : _secondaryRowHeight;
 
     private void UpdateScrollBar()

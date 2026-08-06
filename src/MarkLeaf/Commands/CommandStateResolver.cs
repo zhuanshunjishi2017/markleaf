@@ -15,6 +15,8 @@ public static class CommandStateResolver
             AppCommand.ViewTree or AppCommand.ViewList => new(true),
             AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
             AppCommand.ToggleSourceMode => new(context.EditorReady, context.SourceMode),
+            AppCommand.SwitchToWorkspace => new(!context.FocusMode && context.SidebarVisible, !context.OutlineActive),
+            AppCommand.SwitchToOutline => new(!context.FocusMode && context.SidebarVisible, context.OutlineActive),
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),

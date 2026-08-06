@@ -16,7 +16,7 @@ internal sealed class WorkspaceTreeView : Control
         public List<WorkspaceNode> Children { get; } = [];
     }
 
-    private readonly VScrollBar _scrollBar = new() { Dock = DockStyle.Right, BackColor = Color.White };
+    private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<(WorkspaceNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _treeFont = new("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _rootTitleFont = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
@@ -26,6 +26,7 @@ internal sealed class WorkspaceTreeView : Control
     private string? _placeholderText = "暂未打开工作区";
     private string? _selectedPath;
     private string? _hoveredPath;
+    private string? _keyboardHoverPath;
     private string? _contextMenuPath;
     private int _rowHeight;
     private int _rootTitleHeight;
@@ -40,7 +41,7 @@ internal sealed class WorkspaceTreeView : Control
         Dock = DockStyle.Fill;
         TabStop = true;
         AllowDrop = true;
-        BackColor = Color.FromArgb(0xF9, 0xF9, 0xF9);
+        BackColor = Color.White;
         ForeColor = SystemColors.WindowText;
         Controls.Add(_scrollBar);
         _scrollBar.Scroll += (_, _) => Invalidate();
@@ -52,6 +53,14 @@ internal sealed class WorkspaceTreeView : Control
     public event EventHandler<WorkspaceTreeContextEventArgs>? NodeContextRequested;
     public event EventHandler<WorkspaceTreeContextEventArgs>? WorkspaceMenuRequested;
     public event EventHandler<WorkspaceFilesDroppedEventArgs>? FilesDropped;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool AutoHideScrollbar
+    {
+        get => _scrollBar.AutoHide;
+        set => _scrollBar.AutoHide = value;
+    }
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -237,7 +246,7 @@ internal sealed class WorkspaceTreeView : Control
         if (_root is null)
         {
             DrawText(eventArgs.Graphics, _placeholderText ?? string.Empty,
-                new Rectangle(ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
+                new Rectangle(ScaleForDpi(16), ScaleForDpi(10), Math.Max(0, ClientSize.Width - ScaleForDpi(28)), _rowHeight),
                 SystemColors.GrayText);
             return;
         }
@@ -247,7 +256,7 @@ internal sealed class WorkspaceTreeView : Control
         {
             var titleBounds = new Rectangle(
                 0,
-                -_scrollBar.Value,
+                ScaleForDpi(10) - _scrollBar.Value,
                 ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
                 _rootTitleHeight);
             if (titleBounds.Bottom > 0 && titleBounds.Top < ClientSize.Height)
@@ -266,7 +275,8 @@ internal sealed class WorkspaceTreeView : Control
                 continue;
             }
             var isSelected = !node.Entry.IsDirectory && PathEquals(node.Entry.FullPath, _selectedPath);
-            var isHovered = PathEquals(node.Entry.FullPath, _hoveredPath);
+            var isHovered = PathEquals(node.Entry.FullPath, _hoveredPath)
+                || PathEquals(node.Entry.FullPath, _keyboardHoverPath);
             var bgBounds = new Rectangle(
                 bounds.X + ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - ScaleForDpi(8)), bounds.Height);
@@ -310,7 +320,7 @@ internal sealed class WorkspaceTreeView : Control
             var textBounds = new Rectangle(
                 iconBounds.Right,
                 bounds.Top,
-                Math.Max(0, bounds.Width - iconBounds.Right - ScaleForDpi(8)),
+                Math.Max(0, bounds.Width - iconBounds.Right - ScaleForDpi(4)),
                 bounds.Height);
             DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, ForeColor);
 
@@ -363,6 +373,7 @@ internal sealed class WorkspaceTreeView : Control
             return;
         }
 
+        _keyboardHoverPath = null;
         if (node.Entry.IsDirectory)
         {
             ToggleNode(node);
@@ -421,30 +432,24 @@ internal sealed class WorkspaceTreeView : Control
         {
             return;
         }
-        var index = Array.FindIndex(nodes, node => PathEquals(node.Entry.FullPath, _selectedPath));
+
+        var referencePath = _keyboardHoverPath ?? _selectedPath;
+        var index = Array.FindIndex(nodes, node => PathEquals(node.Entry.FullPath, referencePath));
+        if (index < 0) index = 0;
+
         switch (eventArgs.KeyCode)
         {
-            case Keys.Up:
-                for (var i = Math.Max(0, index - 1); i >= 0; i--)
-                {
-                    if (!nodes[i].Entry.IsDirectory)
-                    {
-                        SelectedPath = nodes[i].Entry.FullPath;
-                        break;
-                    }
-                }
+            case Keys.Up when index > 0:
+                _keyboardHoverPath = nodes[index - 1].Entry.FullPath;
+                EnsureNodeVisible(nodes[index - 1]);
+                Invalidate();
                 break;
-            case Keys.Down:
-                for (var i = Math.Min(nodes.Length - 1, index + 1); i < nodes.Length; i++)
-                {
-                    if (!nodes[i].Entry.IsDirectory)
-                    {
-                        SelectedPath = nodes[i].Entry.FullPath;
-                        break;
-                    }
-                }
+            case Keys.Down when index < nodes.Length - 1:
+                _keyboardHoverPath = nodes[index + 1].Entry.FullPath;
+                EnsureNodeVisible(nodes[index + 1]);
+                Invalidate();
                 break;
-            case Keys.Left when index >= 0 && nodes[index].Entry.IsDirectory:
+            case Keys.Left when index >= 0 && nodes[index].Entry.IsDirectory && nodes[index].Expanded:
                 nodes[index].Expanded = false;
                 UpdateScrollBar();
                 Invalidate();
@@ -452,13 +457,34 @@ internal sealed class WorkspaceTreeView : Control
             case Keys.Right when index >= 0 && nodes[index].Entry.IsDirectory:
                 ExpandNode(nodes[index]);
                 break;
-            case Keys.Enter when index >= 0 && !nodes[index].Entry.IsDirectory:
-                NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(nodes[index].Entry));
+            case Keys.Enter when index >= 0:
+                if (nodes[index].Entry.IsDirectory)
+                {
+                    ToggleNode(nodes[index]);
+                }
+                else
+                {
+                    SelectedPath = nodes[index].Entry.FullPath;
+                    _keyboardHoverPath = null;
+                    NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(nodes[index].Entry));
+                }
                 break;
             default:
                 return;
         }
         eventArgs.Handled = true;
+    }
+
+    private void EnsureNodeVisible(WorkspaceNode node)
+    {
+        if (!IsHandleCreated) return;
+        BuildVisibleRows();
+        var row = _visibleRows.FirstOrDefault(r => PathEquals(r.Node.Entry.FullPath, node.Entry.FullPath));
+        if (row.Node is null) return;
+        if (row.Bounds.Top < 0)
+            _scrollBar.Value = Math.Clamp(_scrollBar.Value + row.Bounds.Top, 0, GetMaximumScrollValue());
+        else if (row.Bounds.Bottom > ClientSize.Height)
+            _scrollBar.Value = Math.Clamp(_scrollBar.Value + row.Bounds.Bottom - ClientSize.Height, 0, GetMaximumScrollValue());
     }
 
     protected override void OnResize(EventArgs eventArgs)
@@ -529,12 +555,12 @@ internal sealed class WorkspaceTreeView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = _root is null ? 0 : _rootTitleHeight - _scrollBar.Value;
+        var top = ScaleForDpi(10) + (_root is null ? 0 : _rootTitleHeight) - _scrollBar.Value;
         var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
         foreach (var node in EnumerateVisibleNodes())
         {
             _visibleRows.Add((node, new Rectangle(0, top, width, _rowHeight)));
-            top += _rowHeight;
+            top += _rowHeight + ScaleForDpi(2);
         }
     }
 
@@ -606,7 +632,8 @@ internal sealed class WorkspaceTreeView : Control
         return EnumerateAllNodes().FirstOrDefault(node => PathEquals(node.Entry.FullPath, path));
     }
 
-    private int GetContentHeight() => (_root is null ? 0 : _rootTitleHeight) + EnumerateVisibleNodes().Count() * _rowHeight;
+    private int GetContentHeight() => ScaleForDpi(10) + (_root is null ? 0 : _rootTitleHeight)
+        + EnumerateVisibleNodes().Count() * (_rowHeight + ScaleForDpi(2));
 
     private void UpdateScrollBar()
     {
@@ -674,7 +701,7 @@ internal sealed class WorkspaceTreeView : Control
 
     private Rectangle RootTitleBounds() => new(
         0,
-        -_scrollBar.Value,
+        ScaleForDpi(10) - _scrollBar.Value,
         ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0),
         _rootTitleHeight);
 

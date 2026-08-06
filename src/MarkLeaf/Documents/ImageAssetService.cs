@@ -9,11 +9,11 @@ public sealed partial class ImageAssetService
     {
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
     };
-    private readonly string _clipboardCacheDirectory;
+    private readonly string _defaultDirectory;
 
-    public ImageAssetService(string clipboardCacheDirectory)
+    public ImageAssetService(string defaultDirectory)
     {
-        _clipboardCacheDirectory = Path.GetFullPath(clipboardCacheDirectory);
+        _defaultDirectory = Path.GetFullPath(defaultDirectory);
     }
 
     public async Task<ImportedImage> ImportFileAsync(
@@ -25,22 +25,29 @@ public sealed partial class ImageAssetService
         return new ImportedImage(ToMarkdownPath(fullSourcePath), fullSourcePath);
     }
 
+    public Task<ImportedImage> ImportBytesAsync(
+        ReadOnlyMemory<byte> bytes,
+        string extension,
+        CancellationToken cancellationToken = default)
+        => ImportBytesAsync(bytes, extension, _defaultDirectory, cancellationToken);
+
     public async Task<ImportedImage> ImportBytesAsync(
         ReadOnlyMemory<byte> bytes,
         string extension,
+        string targetDirectory,
         CancellationToken cancellationToken = default)
     {
         var normalizedExtension = NormalizeExtension(extension);
         if (!AllowedExtensions.Contains(normalizedExtension) || bytes.Length == 0 || bytes.Length > MaximumImageBytes)
         {
-            throw new InvalidDataException("The clipboard image is not supported or exceeds 50 MiB.");
+            throw new InvalidDataException("The image data is not supported or exceeds 50 MiB.");
         }
         ValidateImageSignature(bytes.Span, normalizedExtension);
 
-        Directory.CreateDirectory(_clipboardCacheDirectory);
+        Directory.CreateDirectory(targetDirectory);
         var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var fileName = CreateUniqueFileName(_clipboardCacheDirectory, $"clipboard-{timestamp}", normalizedExtension);
-        var targetPath = Path.Combine(_clipboardCacheDirectory, fileName);
+        var fileName = CreateUniqueFileName(targetDirectory, $"clipboard-{timestamp}", normalizedExtension);
+        var targetPath = Path.Combine(targetDirectory, fileName);
         try
         {
             await File.WriteAllBytesAsync(targetPath, bytes.ToArray(), cancellationToken);
@@ -51,6 +58,54 @@ public sealed partial class ImageAssetService
             TryDeleteFile(targetPath);
             throw;
         }
+    }
+
+    public async Task<ImportedImage> CopyFileIntoAsync(
+        string sourcePath,
+        string targetDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        var fullSourcePath = Path.GetFullPath(sourcePath);
+        await ValidateImageFileAsync(fullSourcePath, cancellationToken);
+        Directory.CreateDirectory(targetDirectory);
+        var baseName = Path.GetFileNameWithoutExtension(fullSourcePath);
+        var extension = Path.GetExtension(fullSourcePath);
+        var fileName = CreateUniqueFileName(targetDirectory, baseName, extension);
+        var targetPath = Path.Combine(targetDirectory, fileName);
+        await using var source = new FileStream(
+            fullSourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var target = new FileStream(
+            targetPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            64 * 1024,
+            FileOptions.Asynchronous);
+        await source.CopyToAsync(target, cancellationToken);
+        return new ImportedImage(ToMarkdownPath(targetPath), targetPath);
+    }
+
+    public static bool DirectoryContainsImages(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return false;
+        }
+
+        foreach (var extension in AllowedExtensions)
+        {
+            if (Directory.EnumerateFiles(directory, $"*{extension}").Any())
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public IReadOnlyList<MissingImage> FindMissingImages(string markdown, string? documentPath)
