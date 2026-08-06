@@ -1,0 +1,62 @@
+/* @type: typography
+   @name: 印刷品(双色印刷) 
+   @depends: print */
+
+
+/* 印刷排版采用固定版心边距：内容区填满可用宽度，左右留白与上下间距
+   固定为 44px/56px/96px（与历史 style.css 中 #editor 的内边距一致），
+   不随页宽响应式收窄。编辑器中由 #editor 的固定内边距承担，导出中由
+   导出文档自身的内边距承担，两种样式均通过继承本规则获得固定边距。 */
+
+
+
+.markleaf-style-print-double .markleaf-document h3 {
+  color: var(--theme-dark);
+}
+
+.markleaf-style-print-double .markleaf-document h4,
+.markleaf-style-print-double .markleaf-document h5,
+.markleaf-style-print-double .markleaf-document h6 {
+  color: var(--theme-dark);
+}
+
+
+.markleaf-style-print-double .markleaf-document strong,
+.markleaf-style-print-double .markleaf-document b {
+  color: var(--theme-dark);
+}
+
+.markleaf-style-print-double .markleaf-document a {
+  color: var(--theme-dark);
+}
+
+.markleaf-style-print-double .markleaf-document table {
+  border: 1.5px solid  var(--theme-dark);
+  
+}
+
+.markleaf-style-print-double .markleaf-document pre {
+  background: var(--bg-hover);
+}
+
+.markleaf-style-print-double .markleaf-document code {
+  color: var(--theme-dark);
+}
+
+
+
+.markleaf-style-print-double .markleaf-document hr {
+
+  background: var(--theme-dark);
+}
+
+.markleaf-style-print-double .markleaf-document blockquote {
+
+  border: 1.5px solid var(--theme-dark);
+
+}
+
+
+.markleaf-style-print-double .markleaf-document blockquote p {
+  color: var(--theme-dark);
+}

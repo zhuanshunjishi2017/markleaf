@@ -1,7 +1,5 @@
 :root {
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  color: #24292f;
-  background: #ffffff;
   --ml-line-height: 1.6;
   --ml-font-size: 16px;
   --ml-max-width: 820px;
@@ -24,7 +22,8 @@ body,
 }
 
 body {
-  background: #ffffff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .find-bar {
@@ -76,13 +75,13 @@ body {
 
 .markleaf-find-match {
   border-radius: 2px;
-  background: #fff3a3;
-  box-shadow: 0 0 0 1px #e2c94f;
+  background: var(--theme-light);
+  box-shadow: 0 0 0 1px var(--theme-light);
 }
 
 .markleaf-find-match-current {
-  background: #ffcb69;
-  box-shadow: 0 0 0 2px #d98200;
+  background: var(--theme-light);
+  box-shadow: 0 0 0 2px var(--theme-dark);
 }
 
 #source-editor {

@@ -713,9 +713,10 @@ function highlightOutlineHeading(heading: HTMLElement): void {
     for (const animation of heading.getAnimations()) {
       animation.cancel()
     }
+    const hlColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-light').trim() || '#E0E0E0'
     animate([
-      { backgroundColor: '#fff176', boxShadow: '0 0 0 4px #fff176', offset: 0 },
-      { backgroundColor: '#fff176', boxShadow: '0 0 0 4px #fff176', offset: 0.25 },
+      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, offset: 0 },
+      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, offset: 0.25 },
       { backgroundColor: 'transparent', boxShadow: '0 0 0 4px transparent', offset: 1 },
     ], { duration: 1800, easing: 'ease-out' })
     return

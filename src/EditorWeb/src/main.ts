@@ -736,7 +736,7 @@ ${resolved.css}
   --ml-max-width: ${maxWidth}px;
 }
 html { font-size: var(--ml-font-size); }
-body { margin: 0; background: #ffffff; }
+body { margin: 0; background: var(--bg-primary); }
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
   padding-left: 5px;

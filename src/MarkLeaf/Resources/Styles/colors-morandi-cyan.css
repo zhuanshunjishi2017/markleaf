@@ -1,30 +1,25 @@
 /* @type: color-theme
-   @name: 白色(单色主题)
+   @name: 莫兰迪(青色)
    @mode: light */
 
 :root {
-  --bg-primary:          #FFFFFF;
-  --bg-hover:            #F0F0F0;
-  --bg-selected:         #E0E0E0;
-  --bg-selected-hover:   #D0D0D0;
-  --text-primary:        #000000;
-  --text-secondary:      #555555;
-  --text-tertiary:       #6D6D6D;
-  --text-selected:              #000000;
-  --text-tertiary-selected:     #000000;
-  --icon:                       #000000;
-  --icon-selected:              #000000;
-  --icon-secondary:             #808080;
-  --scrollbar-idle:      #8B8B8B;
-  --scrollbar-active:    #636363;
-  --theme-light:         #E0E0E0;
-  --theme-dark:          #D0D0D0;
+  --bg-primary:          #E2E4E2;
+  --bg-hover:            #D5D9D6;
+  --bg-selected:         #C6CDCA;
+  --bg-selected-hover:   #B7C0BC;
+  --text-primary:        #3E4544;
+  --text-secondary:      #5E6B68;
+  --text-tertiary:       #7E8B88;
+  --text-selected:              #3E4544;
+  --text-tertiary-selected:     #5E6B68;
+  --icon:                       #5E6B68;
+  --icon-selected:              #3E4544;
+  --icon-secondary:             #7E8B88;
+  --scrollbar-idle:      #B0BAB6;
+  --scrollbar-active:    #909D98;
+  --theme-light:         #A0B8B0;
+  --theme-dark:          #6E9E8E;
 }
-
-/* ============================================================
-   编辑器颜色覆盖
-   规则按优先级从低到高排列，级联覆写 base.css 中的默认色。
-   ============================================================ */
 
 /* ---- 全局 ---- */
 body,
@@ -37,7 +32,7 @@ body,
   caret-color: var(--theme-dark);
 }
 
-/* ---- 选区（特异性对齐 base.css 的 .markleaf-document *::selection） ---- */
+/* ---- 选区 ---- */
 .markleaf-document::selection,
 .markleaf-document *::selection,
 .ProseMirror::selection,
@@ -105,18 +100,18 @@ body,
   color: var(--text-tertiary);
 }
 
-/* ---- 代码、引用中的选区文字 ---- */
+/* ---- 代码、引用中的选区 ---- */
 .markleaf-document pre ::selection,
 .markleaf-document blockquote ::selection {
   color: var(--text-tertiary-selected);
 }
 
-/* ---- 选中块边框（ProseMirror 选中节点） ---- */
+/* ---- 选中块边框 ---- */
 .ProseMirror-selectednode {
   outline: 2px solid var(--theme-light);
 }
 
-/* ---- 图片拖拽手柄 ---- */
+/* ---- 图片手柄 ---- */
 .markleaf-image-resize-handle {
   background: var(--theme-dark);
   border-color: var(--bg-primary);

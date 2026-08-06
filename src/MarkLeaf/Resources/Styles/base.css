@@ -14,7 +14,7 @@
   font-family: serif;
   font-size: var(--ml-font-size);
   line-height: var(--ml-line-height);
-  caret-color: #E4AE0F;
+  caret-color: var(--theme-dark);
   font-synthesis: weight style;
 }
 
@@ -25,14 +25,14 @@
 .cm-editor::selection,
 .cm-content::selection,
 .cm-content *::selection {
-  background: #FCEFCD;
-  color: currentColor;
+  background: var(--theme-light);
+  color: var(--text-selected);
 }
 
 .cm-editor .cm-selectionBackground,
 .cm-editor.cm-focused .cm-selectionBackground {
-  background-color: #FCEFCD !important;
-  color: currentColor !important;
+  background-color: var(--theme-light) !important;
+  color: var(--text-selected) !important;
 }
 
 .markleaf-document em {
@@ -46,7 +46,7 @@
 .markleaf-document h4,
 .markleaf-document h5,
 .markleaf-document h6 {
-  color: #1f2328;
+  color: var(--text-primary);
   line-height: calc(var(--ml-line-height) * 0.8125);
   margin: calc(var(--ml-line-height) * 1em) 0 calc(var(--ml-line-height) * 0.4em);
 }
@@ -58,8 +58,8 @@
 @keyframes markleaf-outline-highlight {
   0%,
   25% {
-    background-color: #fff176;
-    box-shadow: 0 0 0 4px #fff176;
+    background-color: var(--theme-light);
+    box-shadow: 0 0 0 4px var(--theme-light);
   }
 
   100% {
@@ -72,7 +72,7 @@
   font-size: calc(var(--ml-font-size) * 2.0);
   margin-top: 0;
   padding-bottom: calc(var(--ml-line-height) * 0.22em);
-  border-bottom: 1px solid #d8dee4;
+  border-bottom: 1px solid var(--bg-selected);
 }
 
 .markleaf-document h2 { font-size: calc(var(--ml-font-size) * 1.5); }
@@ -93,15 +93,15 @@
 .markleaf-document blockquote {
   margin-left: 0;
   padding-left: 1em;
-  color: #57606a;
-  border-left: 3px solid #d8dee4;
+  color: var(--text-tertiary);
+  border-left: 3px solid var(--bg-selected);
 }
 
 .markleaf-document hr {
   height: 1px;
   margin: calc(var(--ml-line-height) * 1em) 0;
   border: 0;
-  background: #d8dee4;
+  background: var(--bg-selected);
 }
 
 .markleaf-document code {
@@ -109,7 +109,7 @@
   font-size: calc(var(--ml-font-size) * 0.9);
   padding: 0.12em 0.35em;
   border-radius: 3px;
-  background: #f3f4f5;
+  background: var(--bg-hover);
   white-space: normal;
   word-break: break-all;
 }
@@ -117,9 +117,9 @@
 .markleaf-document pre {
   overflow-x: auto;
   padding: 16px 18px;
-  border: 1px solid #d8dee4;
+  border: 1px solid var(--bg-selected);
   border-radius: 4px;
-  background: #f6f8fa;
+  background: var(--bg-hover);
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -145,7 +145,7 @@
   padding: 3px 8px;
   text-align: left;
   vertical-align: middle;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--bg-selected-hover);
 }
 
 .markleaf-document table p {
@@ -154,7 +154,7 @@
 
 .markleaf-document th {
   font-weight: 600;
-  background: #f6f8fa;
+  background: var(--bg-hover);
 }
 
 .markleaf-document ul[data-type='taskList'] {
@@ -195,11 +195,11 @@
 }
 
 .markleaf-document a {
-  color: #E4AE0F;
+  color: var(--theme-dark);
 }
 
 .ProseMirror-selectednode {
-  outline: 2px solid #FCEFCD;
+  outline: 2px solid var(--theme-light);
 }
 
 .markleaf-image-node {
@@ -229,10 +229,10 @@
   z-index: 2;
   width: 12px;
   height: 12px;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--bg-primary);
   border-radius: 50%;
-  background: #E4AE0F;
-  box-shadow: 0 0 0 1px #E4AE0F;
+  background: var(--theme-dark);
+  box-shadow: 0 0 0 1px var(--theme-dark);
 }
 
 .markleaf-image-node.ProseMirror-selectednode .markleaf-image-resize-handle,

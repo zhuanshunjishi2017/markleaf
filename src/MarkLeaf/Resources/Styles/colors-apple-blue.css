@@ -1,5 +1,6 @@
 /* @type: color-theme
-   @name: 蓝色(macOS配色) */
+   @name: 浅色(macOS配色)
+   @mode: light */
 
 :root {
   --bg-primary:          #FFFFFF;
@@ -123,3 +124,14 @@ body,
   box-shadow: 0 0 0 1px var(--theme-dark);
 }
 
+/* ---- 滚动条 ---- */
+::-webkit-scrollbar { background: var(--bg-primary); }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-corner { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-idle); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active); }
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-active);
+}
