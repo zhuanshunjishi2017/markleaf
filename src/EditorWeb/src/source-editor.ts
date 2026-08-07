@@ -1,6 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorState, RangeSetBuilder } from '@codemirror/state'
+import { indentUnit } from '@codemirror/language'
+import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import {
   Decoration,
   DecorationSet,
@@ -47,30 +48,52 @@ function buildSelectionDecorations(view: EditorView): DecorationSet {
 
 export class SourceEditor {
   readonly view: EditorView
+  private readonly onChange: (documentChanged: boolean) => void
 
-  constructor(parent: HTMLElement, content: string, onChange: (documentChanged: boolean) => void) {
+  constructor(parent: HTMLElement, content: string, onChange: (documentChanged: boolean) => void, indentWidth = 2) {
+    this.onChange = onChange
     this.view = new EditorView({
       parent,
       state: EditorState.create({
         doc: content,
-        extensions: [
-          lineNumbers(),
-          themedSourceSelection,
-          highlightActiveLine(),
-          history(),
-          markdown(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
-          EditorView.lineWrapping,
-          EditorView.updateListener.of(update => {
-            if (update.docChanged || update.selectionSet) onChange(update.docChanged)
-          }),
-          EditorView.theme({
-            '&': { height: '100%' },
-            '.cm-scroller': { fontFamily: 'Cascadia Mono, Consolas, monospace', lineHeight: '1.65' },
-            '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px', margin: '0 auto' },
-          }),
-        ],
+        extensions: this.buildExtensions(indentWidth),
       }),
+    })
+  }
+
+  private buildExtensions(indentWidth: number) {
+    const width = Math.max(1, Math.min(8, Math.round(indentWidth) || 2))
+    return [
+      lineNumbers(),
+      themedSourceSelection,
+      highlightActiveLine(),
+      history(),
+      markdown(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      EditorView.lineWrapping,
+      EditorState.tabSize.of(width),
+      indentUnit.of(' '.repeat(width)),
+      EditorView.updateListener.of(update => {
+        if (update.docChanged || update.selectionSet) this.onChange(update.docChanged)
+      }),
+      EditorView.theme({
+        '&': { height: '100%' },
+        '.cm-scroller': { fontFamily: 'Cascadia Mono, Consolas, monospace', lineHeight: '1.65' },
+        '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px', margin: '0 auto' },
+      }),
+    ]
+  }
+
+  /// 精确放置光标/选区（供宿主命令与大纲联动使用）。
+  setSelection(from: number, to?: number): void {
+    this.view.dispatch({ selection: { anchor: from, head: to ?? from }, scrollIntoView: true })
+    this.focus()
+  }
+
+  /// 偏好设置变更时更新缩进宽度（对应首选项「源码模式 > 默认缩进宽度」）。
+  setIndentWidth(indentWidth: number): void {
+    this.view.dispatch({
+      effects: StateEffect.reconfigure.of(this.buildExtensions(indentWidth)),
     })
   }
 
