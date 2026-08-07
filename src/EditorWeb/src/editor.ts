@@ -355,6 +355,10 @@ export function replaceEditorDocument(editor: Editor, element: HTMLElement, cont
 }
 
 export function toVirtualImageUrl(markdownPath: string): string {
+  // 远程图片（http/https）原样返回，由浏览器直接加载；仅本地路径走虚拟资源服务。
+  if (/^(https?:|mailto:)/i.test(markdownPath)) {
+    return markdownPath
+  }
   let decodedPath = markdownPath
   try {
     decodedPath = decodeURIComponent(markdownPath)
