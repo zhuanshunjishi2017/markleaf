@@ -56,6 +56,28 @@ const FindHighlight = Extension.create({
   },
 })
 
+/// WYSIWYG 编辑器选区：用 ProseMirror 装饰绘制主题化选中背景。
+/// WKWebView 对 contenteditable 忽略 ::selection，只能用真实 DOM span 才能两平台一致。
+const themedSelectionKey = new PluginKey('markleaf-themed-selection')
+
+const ThemedSelection = Extension.create({
+  name: 'markleafThemedSelection',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: themedSelectionKey,
+      props: {
+        decorations(state) {
+          const { from, to, empty } = state.selection
+          if (empty || from === to) return DecorationSet.empty
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
+          ])
+        },
+      },
+    })]
+  },
+})
+
 function parseImageMetadata(title: unknown): ImageMetadata {
   if (typeof title !== 'string') {
     return { title: null, width: null, height: null, rotation: 0 }
@@ -307,6 +329,7 @@ export const editorExtensions = [
     },
   }),
   FindHighlight,
+  ThemedSelection,
 ]
 
 export function createEditor(element: HTMLElement, content = ''): Editor {

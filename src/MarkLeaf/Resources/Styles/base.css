@@ -25,8 +25,21 @@
 .cm-editor::selection,
 .cm-content::selection,
 .cm-content *::selection {
+  background: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
+}
+
+/* WYSIWYG 编辑器选区装饰（WebKit 对 contenteditable 忽略 ::selection） */
+.markleaf-themed-selection {
   background: var(--theme-light);
   color: var(--text-selected);
+  -webkit-text-fill-color: var(--text-selected);
+}
+::selection {
+  background: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 .cm-editor .cm-selectionBackground,
