@@ -1,7 +1,49 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorState } from '@codemirror/state'
-import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
+import { EditorState, RangeSetBuilder } from '@codemirror/state'
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  ViewPlugin,
+  ViewUpdate,
+} from '@codemirror/view'
+
+const sourceSelectionMark = Decoration.mark({ class: 'ml-source-selection' })
+
+/// 源码模式选区：用真实 DOM span 装饰绘制主题化背景。
+/// WKWebView 对 contenteditable 忽略 ::selection，而 drawSelection() 的绝对定位
+/// 图层在 WKWebView 中坐标测量不稳（反向拖选偏移、整行/折行选区缺失左侧），
+/// 因此改为与 WYSIWYG 相同的装饰方案，由浏览器原生布局保证几何正确。
+const themedSourceSelection = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+
+    constructor(view: EditorView) {
+      this.decorations = buildSelectionDecorations(view)
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+        this.decorations = buildSelectionDecorations(update.view)
+      }
+    }
+  },
+  { decorations: (view) => view.decorations },
+)
+
+function buildSelectionDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>()
+  for (const range of view.state.selection.ranges) {
+    if (!range.empty) {
+      builder.add(range.from, range.to, sourceSelectionMark)
+    }
+  }
+  return builder.finish()
+}
 
 export class SourceEditor {
   readonly view: EditorView
@@ -13,7 +55,7 @@ export class SourceEditor {
         doc: content,
         extensions: [
           lineNumbers(),
-          drawSelection(),
+          themedSourceSelection,
           highlightActiveLine(),
           history(),
           markdown(),
