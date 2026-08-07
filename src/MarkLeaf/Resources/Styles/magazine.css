@@ -1,0 +1,81 @@
+/* @type: typography
+   @name: 杂志 */
+/* 杂志采用固定版心带充足留白。 */
+.markleaf-style-magazine .markleaf-document {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  font-family: "Georgia", "华文楷体", "楷体", "KaiTi", serif;
+  font-size: calc(var(--ml-font-size) * 1.0625);
+  line-height: calc(var(--ml-line-height) * 1.1);
+}
+
+#editor.markleaf-style-magazine {
+  padding: 48px 64px 96px;
+}
+
+.markleaf-style-magazine .markleaf-document h1,
+.markleaf-style-magazine .markleaf-document h2,
+.markleaf-style-magazine .markleaf-document h3 {
+  font-family: "Georgia", "华文中宋", "SimSun", serif;
+  font-weight: bold;
+}
+
+.markleaf-style-magazine .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 2.2);
+  text-align: center;
+  border-bottom: 1px solid var(--bg-selected);
+  padding-bottom: 0.4em;
+  letter-spacing: 0.04em;
+}
+
+.markleaf-style-magazine .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.4);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+  border-bottom: 1px dotted var(--bg-selected-hover);
+  padding-bottom: 0.2em;
+}
+
+.markleaf-style-magazine .markleaf-document h3 {
+  font-size: calc(var(--ml-font-size) * 1.15);
+  color: var(--theme-dark);
+}
+
+.markleaf-style-magazine .markleaf-document p {
+  margin: 0.6em 0;
+}
+
+.markleaf-style-magazine .markleaf-document p:first-of-type::first-letter {
+  font-size: calc(var(--ml-font-size) * 2.6);
+  float: left;
+  line-height: 0.8;
+  padding-right: 0.15em;
+  padding-top: 0.05em;
+  color: var(--theme-dark);
+  font-family: "Georgia", "华文中宋", serif;
+}
+
+.markleaf-style-magazine .markleaf-document blockquote {
+  font-family: "Georgia", "华文仿宋", "仿宋", "FangSong", serif;
+  font-style: italic;
+  border-left: 4px solid var(--theme-dark);
+  padding: 0.8em 1.2em;
+  margin: 1.2em 0;
+  background: var(--bg-hover);
+}
+
+.markleaf-style-magazine .markleaf-document hr {
+  width: 6em;
+  margin: 2em auto;
+  height: 3px;
+  background: var(--theme-dark);
+  opacity: 0.5;
+}
+
+.markleaf-style-magazine .markleaf-document a {
+  color: var(--theme-dark);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}

@@ -56,6 +56,28 @@ const FindHighlight = Extension.create({
   },
 })
 
+/// WYSIWYG 编辑器选区：用 ProseMirror 装饰绘制主题化选中背景。
+/// WKWebView 对 contenteditable 忽略 ::selection，只能用真实 DOM span 才能两平台一致。
+const themedSelectionKey = new PluginKey('markleaf-themed-selection')
+
+const ThemedSelection = Extension.create({
+  name: 'markleafThemedSelection',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: themedSelectionKey,
+      props: {
+        decorations(state) {
+          const { from, to, empty } = state.selection
+          if (empty || from === to) return DecorationSet.empty
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
+          ])
+        },
+      },
+    })]
+  },
+})
+
 function parseImageMetadata(title: unknown): ImageMetadata {
   if (typeof title !== 'string') {
     return { title: null, width: null, height: null, rotation: 0 }
@@ -307,6 +329,7 @@ export const editorExtensions = [
     },
   }),
   FindHighlight,
+  ThemedSelection,
 ]
 
 export function createEditor(element: HTMLElement, content = ''): Editor {
@@ -332,6 +355,10 @@ export function replaceEditorDocument(editor: Editor, element: HTMLElement, cont
 }
 
 export function toVirtualImageUrl(markdownPath: string): string {
+  // 远程图片（http/https）原样返回，由浏览器直接加载；仅本地路径走虚拟资源服务。
+  if (/^(https?:|mailto:)/i.test(markdownPath)) {
+    return markdownPath
+  }
   let decodedPath = markdownPath
   try {
     decodedPath = decodeURIComponent(markdownPath)
@@ -749,29 +776,46 @@ function toggleInlineMark(
 }
 
 function promoteHeadingLevel(editor: Editor): boolean {
-  if (editor.isActive('heading', { level: 1 })) {
-    return editor.chain().focus().setParagraph().run()
-  }
+  const chain = editor.chain().focus()
+
+  // 标题：提升一级（保留行内加粗/斜体等格式）
   const levels = [1, 2, 3, 4, 5, 6] as const
+  if (editor.isActive('heading', { level: 1 })) {
+    return chain.setParagraph().run()
+  }
   for (let i = 1; i < levels.length; i++) {
     if (editor.isActive('heading', { level: levels[i] })) {
-      return editor.chain().focus().toggleHeading({ level: levels[i - 1]! }).run()
+      return chain.toggleHeading({ level: levels[i - 1]! }).run()
     }
   }
-  return false
+
+  // 非标题块：先移出列表/引用，再提升为一级标题，避免破坏列表/引用结构
+  const inList = editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList')
+  if (inList) {
+    // liftListItem 把当前列表项提升出列表；失败则保持原样（安全返回）
+    return chain.liftListItem('listItem').toggleHeading({ level: 1 }).run()
+  }
+  if (editor.isActive('blockquote')) {
+    return chain.lift('blockquote').toggleHeading({ level: 1 }).run()
+  }
+  return chain.toggleHeading({ level: 1 }).run()
 }
 
 function demoteHeadingLevel(editor: Editor): boolean {
+  const chain = editor.chain().focus()
+
+  // 标题：降低一级（保留行内格式）
   const levels = [1, 2, 3, 4, 5, 6] as const
   for (let i = 0; i < levels.length - 1; i++) {
     if (editor.isActive('heading', { level: levels[i] })) {
-      return editor.chain().focus().toggleHeading({ level: levels[i + 1]! }).run()
+      return chain.toggleHeading({ level: levels[i + 1]! }).run()
     }
   }
   if (editor.isActive('heading', { level: 6 })) {
-    return false
+    return chain.setParagraph().run()
   }
-  return editor.chain().focus().toggleHeading({ level: 1 }).run()
+  // 非标题（段落/列表/引用等）：“降低标题级别”不适用，保持原样
+  return false
 }
 
 export function rotateSelectedImageClockwise(editor: Editor): boolean {

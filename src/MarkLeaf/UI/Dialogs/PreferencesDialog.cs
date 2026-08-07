@@ -1,6 +1,8 @@
 using MarkLeaf.Documents;
+using MarkLeaf.Native;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -20,7 +22,16 @@ internal sealed class PreferencesDialog : Form
     private readonly Button _resetAllButton = new()
     { Text = "重置所有设置(&R)...", AutoSize = true, FlatStyle = FlatStyle.System };
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
+    private readonly PreferencesTabBar _tabBar = new();
+    private readonly Panel _contentPanel = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoScroll = true,
+        Margin = Padding.Empty,
+        Padding = new Padding(25, 10, 25, 10),
+        BackColor = SystemColors.ControlLightLight,
+    };
+    private Control[] _tabContents = [];
 
     private readonly ComboBox _startupAction = new()
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
@@ -102,17 +113,18 @@ internal sealed class PreferencesDialog : Form
         "打开上次的工作区和文件",
     ];
 
-    // “上传图片”选项暂未实现，从列表中移除，等后续版本再开放。
     private static readonly string[] ClipboardImageHandlingItems =
     [
         "保存到默认目录",
         "复制到./文件名.assets路径",
+        "复制到./文件名.assets路径（上传）",
     ];
 
     private static readonly string[] FileImageHandlingItems =
     [
         "引用原有位置",
         "复制到./文件名.assets路径",
+        "复制到./文件名.assets路径（上传）",
     ];
 
     public PreferencesDialog(
@@ -159,11 +171,10 @@ internal sealed class PreferencesDialog : Form
         foreach (var item in FileImageHandlingItems)
             _fileImageCombo.Items.Add(item);
 
-        // 相对路径引用暂未实现，先禁用，等后续版本再开放。
         _useRelativePathsCheck = new CheckBox
-        { Text = "在可用时使用相对路径(&R)", AutoSize = true, FlatStyle = FlatStyle.System, Enabled = false };
+        { Text = "在可用时使用相对路径(&R)", AutoSize = true, FlatStyle = FlatStyle.System };
         _prefixRelativeWithDotSlashCheck = new CheckBox
-        { Text = "相对路径前加\"./\"(&S)", AutoSize = true, FlatStyle = FlatStyle.System, Enabled = false };
+        { Text = "相对路径前加\"./\"(&S)", AutoSize = true, FlatStyle = FlatStyle.System };
 
         _autoSaveCheck = new CheckBox
         { Text = "自动保存文件(&A)", AutoSize = true, FlatStyle = FlatStyle.System };
@@ -220,13 +231,12 @@ internal sealed class PreferencesDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(780, 860);
+        Size = new Size(780, 940);
 
-        _tabs.TabPages.Add(CreateTab("文件", BuildFileTab()));
-        _tabs.TabPages.Add(CreateTab("外观", BuildAppearanceTab()));
-        _tabs.TabPages.Add(CreateTab("编辑", BuildEditorTab()));
-        _tabs.TabPages.Add(CreateTab("图片", BuildImagesTab()));
-        _tabs.TabPages.Add(CreateTab("通用", BuildGeneralTab()));
+        _tabBar.Margin = Padding.Empty;
+        _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
+        _contentPanel.Controls.Add(_tabContents[0]);
+        _tabBar.TabChanged += (_, index) => SwitchTabPage(index);
 
         _okButton.Click += OnOkClick;
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -281,7 +291,8 @@ internal sealed class PreferencesDialog : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
-            Margin = new Padding(0, 16, 0, 5),
+            Margin = new Padding(35, 40, 35, 0),
+            BackColor = SystemColors.ControlLightLight,
         };
         buttons.Controls.Add(_cancelButton);
         buttons.Controls.Add(_okButton);
@@ -289,22 +300,45 @@ internal sealed class PreferencesDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(16),
+            Padding = new Padding(0, 0, 0, 40),
+            BackColor = SystemColors.ControlLightLight,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _tabs.Dock = DockStyle.Fill;
-        layout.Controls.Add(_tabs, 0, 0);
-        layout.Controls.Add(buttons, 0, 1);
+        layout.Controls.Add(_tabBar, 0, 0);
+        layout.Controls.Add(_contentPanel, 0, 1);
+        layout.Controls.Add(buttons, 0, 2);
 
         Controls.Add(layout);
 
         AcceptButton = _okButton;
         CancelButton = _cancelButton;
+
+        Shown += (_, _) =>
+        {
+            _tabBar.ApplyThemeColors(ColorThemeService.GetActiveColors());
+            if (ColorThemeService.IsActiveThemeDark())
+            {
+                DarkModeService.ApplyDialogDarkMode(this, SystemColors.Control, SystemColors.ControlText);
+                DarkModeService.SetWindowDarkTitleBar(this);
+                // .NET SetColorMode 对首个可见 TabPage 的控件覆盖不完整，再次强制设色。
+                ForceComboDark(_startupAction);
+                ForceComboDark(_newLineStyleCombo);
+            }
+        };
+    }
+
+    private static void ForceComboDark(ComboBox combo)
+    {
+        if (!combo.IsHandleCreated) return;
+        typeof(Control).GetMethod("RecreateHandle",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.Invoke(combo, null);
     }
 
     private Control BuildFileTab()
@@ -313,31 +347,31 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(16, 20, 16, 12),
+            Padding = new Padding(30, 20, 25, 12),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("启动操作(&O)："), 0, 0);
+        panel.Controls.Add(NewLabel("启动操作(&O)"), 0, 0);
         panel.Controls.Add(_startupAction, 1, 0);
 
         panel.Controls.Add(Gap(20), 0, 1);
         panel.Controls.Add(Gap(20), 1, 1);
 
 
-        panel.Controls.Add(NewLabel("保存选项(&S)："), 0, 2);
+        panel.Controls.Add(NewLabel("保存选项(&S)"), 0, 2);
         panel.Controls.Add(BuildSaveOptionsPanel(), 1, 2);
 
         panel.Controls.Add(Gap(20), 0, 3);
         panel.Controls.Add(Gap(20), 1, 3);
 
-        panel.Controls.Add(NewLabel("换行风格(&N)："), 0, 4);
+        panel.Controls.Add(NewLabel("换行风格(&N)"), 0, 4);
         panel.Controls.Add(BuildNewLinePanel(), 1, 4);
 
         panel.Controls.Add(Gap(20), 0, 5);
         panel.Controls.Add(Gap(20), 1, 5);
 
-        panel.Controls.Add(NewLabel("历史记录(&H)："), 0, 6);
+        panel.Controls.Add(NewLabel("历史记录(&H)"), 0, 6);
         panel.Controls.Add(BuildHistoryPanel(), 1, 6);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
@@ -380,8 +414,10 @@ internal sealed class PreferencesDialog : Form
         {
             Text = "此设置项仅控制新建文件的换行符，打开的文件将保留其原有换行风格。",
             AutoSize = true,
-            MaximumSize = new Size(460, 0),
+            MaximumSize = new Size(430, 0),
             ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+
         }, 0, 2);
         return panel;
     }
@@ -402,7 +438,7 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(Gap(10), 0, 3);
 
         var intervalRow = new FlowLayoutPanel { AutoSize = true };
-        intervalRow.Controls.Add(new Label { Text = "快照保存间隔(&I)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        intervalRow.Controls.Add(new Label { Text = "快照保存间隔(&I)", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         intervalRow.Controls.Add(_snapshotInterval);
         intervalRow.Controls.Add(new Label { Text = " 秒", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         panel.Controls.Add(intervalRow, 0, 4);
@@ -419,18 +455,18 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(16, 20, 16, 12),
+            Padding = new Padding(30, 20, 25, 12),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("可视化："), 0, 0);
+        panel.Controls.Add(NewLabel("可视化"), 0, 0);
         panel.Controls.Add(BuildVisualPanel(), 1, 0);
 
         panel.Controls.Add(Gap(20), 0, 1);
         panel.Controls.Add(Gap(20), 1, 1);
 
-        panel.Controls.Add(NewLabel("源码模式："), 0, 2);
+        panel.Controls.Add(NewLabel("源码模式"), 0, 2);
         panel.Controls.Add(BuildSourcePanel(), 1, 2);
 
         panel.Controls.Add(Gap(20), 0, 3);
@@ -445,6 +481,7 @@ internal sealed class PreferencesDialog : Form
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
         };
         panel.Controls.Add(noteLabel, 0, 5);
         panel.SetColumnSpan(noteLabel, 2);
@@ -463,17 +500,17 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(NewLabel("基础行高(&H)："), 0, 0);
+        panel.Controls.Add(NewLabel("基础行高(&H)"), 0, 0);
         panel.Controls.Add(_visualLineHeight, 1, 0);
         panel.Controls.Add(Gap(10), 0, 1);
 
 
-        panel.Controls.Add(NewLabel("基础字号(&F)："), 0, 2);
+        panel.Controls.Add(NewLabel("基础字号(&F)"), 0, 2);
         panel.Controls.Add(_visualFontSize, 1, 2);
         panel.Controls.Add(Gap(10), 0, 3);
 
 
-        panel.Controls.Add(NewLabel("最大内容宽度(&W)："), 0, 4);
+        panel.Controls.Add(NewLabel("最大内容宽度(&W)"), 0, 4);
         var widthRow = new FlowLayoutPanel { AutoSize = true };
         widthRow.Controls.Add(_visualMaxWidth);
         widthRow.Controls.Add(new Label { Text = " px", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
@@ -493,12 +530,12 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(NewLabel("基础字号(&F)："), 0, 0);
+        panel.Controls.Add(NewLabel("基础字号(&F)"), 0, 0);
         panel.Controls.Add(_sourceFontSize, 1, 0);
         panel.Controls.Add(Gap(10), 0, 1);
 
 
-        panel.Controls.Add(NewLabel("默认缩进宽度(&I)："), 0, 2);
+        panel.Controls.Add(NewLabel("默认缩进宽度(&I)"), 0, 2);
         panel.Controls.Add(_sourceIndentWidth, 1, 2);
 
         return panel;
@@ -510,18 +547,18 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(16, 20, 16, 12),
+            Padding = new Padding(30, 20, 25, 12),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
 
-        panel.Controls.Add(NewLabel("排版样式(&Y)："), 0, 0);
+        panel.Controls.Add(NewLabel("排版样式(&Y)"), 0, 0);
         panel.Controls.Add(_styleCombo, 1, 0);
         panel.Controls.Add(Gap(10), 0, 1);
         panel.Controls.Add(Gap(10), 1, 1);
 
-        panel.Controls.Add(NewLabel("颜色主题(&C)："), 0, 2);
+        panel.Controls.Add(NewLabel("颜色主题(&C)"), 0, 2);
         panel.Controls.Add(_themeCombo, 1, 2);
         panel.Controls.Add(Gap(10), 0, 3);
         panel.Controls.Add(Gap(10), 1, 3);
@@ -533,13 +570,13 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(Gap(20), 0, 5);
         panel.Controls.Add(Gap(20), 1, 5);
 
-        panel.Controls.Add(NewLabel("缩放视图(&S)："), 0, 6);
+        panel.Controls.Add(NewLabel("缩放视图(&S)"), 0, 6);
         panel.Controls.Add(BuildZoomPanel(), 1, 6);
 
         panel.Controls.Add(Gap(20), 0, 7);
         panel.Controls.Add(Gap(20), 1, 7);
 
-        panel.Controls.Add(NewLabel("窗口设置(&W)："), 0, 8);
+        panel.Controls.Add(NewLabel("窗口设置(&W)"), 0, 8);
         panel.Controls.Add(BuildWindowPanel(), 1, 8);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
@@ -560,7 +597,7 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var zoomRow = new FlowLayoutPanel { AutoSize = true };
-        //zoomRow.Controls.Add(NewLabel("设置缩放(&Z)："));
+        //zoomRow.Controls.Add(NewLabel("设置缩放(&Z)"));
         zoomRow.Controls.Add(_zoomCombo);
         panel.Controls.Add(zoomRow, 0, 0);
 
@@ -595,42 +632,42 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(16, 20, 16, 12),
+            Padding = new Padding(30, 20, 25, 12),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("显示语言："), 0, 0);
+        panel.Controls.Add(NewLabel("显示语言(&L)"), 0, 0);
         panel.Controls.Add(_languageCombo, 1, 0);
 
         panel.Controls.Add(Gap(20), 0, 1);
         panel.Controls.Add(Gap(20), 1, 1);
 
-        panel.Controls.Add(NewLabel("快捷键："), 0, 2);
+        panel.Controls.Add(NewLabel("快捷键(&O)"), 0, 2);
         panel.Controls.Add(_editShortcutsButton, 1, 2);
 
         panel.Controls.Add(Gap(20), 0, 3);
         panel.Controls.Add(Gap(20), 1, 3);
 
-        panel.Controls.Add(NewLabel("文件关联(&F)："), 0, 4);
+        panel.Controls.Add(NewLabel("文件关联(&F)"), 0, 4);
         panel.Controls.Add(BuildFileAssociationPanel(), 1, 4);
 
         panel.Controls.Add(Gap(20), 0, 5);
         panel.Controls.Add(Gap(20), 1, 5);
 
-        panel.Controls.Add(NewLabel("储存管理："), 0, 6);
+        panel.Controls.Add(NewLabel("储存管理(&S)"), 0, 6);
         panel.Controls.Add(BuildStoragePanel(), 1, 6);
 
         panel.Controls.Add(Gap(20), 0, 7);
         panel.Controls.Add(Gap(20), 1, 7);
 
-        panel.Controls.Add(NewLabel("日志管理："), 0, 8);
+        panel.Controls.Add(NewLabel("日志管理(&M)"), 0, 8);
         panel.Controls.Add(BuildLogsPanel(), 1, 8);
 
         panel.Controls.Add(Gap(20), 0, 9);
         panel.Controls.Add(Gap(20), 1, 9);
 
-        panel.Controls.Add(NewLabel("高级："), 0, 10);
+        panel.Controls.Add(NewLabel("高级(&A)"), 0, 10);
         panel.Controls.Add(BuildAdvancedPanel(), 1, 10);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 11);
@@ -705,32 +742,32 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(16, 20, 16, 12),
+            Padding = new Padding(30, 20, 25, 12),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("剪切板图片(&C)："), 0, 0);
+        panel.Controls.Add(NewLabel("剪切板图片(&C)"), 0, 0);
         panel.Controls.Add(_clipboardImageCombo, 1, 0);
         panel.Controls.Add(Gap(20), 0, 1);
         panel.Controls.Add(Gap(20), 1, 1);
 
-        panel.Controls.Add(NewLabel("来自文件(&F)："), 0, 2);
+        panel.Controls.Add(NewLabel("来自文件(&F)"), 0, 2);
         panel.Controls.Add(_fileImageCombo, 1, 2);
         panel.Controls.Add(Gap(20), 0, 3);
         panel.Controls.Add(Gap(20), 1, 3);
 
-        panel.Controls.Add(NewLabel("默认目录(&D)："), 0, 4);
+        panel.Controls.Add(NewLabel("默认目录(&D)"), 0, 4);
         panel.Controls.Add(BuildDefaultDirectoryPanel(), 1, 4);
         panel.Controls.Add(Gap(20), 0, 5);
         panel.Controls.Add(Gap(20), 1, 5);
 
-        panel.Controls.Add(NewLabel("引用方式(&R)："), 0, 6);
+        panel.Controls.Add(NewLabel("引用方式(&R)"), 0, 6);
         panel.Controls.Add(BuildReferencePanel(), 1, 6);
         panel.Controls.Add(Gap(20), 0, 7);
         panel.Controls.Add(Gap(20), 1, 7);
 
-        panel.Controls.Add(NewLabel("图片上传(&U)："), 0, 8);
+        panel.Controls.Add(NewLabel("图片上传(&U)"), 0, 8);
         panel.Controls.Add(_imageUploadButton, 1, 8);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
@@ -806,6 +843,13 @@ internal sealed class PreferencesDialog : Form
         }
 
         _defaultDirectoryTextBox.Text = selected;
+    }
+
+    private void SwitchTabPage(int index)
+    {
+        if (index < 0 || index >= _tabContents.Length) return;
+        _contentPanel.Controls.Clear();
+        _contentPanel.Controls.Add(_tabContents[index]);
     }
 
     private void LoadSettingsIntoControls()
@@ -962,18 +1006,20 @@ internal sealed class PreferencesDialog : Form
 
     private static Label NewLabel(string text)
     {
-        return new Label { Text = text, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
+        return new Label
+        {
+            Text = text,
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
+            Padding = new Padding(10, 10, 0, 0),
+
+        };
     }
 
     private static Control Gap(int height)
     {
         return new Panel { Height = height, Dock = DockStyle.None };
-    }
-
-    private static TabPage CreateTab(string text, Control content)
-    {
-        var page = new TabPage(text) { UseVisualStyleBackColor = true, Padding = new Padding(8), AutoScroll = true };
-        page.Controls.Add(content);
-        return page;
     }
 }

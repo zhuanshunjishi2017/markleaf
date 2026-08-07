@@ -1,5 +1,7 @@
 :root {
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --bg-primary: #FFFFFF;
+  --text-primary: #24292f;
   --ml-line-height: 1.6;
   --ml-font-size: 16px;
   --ml-max-width: 820px;
@@ -26,6 +28,13 @@ body {
   color: var(--text-primary);
 }
 
+/* 主题化选区（ProseMirror decoration，替代 ::selection 确保跨平台一致） */
+.markleaf-themed-selection,
+.ml-source-selection {
+  background: var(--theme-light);
+  color: var(--text-selected);
+}
+
 .find-bar {
   position: sticky;
   z-index: 10;
@@ -35,8 +44,9 @@ body {
   align-items: stretch;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid #d0d7de;
-  background: #f6f8fa;
+  border-bottom: 1px solid var(--bg-selected);
+  background: var(--bg-hover);
+  color: var(--text-primary);
   font-size: 13px;
 }
 
@@ -63,14 +73,25 @@ body {
 .find-bar input[type='text'] {
   width: 180px;
   padding: 5px 7px;
-  border: 1px solid #8c959f;
+  border: 1px solid var(--bg-selected-hover);
   border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font: inherit;
 }
 
 .find-bar button {
   padding: 4px 9px;
+  border: 1px solid var(--bg-selected-hover);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font: inherit;
+  cursor: pointer;
+}
+
+.find-bar button:hover {
+  background: var(--bg-hover);
 }
 
 .markleaf-find-match {
@@ -87,6 +108,25 @@ body {
 #source-editor {
   height: 100vh;
 }
+
+/* 源码模式字号由宿主 ApplyCssVariables 通过 --ml-source-font-size 控制，
+   与可视化编辑器的 --ml-font-size 采用相同机制。 */
+#source-editor .cm-content {
+  font-size: var(--ml-source-font-size, 14px);
+}
+
+/* ---- 源码模式语法高亮 ---- */
+.tok-comment   { color: var(--text-tertiary); font-style: italic; }
+.tok-heading   { color: var(--text-primary); }
+.tok-strong    { font-weight: 700; }
+.tok-emphasis  { font-style: italic; }
+.tok-link      { color: var(--theme-dark); text-decoration: underline; }
+.tok-url       { color: var(--theme-dark); }
+.tok-monospace { color: var(--text-secondary); }
+.tok-meta      { color: var(--text-tertiary); }
+.tok-strikethrough { text-decoration: line-through; }
+.tok-list      { color: var(--theme-dark); }
+.tok-quote     { color: var(--text-tertiary); }
 
 #editor {
   padding: 44px 56px 96px;

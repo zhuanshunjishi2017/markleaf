@@ -31,8 +31,12 @@
 }
 
 .markleaf-style-print-double .markleaf-document table {
-  border: 1.5px solid  var(--theme-dark);
-  
+  border: 1.5px solid var(--theme-dark);
+}
+
+.markleaf-style-print-double .markleaf-document th,
+.markleaf-style-print-double .markleaf-document td {
+  border: 1px solid var(--theme-dark);
 }
 
 .markleaf-style-print-double .markleaf-document pre {

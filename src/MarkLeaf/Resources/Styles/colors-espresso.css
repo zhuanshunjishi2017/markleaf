@@ -1,24 +1,24 @@
 /* @type: color-theme
-   @name: 莫兰迪(深色)
+   @name: 浓咖啡
    @mode: dark */
 
 :root {
-  --bg-primary:          #2C2826;
-  --bg-hover:            #3D3835;
-  --bg-selected:         #4D4845;
-  --bg-selected-hover:   #5D5855;
-  --text-primary:        #D4CFC8;
-  --text-secondary:      #A09890;
-  --text-tertiary:       #807870;
-  --text-selected:              #F0EBE4;
-  --text-tertiary-selected:     #D4CFC8;
-  --icon:                       #A09890;
-  --icon-selected:              #F0EBE4;
-  --icon-secondary:             #807870;
-  --scrollbar-idle:      #4D4845;
-  --scrollbar-active:    #6D6865;
-  --theme-light:         #9A7060;
-  --theme-dark:          #B89078;
+  --bg-primary:          #201A16;
+  --bg-hover:            #302620;
+  --bg-selected:         #403028;
+  --bg-selected-hover:   #503C32;
+  --text-primary:        #E0D4C8;
+  --text-secondary:      #A09080;
+  --text-tertiary:       #807060;
+  --text-selected:              #F8F0E8;
+  --text-tertiary-selected:     #C8B8A8;
+  --icon:                       #A09080;
+  --icon-selected:              #F8F0E8;
+  --icon-secondary:             #807060;
+  --scrollbar-idle:      #403028;
+  --scrollbar-active:    #604840;
+  --theme-light:         #A06848;
+  --theme-dark:          #C88860;
 }
 
 /* ---- 全局 ---- */

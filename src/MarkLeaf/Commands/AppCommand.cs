@@ -56,6 +56,7 @@ public enum AppCommand
     ToggleInlineCode,
     InsertLink,
     InsertImage,
+    InsertImageFromUrl,
     RotateImageClockwise,
     ToggleQuote,
     ToggleCodeBlock,

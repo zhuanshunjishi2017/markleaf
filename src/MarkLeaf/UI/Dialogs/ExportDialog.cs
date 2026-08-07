@@ -1,8 +1,21 @@
+using MarkLeaf.Native;
+using MarkLeaf.Services.Styles;
+using MarkLeaf.UI.Controls;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class ExportDialog : Form
 {
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
+    private readonly PreferencesTabBar _tabBar;
+    private readonly Panel _contentPanel = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoScroll = true,
+        Margin = Padding.Empty,
+        Padding = new Padding(40, 10, 40, 10),
+        BackColor = SystemColors.ControlLightLight,
+    };
+    private Control[] _tabContents = [];
 
     private readonly ComboBox _pageSize = new()
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190 };
@@ -37,6 +50,10 @@ internal sealed class ExportDialog : Form
     private readonly ComboBox _pdfStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
 
     private readonly ComboBox _htmlStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+
+    private readonly ComboBox _pdfColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+
+    private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
 
     private readonly Button _exportButton = new()
     { Text = "导出", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
@@ -74,12 +91,30 @@ internal sealed class ExportDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(800, 640);
+        Size = new Size(800, 750);
+
+        _tabBar = new PreferencesTabBar(["PDF", "HTML"], ["", ""]);
 
         BuildPdfTab(initialStyleIndex);
         BuildHtmlTab(initialStyleIndex);
-        _tabs.TabPages.Add(CreateTab("PDF", BuildPdfContent()));
-        _tabs.TabPages.Add(CreateTab("HTML", BuildHtmlContent()));
+
+        var activeThemeIndex = 0;
+        var allThemes = ColorThemeService.All;
+        for (var i = 0; i < allThemes.Count; i++)
+        {
+            var displayName = allThemes[i].DisplayName;
+            _pdfColorScheme.Items.Add(displayName);
+            _htmlColorScheme.Items.Add(displayName);
+            if (string.Equals(allThemes[i].Id, ColorThemeService.ActiveThemeId, StringComparison.Ordinal))
+                activeThemeIndex = i;
+        }
+        _pdfColorScheme.SelectedIndex = activeThemeIndex;
+        _htmlColorScheme.SelectedIndex = activeThemeIndex;
+
+        _tabBar.Margin = Padding.Empty;
+        _tabContents = [BuildPdfContent(), BuildHtmlContent()];
+        _contentPanel.Controls.Add(_tabContents[0]);
+        _tabBar.TabChanged += (_, index) => SwitchTabPage(index);
 
         _exportButton.Click += OnExportClick;
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -91,7 +126,8 @@ internal sealed class ExportDialog : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
-            Margin = new Padding(0, 16, 0, 5),
+            Margin = new Padding(40, 20, 40, 0),
+            BackColor = SystemColors.ControlLightLight,
         };
         buttons.Controls.Add(_cancelButton);
         buttons.Controls.Add(_exportButton);
@@ -99,22 +135,52 @@ internal sealed class ExportDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(16),
+            Padding = new Padding(0, 0, 0, 40),
+            BackColor = SystemColors.ControlLightLight,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _tabs.Dock = DockStyle.Fill;
-        layout.Controls.Add(_tabs, 0, 0);
-        layout.Controls.Add(buttons, 0, 1);
+        layout.Controls.Add(_tabBar, 0, 0);
+        layout.Controls.Add(_contentPanel, 0, 1);
+        layout.Controls.Add(buttons, 0, 2);
 
         Controls.Add(layout);
 
         AcceptButton = _exportButton;
         CancelButton = _cancelButton;
+
+        Shown += (_, _) =>
+        {
+            _tabBar.ApplyThemeColors(ColorThemeService.GetActiveColors());
+            if (ColorThemeService.IsActiveThemeDark())
+            {
+                DarkModeService.ApplyDialogDarkMode(this, SystemColors.Control, SystemColors.ControlText);
+                DarkModeService.SetWindowDarkTitleBar(this);
+                ForceComboDark(_pageSize);
+                ForceComboDark(_marginPreset);
+                ForceComboDark(_pdfStyle);
+            }
+        };
+    }
+
+    private void SwitchTabPage(int index)
+    {
+        if (index < 0 || index >= _tabContents.Length) return;
+        _contentPanel.Controls.Clear();
+        _contentPanel.Controls.Add(_tabContents[index]);
+    }
+
+    private static void ForceComboDark(ComboBox combo)
+    {
+        if (!combo.IsHandleCreated) return;
+        typeof(Control).GetMethod("RecreateHandle",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.Invoke(combo, null);
     }
 
     public ExportOptions? Options
@@ -122,7 +188,12 @@ internal sealed class ExportDialog : Form
         get
         {
             if (_outputPath is null) return null;
-            var isPdf = _tabs.SelectedIndex == 0;
+            var isPdf = _tabBar.SelectedIndex == 0;
+            var schemeCombo = isPdf ? _pdfColorScheme : _htmlColorScheme;
+            var colorThemeId = schemeCombo.SelectedIndex >= 0
+                && schemeCombo.SelectedIndex < ColorThemeService.All.Count
+                    ? ColorThemeService.All[schemeCombo.SelectedIndex].Id
+                    : ColorThemeService.ActiveThemeId;
             return new ExportOptions(
                 Format: isPdf ? "pdf" : "html",
                 PaperSize: (string)_pageSize.SelectedItem!,
@@ -134,13 +205,14 @@ internal sealed class ExportDialog : Form
                 HtmlHeader: _htmlHeader.Text,
                 HtmlFooter: _htmlFooter.Text,
                 Style: MapExportStyle((string)(isPdf ? _pdfStyle : _htmlStyle).SelectedItem!),
+                ColorScheme: colorThemeId,
                 OutputPath: _outputPath);
         }
     }
 
     private void OnExportClick(object? sender, EventArgs eventArgs)
     {
-        var isPdf = _tabs.SelectedIndex == 0;
+        var isPdf = _tabBar.SelectedIndex == 0;
         var extension = isPdf ? "pdf" : "html";
         var filter = isPdf ? "PDF 文件|*.pdf" : "HTML 文件|*.html";
 
@@ -186,24 +258,36 @@ internal sealed class ExportDialog : Form
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 6,
-            Padding = new Padding(16, 12, 0, 12),
+            ColumnCount = 2,
+            Padding = new Padding(0, 20, 0, 12),
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 6; i++)
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(BuildPdfMiscSection(), 0, 0);
-        panel.Controls.Add(Gap(), 0, 1);
-        panel.Controls.Add(BuildMarginSection(), 0, 2);
-        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(CategoryLabel("纸张设置(&P)"), 0, 0);
+        panel.SetColumnSpan(BuildPdfMiscSection(), 2);
+        panel.Controls.Add(BuildPdfMiscSection(), 1, 0);
 
-        var styleRow = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-        styleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        styleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        AddRow(styleRow, 0, "排版样式(&Y)：", _pdfStyle);
-        panel.Controls.Add(styleRow, 0, 4);
+        panel.Controls.Add(CategoryGap(), 0, 1);
+        panel.Controls.Add(CategoryGap(), 1, 1);
+
+        panel.Controls.Add(CategoryLabel("页边距(&M)"), 0, 2);
+        panel.Controls.Add(BuildMarginSection(), 1, 2);
+
+        panel.Controls.Add(CategoryGap(), 0, 3);
+        panel.Controls.Add(CategoryGap(), 1, 3);
+
+        panel.Controls.Add(CategoryLabel("排版样式(&Y)"), 0, 4);
+        panel.Controls.Add(_pdfStyle, 1, 4);
+
+        panel.Controls.Add(CategoryGap(), 0, 5);
+        panel.Controls.Add(CategoryGap(), 1, 5);
+
+        panel.Controls.Add(CategoryLabel("配色方案(&C)"), 0, 6);
+        panel.Controls.Add(_pdfColorScheme, 1, 6);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 7);
 
         return panel;
     }
@@ -214,23 +298,20 @@ internal sealed class ExportDialog : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddRow(grid, 0, "纸张大小(&S)：", _pageSize);
+        grid.Controls.Add(new Label { Text = "纸张大小(&S)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        grid.Controls.Add(_pageSize, 1, 0);
 
         var ori = new FlowLayoutPanel { AutoSize = true };
         ori.Controls.Add(_portrait);
         ori.Controls.Add(_landscape);
-        AddRow(grid, 1, "方向：", ori);
+        grid.Controls.Add(new Label { Text = "方向：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
+        grid.Controls.Add(ori, 1, 1);
 
         return grid;
     }
 
     private Control BuildMarginSection()
     {
-        var container = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-        container.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        container.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        AddRow(container, 0, "页边距(&M)：", _marginPreset);
-
         var tbRow = new FlowLayoutPanel { AutoSize = true };
         tbRow.Controls.Add(new Label { Text = "上(&T)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         tbRow.Controls.Add(_marginTop);
@@ -245,11 +326,11 @@ internal sealed class ExportDialog : Form
 
         var mg = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         mg.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        mg.Controls.Add(tbRow, 0, 0);
-        mg.Controls.Add(lrRow, 0, 1);
+        mg.Controls.Add(_marginPreset, 0, 0);
+        mg.Controls.Add(tbRow, 0, 1);
+        mg.Controls.Add(lrRow, 0, 2);
 
-        container.Controls.Add(mg, 1, 1);
-        return container;
+        return mg;
     }
 
     private void BuildHtmlTab(int styleIndex)
@@ -265,27 +346,54 @@ internal sealed class ExportDialog : Form
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 6,
-            Padding = new Padding(16, 12, 0, 12),
+            ColumnCount = 2,
+            Padding = new Padding(0, 20, 0, 12),
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 6; i++)
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(LabeledControl("页头(&H)：", _htmlHeader), 0, 0);
-        panel.Controls.Add(Gap(), 0, 1);
-        panel.Controls.Add(LabeledControl("页脚(&F)：", _htmlFooter), 0, 2);
-        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(CategoryLabel("页头(&H)"), 0, 0);
+        panel.Controls.Add(_htmlHeader, 1, 0);
 
-        var bottomGrid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-        bottomGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bottomGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        AddRow(bottomGrid, 0, "排版样式(&Y)：", _htmlStyle);
-        panel.Controls.Add(bottomGrid, 0, 4);
+        panel.Controls.Add(CategoryGap(), 0, 1);
+        panel.Controls.Add(CategoryGap(), 1, 1);
+
+        panel.Controls.Add(CategoryLabel("页脚(&F)"), 0, 2);
+        panel.Controls.Add(_htmlFooter, 1, 2);
+
+        panel.Controls.Add(CategoryGap(), 0, 3);
+        panel.Controls.Add(CategoryGap(), 1, 3);
+
+        panel.Controls.Add(CategoryLabel("排版样式(&Y)"), 0, 4);
+        panel.Controls.Add(_htmlStyle, 1, 4);
+
+        panel.Controls.Add(CategoryGap(), 0, 5);
+        panel.Controls.Add(CategoryGap(), 1, 5);
+
+        panel.Controls.Add(CategoryLabel("配色方案(&C)"), 0, 6);
+        panel.Controls.Add(_htmlColorScheme, 1, 6);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 7);
 
         return panel;
     }
+
+    private static Label CategoryLabel(string text)
+    {
+        return new Label
+        {
+            Text = text,
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
+            Margin = new Padding(20, 10, 0, 0),
+
+        };
+    }
+
+    private static Control CategoryGap() => new Panel { Height = 20, Dock = DockStyle.None };
 
     private string MapExportStyle(string label)
     {
@@ -310,31 +418,6 @@ internal sealed class ExportDialog : Form
         }
 
         return 0;
-    }
-
-    private static TabPage CreateTab(string text, Control content)
-    {
-        var page = new TabPage(text) { UseVisualStyleBackColor = true, Padding = new Padding(8), AutoScroll = true };
-        page.Controls.Add(content);
-        return page;
-    }
-
-    private static Control Gap() => new Panel { Height = 25, Dock = DockStyle.None };
-
-    private static Control LabeledControl(string label, Control control)
-    {
-        var g = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        AddRow(g, 0, label, control);
-        return g;
-    }
-
-    private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
-    {
-        var lbl = new Label { Text = label, AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
-        table.Controls.Add(lbl, 0, row);
-        table.Controls.Add(control, 1, row);
     }
 
     private static void InitCombo(ComboBox combo, string[] items, int selected)
@@ -365,4 +448,5 @@ internal sealed record ExportOptions(
     string HtmlHeader,
     string HtmlFooter,
     string Style,
+    string ColorScheme,
     string OutputPath);

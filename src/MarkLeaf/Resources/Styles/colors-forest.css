@@ -1,24 +1,24 @@
 /* @type: color-theme
-   @name: 莫兰迪(深色)
+   @name: 森林
    @mode: dark */
 
 :root {
-  --bg-primary:          #2C2826;
-  --bg-hover:            #3D3835;
-  --bg-selected:         #4D4845;
-  --bg-selected-hover:   #5D5855;
-  --text-primary:        #D4CFC8;
-  --text-secondary:      #A09890;
-  --text-tertiary:       #807870;
-  --text-selected:              #F0EBE4;
-  --text-tertiary-selected:     #D4CFC8;
-  --icon:                       #A09890;
-  --icon-selected:              #F0EBE4;
-  --icon-secondary:             #807870;
-  --scrollbar-idle:      #4D4845;
-  --scrollbar-active:    #6D6865;
-  --theme-light:         #9A7060;
-  --theme-dark:          #B89078;
+  --bg-primary:          #1A221E;
+  --bg-hover:            #263028;
+  --bg-selected:         #304038;
+  --bg-selected-hover:   #3A5045;
+  --text-primary:        #D8E8DC;
+  --text-secondary:      #90B098;
+  --text-tertiary:       #709078;
+  --text-selected:              #F0F8F2;
+  --text-tertiary-selected:     #C0DCC8;
+  --icon:                       #90B098;
+  --icon-selected:              #F0F8F2;
+  --icon-secondary:             #709078;
+  --scrollbar-idle:      #304038;
+  --scrollbar-active:    #4A6848;
+  --theme-light:         #4A8A50;
+  --theme-dark:          #6AB870;
 }
 
 /* ---- 全局 ---- */

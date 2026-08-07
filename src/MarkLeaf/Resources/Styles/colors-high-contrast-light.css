@@ -1,24 +1,24 @@
 /* @type: color-theme
-   @name: 莫兰迪(深色)
-   @mode: dark */
+   @name: 高对比度(浅色)
+   @mode: light */
 
 :root {
-  --bg-primary:          #2C2826;
-  --bg-hover:            #3D3835;
-  --bg-selected:         #4D4845;
-  --bg-selected-hover:   #5D5855;
-  --text-primary:        #D4CFC8;
-  --text-secondary:      #A09890;
-  --text-tertiary:       #807870;
-  --text-selected:              #F0EBE4;
-  --text-tertiary-selected:     #D4CFC8;
-  --icon:                       #A09890;
-  --icon-selected:              #F0EBE4;
-  --icon-secondary:             #807870;
-  --scrollbar-idle:      #4D4845;
-  --scrollbar-active:    #6D6865;
-  --theme-light:         #9A7060;
-  --theme-dark:          #B89078;
+  --bg-primary:          #FFFFFF;
+  --bg-hover:            #F0F0F0;
+  --bg-selected:         #D0D0D0;
+  --bg-selected-hover:   #B0B0B0;
+  --text-primary:        #000000;
+  --text-secondary:      #1A1A1A;
+  --text-tertiary:       #333333;
+  --text-selected:              #FFFFFF;
+  --text-tertiary-selected:     #FFFFFF;
+  --icon:                       #000000;
+  --icon-selected:              #FFFFFF;
+  --icon-secondary:             #333333;
+  --scrollbar-idle:      #808080;
+  --scrollbar-active:    #404040;
+  --theme-light:         #1A1A1A;
+  --theme-dark:          #000000;
 }
 
 /* ---- 全局 ---- */
@@ -41,31 +41,33 @@ body,
 .cm-content::selection,
 .cm-content *::selection {
   background: var(--theme-light);
-  color: var(--text-selected);
+  color: #FFFFFF;
 }
 
 .cm-editor .cm-selectionBackground,
 .cm-editor.cm-focused .cm-selectionBackground {
   background-color: var(--theme-light) !important;
-  color: var(--text-selected) !important;
+  color: #FFFFFF !important;
 }
 
 /* ---- 查找高亮 ---- */
 .markleaf-find-match {
   background: var(--theme-light);
   box-shadow: 0 0 0 1px var(--theme-light);
+  color: #FFFFFF;
 }
 
 .markleaf-find-match-current {
-  background: var(--theme-light);
+  background: var(--theme-dark);
   box-shadow: 0 0 0 2px var(--theme-dark);
+  color: #FFFFFF;
 }
 
 /* ---- 代码块 ---- */
 .markleaf-document pre {
   background: var(--bg-hover);
-  border: 1px solid var(--bg-selected);
-  border-radius: 6px;
+  border: 1px solid var(--text-tertiary);
+  border-radius: 2px;
 }
 
 .markleaf-document pre code {
@@ -76,39 +78,40 @@ body,
 .markleaf-document code:not(pre code) {
   background: var(--bg-hover);
   color: var(--text-secondary);
-  border-radius: 3px;
+  border: 1px solid var(--text-tertiary);
+  border-radius: 2px;
   padding: 1px 4px;
 }
 
 /* ---- 表格 ---- */
 .markleaf-document table {
-  border-color: var(--bg-selected-hover);
+  border-color: var(--text-tertiary);
 }
 
 .markleaf-document th {
   background: var(--bg-hover);
-  border-color: var(--bg-selected-hover);
+  border-color: var(--text-tertiary);
 }
 
 .markleaf-document td {
-  border-color: var(--bg-selected-hover);
+  border-color: var(--text-tertiary);
 }
 
 /* ---- 引用 ---- */
 .markleaf-document blockquote {
-  border-left-color: var(--bg-selected);
-  color: var(--text-tertiary);
+  border-left: 3px solid var(--text-primary);
+  color: var(--text-secondary);
 }
 
 /* ---- 代码、引用中的选区 ---- */
 .markleaf-document pre ::selection,
 .markleaf-document blockquote ::selection {
-  color: var(--text-tertiary-selected);
+  color: #FFFFFF;
 }
 
 /* ---- 选中块边框 ---- */
 .ProseMirror-selectednode {
-  outline: 2px solid var(--theme-light);
+  outline: 2px solid var(--theme-dark);
 }
 
 /* ---- 图片手柄 ---- */
@@ -122,7 +125,7 @@ body,
 ::-webkit-scrollbar { background: var(--bg-primary); }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-corner { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--scrollbar-idle); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-idle); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-active); }
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,

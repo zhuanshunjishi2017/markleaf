@@ -65,6 +65,22 @@ internal static partial class ColorThemeService
         }
     }
 
+    public static string GetThemeCss(string id)
+    {
+        if (string.IsNullOrEmpty(_stylesDirectory) || string.IsNullOrEmpty(id))
+            return "";
+
+        var file = Path.Combine(_stylesDirectory, $"{FilePrefix}{id}.css");
+        try
+        {
+            return File.Exists(file) ? File.ReadAllText(file) : "";
+        }
+        catch (Exception)
+        {
+            return "";
+        }
+    }
+
     public static bool IsActiveThemeDark()
     {
         var theme = TryGetTheme(ActiveThemeId);

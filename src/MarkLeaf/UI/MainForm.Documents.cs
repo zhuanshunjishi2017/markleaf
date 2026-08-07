@@ -84,7 +84,10 @@ internal sealed partial class MainForm
             SetStatus("正在打开文档...");
             var opened = await _documentFileService.OpenAsync(path);
             var originalMarkdown = opened.Markdown;
-            opened.Markdown = _imageAssetService.NormalizeLocalImagePaths(opened.Markdown, opened.FilePath);
+            opened.Markdown = _imageAssetService.NormalizeLocalImagePaths(
+                opened.Markdown, opened.FilePath,
+                _settings.Image.UseRelativePaths,
+                _settings.Image.PrefixRelativeWithDotSlash);
             await ResolveMissingImagesAsync(opened);
             opened.IsDirty = !string.Equals(originalMarkdown, opened.Markdown, StringComparison.Ordinal);
             StopWatchingDocument();
@@ -280,7 +283,9 @@ internal sealed partial class MainForm
             snapshot = await _editorHost.RequestSnapshotAsync();
             var markdown = _imageAssetService.NormalizeLocalImagePaths(
                 snapshot.Markdown,
-                _document.FilePath ?? targetPath);
+                _document.FilePath ?? targetPath,
+                _settings.Image.UseRelativePaths,
+                _settings.Image.PrefixRelativeWithDotSlash);
             SetStatus("正在安全保存...");
             await _documentFileService.SaveAsync(
                 _document,
@@ -817,7 +822,9 @@ internal sealed partial class MainForm
                 SetStatus("文档未保存，无法复制到 .assets 目录，图片已保存到默认目录");
                 return GetDefaultImageDirectory();
             case ClipboardImageHandling.Upload:
-                SetStatus("“上传图片”选项尚未实现，图片已保存到默认目录");
+                if (GetDocumentAssetsDirectory() is { } dir)
+                    return dir;
+                SetStatus("文档未保存，图片已保存到默认目录");
                 return GetDefaultImageDirectory();
             default:
                 return GetDefaultImageDirectory();
@@ -837,7 +844,9 @@ internal sealed partial class MainForm
                 SetStatus("文档未保存，无法复制到 .assets 目录，图片将引用原位置");
                 break;
             case FileImageHandling.Upload:
-                SetStatus("“上传图片”选项尚未实现，图片将引用原位置");
+                if (GetDocumentAssetsDirectory() is { } dir)
+                    return await _imageAssetService.CopyFileIntoAsync(sourcePath, dir);
+                SetStatus("文档未保存，图片将引用原位置");
                 break;
         }
 
@@ -855,9 +864,15 @@ internal sealed partial class MainForm
             return false;
         }
 
+        var markdownPath = _settings.Image.UseRelativePaths
+            ? ImageAssetService.ToRelativeMarkdownPath(
+                imported.PhysicalPath, _document.FilePath, _settings.Image.PrefixRelativeWithDotSlash)
+                ?? imported.MarkdownPath
+            : imported.MarkdownPath;
+
         var inserted = await _editorHost.ExecuteCommandAsync(
             "insertImage",
-            imported.MarkdownPath + "\n" + alt,
+            markdownPath + "\n" + alt,
             clientX,
             clientY);
         if (!inserted)

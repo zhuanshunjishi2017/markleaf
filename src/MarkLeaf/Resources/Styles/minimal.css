@@ -1,0 +1,65 @@
+/* @type: typography
+   @name: 极简 */
+.markleaf-style-minimal .markleaf-document {
+  font-family: "Microsoft YaHei", "Segoe UI", "PingFang SC", sans-serif;
+  font-size: var(--ml-font-size);
+  line-height: calc(var(--ml-line-height) * 1.1);
+  letter-spacing: 0.01em;
+}
+
+.markleaf-style-minimal .markleaf-document h1,
+.markleaf-style-minimal .markleaf-document h2,
+.markleaf-style-minimal .markleaf-document h3,
+.markleaf-style-minimal .markleaf-document h4 {
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.03em;
+}
+
+.markleaf-style-minimal .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 1.5);
+  margin-bottom: 1em;
+}
+
+.markleaf-style-minimal .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.25);
+}
+
+.markleaf-style-minimal .markleaf-document h1,
+.markleaf-style-minimal .markleaf-document h2 {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.markleaf-style-minimal .markleaf-document blockquote {
+  border-left: 0;
+  font-style: italic;
+  padding: 0 1.5em;
+  color: var(--text-secondary);
+}
+
+.markleaf-style-minimal .markleaf-document hr {
+  width: 4em;
+  margin: 2.5em auto;
+  height: 2px;
+  background: var(--text-primary);
+  opacity: 0.3;
+}
+
+.markleaf-style-minimal .markleaf-document table {
+  border: 0;
+}
+
+.markleaf-style-minimal .markleaf-document th {
+  background: transparent;
+  border-bottom: 2px solid var(--text-primary);
+}
+
+.markleaf-style-minimal .markleaf-document td {
+  border: 0;
+  border-bottom: 1px solid var(--bg-selected);
+}
+
+.markleaf-style-minimal .markleaf-document a {
+  text-decoration: none;
+}

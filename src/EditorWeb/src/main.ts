@@ -53,6 +53,7 @@ let lastOutlinePosition: number | null | undefined
 let outlineTimer = 0
 let sourceEditor: SourceEditor | null = null
 let sourceMode = false
+let sourceIndentWidth = 2
 let replaceMode = false
 
 let editor = createEditor(editorMount)
@@ -229,7 +230,7 @@ function getActiveMarkdown(): string {
 function setSourceMode(enabled: boolean): void {
   if (enabled === sourceMode) return
   if (enabled) {
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged)
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -499,6 +500,23 @@ function handleMessage(value: unknown): void {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'setSourceSelection') {
+          const parts = String(payload.text ?? '').split(',').map(Number)
+          const from = parts[0] ?? NaN
+          if (Number.isFinite(from)) {
+            const to = parts.length >= 2 && Number.isFinite(parts[1]) ? parts[1]! : from
+            sourceEditor?.setSelection(from, to)
+          }
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'setSourceIndent') {
+          const width = Number(payload.text) || 2
+          sourceIndentWidth = Math.max(1, Math.min(8, Math.round(width)))
+          sourceEditor?.setIndentWidth(sourceIndentWidth)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'setAutoHideScrollbar') {
           applyAutoHideScrollbar(payload.text === '1')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -518,6 +536,7 @@ function handleMessage(value: unknown): void {
               fontSize?: unknown
               lineHeight?: unknown
               maxWidth?: unknown
+              colorSchemeCss?: unknown
             }
             try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
             const style = typeof options.style === 'string' ? options.style : 'serif'
@@ -527,7 +546,8 @@ function handleMessage(value: unknown): void {
             const fontSize = typeof options.fontSize === 'number' ? options.fontSize : 16
             const lineHeight = typeof options.lineHeight === 'number' ? options.lineHeight : 1.6
             const maxWidth = typeof options.maxWidth === 'number' ? options.maxWidth : 820
-            const html = generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth)
+            const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
+            const html = generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss)
             send('exportContent', { html }, message.requestId)
           }
           break
@@ -631,6 +651,12 @@ function applyAutoHideScrollbar(enabled: boolean): void {
 
 send('ready')
 
+;(window as any).__markleaf_tab__ = (shift = false) => {
+  if (sourceEditor) {
+    shift ? sourceEditor.insertShiftTab() : sourceEditor.insertTab()
+  }
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -699,6 +725,7 @@ function generateExportHtml(
   fontSize = 16,
   lineHeight = 1.6,
   maxWidth = 820,
+  colorSchemeCss = '',
 ): string {
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
@@ -725,6 +752,7 @@ function generateExportHtml(
 <style>
 * { box-sizing: border-box; }
 ${baseCss}
+${colorSchemeCss}
 ${resolved.css}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {

@@ -3,22 +3,22 @@
    @mode: light */
 
 :root {
-  --bg-primary:          #E8E4DF;
-  --bg-hover:            #DCD7D1;
-  --bg-selected:         #CEC8C1;
-  --bg-selected-hover:   #C0B9B1;
-  --text-primary:        #4A4540;
-  --text-secondary:      #6E6964;
-  --text-tertiary:       #8E8984;
-  --text-selected:              #4A4540;
-  --text-tertiary-selected:     #4A4540;
-  --icon:                       #6E6964;
-  --icon-selected:              #4A4540;
-  --icon-secondary:             #8E8984;
-  --scrollbar-idle:      #B8B2AA;
-  --scrollbar-active:    #9E9790;
-  --theme-light:         #B8A898;
-  --theme-dark:          #9B8A7A;
+  --bg-primary:          #F5F2EE;
+  --bg-hover:            #EBE5DE;
+  --bg-selected:         #DED8CF;
+  --bg-selected-hover:   #CFC8BD;
+  --text-primary:        #3A3430;
+  --text-secondary:      #665E57;
+  --text-tertiary:       #857D76;
+  --text-selected:              #FFFFFF;
+  --text-tertiary-selected:     #F5F2EE;
+  --icon:                       #665E57;
+  --icon-selected:              #FFFFFF;
+  --icon-secondary:             #857D76;
+  --scrollbar-idle:      #C4BBB0;
+  --scrollbar-active:    #A89E92;
+  --theme-light:         #D4782A;
+  --theme-dark:          #A85518;
 }
 
 /* ---- 全局 ---- */

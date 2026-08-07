@@ -42,6 +42,7 @@ public static class CommandStateResolver
             AppCommand.ToggleInlineCode => new(context.EditorReady, context.InlineCodeActive),
             AppCommand.InsertLink => new(context.EditorReady, context.LinkActive),
             AppCommand.InsertImage => new(context.DocumentAvailable && context.EditorReady),
+            AppCommand.InsertImageFromUrl => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.RotateImageClockwise => new(context.EditorReady && context.ImageSelected),
             AppCommand.ToggleQuote => new(context.EditorReady, context.QuoteActive),
             AppCommand.ToggleCodeBlock => new(context.EditorReady, context.CodeBlockActive),
