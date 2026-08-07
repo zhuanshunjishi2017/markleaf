@@ -35,6 +35,27 @@
   color: var(--text-selected) !important;
 }
 
+/* CodeMirror 源码模式：编辑器与行号栏跟随主题（Windows/macOS 共用） */
+.cm-editor {
+  background: var(--bg-primary);
+}
+.cm-editor .cm-gutters {
+  background-color: var(--bg-primary);
+  color: var(--text-tertiary);
+  border-right: 1px solid var(--bg-hover);
+}
+.cm-editor .cm-activeLineGutter {
+  background-color: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.cm-editor .cm-activeLine {
+  background-color: var(--bg-hover);
+}
+.cm-editor .cm-scroller {
+  font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: var(--ml-source-font-size, 14px);
+}
+
 .markleaf-document em {
   font-style: italic;
   font-synthesis: style;
