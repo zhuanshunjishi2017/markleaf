@@ -876,31 +876,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = "插入来自互联网的图片"
-        alert.informativeText = "输入图片地址，将以 Markdown 图片语法直接插入文档（不下载到本地）。"
+        alert.informativeText = "请输入图片 URL（http/https）："
         alert.alertStyle = .informational
         alert.addButton(withTitle: "插入")
         alert.addButton(withTitle: "取消")
 
+        // 注意：NSAlert 的 accessoryView 需用显式 frame（Auto Layout 的 NSStackView 会塌陷为 0 高，输入框不可见）
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 28))
         let urlField = NSTextField(string: "")
+        urlField.frame = NSRect(x: 0, y: 0, width: 380, height: 24)
         urlField.placeholderString = "https://example.com/image.png"
-        let altField = NSTextField(string: "")
-        altField.placeholderString = "图片描述文字（可选）"
+        accessory.addSubview(urlField)
 
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let urlLabel = NSTextField(labelWithString: "图片地址：")
-        urlLabel.font = .systemFont(ofSize: 12)
-        let altLabel = NSTextField(labelWithString: "描述文字（Alt）：")
-        altLabel.font = .systemFont(ofSize: 12)
-        for view in [urlLabel, urlField, altLabel, altField] {
-            stack.addArrangedSubview(view)
-        }
-        stack.widthAnchor.constraint(equalToConstant: 380).isActive = true
-
-        alert.accessoryView = stack
+        alert.accessoryView = accessory
         alert.window.initialFirstResponder = urlField
 
         let insertButton = alert.buttons.first
@@ -922,12 +910,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
             guard response == .alertFirstButtonReturn else { return }
             let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
-            let alt = altField.stringValue.trimmingCharacters(in: .whitespaces)
             guard URL(string: url).map({ $0.scheme == "http" || $0.scheme == "https" }) ?? false else {
                 self?.presentError("仅支持 http/https 图片地址")
                 return
             }
-            self?.execute("insertImage", text: url + "\n" + alt)
+            self?.execute("insertImage", text: url + "\n图片")
             self?.statusText = "图片已插入文档"
         }
     }
