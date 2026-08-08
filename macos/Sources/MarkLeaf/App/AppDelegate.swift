@@ -329,6 +329,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        if CommandLine.arguments.contains("--url-image-test") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                guard let s = AppWindowManager.shared.primarySession else {
+                    NSApp.terminate(nil)
+                    return
+                }
+                s.loadDocument(markdown: "test", fileURL: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    // 直接插入在线图片 URL（模拟「插入来自互联网的图片」）
+                    s.execute("insertImage", text: "https://picsum.photos/200/300\n在线图")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                        guard let webView = s.webView else {
+                            NSApp.terminate(nil)
+                            return
+                        }
+                        let check = "JSON.stringify({ src: document.querySelector('#editor img') ? document.querySelector('#editor img').getAttribute('src') : 'none', rendered: document.querySelector('#editor img') ? document.querySelector('#editor img').naturalWidth > 0 : false })"
+                        webView.evaluateJavaScript(check) { result, _ in
+                            AppLog.info("--url-image-test: \(String(describing: result))")
+                            NSApp.terminate(nil)
+                        }
+                    }
+                }
+            }
+        }
         if CommandLine.arguments.contains("--bold-test") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                 guard let s = AppWindowManager.shared.primarySession else {

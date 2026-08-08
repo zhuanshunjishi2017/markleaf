@@ -868,6 +868,70 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    private var insertUrlObserver: NSObjectProtocol?
+
+    /// 插入来自互联网的图片（对应 Windows InsertImageFromUrlAsync）：
+    /// 直接以 Markdown 图片语法插入 URL（不下载），由前端渲染在线图片。
+    func insertImageFromUrl() {
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "插入来自互联网的图片"
+        alert.informativeText = "输入图片地址，将以 Markdown 图片语法直接插入文档（不下载到本地）。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "插入")
+        alert.addButton(withTitle: "取消")
+
+        let urlField = NSTextField(string: "")
+        urlField.placeholderString = "https://example.com/image.png"
+        let altField = NSTextField(string: "")
+        altField.placeholderString = "图片描述文字（可选）"
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let urlLabel = NSTextField(labelWithString: "图片地址：")
+        urlLabel.font = .systemFont(ofSize: 12)
+        let altLabel = NSTextField(labelWithString: "描述文字（Alt）：")
+        altLabel.font = .systemFont(ofSize: 12)
+        for view in [urlLabel, urlField, altLabel, altField] {
+            stack.addArrangedSubview(view)
+        }
+        stack.widthAnchor.constraint(equalToConstant: 380).isActive = true
+
+        alert.accessoryView = stack
+        alert.window.initialFirstResponder = urlField
+
+        let insertButton = alert.buttons.first
+        insertButton?.isEnabled = false
+        insertUrlObserver = NotificationCenter.default.addObserver(
+            forName: NSControl.textDidChangeNotification,
+            object: urlField,
+            queue: .main
+        ) { [weak insertButton] _ in
+            let text = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+            let valid = URL(string: text).map { $0.scheme == "http" || $0.scheme == "https" } ?? false
+            insertButton?.isEnabled = valid
+        }
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if let token = self?.insertUrlObserver {
+                NotificationCenter.default.removeObserver(token)
+                self?.insertUrlObserver = nil
+            }
+            guard response == .alertFirstButtonReturn else { return }
+            let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+            let alt = altField.stringValue.trimmingCharacters(in: .whitespaces)
+            guard URL(string: url).map({ $0.scheme == "http" || $0.scheme == "https" }) ?? false else {
+                self?.presentError("仅支持 http/https 图片地址")
+                return
+            }
+            self?.execute("insertImage", text: url + "\n" + alt)
+            self?.statusText = "图片已插入文档"
+        }
+    }
+
     func openRecentFile(_ path: String) {
         openDocument(at: URL(fileURLWithPath: path))
     }

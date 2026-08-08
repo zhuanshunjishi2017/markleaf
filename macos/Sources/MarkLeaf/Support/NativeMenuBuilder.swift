@@ -155,7 +155,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem("行内代码", "toggleCode"))
         menu.addItem(.separator())
         menu.addItem(commandItem("插入超链接…", "insertLink", key: "k"))
-        menu.addItem(commandItem("插入图片…", "insertImage"))
+        menu.addItem(commandItem("插入本地图片…", "insertImage"))
+        menu.addItem(commandItem("插入来自互联网的图片…", "insertImageFromUrl"))
         menu.addItem(commandItem("顺时针旋转图片", "rotateImage"))
         return menu
     }
@@ -510,6 +511,7 @@ extension EditorSession {
         case "resetZoom": resetZoom()
         case "insertLink": insertLink()
         case "insertImage": insertImageFromPicker()
+        case "insertImageFromUrl": insertImageFromUrl()
         case "rotateImage": execute("rotateImageClockwise")
         case "showShortcuts": showShortcuts()
         case "revealThemeFolder": revealThemeFolder()
