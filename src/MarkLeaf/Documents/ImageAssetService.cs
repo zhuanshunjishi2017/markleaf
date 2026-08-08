@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text.RegularExpressions;
 
 namespace MarkLeaf.Documents;
@@ -90,6 +91,115 @@ public sealed partial class ImageAssetService
         return new ImportedImage(ToMarkdownPath(targetPath), targetPath);
     }
 
+    private static readonly HttpClient _httpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(30),
+    };
+
+    static ImageAssetService()
+    {
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MarkLeaf/1.0");
+    }
+
+    /// <summary>
+    /// 从互联网 URL 下载图片，验证后保存到指定目录。
+    /// </summary>
+    public async Task<ImportedImage> DownloadImageAsync(
+        string url,
+        string targetDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException("仅支持 HTTP/HTTPS 图片地址。", nameof(url));
+        }
+
+        using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        var extension = ContentTypeToExtension(contentType)
+            ?? Path.GetExtension(uri.AbsolutePath)
+            ?? ".png";
+
+        if (!AllowedExtensions.Contains(extension))
+        {
+            throw new InvalidDataException($"不支持的图片格式：{extension}。支持 {string.Join("、", AllowedExtensions)}。");
+        }
+
+        var contentLength = response.Content.Headers.ContentLength ?? 0;
+        if (contentLength > MaximumImageBytes)
+        {
+            throw new InvalidDataException("图片超过 50 MiB 大小限制。");
+        }
+
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var buffer = new byte[contentLength > 0 ? (int)Math.Min(contentLength, MaximumImageBytes + 1) : 64 * 1024];
+        using var memory = new MemoryStream();
+        long totalRead = 0;
+        int read;
+        while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            totalRead += read;
+            if (totalRead > MaximumImageBytes)
+            {
+                throw new InvalidDataException("图片超过 50 MiB 大小限制。");
+            }
+            memory.Write(buffer, 0, read);
+        }
+
+        var bytes = memory.ToArray();
+        if (bytes.Length == 0)
+        {
+            throw new InvalidDataException("下载的图片内容为空。");
+        }
+
+        ValidateImageSignature(bytes, extension);
+
+        Directory.CreateDirectory(targetDirectory);
+        var baseName = SanitizeFileName(Path.GetFileNameWithoutExtension(uri.AbsolutePath));
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "image-online";
+        }
+        var fileName = CreateUniqueFileName(targetDirectory, baseName, extension);
+        var targetPath = Path.Combine(targetDirectory, fileName);
+        try
+        {
+            await File.WriteAllBytesAsync(targetPath, bytes, cancellationToken);
+            return new ImportedImage(ToMarkdownPath(targetPath), targetPath);
+        }
+        catch
+        {
+            TryDeleteFile(targetPath);
+            throw;
+        }
+    }
+
+    private static string? ContentTypeToExtension(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType)) return null;
+        return contentType.Split(';')[0].Trim().ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "image/bmp" => ".bmp",
+            "image/svg+xml" => null, // SVG not supported
+            _ => null,
+        };
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "image";
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Where(c => !invalid.Contains(c)).Take(64).ToArray();
+        return chars.Length > 0 ? new string(chars) : "image";
+    }
+
     public static bool DirectoryContainsImages(string directory)
     {
         if (!Directory.Exists(directory))
@@ -130,17 +240,19 @@ public sealed partial class ImageAssetService
             .ToArray();
     }
 
-    public string NormalizeLocalImagePaths(string markdown, string? documentPath)
+    public string NormalizeLocalImagePaths(string markdown, string? documentPath, bool useRelativePaths = false, bool prefixDotSlash = false)
     {
         var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (Match match in MarkdownImageReference().Matches(markdown))
         {
             var reference = match.Groups["path"].Value.Trim();
             var resolvedPath = TryResolveLocalImagePath(reference, documentPath);
-            if (resolvedPath is not null)
-            {
-                replacements.TryAdd(reference, ToMarkdownPath(resolvedPath));
-            }
+            if (resolvedPath is null) continue;
+
+            var normalized = useRelativePaths
+                ? ToRelativeMarkdownPath(resolvedPath, documentPath, prefixDotSlash) ?? ToMarkdownPath(resolvedPath)
+                : ToMarkdownPath(resolvedPath);
+            replacements.TryAdd(reference, normalized);
         }
 
         return ReplaceImagePaths(markdown, replacements);
@@ -214,6 +326,21 @@ public sealed partial class ImageAssetService
         {
             return null;
         }
+    }
+
+    public static string? ToRelativeMarkdownPath(string absolutePhysicalPath, string? documentPath, bool prefixDotSlash = false)
+    {
+        if (string.IsNullOrWhiteSpace(documentPath)) return null;
+        var docDir = Path.GetDirectoryName(Path.GetFullPath(documentPath));
+        if (docDir is null) return null;
+
+        var relative = Path.GetRelativePath(docDir, absolutePhysicalPath);
+        if (relative.StartsWith('.') && relative != ".") return null; // can't go above doc dir
+        if (relative == ".") return null;
+
+        var markdownPath = relative.Replace('\\', '/');
+        if (prefixDotSlash) markdownPath = "./" + markdownPath;
+        return markdownPath;
     }
 
     public static string ToMarkdownPath(string path)

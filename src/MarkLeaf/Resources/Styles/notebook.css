@@ -1,0 +1,79 @@
+/* @type: typography
+   @name: 手记 */
+/* 手记采用舒适固定版心，模拟笔记本内页留白。 */
+.markleaf-style-notebook .markleaf-document {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  font-family: "华文楷体", "楷体", "KaiTi", "Comic Sans MS", cursive;
+  font-size: calc(var(--ml-font-size) * 1.0625);
+  line-height: calc(var(--ml-line-height) * 1.15);
+  color: var(--text-primary);
+}
+
+#editor.markleaf-style-notebook {
+  padding: 44px 64px 88px;
+}
+
+.markleaf-style-notebook .markleaf-document h1,
+.markleaf-style-notebook .markleaf-document h2,
+.markleaf-style-notebook .markleaf-document h3 {
+  font-family: "华文楷体", "楷体", "KaiTi", cursive;
+  font-weight: bold;
+  color: var(--theme-dark);
+}
+
+.markleaf-style-notebook .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 1.6);
+  text-align: center;
+  border-bottom: 0;
+  padding-bottom: 0.4em;
+  text-decoration: underline;
+  text-decoration-color: var(--theme-light);
+  text-underline-offset: 0.3em;
+}
+
+.markleaf-style-notebook .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.25);
+  border-bottom: 0;
+}
+
+.markleaf-style-notebook .markleaf-document p {
+  margin: 0.5em 0;
+}
+
+.markleaf-style-notebook .markleaf-document blockquote {
+  font-family: "华文仿宋", "仿宋", "FangSong", serif;
+  border-left: 3px dotted var(--theme-light);
+  padding: 0.5em 1em;
+  margin: 0.8em 0;
+}
+
+.markleaf-style-notebook .markleaf-document code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  background: var(--bg-hover);
+  border-radius: 2px;
+}
+
+.markleaf-style-notebook .markleaf-document pre {
+  border-style: dashed;
+  border-color: var(--bg-selected);
+  background: var(--bg-hover);
+}
+
+.markleaf-style-notebook .markleaf-document hr {
+  width: 100%;
+  height: 1px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--bg-selected-hover) 0,
+    var(--bg-selected-hover) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  border: 0;
+}
+
+.markleaf-style-notebook .markleaf-document ul[data-type='taskList'] > li > label input {
+  accent-color: var(--theme-dark);
+}

@@ -37,10 +37,14 @@ internal sealed partial class MainForm : Form
     private Control _workspacePanelHost = default!;
     private Control _outlinePanelHost = default!;
     private Panel _sidebarPanel = default!;
+    private Panel _editorPanel = default!;
+    private Panel _workspaceContentPanel = default!;
+    private EditorLoadingView _editorLoadingView = default!;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
     private readonly SidebarTabBar _sidebarTabBar = new();
     private EditorHostController? _editorHost;
+    private WebView2? _webView;
     private MarkdownDocument? _document;
     private FileSystemWatcher? _documentWatcher;
     private FileSystemWatcher? _workspaceWatcher;
@@ -175,6 +179,10 @@ internal sealed partial class MainForm : Form
             _sidebarSplit.Panel1Collapsed = true;
         }
 
+        // 原生部分立即加载颜色主题，不等待编辑器就绪。
+        ApplySidebarColors();
+        ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
+
         Shown += async (_, _) => await OnMainFormShownAsync(placement.IsMaximized);
         FormClosing += OnMainFormClosing;
         DpiChanged += (_, args) =>
@@ -248,6 +256,7 @@ internal sealed partial class MainForm : Form
             Dock = DockStyle.Fill,
             BackColor = SystemColors.Window,
         };
+        _editorPanel = panel;
         var webView = new WebView2
         {
             Dock = DockStyle.Fill,
@@ -255,7 +264,9 @@ internal sealed partial class MainForm : Form
             TabStop = true,
             AllowExternalDrop = true,
         };
+        _webView = webView;
         var loadingView = new EditorLoadingView();
+        _editorLoadingView = loadingView;
         panel.Controls.Add(webView);
         panel.Controls.Add(loadingView);
         _editorHost = new EditorHostController(
@@ -271,7 +282,8 @@ internal sealed partial class MainForm : Form
             // 必须先于 loadDocument 应用样式，确保文档渲染时排版即已就绪。
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
-            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth);
+            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize);
+            _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
             _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
             ApplySidebarAutoHideScrollbar();
@@ -340,6 +352,7 @@ internal sealed partial class MainForm : Form
             Margin = Padding.Empty,
             BackColor = Color.White,
         };
+        _workspaceContentPanel = content;
         content.Controls.Add(CreateWorkspaceTree());
         _workspaceDocumentList.Visible = false;
         _workspaceDocumentList.DocumentActivated += async (_, path) => await ActivateWorkspaceDocumentAsync(path);
@@ -409,6 +422,24 @@ internal sealed partial class MainForm : Form
 
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        // Tab / Shift+Tab（不含 Ctrl/Alt）：焦点在 WebView2 内时转发到
+        // 编辑器执行缩进，WebView2 Runtime 120+ 的 AreBrowserAcceleratorKeysEnabled
+        // 存在已知 bug（设置 false 仍会消费加速键），统一在此拦截最可靠。
+        if ((keyData & Keys.KeyCode) == Keys.Tab
+            && (keyData & Keys.Control) == Keys.None
+            && (keyData & Keys.Alt) == Keys.None)
+        {
+            if (_webView is not null
+                && _webView.IsHandleCreated
+                && _webView.ContainsFocus
+                && _editorHost is not null)
+            {
+                var shift = (keyData & Keys.Shift) != Keys.None;
+                _editorHost.ForwardTab(shift);
+                return true;
+            }
+        }
+
         return _commandRouter.TryExecuteShortcut(keyData)
             || base.ProcessCmdKey(ref message, keyData);
     }
@@ -654,6 +685,7 @@ internal sealed partial class MainForm : Form
             && context.EditorReady
             && IsEditorCommand(command)
             && command != AppCommand.InsertImage
+            && command != AppCommand.InsertImageFromUrl
             && command is not AppCommand.Cut
                 and not AppCommand.Copy
                 and not AppCommand.CopyMarkdown
@@ -781,6 +813,9 @@ internal sealed partial class MainForm : Form
             case AppCommand.InsertImage:
                 _ = SelectAndInsertImagesAsync();
                 break;
+            case AppCommand.InsertImageFromUrl:
+                _ = InsertImageFromUrlAsync();
+                break;
             case AppCommand.OpenThemeFolder:
                 OpenThemeFolder();
                 break;
@@ -888,7 +923,8 @@ internal sealed partial class MainForm : Form
         _markdownStyle = StyleService.TryGetStyle(style) is not null ? style : StyleService.DefaultStyleId;
         _settings.MarkdownStyle = _markdownStyle;
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth);
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize);
+        _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
     }
@@ -1069,7 +1105,15 @@ internal sealed partial class MainForm : Form
         if (colors.Count == 0) return;
 
         if (colors.TryGetValue("bg-primary", out var bg))
+        {
             _sidebarPanel.BackColor = bg;
+            _workspacePanelHost.BackColor = bg;
+            _outlinePanelHost.BackColor = bg;
+            _sidebarSplit.Panel2.BackColor = bg;
+            _editorPanel.BackColor = bg;
+            _workspaceContentPanel.BackColor = bg;
+            _editorLoadingView.BackColor = bg;
+        }
         if (colors.TryGetValue("bg-hover", out var splitter))
             _sidebarSplit.BackColor = splitter;
 
@@ -1409,7 +1453,8 @@ internal sealed partial class MainForm : Form
         _recoveryTimer.Start();
 
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth);
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize);
+        _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
 
         SetMarkdownStyle(_settings.MarkdownStyle);
         SetColorTheme(_settings.ColorTheme);
@@ -1755,6 +1800,7 @@ internal sealed partial class MainForm : Form
         {
             SetStatus("正在生成导出内容…");
             var editor = _settings.Editor;
+            var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
             var html = await _editorHost.RequestExportAsync(
                 options.Format,
                 options.Style,
@@ -1762,7 +1808,8 @@ internal sealed partial class MainForm : Form
                 options.HtmlFooter,
                 editor.VisualFontSize,
                 editor.VisualLineHeight,
-                editor.VisualMaxContentWidth);
+                editor.VisualMaxContentWidth,
+                colorThemeCss);
 
             if (string.IsNullOrEmpty(html))
             {

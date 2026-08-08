@@ -12,7 +12,7 @@ internal sealed class EditorLoadingView : TableLayoutPanel
     public EditorLoadingView()
     {
         Dock = DockStyle.Fill;
-        BackColor = SystemColors.Window;
+        BackColor = Color.White;
         ColumnCount = 1;
         RowCount = 6;
         ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));

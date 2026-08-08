@@ -12,7 +12,9 @@ struct AppSettings: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 3
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
-        colorTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "colors-white"
+        let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "colors-white-only"
+        // colors-white.css 已被 Windows 版移除（由 colors-white-only.css 替代），旧配置迁移
+        colorTheme = decodedTheme == "colors-white" ? "colors-white-only" : decodedTheme
         zoomPercent = try container.decodeIfPresent(Int.self, forKey: .zoomPercent) ?? 100
         restoreZoomOnOpen = try container.decodeIfPresent(Bool.self, forKey: .restoreZoomOnOpen) ?? true
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
@@ -49,7 +51,7 @@ struct AppSettings: Codable {
 
     // 外观
     var markdownStyle = "serif"
-    var colorTheme = "colors-white"
+    var colorTheme = "colors-white-only"
     var zoomPercent = 100
     var restoreZoomOnOpen = true
     // 是否启用 ⌘ + 滚轮缩放（触控板捏合始终可用，不受此开关控制）

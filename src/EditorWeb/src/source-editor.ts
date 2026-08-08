@@ -1,12 +1,13 @@
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore, indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { indentUnit } from '@codemirror/language'
+import { defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import {
   Decoration,
   DecorationSet,
   EditorView,
   highlightActiveLine,
+  highlightActiveLineGutter,
   keymap,
   lineNumbers,
   ViewPlugin,
@@ -67,9 +68,11 @@ export class SourceEditor {
       lineNumbers(),
       themedSourceSelection,
       highlightActiveLine(),
+      highlightActiveLineGutter(),
       history(),
       markdown(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      syntaxHighlighting(defaultHighlightStyle),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.lineWrapping,
       EditorState.tabSize.of(width),
       indentUnit.of(' '.repeat(width)),
@@ -80,6 +83,16 @@ export class SourceEditor {
         '&': { height: '100%' },
         '.cm-scroller': { fontFamily: 'Cascadia Mono, Consolas, monospace', lineHeight: '1.65' },
         '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px', margin: '0 auto' },
+        '.cm-gutters': {
+          background: 'var(--bg-hover)',
+          borderRight: '1px solid var(--bg-selected)',
+          color: 'var(--text-tertiary)',
+        },
+        '.cm-activeLineGutter': {
+          background: 'var(--bg-selected)',
+          color: 'var(--text-secondary)',
+        },
+        '.cm-activeLine': { background: 'var(--bg-hover)' },
       }),
     ]
   }
@@ -119,6 +132,14 @@ export class SourceEditor {
   deleteSelection(): boolean {
     if (this.view.state.selection.main.empty) return false
     return this.replaceSelection('')
+  }
+
+  insertTab(): void {
+    indentMore(this.view)
+  }
+
+  insertShiftTab(): void {
+    indentLess(this.view)
   }
 
   focus(): void {

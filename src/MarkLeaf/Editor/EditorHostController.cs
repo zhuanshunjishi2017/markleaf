@@ -122,7 +122,9 @@ internal sealed class EditorHostController : IDisposable
             Directory.CreateDirectory(_webView2UserDataDirectory);
             var environment = await CoreWebView2Environment.CreateAsync(
                 userDataFolder: _webView2UserDataDirectory).WaitAsync(_initializationCancellation.Token);
-            await _webView.EnsureCoreWebView2Async(environment).WaitAsync(_initializationCancellation.Token);
+            var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
+            controllerOptions.AllowHostInputProcessing = true;
+            await _webView.EnsureCoreWebView2Async(environment, controllerOptions).WaitAsync(_initializationCancellation.Token);
             ConfigureCoreWebView2();
 
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
@@ -214,12 +216,33 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize)
     {
         var script =
             $"document.documentElement.style.setProperty('--ml-line-height','{lineHeight:F2}');" +
             $"document.documentElement.style.setProperty('--ml-font-size','{fontSize}px');" +
-            $"document.documentElement.style.setProperty('--ml-max-width','{maxWidth}px');";
+            $"document.documentElement.style.setProperty('--ml-max-width','{maxWidth}px');" +
+            $"document.documentElement.style.setProperty('--ml-source-font-size','{sourceFontSize}px');";
+        EnqueueOrRun(() =>
+        {
+            if (_webView.CoreWebView2 is not null)
+                _webView.CoreWebView2.ExecuteScriptAsync(script);
+        });
+    }
+
+    public void ApplySourceSettings(int indentWidth)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setSourceIndent", text = indentWidth.ToString() }));
+    }
+
+    /// <summary>
+    /// WebView2 AreBrowserAcceleratorKeysEnabled=false 会屏蔽 Tab，
+    /// 因此由宿主在 WinForms 层拦截并手动注入 Tab 键事件。
+    /// </summary>
+    public void ForwardTab(bool shift = false)
+    {
+        var shiftArg = shift ? "true" : "";
+        var script = $"window.__markleaf_tab__?.({shiftArg})";
         EnqueueOrRun(() =>
         {
             if (_webView.CoreWebView2 is not null)
@@ -335,6 +358,7 @@ internal sealed class EditorHostController : IDisposable
         int fontSize,
         float lineHeight,
         int maxWidth,
+        string? colorSchemeCss = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -350,6 +374,7 @@ internal sealed class EditorHostController : IDisposable
             fontSize,
             lineHeight,
             maxWidth,
+            colorSchemeCss,
         });
         EnqueueOrRun(() =>
         {

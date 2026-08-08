@@ -373,7 +373,8 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.ToggleInlineCode, "行内代码(&C)");
         AppendSeparator(menu);
         AppendCommand(menu, AppCommand.InsertLink, "插入超链接(&K)...\tCtrl+K");
-        AppendCommand(menu, AppCommand.InsertImage, "插入图片(&M)...");
+        AppendCommand(menu, AppCommand.InsertImage, "插入本地图片(&M)...");
+        AppendCommand(menu, AppCommand.InsertImageFromUrl, "插入来自互联网的图片(&W)...");
         AppendCommand(menu, AppCommand.RotateImageClockwise, "顺时针旋转图片(&R)");
         return menu;
     }

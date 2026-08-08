@@ -1,0 +1,67 @@
+/* @type: typography
+   @name: 书籍排版 */
+/* 书籍排版采用固定版心边距，不随页宽响应式收窄。 */
+.markleaf-style-book .markleaf-document {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  font-family: "Times New Roman", "华文中宋", "宋体", "SimSun", serif;
+  font-size: calc(var(--ml-font-size) * 1.0625);
+  line-height: calc(var(--ml-line-height) * 1.1);
+  text-align: justify;
+}
+
+#editor.markleaf-style-book {
+  padding: 56px 80px 112px;
+}
+
+.markleaf-style-book .markleaf-document h1,
+.markleaf-style-book .markleaf-document h2,
+.markleaf-style-book .markleaf-document h3,
+.markleaf-style-book .markleaf-document h4 {
+  font-family: "华文中宋", "方正小标宋简体", "SimSun", serif;
+  font-weight: bold;
+  text-align: center;
+}
+
+.markleaf-style-book .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 1.75);
+  border-bottom: 1px solid var(--bg-selected);
+  padding-bottom: 0.5em;
+  margin-bottom: 1em;
+}
+
+.markleaf-style-book .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.35);
+}
+
+.markleaf-style-book .markleaf-document p {
+  text-indent: 2em;
+  margin: 0.5em 0;
+}
+
+.markleaf-style-book .markleaf-document blockquote {
+  font-family: "华文楷体", "楷体", "KaiTi", serif;
+  border-left: 2px solid var(--bg-selected);
+  padding: 0.8em 1.5em;
+  margin: 1em 0;
+  color: var(--text-secondary);
+}
+
+.markleaf-style-book .markleaf-document blockquote p {
+  text-indent: 0;
+}
+
+.markleaf-style-book .markleaf-document code {
+  font-family: "Courier New", "SimSun", monospace;
+  font-size: calc(var(--ml-font-size) * 0.875);
+}
+
+.markleaf-style-book .markleaf-document hr {
+  width: 30%;
+  margin: 2em auto;
+}
+
+.markleaf-style-book .markleaf-document li > p {
+  text-indent: 0;
+}

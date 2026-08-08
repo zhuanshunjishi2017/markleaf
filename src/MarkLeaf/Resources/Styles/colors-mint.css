@@ -1,24 +1,24 @@
 /* @type: color-theme
-   @name: 莫兰迪(深色)
-   @mode: dark */
+   @name: 薄荷
+   @mode: light */
 
 :root {
-  --bg-primary:          #2C2826;
-  --bg-hover:            #3D3835;
-  --bg-selected:         #4D4845;
-  --bg-selected-hover:   #5D5855;
-  --text-primary:        #D4CFC8;
-  --text-secondary:      #A09890;
-  --text-tertiary:       #807870;
-  --text-selected:              #F0EBE4;
-  --text-tertiary-selected:     #D4CFC8;
-  --icon:                       #A09890;
-  --icon-selected:              #F0EBE4;
-  --icon-secondary:             #807870;
-  --scrollbar-idle:      #4D4845;
-  --scrollbar-active:    #6D6865;
-  --theme-light:         #9A7060;
-  --theme-dark:          #B89078;
+  --bg-primary:          #F4FAF6;
+  --bg-hover:            #E6F2EA;
+  --bg-selected:         #D4E8DA;
+  --bg-selected-hover:   #C0DCC8;
+  --text-primary:        #253528;
+  --text-secondary:      #4A604E;
+  --text-tertiary:       #6A8070;
+  --text-selected:              #FFFFFF;
+  --text-tertiary-selected:     #E8F4EC;
+  --icon:                       #4A604E;
+  --icon-selected:              #FFFFFF;
+  --icon-secondary:             #6A8070;
+  --scrollbar-idle:      #B8D0C0;
+  --scrollbar-active:    #90B098;
+  --theme-light:         #2E8B57;
+  --theme-dark:          #1E6B40;
 }
 
 /* ---- 全局 ---- */
