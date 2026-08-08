@@ -1,4 +1,5 @@
 using System.Text;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.Documents;
 
@@ -26,7 +27,7 @@ public sealed class MarkdownDocument
 
     public FileFingerprint? LastKnownFingerprint { get; set; }
 
-    public string DisplayName => FilePath is null ? "未命名" : Path.GetFileName(FilePath);
+    public string DisplayName => FilePath is null ? Loc.Get("common.unnamed") : Path.GetFileName(FilePath);
 }
 
 public sealed record FileFingerprint(long Length, DateTimeOffset LastWriteTime, string Sha256)

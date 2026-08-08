@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI.Controls;
@@ -37,7 +38,7 @@ internal sealed class WorkspaceTreeView : Control
     private Color _iconSecondary = Color.FromArgb(0x80, 0x80, 0x80);
 
     private WorkspaceNode? _root;
-    private string? _placeholderText = "暂未打开工作区";
+    private string? _placeholderText = Loc.Get("sidebar.noWorkspace");
     private string? _selectedPath;
     private string? _hoveredPath;
     private string? _keyboardHoverPath;

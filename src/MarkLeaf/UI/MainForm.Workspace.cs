@@ -4,6 +4,7 @@ using Microsoft.VisualBasic.FileIO;
 using MarkLeaf.Commands;
 using MarkLeaf.Native;
 using MarkLeaf.UI.Dialogs;
+using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI;
@@ -121,7 +122,7 @@ internal sealed partial class MainForm
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "选择 MarkLeaf 工作区文件夹",
+            Description = Loc.Get("dialog.selectWorkspace"),
             ShowNewFolderButton = true,
             UseDescriptionForTitle = true,
             SelectedPath = _workspaceRoot ?? _settings.Workspace.LastFolder ?? string.Empty,
@@ -137,7 +138,7 @@ internal sealed partial class MainForm
         var fullPath = Path.GetFullPath(path);
         if (!Directory.Exists(fullPath))
         {
-            ShowMessage(this, "工作区文件夹不存在。", "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowMessage(this, Loc.Get("workspace.directoryNotExist"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -146,9 +147,10 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation = new CancellationTokenSource();
         _workspaceRoot = fullPath;
         AddRecentWorkspace(fullPath);
-        if (!_focusMode)
+        _openFolderPrompt.Visible = false;
+        if (!_focusMode && _sidebarSplit.Panel1Collapsed)
         {
-            _sidebarSplit.Panel1Collapsed = false;
+            ExpandSidebar();
         }
 
         var rootName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -165,7 +167,7 @@ internal sealed partial class MainForm
         }
         _workspaceTree.Expand(fullPath);
         TryStartWatchingWorkspace(fullPath);
-        SetStatus($"已打开工作区：{Path.GetFileName(fullPath)}");
+        SetStatus(Loc.Format("status.workspaceOpened", Path.GetFileName(fullPath)));
         _menuService.RefreshStates();
     }
 
@@ -178,19 +180,27 @@ internal sealed partial class MainForm
         _workspaceRoot = null;
         _settings.Workspace.LastFolder = null;
         _sidebarVisibleBeforeFocus = false;
-        ShowNoWorkspacePlaceholder();
-        _sidebarSplit.Panel1Collapsed = true;
-        SetStatus("工作区已关闭");
+        ClearWorkspacePlaceholder();
+        _openFolderPrompt.Visible = true;
+        CollapseSidebar();
+        SetStatus(Loc.Get("status.workspaceClosed"));
         _menuService.RefreshStates();
+    }
+
+    private void ClearWorkspacePlaceholder()
+    {
+        _workspaceTree.SetPlaceholder("");
+        _workspaceDocumentList.PlaceholderText = "";
+        _workspaceDocumentList.SelectedPath = null;
+        _workspaceDocuments = [];
+        _workspaceDocumentList.SetDocuments([]);
     }
 
     private void ShowNoWorkspacePlaceholder()
     {
-        _workspaceTree.SetPlaceholder("暂未打开工作区");
-        _workspaceDocumentList.PlaceholderText = "暂未打开工作区";
-        _workspaceDocumentList.SelectedPath = null;
-        _workspaceDocuments = [];
-        _workspaceDocumentList.SetDocuments([]);
+        ClearWorkspacePlaceholder();
+        _openFolderPrompt.Visible = true;
+        _openFolderPrompt.BringToFront();
     }
 
     private void ToggleWorkspaceView()
@@ -209,7 +219,9 @@ internal sealed partial class MainForm
             _workspaceTree.Focus();
         }
         UpdateViewToggleIcon();
-        SetStatus(_workspaceListViewActive ? "已切换到文档列表" : "已切换到树状结构");
+        if (_workspaceRoot is null && _openFolderPrompt.Visible)
+            _openFolderPrompt.BringToFront();
+        SetStatus(_workspaceListViewActive ? Loc.Get("status.switchedToList") : Loc.Get("status.switchedToTree"));
     }
 
     private async Task ShowWorkspaceFolderMenuAtAsync(Point screenPoint)
@@ -242,23 +254,23 @@ internal sealed partial class MainForm
         var menu = CreateNativePopupMenu();
         try
         {
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, "新建文件(&N)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, "新建文件夹(&F)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, "在文件资源管理器中显示...(&O)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewTree, "树结构(&T)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewList, "文档列表(&L)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceMenu.newFile"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceMenu.newFolder"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, Loc.Get("workspaceMenu.showInExplorer"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewTree, Loc.Get("workspaceMenu.treeView"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewList, Loc.Get("workspaceMenu.documentList"));
             AppendNativeMenuSeparator(menu);
 
             var sortMenu = CreateNativePopupMenu();
-            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByFileName, "文件名(&N)", false);
-            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByModifiedTime, "修改时间(&M)", true);
+            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByFileName, Loc.Get("workspaceMenu.sortByFileName"), false);
+            AppendNativeSortFieldCommand(sortMenu, WorkspacePopupCommand.SortByModifiedTime, Loc.Get("workspaceMenu.sortByModifiedTime"), true);
             AppendNativeMenuSeparator(sortMenu);
-            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortAscending, "升序(&A)", false);
-            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortDescending, "降序(&D)", true);
-            AppendNativePopup(menu, "排序方式(&S)", sortMenu);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Refresh, "刷新(&E)");
+            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortAscending, Loc.Get("workspaceMenu.sortAscending"), false);
+            AppendNativeSortDirectionCommand(sortMenu, WorkspacePopupCommand.SortDescending, Loc.Get("workspaceMenu.sortDescending"), true);
+            AppendNativePopup(menu, Loc.Get("workspaceMenu.sort"), sortMenu);
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Refresh, Loc.Get("workspaceMenu.refresh"));
             AppendNativeMenuSeparator(menu);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.CloseFolder, "关闭文件夹(&C)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.CloseFolder, Loc.Get("workspaceMenu.closeFolder"));
             return menu;
         }
         catch
@@ -307,17 +319,17 @@ internal sealed partial class MainForm
         _workspaceDocumentSortOrder = sortOrder;
         _workspaceTree.SetSortOrder(sortOrder);
         ApplyWorkspaceDocumentSort();
-        SetStatus($"工作区文档已按{GetWorkspaceSortDescription(sortOrder)}排列");
+        SetStatus(Loc.Format("status.workspaceSortChanged", GetWorkspaceSortDescription(sortOrder)));
     }
 
     private static string GetWorkspaceSortDescription(WorkspaceDocumentSortOrder sortOrder)
     {
         return sortOrder switch
         {
-            WorkspaceDocumentSortOrder.FileNameAscending => "文件名升序",
-            WorkspaceDocumentSortOrder.FileNameDescending => "文件名降序",
-            WorkspaceDocumentSortOrder.ModifiedTimeAscending => "修改时间升序",
-            _ => "修改时间降序",
+            WorkspaceDocumentSortOrder.FileNameAscending => Loc.Get("workspace.sortFileNameAscending"),
+            WorkspaceDocumentSortOrder.FileNameDescending => Loc.Get("workspace.sortFileNameDescending"),
+            WorkspaceDocumentSortOrder.ModifiedTimeAscending => Loc.Get("workspace.sortModifiedTimeAscending"),
+            _ => Loc.Get("workspace.sortModifiedTimeDescending"),
         };
     }
 
@@ -367,7 +379,7 @@ internal sealed partial class MainForm
         await LoadWorkspaceDirectoryAsync(_workspaceRoot, _workspaceLoadCancellation?.Token ?? CancellationToken.None);
         _workspaceTree.Expand(_workspaceRoot);
         await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
-        SetStatus("工作区已刷新");
+        SetStatus(Loc.Get("status.workspaceRefreshed"));
     }
 
     private async Task CreateUntitledWorkspaceDocumentAsync()
@@ -394,7 +406,7 @@ internal sealed partial class MainForm
             await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
             await OpenDocumentPathAsync(path);
             _workspaceDocumentList.SelectedPath = path;
-            SetStatus($"已新增文档：{Path.GetFileName(path)}");
+            SetStatus(Loc.Format("status.documentCreated", Path.GetFileName(path)));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -406,7 +418,7 @@ internal sealed partial class MainForm
     {
         if (string.IsNullOrWhiteSpace(_workspaceRoot))
         {
-            _workspaceDocumentList.PlaceholderText = "暂未打开工作区";
+            _workspaceDocumentList.PlaceholderText = Loc.Get("sidebar.noWorkspace");
             _workspaceDocuments = [];
             _workspaceDocumentList.SetDocuments([]);
             return;
@@ -419,7 +431,7 @@ internal sealed partial class MainForm
             {
                 return;
             }
-            _workspaceDocumentList.PlaceholderText = "暂无可用文档";
+            _workspaceDocumentList.PlaceholderText = Loc.Get("sidebar.noDocuments");
             _workspaceDocuments = documents;
             ApplyWorkspaceDocumentSort();
         }
@@ -428,7 +440,7 @@ internal sealed partial class MainForm
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _workspaceDocumentList.PlaceholderText = "无法读取工作区文档";
+            _workspaceDocumentList.PlaceholderText = Loc.Get("workspace.readFailed");
             _workspaceDocuments = [];
             _workspaceDocumentList.SetDocuments([]);
             _logger.Warning($"Workspace documents could not be enumerated: {exception.GetType().Name}.");
@@ -490,7 +502,7 @@ internal sealed partial class MainForm
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _workspaceTree.SetLoadError(directory, "无法读取此文件夹");
+            _workspaceTree.SetLoadError(directory, Loc.Get("workspace.folderReadFailed"));
             _logger.Warning($"Workspace folder could not be enumerated: {exception.GetType().Name}.");
         }
     }
@@ -514,21 +526,21 @@ internal sealed partial class MainForm
         var menu = CreateNativePopupMenu();
         try
         {
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Open, "打开(O)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Open, Loc.Get("workspaceEntry.open"));
             if (!entry.IsDirectory)
             {
-                AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenInNewWindow, "在新窗口中打开(W)");
+                AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenInNewWindow, Loc.Get("workspaceEntry.openInNewWindow"));
             }
             AppendNativeMenuSeparator(menu);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, "新建文件(N)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, "新建文件夹(F)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceEntry.newFile"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceEntry.newFolder"));
             AppendNativeMenuSeparator(menu);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.CopyPath, "复制文件路径(C)");
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenLocation, "打开文件所在的位置(L)");
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.CopyPath, Loc.Get("workspaceEntry.copyPath"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenLocation, Loc.Get("workspaceEntry.openLocation"));
             AppendNativeMenuSeparator(menu);
             var canModify = _workspaceRoot is null || !PathEquals(entry.FullPath, _workspaceRoot);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Rename, "重命名(R)", canModify);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Delete, "移至回收站(D)", canModify);
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Rename, Loc.Get("workspaceEntry.rename"), canModify);
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.Delete, Loc.Get("workspaceEntry.delete"), canModify);
 
             switch (ShowNativeWorkspaceMenu(menu, screenPoint))
             {
@@ -584,7 +596,7 @@ internal sealed partial class MainForm
         try
         {
             Clipboard.SetText(path);
-            SetStatus("已复制文件路径");
+            SetStatus(Loc.Get("status.pathCopied"));
         }
         catch (ExternalException exception)
         {
@@ -722,9 +734,9 @@ internal sealed partial class MainForm
     private async Task CreateWorkspaceEntryAsync(string directory, bool isDirectory)
     {
         using var dialog = new TextInputDialog(
-            isDirectory ? "新建文件夹" : "新建 Markdown 文件",
-            "名称：",
-            isDirectory ? "新建文件夹" : "未命名.md");
+            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("workspace.newMarkdownFile"),
+            Loc.Get("workspace.name"),
+            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("document.untitledMd"));
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.InputText))
         {
             return;
@@ -740,7 +752,7 @@ internal sealed partial class MainForm
             {
                 if (Directory.Exists(path) || File.Exists(path))
                 {
-                    throw new IOException("同名文件或文件夹已经存在。");
+                    throw new IOException(Loc.Get("workspace.nameExists"));
                 }
                 Directory.CreateDirectory(path);
             }
@@ -760,7 +772,7 @@ internal sealed partial class MainForm
 
     private async Task RenameWorkspaceEntryAsync(WorkspaceEntry entry)
     {
-        using var dialog = new TextInputDialog("重命名", "新名称：", Path.GetFileName(entry.FullPath));
+        using var dialog = new TextInputDialog(Loc.Get("workspace.rename"), Loc.Get("workspace.newName"), Path.GetFileName(entry.FullPath));
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.InputText))
         {
             return;
@@ -791,7 +803,7 @@ internal sealed partial class MainForm
     {
         var choice = ShowMessage(
             this,
-            $"是否将“{Path.GetFileName(entry.FullPath)}”移到回收站？",
+            Loc.Format("workspace.deleteConfirm", Path.GetFileName(entry.FullPath)),
             "MarkLeaf",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
@@ -826,7 +838,7 @@ internal sealed partial class MainForm
                 _workspaceTree.SelectedPath = null;
                 _workspaceDocumentList.SelectedPath = null;
                 UpdateDocumentChrome();
-                SetStatus("文档已从工作区删除，编辑内容保留为未保存文档");
+                SetStatus(Loc.Get("status.documentDeleted"));
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
@@ -861,20 +873,20 @@ internal sealed partial class MainForm
     {
         if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name is "." or "..")
         {
-            throw new ArgumentException("名称包含无效字符。");
+            throw new ArgumentException(Loc.Get("workspace.nameInvalid"));
         }
         var fullDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var path = Path.GetFullPath(Path.Combine(fullDirectory, name));
         if (!path.StartsWith(fullDirectory, StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("名称不能离开当前工作区目录。");
+            throw new ArgumentException(Loc.Get("workspace.nameOutsideRoot"));
         }
         return path;
     }
 
     private void ShowWorkspaceOperationError(Exception exception)
     {
-        ShowMessage(this, "工作区操作失败。\r\n\r\n" + exception.Message, "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        ShowMessage(this, Loc.Get("workspace.operationFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private void TryStartWatchingWorkspace(string path)
@@ -898,7 +910,7 @@ internal sealed partial class MainForm
             _workspaceWatcher?.Dispose();
             _workspaceWatcher = null;
             _logger.Warning($"Workspace watcher could not start: {exception.GetType().Name}.");
-            SetStatus("工作区已打开，但无法监视外部变化");
+            SetStatus(Loc.Get("status.workspaceWatchFailed"));
         }
     }
 

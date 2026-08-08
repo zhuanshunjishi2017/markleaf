@@ -1,4 +1,5 @@
 using MarkLeaf.Editor;
+using MarkLeaf.Services;
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
@@ -150,7 +151,7 @@ internal sealed class OutlineTreeView : Control
         {
             DrawNodeText(
                 eventArgs.Graphics,
-                "暂无文档大纲",
+                Loc.Get("sidebar.noOutline"),
                 _secondaryFont,
                 new Rectangle(this.ScaleForDpi(24), 0, ClientSize.Width - this.ScaleForDpi(28), _secondaryRowHeight));
             return;
@@ -201,7 +202,7 @@ internal sealed class OutlineTreeView : Control
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
-                string.IsNullOrWhiteSpace(node.Item.Text) ? "(无标题)" : node.Item.Text,
+                string.IsNullOrWhiteSpace(node.Item.Text) ? Loc.Get("sidebar.untitled") : node.Item.Text,
                 isSelected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
                 textBounds);
         }

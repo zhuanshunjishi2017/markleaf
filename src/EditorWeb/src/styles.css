@@ -113,6 +113,7 @@ body {
    与可视化编辑器的 --ml-font-size 采用相同机制。 */
 #source-editor .cm-content {
   font-size: var(--ml-source-font-size, 14px);
+  font-family: var(--ml-source-font-family, 'Cascadia Mono', 'Consolas', monospace);
 }
 
 /* ---- 源码模式语法高亮 ---- */

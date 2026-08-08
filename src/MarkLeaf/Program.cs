@@ -1,5 +1,6 @@
 using MarkLeaf.App;
 using MarkLeaf.Native;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
@@ -33,6 +34,10 @@ internal static class Program
             ColorThemeService.Initialize(stylesDir);
             logger.Info($"Color themes loaded: {ColorThemeService.All.Count} from Resources/Styles.");
             var settings = settingsService.LoadAsync().GetAwaiter().GetResult();
+            var uiLanguage = settings.General.UiLanguage ?? "";
+            var localesDir = Path.Combine(AppContext.BaseDirectory, "Resources", "Locales");
+            Loc.Initialize(localesDir, uiLanguage);
+            logger.Info($"Locales initialized: {uiLanguage} from Resources/Locales.");
 
             // 在任何窗口创建前设置进程级颜色模式，确保 HMENU 深色渲染就绪。
             DarkModeService.Initialize();
@@ -43,8 +48,9 @@ internal static class Program
         catch (Exception exception)
         {
             logger.Error("MarkLeaf failed during startup.", exception);
+            var startupMessage = MarkLeaf.Services.Loc.Get("startup.failed");
             MessageBox.Show(
-                "MarkLeaf 无法启动。详细信息已写入日志。\r\n\r\n" + exception.Message,
+                $"{startupMessage}\r\n\r\n{exception.Message}",
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);

@@ -88,6 +88,7 @@ public enum AppCommand
     ShowPreferences,
     ShowAbout,
     OpenThemeFolder,
+    AddTheme,
     ZoomIn,
     ZoomOut,
     ZoomReset,

@@ -1,10 +1,12 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class DocumentComparisonDialog : Form
 {
     public DocumentComparisonDialog(string editorMarkdown, string diskMarkdown)
     {
-        Text = "比较当前编辑内容与磁盘版本";
+        Text = Loc.Get("dialog.compareTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(900, 600);
@@ -17,8 +19,8 @@ internal sealed class DocumentComparisonDialog : Form
             Orientation = Orientation.Vertical,
             SplitterDistance = 540,
         };
-        split.Panel1.Controls.Add(CreateTextView("当前编辑内容", editorMarkdown));
-        split.Panel2.Controls.Add(CreateTextView("磁盘版本", diskMarkdown));
+        split.Panel1.Controls.Add(CreateTextView(Loc.Get("dialog.compareEditor"), editorMarkdown));
+        split.Panel2.Controls.Add(CreateTextView(Loc.Get("dialog.compareDisk"), diskMarkdown));
 
         var close = new Button
         {
@@ -26,7 +28,7 @@ internal sealed class DocumentComparisonDialog : Form
             MinimumSize = new Size(88, 0),
             Padding = new Padding(12, 4, 12, 4),
             FlatStyle = FlatStyle.System,
-            Text = "关闭",
+            Text = Loc.Get("common.close"),
             DialogResult = DialogResult.OK,
             UseVisualStyleBackColor = true,
         };

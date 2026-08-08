@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
 
@@ -11,15 +12,21 @@ internal sealed class SidebarTabBar : Control
     private Color _bgPrimary = Color.White;
     private Color _textPrimary = Color.Black;
 
-    private string[] _tabs = ["工作区", "大纲"];
+    private string[] _tabs = [];
     private int _selectedIndex;
     private int _hoveredIndex = -1;
+    private bool _collapseHovered;
     private Font _font = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _boldFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _iconFont = new("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
     private readonly Rectangle[] _tabBounds = new Rectangle[2];
+    private Rectangle _collapseBounds;
+
+    private const string CollapseIcon = "";
 
     public SidebarTabBar()
     {
+        _tabs = [Loc.Get("sidebar.workspace"), Loc.Get("sidebar.outline")];
         SetStyle(
             ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable,
@@ -45,6 +52,7 @@ internal sealed class SidebarTabBar : Control
 
     public event EventHandler<int>? TabChanged;
     public event EventHandler<int>? TabReclicked;
+    public event EventHandler? CollapseClicked;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -75,8 +83,10 @@ internal sealed class SidebarTabBar : Control
     {
         _font.Dispose();
         _boldFont.Dispose();
+        _iconFont.Dispose();
         _font = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _boldFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _iconFont = new Font("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
         Height = this.ScaleForDpi(52);
         Invalidate();
     }
@@ -106,8 +116,20 @@ internal sealed class SidebarTabBar : Control
         var tabContentWidth = maxTextWidth + hPad * 2;
         var totalWidth = tabContentWidth * _tabs.Length + gap * (_tabs.Length - 1);
 
-        // 居中排列
-        var startX = Math.Max(0, (ClientSize.Width - totalWidth) / 2);
+        // 右侧折叠按钮区域
+        var iconSide = ClientSize.Height - vPad * 2;
+        var iconRightMargin = this.ScaleForDpi(6);
+        var iconTopOffset = this.ScaleForDpi(1);
+        var collapseX = ClientSize.Width - iconSide - iconRightMargin;
+        _collapseBounds = new Rectangle(collapseX, 0, iconSide + iconRightMargin, ClientSize.Height);
+        var iconBounds = new Rectangle(collapseX, vPad + iconTopOffset, iconSide, iconSide);
+
+        // 标签居中区域：左右对称留出折叠按钮的宽度
+        var iconReserved = iconSide + iconRightMargin;
+        var tabAreaStart = iconReserved;
+        var tabAreaWidth = ClientSize.Width - iconReserved * 2;
+        if (tabAreaWidth < totalWidth) { tabAreaStart = 0; tabAreaWidth = ClientSize.Width - iconReserved; }
+        var startX = tabAreaStart + Math.Max(0, (tabAreaWidth - totalWidth) / 2);
 
         for (var i = 0; i < _tabs.Length; i++)
         {
@@ -149,6 +171,19 @@ internal sealed class SidebarTabBar : Control
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }
+
+        // 折叠按钮背景
+        if (_collapseHovered)
+        {
+            using var brush = new SolidBrush(_bgHover);
+            SidebarGdi.FillRoundedRect(e.Graphics, iconBounds, radius, brush);
+        }
+
+        // 折叠按钮图标
+        TextRenderer.DrawText(
+            e.Graphics, CollapseIcon, _iconFont, iconBounds, ForeColor,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -160,22 +195,46 @@ internal sealed class SidebarTabBar : Control
             _hoveredIndex = index;
             Invalidate();
         }
+
+        var collapseHov = _collapseBounds.Contains(e.X, e.Y);
+        if (collapseHov != _collapseHovered)
+        {
+            _collapseHovered = collapseHov;
+            Invalidate();
+        }
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
+        var changed = false;
         if (_hoveredIndex != -1)
         {
             _hoveredIndex = -1;
-            Invalidate();
+            changed = true;
         }
+
+        if (_collapseHovered)
+        {
+            _collapseHovered = false;
+            changed = true;
+        }
+
+        if (changed) Invalidate();
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
+
+        if (_collapseBounds.Contains(e.X, e.Y))
+        {
+            Focus();
+            CollapseClicked?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         var index = HitTest(e.X);
         if (index >= 0)
         {
@@ -230,6 +289,7 @@ internal sealed class SidebarTabBar : Control
         {
             _font.Dispose();
             _boldFont.Dispose();
+            _iconFont.Dispose();
         }
         base.Dispose(disposing);
     }

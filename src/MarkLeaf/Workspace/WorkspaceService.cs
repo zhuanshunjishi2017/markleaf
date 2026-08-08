@@ -1,3 +1,5 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.Workspace;
 
 internal sealed class WorkspaceService
@@ -7,7 +9,9 @@ internal sealed class WorkspaceService
         var fullDirectory = Path.GetFullPath(directory);
         for (var index = 1; ; index++)
         {
-            var name = index == 1 ? "未命名.md" : $"未命名 ({index}).md";
+            var name = index == 1
+                ? Loc.Get("document.untitledMd")
+                : Loc.Format("document.untitledMdWithIndex", index);
             var path = Path.Combine(fullDirectory, name);
             if (!File.Exists(path) && !Directory.Exists(path))
             {

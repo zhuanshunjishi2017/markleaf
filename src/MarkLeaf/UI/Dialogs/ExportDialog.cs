@@ -1,4 +1,5 @@
 using MarkLeaf.Native;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
 
@@ -21,10 +22,10 @@ internal sealed class ExportDialog : Form
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190 };
 
     private readonly RadioButton _portrait = new()
-    { Text = "纵向(&P)", AutoSize = true, Padding = new Padding(0, 0, 24, 0), FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("export.portrait"), AutoSize = true, Padding = new Padding(0, 0, 24, 0), FlatStyle = FlatStyle.System };
 
     private readonly RadioButton _landscape = new()
-    { Text = "横向(&L)", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("export.landscape"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly ComboBox _marginPreset = new()
     { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
@@ -56,10 +57,10 @@ internal sealed class ExportDialog : Form
     private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
 
     private readonly Button _exportButton = new()
-    { Text = "导出", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("export.ok"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
 
     private readonly Button _cancelButton = new()
-    { Text = "取消", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.cancel"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
 
     private readonly string _defaultFileName;
 
@@ -67,10 +68,10 @@ internal sealed class ExportDialog : Form
 
     private static readonly (string Label, float Top, float Bottom, float Left, float Right)[] MarginPresets =
     [
-        ("普通", 25.4f, 25.4f, 31.7f, 31.7f),
-        ("窄", 12.7f, 12.7f, 12.7f, 12.7f),
-        ("宽", 50.8f, 50.8f, 50.8f, 50.8f),
-        ("自定义", 16f, 16f, 16f, 16f),
+        (Loc.Get("export.marginNormal"), 25.4f, 25.4f, 31.7f, 31.7f),
+        (Loc.Get("export.marginNarrow"), 12.7f, 12.7f, 12.7f, 12.7f),
+        (Loc.Get("export.marginWide"), 50.8f, 50.8f, 50.8f, 50.8f),
+        (Loc.Get("export.marginCustom"), 16f, 16f, 16f, 16f),
     ];
 
     private readonly IReadOnlyList<(string Id, string DisplayName)> _styles;
@@ -84,7 +85,7 @@ internal sealed class ExportDialog : Form
         _styles = styles;
         _defaultFileName = defaultFileName;
         var initialStyleIndex = Math.Max(0, IndexOfStyle(currentStyle));
-        Text = $"导出 - {documentFileName}";
+        Text = Loc.Format("export.title", documentFileName);
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
@@ -214,7 +215,7 @@ internal sealed class ExportDialog : Form
     {
         var isPdf = _tabBar.SelectedIndex == 0;
         var extension = isPdf ? "pdf" : "html";
-        var filter = isPdf ? "PDF 文件|*.pdf" : "HTML 文件|*.html";
+        var filter = isPdf ? $"{Loc.Get("export.pdf")}|*.pdf" : $"{Loc.Get("export.html")}|*.html";
 
         using var dialog = new SaveFileDialog
         {
@@ -264,26 +265,26 @@ internal sealed class ExportDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(CategoryLabel("纸张设置(&P)"), 0, 0);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.paper.label")), 0, 0);
         panel.SetColumnSpan(BuildPdfMiscSection(), 2);
         panel.Controls.Add(BuildPdfMiscSection(), 1, 0);
 
         panel.Controls.Add(CategoryGap(), 0, 1);
         panel.Controls.Add(CategoryGap(), 1, 1);
 
-        panel.Controls.Add(CategoryLabel("页边距(&M)"), 0, 2);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.margins.label")), 0, 2);
         panel.Controls.Add(BuildMarginSection(), 1, 2);
 
         panel.Controls.Add(CategoryGap(), 0, 3);
         panel.Controls.Add(CategoryGap(), 1, 3);
 
-        panel.Controls.Add(CategoryLabel("排版样式(&Y)"), 0, 4);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.style.label")), 0, 4);
         panel.Controls.Add(_pdfStyle, 1, 4);
 
         panel.Controls.Add(CategoryGap(), 0, 5);
         panel.Controls.Add(CategoryGap(), 1, 5);
 
-        panel.Controls.Add(CategoryLabel("配色方案(&C)"), 0, 6);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.colorScheme.label")), 0, 6);
         panel.Controls.Add(_pdfColorScheme, 1, 6);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
@@ -298,13 +299,13 @@ internal sealed class ExportDialog : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        grid.Controls.Add(new Label { Text = "纸张大小(&S)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        grid.Controls.Add(new Label { Text = Loc.Get("export.paperSize"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
         grid.Controls.Add(_pageSize, 1, 0);
 
         var ori = new FlowLayoutPanel { AutoSize = true };
         ori.Controls.Add(_portrait);
         ori.Controls.Add(_landscape);
-        grid.Controls.Add(new Label { Text = "方向：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
+        grid.Controls.Add(new Label { Text = Loc.Get("export.orientation"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
         grid.Controls.Add(ori, 1, 1);
 
         return grid;
@@ -313,15 +314,15 @@ internal sealed class ExportDialog : Form
     private Control BuildMarginSection()
     {
         var tbRow = new FlowLayoutPanel { AutoSize = true };
-        tbRow.Controls.Add(new Label { Text = "上(&T)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        tbRow.Controls.Add(new Label { Text = Loc.Get("export.marginTop"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         tbRow.Controls.Add(_marginTop);
-        tbRow.Controls.Add(new Label { Text = "  下(&B)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        tbRow.Controls.Add(new Label { Text = "  " + Loc.Get("export.marginBottom"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         tbRow.Controls.Add(_marginBottom);
 
         var lrRow = new FlowLayoutPanel { AutoSize = true };
-        lrRow.Controls.Add(new Label { Text = "左(&L)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        lrRow.Controls.Add(new Label { Text = Loc.Get("export.marginLeft"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         lrRow.Controls.Add(_marginLeft);
-        lrRow.Controls.Add(new Label { Text = "  右(&R)：", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        lrRow.Controls.Add(new Label { Text = "  " + Loc.Get("export.marginRight"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         lrRow.Controls.Add(_marginRight);
 
         var mg = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
@@ -335,8 +336,8 @@ internal sealed class ExportDialog : Form
 
     private void BuildHtmlTab(int styleIndex)
     {
-        _htmlHeader.PlaceholderText = "例如：<header>...</header>";
-        _htmlFooter.PlaceholderText = "例如：<footer>...</footer>";
+        _htmlHeader.PlaceholderText = Loc.Get("export.headerPlaceholder");
+        _htmlFooter.PlaceholderText = Loc.Get("export.footerPlaceholder");
 
         InitCombo(_htmlStyle, StyleDisplayNames(), styleIndex);
     }
@@ -352,25 +353,25 @@ internal sealed class ExportDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(CategoryLabel("页头(&H)"), 0, 0);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.htmlHeader")), 0, 0);
         panel.Controls.Add(_htmlHeader, 1, 0);
 
         panel.Controls.Add(CategoryGap(), 0, 1);
         panel.Controls.Add(CategoryGap(), 1, 1);
 
-        panel.Controls.Add(CategoryLabel("页脚(&F)"), 0, 2);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.htmlFooter")), 0, 2);
         panel.Controls.Add(_htmlFooter, 1, 2);
 
         panel.Controls.Add(CategoryGap(), 0, 3);
         panel.Controls.Add(CategoryGap(), 1, 3);
 
-        panel.Controls.Add(CategoryLabel("排版样式(&Y)"), 0, 4);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.style.label")), 0, 4);
         panel.Controls.Add(_htmlStyle, 1, 4);
 
         panel.Controls.Add(CategoryGap(), 0, 5);
         panel.Controls.Add(CategoryGap(), 1, 5);
 
-        panel.Controls.Add(CategoryLabel("配色方案(&C)"), 0, 6);
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.colorScheme.label")), 0, 6);
         panel.Controls.Add(_htmlColorScheme, 1, 6);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);

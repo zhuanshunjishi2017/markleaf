@@ -43,6 +43,7 @@ internal sealed partial class MainForm : Form
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
     private readonly SidebarTabBar _sidebarTabBar = new();
+    private readonly OpenFolderPrompt _openFolderPrompt = new();
     private EditorHostController? _editorHost;
     private WebView2? _webView;
     private MarkdownDocument? _document;
@@ -67,13 +68,13 @@ internal sealed partial class MainForm : Form
         Width = 32,
         Margin = new Padding(2, 0, 4, 0),
     };
-    private readonly ToolStripStatusLabel _statusLabel = new("正在准备编辑器");
-    private readonly ToolStripStatusLabel _characterCountLabel = new("字数 0");
-    private readonly ToolStripStatusLabel _blockTypeLabel = new("正文");
-    private readonly ToolStripStatusLabel _positionLabel = new("行 1，列 1");
+    private readonly ToolStripStatusLabel _statusLabel = new(Services.Loc.Get("statusBar.preparing"));
+    private readonly ToolStripStatusLabel _characterCountLabel = new(Loc.Format("statusBar.wordCount", 0));
+    private readonly ToolStripStatusLabel _blockTypeLabel = new(Loc.Get("statusBar.blockType.paragraph"));
+    private readonly ToolStripStatusLabel _positionLabel = new(Loc.Format("statusBar.position", 1, 1));
     private readonly ToolStripStatusLabel _encodingLabel = new("UTF-8");
     private readonly ToolStripStatusLabel _newLineLabel = new("CRLF");
-    private readonly ToolStripStatusLabel _modeLabel = new("可视化");
+    private readonly ToolStripStatusLabel _modeLabel = new(Loc.Get("statusBar.mode.visual"));
     private readonly ToolStripStatusLabel _zoomLabel = new("100%");
     private SolidBrush _menuBgBrush = new(Color.White);
     private SolidBrush _menuHighlightBrush = new(Color.FromArgb(0xF0, 0xF0, 0xF0));
@@ -113,6 +114,8 @@ internal sealed partial class MainForm : Form
         _colorTheme = ColorThemeService.TryGetTheme(settings.ColorTheme) is not null
             ? settings.ColorTheme
             : ColorThemeService.All.Count > 0 ? ColorThemeService.All[0].Id : "white";
+        if (settings.Appearance.FollowSystemColorMode)
+            _colorTheme = ColorThemeService.GetSystemDefaultThemeId();
         ColorThemeService.SetActiveTheme(_colorTheme);
         _zoomPercent = NearestZoom(settings.Appearance.ZoomPercent);
         _settingsService = settingsService;
@@ -130,7 +133,7 @@ internal sealed partial class MainForm : Form
             QueueWorkspaceRefresh);
         _recoveryService = new RecoveryService(paths.RecoveryDirectory, logger);
         _recoveryService.SnapshotSaved += (_, time) =>
-            BeginInvoke(() => SetStatus($"快照已于 {time.LocalDateTime:HH:mm:ss} 保存"));
+            BeginInvoke(() => SetStatus(Loc.Format("status.snapshotSaved", $"{time.LocalDateTime:HH:mm:ss}")));
         _recoveryTimer.Tick += OnRecoveryTimerTick;
         _recoveryTimer.Interval = Math.Clamp(settings.File.SnapshotIntervalSeconds, 10, 300) * 1000;
         _autoSaveTimer.Tick += OnAutoSaveTimerTick;
@@ -176,7 +179,9 @@ internal sealed partial class MainForm : Form
         if (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
             || !Directory.Exists(settings.Workspace.LastFolder))
         {
-            _sidebarSplit.Panel1Collapsed = true;
+            _sidebarSplit.Panel1Collapsed = settings.MainWindow.SidebarCollapsed;
+            if (!_sidebarSplit.Panel1Collapsed)
+                ShowNoWorkspacePlaceholder();
         }
 
         // 原生部分立即加载颜色主题，不等待编辑器就绪。
@@ -185,6 +190,7 @@ internal sealed partial class MainForm : Form
 
         Shown += async (_, _) => await OnMainFormShownAsync(placement.IsMaximized);
         FormClosing += OnMainFormClosing;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         DpiChanged += (_, args) =>
         {
             if (_options.LayoutDpiOverride is null)
@@ -233,6 +239,7 @@ internal sealed partial class MainForm : Form
         {
             if (index == 0) ToggleWorkspaceView();
         };
+        _sidebarTabBar.CollapseClicked += OnSidebarCollapseClicked;
         panel.Controls.Add(_sidebarTabBar);
 
         _workspacePanelHost = CreateWorkspacePanel();
@@ -245,6 +252,7 @@ internal sealed partial class MainForm : Form
         _outlinePanelHost.Controls.Add(CreateOutlineTree());
         panel.Controls.Add(_outlinePanelHost);
         panel.Controls.Add(_workspacePanelHost);
+
         ShowSidebarView(outline: false);
         return panel;
     }
@@ -282,7 +290,7 @@ internal sealed partial class MainForm : Form
             // 必须先于 loadDocument 应用样式，确保文档渲染时排版即已就绪。
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
-            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize);
+            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
             _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
@@ -366,6 +374,11 @@ internal sealed partial class MainForm : Form
             _ = ImportWorkspaceFilesAsync(args.Paths);
         content.Controls.Add(_workspaceDocumentList);
 
+        _openFolderPrompt.Dock = DockStyle.Fill;
+        _openFolderPrompt.Visible = false;
+        _openFolderPrompt.FolderOpenRequested += async (_, _) => await SelectWorkspaceFolderAsync();
+        content.Controls.Add(_openFolderPrompt);
+
         layout.Controls.Add(content, 0, 0);
         return layout;
     }
@@ -378,9 +391,18 @@ internal sealed partial class MainForm : Form
 
     private void UpdateViewToggleIcon()
     {
-        _viewToggleButton.Text = _workspaceListViewActive
-            ? SystemIconProvider.ListViewIcon
-            : SystemIconProvider.TreeViewIcon;
+        if (_sidebarSplit.Panel1Collapsed)
+        {
+            _viewToggleButton.Text = SystemIconProvider.ExpandSidebarIcon;
+            _viewToggleButton.ToolTipText = Loc.Get("tooltip.expandSidebar");
+        }
+        else
+        {
+            _viewToggleButton.Text = _workspaceListViewActive
+                ? SystemIconProvider.ListViewIcon
+                : SystemIconProvider.TreeViewIcon;
+            _viewToggleButton.ToolTipText = Loc.Get("tooltip.switchView");
+        }
     }
 
     private StatusStrip CreateStatusBar()
@@ -389,9 +411,20 @@ internal sealed partial class MainForm : Form
         {
             SizingGrip = false,
             ShowItemToolTips = true,
+            MinimumSize = new Size(0, 45),
+            Renderer = new SolidStatusBarRenderer(),
         };
-        _viewToggleButton.Click += (_, _) => ToggleWorkspaceView();
-        _viewToggleButton.ToolTipText = "切换视图";
+        _viewToggleButton.Click += (_, _) =>
+        {
+            if (_sidebarSplit.Panel1Collapsed)
+            {
+                ExpandSidebar();
+            }
+            else
+            {
+                ToggleWorkspaceView();
+            }
+        };
         UpdateViewToggleIcon();
         strip.Items.Add(_viewToggleButton);
         _statusLabel.Spring = true;
@@ -771,20 +804,15 @@ internal sealed partial class MainForm : Form
                 _editorHost?.ExecuteCommand("toggleSourceMode");
                 break;
             case AppCommand.ToggleSidebar:
-                _sidebarSplit.Panel1Collapsed = !_sidebarSplit.Panel1Collapsed;
-                if (!_sidebarSplit.Panel1Collapsed && _workspaceRoot is null)
-                {
-                    ShowNoWorkspacePlaceholder();
-                }
-                SetStatus(_sidebarSplit.Panel1Collapsed ? "侧栏已隐藏" : "侧栏已显示");
+                ToggleSidebarWithWindowResize();
                 break;
             case AppCommand.SwitchToWorkspace:
                 ShowSidebarView(outline: false);
-                SetStatus("已切换至工作区");
+                SetStatus(Loc.Get("status.switchedToWorkspace"));
                 break;
             case AppCommand.SwitchToOutline:
                 ShowSidebarView(outline: true);
-                SetStatus("已切换至大纲");
+                SetStatus(Loc.Get("status.switchedToOutline"));
                 break;
             case AppCommand.ViewTree:
                 if (_workspaceListViewActive) ToggleWorkspaceView();
@@ -818,6 +846,9 @@ internal sealed partial class MainForm : Form
                 break;
             case AppCommand.OpenThemeFolder:
                 OpenThemeFolder();
+                break;
+            case AppCommand.AddTheme:
+                AddThemeFromFile();
                 break;
             case AppCommand.ZoomIn:
                 SetZoomPercent(NextZoom(_zoomPercent, 1));
@@ -864,7 +895,7 @@ internal sealed partial class MainForm : Form
     private void ResetAllSettingsToDefaults()
     {
         _settingsService.SaveAsync(_settings).GetAwaiter().GetResult();
-        SetStatus("所有设置已重置为默认值");
+        SetStatus(Loc.Get("status.settingsReset"));
     }
 
     private void ApplySidebarAutoHideScrollbar()
@@ -875,13 +906,53 @@ internal sealed partial class MainForm : Form
         _outlineTree.AutoHideScrollbar = enabled;
     }
 
+    private void OnSidebarCollapseClicked(object? sender, EventArgs e)
+    {
+        ToggleSidebarWithWindowResize();
+    }
+
+    /// <summary>
+    /// 切换侧边栏显隐并同步调整窗口宽度，保持左上角固定、编辑器区宽度不变。
+    /// </summary>
+    private void ToggleSidebarWithWindowResize()
+    {
+        if (_sidebarSplit.Panel1Collapsed)
+        {
+            ExpandSidebar();
+        }
+        else
+        {
+            CollapseSidebar();
+        }
+    }
+
+    private void CollapseSidebar()
+    {
+        if (_sidebarSplit.Panel1Collapsed) return;
+        _sidebarSplit.Panel1Collapsed = true;
+        _settings.MainWindow.SidebarCollapsed = true;
+        UpdateViewToggleIcon();
+        if (_workspaceRoot is null)
+            _openFolderPrompt.Visible = true;
+        SetStatus(Loc.Get("status.sidebarCollapsed"));
+    }
+
+    private void ExpandSidebar()
+    {
+        if (!_sidebarSplit.Panel1Collapsed) return;
+        _sidebarSplit.Panel1Collapsed = false;
+        _settings.MainWindow.SidebarCollapsed = false;
+        UpdateViewToggleIcon();
+        if (_workspaceRoot is null) ShowNoWorkspacePlaceholder();
+        SetStatus(Loc.Get("status.sidebarExpanded"));
+    }
+
     private void ShowSidebarView(bool outline)
     {
         _sidebarActiveOutline = outline;
         _sidebarTabBar.SetSelectedIndexSilently(outline ? 1 : 0);
         _workspacePanelHost.Visible = !outline;
         _outlinePanelHost.Visible = outline;
-        _viewToggleButton.Enabled = !outline;
         if (outline)
         {
             _outlinePanelHost.BringToFront();
@@ -891,6 +962,9 @@ internal sealed partial class MainForm : Form
             _workspacePanelHost.BringToFront();
         }
 
+        if (_workspaceRoot is null)
+            _openFolderPrompt.BringToFront();
+
         _menuService.RefreshStates();
     }
 
@@ -899,23 +973,26 @@ internal sealed partial class MainForm : Form
         if (!_focusMode)
         {
             _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
-            _sidebarSplit.Panel1Collapsed = true;
+            if (_sidebarVisibleBeforeFocus)
+                CollapseSidebar();
             _menuService.Detach();
             MainMenuStrip = null;
             if (_statusStrip is not null) _statusStrip.Visible = false;
             _focusMode = true;
-            SetStatus("专注模式已开启");
+            SetStatus(Loc.Get("status.focusModeOn"));
             return;
         }
 
         _focusMode = false;
-        _sidebarSplit.Panel1Collapsed = !_sidebarVisibleBeforeFocus;
         if (!IsDisposed)
         {
             _menuService.Attach(Handle);
             if (_statusStrip is not null) _statusStrip.Visible = true;
         }
-        SetStatus("专注模式已关闭");
+
+        if (_sidebarVisibleBeforeFocus)
+            ExpandSidebar();
+        SetStatus(Loc.Get("status.focusModeOff"));
     }
 
     private void SetMarkdownStyle(string style)
@@ -923,7 +1000,7 @@ internal sealed partial class MainForm : Form
         _markdownStyle = StyleService.TryGetStyle(style) is not null ? style : StyleService.DefaultStyleId;
         _settings.MarkdownStyle = _markdownStyle;
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize);
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
@@ -955,6 +1032,20 @@ internal sealed partial class MainForm : Form
             NativeMethods.SwpNoMove | NativeMethods.SwpNoSize
             | NativeMethods.SwpNoZOrder | NativeMethods.SwpFrameChanged);
         NativeMethods.DrawMenuBar(Handle);
+    }
+
+    private void OnSystemPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != Microsoft.Win32.UserPreferenceCategory.General)
+            return;
+        if (!_settings.Appearance.FollowSystemColorMode)
+            return;
+
+        var targetThemeId = ColorThemeService.GetSystemDefaultThemeId();
+        if (string.Equals(_colorTheme, targetThemeId, StringComparison.Ordinal))
+            return;
+
+        BeginInvoke(() => SetColorTheme(targetThemeId));
     }
 
     private void OverpaintMenuSeparator()
@@ -1130,6 +1221,7 @@ internal sealed partial class MainForm : Form
         }
 
         _sidebarTabBar.ApplyThemeColors(colors);
+        _openFolderPrompt.ApplyThemeColors(colors);
         _workspaceTree.ApplyThemeColors(colors);
         _workspaceDocumentList.ApplyThemeColors(colors);
         _outlineTree.ApplyThemeColors(colors);
@@ -1154,7 +1246,73 @@ internal sealed partial class MainForm : Form
             _menuDisabledBrush.Dispose();
             _menuDisabledBrush = new SolidBrush(menuDisabled);
         }
-        _menuDarkMode = ColorThemeService.IsActiveThemeDark();
+        _menuDarkMode = _settings.Appearance.MenuBarStyle switch
+        {
+            Services.Settings.MenuBarStyle.Always => true,
+            Services.Settings.MenuBarStyle.System => false,
+            _ => ColorThemeService.IsActiveThemeDark(),
+        };
+    }
+
+    private void AddThemeFromFile()
+    {
+        var directory = StyleService.StylesDirectory;
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            ShowMessage(this, Loc.Get("error.themeFolderNotFound"), "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = Loc.Get("dialog.selectThemeCss"),
+            Filter = Loc.Get("fileFilter.css"),
+            DefaultExt = "css",
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var sourceFile = dialog.FileName;
+        if (!File.Exists(sourceFile))
+            return;
+
+        var destFile = Path.Combine(directory, Path.GetFileName(sourceFile));
+        if (File.Exists(destFile))
+        {
+            var choice = MessageBox.Show(
+                this,
+                Loc.Format("dialog.themeFileExists", Path.GetFileName(destFile)),
+                Loc.Get("dialog.fileExistsTitle"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (choice != DialogResult.Yes)
+                return;
+        }
+
+        try
+        {
+            File.Copy(sourceFile, destFile, overwrite: true);
+            RefreshColorThemes();
+            _logger.Info($"Theme file added: {Path.GetFileName(destFile)}");
+        }
+        catch (Exception exception)
+        {
+            ShowMessage(this, Loc.Format("error.copyThemeFailed", exception.Message),
+                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void RefreshColorThemes()
+    {
+        var directory = StyleService.StylesDirectory;
+        if (string.IsNullOrWhiteSpace(directory)) return;
+
+        ColorThemeService.Initialize(directory);
+        _menuService.RefreshStates();
+        ApplySidebarColors();
     }
 
     private void OpenThemeFolder()
@@ -1162,12 +1320,12 @@ internal sealed partial class MainForm : Form
         var directory = StyleService.StylesDirectory;
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
         {
-            ShowMessage(this, "未找到主题样式文件夹。", "MarkLeaf",
+            ShowMessage(this, Loc.Get("error.themeFolderNotFound"), "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        OpenFolderInExplorer(directory, "主题样式文件夹");
+        OpenFolderInExplorer(directory, Loc.Get("folder.themes"));
     }
 
     private void ApplyFileAssociations()
@@ -1177,13 +1335,13 @@ internal sealed partial class MainForm : Form
         {
             FileAssociationService.ApplyFileAssociations(Application.ExecutablePath, enabled);
             SetStatus(enabled.Count > 0
-                ? $"已将 MarkLeaf 添加到打开方式：{string.Join("、", enabled)}"
-                : "已将 MarkLeaf 从打开方式移除");
+                ? Loc.Format("status.fileAssociationAdded", string.Join("、", enabled))
+                : Loc.Get("status.fileAssociationRemoved"));
         }
         catch (Exception exception) when (FileAssociationService.IsExpectedRegistryException(exception))
         {
             _logger.Error("Failed to update file association.", exception);
-            ShowMessage(this, "无法更新文件关联。\r\n\r\n" + exception.Message, "MarkLeaf",
+            ShowMessage(this, Loc.Get("error.fileAssociationFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1211,12 +1369,12 @@ internal sealed partial class MainForm : Form
     {
         var directory = Path.Combine(_paths.DataDirectory, "Cache");
         Directory.CreateDirectory(directory);
-        OpenFolderInExplorer(directory, "缓存目录");
+        OpenFolderInExplorer(directory, Loc.Get("folder.cache"));
     }
 
     private void OpenLogFolder()
     {
-        OpenFolderInExplorer(_paths.LogDirectory, "日志目录");
+        OpenFolderInExplorer(_paths.LogDirectory, Loc.Get("folder.logs"));
     }
 
     private void OpenSettingsJson()
@@ -1224,7 +1382,7 @@ internal sealed partial class MainForm : Form
         var file = _paths.SettingsFile;
         if (!File.Exists(file))
         {
-            ShowMessage(this, "配置文件尚未生成。", "MarkLeaf",
+            ShowMessage(this, Loc.Get("dialog.settingsFileNotCreated"), "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1240,7 +1398,7 @@ internal sealed partial class MainForm : Form
             exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.Error($"Failed to open settings file: {file}.", exception);
-            ShowMessage(this, "无法打开配置文件。\r\n\r\n" + exception.Message, "MarkLeaf",
+            ShowMessage(this, Loc.Get("error.cannotOpenSettingsFile") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1266,7 +1424,7 @@ internal sealed partial class MainForm : Form
             }
         }
 
-        SetStatus(deleted > 0 ? $"已清除 {deleted} 个日志文件" : "没有可清除的日志文件");
+        SetStatus(deleted > 0 ? Loc.Format("status.logsCleared", deleted) : Loc.Get("status.noLogsToClear"));
     }
 
     private void OpenFolderInExplorer(string directory, string displayName)
@@ -1284,7 +1442,7 @@ internal sealed partial class MainForm : Form
             exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.Error($"Failed to open {displayName}: {directory}.", exception);
-            ShowMessage(this, $"无法打开{displayName}。\r\n\r\n{exception.Message}", "MarkLeaf",
+            ShowMessage(this, Loc.Format("error.openFolderFailed", displayName) + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1390,7 +1548,7 @@ internal sealed partial class MainForm : Form
             CheckFileExists = true,
             Multiselect = false,
             RestoreDirectory = true,
-            Title = "在新窗口中打开 Markdown 文档",
+            Title = Loc.Get("dialog.openInNewWindow"),
         };
         if (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
@@ -1403,7 +1561,7 @@ internal sealed partial class MainForm : Form
         try
         {
             var executable = Environment.ProcessPath
-                ?? throw new InvalidOperationException("无法确定 MarkLeaf 可执行文件路径。");
+                ?? throw new InvalidOperationException(Loc.Get("dialog.cannotFindExecutable"));
             var startInfo = new System.Diagnostics.ProcessStartInfo(executable)
             {
                 UseShellExecute = false,
@@ -1414,12 +1572,12 @@ internal sealed partial class MainForm : Form
                 startInfo.ArgumentList.Add(Path.GetFullPath(documentPath));
             }
             System.Diagnostics.Process.Start(startInfo);
-            SetStatus(documentPath is null ? "已打开新窗口" : "文档已在新窗口中打开");
+            SetStatus(documentPath is null ? Loc.Get("status.newWindowOpened") : Loc.Get("status.documentOpenedInNewWindow"));
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.Error("Could not start a new MarkLeaf window.", exception);
-            ShowMessage(this, "无法打开新窗口。\r\n\r\n" + exception.Message, "MarkLeaf",
+            ShowMessage(this, Loc.Get("dialog.cannotOpenNewWindow") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1440,20 +1598,30 @@ internal sealed partial class MainForm : Form
             RecoverUnsavedFiles,
             ShowShortcutHelp,
             OpenThemeFolder,
+            AddThemeFromFile,
             OpenCacheFolder,
             OpenLogFolder,
             ClearLogs,
             OpenSettingsJson,
             ClearHistory,
             ResetAllSettingsToDefaults);
+        var previousLanguage = _settings.General.UiLanguage ?? "";
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
+
+        var newLanguage = _settings.General.UiLanguage ?? "";
+        if (!string.Equals(previousLanguage, newLanguage, StringComparison.Ordinal))
+        {
+            ShowMessage(this,
+                Loc.Get("dialog.languageRestart"),
+                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
 
         _recoveryTimer.Interval = Math.Clamp(_settings.File.SnapshotIntervalSeconds, 10, 300) * 1000;
         _recoveryTimer.Stop();
         _recoveryTimer.Start();
 
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize);
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
 
         SetMarkdownStyle(_settings.MarkdownStyle);
@@ -1518,7 +1686,7 @@ internal sealed partial class MainForm : Form
         var pending = RecoveryService.GetPendingRecoveries(_paths.RecoveryDirectory, _logger);
         if (pending.Count == 0)
         {
-            ShowMessage(this, "未发现需要恢复的文件。", "MarkLeaf",
+            ShowMessage(this, Loc.Get("dialog.noRecoverableFiles"), "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -1549,15 +1717,15 @@ internal sealed partial class MainForm : Form
     {
         using var dialog = new SaveFileDialog
         {
-            Filter = "Markdown 文件 (*.md)|*.md|所有文件 (*.*)|*.*",
+            Filter = Loc.Get("fileFilter.markdown"),
             AddExtension = true,
             DefaultExt = "md",
             RestoreDirectory = true,
             OverwritePrompt = true,
-            Title = "另存恢复文档",
+            Title = Loc.Get("dialog.saveRecovery"),
             FileName = recovery.DocumentPath is not null
                 ? Path.GetFileName(recovery.DocumentPath)
-                : (recovery.DisplayName ?? "未命名.md"),
+                : (recovery.DisplayName ?? Loc.Get("document.untitledMd")),
         };
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
 
@@ -1582,13 +1750,13 @@ internal sealed partial class MainForm : Form
             LoadDocumentIntoEditor(opened);
             StartWatchingDocument(opened.FilePath!);
             _logger.Info($"Recovery snapshot saved and opened: {targetPath}.");
-            SetStatus("已恢复未保存文档");
+            SetStatus(Loc.Get("status.recoveredUnsaved"));
         }
         catch (Exception exception)
         {
             _logger.Error("Failed to save recovery snapshot.", exception);
             ShowMessage(this,
-                "无法保存恢复文档。\r\n\r\n" + exception.Message,
+                Loc.Get("dialog.saveRecoveryFailed") + "\r\n\r\n" + exception.Message,
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -1603,7 +1771,7 @@ internal sealed partial class MainForm : Form
     {
         if (!_options.SmokeCrashExit) return;
         _logger.Info("Simulating abnormal shutdown for crash recovery test.");
-        SetStatus("将模拟异常退出（5 秒后）");
+        SetStatus(Loc.Get("status.simulatedCrash"));
 
         var timer = new System.Windows.Forms.Timer { Interval = 5000 };
         timer.Tick += (_, _) =>
@@ -1631,12 +1799,12 @@ internal sealed partial class MainForm : Form
 
         _statusLabel.Text = _editorSession.State switch
         {
-            EditorLifecycleState.Initializing => "正在初始化 WebView2",
-            EditorLifecycleState.LoadingPage => "正在加载编辑器页面",
-            EditorLifecycleState.WaitingForEditorReady => "正在等待编辑器就绪",
-            EditorLifecycleState.Ready => "编辑器已就绪",
-            EditorLifecycleState.Failed => "编辑器启动失败",
-            _ => "正在准备编辑器",
+            EditorLifecycleState.Initializing => Loc.Get("editor.initializing"),
+            EditorLifecycleState.LoadingPage => Loc.Get("editor.loadingPage"),
+            EditorLifecycleState.WaitingForEditorReady => Loc.Get("editor.waitingForEditorReady"),
+            EditorLifecycleState.Ready => Loc.Get("editor.ready"),
+            EditorLifecycleState.Failed => Loc.Get("editor.failed"),
+            _ => Loc.Get("editor.preparing"),
         };
         _menuService.RefreshStates();
 
@@ -1746,18 +1914,18 @@ internal sealed partial class MainForm : Form
 
     private void ShowExportCompleteDialog(string fileName, string filePath, string folderPath)
     {
-        var openButton = new TaskDialogButton("打开");
+        var openButton = new TaskDialogButton(Loc.Get("button.open"));
         openButton.Click += (_, _) => ExternalLinkService.OpenLocal(filePath);
 
-        var openFolderButton = new TaskDialogButton("打开所在文件夹");
+        var openFolderButton = new TaskDialogButton(Loc.Get("button.openContainingFolder"));
         openFolderButton.Click += (_, _) => ExternalLinkService.OpenLocal(folderPath);
 
         var page = new TaskDialogPage
         {
             Caption = "MarkLeaf",
             Icon = TaskDialogIcon.Information,
-            Heading = "导出完成",
-            Text = $"{fileName}\n已导出到：\n{filePath}",
+            Heading = Loc.Get("export.dialogTitle"),
+            Text = Loc.Format("export.savedTo", fileName, filePath),
             Buttons = { openButton, openFolderButton, TaskDialogButton.Close },
         };
 
@@ -1773,10 +1941,10 @@ internal sealed partial class MainForm : Form
 
         var docName = _document.FilePath is not null
             ? Path.GetFileName(_document.FilePath)
-            : "未命名文档";
+            : Loc.Get("document.untitled");
         var defaultName = _document.FilePath is not null
             ? Path.GetFileNameWithoutExtension(_document.FilePath)
-            : "未命名文档";
+            : Loc.Get("document.untitled");
         using var dialog = new ExportDialog(docName, defaultName, _markdownStyle, StyleService.GetAllStyles());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
@@ -1786,7 +1954,7 @@ internal sealed partial class MainForm : Form
         var options = dialog.Options;
         if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
         {
-            SetStatus("导出路径不能为空");
+            SetStatus(Loc.Get("error.exportPathEmpty"));
             return;
         }
 
@@ -1798,7 +1966,7 @@ internal sealed partial class MainForm : Form
 
         try
         {
-            SetStatus("正在生成导出内容…");
+            SetStatus(Loc.Get("export.generating"));
             var editor = _settings.Editor;
             var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
             var html = await _editorHost.RequestExportAsync(
@@ -1813,7 +1981,7 @@ internal sealed partial class MainForm : Form
 
             if (string.IsNullOrEmpty(html))
             {
-                SetStatus("导出失败：编辑器未返回内容");
+                SetStatus(Loc.Get("error.exportNoContent"));
                 return;
             }
 
@@ -1827,7 +1995,7 @@ internal sealed partial class MainForm : Form
 
             if (options.Format == "pdf")
             {
-                SetStatus("正在生成 PDF…");
+                SetStatus(Loc.Get("export.generatingPdf"));
                 var pdfBytes = await _editorHost.PrintExportToPdfAsync(
                     html,
                     options.PaperSize,
@@ -1843,7 +2011,7 @@ internal sealed partial class MainForm : Form
                 await File.WriteAllTextAsync(outputPath, html, System.Text.Encoding.UTF8);
             }
 
-            SetStatus("文档已导出");
+            SetStatus(Loc.Get("export.complete"));
             _logger.Info($"Document exported: {options.Format}/{options.Style} → {outputPath}");
 
             var exportedName = Path.GetFileName(outputPath);
@@ -1852,7 +2020,7 @@ internal sealed partial class MainForm : Form
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.Error($"Export failed: {options.OutputPath}.", exception);
-            ShowMessage(this, "导出失败。\r\n\r\n" + exception.Message, "MarkLeaf",
+            ShowMessage(this, Loc.Get("error.exportFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1871,7 +2039,7 @@ internal sealed partial class MainForm : Form
         }
 
         _editorHost.ExecuteCommand("setLink", dialog.LinkAddress);
-        SetStatus("已插入链接");
+        SetStatus(Loc.Get("status.linkInserted"));
     }
 
     private void OnEditorCommandStateChanged(object? sender, EditorCommandStatus status)
@@ -1938,7 +2106,9 @@ internal sealed partial class MainForm : Form
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
-        _modeLabel.Text = _editorCommandStatus.SourceMode ? "源码" : "可视化";
+        _modeLabel.Text = _editorCommandStatus.SourceMode
+            ? Loc.Get("statusBar.mode.source")
+            : Loc.Get("statusBar.mode.visual");
     }
 
     private void OnOpenLinkRequested(object? sender, string url)
@@ -1946,14 +2116,14 @@ internal sealed partial class MainForm : Form
         try
         {
             ExternalLinkService.Open(url);
-            SetStatus("已在系统浏览器中打开链接");
+            SetStatus(Loc.Get("status.linkOpened"));
         }
         catch (Exception exception)
         {
             _logger.Error("External link could not be opened.", exception);
             ShowMessage(
                 this,
-                "无法使用系统默认程序打开该链接。",
+                Loc.Get("dialog.cannotOpenLink"),
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -1974,7 +2144,7 @@ internal sealed partial class MainForm : Form
                 && string.IsNullOrEmpty(selection.Markdown)
                 && string.IsNullOrEmpty(selection.Html))
             {
-                SetStatus("当前没有可复制的文本");
+                SetStatus(Loc.Get("status.noTextToCopy"));
                 return;
             }
 
@@ -1996,12 +2166,12 @@ internal sealed partial class MainForm : Form
             {
                 _editorHost.ExecuteCommand("deleteSelection");
             }
-            SetStatus(cut ? "已剪切所选内容" : "已复制所选内容");
+            SetStatus(cut ? Loc.Get("status.cut") : Loc.Get("status.copied"));
         }
         catch (Exception exception)
         {
             _logger.Error("Clipboard copy command failed.", exception);
-            SetStatus("剪贴板操作失败");
+            SetStatus(Loc.Get("status.clipboardFailed"));
         }
     }
 
@@ -2032,24 +2202,24 @@ internal sealed partial class MainForm : Form
                 if (!string.IsNullOrWhiteSpace(clipboardHtml))
                 {
                     _editorHost.ExecuteCommand("pasteHtml", ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
-                    SetStatus("已粘贴格式化内容");
+                    SetStatus(Loc.Get("status.pastedFormatted"));
                     return;
                 }
             }
 
             if (!Clipboard.ContainsText())
             {
-                SetStatus("剪贴板中没有可粘贴的文本");
+                SetStatus(Loc.Get("status.noTextToPaste"));
                 return;
             }
 
             _editorHost.ExecuteCommand("pasteText", Clipboard.GetText(TextDataFormat.UnicodeText));
-            SetStatus("已粘贴纯文本");
+            SetStatus(Loc.Get("status.pastedPlainText"));
         }
         catch (Exception exception)
         {
             _logger.Error("Clipboard paste command failed.", exception);
-            SetStatus("剪贴板操作失败");
+            SetStatus(Loc.Get("status.clipboardFailed"));
         }
     }
 
@@ -2228,4 +2398,13 @@ internal sealed partial class MainForm : Form
         split.SplitterDistance = Math.Clamp(distance, minimum, maximum);
     }
 
+}
+
+internal sealed class SolidStatusBarRenderer : ToolStripProfessionalRenderer
+{
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(e.ToolStrip.BackColor);
+        e.Graphics.FillRectangle(brush, e.AffectedBounds);
+    }
 }

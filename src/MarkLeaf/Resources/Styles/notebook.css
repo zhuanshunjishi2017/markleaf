@@ -5,7 +5,7 @@
   width: auto;
   max-width: none;
   margin: 0;
-  font-family: "华文楷体", "楷体", "KaiTi", "Comic Sans MS", cursive;
+  font-family: "霞鹜文楷", "楷体", "KaiTi", "Comic Sans MS", cursive;
   font-size: calc(var(--ml-font-size) * 1.0625);
   line-height: calc(var(--ml-line-height) * 1.15);
   color: var(--text-primary);
@@ -18,7 +18,7 @@
 .markleaf-style-notebook .markleaf-document h1,
 .markleaf-style-notebook .markleaf-document h2,
 .markleaf-style-notebook .markleaf-document h3 {
-  font-family: "华文楷体", "楷体", "KaiTi", cursive;
+  font-family: "霞鹜文楷", "楷体", "KaiTi", cursive;
   font-weight: bold;
   color: var(--theme-dark);
 }
@@ -43,7 +43,7 @@
 }
 
 .markleaf-style-notebook .markleaf-document blockquote {
-  font-family: "华文仿宋", "仿宋", "FangSong", serif;
+  font-family: "霞鹜文楷", "仿宋", "FangSong", serif;
   border-left: 3px dotted var(--theme-light);
   padding: 0.5em 1em;
   margin: 0.8em 0;

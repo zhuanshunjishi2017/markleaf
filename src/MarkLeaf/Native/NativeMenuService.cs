@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using MarkLeaf.Commands;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 
@@ -190,13 +191,13 @@ internal sealed class NativeMenuService : IDisposable
         var root = CreateMenu(false);
         try
         {
-            AppendPopup(root, "文件(&F)", BuildFileMenu());
-            AppendPopup(root, "编辑(&E)", BuildEditMenu());
-            AppendPopup(root, "段落(&P)", BuildParagraphMenu());
-            AppendPopup(root, "格式(&F)", BuildFormatMenu());
-            AppendPopup(root, "视图(&V)", BuildViewMenu());
-            AppendPopup(root, "外观(&A)", BuildAppearanceMenu());
-            AppendPopup(root, "帮助(&H)", BuildHelpMenu());
+            AppendPopup(root, Loc.Get("menu.file.label"), BuildFileMenu());
+            AppendPopup(root, Loc.Get("menu.edit.label"), BuildEditMenu());
+            AppendPopup(root, Loc.Get("menu.paragraph.label"), BuildParagraphMenu());
+            AppendPopup(root, Loc.Get("menu.format.label"), BuildFormatMenu());
+            AppendPopup(root, Loc.Get("menu.view.label"), BuildViewMenu());
+            AppendPopup(root, Loc.Get("menu.appearance.label"), BuildAppearanceMenu());
+            AppendPopup(root, Loc.Get("menu.help.label"), BuildHelpMenu());
             return root;
         }
         catch
@@ -211,26 +212,26 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.NewDocument, "新建(&N)\tCtrl+N");
-            AppendCommand(menu, AppCommand.NewWindow, "新建窗口(&W)");
-            AppendCommand(menu, AppCommand.OpenDocument, "打开(&O)...\tCtrl+O");
-            AppendCommand(menu, AppCommand.OpenDocumentInNewWindow, "在新窗口中打开...");
-            AppendCommand(menu, AppCommand.OpenFolder, "打开文件夹(&F)...");
+            AppendCommand(menu, AppCommand.NewDocument, Loc.Get("menu.file.new"));
+            AppendCommand(menu, AppCommand.NewWindow, Loc.Get("menu.file.newWindow"));
+            AppendCommand(menu, AppCommand.OpenDocument, Loc.Get("menu.file.open"));
+            AppendCommand(menu, AppCommand.OpenDocumentInNewWindow, Loc.Get("menu.file.openInNewWindow"));
+            AppendCommand(menu, AppCommand.OpenFolder, Loc.Get("menu.file.openFolder"));
 
             _recentWorkspaceMenu = CreateMenu(true);
-            AppendDisabledText(_recentWorkspaceMenu, "(暂无最近项目)");
-            AppendPopup(menu, "最近项目(&R)", _recentWorkspaceMenu);
+            AppendDisabledText(_recentWorkspaceMenu, Loc.Get("menu.file.noRecentItems"));
+            AppendPopup(menu, Loc.Get("menu.file.recentItems"), _recentWorkspaceMenu);
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.SaveDocument, "保存(&S)\tCtrl+S");
-            AppendCommand(menu, AppCommand.SaveDocumentAs, "另存为(&A)...\tCtrl+Shift+S");
-            AppendCommand(menu, AppCommand.ExportDocument, "导出(&E)...");
-            AppendCommand(menu, AppCommand.RecoverUnsavedFiles, "恢复未保存的文件(&U)");
+            AppendCommand(menu, AppCommand.SaveDocument, Loc.Get("menu.file.save"));
+            AppendCommand(menu, AppCommand.SaveDocumentAs, Loc.Get("menu.file.saveAs"));
+            AppendCommand(menu, AppCommand.ExportDocument, Loc.Get("menu.file.export"));
+            AppendCommand(menu, AppCommand.RecoverUnsavedFiles, Loc.Get("menu.file.recoverUnsaved"));
 
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.CloseFolder, "关闭文件夹(&C)");
-            AppendCommand(menu, AppCommand.Exit, "退出(&X)");
+            AppendCommand(menu, AppCommand.CloseFolder, Loc.Get("menu.file.closeFolder"));
+            AppendCommand(menu, AppCommand.Exit, Loc.Get("menu.file.exit"));
             return menu;
         }
         catch
@@ -245,17 +246,17 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.Undo, "撤销(&U)\tCtrl+Z");
-            AppendCommand(menu, AppCommand.Redo, "重做(&R)\tCtrl+Y");
+            AppendCommand(menu, AppCommand.Undo, Loc.Get("menu.edit.undo"));
+            AppendCommand(menu, AppCommand.Redo, Loc.Get("menu.edit.redo"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.Cut, "剪切(&T)\tCtrl+X");
-            AppendCommand(menu, AppCommand.Copy, "复制(&C)\tCtrl+C");
-            AppendCommand(menu, AppCommand.CopyMarkdown, "复制为 Markdown 源码(&M)");
-            AppendCommand(menu, AppCommand.CopyPlainText, "复制为纯文本(&L)");
-            AppendCommand(menu, AppCommand.Paste, "粘贴(&P)\tCtrl+V");
+            AppendCommand(menu, AppCommand.Cut, Loc.Get("menu.edit.cut"));
+            AppendCommand(menu, AppCommand.Copy, Loc.Get("menu.edit.copy"));
+            AppendCommand(menu, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
+            AppendCommand(menu, AppCommand.CopyPlainText, Loc.Get("menu.edit.copyPlainText"));
+            AppendCommand(menu, AppCommand.Paste, Loc.Get("menu.edit.paste"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.Find, "查找(&F)\tCtrl+F");
-            AppendCommand(menu, AppCommand.Replace, "替换(&H)\tCtrl+H");
+            AppendCommand(menu, AppCommand.Find, Loc.Get("menu.edit.find"));
+            AppendCommand(menu, AppCommand.Replace, Loc.Get("menu.edit.replace"));
             return menu;
         }
         catch
@@ -270,33 +271,33 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ToggleBold, "粗体(&B)");
-            AppendCommand(menu, AppCommand.ToggleItalic, "斜体(&I)");
+            AppendCommand(menu, AppCommand.ToggleBold, Loc.Get("contextMenu.bold"));
+            AppendCommand(menu, AppCommand.ToggleItalic, Loc.Get("contextMenu.italic"));
             AppendSeparator(menu);
 
-            AppendCommand(menu, AppCommand.SetParagraph, "正文(&P)");
+            AppendCommand(menu, AppCommand.SetParagraph, Loc.Get("contextMenu.paragraph"));
 
             var headings = CreateMenu(true);
-            AppendCommand(headings, AppCommand.SetHeading1, "一级标题(&1)");
-            AppendCommand(headings, AppCommand.SetHeading2, "二级标题(&2)");
-            AppendCommand(headings, AppCommand.SetHeading3, "三级标题(&3)");
-            AppendCommand(headings, AppCommand.SetHeading4, "四级标题(&4)");
-            AppendCommand(headings, AppCommand.SetHeading5, "五级标题(&5)");
-            AppendCommand(headings, AppCommand.SetHeading6, "六级标题(&6)");
-            AppendPopup(menu, "标题(&H)", headings);
+            AppendCommand(headings, AppCommand.SetHeading1, Loc.Get("contextMenu.heading1"));
+            AppendCommand(headings, AppCommand.SetHeading2, Loc.Get("contextMenu.heading2"));
+            AppendCommand(headings, AppCommand.SetHeading3, Loc.Get("contextMenu.heading3"));
+            AppendCommand(headings, AppCommand.SetHeading4, Loc.Get("contextMenu.heading4"));
+            AppendCommand(headings, AppCommand.SetHeading5, Loc.Get("contextMenu.heading5"));
+            AppendCommand(headings, AppCommand.SetHeading6, Loc.Get("contextMenu.heading6"));
+            AppendPopup(menu, Loc.Get("contextMenu.heading"), headings);
 
             var lists = CreateMenu(true);
-            AppendCommand(lists, AppCommand.ToggleBulletList, "无序列表(&B)");
-            AppendCommand(lists, AppCommand.ToggleOrderedList, "有序列表(&O)");
-            AppendCommand(lists, AppCommand.ToggleTaskList, "任务列表(&T)");
-            AppendPopup(menu, "列表(&L)", lists);
+            AppendCommand(lists, AppCommand.ToggleBulletList, Loc.Get("contextMenu.bulletList"));
+            AppendCommand(lists, AppCommand.ToggleOrderedList, Loc.Get("contextMenu.orderedList"));
+            AppendCommand(lists, AppCommand.ToggleTaskList, Loc.Get("contextMenu.taskList"));
+            AppendPopup(menu, Loc.Get("contextMenu.list"), lists);
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.Cut, "剪切(&T)");
-            AppendCommand(menu, AppCommand.Copy, "复制(&C)");
-            AppendCommand(menu, AppCommand.CopyMarkdown, "复制为 Markdown 源码(&M)");
-            AppendCommand(menu, AppCommand.CopyPlainText, "复制为纯文本(&L)");
-            AppendCommand(menu, AppCommand.Paste, "粘贴(&P)");
+            AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+            AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+            AppendCommand(menu, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
+            AppendCommand(menu, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+            AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
             return menu;
         }
         catch
@@ -311,48 +312,48 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.SetParagraph, "正文(&P)");
+            AppendCommand(menu, AppCommand.SetParagraph, Loc.Get("menu.paragraph.paragraph"));
 
             var headings = CreateMenu(true);
-            AppendCommand(headings, AppCommand.SetHeading1, "一级标题\tCtrl+1");
-            AppendCommand(headings, AppCommand.SetHeading2, "二级标题\tCtrl+2");
-            AppendCommand(headings, AppCommand.SetHeading3, "三级标题\tCtrl+3");
-            AppendCommand(headings, AppCommand.SetHeading4, "四级标题\tCtrl+4");
-            AppendCommand(headings, AppCommand.SetHeading5, "五级标题\tCtrl+5");
-            AppendCommand(headings, AppCommand.SetHeading6, "六级标题\tCtrl+6");
-            AppendPopup(menu, "标题(&H)", headings);
+            AppendCommand(headings, AppCommand.SetHeading1, Loc.Get("menu.paragraph.heading1"));
+            AppendCommand(headings, AppCommand.SetHeading2, Loc.Get("menu.paragraph.heading2"));
+            AppendCommand(headings, AppCommand.SetHeading3, Loc.Get("menu.paragraph.heading3"));
+            AppendCommand(headings, AppCommand.SetHeading4, Loc.Get("menu.paragraph.heading4"));
+            AppendCommand(headings, AppCommand.SetHeading5, Loc.Get("menu.paragraph.heading5"));
+            AppendCommand(headings, AppCommand.SetHeading6, Loc.Get("menu.paragraph.heading6"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.heading"), headings);
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.PromoteHeading, "提升标题级别(&I)\tCtrl+.");
-            AppendCommand(menu, AppCommand.DemoteHeading, "降低标题级别(&D)\tCtrl+,");
+            AppendCommand(menu, AppCommand.PromoteHeading, Loc.Get("menu.paragraph.promoteHeading"));
+            AppendCommand(menu, AppCommand.DemoteHeading, Loc.Get("menu.paragraph.demoteHeading"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ToggleQuote, "引用(&Q)");
-            AppendCommand(menu, AppCommand.ToggleCodeBlock, "代码块(&C)");
-            AppendCommand(menu, AppCommand.InsertHorizontalRule, "水平线(&R)");
+            AppendCommand(menu, AppCommand.ToggleQuote, Loc.Get("menu.paragraph.quote"));
+            AppendCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
+            AppendCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
 
             var lists = CreateMenu(true);
-            AppendCommand(lists, AppCommand.ToggleBulletList, "无序列表(&B)");
-            AppendCommand(lists, AppCommand.ToggleOrderedList, "有序列表(&O)");
-            AppendCommand(lists, AppCommand.ToggleTaskList, "任务列表(&T)");
-            AppendPopup(menu, "列表(&L)", lists);
+            AppendCommand(lists, AppCommand.ToggleBulletList, Loc.Get("menu.paragraph.bulletList"));
+            AppendCommand(lists, AppCommand.ToggleOrderedList, Loc.Get("menu.paragraph.orderedList"));
+            AppendCommand(lists, AppCommand.ToggleTaskList, Loc.Get("menu.paragraph.taskList"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.list"), lists);
 
             var table = CreateMenu(true);
-            AppendCommand(table, AppCommand.InsertTable, "插入表格(&I)");
+            AppendCommand(table, AppCommand.InsertTable, Loc.Get("menu.paragraph.insertTable"));
             AppendSeparator(table);
-            AppendCommand(table, AppCommand.AddTableRowBefore, "在上方添加行(&A)");
-            AppendCommand(table, AppCommand.AddTableRowAfter, "在下方添加行(&B)");
-            AppendCommand(table, AppCommand.DeleteTableRow, "删除当前行(&R)");
+            AppendCommand(table, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
+            AppendCommand(table, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
+            AppendCommand(table, AppCommand.DeleteTableRow, Loc.Get("menu.paragraph.deleteRow"));
             AppendSeparator(table);
-            AppendCommand(table, AppCommand.AddTableColumnBefore, "在左侧添加列(&L)");
-            AppendCommand(table, AppCommand.AddTableColumnAfter, "在右侧添加列(&G)");
-            AppendCommand(table, AppCommand.DeleteTableColumn, "删除当前列(&C)");
+            AppendCommand(table, AppCommand.AddTableColumnBefore, Loc.Get("menu.paragraph.addColumnLeft"));
+            AppendCommand(table, AppCommand.AddTableColumnAfter, Loc.Get("menu.paragraph.addColumnRight"));
+            AppendCommand(table, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
             AppendSeparator(table);
-            AppendCommand(table, AppCommand.AlignTableLeft, "左对齐");
-            AppendCommand(table, AppCommand.AlignTableCenter, "居中对齐");
-            AppendCommand(table, AppCommand.AlignTableRight, "右对齐");
+            AppendCommand(table, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
+            AppendCommand(table, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));
+            AppendCommand(table, AppCommand.AlignTableRight, Loc.Get("menu.paragraph.alignRight"));
             AppendSeparator(table);
-            AppendCommand(table, AppCommand.DeleteTable, "删除表格(&D)");
-            AppendPopup(menu, "表格(&T)", table);
+            AppendCommand(table, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.table"), table);
             return menu;
         }
         catch
@@ -365,17 +366,17 @@ internal sealed class NativeMenuService : IDisposable
     private nint BuildFormatMenu()
     {
         var menu = CreateMenu(true);
-        AppendCommand(menu, AppCommand.ToggleBold, "加粗(&B)\tCtrl+B");
-        AppendCommand(menu, AppCommand.ToggleItalic, "斜体(&I)\tCtrl+I");
-        AppendCommand(menu, AppCommand.ToggleUnderline, "下划线(&U)\tCtrl+U");
-        AppendCommand(menu, AppCommand.ToggleStrike, "删除线(&S)");
+        AppendCommand(menu, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
+        AppendCommand(menu, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
+        AppendCommand(menu, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
+        AppendCommand(menu, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
         AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.ToggleInlineCode, "行内代码(&C)");
+        AppendCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
         AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.InsertLink, "插入超链接(&K)...\tCtrl+K");
-        AppendCommand(menu, AppCommand.InsertImage, "插入本地图片(&M)...");
-        AppendCommand(menu, AppCommand.InsertImageFromUrl, "插入来自互联网的图片(&W)...");
-        AppendCommand(menu, AppCommand.RotateImageClockwise, "顺时针旋转图片(&R)");
+        AppendCommand(menu, AppCommand.InsertLink, Loc.Get("menu.format.insertLink"));
+        AppendCommand(menu, AppCommand.InsertImage, Loc.Get("menu.format.insertImage"));
+        AppendCommand(menu, AppCommand.InsertImageFromUrl, Loc.Get("menu.format.insertImageFromUrl"));
+        AppendCommand(menu, AppCommand.RotateImageClockwise, Loc.Get("menu.format.rotateImageClockwise"));
         return menu;
     }
 
@@ -385,23 +386,24 @@ internal sealed class NativeMenuService : IDisposable
         try
         {
             _styleMenu = CreateMenu(true);
-            AppendPopup(menu, "排版样式(&Y)", _styleMenu);
+            AppendPopup(menu, Loc.Get("menu.appearance.style"), _styleMenu);
             RefreshStyleMenu();
 
             _colorMenu = CreateMenu(true);
-            AppendPopup(menu, "颜色主题(&C)", _colorMenu);
+            AppendPopup(menu, Loc.Get("menu.appearance.colorTheme"), _colorMenu);
             RefreshColorMenu();
 
             AppendSeparator(menu);
             _zoomMenu = CreateMenu(true);
-            AppendPopup(menu, "设置缩放(&Z)", _zoomMenu);
+            AppendPopup(menu, Loc.Get("menu.appearance.zoom"), _zoomMenu);
             RefreshZoomMenu();
-            AppendCommand(menu, AppCommand.ZoomIn, "放大(&I)");
-            AppendCommand(menu, AppCommand.ZoomOut, "缩小(&S)");
-            AppendCommand(menu, AppCommand.ZoomReset, "重置为100%(&R)");
+            AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.appearance.zoomIn"));
+            AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.appearance.zoomOut"));
+            AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.appearance.zoomReset"));
 
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.OpenThemeFolder, "打开主题文件夹(&O)...");
+            AppendCommand(menu, AppCommand.AddTheme, Loc.Get("menu.appearance.addTheme"));
+            AppendCommand(menu, AppCommand.OpenThemeFolder, Loc.Get("menu.appearance.openThemeFolder"));
             return menu;
         }
         catch
@@ -542,16 +544,16 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ToggleSidebar, "显示侧栏(&B)");
+            AppendCommand(menu, AppCommand.ToggleSidebar, Loc.Get("menu.view.toggleSidebar"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.SwitchToWorkspace, "工作区(&W)");
-            AppendCommand(menu, AppCommand.SwitchToOutline, "大纲(&O)");
+            AppendCommand(menu, AppCommand.SwitchToWorkspace, Loc.Get("menu.view.workspace"));
+            AppendCommand(menu, AppCommand.SwitchToOutline, Loc.Get("menu.view.outline"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ViewTree, "树结构(&T)");
-            AppendCommand(menu, AppCommand.ViewList, "文档列表(&L)");
+            AppendCommand(menu, AppCommand.ViewTree, Loc.Get("menu.view.treeView"));
+            AppendCommand(menu, AppCommand.ViewList, Loc.Get("menu.view.documentList"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ShowStatusBar, "显示状态栏(&S)");
-            AppendCommand(menu, AppCommand.ToggleSourceMode, "源码模式(&C)");
+            AppendCommand(menu, AppCommand.ShowStatusBar, Loc.Get("menu.view.showStatusBar"));
+            AppendCommand(menu, AppCommand.ToggleSourceMode, Loc.Get("menu.view.sourceMode"));
             return menu;
         }
         catch
@@ -566,11 +568,11 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ShowShortcuts, "快捷键(&K)");
+            AppendCommand(menu, AppCommand.ShowShortcuts, Loc.Get("menu.help.shortcuts"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ShowPreferences, "首选项(&P)...");
+            AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ShowAbout, "关于 MarkLeaf(&A)");
+            AppendCommand(menu, AppCommand.ShowAbout, Loc.Get("menu.help.about"));
             return menu;
         }
         catch
@@ -604,13 +606,13 @@ internal sealed class NativeMenuService : IDisposable
 
         if (files.Length == 0 && folders.Length == 0)
         {
-            AppendDisabledText(_recentWorkspaceMenu, "(暂无最近项目)");
+            AppendDisabledText(_recentWorkspaceMenu, Loc.Get("menu.file.noRecentItems"));
             return;
         }
 
         if (files.Length > 0)
         {
-            AppendDisabledText(_recentWorkspaceMenu, "最近文件");
+            AppendDisabledText(_recentWorkspaceMenu, Loc.Get("menu.file.recentFiles"));
             for (var index = 0; index < files.Length; index++)
             {
                 var command = (AppCommand)((int)AppCommand.OpenRecentFile1 + index);
@@ -625,7 +627,7 @@ internal sealed class NativeMenuService : IDisposable
                 AppendSeparator(_recentWorkspaceMenu);
             }
 
-            AppendDisabledText(_recentWorkspaceMenu, "最近文件夹");
+            AppendDisabledText(_recentWorkspaceMenu, Loc.Get("menu.file.recentFolders"));
             for (var index = 0; index < folders.Length; index++)
             {
                 var command = (AppCommand)((int)AppCommand.OpenRecentWorkspace1 + index);

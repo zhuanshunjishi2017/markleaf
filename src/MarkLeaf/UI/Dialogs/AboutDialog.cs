@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -14,7 +15,7 @@ internal sealed class AboutDialog : Form
 
     public AboutDialog()
     {
-        Text = "关于 MarkLeaf";
+        Text = Loc.Get("dialog.aboutTitle");
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -58,13 +59,13 @@ internal sealed class AboutDialog : Form
         };
 
         infoPanel.Controls.Add(NewLabel("MarkLeaf", new Font(Font, FontStyle.Bold), 14.25F), 0, 0);
-        infoPanel.Controls.Add(NewLabel("Windows 原生轻量化 Markdown 编辑器"), 0, 1);
+        infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription")), 0, 1);
         infoPanel.Controls.Add(NewSeparator(), 0, 2);
-        infoPanel.Controls.Add(NewLabel($"版本： {AppVersion}"), 0, 3);
-        infoPanel.Controls.Add(NewLabel($"日期： {UpdateDate}"), 0, 4);
+        infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutVersion", AppVersion)), 0, 3);
+        infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutDate", UpdateDate)), 0, 4);
 
         infoPanel.Controls.Add(NewSeparator(), 0, 5);
-        infoPanel.Controls.Add(NewLabel($"作者： {AuthorName}"), 0, 6);
+        infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutAuthor", AuthorName)), 0, 6);
 
         var repoLink = new LinkLabel
         {
@@ -92,7 +93,7 @@ internal sealed class AboutDialog : Form
 
         var okButton = new Button
         {
-            Text = "确定",
+            Text = Loc.Get("common.ok"),
             AutoSize = true,
             MinimumSize = new Size(150, 45),
             Padding = new Padding(12, 4, 12, 4),

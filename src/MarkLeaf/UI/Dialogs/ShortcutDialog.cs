@@ -1,34 +1,29 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class ShortcutDialog : Form
 {
-    private static readonly IReadOnlyList<(string Shortcut, string Description)> Shortcuts =
+    private static readonly string[] ShortcutKeys =
     [
-        ("Ctrl+N", "新建文档"),
-        ("Ctrl+O", "打开文档"),
-        ("Ctrl+S", "保存文档"),
-        ("Ctrl+Shift+S", "另存为"),
-        ("Ctrl+Z", "撤销"),
-        ("Ctrl+Y", "重做"),
-        ("Ctrl+X", "剪切"),
-        ("Ctrl+C", "复制"),
-        ("Ctrl+V", "粘贴"),
-        ("Ctrl+F", "查找"),
-        ("Ctrl+H", "替换"),
-        ("Ctrl+B", "切换粗体"),
-        ("Ctrl+I", "切换斜体"),
-        ("Ctrl+K", "插入链接"),
-        ("Ctrl+1", "标题 1"),
-        ("Ctrl+2", "标题 2"),
-        ("Ctrl+3", "标题 3"),
-        ("Ctrl+4", "标题 4"),
-        ("Ctrl+5", "标题 5"),
-        ("Ctrl+6", "标题 6"),
+        "Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S",
+        "Ctrl+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V",
+        "Ctrl+F", "Ctrl+H", "Ctrl+B", "Ctrl+I", "Ctrl+K",
+        "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6",
+    ];
+
+    private static readonly string[] ShortcutDescKeys =
+    [
+        "shortcut.new", "shortcut.open", "shortcut.save", "shortcut.saveAs",
+        "shortcut.undo", "shortcut.redo", "shortcut.cut", "shortcut.copy", "shortcut.paste",
+        "shortcut.find", "shortcut.replace", "shortcut.toggleBold", "shortcut.toggleItalic", "shortcut.insertLink",
+        "shortcut.heading1", "shortcut.heading2", "shortcut.heading3",
+        "shortcut.heading4", "shortcut.heading5", "shortcut.heading6",
     ];
 
     public ShortcutDialog()
     {
-        Text = "MarkLeaf 快捷键";
+        Text = Loc.Get("dialog.shortcutsTitle");
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -70,7 +65,7 @@ internal sealed class ShortcutDialog : Form
 
         var shortcutColumn = new DataGridViewTextBoxColumn
         {
-            HeaderText = "快捷键",
+            HeaderText = Loc.Get("dialog.shortcutsColumnKey"),
             Name = "Shortcut",
             FillWeight = 40,
             SortMode = DataGridViewColumnSortMode.NotSortable,
@@ -78,7 +73,7 @@ internal sealed class ShortcutDialog : Form
 
         var descriptionColumn = new DataGridViewTextBoxColumn
         {
-            HeaderText = "描述",
+            HeaderText = Loc.Get("dialog.shortcutsColumnDesc"),
             Name = "Description",
             FillWeight = 60,
             SortMode = DataGridViewColumnSortMode.NotSortable,
@@ -87,9 +82,9 @@ internal sealed class ShortcutDialog : Form
         grid.Columns.Add(shortcutColumn);
         grid.Columns.Add(descriptionColumn);
 
-        foreach (var (shortcut, description) in Shortcuts)
+        for (int i = 0; i < ShortcutKeys.Length; i++)
         {
-            grid.Rows.Add(shortcut, description);
+            grid.Rows.Add(ShortcutKeys[i], Loc.Get(ShortcutDescKeys[i]));
         }
 
         grid.ClearSelection();
@@ -104,7 +99,7 @@ internal sealed class ShortcutDialog : Form
 
         var closeButton = new Button
         {
-            Text = "关闭",
+            Text = Loc.Get("common.close"),
             AutoSize = true,
             MinimumSize = new Size(88, 0),
             Padding = new Padding(12, 4, 12, 4),

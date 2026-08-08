@@ -61,7 +61,7 @@ internal static class FileAssociationService
 
         using (var progIdKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{ProgId}"))
         {
-            progIdKey.SetValue("", "MarkLeaf Markdown 文档");
+            progIdKey.SetValue("", Loc.Get("fileAssociation.description"));
         }
 
         using (var iconKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{ProgId}\DefaultIcon"))

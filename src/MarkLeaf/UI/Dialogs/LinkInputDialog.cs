@@ -1,3 +1,5 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class LinkInputDialog : Form
@@ -10,7 +12,7 @@ internal sealed class LinkInputDialog : Form
 
     public LinkInputDialog()
     {
-        Text = "插入链接";
+        Text = Loc.Get("dialog.insertLinkTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -24,7 +26,7 @@ internal sealed class LinkInputDialog : Form
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            Text = "链接地址(&A)：",
+            Text = Loc.Get("dialog.linkAddress"),
             Padding = new Padding(0, 0, 0, 6),
         };
         label.UseMnemonic = true;
@@ -32,14 +34,14 @@ internal sealed class LinkInputDialog : Form
         var okButton = new Button
         {
             AutoSize = true,
-            Text = "确定",
+            Text = Loc.Get("common.ok"),
             DialogResult = DialogResult.OK,
             Enabled = false,
         };
         var cancelButton = new Button
         {
             AutoSize = true,
-            Text = "取消",
+            Text = Loc.Get("common.cancel"),
             DialogResult = DialogResult.Cancel,
         };
         _address.TextChanged += (_, _) => okButton.Enabled = IsAllowedLink(_address.Text);

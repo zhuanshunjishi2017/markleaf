@@ -2,6 +2,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.UI.Controls;
@@ -11,10 +12,8 @@ namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
-    private const string ImageFilter =
-        "图片文件 (*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|所有文件 (*.*)|*.*";
-    private const string DocumentFilter =
-        "Markdown 文件 (*.md;*.markdown)|*.md;*.markdown|文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*";
+    private static string ImageFilter => Loc.Get("fileFilter.images");
+    private static string DocumentFilter => Loc.Get("fileFilter.markdown");
 
     private void OnEditorDirtyChanged(object? sender, EditorMessage message)
     {
@@ -49,7 +48,7 @@ internal sealed partial class MainForm
         _workspaceTree.SelectedPath = null;
         _workspaceDocumentList.SelectedPath = null;
         LoadDocumentIntoEditor(_document);
-        SetStatus("已新建文档");
+        SetStatus(Loc.Get("document.newDocument"));
     }
 
     private async Task OpenDocumentAsync()
@@ -65,7 +64,7 @@ internal sealed partial class MainForm
             CheckFileExists = true,
             Multiselect = false,
             RestoreDirectory = true,
-            Title = "打开 Markdown 文档",
+            Title = Loc.Get("dialog.openDocument"),
         };
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
@@ -81,7 +80,7 @@ internal sealed partial class MainForm
         _documentOperationInProgress = true;
         try
         {
-            SetStatus("正在打开文档...");
+            SetStatus(Loc.Get("document.opening"));
             var opened = await _documentFileService.OpenAsync(path);
             var originalMarkdown = opened.Markdown;
             opened.Markdown = _imageAssetService.NormalizeLocalImagePaths(
@@ -99,11 +98,11 @@ internal sealed partial class MainForm
             _logger.Info($"Document opened: {DescribePath(opened.FilePath)}; encoding={opened.Encoding.WebName}; bom={opened.HasBom}; newline={DescribeNewLine(opened.NewLine)}.");
             if (opened.IsDirty)
             {
-                SetStatus("图片路径已更新，请保存文档");
+                SetStatus(Loc.Get("status.imagePathUpdated"));
             }
             else if (_imageAssetService.FindMissingImages(opened.Markdown, opened.FilePath).Count == 0)
             {
-                SetStatus(opened.IsReadOnly ? "已打开只读文档" : "文档已打开");
+                SetStatus(opened.IsReadOnly ? Loc.Get("status.documentOpenedReadOnly") : Loc.Get("status.documentOpened"));
             }
         }
         catch (Exception exception) when (
@@ -112,11 +111,11 @@ internal sealed partial class MainForm
             _logger.Error($"Document open failed: {DescribePath(path)}.", exception);
             ShowMessage(
                 this,
-                "无法打开该文档。\r\n\r\n" + exception.Message,
+                Loc.Get("error.openDocumentFailed") + "\r\n\r\n" + exception.Message,
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-            SetStatus("打开失败");
+            SetStatus(Loc.Get("error.openDocumentFailedTitle"));
         }
         finally
         {
@@ -161,7 +160,7 @@ internal sealed partial class MainForm
         _settings.Workspace.RecentFiles.Clear();
         _settings.Workspace.RecentFolders.Clear();
         _menuService.RefreshStates();
-        SetStatus("已清除历史记录");
+        SetStatus(Loc.Get("status.historyCleared"));
     }
 
     private async Task ResolveMissingImagesAsync(MarkdownDocument document)
@@ -177,20 +176,20 @@ internal sealed partial class MainForm
             missingImages.Take(50).Select(image => "- " + image.FileName));
         if (missingImages.Count > 50)
         {
-            names += $"\r\n- 另有 {missingImages.Count - 50} 个文件未列出";
+            names += Loc.Format("document.imageCountLess", missingImages.Count - 50);
         }
 
         var choice = ShowMessage(
             this,
-            $"加载文档时发现 {missingImages.Count} 张图片缺失：\r\n\r\n{names}\r\n\r\n" +
-            "是否现在逐一查找并替换这些图片？替换后请保存文档。",
-            "图片文件缺失",
+            Loc.Format("document.imageCountMissing", missingImages.Count) + "\r\n\r\n" + names + "\r\n\r\n" +
+            Loc.Get("document.imageMissingPrompt"),
+            Loc.Get("document.imageMissingTitle"),
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Error,
             MessageBoxDefaultButton.Button1);
         if (choice != DialogResult.Yes)
         {
-            SetStatus($"文档已加载，但有 {missingImages.Count} 张图片缺失");
+            SetStatus(Loc.Format("status.imageCountMissingLoaded", missingImages.Count));
             return;
         }
 
@@ -203,7 +202,7 @@ internal sealed partial class MainForm
                 CheckFileExists = true,
                 Multiselect = false,
                 RestoreDirectory = true,
-                Title = $"查找替换图片：{missingImage.FileName}",
+                Title = Loc.Format("document.imageRelinkStatus", missingImage.FileName),
                 FileName = missingImage.FileName,
             };
             var missingDirectory = Path.GetDirectoryName(missingImage.ResolvedPath);
@@ -226,8 +225,8 @@ internal sealed partial class MainForm
             {
                 ShowMessage(
                     this,
-                    $"所选文件不能替换“{missingImage.FileName}”。\r\n\r\n{exception.Message}",
-                    "图片替换失败",
+                    Loc.Format("document.imageReplaceFailed", missingImage.FileName) + "\r\n\r\n" + exception.Message,
+                    Loc.Get("document.imageReplaceFailedTitle"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -236,8 +235,8 @@ internal sealed partial class MainForm
         document.Markdown = ImageAssetService.ReplaceImagePaths(document.Markdown, replacements);
         var remaining = _imageAssetService.FindMissingImages(document.Markdown, document.FilePath);
         SetStatus(remaining.Count == 0
-            ? $"已替换 {replacements.Count} 张缺失图片，请保存文档"
-            : $"已替换 {replacements.Count} 张图片，仍缺失 {remaining.Count} 张");
+            ? Loc.Format("document.imageReplacedAndSave", replacements.Count)
+            : Loc.Format("document.imageReplacedStatus", replacements.Count, remaining.Count));
     }
 
     private async Task<bool> SaveDocumentAsync(bool saveAs, bool forceOverwrite = false)
@@ -257,8 +256,8 @@ internal sealed partial class MainForm
                 DefaultExt = "md",
                 RestoreDirectory = true,
                 OverwritePrompt = true,
-                Title = "保存 Markdown 文档",
-                FileName = targetPath is null ? "未命名.md" : Path.GetFileName(targetPath),
+                Title = Loc.Get("dialog.saveDocument"),
+                FileName = targetPath is null ? Loc.Get("document.untitledMd") : Path.GetFileName(targetPath),
             };
             if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
             {
@@ -271,7 +270,7 @@ internal sealed partial class MainForm
 
         if (!_document.IsDirty && !saveAs && !forceOverwrite)
         {
-            SetStatus("文档没有需要保存的修改");
+            SetStatus(Loc.Get("status.documentNoChanges"));
             return true;
         }
 
@@ -279,14 +278,14 @@ internal sealed partial class MainForm
         EditorSnapshot? snapshot = null;
         try
         {
-            SetStatus("正在获取最新编辑内容...");
+            SetStatus(Loc.Get("document.saving"));
             snapshot = await _editorHost.RequestSnapshotAsync();
             var markdown = _imageAssetService.NormalizeLocalImagePaths(
                 snapshot.Markdown,
                 _document.FilePath ?? targetPath,
                 _settings.Image.UseRelativePaths,
                 _settings.Image.PrefixRelativeWithDotSlash);
-            SetStatus("正在安全保存...");
+            SetStatus(Loc.Get("document.safeSaving"));
             await _documentFileService.SaveAsync(
                 _document,
                 markdown,
@@ -301,7 +300,7 @@ internal sealed partial class MainForm
             UpdateDocumentChrome();
             _logger.Info($"Document saved safely: {DescribePath(_document.FilePath)}; revision={snapshot.Revision}.");
             _recoveryService.Delete(_document.Id);
-            SetStatus("文档已保存");
+            SetStatus(Loc.Get("status.documentSaved"));
             return true;
         }
         catch (ExternalDocumentChangedException)
@@ -316,11 +315,11 @@ internal sealed partial class MainForm
             _logger.Error("Latest editor snapshot request timed out.", exception);
             ShowMessage(
                 this,
-                "未能及时获取编辑器的最新内容，文档没有写入磁盘。请稍后重试。",
+                Loc.Get("document.saveSnapshotTimeout"),
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-            SetStatus("保存失败：编辑器快照超时");
+            SetStatus(Loc.Get("document.saveSnapshotFailed"));
             return false;
         }
         catch (DocumentSaveException exception)
@@ -328,15 +327,17 @@ internal sealed partial class MainForm
             _logger.Error($"Document save failed: {DescribePath(targetPath)}.", exception);
             var recovery = exception.RecoveryFilePath is null
                 ? string.Empty
-                : $"\r\n\r\n可恢复临时文件：\r\n{exception.RecoveryFilePath}";
+                : "\r\n\r\n" + Loc.Get("document.recoveryTempFile") + "\r\n" + exception.RecoveryFilePath;
+            var saveFailedMessage = Loc.Format("document.safeSaveFailed", recovery);
+            if (exception.InnerException?.Message is { } innerMsg)
+                saveFailedMessage += "\r\n\r\n" + innerMsg;
             ShowMessage(
                 this,
-                "安全保存失败，原文件未被截断，编辑内容仍保留在当前窗口中。" + recovery +
-                "\r\n\r\n" + exception.InnerException?.Message,
+                saveFailedMessage,
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-            SetStatus("保存失败，编辑内容仍保留");
+            SetStatus(Loc.Get("document.saveFailedKeepEdits"));
             return false;
         }
         finally
@@ -369,7 +370,7 @@ internal sealed partial class MainForm
                     {
                         ShowMessage(
                             this,
-                            "无法读取磁盘版本以进行比较。\r\n\r\n" + exception.Message,
+                            Loc.Format("document.cannotCompare", exception.Message),
                             "MarkLeaf",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Error);
@@ -382,7 +383,7 @@ internal sealed partial class MainForm
                     _documentOperationInProgress = false;
                     return await SaveDocumentAsync(saveAs: false, forceOverwrite: true);
                 default:
-                    SetStatus("已取消保存，外部版本未被覆盖");
+                    SetStatus(Loc.Get("document.cancelSaveExternal"));
                     return false;
             }
         }
@@ -404,7 +405,7 @@ internal sealed partial class MainForm
 
         var choice = ShowMessage(
             this,
-            "是否保存对“" + _document.DisplayName + "”的修改？",
+            Loc.Format("document.confirmDiscard", _document.DisplayName),
             "MarkLeaf",
             MessageBoxButtons.YesNoCancel,
             MessageBoxIcon.Warning,
@@ -437,6 +438,7 @@ internal sealed partial class MainForm
         }
 
         _closeApproved = true;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemPreferenceChanged;
         StopWatchingDocument();
         _recoveryTimer.Stop();
         // 用户选择"不保存"（文档仍为脏）时保留该文档的恢复快照，便于之后通过
@@ -467,7 +469,7 @@ internal sealed partial class MainForm
         }
         else if (_settings.File.AutoSaveEnabled && _document.FilePath is not null)
         {
-            Text = $"(自动保存) {name} - MarkLeaf";
+            Text = Loc.Format("document.autoSaveTitle", name);
         }
         else
         {
@@ -535,13 +537,13 @@ internal sealed partial class MainForm
                 return;
             }
 
-            SetStatus("检测到磁盘文件已在外部修改");
+            SetStatus(Loc.Get("document.externalChangeDetected"));
             if (document.IsDirty)
             {
                 ShowMessage(
                     this,
-                    "磁盘上的当前文件已被其他程序修改。MarkLeaf 不会自动覆盖或重新加载，因为当前窗口也有未保存修改。请使用“保存”处理冲突，或使用“另存为”保留当前版本。",
-                    "检测到外部修改",
+                    Loc.Get("document.externalChangeDirtyMessage"),
+                    Loc.Get("document.externalChangeTitle"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
@@ -549,8 +551,8 @@ internal sealed partial class MainForm
 
             var reload = ShowMessage(
                 this,
-                "磁盘上的当前文件已被其他程序修改。是否重新加载？",
-                "检测到外部修改",
+                Loc.Get("document.externalChangeReloadClean"),
+                Loc.Get("document.externalChangeTitle"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button1);
@@ -689,7 +691,7 @@ internal sealed partial class MainForm
         {
             if (!Clipboard.ContainsImage())
             {
-                SetStatus("剪贴板中没有可用图片");
+                SetStatus(Loc.Get("status.noClipboardImage"));
                 return;
             }
 
@@ -706,7 +708,7 @@ internal sealed partial class MainForm
                 stream.ToArray(),
                 ".png",
                 ResolveClipboardImageTargetDirectory());
-            await InsertImportedImageAsync(imported, "粘贴图片");
+            await InsertImportedImageAsync(imported, Loc.Get("dialog.pasteImage"));
         }
         catch (Exception exception) when (exception is IOException or ExternalException or InvalidDataException
             or OperationCanceledException)
@@ -714,7 +716,7 @@ internal sealed partial class MainForm
             _logger.Error("Clipboard image import failed.", exception);
             ShowMessage(
                 this,
-                "无法导入剪贴板图片。\r\n\r\n" + exception.Message,
+                Loc.Get("dialog.pasteImageFailed") + "\r\n\r\n" + exception.Message,
                 "MarkLeaf",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
@@ -734,7 +736,7 @@ internal sealed partial class MainForm
             CheckFileExists = true,
             Multiselect = true,
             RestoreDirectory = true,
-            Title = "插入图片",
+            Title = Loc.Get("dialog.insertImage"),
         };
         if (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
@@ -776,7 +778,7 @@ internal sealed partial class MainForm
             }
         }
 
-        SetStatus(importedCount > 0 ? $"已插入 {importedCount} 张图片" : "未找到可插入的图片");
+        SetStatus(importedCount > 0 ? Loc.Format("status.imagesInserted", importedCount) : Loc.Get("status.noImagesFound"));
     }
 
     private string GetDefaultImageDirectory()
@@ -819,12 +821,12 @@ internal sealed partial class MainForm
                     return assets;
                 }
 
-                SetStatus("文档未保存，无法复制到 .assets 目录，图片已保存到默认目录");
+                SetStatus(Loc.Get("document.imageNotSaved"));
                 return GetDefaultImageDirectory();
             case ClipboardImageHandling.Upload:
                 if (GetDocumentAssetsDirectory() is { } dir)
                     return dir;
-                SetStatus("文档未保存，图片已保存到默认目录");
+                SetStatus(Loc.Get("document.imageNotSavedUpload"));
                 return GetDefaultImageDirectory();
             default:
                 return GetDefaultImageDirectory();
@@ -841,12 +843,12 @@ internal sealed partial class MainForm
                     return await _imageAssetService.CopyFileIntoAsync(sourcePath, assets);
                 }
 
-                SetStatus("文档未保存，无法复制到 .assets 目录，图片将引用原位置");
+                SetStatus(Loc.Get("document.imageNotSavedRef"));
                 break;
             case FileImageHandling.Upload:
                 if (GetDocumentAssetsDirectory() is { } dir)
                     return await _imageAssetService.CopyFileIntoAsync(sourcePath, dir);
-                SetStatus("文档未保存，图片将引用原位置");
+                SetStatus(Loc.Get("document.imageNotSavedRefUpload"));
                 break;
         }
 
@@ -878,11 +880,11 @@ internal sealed partial class MainForm
         if (!inserted)
         {
             _logger.Warning($"Editor rejected imported image: {DescribePath(imported.PhysicalPath)}.");
-            SetStatus("未能插入图片");
+            SetStatus(Loc.Get("status.imageInsertFailed"));
             return false;
         }
 
-        SetStatus("图片已插入文档");
+        SetStatus(Loc.Get("status.imageInserted"));
         return true;
     }
 }

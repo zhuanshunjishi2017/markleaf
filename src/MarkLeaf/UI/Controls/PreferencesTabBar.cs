@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
 
@@ -23,7 +24,9 @@ internal sealed class PreferencesTabBar : Control
     private Rectangle[] _tabBounds;
 
     public PreferencesTabBar()
-        : this(["文件", "外观", "编辑", "图片", "通用"], ["", "", "", "", ""]) { }
+        : this(
+            [Loc.Get("prefs.tab.file"), Loc.Get("prefs.tab.appearance"), Loc.Get("prefs.tab.editor"), Loc.Get("prefs.tab.images"), Loc.Get("prefs.tab.general")],
+            ["", "", "", "", ""]) { }
 
     public PreferencesTabBar(string[] tabs, string[] icons)
     {

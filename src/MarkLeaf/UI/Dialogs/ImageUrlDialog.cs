@@ -1,3 +1,5 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class ImageUrlDialog : Form
@@ -11,12 +13,12 @@ internal sealed class ImageUrlDialog : Form
     private readonly TextBox _alt = new()
     {
         Dock = DockStyle.Top,
-        PlaceholderText = "图片描述文字",
+        PlaceholderText = Loc.Get("dialog.imageAltPlaceholder"),
     };
 
     public ImageUrlDialog()
     {
-        Text = "插入来自互联网的图片";
+        Text = Loc.Get("dialog.insertImageUrlTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -30,7 +32,7 @@ internal sealed class ImageUrlDialog : Form
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            Text = "图片地址(&U)：",
+            Text = Loc.Get("dialog.imageUrl"),
             Padding = new Padding(0, 0, 0, 6),
         };
         urlLabel.UseMnemonic = true;
@@ -39,7 +41,7 @@ internal sealed class ImageUrlDialog : Form
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            Text = "描述文字（Alt）（&A）：",
+            Text = Loc.Get("dialog.imageAlt"),
             Padding = new Padding(0, 8, 0, 6),
         };
         altLabel.UseMnemonic = true;
@@ -47,14 +49,14 @@ internal sealed class ImageUrlDialog : Form
         var okButton = new Button
         {
             AutoSize = true,
-            Text = "确定",
+            Text = Loc.Get("common.ok"),
             DialogResult = DialogResult.OK,
             Enabled = false,
         };
         var cancelButton = new Button
         {
             AutoSize = true,
-            Text = "取消",
+            Text = Loc.Get("common.cancel"),
             DialogResult = DialogResult.Cancel,
         };
         _url.TextChanged += (_, _) => okButton.Enabled = IsAllowedImageUrl(_url.Text);

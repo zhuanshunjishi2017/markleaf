@@ -1,3 +1,4 @@
+using MarkLeaf.Services;
 using MarkLeaf.Services.Recovery;
 
 namespace MarkLeaf.UI.Dialogs;
@@ -11,7 +12,7 @@ internal sealed class RecoveryDialog : Form
 
     public RecoveryDialog(IReadOnlyList<RecoverySnapshot> recoveries)
     {
-        Text = "恢复未保存的文档";
+        Text = Loc.Get("dialog.recoveryTitle");
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -25,9 +26,9 @@ internal sealed class RecoveryDialog : Form
 
         var warningText = recoveries.Count switch
         {
-            0 => "未发现需要恢复的文档。",
-            1 => "发现 1 份未保存文档，该文档来自上次异常关闭前的自动快照。",
-            _ => $"发现 {recoveries.Count} 份未保存文档，它们来自上次异常关闭前的自动快照。",
+            0 => Loc.Get("dialog.recoveryNone"),
+            1 => Loc.Get("dialog.recoveryOne"),
+            _ => Loc.Format("dialog.recoveryMultiple", recoveries.Count),
         };
 
         var warningLabel = new Label
@@ -46,12 +47,12 @@ internal sealed class RecoveryDialog : Form
         };
         foreach (var recovery in recoveries)
         {
-            var displayName = recovery.DisplayName ?? "未命名";
+            var displayName = recovery.DisplayName ?? Loc.Get("common.unnamed");
             var when = recovery.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
             var pathHint = recovery.DocumentPath is not null
                 ? $"{Path.GetFileName(recovery.DocumentPath)}"
                 : string.Empty;
-            listBox.Items.Add($"{displayName} - 快照保存于{when}");
+            listBox.Items.Add(Loc.Format("dialog.recoverySnapshotSaved", displayName, when));
         }
 
         if (recoveries.Count > 0) listBox.SelectedIndex = 0;
@@ -67,7 +68,7 @@ internal sealed class RecoveryDialog : Form
 
         var infoLabel = new Label
         {
-            Text = "选择需要恢复的文档后单击“另存为”可将快照保存到指定位置并打开。",
+            Text = Loc.Get("dialog.recoveryInstruction"),
             AutoSize = true,
             MaximumSize = new Size(560, 0),
             Padding = new Padding(0, 6, 0, 0),
@@ -84,7 +85,7 @@ internal sealed class RecoveryDialog : Form
 
         var discardButton = new Button
         {
-            Text = "全部丢弃(&D)",
+            Text = Loc.Get("dialog.recoveryDiscardAll"),
             AutoSize = true,
             MinimumSize = new Size(130, 0),
             Padding = new Padding(12, 4, 12, 4),
@@ -100,7 +101,7 @@ internal sealed class RecoveryDialog : Form
 
         var restoreButton = new Button
         {
-            Text = "另存为(&S)",
+            Text = Loc.Get("dialog.recoverySaveAs"),
             AutoSize = true,
             MinimumSize = new Size(130, 0),
             Padding = new Padding(12, 4, 12, 4),
