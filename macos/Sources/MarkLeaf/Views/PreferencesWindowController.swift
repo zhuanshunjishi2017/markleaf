@@ -74,8 +74,8 @@ final class PreferencesWindowController: NSWindowController {
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
-        newLinePopup.addItems(withTitles: ["LF（Unix/现代）", "CRLF（Windows 传统）"])
-        newLinePopup.selectItem(at: settings.newLineStyle == "crlf" ? 1 : 0)
+        newLinePopup.addItems(withTitles: ["CRLF", "LF"])
+        newLinePopup.selectItem(at: settings.newLineStyle == "crlf" ? 0 : 1)
         recordRecentFilesCheck.state = settings.recordRecentFiles ? .on : .off
         recordRecentFoldersCheck.state = settings.recordRecentFolders ? .on : .off
 
@@ -176,7 +176,7 @@ final class PreferencesWindowController: NSWindowController {
             .field("", linkButton("恢复未保存的文档…", #selector(recoverUnsavedFiles))),
             .header("换行风格"),
             .field("新建文件换行", newLinePopup),
-            .hint("仅控制新建文件的换行符，打开的文件保留原有风格。"),
+            .hint("此设置项仅控制新建文件的换行符，打开的文件将保留其原有换行风格。"),
             .header("历史记录"),
             .field("", recordRecentFilesCheck),
             .field("", recordRecentFoldersCheck),
@@ -259,7 +259,7 @@ final class PreferencesWindowController: NSWindowController {
             }
             settings.autoSaveEnabled = autoSaveCheck.state == .on
             settings.snapshotIntervalSeconds = max(5, Int(snapshotIntervalField.stringValue) ?? 30)
-            settings.newLineStyle = newLinePopup.indexOfSelectedItem == 1 ? "crlf" : "lf"
+            settings.newLineStyle = newLinePopup.indexOfSelectedItem == 0 ? "crlf" : "lf"
             settings.recordRecentFiles = recordRecentFilesCheck.state == .on
             settings.recordRecentFolders = recordRecentFoldersCheck.state == .on
 
