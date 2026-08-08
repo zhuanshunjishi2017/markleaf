@@ -59,7 +59,7 @@ final class PreferencesWindowController: NSWindowController {
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
-        window.title = "首选项"
+        window.title = "偏好设置"
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)

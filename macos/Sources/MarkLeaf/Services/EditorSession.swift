@@ -550,7 +550,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applySourceIndent()
     }
 
-    /// 源码模式缩进宽度（对应首选项「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
+    /// 源码模式缩进宽度（对应偏好设置「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
     func applySourceIndent() {
         let width = max(1, min(8, SettingsService.shared.settings.sourceIndentWidth))
         execute("setSourceIndent", text: "\(width)")

@@ -2,7 +2,7 @@ import AppKit
 
 /// 原生菜单栏：按 Windows 版（NativeMenuService）菜单结构移植。
 /// 菜单 → AppMenu / 文件 / 编辑 / 段落 / 格式 / 视图 / 外观 / 帮助。
-/// macOS 惯例调整：关于/首选项/退出放在 App 菜单（Windows 在帮助/文件菜单）。
+/// macOS 惯例调整：关于/偏好设置/退出放在 App 菜单（Windows 在帮助/文件菜单）。
 final class NativeMenuBuilder {
     private static let zoomOptions = [50, 75, 90, 100, 110, 125, 150, 175, 200]
 
@@ -30,13 +30,13 @@ final class NativeMenuBuilder {
         menu.addItem(item)
     }
 
-    // MARK: - App 菜单（macOS 惯例：关于/首选项/退出）
+    // MARK: - App 菜单（macOS 惯例：关于/偏好设置/退出）
 
     private func appMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(commandItem("关于 MarkLeaf", "showAbout"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("首选项…", "showPreferences", key: ","))
+        menu.addItem(commandItem("偏好设置…", "showPreferences", key: ","))
         menu.addItem(.separator())
         menu.addItem(item("隐藏 MarkLeaf", #selector(NSApplication.hide(_:)), target: NSApp, key: "h"))
         menu.addItem(item("隐藏其他", #selector(NSApplication.hideOtherApplications(_:)), target: NSApp, key: "h", mask: [.command, .option]))
@@ -234,7 +234,7 @@ final class NativeMenuBuilder {
         return menu
     }
 
-    // MARK: - 帮助（对应 Windows BuildHelpMenu；首选项/关于按 macOS 惯例在 App 菜单）
+    // MARK: - 帮助（对应 Windows BuildHelpMenu；偏好设置/关于按 macOS 惯例在 App 菜单）
 
     private func helpMenu() -> NSMenu {
         let menu = NSMenu()

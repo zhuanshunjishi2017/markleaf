@@ -23,7 +23,7 @@ enum ResourceLocator {
             # MarkLeaf 用户主题目录
 
             把你自定义的颜色主题（`colors-*.css`）或排版样式（`*.css`）放到这里，
-            重启 MarkLeaf 后即可在「首选项 ▸ 外观」中选用。
+            重启 MarkLeaf 后即可在「偏好设置 ▸ 外观」中选用。
 
             主题文件顶部注释块可声明元数据：
             `@name: 主题显示名` 与 `@mode: light|dark`。

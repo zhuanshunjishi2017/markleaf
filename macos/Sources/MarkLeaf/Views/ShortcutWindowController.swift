@@ -18,7 +18,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         ("⌥⌘U", "源码模式"),
         ("⌘+ / ⌘- / ⌘0", "放大 / 缩小 / 100%"),
         ("⌥⌘S", "复制为 Markdown 源码"),
-        ("⌘,", "首选项"),
+        ("⌘,", "偏好设置"),
     ]
 
     private let tableView = NSTableView()
