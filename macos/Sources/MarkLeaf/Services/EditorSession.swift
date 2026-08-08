@@ -876,7 +876,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = "插入来自互联网的图片"
-        alert.informativeText = "请输入图片 URL（http/https）："
+        alert.informativeText = "请输入图片URL："
         alert.alertStyle = .informational
         alert.addButton(withTitle: "插入")
         alert.addButton(withTitle: "取消")
