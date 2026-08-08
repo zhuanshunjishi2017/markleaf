@@ -10,9 +10,12 @@ extension EditorSession {
         let baseName = documentURL?.deletingPathExtension().lastPathComponent ?? "未命名"
         panel.nameFieldStringValue = baseName + ".pdf"
 
-        let accessory = ExportAccessory(styles: styles)
+        let accessory = ExportAccessory(styles: styles, themes: colorThemes)
         if let idx = styles.firstIndex(where: { $0.id == currentStyleId }) {
             accessory.stylePopup.selectItem(at: idx)
+        }
+        if let idx = colorThemes.firstIndex(where: { $0.id == currentThemeId }) {
+            accessory.colorThemePopup.selectItem(at: idx)
         }
         panel.accessoryView = accessory
 
@@ -39,6 +42,10 @@ extension EditorSession {
     /// 核心导出流程：请求前端生成导出 HTML，再按格式落盘。
     func runExport(options: ExportOptions, saveURL: URL) {
         let settings = SettingsService.shared.settings
+        // 导出配色：按所选颜色主题注入主题 CSS（对应 Windows ExportDialog 的配色方案）
+        let colorSchemeCss = options.colorScheme.flatMap { id in
+            colorThemes.first(where: { $0.id == id })?.css
+        } ?? ""
         let payload: [String: Any] = [
             "format": options.format,
             "style": options.style,
@@ -47,6 +54,7 @@ extension EditorSession {
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
             "maxWidth": settings.visualMaxContentWidth,
+            "colorSchemeCss": colorSchemeCss,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }

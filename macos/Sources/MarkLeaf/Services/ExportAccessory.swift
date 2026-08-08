@@ -4,6 +4,7 @@ import AppKit
 struct ExportOptions {
     var format = "html"
     var style = "serif"
+    var colorScheme: String? = nil
     var paperSize = PaperSize.a4
     var landscape = false
     var margins = ExportMargins()
@@ -18,8 +19,10 @@ final class ExportAccessory: NSView {
     let landscapeCheck = NSButton(checkboxWithTitle: "横向", target: nil, action: nil)
     let marginPopup = NSPopUpButton()
     let stylePopup = NSPopUpButton()
+    let colorThemePopup = NSPopUpButton()
     let headerField = NSTextField(string: "")
     let footerField = NSTextField(string: "")
+    private var themeIDs: [String] = []
 
     private static let marginPresets: [(String, ExportMargins)] = [
         ("标准", ExportMargins(top: 18, bottom: 18, left: 15, right: 15)),
@@ -28,8 +31,9 @@ final class ExportAccessory: NSView {
         ("无", ExportMargins(top: 0, bottom: 0, left: 0, right: 0)),
     ]
 
-    init(styles: [StyleDefinition]) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 380, height: 150))
+    init(styles: [StyleDefinition], themes: [ColorThemeInfo]) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 380, height: 170))
+        themeIDs = themes.map(\.id)
 
         formatPopup.addItems(withTitles: ["PDF", "HTML"])
         formatPopup.selectItem(at: 0)
@@ -47,12 +51,20 @@ final class ExportAccessory: NSView {
             stylePopup.selectItem(at: idx)
         }
 
+        colorThemePopup.addItems(withTitles: themes.map(\.displayName))
+        if let idx = themes.firstIndex(where: { $0.id == "colors-white-only" }) {
+            colorThemePopup.selectItem(at: idx)
+        } else if let idx = themes.firstIndex(where: { $0.id == "colors-apple-blue" }) {
+            colorThemePopup.selectItem(at: idx)
+        }
+
         let form = NSGridView(views: [
             [label("格式"), formatPopup],
             [label("纸张"), paperPopup],
             [label("方向"), landscapeCheck],
             [label("页边距"), marginPopup],
             [label("排版样式"), stylePopup],
+            [label("配色方案"), colorThemePopup],
             [label("页眉"), headerField],
             [label("页脚"), footerField],
         ])
@@ -99,6 +111,9 @@ final class ExportAccessory: NSView {
         options.margins = Self.marginPresets[max(0, marginPopup.indexOfSelectedItem)].1
         options.header = headerField.stringValue
         options.footer = footerField.stringValue
+        if colorThemePopup.indexOfSelectedItem >= 0, colorThemePopup.indexOfSelectedItem < themeIDs.count {
+            options.colorScheme = themeIDs[colorThemePopup.indexOfSelectedItem]
+        }
         return options
     }
 }

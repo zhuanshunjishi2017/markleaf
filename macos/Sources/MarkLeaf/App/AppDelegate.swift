@@ -353,6 +353,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        if CommandLine.arguments.contains("--src-syntax-test") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                guard let s = AppWindowManager.shared.primarySession else {
+                    NSApp.terminate(nil)
+                    return
+                }
+                s.loadDocument(markdown: "# 标题\n\n- 列表项\n\n```swift\nlet x = 1\n```", fileURL: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    s.toggleSourceMode()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        guard let webView = s.webView else {
+                            NSApp.terminate(nil)
+                            return
+                        }
+                        let script = """
+                        (function () {
+                          var content = document.querySelector('.cm-content');
+                          if (!content) return;
+                          content.focus();
+                          var allTok = document.querySelectorAll('[class*="tok-"]').length;
+                          var line0 = document.querySelector('.cm-line');
+                          var lineHTML = line0 ? line0.innerHTML.slice(0, 300) : 'none';
+                          var bodyHasTok = document.body.innerHTML.indexOf('tok-') >= 0;
+                          return JSON.stringify({ allTok: allTok, bodyHasTok: bodyHasTok, line0: lineHTML });
+                        })();
+                        """
+                        webView.evaluateJavaScript(script) { result, _ in
+                            AppLog.info("--src-syntax-test: \(String(describing: result))")
+                            NSApp.terminate(nil)
+                        }
+                    }
+                }
+            }
+        }
+        if CommandLine.arguments.contains("--export-theme-test") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                guard let s = AppWindowManager.shared.primarySession else {
+                    NSApp.terminate(nil)
+                    return
+                }
+                s.loadDocument(markdown: "# 标题\n\n正文内容。", fileURL: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    var options = ExportOptions()
+                    options.format = "html"
+                    options.style = "serif"
+                    options.colorScheme = "colors-forest"
+                    s.onExportComplete = { ok in
+                        let path = "/tmp/ml-export-theme.html"
+                        if ok, let html = try? String(contentsOfFile: path, encoding: .utf8) {
+                            let hasForest = html.contains("1A221E") || html.contains("4A8A50")
+                            AppLog.info("--export-theme-test: 成功=\(ok) 含森林主题色=\(hasForest)")
+                        } else {
+                            AppLog.info("--export-theme-test: 失败 ok=\(ok)")
+                        }
+                        NSApp.terminate(nil)
+                    }
+                    s.runExport(options: options, saveURL: URL(fileURLWithPath: "/tmp/ml-export-theme.html"))
+                }
+            }
+        }
         if CommandLine.arguments.contains("--bold-test") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                 guard let s = AppWindowManager.shared.primarySession else {

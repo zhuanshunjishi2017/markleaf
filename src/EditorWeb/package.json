@@ -14,6 +14,7 @@
     "@codemirror/language": "6.11.3",
     "@codemirror/state": "6.5.2",
     "@codemirror/view": "6.38.1",
+    "@lezer/highlight": "^1.2.3",
     "@tiptap/core": "3.29.2",
     "@tiptap/extension-image": "3.29.2",
     "@tiptap/extension-link": "3.29.2",

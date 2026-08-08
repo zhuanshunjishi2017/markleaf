@@ -115,11 +115,24 @@ body {
   font-size: var(--ml-source-font-size, 14px);
 }
 
-/* ---- 源码模式语法高亮 ---- */
+/* ---- 源码模式语法高亮（class-based，颜色随主题变量） ---- */
 .tok-comment   { color: var(--text-tertiary); font-style: italic; }
-.tok-heading   { color: var(--text-primary); }
+.tok-heading   { color: var(--text-primary); font-weight: 600; }
 .tok-strong    { font-weight: 700; }
 .tok-emphasis  { font-style: italic; }
+.tok-strikethrough { text-decoration: line-through; }
+.tok-link      { color: var(--theme-light); text-decoration: underline; }
+.tok-keyword   { color: var(--theme-light); }
+.tok-string    { color: var(--theme-dark); }
+.tok-number    { color: var(--theme-dark); }
+.tok-type      { color: var(--theme-dark); }
+.tok-variable  { color: var(--text-primary); }
+.tok-function  { color: var(--theme-light); }
+.tok-property  { color: var(--text-primary); }
+.tok-operator  { color: var(--text-secondary); }
+.tok-punctuation { color: var(--text-secondary); }
+.tok-meta      { color: var(--text-secondary); }
+.tok-invalid   { color: var(--theme-light); text-decoration: line-through; }
 .tok-link      { color: var(--theme-dark); text-decoration: underline; }
 .tok-url       { color: var(--theme-dark); }
 .tok-monospace { color: var(--text-secondary); }

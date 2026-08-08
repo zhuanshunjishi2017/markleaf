@@ -1,6 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore, indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
+import { tags as t } from '@lezer/highlight'
 import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import {
   Decoration,
@@ -13,6 +14,29 @@ import {
   ViewPlugin,
   ViewUpdate,
 } from '@codemirror/view'
+
+/// 主题感知的源码语法高亮：class-based HighlightStyle，颜色由 .tok-* CSS（主题变量）控制。
+/// 使用 defaultHighlightStyle 会在 WKWebView 中生成非主题的硬编码色（深色主题下看不清），
+/// 因此改为自定义 tok-* 类，由 base.css / styles.css 按 --theme-* 变量着色。
+const markleafHighlightStyle = HighlightStyle.define([
+  { tag: t.heading, class: 'tok-heading' },
+  { tag: t.comment, class: 'tok-comment' },
+  { tag: t.strong, class: 'tok-strong' },
+  { tag: t.emphasis, class: 'tok-emphasis' },
+  { tag: t.strikethrough, class: 'tok-strikethrough' },
+  { tag: t.link, class: 'tok-link' },
+  { tag: t.keyword, class: 'tok-keyword' },
+  { tag: [t.atom, t.bool, t.number, t.url, t.labelName], class: 'tok-number' },
+  { tag: [t.literal, t.inserted, t.string, t.deleted], class: 'tok-string' },
+  { tag: [t.typeName, t.namespace, t.className], class: 'tok-type' },
+  { tag: [t.definition(t.variableName), t.local(t.variableName)], class: 'tok-variable' },
+  { tag: t.function(t.variableName), class: 'tok-function' },
+  { tag: t.propertyName, class: 'tok-property' },
+  { tag: t.operator, class: 'tok-operator' },
+  { tag: t.punctuation, class: 'tok-punctuation' },
+  { tag: t.meta, class: 'tok-meta' },
+  { tag: t.invalid, class: 'tok-invalid' },
+])
 
 const sourceSelectionMark = Decoration.mark({ class: 'ml-source-selection' })
 
@@ -71,7 +95,7 @@ export class SourceEditor {
       highlightActiveLineGutter(),
       history(),
       markdown(),
-      syntaxHighlighting(defaultHighlightStyle),
+      syntaxHighlighting(markleafHighlightStyle),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.lineWrapping,
       EditorState.tabSize.of(width),
