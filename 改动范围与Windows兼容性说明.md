@@ -78,6 +78,22 @@
 
 ---
 
+## 2.5 本轮新增的共享前端改动（macOS 侧实现，Windows 需回归）
+
+在并入上游 `efd817e` 之后，macOS 侧又对共享前端做了两处改动，**Windows 也会受影响**：
+
+1. **源码模式语法高亮改为主题感知**
+   - 上游用 `defaultHighlightStyle`（style-mod 生成非主题硬编码色，深色主题下看不清，且 `.tok-*` CSS 不生效）。
+   - macOS 侧改为 class-based `HighlightStyle`（`@lezer/highlight` 的 `tags`），产出 `.tok-*` 类，颜色由 `styles.css` 的主题变量控制。
+   - **影响**：前端新增 `@lezer/highlight` 直接依赖（需 `pnpm install`）；`.tok-*` CSS 从 4 条扩展为 16 条。
+   - Windows 回归点：源码模式语法高亮颜色、深色主题可读性。
+
+2. **导出配色方案（`colorSchemeCss`）**
+   - macOS 导出对话框新增「配色方案」下拉，把所选主题 CSS 作为 `colorSchemeCss` 传给前端 `generateExportHtml`（该参数上游已实现）。
+   - **影响**：Windows 的 `ExportDialog` 已实现同样功能，无需改动；仅确认前端 `generateExportHtml` 注入顺序（baseCss → colorSchemeCss → 排版样式）一致。
+
+---
+
 ## 3. 建议
 
 - Windows 端：拉取本分支后执行 `build-markleaf.bat`，按第 2 节清单逐项回归（重点：源码模式选区、WYSIWYG 选区、源码模式行号栏与缩进）。
