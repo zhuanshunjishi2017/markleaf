@@ -220,7 +220,6 @@ final class PreferencesWindowController: NSWindowController {
             .header("文件关联"),
             .field("", associateMDCheck),
             .field("", associateTextCheck),
-            .hint("勾选后 MarkLeaf 会成为该类文件的默认打开程序（双击即用 MarkLeaf 打开）；取消勾选会还原之前的默认程序。macOS 按内容类型绑定：.md/.markdown 共用一个，纯文本会覆盖所有 .txt 类文件。"),
             .header("储存管理"),
             .field("", linkButton("打开设置/缓存目录…", #selector(openSettingsFolder))),
             .header("日志管理"),
