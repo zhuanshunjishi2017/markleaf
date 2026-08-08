@@ -18,7 +18,7 @@ extension EditorSession {
                 case .success(let selection):
                     let text = mode == .markdown ? selection.markdown : selection.text
                     guard !text.isEmpty || !selection.html.isEmpty else {
-                        self.statusText = "当前没有可复制的文本"
+                        self.statusText = L10n.t("当前没有可复制的文本")
                         return
                     }
                     let pasteboard = NSPasteboard.general
@@ -28,9 +28,9 @@ extension EditorSession {
                         // macOS 剪贴板 HTML 类型（对应 Windows CF_HTML）
                         pasteboard.setString(selection.html, forType: .html)
                     }
-                    self.statusText = mode == .formatted ? "已复制格式化内容" : "已复制"
+                    self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
                 case .failure:
-                    self.statusText = "剪贴板操作失败"
+                    self.statusText = L10n.t("剪贴板操作失败")
                 }
             }
         }
@@ -50,7 +50,7 @@ extension EditorSession {
                 insertImageFile(at: url)
                 imported += 1
             }
-            statusText = imported > 0 ? "已插入 \(imported) 张图片" : "未找到可插入的图片"
+            statusText = imported > 0 ? "已插入 \(imported) 张图片" : L10n.t("未找到可插入的图片")
             return
         }
 
@@ -63,17 +63,17 @@ extension EditorSession {
         // 2) HTML 格式化粘贴（可视化模式）
         if !isSourceMode, let html = pasteboard.string(forType: .html), !html.isEmpty {
             execute("pasteHtml", text: html)
-            statusText = "已粘贴格式化内容"
+            statusText = L10n.t("已粘贴格式化内容")
             return
         }
 
         // 3) 纯文本
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
             execute("pasteText", text: text)
-            statusText = "已粘贴纯文本"
+            statusText = L10n.t("已粘贴纯文本")
             return
         }
-        statusText = "剪贴板中没有可粘贴的内容"
+        statusText = L10n.t("剪贴板中没有可粘贴的内容")
     }
 
     /// 剪贴板图片 → 保存到图片目录 → insertImage（对应 C# ImportClipboardBitmapAsync）。
@@ -81,7 +81,7 @@ extension EditorSession {
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else {
-            statusText = "无法读取剪贴板图片"
+            statusText = L10n.t("无法读取剪贴板图片")
             return
         }
 
@@ -95,7 +95,7 @@ extension EditorSession {
             try png.write(to: fileURL)
             let markdownPath = markdownReferencePath(for: fileURL.path)
             execute("insertImage", text: markdownPath + "\n图片")
-            statusText = "图片已插入文档"
+            statusText = L10n.t("图片已插入文档")
         } catch {
             presentError("保存剪贴板图片失败：\(error.localizedDescription)")
         }
@@ -108,7 +108,7 @@ extension EditorSession {
             return docURL.deletingLastPathComponent().appendingPathComponent("assets", isDirectory: true)
         }
         if settings.clipboardImageHandling == "copyToAssets" {
-            statusText = "文档未保存，无法复制到 .assets 目录，图片已保存到默认目录"
+            statusText = L10n.t("文档未保存，无法复制到 .assets 目录，图片已保存到默认目录")
         }
         if !settings.imageDefaultDirectory.isEmpty {
             return URL(fileURLWithPath: settings.imageDefaultDirectory, isDirectory: true)

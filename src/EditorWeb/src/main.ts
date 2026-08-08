@@ -297,7 +297,7 @@ function replaceEveryMatch(): void {
   const count = sourceMode
     ? sourceEditor?.replaceAll(findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked) ?? 0
     : replaceAllInEditor(editor, findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
-  findResult.textContent = count === 0 ? '0/0' : `已替换 ${count} 处`
+  findResult.textContent = count === 0 ? '0/0' : (markleafLanguage === 'zh-Hant' ? `已取代 ${count} 處` : markleafLanguage === 'en' ? `Replaced ${count} occurrence${count === 1 ? '' : 's'}` : `已替换 ${count} 处`)
   send('findResult', { current: count, total: count, replaced: count })
   activeInput.focus()
 }
@@ -510,6 +510,11 @@ function handleMessage(value: unknown): void {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'setLanguage') {
+          if (typeof payload.text === 'string') setMarkleafLanguage(payload.text)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'setSourceIndent') {
           const width = Number(payload.text) || 2
           sourceIndentWidth = Math.max(1, Math.min(8, Math.round(width)))
@@ -649,6 +654,53 @@ function applyAutoHideScrollbar(enabled: boolean): void {
   }
 }
 
+// ---- i18n：查找栏文案（跟随宿主语言，zh-Hans 为默认） ----
+const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
+  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏' },
+  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列' },
+  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar' },
+}
+
+function applyFindBarLanguage(lang: string): void {
+  const table: Record<string, string> = FIND_BAR_STRINGS[lang] ?? FIND_BAR_STRINGS['zh-Hans'] ?? {}
+  const findInput = document.getElementById('find-input') as HTMLInputElement | null
+  const replaceInput = document.getElementById('replace-input') as HTMLInputElement | null
+  if (findInput) {
+    findInput.placeholder = table.find ?? ''
+    findInput.setAttribute('aria-label', table.find ?? '')
+  }
+  if (replaceInput) {
+    replaceInput.placeholder = table.replaceWith ?? ''
+    replaceInput.setAttribute('aria-label', table.replaceWith ?? '')
+  }
+  const setText = (id: string, text: string) => {
+    const el = document.getElementById(id)
+    if (el) el.textContent = text
+  }
+  setText('find-previous', table.prev ?? '')
+  setText('find-next', table.next ?? '')
+  setText('replace-one', table.replace ?? '')
+  setText('replace-all', table.replaceAll ?? '')
+  setText('find-close', table.close ?? '')
+  const setLabelText = (labelId: string, inputId: string, text: string) => {
+    const label = document.getElementById(labelId)
+    const input = document.getElementById(inputId)
+    if (label) label.textContent = text
+    if (input) input.setAttribute('aria-label', text)
+  }
+  setLabelText('find-case-label', 'find-case', table.case ?? '')
+  setLabelText('find-whole-label', 'find-whole', table.whole ?? '')
+  const closeBtn = document.getElementById('find-close')
+  if (closeBtn) closeBtn.setAttribute('aria-label', table.closeAria ?? '')
+}
+
+let markleafLanguage = 'zh-Hans'
+function setMarkleafLanguage(lang: string): void {
+  markleafLanguage = lang
+  applyFindBarLanguage(lang)
+}
+
+applyFindBarLanguage(markleafLanguage)
 send('ready')
 
 ;(window as any).__markleaf_tab__ = (shift = false) => {

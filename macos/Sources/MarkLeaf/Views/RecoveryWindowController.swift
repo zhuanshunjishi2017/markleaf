@@ -13,7 +13,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
-        window.title = "恢复未保存的文档"
+        window.title = L10n.t("恢复未保存的文档")
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -25,13 +25,13 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         label.translatesAutoresizingMaskIntoConstraints = false
 
         let column1 = NSTableColumn(identifier: .init("name"))
-        column1.title = "名称"
+        column1.title = L10n.t("名称")
         column1.width = 200
         let column2 = NSTableColumn(identifier: .init("time"))
-        column2.title = "时间"
+        column2.title = L10n.t("时间")
         column2.width = 150
         let column3 = NSTableColumn(identifier: .init("path"))
-        column3.title = "原路径"
+        column3.title = L10n.t("原路径")
         column3.width = 160
         tableView.addTableColumn(column1)
         tableView.addTableColumn(column2)
@@ -46,11 +46,11 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         scroll.hasVerticalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let saveButton = NSButton(title: "另存为…", target: self, action: #selector(saveAs))
+        let saveButton = NSButton(title: L10n.t("另存为…"), target: self, action: #selector(saveAs))
         saveButton.keyEquivalent = "\r"
-        let discardButton = NSButton(title: "全部丢弃", target: self, action: #selector(discardAll))
+        let discardButton = NSButton(title: L10n.t("全部丢弃"), target: self, action: #selector(discardAll))
         discardButton.bezelStyle = .rounded
-        let cancelButton = NSButton(title: "取消", target: self, action: #selector(cancel))
+        let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancel))
         cancelButton.bezelStyle = .rounded
 
         let buttons = NSStackView(views: [saveButton, discardButton, cancelButton])
@@ -107,11 +107,11 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         }()
         switch column.identifier.rawValue {
         case "name":
-            cell.textField?.stringValue = snapshot.displayName ?? "未命名文档"
+            cell.textField?.stringValue = snapshot.displayName ?? L10n.t("未命名文档")
         case "time":
             cell.textField?.stringValue = timeFormatter.string(from: snapshot.timestamp)
         default:
-            cell.textField?.stringValue = snapshot.documentPath ?? "（未保存）"
+            cell.textField?.stringValue = snapshot.documentPath ?? L10n.t("（未保存）")
         }
         return cell
     }
@@ -122,18 +122,18 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         let row = tableView.selectedRow
         guard row >= 0, row < snapshots.count else {
             let alert = NSAlert()
-            alert.messageText = "请先选择一个要恢复的文档"
+            alert.messageText = L10n.t("请先选择一个要恢复的文档")
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "好")
+            alert.addButton(withTitle: L10n.t("好"))
             alert.beginSheetModal(for: window!)
             return
         }
         let snapshot = snapshots[row]
         let panel = NSSavePanel()
-        panel.title = "恢复并另存为"
+        panel.title = L10n.t("恢复并另存为")
         let base = snapshot.documentPath?.isEmpty == false
             ? (snapshot.documentPath! as NSString).lastPathComponent
-            : (snapshot.displayName ?? "恢复的文档") + ".md"
+            : (snapshot.displayName ?? L10n.t("恢复的文档")) + ".md"
         panel.nameFieldStringValue = base
         guard let window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in

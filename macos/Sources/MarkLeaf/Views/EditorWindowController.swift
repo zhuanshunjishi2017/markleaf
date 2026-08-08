@@ -4,7 +4,7 @@ import AppKit
 /// 对应 Windows 端 MainForm（含 SidebarTabBar + WorkspaceTreeView + OutlineTreeView）。
 final class EditorWindowController: NSWindowController, NSWindowDelegate {
     let session: EditorSession
-    private let statusLabel = NSTextField(labelWithString: "就绪")
+    private let statusLabel = NSTextField(labelWithString: L10n.t("就绪"))
     private let zoomLabel = NSTextField(labelWithString: "100%")
     private var sidebarView: SidebarView?
     private var editorView: EditorWebContainerView?

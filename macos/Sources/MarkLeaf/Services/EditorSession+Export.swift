@@ -6,8 +6,8 @@ extension EditorSession {
     func exportDocument() {
         guard let window = webView?.window else { return }
         let panel = NSSavePanel()
-        panel.title = "导出文档"
-        let baseName = documentURL?.deletingPathExtension().lastPathComponent ?? "未命名"
+        panel.title = L10n.t("导出文档")
+        let baseName = documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
         panel.nameFieldStringValue = baseName + ".pdf"
 
         let accessory = ExportAccessory(styles: styles, themes: colorThemes)
@@ -60,19 +60,19 @@ extension EditorSession {
               let text = String(data: data, encoding: .utf8) else { return }
         pendingExportContext = ExportContext(options: options, saveURL: saveURL)
         pendingExport = true
-        statusText = "正在生成导出内容…"
+        statusText = L10n.t("正在生成导出内容…")
         execute("exportDocument", text: text)
     }
 
     func handleExportedContent(_ html: String) {
         guard let context = pendingExportContext else {
-            AppLog.warning("收到无上下文的导出内容")
+            AppLog.warning(L10n.t("收到无上下文的导出内容"))
             return
         }
         pendingExportContext = nil
 
         if context.options.format == "pdf" {
-            statusText = "正在生成 PDF…"
+            statusText = L10n.t("正在生成 PDF…")
             AppLog.info("开始 PDF 导出流水线 (纸张 \(context.options.paperSize.rawValue))")
             PDFGenerator().generatePDF(
                 html: html,
@@ -85,7 +85,7 @@ extension EditorSession {
                     case .success(let data):
                         do {
                             try data.write(to: context.saveURL)
-                            self?.statusText = "已导出 PDF"
+                            self?.statusText = L10n.t("已导出 PDF")
                             AppLog.info("PDF 已导出: \(context.saveURL.path) (\(data.count) bytes)")
                             self?.onExportComplete?(true)
                         } catch {
@@ -101,7 +101,7 @@ extension EditorSession {
         } else {
             do {
                 try html.write(to: context.saveURL, atomically: true, encoding: .utf8)
-                statusText = "已导出 HTML"
+                statusText = L10n.t("已导出 HTML")
                 AppLog.info("HTML 已导出: \(context.saveURL.path)")
                 onExportComplete?(true)
             } catch {

@@ -4,13 +4,13 @@ import AppKit
 final class SidebarView: NSView {
     let session: EditorSession
 
-    private let tabControl = NSSegmentedControl(labels: ["工作区", "大纲"], trackingMode: .selectOne, target: nil, action: nil)
+    private let tabControl = NSSegmentedControl(labels: [L10n.t("工作区"), L10n.t("大纲")], trackingMode: .selectOne, target: nil, action: nil)
     private let containerView = NSView()
     private let workspaceTree = WorkspaceTreeView()
     private let outlineTree = OutlineTreeView()
     private let workspaceScroll = NSScrollView()
     private let outlineScroll = NSScrollView()
-    private let openFolderButton = NSButton(title: "打开文件夹", target: nil, action: nil)
+    private let openFolderButton = NSButton(title: L10n.t("打开文件夹"), target: nil, action: nil)
     private let placeholder = NSTextField(labelWithString: "暂未打开工作区\n点击“打开文件夹”开始")
 
     init(session: EditorSession) {

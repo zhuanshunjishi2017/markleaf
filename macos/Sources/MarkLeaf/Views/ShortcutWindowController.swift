@@ -3,22 +3,22 @@ import AppKit
 /// 快捷键参考窗口：表格列出 快捷键 | 功能。
 final class ShortcutWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let shortcuts: [(String, String)] = [
-        ("⌘N", "新建文档"),
-        ("⇧⌘N", "新建窗口"),
-        ("⌘O", "打开…"),
-        ("⌘S", "保存"),
-        ("⇧⌘S", "另存为…"),
-        ("⇧⌘E", "导出…"),
-        ("⌘Z / ⇧⌘Z", "撤销 / 重做"),
-        ("⌘X / ⌘C / ⌘V", "剪切 / 拷贝 / 粘贴"),
-        ("⌘F / ⌥⌘F", "查找 / 替换"),
-        ("⌘B / ⌘I / ⌘U", "加粗 / 斜体 / 下划线"),
-        ("⌘K", "插入超链接"),
-        ("⌘1 – ⌘6", "标题 1 – 6"),
-        ("⌥⌘U", "源码模式"),
-        ("⌘+ / ⌘- / ⌘0", "放大 / 缩小 / 100%"),
-        ("⌥⌘S", "复制为 Markdown 源码"),
-        ("⌘,", "偏好设置"),
+        ("⌘N", L10n.t("新建文档")),
+        ("⇧⌘N", L10n.t("新建窗口")),
+        ("⌘O", L10n.t("打开…")),
+        ("⌘S", L10n.t("保存")),
+        ("⇧⌘S", L10n.t("另存为…")),
+        ("⇧⌘E", L10n.t("导出…")),
+        ("⌘Z / ⇧⌘Z", L10n.t("撤销 / 重做")),
+        ("⌘X / ⌘C / ⌘V", L10n.t("剪切 / 拷贝 / 粘贴")),
+        ("⌘F / ⌥⌘F", L10n.t("查找 / 替换")),
+        ("⌘B / ⌘I / ⌘U", L10n.t("加粗 / 斜体 / 下划线")),
+        ("⌘K", L10n.t("插入超链接")),
+        ("⌘1 – ⌘6", L10n.t("标题 1 – 6")),
+        ("⌥⌘U", L10n.t("源码模式")),
+        ("⌘+ / ⌘- / ⌘0", L10n.t("放大 / 缩小 / 100%")),
+        ("⌥⌘S", L10n.t("复制为 Markdown 源码")),
+        ("⌘,", L10n.t("偏好设置")),
     ]
 
     private let tableView = NSTableView()
@@ -29,7 +29,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
-        window.title = "快捷键"
+        window.title = L10n.t("快捷键")
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -44,12 +44,12 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         guard let window else { return }
 
         let keyColumn = NSTableColumn(identifier: .init("key"))
-        keyColumn.title = "快捷键"
+        keyColumn.title = L10n.t("快捷键")
         keyColumn.width = 170
         // 表头与正文对齐一致：快捷键列右对齐，功能列左对齐
         keyColumn.headerCell.alignment = .right
         let descColumn = NSTableColumn(identifier: .init("desc"))
-        descColumn.title = "功能"
+        descColumn.title = L10n.t("功能")
         descColumn.width = 210
         descColumn.headerCell.alignment = .left
         tableView.addTableColumn(keyColumn)
@@ -65,7 +65,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         scroll.hasVerticalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let doneButton = NSButton(title: "好", target: self, action: #selector(closeWindow))
+        let doneButton = NSButton(title: L10n.t("好"), target: self, action: #selector(closeWindow))
         doneButton.keyEquivalent = "\r"
         doneButton.translatesAutoresizingMaskIntoConstraints = false
 

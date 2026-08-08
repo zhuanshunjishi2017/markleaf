@@ -8,7 +8,7 @@ import WebKit
 final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     // MARK: 可观察状态（AppKit 通过 onStateChanged 刷新 UI）
 
-    var statusText = "就绪" {
+    var statusText = L10n.t("就绪") {
         didSet { notify() }
     }
     private(set) var isDirty = false {
@@ -131,7 +131,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "documentLoaded":
             AppLog.info("文档加载完成")
-            statusText = "已加载"
+            statusText = L10n.t("已加载")
             applyPostLoadSettings()
 
         case "snapshot":
@@ -142,7 +142,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "dirtyChanged":
             let dirty = payload?["dirty"] as? Bool ?? false
             isDirty = dirty
-            statusText = dirty ? "已修改" : "已保存"
+            statusText = dirty ? L10n.t("已修改") : L10n.t("已保存")
 
         case "editorStatusChanged":
             updateStatus(from: payload)
@@ -163,7 +163,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                       let position = dict["position"] as? Int else { return nil }
                 return OutlineHeading(level: level, text: text, position: position)
             }
-            statusText = "大纲 \(outlineHeadings.count) 项"
+            statusText = L10n.f("大纲 %d 项", outlineHeadings.count)
             onOutlineChanged?()
 
         case "openLink":
@@ -182,7 +182,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "error":
             let detail = payload?["message"] as? String ?? "未知错误"
             AppLog.warning("编辑器前端错误: \(detail)")
-            statusText = "前端错误"
+            statusText = L10n.t("前端错误")
 
         case "selectionExport":
             handleSelectionExport(payload)
@@ -243,24 +243,24 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let line = payload["line"] as? Int ?? 1
         let column = payload["column"] as? Int ?? 1
         let characterCount = payload["characterCount"] as? Int ?? 0
-        statusText = "\(Self.blockTypeDisplayName(blockType)) · 行 \(line) 列 \(column) · \(characterCount) 字符"
+        statusText = L10n.f("%@ · 行 %d 列 %d · %d 字符", Self.blockTypeDisplayName(blockType), line, column, characterCount)
     }
 
     private static func blockTypeDisplayName(_ blockType: String) -> String {
         switch blockType {
-        case "paragraph": return "正文"
-        case "heading1": return "标题 1"
-        case "heading2": return "标题 2"
-        case "heading3": return "标题 3"
-        case "heading4": return "标题 4"
-        case "heading5": return "标题 5"
-        case "heading6": return "标题 6"
-        case "blockquote": return "引用"
-        case "codeBlock": return "代码块"
-        case "bulletList": return "无序列表"
-        case "orderedList": return "有序列表"
-        case "taskList": return "任务列表"
-        case "table": return "表格"
+        case "paragraph": return L10n.t("正文")
+        case "heading1": return L10n.t("标题 1")
+        case "heading2": return L10n.t("标题 2")
+        case "heading3": return L10n.t("标题 3")
+        case "heading4": return L10n.t("标题 4")
+        case "heading5": return L10n.t("标题 5")
+        case "heading6": return L10n.t("标题 6")
+        case "blockquote": return L10n.t("引用")
+        case "codeBlock": return L10n.t("代码块")
+        case "bulletList": return L10n.t("无序列表")
+        case "orderedList": return L10n.t("有序列表")
+        case "taskList": return L10n.t("任务列表")
+        case "table": return L10n.t("表格")
         case "image": return "图片"
         default: return blockType
         }
@@ -340,6 +340,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             currentStyleId = saved.markdownStyle
         }
         send("applyStyles", payload: payload)
+        // 下发界面语言（前端查找栏等文案本地化）
+        execute("setLanguage", text: SettingsService.shared.settings.displayLanguage)
         onStylesReady?()
     }
 
@@ -371,7 +373,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         revision = 0
         isDirty = false
         documentURL = fileURL
-        statusText = fileURL?.lastPathComponent ?? "未命名"
+        statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
         if let fileURL {
             startExternalChangeWatch(for: fileURL)
         } else {
@@ -455,26 +457,26 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private func handleExternalChange(_ url: URL) {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            statusText = "文件已被外部删除"
+            statusText = L10n.t("文件已被外部删除")
             return
         }
         guard let window = webView?.window else { return }
         let alert = NSAlert()
-        alert.messageText = "文件已在外部修改"
+        alert.messageText = L10n.t("文件已在外部修改")
         alert.informativeText = isDirty
-            ? "\(url.lastPathComponent) 已被其他程序修改。重新加载将丢失当前未保存的更改。"
-            : "\(url.lastPathComponent) 已被其他程序修改，是否重新加载？"
+            ? L10n.f("%@ 已被其他程序修改。重新加载将丢失当前未保存的更改。", url.lastPathComponent)
+            : L10n.f("%@ 已被其他程序修改，是否重新加载？", url.lastPathComponent)
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "重新加载")
-        alert.addButton(withTitle: "忽略")
+        alert.addButton(withTitle: L10n.t("重新加载"))
+        alert.addButton(withTitle: L10n.t("忽略"))
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             do {
                 let markdown = try String(contentsOf: url, encoding: .utf8)
                 self?.loadDocument(markdown: markdown, fileURL: url)
-                self?.statusText = "已重新加载外部更改"
+                self?.statusText = L10n.t("已重新加载外部更改")
             } catch {
-                self?.statusText = "外部文件读取失败"
+                self?.statusText = L10n.t("外部文件读取失败")
             }
         }
     }
@@ -583,7 +585,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let clamped = min(200, max(50, percent))
         zoomPercent = Int(clamped.rounded())
         applyVisualVariables(fontSize: nil, maxWidth: nil)
-        statusText = "缩放 \(zoomPercent)%"
+        statusText = L10n.f("缩放 %d%%", zoomPercent)
         if persist {
             SettingsService.shared.update { $0.zoomPercent = zoomPercent }
         }
@@ -667,7 +669,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             SettingsService.shared.update { $0.lastFile = url.path }
         } catch {
             AppLog.error("打开文档失败: \(url.path) \(error.localizedDescription)")
-            presentError("无法打开文档：\(error.localizedDescription)")
+            presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
         }
     }
 
@@ -707,13 +709,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                         self?.documentURL = url
                         SettingsService.shared.update { $0.lastFile = url.path }
                         self?.isDirty = false
-                        self?.statusText = "已保存"
+                        self?.statusText = L10n.t("已保存")
                         AppLog.info("文档已保存: \(url.path)")
                     } catch {
-                        self?.presentError("保存失败：\(error.localizedDescription)")
+                        self?.presentError(L10n.f("保存失败：%@", error.localizedDescription))
                     }
                 case .failure(let error):
-                    self?.presentError("获取文档内容失败：\(error.localizedDescription)")
+                    self?.presentError(L10n.f("获取文档内容失败：%@", error.localizedDescription))
                 }
             }
         }
@@ -722,7 +724,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func presentError(_ message: String) {
         AppLog.error(message)
-        statusText = "出错"
+        statusText = L10n.t("出错")
         if let window = webView?.window {
             let alert = NSAlert()
             alert.messageText = message
@@ -840,11 +842,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func insertLink() {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
-        alert.messageText = "插入超链接"
-        alert.informativeText = "输入链接地址："
+        alert.messageText = L10n.t("插入超链接")
+        alert.informativeText = L10n.t("输入链接地址：")
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "确定")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         field.placeholderString = "https://example.com"
         alert.accessoryView = field
@@ -875,10 +877,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func insertImageFromUrl() {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
-        alert.messageText = "插入来自互联网的图片"
-        alert.informativeText = "请输入图片URL："
+        alert.messageText = L10n.t("插入来自互联网的图片")
+        alert.informativeText = L10n.t("请输入图片URL：")
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "插入")
+        alert.addButton(withTitle: L10n.t("插入"))
         alert.addButton(withTitle: "取消")
 
         // 注意：NSAlert 的 accessoryView 需用显式 frame（Auto Layout 的 NSStackView 会塌陷为 0 高，输入框不可见）
@@ -911,11 +913,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             guard response == .alertFirstButtonReturn else { return }
             let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
             guard URL(string: url).map({ $0.scheme == "http" || $0.scheme == "https" }) ?? false else {
-                self?.presentError("仅支持 http/https 图片地址")
+                self?.presentError(L10n.t("仅支持 http/https 图片地址"))
                 return
             }
             self?.execute("insertImage", text: url + "\n图片")
-            self?.statusText = "图片已插入文档"
+            self?.statusText = L10n.t("图片已插入文档")
         }
     }
 

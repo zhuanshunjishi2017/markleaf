@@ -11,6 +11,7 @@ struct AppSettings: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 3
+        displayLanguage = try container.decodeIfPresent(String.self, forKey: .displayLanguage) ?? Self.detectSystemLanguage()
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
         let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "colors-white-only"
         // colors-white.css 已被 Windows 版移除（由 colors-white-only.css 替代），旧配置迁移
@@ -47,6 +48,19 @@ struct AppSettings: Codable {
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         statusBarVisible = try container.decodeIfPresent(Bool.self, forKey: .statusBarVisible) ?? true
         sidebarTab = try container.decodeIfPresent(String.self, forKey: .sidebarTab) ?? "workspace"
+    }
+
+    // 界面语言（i18n）：zh-Hans / zh-Hant / en
+    var displayLanguage = AppSettings.detectSystemLanguage()
+
+    /// 首次运行未设置语言时跟随系统语言。
+    static func detectSystemLanguage() -> String {
+        let lang = Locale.preferredLanguages.first ?? "zh-Hans"
+        if lang.hasPrefix("zh-Hant") || lang.hasPrefix("zh-HK") || lang.hasPrefix("zh-TW") || lang.hasPrefix("zh-MO") {
+            return "zh-Hant"
+        }
+        if lang.hasPrefix("en") { return "en" }
+        return "zh-Hans"
     }
 
     // 外观

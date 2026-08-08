@@ -9,13 +9,13 @@ final class NativeMenuBuilder {
     func build() -> NSMenu {
         let mainMenu = NSMenu()
         addMenu(mainMenu, title: ProcessInfo.processInfo.processName, submenu: appMenu())
-        addMenu(mainMenu, title: "文件", submenu: fileMenu())
-        addMenu(mainMenu, title: "编辑", submenu: editMenu())
-        addMenu(mainMenu, title: "段落", submenu: paragraphMenu())
-        addMenu(mainMenu, title: "格式", submenu: formatMenu())
-        addMenu(mainMenu, title: "视图", submenu: viewMenu())
-        addMenu(mainMenu, title: "外观", submenu: appearanceMenu())
-        addMenu(mainMenu, title: "帮助", submenu: helpMenu())
+        addMenu(mainMenu, title: L10n.t("文件"), submenu: fileMenu())
+        addMenu(mainMenu, title: L10n.t("编辑"), submenu: editMenu())
+        addMenu(mainMenu, title: L10n.t("段落"), submenu: paragraphMenu())
+        addMenu(mainMenu, title: L10n.t("格式"), submenu: formatMenu())
+        addMenu(mainMenu, title: L10n.t("视图"), submenu: viewMenu())
+        addMenu(mainMenu, title: L10n.t("外观"), submenu: appearanceMenu())
+        addMenu(mainMenu, title: L10n.t("帮助"), submenu: helpMenu())
         return mainMenu
     }
 
@@ -34,15 +34,15 @@ final class NativeMenuBuilder {
 
     private func appMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("关于 MarkLeaf", "showAbout"))
+        menu.addItem(commandItem(L10n.t("关于 MarkLeaf"), "showAbout"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("偏好设置…", "showPreferences", key: ","))
+        menu.addItem(commandItem(L10n.t("偏好设置…"), "showPreferences", key: ","))
         menu.addItem(.separator())
-        menu.addItem(item("隐藏 MarkLeaf", #selector(NSApplication.hide(_:)), target: NSApp, key: "h"))
-        menu.addItem(item("隐藏其他", #selector(NSApplication.hideOtherApplications(_:)), target: NSApp, key: "h", mask: [.command, .option]))
-        menu.addItem(item("全部显示", #selector(NSApplication.unhideAllApplications(_:)), target: NSApp))
+        menu.addItem(item(L10n.t("隐藏 MarkLeaf"), #selector(NSApplication.hide(_:)), target: NSApp, key: "h"))
+        menu.addItem(item(L10n.t("隐藏其他"), #selector(NSApplication.hideOtherApplications(_:)), target: NSApp, key: "h", mask: [.command, .option]))
+        menu.addItem(item(L10n.t("全部显示"), #selector(NSApplication.unhideAllApplications(_:)), target: NSApp))
         menu.addItem(.separator())
-        menu.addItem(item("退出 MarkLeaf", #selector(NSApplication.terminate(_:)), target: NSApp, key: "q"))
+        menu.addItem(item(L10n.t("退出 MarkLeaf"), #selector(NSApplication.terminate(_:)), target: NSApp, key: "q"))
         return menu
     }
 
@@ -50,28 +50,28 @@ final class NativeMenuBuilder {
 
     private func fileMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("新建", "new", key: "n"))
-        menu.addItem(commandItem("新建窗口", "newWindow"))
-        menu.addItem(commandItem("打开…", "open", key: "o"))
-        menu.addItem(commandItem("在新窗口中打开…", "openInNewWindow"))
-        menu.addItem(commandItem("打开文件夹…", "openFolder"))
+        menu.addItem(commandItem(L10n.t("新建"), "new", key: "n"))
+        menu.addItem(commandItem(L10n.t("新建窗口"), "newWindow"))
+        menu.addItem(commandItem(L10n.t("打开…"), "open", key: "o"))
+        menu.addItem(commandItem(L10n.t("在新窗口中打开…"), "openInNewWindow"))
+        menu.addItem(commandItem(L10n.t("打开文件夹…"), "openFolder"))
 
         // 最近项目：最近文件 + 最近文件夹（动态刷新）
-        let recent = NSMenu(title: "最近项目")
+        let recent = NSMenu(title: L10n.t("最近项目"))
         recent.delegate = RecentMenuDelegate.shared
-        let recentParent = NSMenuItem(title: "最近项目", action: nil, keyEquivalent: "")
+        let recentParent = NSMenuItem(title: L10n.t("最近项目"), action: nil, keyEquivalent: "")
         recentParent.submenu = recent
         menu.addItem(recentParent)
 
         menu.addItem(.separator())
-        menu.addItem(commandItem("保存", "save", key: "s"))
-        menu.addItem(commandItem("另存为…", "saveAs", key: "S"))
-        menu.addItem(commandItem("导出…", "export", key: "e", mask: [.command, .shift]))
+        menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
+        menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
+        menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
         menu.addItem(commandItem("恢复未保存的文件…", "recoverUnsavedFiles"))
         menu.addItem(.separator())
         menu.addItem(commandItem("关闭文件夹", "closeFolder"))
         menu.addItem(.separator())
-        menu.addItem(item("关闭窗口", #selector(NSWindow.performClose(_:)), target: nil, key: "w"))
+        menu.addItem(item(L10n.t("关闭窗口"), #selector(NSWindow.performClose(_:)), target: nil, key: "w"))
         return menu
     }
 
@@ -79,17 +79,17 @@ final class NativeMenuBuilder {
 
     private func editMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("撤销", "undo", key: "z"))
-        menu.addItem(commandItem("重做", "redo", key: "Z"))
+        menu.addItem(commandItem(L10n.t("撤销"), "undo", key: "z"))
+        menu.addItem(commandItem(L10n.t("重做"), "redo", key: "Z"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("剪切", "cut", key: "x"))
-        menu.addItem(commandItem("拷贝", "copy", key: "c"))
-        menu.addItem(commandItem("复制为 Markdown 源码", "copyMarkdown"))
+        menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))
+        menu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))
+        menu.addItem(commandItem(L10n.t("复制为 Markdown 源码"), "copyMarkdown"))
         menu.addItem(commandItem("复制为纯文本", "copyPlain"))
-        menu.addItem(commandItem("粘贴", "paste", key: "v"))
+        menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("查找", "find", key: "f"))
-        menu.addItem(commandItem("替换", "replace", key: "f", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))
+        menu.addItem(commandItem(L10n.t("替换"), "replace", key: "f", mask: [.command, .option]))
         return menu
     }
 
@@ -97,26 +97,26 @@ final class NativeMenuBuilder {
 
     private func paragraphMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("正文", "setParagraph"))
+        menu.addItem(commandItem(L10n.t("正文"), "setParagraph"))
 
-        let headings = NSMenu(title: "标题")
+        let headings = NSMenu(title: L10n.t("标题"))
         for level in 1...6 {
             headings.addItem(commandItem("\(Self.levelName(level))级标题", "setHeading\(level)", key: "\(level)"))
         }
         menu.addItem(popup("标题", headings))
 
         menu.addItem(.separator())
-        menu.addItem(commandItem("提升标题级别", "promoteHeading", key: "."))
-        menu.addItem(commandItem("降低标题级别", "demoteHeading", key: ","))
+        menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: "."))
+        menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ","))
         menu.addItem(.separator())
         menu.addItem(commandItem("引用", "toggleBlockquote"))
-        menu.addItem(commandItem("代码块", "toggleCodeBlock"))
-        menu.addItem(commandItem("水平线", "insertHorizontalRule"))
+        menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
+        menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
 
-        let lists = NSMenu(title: "列表")
-        lists.addItem(commandItem("无序列表", "toggleBulletList"))
-        lists.addItem(commandItem("有序列表", "toggleOrderedList"))
-        lists.addItem(commandItem("任务列表", "toggleTaskList"))
+        let lists = NSMenu(title: L10n.t("列表"))
+        lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
+        lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
+        lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
         menu.addItem(popup("列表", lists))
 
         menu.addItem(popup("表格", tableMenu()))
@@ -124,8 +124,8 @@ final class NativeMenuBuilder {
     }
 
     private func tableMenu() -> NSMenu {
-        let menu = NSMenu(title: "表格")
-        menu.addItem(commandItem("插入表格", "insertTable"))
+        let menu = NSMenu(title: L10n.t("表格"))
+        menu.addItem(commandItem(L10n.t("插入表格"), "insertTable"))
         menu.addItem(.separator())
         menu.addItem(commandItem("在上方添加行", "addRowBefore"))
         menu.addItem(commandItem("在下方添加行", "addRowAfter"))
@@ -147,17 +147,17 @@ final class NativeMenuBuilder {
 
     private func formatMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("加粗", "toggleBold", key: "b"))
-        menu.addItem(commandItem("斜体", "toggleItalic", key: "i"))
-        menu.addItem(commandItem("下划线", "toggleUnderline", key: "u"))
-        menu.addItem(commandItem("删除线", "toggleStrike"))
+        menu.addItem(commandItem(L10n.t("加粗"), "toggleBold", key: "b"))
+        menu.addItem(commandItem(L10n.t("斜体"), "toggleItalic", key: "i"))
+        menu.addItem(commandItem(L10n.t("下划线"), "toggleUnderline", key: "u"))
+        menu.addItem(commandItem(L10n.t("删除线"), "toggleStrike"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("行内代码", "toggleCode"))
+        menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("插入超链接…", "insertLink", key: "k"))
-        menu.addItem(commandItem("插入本地图片…", "insertImage"))
-        menu.addItem(commandItem("插入来自互联网的图片…", "insertImageFromUrl"))
-        menu.addItem(commandItem("顺时针旋转图片", "rotateImage"))
+        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
+        menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
+        menu.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
+        menu.addItem(commandItem(L10n.t("顺时针旋转图片"), "rotateImage"))
         return menu
     }
 
@@ -165,16 +165,16 @@ final class NativeMenuBuilder {
 
     private func viewMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("显示侧栏", "toggleSidebar"))
+        menu.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("工作区", "workspaceTab"))
-        menu.addItem(commandItem("大纲", "outlineTab"))
+        menu.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))
+        menu.addItem(commandItem(L10n.t("大纲"), "outlineTab"))
         menu.addItem(.separator())
         menu.addItem(commandItem("树结构", "treeView"))
         menu.addItem(commandItem("文档列表", "listView"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("显示状态栏", "toggleStatusBar"))
-        menu.addItem(commandItem("源码模式", "sourceMode", key: "u", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
+        menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
         return menu
     }
 
@@ -187,16 +187,16 @@ final class NativeMenuBuilder {
         let themes = session?.colorThemes ?? []
 
         // 排版样式（动态）
-        let styleMenu = NSMenu(title: "排版样式")
+        let styleMenu = NSMenu(title: L10n.t("排版样式"))
         for style in styles {
             let item = styleItem(style.displayName, #selector(MenuRouter.chooseStyle(_:)), style.id)
             item.state = style.id == session?.currentStyleId ? .on : .off
             styleMenu.addItem(item)
         }
-        menu.addItem(popup("排版样式", styleMenu))
+        menu.addItem(popup(L10n.t("排版样式"), styleMenu))
 
         // 颜色主题（浅色 / 深色分组，对应 Windows RefreshColorMenu）
-        let themeMenu = NSMenu(title: "颜色主题")
+        let themeMenu = NSMenu(title: L10n.t("颜色主题"))
         let lightThemes = themes.filter { !$0.isDark }
         let darkThemes = themes.filter { $0.isDark }
         for theme in lightThemes {
@@ -212,12 +212,12 @@ final class NativeMenuBuilder {
             item.state = theme.id == session?.currentThemeId ? .on : .off
             themeMenu.addItem(item)
         }
-        menu.addItem(popup("颜色主题", themeMenu))
+        menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
 
         menu.addItem(.separator())
 
         // 设置缩放（对应 Windows RefreshZoomMenu）
-        let zoomMenu = NSMenu(title: "设置缩放")
+        let zoomMenu = NSMenu(title: L10n.t("设置缩放"))
         for percent in Self.zoomOptions {
             let item = NSMenuItem(title: "\(percent)%", action: #selector(MenuRouter.setZoom(_:)), keyEquivalent: "")
             item.target = MenuRouter.shared
@@ -226,11 +226,11 @@ final class NativeMenuBuilder {
             zoomMenu.addItem(item)
         }
         menu.addItem(popup("设置缩放", zoomMenu))
-        menu.addItem(commandItem("放大", "zoomIn", key: "="))
-        menu.addItem(commandItem("缩小", "zoomOut", key: "-"))
-        menu.addItem(commandItem("重置为100%", "resetZoom", key: "0"))
+        menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
+        menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
+        menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("打开主题文件夹…", "revealThemeFolder"))
+        menu.addItem(commandItem(L10n.t("打开主题文件夹…"), "revealThemeFolder"))
         return menu
     }
 
@@ -238,10 +238,10 @@ final class NativeMenuBuilder {
 
     private func helpMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem("快捷键", "showShortcuts"))
+        menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("MarkLeaf 项目主页", "openHomepage"))
-        menu.addItem(commandItem("MarkLeaf 帮助", "openHelp"))
+        menu.addItem(commandItem(L10n.t("MarkLeaf 项目主页"), "openHomepage"))
+        menu.addItem(commandItem(L10n.t("MarkLeaf 帮助"), "openHelp"))
         return menu
     }
 
@@ -387,11 +387,11 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
         let settings = SettingsService.shared.settings
 
         if settings.recordRecentFiles {
-            let filesHeader = disabledItem("最近文件")
+            let filesHeader = disabledItem(L10n.t("最近文件"))
             menu.addItem(filesHeader)
             let files = settings.recentFiles.prefix(10)
             if files.isEmpty {
-                menu.addItem(disabledItem("(暂无)"))
+                menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in files.enumerated() {
                 menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path))
@@ -399,7 +399,7 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
         }
         if settings.recordRecentFolders {
             if settings.recordRecentFiles { menu.addItem(.separator()) }
-            let foldersHeader = disabledItem("最近文件夹")
+            let foldersHeader = disabledItem(L10n.t("最近文件夹"))
             menu.addItem(foldersHeader)
             let folders = settings.recentFolders.prefix(10)
             if folders.isEmpty {

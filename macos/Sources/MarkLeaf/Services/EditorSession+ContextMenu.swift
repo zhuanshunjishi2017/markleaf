@@ -10,35 +10,35 @@ extension EditorSession {
         let screenPoint = window.convertToScreen(NSRect(origin: pointInWindow, size: .zero)).origin
 
         let menu = NSMenu()
-        addFormatCommand(menu, "粗体", "toggleBold", "b")
-        addFormatCommand(menu, "斜体", "toggleItalic", "i")
-        addFormatCommand(menu, "删除线", "toggleStrike")
-        addFormatCommand(menu, "行内代码", "toggleCode")
+        addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
+        addFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
+        addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
+        addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
         menu.addItem(.separator())
-        let levelNames = ["一级", "二级", "三级"]
+        let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
         for level in 1...3 {
             addFormatCommand(menu, "\(levelNames[level - 1])标题", "setHeading\(level)", "\(level)")
         }
-        addFormatCommand(menu, "正文", "setParagraph")
+        addFormatCommand(menu, L10n.t("正文"), "setParagraph")
         menu.addItem(.separator())
-        addFormatCommand(menu, "无序列表", "toggleBulletList")
-        addFormatCommand(menu, "有序列表", "toggleOrderedList")
-        addFormatCommand(menu, "任务列表", "toggleTaskList")
-        addFormatCommand(menu, "引用块", "toggleBlockquote")
-        addFormatCommand(menu, "代码块", "toggleCodeBlock")
+        addFormatCommand(menu, L10n.t("无序列表"), "toggleBulletList")
+        addFormatCommand(menu, L10n.t("有序列表"), "toggleOrderedList")
+        addFormatCommand(menu, L10n.t("任务列表"), "toggleTaskList")
+        addFormatCommand(menu, L10n.t("引用块"), "toggleBlockquote")
+        addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
         menu.addItem(.separator())
-        addFormatCommand(menu, "水平线", "insertHorizontalRule")
-        addFormatCommand(menu, "插入表格", "insertTable")
+        addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+        addFormatCommand(menu, L10n.t("插入表格"), "insertTable")
         menu.addItem(.separator())
 
-        let copyAs = NSMenuItem(title: "复制为", action: nil, keyEquivalent: "")
+        let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
         let copyAsMenu = NSMenu()
-        copyAsMenu.addItem(menuItem("格式化", #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
-        copyAsMenu.addItem(menuItem("纯文本", #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
+        copyAsMenu.addItem(menuItem(L10n.t("格式化"), #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
+        copyAsMenu.addItem(menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
         copyAsMenu.addItem(menuItem("Markdown", #selector(copyMarkdown(_:))))
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)
-        menu.addItem(menuItem("粘贴", #selector(pasteFromClipboardAction(_:)), key: "v"))
+        menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
 
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
@@ -55,14 +55,14 @@ extension EditorSession {
         } else {
             if settings.fileImageHandling == "copyToAssets" {
                 // 文档未保存：无法复制到 .assets 目录，回退为引用原位置（对应 Windows 提示）
-                statusText = "文档未保存，无法复制到 .assets 目录，图片将引用原位置"
+                statusText = L10n.t("文档未保存，无法复制到 .assets 目录，图片将引用原位置")
             }
             physicalPath = url.path
         }
         let markdownPath = markdownReferencePath(for: physicalPath)
         execute("insertImage", text: markdownPath + "\n图片")
         if settings.fileImageHandling != "copyToAssets" || documentURL != nil {
-            statusText = "图片已插入文档"
+            statusText = L10n.t("图片已插入文档")
         }
     }
 

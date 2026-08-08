@@ -39,7 +39,7 @@ final class AppWindowManager {
     func openDocumentInNewWindow() {
         guard let session = activeSession, let window = session.webView?.window else { return }
         let panel = NSOpenPanel()
-        panel.title = "在新窗口中打开"
+        panel.title = L10n.t("在新窗口中打开")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
@@ -141,7 +141,7 @@ final class AppWindowManager {
             let alert = NSAlert()
             alert.messageText = "未发现需要恢复的文件。"
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "好")
+            alert.addButton(withTitle: L10n.t("好"))
             if let window = activeSession?.webView?.window {
                 alert.beginSheetModal(for: window)
             } else {
