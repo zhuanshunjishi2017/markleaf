@@ -175,7 +175,7 @@ final class PreferencesWindowController: NSWindowController {
             .field("快照保存间隔", fieldRow(snapshotIntervalField, unit: "秒")),
             .field("", linkButton("恢复未保存的文档…", #selector(recoverUnsavedFiles))),
             .header("换行风格"),
-            .field("新建文件换行", newLinePopup),
+            .field("文件换行风格", newLinePopup),
             .hint("此设置项仅控制新建文件的换行符，打开的文件将保留其原有换行风格。"),
             .header("历史记录"),
             .field("", recordRecentFilesCheck),
