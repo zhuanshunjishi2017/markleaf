@@ -546,6 +546,10 @@
   "prefs.images.uploadConfig": "圖片上傳設定(&U)...",
   "prefs.images.selectDefaultDir": "選擇預設圖片目錄",
 
+  "folder.themes": "主題樣式資料夾",
+  "folder.cache": "快取目錄",
+  "folder.logs": "記錄目錄",
+
   "error.themeFolderNotFound": "找不到主題樣式資料夾。",
   "error.copyThemeFailed": "無法複製主題檔案：{0}",
   "error.fileAssociationFailed": "無法更新檔案關聯。",

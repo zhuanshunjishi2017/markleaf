@@ -549,6 +549,10 @@
   "dialog.settingsFileNotCreated": "配置文件尚未生成。",
   "error.cannotOpenSettingsFile": "无法打开配置文件。",
 
+  "folder.themes": "主题样式文件夹",
+  "folder.cache": "缓存目录",
+  "folder.logs": "日志目录",
+
   "error.themeFolderNotFound": "未找到主题样式文件夹。",
   "error.copyThemeFailed": "无法复制主题文件：{0}",
   "error.fileAssociationFailed": "无法更新文件关联。",

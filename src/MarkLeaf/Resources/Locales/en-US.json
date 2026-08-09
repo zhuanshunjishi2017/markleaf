@@ -546,6 +546,10 @@
   "prefs.images.uploadConfig": "Image &Upload Settings...",
   "prefs.images.selectDefaultDir": "Select Default Image Directory",
 
+  "folder.themes": "Theme Styles",
+  "folder.cache": "Cache",
+  "folder.logs": "Logs",
+
   "error.themeFolderNotFound": "Theme styles folder not found.",
   "error.copyThemeFailed": "Failed to copy theme file: {0}",
   "error.fileAssociationFailed": "Failed to update file associations.",

@@ -106,14 +106,14 @@ internal static partial class ColorThemeService
 
     public static string GetDefaultLightThemeId()
     {
-        var light = Themes.Find(t => !t.IsDark);
-        return light?.Id ?? (Themes.Count > 0 ? Themes[0].Id : "white");
+        return TryGetTheme("white-only") is not null ? "white-only" : "white";
     }
 
     public static string GetDefaultDarkThemeId()
     {
-        var dark = Themes.Find(t => t.IsDark);
-        return dark?.Id ?? (Themes.Count > 1 ? Themes[1].Id : "white");
+        if (TryGetTheme("dark") is not null) return "dark";
+        var fallback = Themes.Find(t => t.IsDark);
+        return fallback?.Id ?? "dark";
     }
 
     public static string GetSystemDefaultThemeId()

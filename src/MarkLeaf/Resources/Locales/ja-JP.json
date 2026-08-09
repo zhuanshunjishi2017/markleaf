@@ -546,6 +546,10 @@
   "prefs.images.uploadConfig": "画像アップロード設定(&U)...",
   "prefs.images.selectDefaultDir": "デフォルト画像ディレクトリを選択",
 
+  "folder.themes": "テーマフォルダー",
+  "folder.cache": "キャッシュ",
+  "folder.logs": "ログ",
+
   "error.themeFolderNotFound": "テーマフォルダーが見つかりません。",
   "error.copyThemeFailed": "テーマファイルのコピーに失敗しました：{0}",
   "error.fileAssociationFailed": "ファイルの関連付けを更新できませんでした。",

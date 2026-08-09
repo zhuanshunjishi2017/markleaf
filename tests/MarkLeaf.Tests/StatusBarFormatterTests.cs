@@ -7,6 +7,9 @@ namespace MarkLeaf.Tests;
 [TestClass]
 public sealed class StatusBarFormatterTests
 {
+    [TestInitialize]
+    public void Setup() => LocTestHelper.EnsureInitialized();
+
     [TestMethod]
     public void FormatCharacterCount_IncludesSelectionOnlyWhenPresent()
     {

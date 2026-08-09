@@ -112,10 +112,9 @@ internal sealed class PreferencesTabBar : Control
         }
 
         var contentWidth = Math.Max(maxIconWidth, maxTextWidth);
-        var side = contentWidth + hPad * 2;
         var contentHeight = iconHeight + iconTextGap + textHeight;
-        // 确保按钮高度 ≥ 内容高度 + 上下内边距
         var totalButtonHeight = contentHeight + vPad * 2;
+        var side = Math.Min(contentWidth + hPad * 2, totalButtonHeight * 4 / 3);
 
         var totalWidth = side * _tabs.Length + gap * (_tabs.Length - 1);
         var startX = Math.Max(0, (ClientSize.Width - totalWidth) / 2);

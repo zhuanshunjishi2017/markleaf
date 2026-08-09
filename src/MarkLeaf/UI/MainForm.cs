@@ -1804,7 +1804,7 @@ internal sealed partial class MainForm : Form
             EditorLifecycleState.WaitingForEditorReady => Loc.Get("editor.waitingForEditorReady"),
             EditorLifecycleState.Ready => Loc.Get("editor.ready"),
             EditorLifecycleState.Failed => Loc.Get("editor.failed"),
-            _ => Loc.Get("editor.preparing"),
+            _ => Loc.Get("statusBar.preparing"),
         };
         _menuService.RefreshStates();
 
@@ -1914,18 +1914,18 @@ internal sealed partial class MainForm : Form
 
     private void ShowExportCompleteDialog(string fileName, string filePath, string folderPath)
     {
-        var openButton = new TaskDialogButton(Loc.Get("button.open"));
+        var openButton = new TaskDialogButton(Loc.Get("export.open"));
         openButton.Click += (_, _) => ExternalLinkService.OpenLocal(filePath);
 
-        var openFolderButton = new TaskDialogButton(Loc.Get("button.openContainingFolder"));
+        var openFolderButton = new TaskDialogButton(Loc.Get("export.openFolder"));
         openFolderButton.Click += (_, _) => ExternalLinkService.OpenLocal(folderPath);
 
         var page = new TaskDialogPage
         {
             Caption = "MarkLeaf",
             Icon = TaskDialogIcon.Information,
-            Heading = Loc.Get("export.dialogTitle"),
-            Text = Loc.Format("export.savedTo", fileName, filePath),
+            Heading = Loc.Get("export.complete"),
+            Text = Loc.Format("status.exportCompleteWithPath", fileName, filePath),
             Buttons = { openButton, openFolderButton, TaskDialogButton.Close },
         };
 
@@ -1941,10 +1941,10 @@ internal sealed partial class MainForm : Form
 
         var docName = _document.FilePath is not null
             ? Path.GetFileName(_document.FilePath)
-            : Loc.Get("document.untitled");
+            : Loc.Get("common.unnamed");
         var defaultName = _document.FilePath is not null
             ? Path.GetFileNameWithoutExtension(_document.FilePath)
-            : Loc.Get("document.untitled");
+            : Loc.Get("common.unnamed");
         using var dialog = new ExportDialog(docName, defaultName, _markdownStyle, StyleService.GetAllStyles());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
@@ -1954,7 +1954,7 @@ internal sealed partial class MainForm : Form
         var options = dialog.Options;
         if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
         {
-            SetStatus(Loc.Get("error.exportPathEmpty"));
+            SetStatus(Loc.Get("export.emptyPath"));
             return;
         }
 
@@ -1981,7 +1981,7 @@ internal sealed partial class MainForm : Form
 
             if (string.IsNullOrEmpty(html))
             {
-                SetStatus(Loc.Get("error.exportNoContent"));
+                SetStatus(Loc.Get("export.noContent"));
                 return;
             }
 
@@ -2020,7 +2020,7 @@ internal sealed partial class MainForm : Form
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.Error($"Export failed: {options.OutputPath}.", exception);
-            ShowMessage(this, Loc.Get("error.exportFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
+            ShowMessage(this, Loc.Get("export.failed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

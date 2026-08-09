@@ -18,6 +18,8 @@
 .markleaf-style-latex .markleaf-document h5,
 .markleaf-style-latex .markleaf-document h6 {
   font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-weight: bold;
+  font-synthesis: none;
 }
 
 /* ---- 标题字号与段前间距：仿 LaTeX 默认，比 print 略大 ---- */
