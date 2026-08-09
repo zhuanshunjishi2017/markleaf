@@ -5,7 +5,7 @@
 
   <Package Name="MarkLeaf"
            Manufacturer="MarkLeaf"
-           Version="1.1.0.0"
+           Version="$(var.ProductVersion)"
            UpgradeCode="E1B2C3D4-1234-5678-9ABC-DEF012345678"
            Scope="perMachine"
            Compressed="yes"

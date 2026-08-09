@@ -25,7 +25,7 @@
   <PropertyGroup>
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepoRoot>
     <PublishDir>$(RepoRoot)\obj\publish-$(Runtime)-$(SelfContained)\</PublishDir>
-    <DefineConstants>PublishSource=$(PublishDir);SelfContained=$(SelfContained);Runtime=$(Runtime)</DefineConstants>
+    <DefineConstants>PublishSource=$(PublishDir);SelfContained=$(SelfContained);Runtime=$(Runtime);ProductVersion=$(Version).0</DefineConstants>
   </PropertyGroup>
 
   <!-- Clean previous publish + rebuild fresh -->
@@ -37,7 +37,8 @@
   </Target>
 
   <Target Name="RenameMsi" AfterTargets="Build">
-    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetPath).msi" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetPath).msi"
+          Condition="!Exists('$(TargetPath).msi')" />
     <Message Importance="high" Text="MSI: $(TargetPath).msi" />
   </Target>
 
