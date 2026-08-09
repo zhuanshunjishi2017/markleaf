@@ -101,7 +101,7 @@
   "menu.appearance.openThemeFolder": "打开主题文件夹(&O)...",
 
   "menu.help.label": "帮助(&H)",
-  "menu.help.shortcuts": "快捷键(&K)",
+  "menu.help.changelog": "更新内容(&C)",
   "menu.help.preferences": "首选项(&P)...",
   "menu.help.about": "关于 MarkLeaf(&A)",
 
@@ -559,5 +559,8 @@
   "error.openFolderFailed": "无法打开{0}。",
   "error.openDocumentFailed": "无法打开该文档。",
   "error.openDocumentFailedTitle": "打开失败",
-  "error.workspaceOperationFailed": "工作区操作失败。"
+  "error.workspaceOperationFailed": "工作区操作失败。",
+
+  "changelog.notFound": "未找到更新内容文件。",
+  "changelog.openFailed": "无法打开更新内容文件。"
 }

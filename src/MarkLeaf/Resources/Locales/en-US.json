@@ -101,7 +101,7 @@
   "menu.appearance.openThemeFolder": "&Open Theme Folder...",
 
   "menu.help.label": "&Help",
-  "menu.help.shortcuts": "&Keyboard Shortcuts",
+  "menu.help.changelog": "&What's New",
   "menu.help.preferences": "&Preferences...",
   "menu.help.about": "&About MarkLeaf",
 
@@ -556,5 +556,8 @@
   "error.openFolderFailed": "Cannot open {0}.",
   "error.openDocumentFailed": "Cannot open this document.",
   "error.openDocumentFailedTitle": "Open Failed",
-  "error.workspaceOperationFailed": "Workspace operation failed."
+  "error.workspaceOperationFailed": "Workspace operation failed.",
+
+  "changelog.notFound": "Changelog file not found.",
+  "changelog.openFailed": "Unable to open changelog file."
 }

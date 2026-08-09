@@ -568,7 +568,7 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.ShowShortcuts, Loc.Get("menu.help.shortcuts"));
+            AppendCommand(menu, AppCommand.ShowChangelog, Loc.Get("menu.help.changelog"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));
             AppendSeparator(menu);

@@ -87,6 +87,7 @@ public enum AppCommand
     ShowShortcuts = 0x1401,
     ShowPreferences,
     ShowAbout,
+    ShowChangelog,
     OpenThemeFolder,
     AddTheme,
     ZoomIn,

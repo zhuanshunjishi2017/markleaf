@@ -826,6 +826,9 @@ internal sealed partial class MainForm : Form
             case AppCommand.ShowShortcuts:
                 ShowShortcutHelp();
                 break;
+            case AppCommand.ShowChangelog:
+                ShowChangelog();
+                break;
             case AppCommand.ShowPreferences:
                 ShowPreferences();
                 break;
@@ -1586,6 +1589,26 @@ internal sealed partial class MainForm : Form
     {
         using var dialog = new ShortcutDialog();
         ShowModal(() => dialog.ShowDialog(this));
+    }
+
+    private void ShowChangelog()
+    {
+        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.md");
+        if (!File.Exists(changelogPath))
+        {
+            SetStatus(Loc.Get("changelog.notFound"));
+            return;
+        }
+
+        try
+        {
+            ExternalLinkService.OpenLocal(changelogPath);
+        }
+        catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception)
+        {
+            ShowMessage(this, Loc.Get("changelog.openFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void ShowPreferences()

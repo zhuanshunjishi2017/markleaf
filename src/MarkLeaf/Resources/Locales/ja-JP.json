@@ -101,7 +101,7 @@
   "menu.appearance.openThemeFolder": "テーマフォルダーを開く(&O)...",
 
   "menu.help.label": "ヘルプ(&H)",
-  "menu.help.shortcuts": "キーボードショートカット(&K)",
+  "menu.help.changelog": "更新履歴(&C)",
   "menu.help.preferences": "設定(&P)...",
   "menu.help.about": "MarkLeafについて(&A)",
 
@@ -556,5 +556,8 @@
   "error.openFolderFailed": "{0}を開けません。",
   "error.openDocumentFailed": "このドキュメントを開けません。",
   "error.openDocumentFailedTitle": "開くのに失敗",
-  "error.workspaceOperationFailed": "ワークスペース操作に失敗しました。"
+  "error.workspaceOperationFailed": "ワークスペース操作に失敗しました。",
+
+  "changelog.notFound": "更新履歴ファイルが見つかりません。",
+  "changelog.openFailed": "更新履歴ファイルを開けません。"
 }
