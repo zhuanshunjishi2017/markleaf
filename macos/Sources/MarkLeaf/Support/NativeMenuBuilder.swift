@@ -85,7 +85,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))
         menu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))
         menu.addItem(commandItem(L10n.t("复制为 Markdown 源码"), "copyMarkdown"))
-        menu.addItem(commandItem("复制为纯文本", "copyPlain"))
+        menu.addItem(commandItem(L10n.t("复制为纯文本"), "copyPlain"))
         menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))

@@ -9,6 +9,7 @@ final class AppWindowManager {
     private var preferencesController: PreferencesWindowController?
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
+    private var findPanelController: FindPanelController?
     private var didRunStartupAction = false
 
     private init() {}
@@ -76,6 +77,7 @@ final class AppWindowManager {
         for controller in windowControllers {
             controller.applyLanguage()
         }
+        findPanelController?.applyLanguage()
         showPreferences()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -138,6 +140,16 @@ final class AppWindowManager {
             .credits: credits,
         ])
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// 查找与替换面板（原生弹出窗口）。
+    func showFindPanel(for session: EditorSession, replaceMode: Bool) {
+        let controller = FindPanelController(session: session, replaceMode: replaceMode)
+        session.onFindResult = { [weak controller] current, total in
+            DispatchQueue.main.async { controller?.updateResult(current: current, total: total) }
+        }
+        findPanelController = controller
+        controller.showPanel()
     }
 
     /// 快捷键参考窗口。

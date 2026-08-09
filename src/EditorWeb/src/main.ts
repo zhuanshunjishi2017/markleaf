@@ -272,34 +272,28 @@ function closeFindBar(): void {
 }
 
 function updateFindResult(backwards: boolean): void {
-  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : findInput
   const result = sourceMode
-    ? sourceEditor?.find(findInput.value, caseInput.checked, wholeInput.checked, backwards) ?? { current: 0, total: 0 }
-    : findInEditor(editor, findInput.value, caseInput.checked, wholeInput.checked, backwards)
+    ? sourceEditor?.find(findQuery, findCaseSensitive, findWholeWord, backwards) ?? { current: 0, total: 0 }
+    : findInEditor(editor, findQuery, findCaseSensitive, findWholeWord, backwards)
   findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
-  activeInput.focus()
 }
 
 function replaceCurrent(): void {
-  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : replaceInput
   const result = sourceMode
-    ? sourceEditor?.replaceCurrent(findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+    ? sourceEditor?.replaceCurrent(findQuery, findReplace, findCaseSensitive, findWholeWord)
       ?? { current: 0, total: 0 }
-    : replaceCurrentInEditor(editor, findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+    : replaceCurrentInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
   findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
-  activeInput.focus()
 }
 
 function replaceEveryMatch(): void {
-  const activeInput = document.activeElement instanceof HTMLElement ? document.activeElement : replaceInput
   const count = sourceMode
-    ? sourceEditor?.replaceAll(findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked) ?? 0
-    : replaceAllInEditor(editor, findInput.value, replaceInput.value, caseInput.checked, wholeInput.checked)
+    ? sourceEditor?.replaceAll(findQuery, findReplace, findCaseSensitive, findWholeWord) ?? 0
+    : replaceAllInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
   findResult.textContent = count === 0 ? '0/0' : (markleafLanguage === 'zh-Hant' ? `已取代 ${count} 處` : markleafLanguage === 'en' ? `Replaced ${count} occurrence${count === 1 ? '' : 's'}` : `已替换 ${count} 处`)
   send('findResult', { current: count, total: count, replaced: count })
-  activeInput.focus()
 }
 
 findBar.addEventListener('submit', event => {
@@ -510,6 +504,34 @@ function handleMessage(value: unknown): void {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'findText' || payload.command === 'findNext' || payload.command === 'findPrev') {
+          // text: query\tcase\twhole（findText 额外带方向）；findNext/findPrev 沿用当前状态
+          if (typeof payload.text === 'string') {
+            const parts = payload.text.split('\t')
+            findQuery = parts[0] ?? ''
+            findCaseSensitive = parts[1] === '1'
+            findWholeWord = parts[2] === '1'
+          }
+          updateFindResult(payload.command === 'findPrev')
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'replaceOne' || payload.command === 'replaceAll') {
+          const parts = String(payload.text ?? '').split('\t')
+          findQuery = parts[0] ?? ''
+          findReplace = parts[1] ?? ''
+          findCaseSensitive = parts[2] === '1'
+          findWholeWord = parts[3] === '1'
+          if (payload.command === 'replaceOne') replaceCurrent()
+          else replaceEveryMatch()
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'findClose') {
+          closeFindBar()
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'setLanguage') {
           if (typeof payload.text === 'string') setMarkleafLanguage(payload.text)
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -695,6 +717,12 @@ function applyFindBarLanguage(lang: string): void {
 }
 
 let markleafLanguage = 'zh-Hans'
+
+// 查找状态：由原生查找面板（FindPanelController）通过命令驱动
+let findQuery = ''
+let findReplace = ''
+let findCaseSensitive = false
+let findWholeWord = false
 function setMarkleafLanguage(lang: string): void {
   markleafLanguage = lang
   applyFindBarLanguage(lang)

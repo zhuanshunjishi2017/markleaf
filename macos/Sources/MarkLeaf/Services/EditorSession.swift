@@ -229,7 +229,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 schedulePinchPersist(now: false)
             }
 
-        case "dropFiles", "findResult", "commandResult", "selectionChanged":
+        case "findResult":
+            if let payload, let current = payload["current"] as? Int, let total = payload["total"] as? Int {
+                AppLog.info("findResult: current=\(current) total=\(total)")
+                onFindResult?(current, total)
+            }
+
+        case "dropFiles", "commandResult", "selectionChanged":
             break
 
         default:
@@ -532,7 +538,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func toggleSourceMode() { execute("toggleSourceMode") }
-    func showFind(showReplace: Bool) { execute(showReplace ? "replace" : "find") }
+    var onFindResult: ((Int, Int) -> Void)?
+
+    func showFind(showReplace: Bool) {
+        AppWindowManager.shared.showFindPanel(for: self, replaceMode: showReplace)
+    }
 
     /// 行内格式命令：空选时应用到整个文本块。
     func executeInlineFormat(_ command: String) {
