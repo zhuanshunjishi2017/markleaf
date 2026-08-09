@@ -128,11 +128,23 @@ final class SettingsService {
     static let shared = SettingsService()
 
     private(set) var settings: AppSettings = AppSettings()
+    private let applicationSupportRoot: URL
+
+    convenience init() {
+        self.init(environment: ProcessInfo.processInfo.environment)
+    }
+
+    init(environment: [String: String]) {
+        if let override = environment["MARKLEAF_APP_SUPPORT_DIR"], !override.isEmpty {
+            applicationSupportRoot = URL(fileURLWithPath: override, isDirectory: true)
+        } else {
+            applicationSupportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser
+        }
+    }
 
     private var settingsURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        let dir = base.appendingPathComponent("MarkLeaf", isDirectory: true)
+        let dir = applicationSupportRoot.appendingPathComponent("MarkLeaf", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("settings.json")
     }
@@ -165,7 +177,11 @@ final class SettingsService {
         let temp = settingsURL.appendingPathExtension("tmp")
         do {
             try data.write(to: temp, options: .atomic)
-            _ = try? FileManager.default.replaceItemAt(settingsURL, withItemAt: temp)
+            if FileManager.default.fileExists(atPath: settingsURL.path) {
+                _ = try FileManager.default.replaceItemAt(settingsURL, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: settingsURL)
+            }
         } catch {
             AppLog.error("设置保存失败: \(error.localizedDescription)")
         }
