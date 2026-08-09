@@ -15,6 +15,22 @@ enum L10n {
         return String(format: translated, arguments: args)
     }
 
+    /// 反向查键：若 text 是某条翻译（en/zh-Hant）的值，返回对应的简体中文键，用于语言切换时重译；否则原样返回。
+    static func canonicalize(_ text: String) -> String {
+        if text.isEmpty { return text }
+        return reverseTables[text] ?? text
+    }
+
+    private static let reverseTables: [String: String] = {
+        var map: [String: String] = [:]
+        for (_, table) in tables {
+            for (key, value) in table {
+                map[value] = key
+            }
+        }
+        return map
+    }()
+
     /// 语言代码 → 界面显示名（按当前语言显示）。
     static func langDisplayName(_ code: String, currentLang: String) -> String {
         switch code {

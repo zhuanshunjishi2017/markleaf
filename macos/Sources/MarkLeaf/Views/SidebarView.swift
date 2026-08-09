@@ -93,6 +93,14 @@ final class SidebarView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// 界面语言切换：更新分段标签、打开文件夹按钮与占位文案。
+    func applyLanguage() {
+        tabControl.setLabel(L10n.t("工作区"), forSegment: 0)
+        tabControl.setLabel(L10n.t("大纲"), forSegment: 1)
+        openFolderButton.title = L10n.t("打开文件夹")
+        placeholder.stringValue = L10n.t("暂未打开工作区\n点击“打开文件夹”开始")
+    }
+
     @objc private func tabChanged() {
         showTab(tabControl.selectedSegment)
     }

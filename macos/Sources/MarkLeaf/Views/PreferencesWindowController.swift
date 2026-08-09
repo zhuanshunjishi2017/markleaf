@@ -154,7 +154,7 @@ final class PreferencesWindowController: NSWindowController {
         // 绑定
         let controls: [NSControl] = [startupPopup, autoSaveCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup, zoomPopup,
-                                     restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
+                                     restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
         for control in controls {
@@ -308,27 +308,10 @@ final class PreferencesWindowController: NSWindowController {
         onSettingsChanged?()
         // 文件关联开关变更 → 立即应用（绑定/还原默认打开程序）
         FileAssociationService.shared.apply(settings: SettingsService.shared.settings)
-        // 语言变更需重启以完全生效
+        // 语言变更 → 立即生效（重建菜单/偏好设置/各窗口 + 前端）
         if languageChanged {
-            presentRestartPrompt()
-        }
-    }
-
-    private func presentRestartPrompt() {
-        let alert = NSAlert()
-        alert.messageText = L10n.t("语言已更改")
-        alert.informativeText = L10n.t("需要重新启动 MarkLeaf 才能完全生效。")
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: L10n.t("重新启动"))
-        alert.addButton(withTitle: L10n.t("稍后"))
-        alert.beginSheetModal(for: window!) { response in
-            if response == .alertFirstButtonReturn {
-                let url = URL(fileURLWithPath: "/usr/bin/open")
-                let p = Process()
-                p.executableURL = url
-                p.arguments = ["-n", Bundle.main.bundleURL.path]
-                try? p.run()
-                NSApp.terminate(nil)
+            DispatchQueue.main.async {
+                AppWindowManager.shared.applyLanguage()
             }
         }
     }

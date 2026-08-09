@@ -65,6 +65,21 @@ final class AppWindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// 界面语言切换：重建菜单、重建偏好设置窗口、刷新所有编辑器窗口与前端。
+    func applyLanguage() {
+        NativeMenuBuilder.refreshIfNeeded()
+        // 重建偏好设置（标签在 init 时按当前语言生成）
+        if let prefs = preferencesController {
+            prefs.window?.close()
+            preferencesController = nil
+        }
+        for controller in windowControllers {
+            controller.applyLanguage()
+        }
+        showPreferences()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func applyPreferencesToAll() {
         let topMost = SettingsService.shared.settings.topMostWindow
         for controller in windowControllers {

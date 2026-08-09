@@ -553,6 +553,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 源码模式缩进宽度（对应偏好设置「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
+    /// 界面语言切换：重译当前状态文案并下发前端。
+    func applyLanguage() {
+        statusText = L10n.t(L10n.canonicalize(statusText))
+        execute("setLanguage", text: SettingsService.shared.settings.displayLanguage)
+    }
+
     func applySourceIndent() {
         let width = max(1, min(8, SettingsService.shared.settings.sourceIndentWidth))
         execute("setSourceIndent", text: "\(width)")

@@ -158,6 +158,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         workspaceDividerPosition = CGFloat(sidebarWidth)
     }
 
+    /// 界面语言切换：刷新状态栏与侧边栏文案。
+    func applyLanguage() {
+        session.applyLanguage()
+        statusLabel.stringValue = session.statusText
+        sidebarView?.applyLanguage()
+    }
+
     private func bindState() {
         session.onStateChanged = { [weak self] in
             guard let self, let window = self.window else { return }
