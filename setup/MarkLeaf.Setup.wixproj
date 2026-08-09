@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>Msi</OutputType>
     <InstallerPlatform>x64</InstallerPlatform>
+    <Cultures>zh-CN</Cultures>
     <Version>1.1.0</Version>
     <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
     <Suffix Condition="'$(SelfContained)' == 'false'">fd</Suffix>

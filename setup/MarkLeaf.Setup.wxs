@@ -3,24 +3,20 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
-  <!--
-    MarkLeaf MSI Installer — per-machine, clean uninstall.
-    UpgradeCode is stable; Product Id auto-generates each build.
-  -->
   <Package Name="MarkLeaf"
            Manufacturer="MarkLeaf"
            Version="1.1.0.0"
            UpgradeCode="E1B2C3D4-1234-5678-9ABC-DEF012345678"
            Scope="perMachine"
-           Compressed="yes">
+           Compressed="yes"
+           Codepage="936">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of MarkLeaf is already installed." />
-
+    <MajorUpgrade DowngradeErrorMessage="已安装的 MarkLeaf 版本更新，无法降级。请先卸载当前版本再重试。" />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- ===== Install Wizard UI ===== -->
+    <!-- ===== Install Wizard UI (WixUI_Mondo: 欢迎→许可→功能→目录→确认→进度) ===== -->
     <UI>
-      <ui:WixUI Id="WixUI_InstallDir" />
+      <ui:WixUI Id="WixUI_Mondo" />
     </UI>
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
@@ -35,14 +31,28 @@
                       Type="raw" />
     </Property>
     <Launch Condition="DOTNET_ROOT"
-            Message=".NET 10 Desktop Runtime required. Download from https://dotnet.microsoft.com/download" />
+            Message="需要 .NET 10 桌面运行时才能运行 MarkLeaf。请从 https://dotnet.microsoft.com/download 下载安装。" />
 <?endif ?>
 
     <!-- ===== Features ===== -->
-    <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no">
+    <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no"
+             Description="MarkLeaf 核心程序文件。">
       <ComponentGroupRef Id="PublishedComponents" />
-      <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="ProgIdRegistration" />
+    </Feature>
+
+    <Feature Id="StartMenuShortcut" Title="开始菜单快捷方式" Level="1" AllowAdvertise="no"
+             Description="在开始菜单中添加 MarkLeaf 快捷方式。">
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <Feature Id="DesktopShortcut" Title="桌面快捷方式" Level="1" AllowAdvertise="no"
+             Description="在桌面上添加 MarkLeaf 快捷方式。">
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <Feature Id="FileAssociations" Title="文件关联" Level="1" AllowAdvertise="no"
+             Description="将 .md / .markdown / .txt 文件关联到 MarkLeaf，双击即可打开。">
       <ComponentRef Id="MarkdownFileAssociation" />
       <ComponentRef Id="MarkdownAltFileAssociation" />
       <ComponentRef Id="TextFileAssociation" />
@@ -57,83 +67,66 @@
       <Directory Id="StartMenuMarkLeaf" Name="MarkLeaf" />
     </StandardDirectory>
 
+    <StandardDirectory Id="DesktopFolder" />
+
     <!-- ===== Start Menu Shortcut ===== -->
-    <Component Id="ApplicationShortcut" Directory="StartMenuMarkLeaf" Guid="D1A2B3C4-5678-90AB-CDEF-123456789001">
+    <Component Id="ApplicationShortcut" Directory="StartMenuMarkLeaf"
+               Guid="D1A2B3C4-5678-90AB-CDEF-123456789001">
       <Shortcut Id="StartMenuShortcut"
                 Name="MarkLeaf"
                 Target="[INSTALLFOLDER]MarkLeaf.exe"
                 WorkingDirectory="INSTALLFOLDER" />
-      <RegistryValue Root="HKMU"
-                     Key="Software\MarkLeaf"
-                     Name="Installed"
-                     Value="1"
-                     Type="integer"
-                     KeyPath="yes" />
+      <RegistryValue Root="HKMU" Key="Software\MarkLeaf"
+                     Name="StartMenuInstalled" Value="1" Type="integer" KeyPath="yes" />
       <RemoveFolder Id="RemoveStartMenu" Directory="StartMenuMarkLeaf" On="uninstall" />
+    </Component>
+
+    <!-- ===== Desktop Shortcut ===== -->
+    <Component Id="DesktopShortcutComponent" Directory="DesktopFolder"
+               Guid="D6A7B8C9-0123-DEF4-5678-901234567890">
+      <Shortcut Id="DesktopShortcut"
+                Name="MarkLeaf"
+                Target="[INSTALLFOLDER]MarkLeaf.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKMU" Key="Software\MarkLeaf"
+                     Name="DesktopInstalled" Value="1" Type="integer" KeyPath="yes" />
+      <RemoveFolder Id="RemoveDesktop" Directory="DesktopFolder" On="uninstall" />
     </Component>
 
     <!-- ===== File Associations ===== -->
     <Component Id="MarkdownFileAssociation" Directory="INSTALLFOLDER"
                Guid="D2A3B4C5-6789-0ABC-DEF1-234567890002">
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.md"
-                     Name="PerceivedType"
-                     Value="text"
-                     Type="string"
-                     KeyPath="yes" />
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.md\OpenWithProgids"
-                     Name="MarkLeaf.MarkdownDoc"
-                     Value=""
-                     Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.md"
+                     Name="PerceivedType" Value="text" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.md\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc" Value="" Type="string" />
     </Component>
 
     <Component Id="MarkdownAltFileAssociation" Directory="INSTALLFOLDER"
                Guid="D3A4B5C6-7890-ABCD-EF12-345678900003">
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.markdown"
-                     Name="PerceivedType"
-                     Value="text"
-                     Type="string"
-                     KeyPath="yes" />
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.markdown\OpenWithProgids"
-                     Name="MarkLeaf.MarkdownDoc"
-                     Value=""
-                     Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.markdown"
+                     Name="PerceivedType" Value="text" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.markdown\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc" Value="" Type="string" />
     </Component>
 
     <Component Id="TextFileAssociation" Directory="INSTALLFOLDER"
                Guid="D4A5B6C7-8901-BCDE-F123-456789000004">
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.txt"
-                     Name="PerceivedType"
-                     Value="text"
-                     Type="string"
-                     KeyPath="yes" />
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\.txt\OpenWithProgids"
-                     Name="MarkLeaf.MarkdownDoc"
-                     Value=""
-                     Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.txt"
+                     Name="PerceivedType" Value="text" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.txt\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc" Value="" Type="string" />
     </Component>
 
     <!-- ===== ProgId Registration ===== -->
     <Component Id="ProgIdRegistration" Directory="INSTALLFOLDER"
                Guid="D5A6B7C8-9012-CDEF-1234-567890000005">
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\MarkLeaf.MarkdownDoc"
-                     Value="MarkLeaf Markdown Document"
-                     Type="string"
-                     KeyPath="yes" />
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\MarkLeaf.MarkdownDoc\DefaultIcon"
-                     Value="[INSTALLFOLDER]Resources\App\fileicon.ico"
-                     Type="string" />
-      <RegistryValue Root="HKLM"
-                     Key="Software\Classes\MarkLeaf.MarkdownDoc\shell\open\command"
-                     Value="&quot;[INSTALLFOLDER]MarkLeaf.exe&quot; --open-document &quot;%1&quot;"
-                     Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\MarkLeaf.MarkdownDoc"
+                     Value="MarkLeaf Markdown Document" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\MarkLeaf.MarkdownDoc\DefaultIcon"
+                     Value="[INSTALLFOLDER]Resources\App\fileicon.ico" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\MarkLeaf.MarkdownDoc\shell\open\command"
+                     Value="&quot;[INSTALLFOLDER]MarkLeaf.exe&quot; --open-document &quot;%1&quot;" Type="string" />
     </Component>
 
   </Package>
