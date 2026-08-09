@@ -58,5 +58,7 @@ AGENTS.md
 .github/copilot-instructions.md
 .github/.copilot*
 
-# App resources (generated)
-src/MarkLeaf/Resources/App/
+# App resources (generated - keep only App.ico/app.png tracked)
+src/MarkLeaf/Resources/App/*
+!src/MarkLeaf/Resources/App/App.ico
+!src/MarkLeaf/Resources/App/App.png
