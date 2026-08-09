@@ -965,7 +965,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         let panel = NSOpenPanel()
         panel.title = L10n.t("选择主题 CSS 文件")
-        panel.allowedFileTypes = ["css"]
+        if let cssType = UTType(filenameExtension: "css") {
+            panel.allowedContentTypes = [cssType]
+        }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.beginSheetModal(for: window) { [weak self] response in

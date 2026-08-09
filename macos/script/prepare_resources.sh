@@ -126,15 +126,17 @@ rm -rf "$STYLES_DIR"
 mkdir -p "$STYLES_DIR"
 cp -R "$REPO_DIR/src/MarkLeaf/Resources/Styles/." "$STYLES_DIR/"
 
-# ---- 4. 应用图标 ----
-if [ -f "$REPO_DIR/App.png" ]; then
-  ICON_DIR="$ROOT_DIR/.icon-build"
-  rm -rf "$ICON_DIR"
-  mkdir -p "$ICON_DIR"
+# ---- 4. 应用图标 / 文件图标 ----
+# 优先使用 macOS 本地图标（macos/App.png），缺失时回退共享 App.png
+build_icns() {
+  local src="$1" out="$2"
+  local icon_dir="$ROOT_DIR/.icon-build"
+  rm -rf "$icon_dir"
+  mkdir -p "$icon_dir"
   for size in 16 32 64 128 256 512 1024; do
-    sips -z "$size" "$size" "$REPO_DIR/App.png" --out "$ICON_DIR/icon_$size.png" >/dev/null
+    sips -z "$size" "$size" "$src" --out "$icon_dir/icon_$size.png" >/dev/null
   done
-  python3 - "$ICON_DIR" "$RESOURCES_DIR/AppIcon.icns" <<'ICNS_EOF'
+  python3 - "$icon_dir" "$out" <<'ICNS_EOF'
 import struct, sys, os
 
 ICON_DIR, OUT = sys.argv[1], sys.argv[2]
@@ -159,9 +161,20 @@ for tag, data in chunks:
     out += tag.encode() + struct.pack(">I", 8 + len(data)) + data
 with open(OUT, "wb") as f:
     f.write(out)
-print(f"[prepare] AppIcon.icns 已生成 ({len(chunks)} 个尺寸)")
+print(f"[prepare] {os.path.basename(OUT)} 已生成 ({len(chunks)} 个尺寸)")
 ICNS_EOF
-  rm -rf "$ICON_DIR"
+  rm -rf "$icon_dir"
+}
+
+if [ -f "$ROOT_DIR/App.png" ]; then
+  build_icns "$ROOT_DIR/App.png" "$RESOURCES_DIR/AppIcon.icns"
+elif [ -f "$REPO_DIR/App.png" ]; then
+  build_icns "$REPO_DIR/App.png" "$RESOURCES_DIR/AppIcon.icns"
+fi
+
+# 文档类型图标（Finder 中 .md/.txt 的图标）
+if [ -f "$ROOT_DIR/FileIcon.png" ]; then
+  build_icns "$ROOT_DIR/FileIcon.png" "$RESOURCES_DIR/FileIcon.icns"
 fi
 
 echo "[prepare] 资源准备完成"

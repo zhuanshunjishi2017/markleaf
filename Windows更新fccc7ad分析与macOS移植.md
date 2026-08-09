@@ -95,3 +95,14 @@ Windows 专属部分（C# i18n 基建、跟随系统深色/菜单栏样式、状
 - 共享前端改动：`src/EditorWeb/src/styles.css`（源码字体变量，对 Windows 是纯增量，默认值兜底为 Cascadia Mono/Consolas）。
 - `notebook.css` 字体回退为纯回退链调整，无风险。
 - Windows 的「添加主题」「源码字体选择」为 C# 侧实现，两端各自独立，无共享冲突。
+
+## 6. 补充：应用图标 / 文件图标更新（用户提供素材）
+
+- 应用图标：用户提供 `APP.png`（1088×1088，透明），存为 `macos/App.png`（macOS 本地图标源，
+  优先于共享 `App.png` 用于生成 `AppIcon.icns`）。
+- 文件图标：用户提供 `File.png`（583×742，透明），居中放入 1024×1024 透明画布存为
+  `macos/FileIcon.png`，构建时生成 `FileIcon.icns`，并在 Info.plist 的
+  `CFBundleDocumentTypes`（Markdown / 纯文本）中加入 `CFBundleTypeIconFile = FileIcon`，
+  Finder 中 `.md` / `.markdown` / `.txt` 文件图标随之更新。
+- `prepare_resources.sh` 抽出 `build_icns()` 复用于两个图标；`build_and_run.sh` 将两个 icns 都打进 bundle。
+- 说明：根目录共享 `App.png` / `App.ico` 未改动，Windows 侧如需同款图标请自行同步。

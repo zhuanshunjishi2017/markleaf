@@ -51,6 +51,9 @@ cp -R "$ROOT_DIR/Resources/Styles" "$APP_CONTENTS/Resources/Styles"
 if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
   cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 fi
+if [ -f "$ROOT_DIR/Resources/FileIcon.icns" ]; then
+  cp "$ROOT_DIR/Resources/FileIcon.icns" "$APP_CONTENTS/Resources/FileIcon.icns"
+fi
 
 cat > "$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -88,6 +91,8 @@ cat > "$INFO_PLIST" <<PLIST
       <string>Editor</string>
       <key>LSHandlerRank</key>
       <string>Alternate</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>FileIcon</string>
       <key>LSItemContentTypes</key>
       <array>
         <string>net.daringfireball.markdown</string>
@@ -101,6 +106,8 @@ cat > "$INFO_PLIST" <<PLIST
       <string>Editor</string>
       <key>LSHandlerRank</key>
       <string>Alternate</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>FileIcon</string>
       <key>LSItemContentTypes</key>
       <array>
         <string>public.plain-text</string>
