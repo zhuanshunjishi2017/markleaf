@@ -58,9 +58,13 @@ AGENTS.md
 .github/copilot-instructions.md
 .github/.copilot*
 
-# App resources (generated - keep only App.png tracked)
+# App resources (generated)
 src/MarkLeaf/Resources/App/*
-!src/MarkLeaf/Resources/App/App.png
+
+# Root icon files (keep only appicon.png)
+/App.png
+/appicon.ico
+/fileicon.ico
 
 # Build scripts (user-specific)
 /build-dotnet.bat
