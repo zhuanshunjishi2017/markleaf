@@ -2,6 +2,32 @@ import XCTest
 @testable import MarkLeaf
 
 final class StartupIntegrationStateTests: XCTestCase {
+    func testEnsureInitialWindowCreatesOneForNormalLaunch() {
+        let manager = AppWindowManager()
+        addTeardownBlock {
+            manager.windowControllers.forEach { $0.close() }
+        }
+
+        manager.ensureInitialWindow()
+
+        XCTAssertEqual(manager.windowControllers.count, 1)
+        XCTAssertNil(manager.primarySession?.pendingInitialDocumentPath)
+    }
+
+    func testEnsureInitialWindowKeepsEarlyFinderWindowAsTheOnlyWindow() {
+        let manager = AppWindowManager()
+        addTeardownBlock {
+            manager.windowControllers.forEach { $0.close() }
+        }
+        let earlyController = manager.newWindow(documentPath: "/finder/early.md")
+
+        manager.ensureInitialWindow()
+
+        XCTAssertEqual(manager.windowControllers.count, 1)
+        XCTAssertTrue(manager.windowControllers.first === earlyController)
+        XCTAssertEqual(manager.primarySession?.pendingInitialDocumentPath, "/finder/early.md")
+    }
+
     func testColdStartFinderFileIsStoredAsPendingInitialSessionIntent() {
         let manager = AppWindowManager()
         let session = EditorSession()

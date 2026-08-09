@@ -12,8 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.mainMenu = NativeMenuBuilder().build()
 
-        // 启动主窗口（多窗口由 AppWindowManager 管理）
-        AppWindowManager.shared.newWindow()
+        // 启动主窗口；若早期文件打开回调已创建窗口，则保留该窗口。
+        AppWindowManager.shared.ensureInitialWindow()
 
         // 编辑器样式就绪后刷新样式/主题菜单；设置变更后广播到所有窗口
         AppWindowManager.shared.primarySession?.onStylesReady = {

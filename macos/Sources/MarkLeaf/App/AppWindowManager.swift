@@ -26,6 +26,12 @@ final class AppWindowManager {
         return controller
     }
 
+    /// 完成启动时仅在文件打开回调尚未创建窗口的情况下建立初始窗口。
+    func ensureInitialWindow() {
+        guard windowControllers.isEmpty else { return }
+        _ = newWindow()
+    }
+
     var primarySession: EditorSession? {
         windowControllers.first?.session
     }
