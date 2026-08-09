@@ -9,13 +9,30 @@ internal sealed class AboutDialog : Form
     private const string RepoOwner = "zhuanshunjishi2017";
     private const string RepoName = "markleaf";
     private const string AuthorName = "zhuanshunjishi2017";
+
     private static string AppVersion =>
         typeof(AboutDialog).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
-    private const string UpdateDate = "2026-08-04";
+
+    private static string BuildDate
+    {
+        get
+        {
+            try
+            {
+                var assemblyPath = typeof(AboutDialog).Assembly.Location;
+                return File.GetLastWriteTime(assemblyPath).ToString("yyyy-MM-dd");
+            }
+            catch
+            {
+                return "----";
+            }
+        }
+    }
 
     public AboutDialog()
     {
         Text = Loc.Get("dialog.aboutTitle");
+        BackColor = SystemColors.Window;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -58,11 +75,11 @@ internal sealed class AboutDialog : Form
             Padding = new Padding(0),
         };
 
-        infoPanel.Controls.Add(NewLabel("MarkLeaf", new Font(Font, FontStyle.Bold), 14.25F), 0, 0);
+        infoPanel.Controls.Add(NewLabel("MarkLeaf", new Font("Times New Roman", 18F, FontStyle.Bold)), 0, 0);
         infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription")), 0, 1);
         infoPanel.Controls.Add(NewSeparator(), 0, 2);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutVersion", AppVersion)), 0, 3);
-        infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutDate", UpdateDate)), 0, 4);
+        infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutDate", BuildDate)), 0, 4);
 
         infoPanel.Controls.Add(NewSeparator(), 0, 5);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutAuthor", AuthorName)), 0, 6);
