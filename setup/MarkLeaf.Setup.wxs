@@ -14,9 +14,9 @@
     <MajorUpgrade DowngradeErrorMessage="已安装的 MarkLeaf 版本更新，无法降级。请先卸载当前版本再重试。" />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- ===== Install Wizard UI (WixUI_Mondo: 欢迎→许可→功能→目录→确认→进度) ===== -->
+    <!-- ===== Install Wizard UI (欢迎 → 许可 → 目录 → 确认 → 进度) ===== -->
     <UI>
-      <ui:WixUI Id="WixUI_Mondo" />
+      <ui:WixUI Id="WixUI_InstallDir" />
     </UI>
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
@@ -34,25 +34,12 @@
             Message="需要 .NET 10 桌面运行时才能运行 MarkLeaf。请从 https://dotnet.microsoft.com/download 下载安装。" />
 <?endif ?>
 
-    <!-- ===== Features ===== -->
-    <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no"
-             Description="MarkLeaf 核心程序文件。">
+    <!-- ===== Single feature: everything always installed ===== -->
+    <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no">
       <ComponentGroupRef Id="PublishedComponents" />
       <ComponentRef Id="ProgIdRegistration" />
-    </Feature>
-
-    <Feature Id="StartMenuShortcut" Title="开始菜单快捷方式" Level="1" AllowAdvertise="no"
-             Description="在开始菜单中添加 MarkLeaf 快捷方式。">
       <ComponentRef Id="ApplicationShortcut" />
-    </Feature>
-
-    <Feature Id="DesktopShortcut" Title="桌面快捷方式" Level="1" AllowAdvertise="no"
-             Description="在桌面上添加 MarkLeaf 快捷方式。">
       <ComponentRef Id="DesktopShortcutComponent" />
-    </Feature>
-
-    <Feature Id="FileAssociations" Title="文件关联" Level="1" AllowAdvertise="no"
-             Description="将 .md / .markdown / .txt 文件关联到 MarkLeaf，双击即可打开。">
       <ComponentRef Id="MarkdownFileAssociation" />
       <ComponentRef Id="MarkdownAltFileAssociation" />
       <ComponentRef Id="TextFileAssociation" />
