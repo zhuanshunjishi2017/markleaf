@@ -1,0 +1,1 @@
+dotnet build setup/MarkLeaf.Setup.Batch.proj

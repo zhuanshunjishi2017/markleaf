@@ -1593,7 +1593,7 @@ internal sealed partial class MainForm : Form
 
     private void ShowChangelog()
     {
-        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.md");
+        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.txt");
         if (!File.Exists(changelogPath))
         {
             SetStatus(Loc.Get("changelog.notFound"));
