@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="zh-CN" Codepage="936" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+
+  <!-- Dialog titles -->
+  <String Id="WelcomeDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}欢迎使用 MarkLeaf [ProductVersion] 安装向导" />
+  <String Id="WelcomeDlgDescription" Overridable="yes" Value="此向导将引导您完成 MarkLeaf 的安装。&#10;&#10;建议在安装前关闭所有其它程序，以便直接更新系统文件而无需重新启动计算机。&#10;&#10;单击「下一步」继续。" />
+
+  <String Id="LicenseAgreementDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}最终用户许可协议" />
+  <String Id="LicenseAgreementDlgDescription" Overridable="yes" Value="请仔细阅读以下许可协议。" />
+
+  <String Id="SetupTypeDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}选择安装类型" />
+  <String Id="SetupTypeDlgDescription" Overridable="yes" Value="请选择安装类型。" />
+
+  <String Id="CustomizeDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}自定义安装" />
+  <String Id="CustomizeDlgDescription" Overridable="yes" Value="选择要安装的功能。" />
+
+  <String Id="InstallDirDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}选择安装目录" />
+  <String Id="InstallDirDlgDescription" Overridable="yes" Value="请选择 MarkLeaf 的安装目录。如需安装到其它目录，请单击「浏览」。" />
+
+  <String Id="VerifyReadyDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}已准备好安装 MarkLeaf" />
+  <String Id="VerifyReadyDlgDescription" Overridable="yes" Value="单击「安装」开始安装。如需检查或更改安装设置，请单击「上一步」。单击「取消」退出向导。" />
+
+  <String Id="MaintenanceWelcomeDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}欢迎使用 MarkLeaf 维护向导" />
+  <String Id="MaintenanceWelcomeDlgDescription" Overridable="yes" Value="向导允许您更改 MarkLeaf 的安装方式，或将其从计算机上删除。&#10;&#10;单击「下一步」继续。" />
+
+  <String Id="MaintenanceTypeDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}更改、修复或删除安装" />
+  <String Id="MaintenanceTypeDlgDescription" Overridable="yes" Value="选择要执行的操作。" />
+
+  <String Id="ProgressDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}正在安装 MarkLeaf" />
+  <String Id="ProgressDlgDescription" Overridable="yes" Value="请稍候，向导正在安装 MarkLeaf。" />
+
+  <!-- Exit dialog -->
+  <String Id="ExitDialog_Title" Overridable="yes" Value="{\WixUI_Font_Bigger}MarkLeaf 安装完成" />
+  <String Id="ExitDialog_Description" Overridable="yes" Value="MarkLeaf 已成功安装。&#10;&#10;单击「完成」退出安装向导。" />
+
+  <!-- Buttons -->
+  <String Id="WixUIBack" Overridable="yes" Value="上一步(&amp;B)" />
+  <String Id="WixUINext" Overridable="yes" Value="下一步(&amp;N)" />
+  <String Id="WixUICancel" Overridable="yes" Value="取消" />
+  <String Id="WixUIOK" Overridable="yes" Value="确定" />
+  <String Id="WixUIInstall" Overridable="yes" Value="安装(&amp;I)" />
+  <String Id="WixUIRemove" Overridable="yes" Value="删除(&amp;R)" />
+  <String Id="WixUIRepair" Overridable="yes" Value="修复(&amp;P)" />
+  <String Id="WixUIFinish" Overridable="yes" Value="完成(&amp;F)" />
+  <String Id="WixUIBrowse" Overridable="yes" Value="浏览(&amp;R)..." />
+  <String Id="WixUIFolder" Overridable="yes" Value="文件夹(&amp;F):" />
+  <String Id="WixUIAccept" Overridable="yes" Value="我接受许可协议中的条款(&amp;A)" />
+  <String Id="WixUIDoNotAccept" Overridable="yes" Value="我不接受许可协议中的条款(&amp;D)" />
+  <String Id="WixUIPrint" Overridable="yes" Value="打印(&amp;P)..." />
+  <String Id="WixUIReset" Overridable="yes" Value="重置(&amp;E)" />
+  <String Id="WixUIDiskCost" Overridable="yes" Value="磁盘占用(&amp;D)..." />
+  <String Id="WixUIChangeFolder" Overridable="yes" Value="更改(&amp;C)..." />
+  <String Id="WixUIRemoveFeatures" Overridable="yes" Value="删除全部功能(&amp;M)" />
+
+  <!-- Setup type -->
+  <String Id="WixUISetupTypeTypical" Overridable="yes" Value="典型(&amp;T)" />
+  <String Id="WixUISetupTypeTypicalDescription" Overridable="yes" Value="安装最常用的功能。建议大多数用户使用。" />
+  <String Id="WixUISetupTypeCustom" Overridable="yes" Value="自定义(&amp;C)" />
+  <String Id="WixUISetupTypeCustomDescription" Overridable="yes" Value="允许用户选择要安装的功能和安装位置。建议高级用户使用。" />
+  <String Id="WixUISetupTypeComplete" Overridable="yes" Value="完整(&amp;M)" />
+  <String Id="WixUISetupTypeCompleteDescription" Overridable="yes" Value="安装所有功能。需要最大的磁盘空间。" />
+
+  <!-- Verify dialog -->
+  <String Id="VerifyReadyDlgInstallText" Overridable="yes" Value="单击「安装」开始安装。" />
+  <String Id="VerifyReadyDlgChangeText" Overridable="yes" Value="单击「更改」开始更改。" />
+  <String Id="VerifyReadyDlgRepairText" Overridable="yes" Value="单击「修复」开始修复。" />
+  <String Id="VerifyReadyDlgRemoveText" Overridable="yes" Value="单击「删除」开始删除。" />
+
+  <!-- Progress -->
+  <String Id="ProgressDlgTextInstalling" Overridable="yes" Value="向导正在安装 MarkLeaf。请稍候。" />
+  <String Id="ProgressDlgTextChanging" Overridable="yes" Value="向导正在更改 MarkLeaf。请稍候。" />
+  <String Id="ProgressDlgTextRepairing" Overridable="yes" Value="向导正在修复 MarkLeaf。请稍候。" />
+  <String Id="ProgressDlgTextRemoving" Overridable="yes" Value="向导正在删除 MarkLeaf。请稍候。" />
+
+  <!-- Exit success -->
+  <String Id="ExitDialog_SuccessTitle" Overridable="yes" Value="安装完成" />
+  <String Id="ExitDialog_SuccessText" Overridable="yes" Value="MarkLeaf 已成功安装。" />
+  <String Id="ExitDialog_SuccessRepairText" Overridable="yes" Value="MarkLeaf 已成功修复。" />
+  <String Id="ExitDialog_SuccessRemoveText" Overridable="yes" Value="MarkLeaf 已成功删除。" />
+  <String Id="ExitDialog_SuccessChangeText" Overridable="yes" Value="MarkLeaf 已成功更改。" />
+
+  <!-- Maintenance type -->
+  <String Id="MaintenanceTypeDlgChangeText" Overridable="yes" Value="更改已安装的功能(&amp;H)" />
+  <String Id="MaintenanceTypeDlgChangeDescription" Overridable="yes" Value="允许您更改 MarkLeaf 的安装功能。" />
+  <String Id="MaintenanceTypeDlgRepairText" Overridable="yes" Value="修复安装错误(&amp;R)" />
+  <String Id="MaintenanceTypeDlgRepairDescription" Overridable="yes" Value="修复 MarkLeaf 安装中的错误、缺失文件和快捷方式。" />
+  <String Id="MaintenanceTypeDlgRemoveText" Overridable="yes" Value="从此计算机上删除 MarkLeaf(&amp;M)" />
+  <String Id="MaintenanceTypeDlgRemoveDescription" Overridable="yes" Value="从此计算机上彻底删除 MarkLeaf。" />
+
+  <!-- Common dialogs -->
+  <String Id="CancelDlgTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}取消安装？" />
+  <String Id="CancelDlgText" Overridable="yes" Value="是否取消 MarkLeaf 的安装？" />
+  <String Id="UserExitTitle" Overridable="yes" Value="{\WixUI_Font_Bigger}MarkLeaf 安装已取消" />
+  <String Id="UserExitText" Overridable="yes" Value="MarkLeaf 的安装未完成。&#10;&#10;如果现在退出安装，系统可能不会安装 MarkLeaf。您可以稍后再次运行安装程序来安装 MarkLeaf。&#10;&#10;单击「完成」退出安装程序。" />
+
+  <!-- Others -->
+  <String Id="FeatureDescription" Overridable="yes" Value="功能说明" />
+  <String Id="FeatureSize" Overridable="yes" Value="所需空间" />
+  <String Id="WixLocal" Overridable="yes" Value="此功能将安装到本机硬盘。" />
+  <String Id="WixWhole" Overridable="yes" Value="此功能和所有子功能将安装到本机硬盘。" />
+  <String Id="WixAbsent" Overridable="yes" Value="此功能将不可用。" />
+  <String Id="InstallDirDlgFolderLabel" Overridable="yes" Value="将 MarkLeaf 安装到:" />
+  <String Id="InstallDirDlgChangeLabel" Overridable="yes" Value="单击「更改」将 MarkLeaf 安装到其它目录。" />
+  <String Id="DiskCostDlgTitle" Overridable="yes" Value="磁盘空间" />
+  <String Id="DiskCostDlgDescription" Overridable="yes" Value="所选功能所需的磁盘空间。" />
+  <String Id="DiskCostDlgVolume" Overridable="yes" Value="卷" />
+  <String Id="DiskCostDlgAvailable" Overridable="yes" Value="可用空间" />
+  <String Id="DiskCostDlgRequired" Overridable="yes" Value="所需空间" />
+  <String Id="DiskCostDlgDifference" Overridable="yes" Value="差异" />
+
+</WixLocalization>

@@ -33,6 +33,8 @@
   </Target>
 
   <ItemGroup>
+    <EmbeddedResource Include="zh-CN.wxl" />
+
     <HarvestDirectory Include="$(PublishDir)">
       <ComponentGroupName>PublishedComponents</ComponentGroupName>
       <DirectoryRefId>INSTALLFOLDER</DirectoryRefId>
