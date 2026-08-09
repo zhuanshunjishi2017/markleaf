@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <!--
     MarkLeaf MSI Installer — per-machine, clean uninstall.
@@ -17,7 +18,15 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- ===== Prerequisites ===== -->
+    <!-- ===== Install Wizard UI ===== -->
+    <UI>
+      <ui:WixUI Id="WixUI_InstallDir" />
+    </UI>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- ===== Prerequisites (framework-dependent only) ===== -->
+<?if $(var.SelfContained) = false ?>
     <Property Id="DOTNET_ROOT">
       <RegistrySearch Id="DotNetHostSearch"
                       Root="HKLM"
@@ -25,7 +34,9 @@
                       Name="Version"
                       Type="raw" />
     </Property>
-    <Launch Condition="DOTNET_ROOT" Message=".NET 10 Desktop Runtime is required. Please install it from https://dotnet.microsoft.com/download before installing MarkLeaf." />
+    <Launch Condition="DOTNET_ROOT"
+            Message=".NET 10 Desktop Runtime required. Download from https://dotnet.microsoft.com/download" />
+<?endif ?>
 
     <!-- ===== Features ===== -->
     <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no">

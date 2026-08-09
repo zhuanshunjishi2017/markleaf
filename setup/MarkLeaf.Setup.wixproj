@@ -1,36 +1,36 @@
 <Project Sdk="WixToolset.Sdk/5.0.2">
   <PropertyGroup>
     <OutputType>Msi</OutputType>
-    <OutputName>MarkLeaf-$(Version)</OutputName>
     <InstallerPlatform>x64</InstallerPlatform>
     <Version>1.1.0</Version>
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
+    <Suffix Condition="'$(SelfContained)' == 'false'">fd</Suffix>
+    <OutputName>MarkLeaf-$(Version)-x64$(Suffix)</OutputName>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
     <PackageReference Include="WixToolset.Heat" Version="5.0.2" />
   </ItemGroup>
 
   <PropertyGroup>
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepoRoot>
-    <PublishDir>$(RepoRoot)\obj\publish\</PublishDir>
-    <DefineConstants>PublishSource=$(PublishDir)</DefineConstants>
+    <PublishDir>$(RepoRoot)\obj\publish-$(SelfContained)\</PublishDir>
+    <DefineConstants>PublishSource=$(PublishDir);SelfContained=$(SelfContained)</DefineConstants>
   </PropertyGroup>
 
-  <!-- dotnet publish before WiX compile -->
   <Target Name="PublishApp" BeforeTargets="BeforeBuild">
-    <Message Importance="high" Text="Publishing MarkLeaf (win-x64, Release)..." />
-    <Exec Command="dotnet publish &quot;$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r win-x64 --self-contained false -o &quot;$(PublishDir)&quot;"
+    <Message Importance="high" Text="Publishing MarkLeaf (win-x64, self-contained=$(SelfContained))..." />
+    <Exec Command="dotnet publish &quot;$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r win-x64 --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
           WorkingDirectory="$(RepoRoot)" />
   </Target>
 
-  <!-- Add .msi extension (WiX v5 quirk workaround) -->
   <Target Name="RenameMsi" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetPath).msi" />
     <Message Importance="high" Text="MSI: $(TargetPath).msi" />
   </Target>
 
-  <!-- Harvest published output -->
   <ItemGroup>
     <HarvestDirectory Include="$(PublishDir)">
       <ComponentGroupName>PublishedComponents</ComponentGroupName>
