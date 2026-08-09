@@ -175,6 +175,22 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
+        menu.addItem(.separator())
+
+        // 缩放（对齐 Windows fccc7ad：缩放菜单从外观移到视图）
+        let session = AppWindowManager.shared.activeSession
+        let zoomMenu = NSMenu(title: L10n.t("设置缩放"))
+        for percent in Self.zoomOptions {
+            let item = NSMenuItem(title: "\(percent)%", action: #selector(MenuRouter.setZoom(_:)), keyEquivalent: "")
+            item.target = MenuRouter.shared
+            item.representedObject = percent
+            item.state = percent == session?.zoomPercent ? .on : .off
+            zoomMenu.addItem(item)
+        }
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu))
+        menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
+        menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
+        menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
         return menu
     }
 
@@ -216,20 +232,8 @@ final class NativeMenuBuilder {
 
         menu.addItem(.separator())
 
-        // 设置缩放（对应 Windows RefreshZoomMenu）
-        let zoomMenu = NSMenu(title: L10n.t("设置缩放"))
-        for percent in Self.zoomOptions {
-            let item = NSMenuItem(title: "\(percent)%", action: #selector(MenuRouter.setZoom(_:)), keyEquivalent: "")
-            item.target = MenuRouter.shared
-            item.representedObject = percent
-            item.state = percent == session?.zoomPercent ? .on : .off
-            zoomMenu.addItem(item)
-        }
-        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu))
-        menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
-        menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
-        menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
-        menu.addItem(.separator())
+        // 主题文件（对齐 Windows fccc7ad：添加主题导入 CSS）
+        menu.addItem(commandItem(L10n.t("添加主题…"), "importTheme"))
         menu.addItem(commandItem(L10n.t("打开主题文件夹…"), "revealThemeFolder"))
         return menu
     }
@@ -517,6 +521,7 @@ extension EditorSession {
         case "rotateImage": execute("rotateImageClockwise")
         case "showShortcuts": showShortcuts()
         case "revealThemeFolder": revealThemeFolder()
+        case "importTheme": importTheme()
         case "promoteHeading": execute("promoteHeading")
         case "demoteHeading": execute("demoteHeading")
         case "toggleUnderline": executeInlineFormat("toggleUnderline")

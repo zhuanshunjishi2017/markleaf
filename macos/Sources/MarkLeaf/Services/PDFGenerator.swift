@@ -85,9 +85,27 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         self.watchdog = watchdog
         DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: watchdog)
 
-        let adjustedHTML = Self.fixLocalImagePaths(in: html)
+        // 注入 CSS @page 规则：边距交给 CSS（createPDF 忽略 NSPrintInfo 边距），
+        // 并让主题背景（--bg-primary）铺满整页（对齐 Windows fccc7ad 的 PDF 修复）。
+        let pageRule = Self.injectPageMargins(into: html, margins: margins)
+        let adjustedHTML = Self.fixLocalImagePaths(in: pageRule)
         webView.loadHTMLString(adjustedHTML, baseURL: nil)
         AppLog.info("PDFGenerator: HTML 已加载 (\(html.count) 字符)")
+    }
+
+    /// 注入 @page 边距 + 背景色（对齐 Windows EditorHostController.PrintExportToPdfAsync）。
+    /// createPDF 会忽略 NSPrintInfo 的边距设置，因此边距必须通过 CSS @page 生效。
+    private static func injectPageMargins(into html: String, margins: ExportMargins) -> String {
+        let rule = "@page { margin: \(margins.top)mm \(margins.right)mm \(margins.bottom)mm \(margins.left)mm; background-color: var(--bg-primary); }\nhtml { background: var(--bg-primary); }"
+        if let range = html.range(of: "</style>") {
+            return html.replacingCharacters(in: range, with: rule + "\n</style>")
+        }
+        // 兜底：无 <style> 时在 <head> 末尾（或文档开头）插入 <style>
+        if let headRange = html.range(of: "</head>") {
+            let style = "<style>\n" + rule + "\n</style>\n"
+            return html.replacingCharacters(in: headRange, with: style + "</head>")
+        }
+        return "<style>\n" + rule + "\n</style>\n" + html
     }
 
     private static func fixLocalImagePaths(in html: String) -> String {

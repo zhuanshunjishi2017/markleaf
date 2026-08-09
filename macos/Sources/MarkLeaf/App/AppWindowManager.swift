@@ -90,6 +90,18 @@ final class AppWindowManager {
         }
     }
 
+    /// 样式/主题变更（如导入主题）后：重新发送样式到各窗口、重建偏好设置与菜单。
+    func reloadStyles() {
+        // 先应用样式（applyPreferences -> applyStyles 会刷新各会话的 styles/colorThemes）
+        applyPreferencesToAll()
+        NativeMenuBuilder.refreshIfNeeded()
+        // 重建偏好设置（以显示新导入的主题）
+        if let prefs = preferencesController {
+            prefs.window?.close()
+            preferencesController = nil
+        }
+    }
+
     /// 启动行为：根据设置打开上次工作区/文件。
     func performStartupAction() {
         guard !didRunStartupAction else { return }

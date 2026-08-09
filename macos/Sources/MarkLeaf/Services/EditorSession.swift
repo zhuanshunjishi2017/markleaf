@@ -632,13 +632,24 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let targetWidth = baseWidth * factor
         // 源码模式字号同样随缩放（--ml-source-font-size 基准值 × 缩放系数）
         let sourceFont = Double(settings.sourceFontSize) * factor
+        // 源码字体：西文 + 中文独立选择（对齐 Windows fccc7ad）
+        let sourceFontFamily = Self.quoteFont(settings.sourceFontFamily) + ", " + Self.quoteFont(settings.sourceCjkFontFamily) + ", monospace"
         let script = """
         document.documentElement.style.setProperty('--ml-line-height','\(String(format: "%.2f", settings.visualLineHeight))');
         document.documentElement.style.setProperty('--ml-font-size','\(String(format: "%.2f", targetFont))px');
         document.documentElement.style.setProperty('--ml-max-width','\(String(format: "%.2f", targetWidth))px');
         document.documentElement.style.setProperty('--ml-source-font-size','\(String(format: "%.2f", sourceFont))px');
+        document.documentElement.style.setProperty('--ml-source-font-family','\(sourceFontFamily)');
         """
         webView?.evaluateJavaScript(script)
+    }
+
+    /// 将字体名转为 CSS 引号包裹的字符串（含空格名必须引号）。
+    private static func quoteFont(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return "monospace" }
+        let escaped = trimmed.replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     /// 对齐 C# NextZoom：在缩放档位中前后移动。
@@ -943,6 +954,49 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func openRecentFolder(_ path: String) {
         loadWorkspace(path)
+    }
+
+    /// 导入主题（对齐 Windows AddThemeFromFile）：选择 CSS 复制到用户主题目录，并刷新样式。
+    func importTheme() {
+        guard let window = webView?.window else { return }
+        guard let dir = ResourceLocator.userThemesDirectory else {
+            presentError(L10n.t("未找到主题样式文件夹"))
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("选择主题 CSS 文件")
+        panel.allowedFileTypes = ["css"]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let source = panel.url else { return }
+            let dest = dir.appendingPathComponent(source.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                let alert = NSAlert()
+                alert.messageText = L10n.f("主题文件“%@”已存在，是否覆盖？", dest.lastPathComponent)
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: L10n.t("覆盖"))
+                alert.addButton(withTitle: L10n.t("取消"))
+                alert.buttons.first?.hasDestructiveAction = true
+                alert.beginSheetModal(for: window) { resp in
+                    guard resp == .alertFirstButtonReturn else { return }
+                    self?.copyThemeFile(from: source, to: dest)
+                }
+            } else {
+                self?.copyThemeFile(from: source, to: dest)
+            }
+        }
+    }
+
+    private func copyThemeFile(from source: URL, to dest: URL) {
+        do {
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: source, to: dest)
+            statusText = L10n.f("已添加主题：%@", dest.lastPathComponent)
+            AppWindowManager.shared.reloadStyles()
+        } catch {
+            presentError(L10n.f("无法复制主题文件：%@", error.localizedDescription))
+        }
     }
 
     /// 打开用户主题目录（可写，可放入自定义 colors-*.css，重启后生效）。

@@ -24,6 +24,8 @@ struct AppSettings: Codable {
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
         sourceFontSize = try container.decodeIfPresent(Int.self, forKey: .sourceFontSize) ?? 14
+        sourceFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceFontFamily) ?? Self.defaultSourceFontFamily
+        sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? true
@@ -77,7 +79,14 @@ struct AppSettings: Codable {
     var visualFontSize = 16
     var visualMaxContentWidth = 820
     var sourceFontSize = 14
+    /// 源码模式西文（等宽）字体：对应 Windows SourceFontFamily（默认 Cascadia Mono）
+    var sourceFontFamily = AppSettings.defaultSourceFontFamily
+    /// 源码模式中文字体：对应 Windows SourceCjkFontFamily（默认 Microsoft YaHei）
+    var sourceCjkFontFamily = AppSettings.defaultSourceCjkFontFamily
     var sourceIndentWidth = 2
+
+    static let defaultSourceFontFamily = "Menlo"
+    static let defaultSourceCjkFontFamily = "PingFang SC"
 
     // 文件
     var startupAction = StartupAction.newDocument

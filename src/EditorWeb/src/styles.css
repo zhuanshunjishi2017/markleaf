@@ -109,10 +109,12 @@ body {
   height: 100vh;
 }
 
-/* 源码模式字号由宿主 ApplyCssVariables 通过 --ml-source-font-size 控制，
-   与可视化编辑器的 --ml-font-size 采用相同机制。 */
-#source-editor .cm-content {
+/* 源码模式字号/字体由宿主 ApplyCssVariables 通过 --ml-source-font-size /
+   --ml-source-font-family 控制（对齐 Windows fccc7ad 的源码字体选择：西文与中文独立）。 */
+#source-editor .cm-content,
+#source-editor .cm-gutters {
   font-size: var(--ml-source-font-size, 14px);
+  font-family: var(--ml-source-font-family, 'SF Mono', ui-monospace, Menlo, Monaco, monospace);
 }
 
 /* ---- 源码模式语法高亮（class-based，颜色随主题变量） ---- */

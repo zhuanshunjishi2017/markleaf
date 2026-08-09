@@ -230,6 +230,7 @@ enum L10n {
         "浏览…": "瀏覽…",
         "重置": "重設",
         "取消": "取消",
+        "覆盖": "覆蓋",
         "保存到默认目录": "儲存到預設目錄",
         "复制到文档资源": "複製到文件資源",
         "引用原位置": "引用原位置",
@@ -359,6 +360,15 @@ enum L10n {
         "最近文件": "最近檔案",
         "最近文件夹": "最近資料夾",
         "(暂无)": "（無）",
+        "选择…": "選擇…",
+        "西文字体": "西文字體",
+        "中文字体": "中文字體",
+        "添加主题…": "新增主題…",
+        "选择主题 CSS 文件": "選擇主題 CSS 檔案",
+        "主题文件“%@”已存在，是否覆盖？": "主題檔案「%@」已存在，是否覆蓋？",
+        "无法复制主题文件：%@": "無法複製主題檔案：%@",
+        "已添加主题：%@": "已新增主題：%@",
+
     ]
 
     // MARK: - English
@@ -531,6 +541,7 @@ enum L10n {
         "浏览…": "Browse…",
         "重置": "Reset",
         "取消": "Cancel",
+        "覆盖": "Overwrite",
         "保存到默认目录": "Save to Default Directory",
         "复制到文档资源": "Copy to Document Assets",
         "引用原位置": "Reference Original Location",
@@ -654,5 +665,14 @@ enum L10n {
         "最近文件": "Recent Files",
         "最近文件夹": "Recent Folders",
         "(暂无)": "(None)",
+        "选择…": "Choose…",
+        "西文字体": "Western Font",
+        "中文字体": "CJK Font",
+        "添加主题…": "Add Theme…",
+        "选择主题 CSS 文件": "Choose Theme CSS File",
+        "主题文件“%@”已存在，是否覆盖？": "Theme file \"%@\" already exists. Overwrite?",
+        "无法复制主题文件：%@": "Could not copy theme file: %@",
+        "已添加主题：%@": "Theme added: %@",
+
     ]
 }

@@ -18,12 +18,13 @@ final class PreferencesWindowController: NSWindowController {
     private let fontSizeField = NSTextField(string: "16")
     private let maxWidthField = NSTextField(string: "820")
     private let sourceFontSizeField = NSTextField(string: "14")
+    private var sourceFontField: FontField!
+    private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
 
     // 外观
     private let stylePopup = NSPopUpButton()
     private let themePopup = NSPopUpButton()
-    private let zoomPopup = NSPopUpButton()
     private let restoreZoomCheck = NSButton(checkboxWithTitle: L10n.t("打开时还原上次的缩放比例"), target: nil, action: nil)
     // 触控板捏合始终可用；此开关仅控制 ⌘ + 滚轮缩放
     private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: L10n.t("使用 ⌘ + 滚轮进行缩放"), target: nil, action: nil)
@@ -44,7 +45,6 @@ final class PreferencesWindowController: NSWindowController {
     private var styleIDs: [String] = []
     private var themeIDs: [String] = []
 
-    private static let zoomOptions = Array(stride(from: 50, through: 200, by: 10))
 
     /// 表单网格行：组标题 / 提示 / 标签+控件
     private enum FormRow {
@@ -83,6 +83,12 @@ final class PreferencesWindowController: NSWindowController {
         fontSizeField.stringValue = "\(settings.visualFontSize)"
         maxWidthField.stringValue = "\(settings.visualMaxContentWidth)"
         sourceFontSizeField.stringValue = "\(settings.sourceFontSize)"
+        sourceFontField = FontField(fontName: settings.sourceFontFamily) { [weak self] _ in
+            self?.controlChanged()
+        }
+        sourceCjkFontField = FontField(fontName: settings.sourceCjkFontFamily) { [weak self] _ in
+            self?.controlChanged()
+        }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
 
         stylePopup.addItems(withTitles: styles.map(\.displayName))
@@ -93,8 +99,6 @@ final class PreferencesWindowController: NSWindowController {
         if let idx = themes.firstIndex(where: { $0.id == settings.colorTheme }) {
             themePopup.selectItem(at: idx)
         }
-        zoomPopup.addItems(withTitles: Self.zoomOptions.map { "\($0)%" })
-        zoomPopup.selectItem(withTitle: "\(settings.zoomPercent)%")
         restoreZoomCheck.state = settings.restoreZoomOnOpen ? .on : .off
         ctrlWheelZoomCheck.state = settings.ctrlWheelZoom ? .on : .off
         topMostCheck.state = settings.topMostWindow ? .on : .off
@@ -153,7 +157,7 @@ final class PreferencesWindowController: NSWindowController {
 
         // 绑定
         let controls: [NSControl] = [startupPopup, autoSaveCheck, newLinePopup, recordRecentFilesCheck,
-                                     recordRecentFoldersCheck, stylePopup, themePopup, zoomPopup,
+                                     recordRecentFoldersCheck, stylePopup, themePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
@@ -200,7 +204,12 @@ final class PreferencesWindowController: NSWindowController {
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
             .header(L10n.t("源码模式")),
             .field(L10n.t("基础字号"), sourceFontSizeField),
+            .field(L10n.t("西文字体"), sourceFontField),
+            .field(L10n.t("中文字体"), sourceCjkFontField),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
+            .header(L10n.t("缩放视图")),
+            .field("", restoreZoomCheck),
+            .field("", ctrlWheelZoomCheck),
             .hint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。")),
         ])
     }
@@ -210,12 +219,8 @@ final class PreferencesWindowController: NSWindowController {
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
             .field(L10n.t("颜色主题"), themePopup),
+            .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
-            .header(L10n.t("缩放视图")),
-            .field(L10n.t("设置缩放"), zoomPopup),
-            .field("", linkButton(L10n.t("重置为 100%"), #selector(resetZoom))),
-            .field("", restoreZoomCheck),
-            .field("", ctrlWheelZoomCheck),
             .header(L10n.t("窗口设置")),
             .field("", topMostCheck),
         ])
@@ -276,6 +281,8 @@ final class PreferencesWindowController: NSWindowController {
             settings.visualFontSize = Int(fontSizeField.stringValue) ?? 16
             settings.visualMaxContentWidth = Int(maxWidthField.stringValue) ?? 820
             settings.sourceFontSize = Int(sourceFontSizeField.stringValue) ?? 14
+            settings.sourceFontFamily = sourceFontField.fontName
+            settings.sourceCjkFontFamily = sourceCjkFontField.fontName
             settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
 
             if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {
@@ -284,7 +291,6 @@ final class PreferencesWindowController: NSWindowController {
             if themePopup.indexOfSelectedItem >= 0, themePopup.indexOfSelectedItem < themeIDs.count {
                 settings.colorTheme = themeIDs[themePopup.indexOfSelectedItem]
             }
-            settings.zoomPercent = Int(zoomPopup.titleOfSelectedItem?.replacingOccurrences(of: "%", with: "") ?? "100") ?? 100
             settings.restoreZoomOnOpen = restoreZoomCheck.state == .on
             settings.ctrlWheelZoom = ctrlWheelZoomCheck.state == .on
             settings.topMostWindow = topMostCheck.state == .on
@@ -316,9 +322,8 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
-    @objc private func resetZoom() {
-        zoomPopup.selectItem(withTitle: "100%")
-        controlChanged()
+    @objc private func importTheme() {
+        AppWindowManager.shared.activeSession?.importTheme()
     }
 
     @objc private func recoverUnsavedFiles() {
