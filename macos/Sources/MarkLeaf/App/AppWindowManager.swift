@@ -102,26 +102,52 @@ final class AppWindowManager {
         }
     }
 
-    /// 启动行为：根据设置打开上次工作区/文件。
-    func performStartupAction() {
-        guard !didRunStartupAction else { return }
+    /// 启动行为：将设置解析为一次性的加载计划，并在指定会话中执行。
+    @discardableResult
+    func performStartupAction(for session: EditorSession, explicitFile: String? = nil) -> Bool {
+        guard !didRunStartupAction else { return false }
         didRunStartupAction = true
         let settings = SettingsService.shared.settings
-        switch settings.startupAction {
-        case .openLastWorkspace:
-            if let folder = settings.lastFolder {
-                primarySession?.loadWorkspace(folder)
-            }
-        case .openLastWorkspaceAndFiles:
-            if let folder = settings.lastFolder {
-                primarySession?.loadWorkspace(folder)
-            }
-            if let file = settings.lastFile {
-                primarySession?.openDocument(at: URL(fileURLWithPath: file))
-            }
+        let fileManager = FileManager.default
+        let plan = StartupActionResolver.resolve(
+            action: settings.startupAction,
+            lastFolder: settings.lastFolder,
+            lastFile: settings.lastFile,
+            explicitFile: explicitFile,
+            isDirectory: { path in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            },
+            isFile: { path in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: path, isDirectory: &isDirectory) && !isDirectory.boolValue
+            })
+        AppLog.info("执行启动计划: \(plan)")
+
+        switch plan.operation {
         case .newDocument:
-            break
+            session.newDocument()
+        case .openExplicitFile(let path), .openFile(let path):
+            session.openDocument(at: URL(fileURLWithPath: path))
+        case .openWorkspace(let path):
+            session.loadWorkspace(path)
+            session.newDocument()
+        case .openWorkspaceAndFile(let workspace, let file):
+            session.loadWorkspace(workspace)
+            session.openDocument(at: URL(fileURLWithPath: file))
         }
+
+        if let notice = plan.notice {
+            switch notice {
+            case .missingWorkspace:
+                session.statusText = L10n.t("上次工作区不可用，已打开可用内容")
+            case .missingFile:
+                session.statusText = L10n.t("上次文件不可用，已打开可用内容")
+            case .missingWorkspaceAndFile:
+                session.statusText = L10n.t("上次工作区和文件均不可用，已新建文档")
+            }
+        }
+        return true
     }
 
     /// 关于 MarkLeaf：macOS 原生关于面板（同 LyricsX，orderFrontStandardAboutPanel）。

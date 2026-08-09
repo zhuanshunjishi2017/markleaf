@@ -1033,22 +1033,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard !didRunInitialLoad else { return }
         didRunInitialLoad = true
 
-        if let path = pendingInitialOpenPath {
-            openDocument(at: URL(fileURLWithPath: path))
-            return
-        }
-        if let path = Self.argumentValue("--open") {
-            openDocument(at: URL(fileURLWithPath: path))
-            return
-        }
-        if useStartupAction {
-            AppWindowManager.shared.performStartupAction()
-            if workspaceRoot == nil && documentURL == nil {
-                loadDocument(markdown: Self.sampleMarkdown, fileURL: nil)
+        let explicitPath = pendingInitialOpenPath ?? Self.argumentValue("--open")
+        if useStartupAction || explicitPath != nil {
+            if !AppWindowManager.shared.performStartupAction(for: self, explicitFile: explicitPath) {
+                newDocument()
             }
             return
         }
-        loadDocument(markdown: Self.sampleMarkdown, fileURL: nil)
+        newDocument()
     }
 
     static func argumentValue(_ name: String) -> String? {
@@ -1059,42 +1051,4 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         return arguments[index + 1]
     }
 
-    static let sampleMarkdown = """
-    # MarkLeaf · macOS 原型
-
-    > 这是 **MarkLeaf** 在 macOS 上的最小可运行原型：AppKit 原生外壳 + WKWebView 加载
-    > 未经改动的 EditorWeb 前端（Tiptap/ProseMirror + CodeMirror 6）。
-
-    ## 已经能用的
-
-    - 原生菜单栏：**文件 / 格式 / 视图 / 窗口 / 帮助**
-    - 文档打开、保存、另存为、导出 HTML
-    - 排版样式切换与颜色主题（系统外观自动跟随深色主题）
-    - 查找（⌘F）与查找替换（⌥⌘F）、源码模式（⌥⌘U）
-    - 缩放（⌘+ / ⌘- / ⌘0）与状态栏
-
-    ### 待办（对应移植路线图）
-
-    1. 剪贴板 HTML（NSPasteboard）与 PDF 导出（WKWebView.createPDF）
-    2. 工作区侧边栏 + 文件树（NSOutlineView）
-    3. 大纲面板与光标联动
-    4. 多窗口（NSWindowController）+ 窗口位置记忆
-    5. 图片资源本地服务（assets.local → WKURLSchemeHandler）
-    6. 分发：App Sandbox、签名、公证
-
-    - [ ] 任务列表 1
-    - [ ] 任务列表 2
-    - [x] 已完成任务
-
-    ```swift
-    let editor = WKWebView()
-    editor.load(URLRequest(url: markleafEditorURL))
-    ```
-
-    | 模块 | 复用策略 |
-    |---|---|
-    | EditorWeb 前端 | 100% 复用 |
-    | 协议/会话/命令 | Swift 重写 |
-    | UI 外壳 | AppKit 原生重写 |
-    """
 }
