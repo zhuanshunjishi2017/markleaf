@@ -1591,7 +1591,7 @@ internal sealed partial class MainForm : Form
         ShowModal(() => dialog.ShowDialog(this));
     }
 
-    private void ShowChangelog()
+    private async void ShowChangelog()
     {
         var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.txt");
         if (!File.Exists(changelogPath))
@@ -1600,15 +1600,18 @@ internal sealed partial class MainForm : Form
             return;
         }
 
+        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "changelog.txt");
         try
         {
-            ExternalLinkService.OpenLocal(changelogPath);
+            File.Copy(changelogPath, cachePath, overwrite: true);
         }
-        catch (Exception exception) when (exception is IOException or System.ComponentModel.Win32Exception)
+        catch
         {
-            ShowMessage(this, Loc.Get("changelog.openFailed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            SetStatus(Loc.Get("changelog.openFailed"));
+            return;
         }
+
+        await OpenDocumentPathAsync(cachePath);
     }
 
     private void ShowPreferences()

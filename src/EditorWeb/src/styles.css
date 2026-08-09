@@ -138,7 +138,13 @@ body {
   min-height: calc(100vh - 140px);
 }
 
-/* 自动隐藏滚动条：空闲时滑块透明（隐藏），滚动中或鼠标移至右边缘时显示。
+/* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* 自动隐藏滚动条：收窄至 8px，空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
    同时作用于 html 和 body，覆盖不同 overflow 归属场景。 */
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
 body.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
@@ -157,7 +163,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
 }
 
 @media (max-width: 720px) {

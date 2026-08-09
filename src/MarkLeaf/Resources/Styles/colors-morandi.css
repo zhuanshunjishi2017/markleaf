@@ -119,20 +119,20 @@ body,
 }
 
 /* ---- 滚动条 ---- */
-html.markleaf-auto-hide-scrollbar ::-webkit-scrollbar {
+::-webkit-scrollbar {
   background: var(--bg-primary);
 }
-    html.markleaf-auto-hide-scrollbar ::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: var(--bg-primary);
 }
-   html.markleaf-auto-hide-scrollbar ::-webkit-scrollbar-corner {
+::-webkit-scrollbar-corner {
   background: var(--bg-primary);
 }
-    html.markleaf-auto-hide-scrollbar ::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: var(--scrollbar-idle);
   border-radius: 4px;
 }
-    html.markleaf-auto-hide-scrollbar ::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-active);
 }
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
