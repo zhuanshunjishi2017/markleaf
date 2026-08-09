@@ -60,6 +60,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     weak var webView: WKWebView?
 
     private var documentId = UUID().uuidString.lowercased()
+    private var startupRecoveryNotice: (documentID: String, text: String)?
     private var revision: Int64 = 0
     private var fileMonitorSource: DispatchSourceFileSystemObject?
     private var monitoredFileDescriptor: Int32 = -1
@@ -89,6 +90,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         return isDirty ? base + L10n.t(" — 已编辑") : base
     }
 
+    var currentDocumentIdentifier: String { documentId }
+    var pendingInitialDocumentPath: String? { pendingInitialOpenPath }
+
     private func notify() {
         DispatchQueue.main.async { [weak self] in
             self?.onStateChanged?()
@@ -115,7 +119,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
-    private func handleEditorMessage(_ message: [String: Any]) {
+    func handleEditorMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
         let payload = message["payload"] as? [String: Any]
 
@@ -133,6 +137,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             AppLog.info("文档加载完成")
             statusText = L10n.t("已加载")
             applyPostLoadSettings()
+            if let notice = startupRecoveryNotice(for: message) {
+                statusText = notice
+            }
 
         case "snapshot":
             let markdown = payload?["markdown"] as? String ?? ""
@@ -142,10 +149,17 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "dirtyChanged":
             let dirty = payload?["dirty"] as? Bool ?? false
             isDirty = dirty
-            statusText = dirty ? L10n.t("已修改") : L10n.t("已保存")
+            if dirty {
+                clearStartupRecoveryNotice(for: message)
+                statusText = L10n.t("已修改")
+            } else if startupRecoveryNotice(for: message) == nil {
+                statusText = L10n.t("已保存")
+            }
 
         case "editorStatusChanged":
-            updateStatus(from: payload)
+            if startupRecoveryNotice(for: message) == nil {
+                updateStatus(from: payload)
+            }
 
         case "commandStateChanged":
             isSourceMode = payload?["sourceMode"] as? Bool ?? false
@@ -163,7 +177,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                       let position = dict["position"] as? Int else { return nil }
                 return OutlineHeading(level: level, text: text, position: position)
             }
-            statusText = L10n.f("大纲 %d 项", outlineHeadings.count)
+            if startupRecoveryNotice(for: message) == nil {
+                statusText = L10n.f("大纲 %d 项", outlineHeadings.count)
+            }
             onOutlineChanged?()
 
         case "openLink":
@@ -250,6 +266,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let column = payload["column"] as? Int ?? 1
         let characterCount = payload["characterCount"] as? Int ?? 0
         statusText = L10n.f("%@ · 行 %d 列 %d · %d 字符", Self.blockTypeDisplayName(blockType), line, column, characterCount)
+    }
+
+    func preserveStartupRecoveryNoticeForCurrentDocumentLoad(_ text: String) {
+        startupRecoveryNotice = (documentId, text)
+    }
+
+    private func startupRecoveryNotice(for message: [String: Any]) -> String? {
+        guard let notice = startupRecoveryNotice,
+              message["documentId"] as? String == notice.documentID else { return nil }
+        return notice.text
+    }
+
+    private func clearStartupRecoveryNotice(for message: [String: Any]) {
+        guard startupRecoveryNotice(for: message) != nil else { return }
+        startupRecoveryNotice = nil
     }
 
     private static func blockTypeDisplayName(_ blockType: String) -> String {
@@ -375,6 +406,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func loadDocument(markdown: String, fileURL: URL?) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
+        startupRecoveryNotice = nil
         documentId = UUID().uuidString.lowercased()
         revision = 0
         isDirty = false

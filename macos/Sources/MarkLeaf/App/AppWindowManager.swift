@@ -10,9 +10,9 @@ final class AppWindowManager {
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
     private var findPanelController: FindPanelController?
-    private var didRunStartupAction = false
+    private var startupActionState = StartupActionState()
 
-    private init() {}
+    init() {}
 
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
         let session = EditorSession()
@@ -105,8 +105,7 @@ final class AppWindowManager {
     /// 启动行为：将设置解析为一次性的加载计划，并在指定会话中执行。
     @discardableResult
     func performStartupAction(for session: EditorSession, explicitFile: String? = nil) -> Bool {
-        guard !didRunStartupAction else { return false }
-        didRunStartupAction = true
+        guard startupActionState.consume() else { return false }
         let settings = SettingsService.shared.settings
         let fileManager = FileManager.default
         let plan = StartupActionResolver.resolve(
@@ -138,14 +137,16 @@ final class AppWindowManager {
         }
 
         if let notice = plan.notice {
+            let status: String
             switch notice {
             case .missingWorkspace:
-                session.statusText = L10n.t("上次工作区不可用，已打开可用内容")
+                status = L10n.t("上次工作区不可用，已打开可用内容")
             case .missingFile:
-                session.statusText = L10n.t("上次文件不可用，已打开可用内容")
+                status = L10n.t("上次文件不可用，已打开可用内容")
             case .missingWorkspaceAndFile:
-                session.statusText = L10n.t("上次工作区和文件均不可用，已新建文档")
+                status = L10n.t("上次工作区和文件均不可用，已新建文档")
             }
+            session.preserveStartupRecoveryNoticeForCurrentDocumentLoad(status)
         }
         return true
     }
@@ -224,9 +225,19 @@ final class AppWindowManager {
     /// 打开文件（Finder 关联 / 命令行）。
     func openDocumentInFrontWindow(_ url: URL) {
         if let session = primarySession {
-            session.openDocument(at: url)
+            routeIncomingDocument(url, to: session)
         } else {
             _ = newWindow(documentPath: url.path)
+        }
+    }
+
+    /// 将 Finder 文件意图路由到已有会话；内部可见以覆盖冷启动关联文件路径。
+    func routeIncomingDocument(_ url: URL, to session: EditorSession) {
+        switch startupActionState.disposition(forIncomingFile: url.path) {
+        case .pendingInitialIntent(let path):
+            session.openInitialDocument(path: path)
+        case .openImmediately(let path):
+            session.openDocument(at: URL(fileURLWithPath: path))
         }
     }
 }
