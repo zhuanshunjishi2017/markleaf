@@ -24,9 +24,9 @@ final class PreferencesWindowController: NSWindowController {
     private let stylePopup = NSPopUpButton()
     private let themePopup = NSPopUpButton()
     private let zoomPopup = NSPopUpButton()
-    private let restoreZoomCheck = NSButton(checkboxWithTitle: "打开时还原上次的缩放比例", target: nil, action: nil)
+    private let restoreZoomCheck = NSButton(checkboxWithTitle: L10n.t("打开时还原上次的缩放比例"), target: nil, action: nil)
     // 触控板捏合始终可用；此开关仅控制 ⌘ + 滚轮缩放
-    private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: "使用 ⌘ + 滚轮进行缩放", target: nil, action: nil)
+    private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: L10n.t("使用 ⌘ + 滚轮进行缩放"), target: nil, action: nil)
     private let topMostCheck = NSButton(checkboxWithTitle: L10n.t("将窗口置于顶层"), target: nil, action: nil)
 
     // 通用

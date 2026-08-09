@@ -85,8 +85,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isReady = false
 
     var windowTitle: String {
-        let base = documentURL?.lastPathComponent ?? "未命名"
-        return isDirty ? base + " — 已编辑" : base
+        let base = documentURL?.lastPathComponent ?? L10n.t("未命名")
+        return isDirty ? base + L10n.t(" — 已编辑") : base
     }
 
     private func notify() {
@@ -180,7 +180,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             handleExportedContent(html)
 
         case "error":
-            let detail = payload?["message"] as? String ?? "未知错误"
+            let detail = payload?["message"] as? String ?? L10n.t("未知错误")
             AppLog.warning("编辑器前端错误: \(detail)")
             statusText = L10n.t("前端错误")
 
@@ -267,7 +267,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "orderedList": return L10n.t("有序列表")
         case "taskList": return L10n.t("任务列表")
         case "table": return L10n.t("表格")
-        case "image": return "图片"
+        case "image": return L10n.t("图片")
         default: return blockType
         }
     }
@@ -666,7 +666,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func openDocument() {
         let panel = NSOpenPanel()
-        panel.title = "打开 Markdown 文档"
+        panel.title = L10n.t("打开 Markdown 文档")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -699,9 +699,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func saveDocumentAs() {
         let panel = NSSavePanel()
-        panel.title = "保存 Markdown 文档"
+        panel.title = L10n.t("保存 Markdown 文档")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
-        panel.nameFieldStringValue = documentURL?.lastPathComponent ?? "未命名.md"
+        panel.nameFieldStringValue = documentURL?.lastPathComponent ?? L10n.t("未命名.md")
         guard let window = webView?.window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
@@ -877,7 +877,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func insertImageFromPicker() {
         guard let window = webView?.window else { return }
         let panel = NSOpenPanel()
-        panel.title = "插入图片"
+        panel.title = L10n.t("插入图片")
         panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, (UTType(filenameExtension: "webp") ?? .png)]
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
@@ -897,7 +897,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.informativeText = L10n.t("请输入图片URL：")
         alert.alertStyle = .informational
         alert.addButton(withTitle: L10n.t("插入"))
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L10n.t("取消"))
 
         // 注意：NSAlert 的 accessoryView 需用显式 frame（Auto Layout 的 NSStackView 会塌陷为 0 高，输入框不可见）
         let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 28))

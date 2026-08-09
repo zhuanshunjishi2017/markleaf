@@ -166,7 +166,7 @@ final class AppWindowManager {
         let pending = RecoveryService.pendingRecoveries()
         if pending.isEmpty {
             let alert = NSAlert()
-            alert.messageText = "未发现需要恢复的文件。"
+            alert.messageText = L10n.t("未发现需要恢复的文件。")
             alert.alertStyle = .informational
             alert.addButton(withTitle: L10n.t("好"))
             if let window = activeSession?.webView?.window {

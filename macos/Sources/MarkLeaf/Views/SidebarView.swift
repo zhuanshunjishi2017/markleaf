@@ -160,7 +160,7 @@ final class SidebarView: NSView {
 
     @objc private func openFolder() {
         let panel = NSOpenPanel()
-        panel.title = "打开工作区文件夹"
+        panel.title = L10n.t("打开工作区文件夹")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -283,12 +283,12 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
 
         let menu = NSMenu()
         if !entry.isDirectory {
-            menu.addItem(item("打开", #selector(openEntry(_:)), entry))
+            menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))
             menu.addItem(.separator())
         }
-        menu.addItem(item("在 Finder 中显示", #selector(revealInFinder(_:)), entry))
+        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(revealInFinder(_:)), entry))
         menu.addItem(.separator())
-        menu.addItem(item("刷新工作区", #selector(refreshWorkspace(_:)), nil))
+        menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
         return menu
     }
 

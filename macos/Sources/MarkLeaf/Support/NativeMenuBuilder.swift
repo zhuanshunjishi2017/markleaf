@@ -67,9 +67,9 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
-        menu.addItem(commandItem("恢复未保存的文件…", "recoverUnsavedFiles"))
+        menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("关闭文件夹", "closeFolder"))
+        menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("关闭窗口"), #selector(NSWindow.performClose(_:)), target: nil, key: "w"))
         return menu
@@ -101,15 +101,15 @@ final class NativeMenuBuilder {
 
         let headings = NSMenu(title: L10n.t("标题"))
         for level in 1...6 {
-            headings.addItem(commandItem("\(Self.levelName(level))级标题", "setHeading\(level)", key: "\(level)"))
+            headings.addItem(commandItem(L10n.f("%@级标题", Self.levelName(level)), "setHeading\(level)", key: "\(level)"))
         }
-        menu.addItem(popup("标题", headings))
+        menu.addItem(popup(L10n.t("标题"), headings))
 
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: "."))
         menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ","))
         menu.addItem(.separator())
-        menu.addItem(commandItem("引用", "toggleBlockquote"))
+        menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
 
@@ -117,9 +117,9 @@ final class NativeMenuBuilder {
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
         lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
         lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
-        menu.addItem(popup("列表", lists))
+        menu.addItem(popup(L10n.t("列表"), lists))
 
-        menu.addItem(popup("表格", tableMenu()))
+        menu.addItem(popup(L10n.t("表格"), tableMenu()))
         return menu
     }
 
@@ -127,19 +127,19 @@ final class NativeMenuBuilder {
         let menu = NSMenu(title: L10n.t("表格"))
         menu.addItem(commandItem(L10n.t("插入表格"), "insertTable"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("在上方添加行", "addRowBefore"))
-        menu.addItem(commandItem("在下方添加行", "addRowAfter"))
-        menu.addItem(commandItem("删除当前行", "deleteRow"))
+        menu.addItem(commandItem(L10n.t("在上方添加行"), "addRowBefore"))
+        menu.addItem(commandItem(L10n.t("在下方添加行"), "addRowAfter"))
+        menu.addItem(commandItem(L10n.t("删除当前行"), "deleteRow"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("在左侧添加列", "addColumnBefore"))
-        menu.addItem(commandItem("在右侧添加列", "addColumnAfter"))
-        menu.addItem(commandItem("删除当前列", "deleteColumn"))
+        menu.addItem(commandItem(L10n.t("在左侧添加列"), "addColumnBefore"))
+        menu.addItem(commandItem(L10n.t("在右侧添加列"), "addColumnAfter"))
+        menu.addItem(commandItem(L10n.t("删除当前列"), "deleteColumn"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("左对齐", "alignTableLeft"))
-        menu.addItem(commandItem("居中对齐", "alignTableCenter"))
-        menu.addItem(commandItem("右对齐", "alignTableRight"))
+        menu.addItem(commandItem(L10n.t("左对齐"), "alignTableLeft"))
+        menu.addItem(commandItem(L10n.t("居中对齐"), "alignTableCenter"))
+        menu.addItem(commandItem(L10n.t("右对齐"), "alignTableRight"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("删除表格", "deleteTable"))
+        menu.addItem(commandItem(L10n.t("删除表格"), "deleteTable"))
         return menu
     }
 
@@ -170,8 +170,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))
         menu.addItem(commandItem(L10n.t("大纲"), "outlineTab"))
         menu.addItem(.separator())
-        menu.addItem(commandItem("树结构", "treeView"))
-        menu.addItem(commandItem("文档列表", "listView"))
+        menu.addItem(commandItem(L10n.t("树结构"), "treeView"))
+        menu.addItem(commandItem(L10n.t("文档列表"), "listView"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
@@ -225,7 +225,7 @@ final class NativeMenuBuilder {
             item.state = percent == session?.zoomPercent ? .on : .off
             zoomMenu.addItem(item)
         }
-        menu.addItem(popup("设置缩放", zoomMenu))
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu))
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
@@ -248,7 +248,9 @@ final class NativeMenuBuilder {
     // MARK: - Helpers
 
     private static func levelName(_ level: Int) -> String {
-        ["一", "二", "三", "四", "五", "六"][level - 1]
+        // 英文直接用数字（Heading 1）；中文用「一/二/…」
+        if SettingsService.shared.settings.displayLanguage == "en" { return "\(level)" }
+        return ["一", "二", "三", "四", "五", "六"][level - 1]
     }
 
     private func commandItem(_ title: String, _ command: String, key: String = "", mask: NSEvent.ModifierFlags = [.command]) -> NSMenuItem {
@@ -332,7 +334,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         case "openFolder":
             guard let session else { return }
             let panel = NSOpenPanel()
-            panel.title = "打开文件夹"
+            panel.title = L10n.t("打开文件夹")
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
@@ -403,14 +405,14 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
             menu.addItem(foldersHeader)
             let folders = settings.recentFolders.prefix(10)
             if folders.isEmpty {
-                menu.addItem(disabledItem("(暂无)"))
+                menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in folders.enumerated() {
                 menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path))
             }
         }
         if !settings.recordRecentFiles && !settings.recordRecentFolders {
-            menu.addItem(disabledItem("(未启用记录)"))
+            menu.addItem(disabledItem(L10n.t("(未启用记录)")))
         }
     }
 
