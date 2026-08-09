@@ -20,7 +20,7 @@ final class FindPanelController: NSWindowController {
         self.session = session
         self.replaceMode = replaceMode
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 110),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 96),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false)
@@ -43,19 +43,20 @@ final class FindPanelController: NSWindowController {
         guard let window else { return }
 
         searchField.placeholderString = L10n.t("查找")
-        searchField.controlSize = .large
+        searchField.controlSize = .regular
         searchField.target = self
         searchField.action = #selector(searchChanged)
         searchField.sendsSearchStringImmediately = true
 
         replaceField.placeholderString = L10n.t("替换为")
-        replaceField.controlSize = .large
+        replaceField.controlSize = .regular
+        replaceField.bezelStyle = .roundedBezel
         replaceField.target = self
         replaceField.action = #selector(replaceClicked)
 
         for button in [prevButton, nextButton, replaceButton, replaceAllButton] {
             button.bezelStyle = .rounded
-            button.controlSize = .large
+            button.controlSize = .regular
             button.target = self
         }
         prevButton.action = #selector(prevClicked)
@@ -102,8 +103,8 @@ final class FindPanelController: NSWindowController {
 
         window.contentView = root
         NSLayoutConstraint.activate([
-            searchField.widthAnchor.constraint(equalToConstant: 240),
-            replaceField.widthAnchor.constraint(equalToConstant: 240),
+            searchField.widthAnchor.constraint(equalToConstant: 200),
+            replaceField.widthAnchor.constraint(equalToConstant: 200),
             root.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor),
             root.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
             root.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
@@ -111,8 +112,8 @@ final class FindPanelController: NSWindowController {
         ])
 
         if let contentView = window.contentView {
-            contentView.widthAnchor.constraint(equalToConstant: 460).isActive = true
-            contentView.heightAnchor.constraint(equalToConstant: replaceMode ? 118 : 86).isActive = true
+            contentView.widthAnchor.constraint(equalToConstant: 420).isActive = true
+            contentView.heightAnchor.constraint(equalToConstant: replaceMode ? 104 : 74).isActive = true
         }
         replaceRow.isHidden = !replaceMode
     }
