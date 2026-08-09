@@ -60,6 +60,9 @@ AGENTS.md
 
 # App resources (generated)
 src/MarkLeaf/Resources/App/*
+!src/MarkLeaf/Resources/App/App.ico
+!src/MarkLeaf/Resources/App/App.png
+!src/MarkLeaf/Resources/App/fileicon.ico
 
 # Root icon files (keep only appicon.png)
 /App.png
