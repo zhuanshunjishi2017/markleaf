@@ -39,7 +39,7 @@ final class PreferencesWindowController: NSWindowController {
     private let fileImagePopup = NSPopUpButton()
     private let imageDirectoryField = NSTextField(string: "")
     private let useRelativePathsCheck = NSButton(checkboxWithTitle: L10n.t("在可用时使用相对路径"), target: nil, action: nil)
-    private let prefixDotSlashCheck = NSButton(checkboxWithTitle: "相对路径前加 \"./\"", target: nil, action: nil)
+    private let prefixDotSlashCheck = NSButton(checkboxWithTitle: L10n.t("相对路径前加 \"./\""), target: nil, action: nil)
 
     private var styleIDs: [String] = []
     private var themeIDs: [String] = []
