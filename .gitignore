@@ -67,3 +67,6 @@ src/MarkLeaf/Resources/App/*
 setup/publish/
 setup/obj/
 setup/bin/
+
+# Release output
+release/

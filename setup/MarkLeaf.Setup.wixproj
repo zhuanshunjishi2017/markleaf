@@ -3,7 +3,7 @@
     <OutputType>Msi</OutputType>
     <InstallerPlatform>x64</InstallerPlatform>
     <Cultures>zh-CN</Cultures>
-    <Version>1.1.0</Version>
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
     <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
     <Suffix Condition="'$(SelfContained)' == 'false'">fd</Suffix>
     <OutputName>MarkLeaf-$(Version)-x64$(Suffix)</OutputName>
