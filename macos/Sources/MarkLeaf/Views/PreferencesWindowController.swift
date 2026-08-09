@@ -91,11 +91,11 @@ final class PreferencesWindowController: NSWindowController {
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
 
-        stylePopup.addItems(withTitles: styles.map(\.displayName))
+        stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
             stylePopup.selectItem(at: idx)
         }
-        themePopup.addItems(withTitles: themes.map(\.displayName))
+        themePopup.addItems(withTitles: themes.map { L10n.t($0.displayName) })
         if let idx = themes.firstIndex(where: { $0.id == settings.colorTheme }) {
             themePopup.selectItem(at: idx)
         }

@@ -46,12 +46,12 @@ final class ExportAccessory: NSView {
         marginPopup.addItems(withTitles: Self.marginPresets.map(\.0))
         marginPopup.selectItem(withTitle: L10n.t("标准"))
 
-        stylePopup.addItems(withTitles: styles.map(\.displayName))
+        stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == "serif" }) {
             stylePopup.selectItem(at: idx)
         }
 
-        colorThemePopup.addItems(withTitles: themes.map(\.displayName))
+        colorThemePopup.addItems(withTitles: themes.map { L10n.t($0.displayName) })
         if let idx = themes.firstIndex(where: { $0.id == "colors-white-only" }) {
             colorThemePopup.selectItem(at: idx)
         } else if let idx = themes.firstIndex(where: { $0.id == "colors-apple-blue" }) {

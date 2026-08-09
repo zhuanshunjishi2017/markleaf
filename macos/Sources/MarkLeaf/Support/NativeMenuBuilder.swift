@@ -205,7 +205,7 @@ final class NativeMenuBuilder {
         // 排版样式（动态）
         let styleMenu = NSMenu(title: L10n.t("排版样式"))
         for style in styles {
-            let item = styleItem(style.displayName, #selector(MenuRouter.chooseStyle(_:)), style.id)
+            let item = styleItem(L10n.t(style.displayName), #selector(MenuRouter.chooseStyle(_:)), style.id)
             item.state = style.id == session?.currentStyleId ? .on : .off
             styleMenu.addItem(item)
         }
@@ -216,7 +216,7 @@ final class NativeMenuBuilder {
         let lightThemes = themes.filter { !$0.isDark }
         let darkThemes = themes.filter { $0.isDark }
         for theme in lightThemes {
-            let item = styleItem(theme.displayName, #selector(MenuRouter.chooseTheme(_:)), theme.id)
+            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
             item.state = theme.id == session?.currentThemeId ? .on : .off
             themeMenu.addItem(item)
         }
@@ -224,7 +224,7 @@ final class NativeMenuBuilder {
             themeMenu.addItem(.separator())
         }
         for theme in darkThemes {
-            let item = styleItem(theme.displayName, #selector(MenuRouter.chooseTheme(_:)), theme.id)
+            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
             item.state = theme.id == session?.currentThemeId ? .on : .off
             themeMenu.addItem(item)
         }
