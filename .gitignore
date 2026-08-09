@@ -62,3 +62,8 @@ AGENTS.md
 src/MarkLeaf/Resources/App/*
 !src/MarkLeaf/Resources/App/App.ico
 !src/MarkLeaf/Resources/App/App.png
+
+# WiX publish output (generated at build)
+setup/publish/
+setup/obj/
+setup/bin/

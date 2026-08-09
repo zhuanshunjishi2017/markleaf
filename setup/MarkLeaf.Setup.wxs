@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    MarkLeaf MSI Installer — per-machine, clean uninstall.
+    UpgradeCode is stable; Product Id auto-generates each build.
+  -->
+  <Package Name="MarkLeaf"
+           Manufacturer="MarkLeaf"
+           Version="1.1.0.0"
+           UpgradeCode="E1B2C3D4-1234-5678-9ABC-DEF012345678"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of MarkLeaf is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ===== Prerequisites ===== -->
+    <Property Id="DOTNET_ROOT">
+      <RegistrySearch Id="DotNetHostSearch"
+                      Root="HKLM"
+                      Key="SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost"
+                      Name="Version"
+                      Type="raw" />
+    </Property>
+    <Launch Condition="DOTNET_ROOT" Message=".NET 10 Desktop Runtime is required. Please install it from https://dotnet.microsoft.com/download before installing MarkLeaf." />
+
+    <!-- ===== Features ===== -->
+    <Feature Id="MainApp" Title="MarkLeaf" Level="1" AllowAdvertise="no">
+      <ComponentGroupRef Id="PublishedComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="ProgIdRegistration" />
+      <ComponentRef Id="MarkdownFileAssociation" />
+      <ComponentRef Id="MarkdownAltFileAssociation" />
+      <ComponentRef Id="TextFileAssociation" />
+    </Feature>
+
+    <!-- ===== Directory Layout ===== -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="MarkLeaf" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuMarkLeaf" Name="MarkLeaf" />
+    </StandardDirectory>
+
+    <!-- ===== Start Menu Shortcut ===== -->
+    <Component Id="ApplicationShortcut" Directory="StartMenuMarkLeaf" Guid="D1A2B3C4-5678-90AB-CDEF-123456789001">
+      <Shortcut Id="StartMenuShortcut"
+                Name="MarkLeaf"
+                Target="[INSTALLFOLDER]MarkLeaf.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKMU"
+                     Key="Software\MarkLeaf"
+                     Name="Installed"
+                     Value="1"
+                     Type="integer"
+                     KeyPath="yes" />
+      <RemoveFolder Id="RemoveStartMenu" Directory="StartMenuMarkLeaf" On="uninstall" />
+    </Component>
+
+    <!-- ===== File Associations ===== -->
+    <Component Id="MarkdownFileAssociation" Directory="INSTALLFOLDER"
+               Guid="D2A3B4C5-6789-0ABC-DEF1-234567890002">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.md"
+                     Name="PerceivedType"
+                     Value="text"
+                     Type="string"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.md\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc"
+                     Value=""
+                     Type="string" />
+    </Component>
+
+    <Component Id="MarkdownAltFileAssociation" Directory="INSTALLFOLDER"
+               Guid="D3A4B5C6-7890-ABCD-EF12-345678900003">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.markdown"
+                     Name="PerceivedType"
+                     Value="text"
+                     Type="string"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.markdown\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc"
+                     Value=""
+                     Type="string" />
+    </Component>
+
+    <Component Id="TextFileAssociation" Directory="INSTALLFOLDER"
+               Guid="D4A5B6C7-8901-BCDE-F123-456789000004">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.txt"
+                     Name="PerceivedType"
+                     Value="text"
+                     Type="string"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\.txt\OpenWithProgids"
+                     Name="MarkLeaf.MarkdownDoc"
+                     Value=""
+                     Type="string" />
+    </Component>
+
+    <!-- ===== ProgId Registration ===== -->
+    <Component Id="ProgIdRegistration" Directory="INSTALLFOLDER"
+               Guid="D5A6B7C8-9012-CDEF-1234-567890000005">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\MarkLeaf.MarkdownDoc"
+                     Value="MarkLeaf Markdown Document"
+                     Type="string"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\MarkLeaf.MarkdownDoc\DefaultIcon"
+                     Value="[INSTALLFOLDER]Resources\App\fileicon.ico"
+                     Type="string" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Classes\MarkLeaf.MarkdownDoc\shell\open\command"
+                     Value="&quot;[INSTALLFOLDER]MarkLeaf.exe&quot; --open-document &quot;%1&quot;"
+                     Type="string" />
+    </Component>
+
+  </Package>
+</Wix>
