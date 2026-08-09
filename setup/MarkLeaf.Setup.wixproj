@@ -4,15 +4,15 @@
     <!-- Runtime: win-x64 | win-x86 | win-arm64 -->
     <Runtime Condition="'$(Runtime)' == ''">win-x64</Runtime>
     <ArchLabel>$([System.String]::Copy('$(Runtime)').Substring(4))</ArchLabel>
-    <!-- win-x64→x64, win-x86→x86, win-arm64→arm64 -->
     <InstallerPlatform>$(ArchLabel)</InstallerPlatform>
-    <!-- win-x86 uses ProgramFilesFolder, others use ProgramFiles64Folder -->
     <ProgramFilesRef Condition="'$(Runtime)' == 'win-x86'">ProgramFilesFolder</ProgramFilesRef>
     <ProgramFilesRef Condition="'$(Runtime)' != 'win-x86'">ProgramFiles64Folder</ProgramFilesRef>
     <Cultures>zh-CN</Cultures>
     <Version Condition="'$(Version)' == ''">0.0.0</Version>
     <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
-    <Suffix Condition="'$(SelfContained)' == 'false'">fd</Suffix>
+    <!-- self-contained → with-runtime, framework-dependent → no suffix -->
+    <Suffix Condition="'$(SelfContained)' == 'true'">-with-runtime</Suffix>
+    <Suffix Condition="'$(SelfContained)' != 'true'" />
     <OutputName>MarkLeaf-$(Version)-$(ArchLabel)$(Suffix)</OutputName>
   </PropertyGroup>
 
@@ -28,7 +28,9 @@
     <DefineConstants>PublishSource=$(PublishDir);SelfContained=$(SelfContained);Runtime=$(Runtime)</DefineConstants>
   </PropertyGroup>
 
+  <!-- Clean previous publish + rebuild fresh -->
   <Target Name="PublishApp" BeforeTargets="BeforeBuild">
+    <RemoveDir Directories="$(PublishDir)" Condition="Exists('$(PublishDir)')" />
     <Message Importance="high" Text="Publishing MarkLeaf ($(Runtime), self-contained=$(SelfContained))..." />
     <Exec Command="dotnet publish &quot;$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
           WorkingDirectory="$(RepoRoot)" />
