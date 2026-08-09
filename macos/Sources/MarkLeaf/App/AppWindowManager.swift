@@ -11,8 +11,7 @@ final class AppWindowManager {
     private var shortcutController: ShortcutWindowController?
     private var findPanelController: FindPanelController?
     private var startupActionState = StartupActionState()
-    private var bootstrapComplete = false
-    private var pendingBootstrapDocumentPath: String?
+    private var bootstrapState = StartupBootstrapState()
 
     init() {}
 
@@ -30,10 +29,12 @@ final class AppWindowManager {
 
     /// 在设置、图标、文件关联和菜单完成配置后，建立唯一的初始窗口。
     func completeBootstrapAndEnsureInitialWindow() {
-        guard !bootstrapComplete else { return }
-        bootstrapComplete = true
-        _ = newWindow(documentPath: pendingBootstrapDocumentPath)
-        pendingBootstrapDocumentPath = nil
+        switch bootstrapState.complete() {
+        case .createInitialWindow(let documentPath):
+            _ = newWindow(documentPath: documentPath)
+        case .noOp:
+            return
+        }
     }
 
     var primarySession: EditorSession? {
@@ -234,8 +235,7 @@ final class AppWindowManager {
 
     /// 打开文件（Finder 关联 / 命令行）。
     func openDocumentInFrontWindow(_ url: URL) {
-        guard bootstrapComplete else {
-            pendingBootstrapDocumentPath = url.path
+        guard !bootstrapState.cacheIncomingDocumentIfNeeded(url.path) else {
             return
         }
         if let session = primarySession {

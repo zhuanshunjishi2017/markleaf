@@ -2,47 +2,31 @@ import XCTest
 @testable import MarkLeaf
 
 final class StartupIntegrationStateTests: XCTestCase {
-    func testCompleteBootstrapCreatesOneWindowForNormalLaunch() {
-        let manager = AppWindowManager()
-        addTeardownBlock {
-            manager.windowControllers.forEach { $0.close() }
-        }
+    func testBootstrapCompletionRequestsOneBlankInitialWindowThenBecomesNoOp() {
+        var state = StartupBootstrapState()
 
-        XCTAssertEqual(manager.windowControllers.count, 0)
-
-        manager.completeBootstrapAndEnsureInitialWindow()
-
-        XCTAssertEqual(manager.windowControllers.count, 1)
-        XCTAssertNil(manager.primarySession?.pendingInitialDocumentPath)
+        XCTAssertEqual(state.complete(), .createInitialWindow(documentPath: nil))
+        XCTAssertEqual(state.complete(), .noOp)
     }
 
-    func testEarlyFinderFileIsCachedUntilBootstrapCreatesTheOnlyInitialWindow() {
-        let manager = AppWindowManager()
-        addTeardownBlock {
-            manager.windowControllers.forEach { $0.close() }
-        }
+    func testEarlyFinderFileIsCachedUntilBootstrapCompletion() {
+        var state = StartupBootstrapState()
 
-        manager.openDocumentInFrontWindow(URL(fileURLWithPath: "/finder/early.md"))
-
-        XCTAssertEqual(manager.windowControllers.count, 0)
-
-        manager.completeBootstrapAndEnsureInitialWindow()
-
-        XCTAssertEqual(manager.windowControllers.count, 1)
-        XCTAssertEqual(manager.primarySession?.pendingInitialDocumentPath, "/finder/early.md")
+        XCTAssertTrue(state.cacheIncomingDocumentIfNeeded("/finder/early.md"))
+        XCTAssertEqual(state.pendingDocumentPath, "/finder/early.md")
+        XCTAssertEqual(
+            state.complete(),
+            .createInitialWindow(documentPath: "/finder/early.md")
+        )
+        XCTAssertNil(state.pendingDocumentPath)
     }
 
-    func testFinderFileAfterBootstrapUsesTheExistingPendingIntentRoute() {
-        let manager = AppWindowManager()
-        addTeardownBlock {
-            manager.windowControllers.forEach { $0.close() }
-        }
-        manager.completeBootstrapAndEnsureInitialWindow()
+    func testFinderFileAfterBootstrapIsNotCached() {
+        var state = StartupBootstrapState()
+        _ = state.complete()
 
-        manager.openDocumentInFrontWindow(URL(fileURLWithPath: "/finder/after-bootstrap.md"))
-
-        XCTAssertEqual(manager.windowControllers.count, 1)
-        XCTAssertEqual(manager.primarySession?.pendingInitialDocumentPath, "/finder/after-bootstrap.md")
+        XCTAssertFalse(state.cacheIncomingDocumentIfNeeded("/finder/after-bootstrap.md"))
+        XCTAssertNil(state.pendingDocumentPath)
     }
 
     func testColdStartFinderFileIsStoredAsPendingInitialSessionIntent() {
@@ -75,11 +59,10 @@ final class StartupIntegrationStateTests: XCTestCase {
 
     func testRecoveryNoticeRemainsFinalStatusAfterInitialFrontendStatusEvents() {
         let session = EditorSession()
-        session.newDocument()
+        session.statusText = "recovery notice"
         session.preserveStartupRecoveryNoticeForCurrentDocumentLoad("recovery notice")
         let documentID = session.currentDocumentIdentifier
 
-        session.handleEditorMessage(["type": "documentLoaded", "documentId": documentID])
         session.handleEditorMessage([
             "type": "outlineChanged",
             "documentId": documentID,
@@ -101,10 +84,9 @@ final class StartupIntegrationStateTests: XCTestCase {
 
     func testUserEditReleasesStartupRecoveryNotice() {
         let session = EditorSession()
-        session.newDocument()
+        session.statusText = "recovery notice"
         session.preserveStartupRecoveryNoticeForCurrentDocumentLoad("recovery notice")
         let documentID = session.currentDocumentIdentifier
-        session.handleEditorMessage(["type": "documentLoaded", "documentId": documentID])
 
         session.handleEditorMessage([
             "type": "dirtyChanged",
