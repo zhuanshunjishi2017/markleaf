@@ -2,30 +2,47 @@ import XCTest
 @testable import MarkLeaf
 
 final class StartupIntegrationStateTests: XCTestCase {
-    func testEnsureInitialWindowCreatesOneForNormalLaunch() {
+    func testCompleteBootstrapCreatesOneWindowForNormalLaunch() {
         let manager = AppWindowManager()
         addTeardownBlock {
             manager.windowControllers.forEach { $0.close() }
         }
 
-        manager.ensureInitialWindow()
+        XCTAssertEqual(manager.windowControllers.count, 0)
+
+        manager.completeBootstrapAndEnsureInitialWindow()
 
         XCTAssertEqual(manager.windowControllers.count, 1)
         XCTAssertNil(manager.primarySession?.pendingInitialDocumentPath)
     }
 
-    func testEnsureInitialWindowKeepsEarlyFinderWindowAsTheOnlyWindow() {
+    func testEarlyFinderFileIsCachedUntilBootstrapCreatesTheOnlyInitialWindow() {
         let manager = AppWindowManager()
         addTeardownBlock {
             manager.windowControllers.forEach { $0.close() }
         }
-        let earlyController = manager.newWindow(documentPath: "/finder/early.md")
 
-        manager.ensureInitialWindow()
+        manager.openDocumentInFrontWindow(URL(fileURLWithPath: "/finder/early.md"))
+
+        XCTAssertEqual(manager.windowControllers.count, 0)
+
+        manager.completeBootstrapAndEnsureInitialWindow()
 
         XCTAssertEqual(manager.windowControllers.count, 1)
-        XCTAssertTrue(manager.windowControllers.first === earlyController)
         XCTAssertEqual(manager.primarySession?.pendingInitialDocumentPath, "/finder/early.md")
+    }
+
+    func testFinderFileAfterBootstrapUsesTheExistingPendingIntentRoute() {
+        let manager = AppWindowManager()
+        addTeardownBlock {
+            manager.windowControllers.forEach { $0.close() }
+        }
+        manager.completeBootstrapAndEnsureInitialWindow()
+
+        manager.openDocumentInFrontWindow(URL(fileURLWithPath: "/finder/after-bootstrap.md"))
+
+        XCTAssertEqual(manager.windowControllers.count, 1)
+        XCTAssertEqual(manager.primarySession?.pendingInitialDocumentPath, "/finder/after-bootstrap.md")
     }
 
     func testColdStartFinderFileIsStoredAsPendingInitialSessionIntent() {
