@@ -5,8 +5,8 @@
 :root {
   --bg-primary:          #FFFFFF;
   --bg-hover:            #F3F2F8;
-  --bg-selected:         #e7e7ea;
-  --bg-selected-hover:   #dddce0;
+  --bg-selected:         #e7e7ef;
+  --bg-selected-hover:   #e4e2eb;
   --text-primary:        #000000;
   --text-secondary:      #99989D;
   --text-tertiary:       #8C8C8C;

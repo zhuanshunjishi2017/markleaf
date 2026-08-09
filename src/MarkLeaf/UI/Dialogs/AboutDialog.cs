@@ -38,8 +38,8 @@ internal sealed class AboutDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(750, 480);
-        MinimumSize = new Size(520, 480);
+        Size = new Size(820, 500);
+        MinimumSize = new Size(570, 480);
         AutoScaleMode = AutoScaleMode.Dpi;
         Padding = new Padding(24, 24, 24, 16);
 
@@ -50,14 +50,14 @@ internal sealed class AboutDialog : Form
             RowCount = 1,
             Padding = new Padding(0),
         };
-        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 156));
+        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var iconPicture = new PictureBox
         {
-            Size = new Size(128, 128),
+            Size = new Size(192, 192),
             SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 8, 24, 0),
+            Margin = new Padding(0, 8, 20, 0),
             Anchor = AnchorStyles.Top | AnchorStyles.Left,
         };
 

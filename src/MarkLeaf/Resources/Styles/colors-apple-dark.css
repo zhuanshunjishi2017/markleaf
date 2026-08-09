@@ -1,24 +1,24 @@
 /* @type: color-theme
-   @name: 莫兰迪(青色)
-   @mode: light */
+   @name: 深色(macOS配色)
+   @mode: dark */
 
 :root {
-  --bg-primary:          #F2F6F4;
-  --bg-hover:            #E4EBE8;
-  --bg-selected:         #D5DED9;
-  --bg-selected-hover:   #C4D0C9;
-  --text-primary:        #333D39;
-  --text-secondary:      #5A6B64;
-  --text-tertiary:       #778A82;
+  --bg-primary:          #1C1C1E;
+  --bg-hover:            #2C2C2E;
+  --bg-selected:         #3A3A3C;
+  --bg-selected-hover:   #48484A;
+  --text-primary:        #E5E5EA;
+  --text-secondary:      #98989D;
+  --text-tertiary:       #8E8E93;
   --text-selected:              #FFFFFF;
-  --text-tertiary-selected:     #E8F0EC;
-  --icon:                       #5A6B64;
+  --text-tertiary-selected:     #7EC8FF;
+  --icon:                       #0A84FF;
   --icon-selected:              #FFFFFF;
-  --icon-secondary:             #778A82;
-  --scrollbar-idle:      #BAC5BF;
-  --scrollbar-active:    #98A89F;
-  --theme-light:         #34615B;
-  --theme-dark:          #284944;
+  --icon-secondary:             #8E8E93;
+  --scrollbar-idle:      #636366;
+  --scrollbar-active:    #8E8E93;
+  --theme-light:         #0A84FF;
+  --theme-dark:          #0070E0;
 }
 
 /* ---- 全局 ---- */

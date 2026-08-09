@@ -1,5 +1,5 @@
 /* @type: typography
-   @name: 教科书(铅字排印)
+   @name: 印刷品(铅字排印)
    @depends: print */
 /* 复古印刷继承现代印刷的全部版式，仅替换排版字体。 */
 
@@ -35,12 +35,12 @@
 .markleaf-style-retro-print .markleaf-document h6,
 .markleaf-style-retro-print .markleaf-document strong,
 .markleaf-style-retro-print .markleaf-document b {
-  font-family: "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+  font-family: "汇文港黑",  "黑体", sans-serif;
   font-weight: normal;
 }
 
 .markleaf-style-retro-print .markleaf-document h1 {
-  font-family: "朝华标题A", "汇文港黑", "汉仪中黑简", "黑体", sans-serif;
+  font-family: "朝华标题A", "汇文港黑",  "黑体", sans-serif;
 }
 
 .markleaf-style-retro-print .markleaf-document em,

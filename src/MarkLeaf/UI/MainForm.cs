@@ -1824,7 +1824,7 @@ internal sealed partial class MainForm : Form
         {
             EditorLifecycleState.Initializing => Loc.Get("editor.initializing"),
             EditorLifecycleState.LoadingPage => Loc.Get("editor.loadingPage"),
-            EditorLifecycleState.WaitingForEditorReady => Loc.Get("editor.waitingForEditorReady"),
+            EditorLifecycleState.WaitingForEditorReady => Loc.Get("editor.waitingReady"),
             EditorLifecycleState.Ready => Loc.Get("editor.ready"),
             EditorLifecycleState.Failed => Loc.Get("editor.failed"),
             _ => Loc.Get("statusBar.preparing"),
