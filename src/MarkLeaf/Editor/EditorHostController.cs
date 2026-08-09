@@ -125,6 +125,12 @@ internal sealed class EditorHostController : IDisposable
                 userDataFolder: _webView2UserDataDirectory).WaitAsync(_initializationCancellation.Token);
             var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
             controllerOptions.AllowHostInputProcessing = true;
+            var themeColors = ColorThemeService.GetActiveColors();
+            if (themeColors.TryGetValue("bg-primary", out var bgColor))
+            {
+                controllerOptions.DefaultBackgroundColor = bgColor;
+                _loadingView.SetThemeBackground(bgColor);
+            }
             await _webView.EnsureCoreWebView2Async(environment, controllerOptions).WaitAsync(_initializationCancellation.Token);
             ConfigureCoreWebView2();
 
@@ -287,6 +293,28 @@ internal sealed class EditorHostController : IDisposable
             activeStyle,
         };
         EnqueueOrRun(() => Post("applyStyles", payload));
+    }
+
+    public void SendFindBarLocalization()
+    {
+        var payload = new
+        {
+            find = Loc.Get("findBar.find"),
+            findLabel = Loc.Get("findBar.findLabel"),
+            replaceWith = Loc.Get("findBar.replaceWith"),
+            replaceLabel = Loc.Get("findBar.replaceLabel"),
+            caseSensitive = Loc.Get("findBar.caseSensitive"),
+            wholeWord = Loc.Get("findBar.wholeWord"),
+            previous = Loc.Get("findBar.previous"),
+            next = Loc.Get("findBar.next"),
+            replace = Loc.Get("findBar.replace"),
+            replaceAll = Loc.Get("findBar.replaceAll"),
+            close = Loc.Get("findBar.close"),
+            closeLabel = Loc.Get("findBar.closeLabel"),
+            replaced = Loc.Get("findBar.replaced"),
+            noResults = Loc.Get("findBar.noResults"),
+        };
+        EnqueueOrRun(() => Post("localizeFindBar", payload));
     }
 
     public void ExecuteCommand(
@@ -877,9 +905,7 @@ internal sealed class EditorHostController : IDisposable
         _session.TransitionTo(EditorLifecycleState.Ready);
         _readyTimeoutCancellation?.Cancel();
         _initializationTimer.Stop();
-        _loadingView.Visible = false;
         _webView.Visible = true;
-        _webView.BringToFront();
         _logger.Info($"Editor ready after {_initializationTimer.ElapsedMilliseconds} ms.");
         NotifyStateChanged();
         Ready?.Invoke(this, EventArgs.Empty);
@@ -933,6 +959,7 @@ internal sealed class EditorHostController : IDisposable
 
         _initializationTimer.Stop();
         _webView.Visible = false;
+        _loadingView.Visible = true;
         _loadingView.ShowFailure(message);
         _logger.Error(message, exception);
         NotifyStateChanged();
@@ -941,8 +968,6 @@ internal sealed class EditorHostController : IDisposable
     private void ShowLoading(string title, string detail)
     {
         _loadingView.ShowLoading(title, detail);
-        _loadingView.Visible = true;
-        _loadingView.BringToFront();
     }
 
     private void NotifyStateChanged() => _stateChanged();

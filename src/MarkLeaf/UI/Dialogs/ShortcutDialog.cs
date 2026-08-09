@@ -1,4 +1,5 @@
 using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -29,10 +30,10 @@ internal sealed class ShortcutDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(600, 620);
-        MinimumSize = new Size(480, 440);
+        Size = new Size(this.ScaleForDpi(343), this.ScaleForDpi(354));
+        MinimumSize = new Size(this.ScaleForDpi(274), this.ScaleForDpi(251));
         AutoScaleMode = AutoScaleMode.Dpi;
-        Padding = new Padding(16, 16, 16, 12);
+        Padding = new Padding(this.ScaleForDpi(9), this.ScaleForDpi(9), this.ScaleForDpi(9), this.ScaleForDpi(7));
 
         var grid = new DataGridView
         {
@@ -94,15 +95,15 @@ internal sealed class ShortcutDialog : Form
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Margin = new Padding(0, 10, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(6), 0, 0),
         };
 
         var closeButton = new Button
         {
             Text = Loc.Get("common.close"),
             AutoSize = true,
-            MinimumSize = new Size(88, 0),
-            Padding = new Padding(12, 4, 12, 4),
+            MinimumSize = new Size(this.ScaleForDpi(50), 0),
+            Padding = new Padding(this.ScaleForDpi(7), this.ScaleForDpi(2), this.ScaleForDpi(7), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             UseVisualStyleBackColor = true,
         };

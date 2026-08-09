@@ -1,4 +1,5 @@
 using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -33,7 +34,7 @@ internal sealed class ImageUrlDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             Text = Loc.Get("dialog.imageUrl"),
-            Padding = new Padding(0, 0, 0, 6),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(3)),
         };
         urlLabel.UseMnemonic = true;
 
@@ -42,7 +43,7 @@ internal sealed class ImageUrlDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             Text = Loc.Get("dialog.imageAlt"),
-            Padding = new Padding(0, 8, 0, 6),
+            Padding = new Padding(0, this.ScaleForDpi(5), 0, this.ScaleForDpi(3)),
         };
         altLabel.UseMnemonic = true;
 
@@ -66,7 +67,7 @@ internal sealed class ImageUrlDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(0, 12, 0, 0),
+            Padding = new Padding(0, this.ScaleForDpi(7), 0, 0),
         };
         buttons.Controls.Add(cancelButton);
         buttons.Controls.Add(okButton);
@@ -77,8 +78,8 @@ internal sealed class ImageUrlDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
             RowCount = 4,
-            Padding = new Padding(14),
-            MinimumSize = new Size(460, 0),
+            Padding = new Padding(this.ScaleForDpi(8)),
+            MinimumSize = new Size(this.ScaleForDpi(263), 0),
         };
         content.Controls.Add(urlLabel, 0, 0);
         content.Controls.Add(_url, 0, 1);

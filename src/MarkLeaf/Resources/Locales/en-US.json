@@ -559,5 +559,20 @@
   "error.workspaceOperationFailed": "Workspace operation failed.",
 
   "changelog.notFound": "Changelog file not found.",
-  "changelog.openFailed": "Unable to open changelog file."
+  "changelog.openFailed": "Unable to open changelog file.",
+
+  "findBar.find": "Find",
+  "findBar.findLabel": "Find",
+  "findBar.replaceWith": "Replace with",
+  "findBar.replaceLabel": "Replace with",
+  "findBar.caseSensitive": "Case sensitive",
+  "findBar.wholeWord": "Whole word",
+  "findBar.previous": "Previous",
+  "findBar.next": "Next",
+  "findBar.replace": "Replace",
+  "findBar.replaceAll": "Replace all",
+  "findBar.close": "Close",
+  "findBar.closeLabel": "Close find bar",
+  "findBar.replaced": "Replaced {0} occurrences",
+  "findBar.noResults": "0/0"
 }

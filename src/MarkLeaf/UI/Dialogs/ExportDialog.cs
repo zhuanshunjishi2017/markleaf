@@ -13,13 +13,12 @@ internal sealed class ExportDialog : Form
         Dock = DockStyle.Fill,
         AutoScroll = true,
         Margin = Padding.Empty,
-        Padding = new Padding(40, 10, 40, 10),
         BackColor = SystemColors.ControlLightLight,
     };
     private Control[] _tabContents = [];
 
     private readonly ComboBox _pageSize = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly RadioButton _portrait = new()
     { Text = Loc.Get("export.portrait"), AutoSize = true, Padding = new Padding(0, 0, 24, 0), FlatStyle = FlatStyle.System };
@@ -28,39 +27,39 @@ internal sealed class ExportDialog : Form
     { Text = Loc.Get("export.landscape"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly ComboBox _marginPreset = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly NumericUpDown _marginTop = new()
-    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Width = 80, Enabled = false };
+    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Enabled = false };
 
     private readonly NumericUpDown _marginBottom = new()
-    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Width = 80, Enabled = false };
+    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Enabled = false };
 
     private readonly NumericUpDown _marginLeft = new()
-    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Width = 80, Enabled = false };
+    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Enabled = false };
 
     private readonly NumericUpDown _marginRight = new()
-    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Width = 80, Enabled = false };
+    { Minimum = 0, Maximum = 100, DecimalPlaces = 1, Increment = 1, Enabled = false };
 
     private readonly TextBox _htmlHeader = new()
-    { Multiline = true, AcceptsReturn = true, Height = 105, Width = 650 };
+    { Multiline = true, AcceptsReturn = true };
 
     private readonly TextBox _htmlFooter = new()
-    { Multiline = true, AcceptsReturn = true, Height = 105, Width = 650 };
+    { Multiline = true, AcceptsReturn = true };
 
-    private readonly ComboBox _pdfStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+    private readonly ComboBox _pdfStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly ComboBox _htmlStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+    private readonly ComboBox _htmlStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly ComboBox _pdfColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+    private readonly ComboBox _pdfColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210 };
+    private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly Button _exportButton = new()
-    { Text = Loc.Get("export.ok"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("export.ok"), FlatStyle = FlatStyle.System };
 
     private readonly Button _cancelButton = new()
-    { Text = Loc.Get("common.cancel"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.cancel"), FlatStyle = FlatStyle.System };
 
     private readonly string _defaultFileName;
 
@@ -92,9 +91,11 @@ internal sealed class ExportDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(800, 750);
+        Size = new Size(this.ScaleForDpi(457), this.ScaleForDpi(429));
 
         _tabBar = new PreferencesTabBar(["PDF", "HTML"], ["", ""]);
+
+        ApplyDpiSizes();
 
         BuildPdfTab(initialStyleIndex);
         BuildHtmlTab(initialStyleIndex);
@@ -123,11 +124,11 @@ internal sealed class ExportDialog : Form
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
-            Height = 45,
+            Height = this.ScaleForDpi(26),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
-            Margin = new Padding(40, 20, 40, 0),
+            Margin = new Padding(this.ScaleForDpi(23), this.ScaleForDpi(11), this.ScaleForDpi(23), 0),
             BackColor = SystemColors.ControlLightLight,
         };
         buttons.Controls.Add(_cancelButton);
@@ -136,7 +137,7 @@ internal sealed class ExportDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(0, 0, 0, 40),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(23)),
             BackColor = SystemColors.ControlLightLight,
             ColumnCount = 1,
             RowCount = 3,
@@ -260,9 +261,9 @@ internal sealed class ExportDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(0, 20, 0, 12),
+            Padding = new Padding(0, this.ScaleForDpi(11), 0, this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(CategoryLabel(Loc.Get("export.paper.label")), 0, 0);
@@ -348,9 +349,9 @@ internal sealed class ExportDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(0, 20, 0, 12),
+            Padding = new Padding(0, this.ScaleForDpi(11), 0, this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(CategoryLabel(Loc.Get("export.htmlHeader")), 0, 0);
@@ -380,7 +381,7 @@ internal sealed class ExportDialog : Form
         return panel;
     }
 
-    private static Label CategoryLabel(string text)
+    private Label CategoryLabel(string text)
     {
         return new Label
         {
@@ -389,12 +390,12 @@ internal sealed class ExportDialog : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = SystemColors.GrayText,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
-            Margin = new Padding(20, 10, 0, 0),
+            Margin = new Padding(this.ScaleForDpi(11), this.ScaleForDpi(6), 0, 0),
 
         };
     }
 
-    private static Control CategoryGap() => new Panel { Height = 20, Dock = DockStyle.None };
+    private Control CategoryGap() => new Panel { Height = this.ScaleGapForDpi(), Width = 0, Dock = DockStyle.None };
 
     private string MapExportStyle(string label)
     {
@@ -426,6 +427,41 @@ internal sealed class ExportDialog : Form
         combo.Items.Clear();
         combo.Items.AddRange(items);
         combo.SelectedIndex = selected;
+    }
+
+    private void ApplyDpiSizes()
+    {
+        _contentPanel.Padding = new Padding(
+            this.ScaleForDpi(23), this.ScaleForDpi(6), this.ScaleForDpi(23), this.ScaleForDpi(6));
+
+        _pageSize.Width = this.ScaleForDpi(109);
+        _marginPreset.Width = this.ScaleForDpi(86);
+
+        var mmW = this.ScaleForDpi(46);
+        _marginTop.Width = mmW;
+        _marginBottom.Width = mmW;
+        _marginLeft.Width = mmW;
+        _marginRight.Width = mmW;
+
+        var htmlW = this.ScaleForDpi(371);
+        var htmlH = this.ScaleForDpi(60);
+        _htmlHeader.Width = htmlW;
+        _htmlHeader.Height = htmlH;
+        _htmlFooter.Width = htmlW;
+        _htmlFooter.Height = htmlH;
+
+        var comboW = this.ScaleForDpi(120);
+        _pdfStyle.Width = comboW;
+        _htmlStyle.Width = comboW;
+        _pdfColorScheme.Width = comboW;
+        _htmlColorScheme.Width = comboW;
+
+        var btnW = this.ScaleForDpi(86);
+        var btnH = this.ScaleForDpi(26);
+        _exportButton.Width = btnW;
+        _exportButton.Height = btnH;
+        _cancelButton.Width = btnW;
+        _cancelButton.Height = btnH;
     }
 
     private void ApplyMargins(int presetIndex)

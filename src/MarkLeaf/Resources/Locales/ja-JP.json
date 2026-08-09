@@ -559,5 +559,20 @@
   "error.workspaceOperationFailed": "ワークスペース操作に失敗しました。",
 
   "changelog.notFound": "更新履歴ファイルが見つかりません。",
-  "changelog.openFailed": "更新履歴ファイルを開けません。"
+  "changelog.openFailed": "更新履歴ファイルを開けません。",
+
+  "findBar.find": "検索",
+  "findBar.findLabel": "検索",
+  "findBar.replaceWith": "置換文字列",
+  "findBar.replaceLabel": "置換文字列",
+  "findBar.caseSensitive": "大/小文字を区別",
+  "findBar.wholeWord": "単語単位",
+  "findBar.previous": "前へ",
+  "findBar.next": "次へ",
+  "findBar.replace": "置換",
+  "findBar.replaceAll": "すべて置換",
+  "findBar.close": "閉じる",
+  "findBar.closeLabel": "検索バーを閉じる",
+  "findBar.replaced": "{0} 件置換しました",
+  "findBar.noResults": "0/0"
 }

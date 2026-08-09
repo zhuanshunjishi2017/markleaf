@@ -422,6 +422,7 @@ internal sealed partial class MainForm
     {
         if (_closeApproved)
         {
+            CleanOldLogs();
             SaveSettings();
             return;
         }

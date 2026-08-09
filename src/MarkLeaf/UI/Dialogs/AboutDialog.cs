@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -38,10 +39,10 @@ internal sealed class AboutDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(820, 500);
-        MinimumSize = new Size(570, 480);
+        Size = new Size(this.ScaleForDpi(469), this.ScaleForDpi(286));
+        MinimumSize = new Size(this.ScaleForDpi(326), this.ScaleForDpi(274));
         AutoScaleMode = AutoScaleMode.Dpi;
-        Padding = new Padding(24, 24, 24, 16);
+        Padding = new Padding(this.ScaleForDpi(14), this.ScaleForDpi(14), this.ScaleForDpi(14), this.ScaleForDpi(9));
 
         var mainLayout = new TableLayoutPanel
         {
@@ -50,14 +51,14 @@ internal sealed class AboutDialog : Form
             RowCount = 1,
             Padding = new Padding(0),
         };
-        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(126)));
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var iconPicture = new PictureBox
         {
-            Size = new Size(192, 192),
+            Size = new Size(this.ScaleForDpi(110), this.ScaleForDpi(110)),
             SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 8, 20, 0),
+            Margin = new Padding(0, this.ScaleForDpi(5), this.ScaleForDpi(11), 0),
             Anchor = AnchorStyles.Top | AnchorStyles.Left,
         };
 
@@ -88,7 +89,7 @@ internal sealed class AboutDialog : Form
         {
             Text = $"https://github.com/{RepoOwner}/{RepoName}",
             AutoSize = true,
-            Margin = new Padding(0, 4, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(2), 0, 0),
             LinkBehavior = LinkBehavior.HoverUnderline,
             LinkColor = Color.FromArgb(9, 105, 218),
             ActiveLinkColor = Color.FromArgb(9, 105, 218),
@@ -105,15 +106,15 @@ internal sealed class AboutDialog : Form
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Margin = new Padding(0, 12, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(7), 0, 0),
         };
 
         var okButton = new Button
         {
             Text = Loc.Get("common.ok"),
             AutoSize = true,
-            MinimumSize = new Size(150, 45),
-            Padding = new Padding(12, 4, 12, 4),
+            MinimumSize = new Size(this.ScaleForDpi(86), this.ScaleForDpi(26)),
+            Padding = new Padding(this.ScaleForDpi(7), this.ScaleForDpi(2), this.ScaleForDpi(7), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             UseVisualStyleBackColor = true,
         };
@@ -136,13 +137,13 @@ internal sealed class AboutDialog : Form
         Controls.Add(outerLayout);
     }
 
-    private static Label NewLabel(string text, Font? font = null, float fontSize = 0)
+    private Label NewLabel(string text, Font? font = null, float fontSize = 0)
     {
         var label = new Label
         {
             Text = text,
             AutoSize = true,
-            Margin = new Padding(0, 4, 0, 4),
+            Margin = new Padding(0, this.ScaleForDpi(2), 0, this.ScaleForDpi(2)),
             UseMnemonic = false,
         };
         if (font is not null)
@@ -155,13 +156,13 @@ internal sealed class AboutDialog : Form
         return label;
     }
 
-    private static Label NewSeparator()
+    private Label NewSeparator()
     {
         return new Label
         {
             AutoSize = false,
             Height = 1,
-            Margin = new Padding(0, 10, 0, 10),
+            Margin = new Padding(0, this.ScaleForDpi(6), 0, this.ScaleForDpi(6)),
             BorderStyle = BorderStyle.Fixed3D,
         };
     }

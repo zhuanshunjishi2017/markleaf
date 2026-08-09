@@ -65,8 +65,6 @@ internal sealed partial class MainForm : Form
     {
         Font = new Font(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point),
         AutoSize = false,
-        Width = 32,
-        Margin = new Padding(2, 0, 4, 0),
     };
     private readonly ToolStripStatusLabel _statusLabel = new(Services.Loc.Get("statusBar.preparing"));
     private readonly ToolStripStatusLabel _characterCountLabel = new(Loc.Format("statusBar.wordCount", 0));
@@ -126,6 +124,8 @@ internal sealed partial class MainForm : Form
         }
         _imageAssetService = new ImageAssetService(_paths.DefaultImageDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
+        _viewToggleButton.Width = this.ScaleForDpi(18);
+        _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
         _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme);
         _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
@@ -259,10 +259,12 @@ internal sealed partial class MainForm : Form
 
     private Control CreateEditorHost()
     {
+        var colors = ColorThemeService.GetActiveColors();
+        var bg = colors.TryGetValue("bg-primary", out var c) ? c : SystemColors.Window;
         var panel = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = SystemColors.Window,
+            BackColor = bg,
         };
         _editorPanel = panel;
         var webView = new WebView2
@@ -273,10 +275,11 @@ internal sealed partial class MainForm : Form
             AllowExternalDrop = true,
         };
         _webView = webView;
-        var loadingView = new EditorLoadingView();
+        var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         panel.Controls.Add(webView);
         panel.Controls.Add(loadingView);
+        panel.Visible = false;
         _editorHost = new EditorHostController(
             webView,
             loadingView,
@@ -288,6 +291,7 @@ internal sealed partial class MainForm : Form
         _editorHost.Ready += (_, _) =>
         {
             // 必须先于 loadDocument 应用样式，确保文档渲染时排版即已就绪。
+            _editorHost?.SendFindBarLocalization();
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily);
@@ -324,7 +328,19 @@ internal sealed partial class MainForm : Form
             }
             SetZoomPercent(NextZoom(_zoomPercent, deltaY < 0 ? 1 : -1));
         };
+        
+        _editorHost.Ready += async (_, _) => await RevealEditorPanelAsync();
+
         return panel;
+    }
+
+    private async Task RevealEditorPanelAsync()
+    {
+        //await Task.Delay(2000);
+        if (_editorPanel is { IsDisposed: false })
+        {
+            _editorPanel.Visible = true;
+        }
     }
 
     private WorkspaceTreeView CreateWorkspaceTree()
@@ -411,7 +427,7 @@ internal sealed partial class MainForm : Form
         {
             SizingGrip = false,
             ShowItemToolTips = true,
-            MinimumSize = new Size(0, 45),
+            MinimumSize = new Size(0, this.ScaleForDpi(26)),
             Renderer = new SolidStatusBarRenderer(),
         };
         _viewToggleButton.Click += (_, _) =>
@@ -1430,6 +1446,29 @@ internal sealed partial class MainForm : Form
         SetStatus(deleted > 0 ? Loc.Format("status.logsCleared", deleted) : Loc.Get("status.noLogsToClear"));
     }
 
+    private void CleanOldLogs(int retentionDays = 7)
+    {
+        if (!Directory.Exists(_paths.LogDirectory))
+        {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+        foreach (var file in Directory.GetFiles(_paths.LogDirectory, "*.log"))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(file) < cutoff)
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     private void OpenFolderInExplorer(string directory, string displayName)
     {
         try
@@ -1832,6 +1871,10 @@ internal sealed partial class MainForm : Form
             EditorLifecycleState.Failed => Loc.Get("editor.failed"),
             _ => Loc.Get("statusBar.preparing"),
         };
+        if (_editorSession.State == EditorLifecycleState.Failed)
+        {
+            _editorPanel.Visible = true;
+        }
         _menuService.RefreshStates();
 
         if (_editorSession.State == EditorLifecycleState.Failed

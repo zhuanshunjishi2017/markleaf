@@ -38,6 +38,7 @@ public static class EditorProtocol
         "requestSnapshot",
         "command",
         "applyStyles",
+        "localizeFindBar",
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()

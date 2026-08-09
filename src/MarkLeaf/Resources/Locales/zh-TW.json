@@ -559,5 +559,20 @@
   "error.workspaceOperationFailed": "工作區操作失敗。",
 
   "changelog.notFound": "找不到更新內容檔案。",
-  "changelog.openFailed": "無法開啟更新內容檔案。"
+  "changelog.openFailed": "無法開啟更新內容檔案。",
+
+  "findBar.find": "尋找",
+  "findBar.findLabel": "尋找",
+  "findBar.replaceWith": "取代為",
+  "findBar.replaceLabel": "取代為",
+  "findBar.caseSensitive": "區分大小寫",
+  "findBar.wholeWord": "全字",
+  "findBar.previous": "上一個",
+  "findBar.next": "下一個",
+  "findBar.replace": "取代",
+  "findBar.replaceAll": "全部取代",
+  "findBar.close": "關閉",
+  "findBar.closeLabel": "關閉尋找列",
+  "findBar.replaced": "已取代 {0} 處",
+  "findBar.noResults": "0/0"
 }

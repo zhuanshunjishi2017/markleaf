@@ -30,13 +30,12 @@ internal sealed class PreferencesDialog : Form
         Dock = DockStyle.Fill,
         AutoScroll = true,
         Margin = Padding.Empty,
-        Padding = new Padding(25, 30, 25, 0),
         BackColor = SystemColors.ControlLightLight,
     };
     private Control[] _tabContents = [];
 
     private readonly ComboBox _startupAction = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly CheckBox _autoSaveCheck;
     private readonly CheckBox _saveOnSwitchCheck;
@@ -48,7 +47,7 @@ internal sealed class PreferencesDialog : Form
     private readonly Button _clearHistoryButton = new()
     { Text = Loc.Get("prefs.clearHistory"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly ComboBox _newLineStyleCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly Button _editShortcutsButton;
 
@@ -69,10 +68,10 @@ internal sealed class PreferencesDialog : Form
 
     private readonly (string Id, string DisplayName)[] _styleOptions;
     private readonly ComboBox _styleCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly (string Id, string DisplayName)[] _themeOptions;
     private readonly ComboBox _themeCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _followSystemCheck;
     private readonly Button _addThemeButton = new()
     { Text = Loc.Get("prefs.appearance.addTheme"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -83,10 +82,10 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _topMostCheck;
     private readonly CheckBox _autoHideScrollbarsCheck;
     private readonly ComboBox _menuStyleCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly ComboBox _languageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _openCacheFolderButton = new()
     { Text = Loc.Get("prefs.general.openCacheFolder"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _openLogFolderButton = new()
@@ -99,11 +98,11 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _associateTextCheck;
 
     private readonly ComboBox _clipboardImageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _fileImageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _defaultDirectoryTextBox = new()
-    { Width = 320 };
+    { };
     private readonly Button _browseDirectoryButton = new()
     { Text = Loc.Get("prefs.images.browse"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly CheckBox _useRelativePathsCheck;
@@ -112,10 +111,10 @@ internal sealed class PreferencesDialog : Form
     { Text = Loc.Get("prefs.images.uploadConfig"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly Button _okButton = new()
-    { Text = Loc.Get("common.ok"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.ok"), FlatStyle = FlatStyle.System };
 
     private readonly Button _cancelButton = new()
-    { Text = Loc.Get("common.cancel"), Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.cancel"), FlatStyle = FlatStyle.System };
 
     private static readonly string[] StartupActionItems = [];
 
@@ -186,7 +185,7 @@ internal sealed class PreferencesDialog : Form
         { Text = Loc.Get("prefs.file.saveOnSwitch"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _snapshotInterval = new NumericUpDown
-        { Minimum = 10, Maximum = 300, Increment = 5, Width = 70 };
+        { Minimum = 10, Maximum = 300, Increment = 5 };
         _recoverButton = new Button
         { Text = Loc.Get("prefs.file.recoverUnsaved"), AutoSize = true, FlatStyle = FlatStyle.System };
 
@@ -198,16 +197,16 @@ internal sealed class PreferencesDialog : Form
         _newLineStyleCombo.Items.Add("CRLF");
 
         _visualLineHeight = new NumericUpDown
-        { Minimum = 1.0m, Maximum = 3.0m, Increment = 0.05m, DecimalPlaces = 2, Width = 70 };
+        { Minimum = 1.0m, Maximum = 3.0m, Increment = 0.05m, DecimalPlaces = 2 };
         _visualFontSize = new NumericUpDown
-        { Minimum = 12, Maximum = 24, Increment = 1, Width = 70 };
+        { Minimum = 12, Maximum = 24, Increment = 1 };
         _visualMaxWidth = new NumericUpDown
-        { Minimum = 600, Maximum = 1200, Increment = 20, Width = 70 };
+        { Minimum = 600, Maximum = 1200, Increment = 20 };
 
         _sourceFontSize = new NumericUpDown
-        { Minimum = 12, Maximum = 24, Increment = 1, Width = 70 };
+        { Minimum = 12, Maximum = 24, Increment = 1 };
         _sourceIndentWidth = new NumericUpDown
-        { Minimum = 2, Maximum = 8, Increment = 2, Width = 70 };
+        { Minimum = 2, Maximum = 8, Increment = 2 };
 
         _editShortcutsButton = new Button
         { Text = Loc.Get("prefs.general.editShortcuts"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -230,6 +229,8 @@ internal sealed class PreferencesDialog : Form
 
         LoadSettingsIntoControls();
 
+        ApplyDpiSizes();
+
         Text = Loc.Get("prefs.title");
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -237,7 +238,7 @@ internal sealed class PreferencesDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(780, 940);
+        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(537));
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
@@ -295,11 +296,11 @@ internal sealed class PreferencesDialog : Form
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
-            Height = 45,
+            Height = this.ScaleForDpi(26),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
-            Margin = new Padding(35, 40, 35, 0),
+            Margin = new Padding(this.ScaleForDpi(20), this.ScaleForDpi(23), this.ScaleForDpi(20), 0),
             BackColor = SystemColors.ControlLightLight,
         };
         buttons.Controls.Add(_cancelButton);
@@ -308,7 +309,7 @@ internal sealed class PreferencesDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(0, 0, 0, 40),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(23)),
             BackColor = SystemColors.ControlLightLight,
             ColumnCount = 1,
             RowCount = 3,
@@ -355,29 +356,29 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.file.startupAction.label")), 0, 0);
         panel.Controls.Add(_startupAction, 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.file.saveOptions.label")), 0, 2);
         panel.Controls.Add(BuildSaveOptionsPanel(), 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.file.newLineStyle.label")), 0, 4);
         panel.Controls.Add(BuildNewLinePanel(), 1, 4);
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.file.history.label")), 0, 6);
         panel.Controls.Add(BuildHistoryPanel(), 1, 6);
@@ -402,7 +403,7 @@ internal sealed class PreferencesDialog : Form
         checks.Controls.Add(_recordRecentFilesCheck);
         checks.Controls.Add(_recordRecentFoldersCheck);
         panel.Controls.Add(checks, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_clearHistoryButton, 0, 2);
         return panel;
     }
@@ -417,12 +418,12 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_newLineStyleCombo, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(new Label
         {
             Text = Loc.Get("prefs.file.newLineHint"),
             AutoSize = true,
-            MaximumSize = new Size(430, 0),
+            MaximumSize = new Size(this.ScaleForDpi(246), 0),
             ForeColor = SystemColors.GrayText,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
 
@@ -441,9 +442,9 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         panel.Controls.Add(_autoSaveCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_saveOnSwitchCheck, 0, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
+        panel.Controls.Add(Gap(), 0, 3);
 
         var intervalRow = new FlowLayoutPanel { AutoSize = true };
         intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.snapshotInterval"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
@@ -451,7 +452,7 @@ internal sealed class PreferencesDialog : Form
         intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.seconds"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         panel.Controls.Add(intervalRow, 0, 4);
 
-        panel.Controls.Add(Gap(10), 0, 5);
+        panel.Controls.Add(Gap(), 0, 5);
         panel.Controls.Add(_recoverButton, 0, 6);
 
         return panel;
@@ -463,28 +464,28 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.visual")), 0, 0);
         panel.Controls.Add(BuildVisualPanel(), 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.source")), 0, 2);
         panel.Controls.Add(BuildSourcePanel(), 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.zoom.label")), 0, 4);
         panel.Controls.Add(BuildZoomPanel(), 1, 4);
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 6);
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 6);
@@ -519,7 +520,7 @@ internal sealed class PreferencesDialog : Form
                                         TextAlign = ContentAlignment.MiddleLeft,
                                         Padding = new Padding(0, 5, 0, 0), }, 0, 0);
         panel.Controls.Add(_visualLineHeight, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
 
 
         panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualFontSize"),
@@ -527,7 +528,7 @@ internal sealed class PreferencesDialog : Form
                                         TextAlign = ContentAlignment.MiddleLeft,
                                         Padding = new Padding(0, 5, 0, 0), }, 0, 2);
         panel.Controls.Add(_visualFontSize, 1, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
+        panel.Controls.Add(Gap(), 0, 3);
 
 
         panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualMaxWidth"),
@@ -558,17 +559,17 @@ internal sealed class PreferencesDialog : Form
                                         TextAlign = ContentAlignment.MiddleLeft,
                                         Padding = new Padding(0, 5, 0, 0), }, 0, 0);
         panel.Controls.Add(_sourceFontSize, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
 
         
         panel.Controls.Add(_selectCjkFontButton, 0, 4);
         panel.Controls.Add(_cjkFontLabel, 1, 4);
 
-        panel.Controls.Add(Gap(10), 0, 3);
+        panel.Controls.Add(Gap(), 0, 3);
 
         panel.Controls.Add(_selectWesternFontButton, 0, 6);
         panel.Controls.Add(_westernFontLabel, 1, 6);
-        panel.Controls.Add(Gap(10), 0, 5);
+        panel.Controls.Add(Gap(), 0, 5);
 
         panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.sourceIndentWidth"),
                                         AutoSize = true,
@@ -585,42 +586,42 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.style.label")), 0, 0);
         panel.Controls.Add(_styleCombo, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
-        panel.Controls.Add(Gap(10), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.colorScheme.label")), 0, 2);
         panel.Controls.Add(_themeCombo, 1, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
-        panel.Controls.Add(Gap(10), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
         //panel.Controls.Add(NewLabel("颜色模式(&M)"), 0, 4);
         panel.Controls.Add(_followSystemCheck, 1, 4);
-        panel.Controls.Add(Gap(10), 0, 5);
-        panel.Controls.Add(Gap(10), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
         var themeFolderRow = new FlowLayoutPanel { AutoSize = true };
         themeFolderRow.Controls.Add(_addThemeButton);
         themeFolderRow.Controls.Add(_openThemeFolderButton);
         panel.Controls.Add(themeFolderRow, 1, 6);
-        panel.Controls.Add(Gap(10), 0, 6);
+        panel.Controls.Add(Gap(), 0, 6);
 
 
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.window.label")), 0, 8);
         panel.Controls.Add(BuildWindowPanel(), 1, 8);
 
-        panel.Controls.Add(Gap(20), 0, 9);
-        panel.Controls.Add(Gap(20), 1, 9);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(Gap(), 1, 9);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.menuStyle.label")), 0, 10);
         panel.Controls.Add(BuildMenuStylePanel(), 1, 10);
@@ -642,7 +643,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_restoreZoomCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_ctrlWheelZoomCheck, 0, 2);
         return panel;
     }
@@ -657,7 +658,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_topMostCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_autoHideScrollbarsCheck, 0, 2);
         return panel;
     }
@@ -681,40 +682,40 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.language.label")), 0, 0);
         panel.Controls.Add(_languageCombo, 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.shortcuts.label")), 0, 2);
         panel.Controls.Add(_editShortcutsButton, 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.fileAssociation.label")), 0, 4);
         panel.Controls.Add(BuildFileAssociationPanel(), 1, 4);
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.storage.label")), 0, 6);
         panel.Controls.Add(BuildStoragePanel(), 1, 6);
 
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.logs.label")), 0, 8);
         panel.Controls.Add(BuildLogsPanel(), 1, 8);
 
-        panel.Controls.Add(Gap(20), 0, 9);
-        panel.Controls.Add(Gap(20), 1, 9);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(Gap(), 1, 9);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.advanced.label")), 0, 10);
         panel.Controls.Add(BuildAdvancedPanel(), 1, 10);
@@ -765,7 +766,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_openSettingsJsonButton, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_resetAllButton, 0, 2);
         return panel;
     }
@@ -780,7 +781,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_associateMarkdownCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_associateTextCheck, 0, 2);
         return panel;
     }
@@ -791,30 +792,30 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.clipboard.label")), 0, 0);
         panel.Controls.Add(_clipboardImageCombo, 1, 0);
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.fromFile.label")), 0, 2);
         panel.Controls.Add(_fileImageCombo, 1, 2);
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.defaultDirectory.label")), 0, 4);
         panel.Controls.Add(BuildDefaultDirectoryPanel(), 1, 4);
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.reference.label")), 0, 6);
         panel.Controls.Add(BuildReferencePanel(), 1, 6);
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.upload.label")), 0, 8);
         panel.Controls.Add(_imageUploadButton, 1, 8);
@@ -835,7 +836,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_defaultDirectoryTextBox, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_browseDirectoryButton, 0, 2);
         return panel;
     }
@@ -850,7 +851,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_useRelativePathsCheck, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_prefixRelativeWithDotSlashCheck, 0, 2);
         return panel;
     }
@@ -1100,7 +1101,39 @@ internal sealed class PreferencesDialog : Form
         Close();
     }
 
-    private static Label NewLabel(string text)
+    private void ApplyDpiSizes()
+    {
+        _contentPanel.Padding = new Padding(
+            this.ScaleForDpi(14), this.ScaleForDpi(17), this.ScaleForDpi(14), 0);
+
+        var comboW = this.ScaleForDpi(183);
+        _startupAction.Width = comboW;
+        _newLineStyleCombo.Width = comboW;
+        _styleCombo.Width = comboW;
+        _themeCombo.Width = comboW;
+        _menuStyleCombo.Width = comboW;
+        _languageCombo.Width = comboW;
+        _clipboardImageCombo.Width = comboW;
+        _fileImageCombo.Width = comboW;
+        _defaultDirectoryTextBox.Width = comboW;
+
+        var nudW = this.ScaleForDpi(40);
+        _snapshotInterval.Width = nudW;
+        _visualLineHeight.Width = nudW;
+        _visualFontSize.Width = nudW;
+        _visualMaxWidth.Width = nudW;
+        _sourceFontSize.Width = nudW;
+        _sourceIndentWidth.Width = nudW;
+
+        var btnW = this.ScaleForDpi(86);
+        var btnH = this.ScaleForDpi(26);
+        _okButton.Width = btnW;
+        _okButton.Height = btnH;
+        _cancelButton.Width = btnW;
+        _cancelButton.Height = btnH;
+    }
+
+    private Label NewLabel(string text)
     {
         return new Label
         {
@@ -1109,13 +1142,13 @@ internal sealed class PreferencesDialog : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = SystemColors.GrayText,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
-            Padding = new Padding(10, 10, 0, 0),
+            Padding = new Padding(this.ScaleForDpi(6), this.ScaleForDpi(6), 0, 0),
 
         };
     }
 
-    private static Control Gap(int height)
+    private Control Gap()
     {
-        return new Panel { Height = height, Dock = DockStyle.None };
+        return new Panel { Height = this.ScaleGapForDpi(), Width = 0, Dock = DockStyle.None };
     }
 }

@@ -14,7 +14,7 @@ internal sealed class EditorLoadingView : TableLayoutPanel
     public EditorLoadingView()
     {
         Dock = DockStyle.Fill;
-        BackColor = Color.White;
+        BackColor = SystemColors.Window;
         ColumnCount = 1;
         RowCount = 6;
         ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -78,6 +78,11 @@ internal sealed class EditorLoadingView : TableLayoutPanel
         _detail.Visible = false;
         _progress.Visible = false;
         _retryButton.Visible = false;
+    }
+
+    public void SetThemeBackground(Color color)
+    {
+        BackColor = color;
     }
 
     public void ShowFailure(string detail)

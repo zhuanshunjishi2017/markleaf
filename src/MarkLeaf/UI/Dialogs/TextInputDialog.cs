@@ -1,3 +1,5 @@
+using MarkLeaf.UI.Controls;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class TextInputDialog : Form
@@ -25,7 +27,7 @@ internal sealed class TextInputDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(0, 12, 0, 0),
+            Padding = new Padding(0, this.ScaleForDpi(7), 0, 0),
         };
         buttons.Controls.Add(cancelButton);
         buttons.Controls.Add(okButton);
@@ -34,10 +36,10 @@ internal sealed class TextInputDialog : Form
             AutoSize = true,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(14),
-            MinimumSize = new Size(420, 0),
+            Padding = new Padding(this.ScaleForDpi(8)),
+            MinimumSize = new Size(this.ScaleForDpi(240), 0),
         };
-        content.Controls.Add(new Label { AutoSize = true, Text = prompt, Padding = new Padding(0, 0, 0, 6) });
+        content.Controls.Add(new Label { AutoSize = true, Text = prompt, Padding = new Padding(0, 0, 0, this.ScaleForDpi(3)) });
         content.Controls.Add(_input);
         content.Controls.Add(buttons);
         Controls.Add(content);

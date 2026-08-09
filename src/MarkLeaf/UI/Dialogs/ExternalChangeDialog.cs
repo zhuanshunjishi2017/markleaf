@@ -1,4 +1,5 @@
 using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -24,13 +25,13 @@ internal sealed class ExternalChangeDialog : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        Padding = new Padding(16);
+        Padding = new Padding(this.ScaleForDpi(9));
         FormClosing += (_, _) => Choice = Choice == default ? ExternalChangeChoice.Cancel : Choice;
 
         var message = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(560, 0),
+            MaximumSize = new Size(this.ScaleForDpi(320), 0),
             Text = Loc.Format("document.externalChangeMessage", fileName),
         };
         var actions = new FlowLayoutPanel
@@ -40,7 +41,7 @@ internal sealed class ExternalChangeDialog : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 16, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(9), 0, 0),
         };
         actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeReload"), ExternalChangeChoice.Reload));
         actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeCompare"), ExternalChangeChoice.Compare));
@@ -68,8 +69,8 @@ internal sealed class ExternalChangeDialog : Form
         var button = new Button
         {
             AutoSize = true,
-            MinimumSize = new Size(88, 0),
-            Padding = new Padding(10, 3, 10, 3),
+            MinimumSize = new Size(this.ScaleForDpi(50), 0),
+            Padding = new Padding(this.ScaleForDpi(6), this.ScaleForDpi(2), this.ScaleForDpi(6), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             Text = text,
             UseVisualStyleBackColor = true,

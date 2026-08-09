@@ -1,5 +1,6 @@
 using MarkLeaf.Services;
 using MarkLeaf.Services.Recovery;
+using MarkLeaf.UI.Controls;
 
 namespace MarkLeaf.UI.Dialogs;
 
@@ -18,10 +19,10 @@ internal sealed class RecoveryDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = true;
-        Size = new Size(640, 450);
-        MinimumSize = new Size(640, 450);
+        Size = new Size(this.ScaleForDpi(366), this.ScaleForDpi(257));
+        MinimumSize = new Size(this.ScaleForDpi(366), this.ScaleForDpi(257));
         AutoScaleMode = AutoScaleMode.Dpi;
-        Padding = new Padding(20, 20, 20, 16);
+        Padding = new Padding(this.ScaleForDpi(11), this.ScaleForDpi(11), this.ScaleForDpi(11), this.ScaleForDpi(9));
         Font = new Font("Segoe UI", 9F);
 
         var warningText = recoveries.Count switch
@@ -35,8 +36,8 @@ internal sealed class RecoveryDialog : Form
         {
             Text = warningText,
             AutoSize = true,
-            MaximumSize = new Size(600, 0),
-            Padding = new Padding(0, 0, 0, 8),
+            MaximumSize = new Size(this.ScaleForDpi(343), 0),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(5)),
         };
 
         var listBox = new ListBox
@@ -70,8 +71,8 @@ internal sealed class RecoveryDialog : Form
         {
             Text = Loc.Get("dialog.recoveryInstruction"),
             AutoSize = true,
-            MaximumSize = new Size(560, 0),
-            Padding = new Padding(0, 6, 0, 0),
+            MaximumSize = new Size(this.ScaleForDpi(320), 0),
+            Padding = new Padding(0, this.ScaleForDpi(3), 0, 0),
             ForeColor = SystemColors.GrayText,
         };
 
@@ -80,15 +81,15 @@ internal sealed class RecoveryDialog : Form
             FlowDirection = FlowDirection.RightToLeft,
             AutoSize = true,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            Margin = new Padding(0, 10, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(6), 0, 0),
         };
 
         var discardButton = new Button
         {
             Text = Loc.Get("dialog.recoveryDiscardAll"),
             AutoSize = true,
-            MinimumSize = new Size(130, 0),
-            Padding = new Padding(12, 4, 12, 4),
+            MinimumSize = new Size(this.ScaleForDpi(74), 0),
+            Padding = new Padding(this.ScaleForDpi(7), this.ScaleForDpi(2), this.ScaleForDpi(7), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             UseVisualStyleBackColor = true,
         };
@@ -103,8 +104,8 @@ internal sealed class RecoveryDialog : Form
         {
             Text = Loc.Get("dialog.recoverySaveAs"),
             AutoSize = true,
-            MinimumSize = new Size(130, 0),
-            Padding = new Padding(12, 4, 12, 4),
+            MinimumSize = new Size(this.ScaleForDpi(74), 0),
+            Padding = new Padding(this.ScaleForDpi(7), this.ScaleForDpi(2), this.ScaleForDpi(7), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             UseVisualStyleBackColor = true,
         };
