@@ -136,6 +136,20 @@ final class StyleManager {
         return defaultThemeId
     }
 
+    // MARK: - 主题文件校验（导入前使用）
+
+    /// 主题文件名约定：必须以 colors- 开头且扩展名为 css（对齐 StyleManager 加载规则）。
+    static func isThemeFileName(_ name: String) -> Bool {
+        name.hasPrefix("colors-") && name.lowercased().hasSuffix(".css")
+    }
+
+    /// 主题内容有效性：包含 @type: color-theme 标记，或至少一个可解析的颜色变量（--name: #hex）。
+    static func isValidThemeContent(_ css: String) -> Bool {
+        if css.contains("@type: color-theme") { return true }
+        let pattern = "--[\\w-]+\\s*:\\s*#[0-9a-fA-F]{3,8}\\s*;"
+        return css.range(of: pattern, options: .regularExpression) != nil
+    }
+
     // MARK: - Helpers
 
     private struct Metadata {

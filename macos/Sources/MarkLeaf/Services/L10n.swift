@@ -157,6 +157,8 @@ enum L10n {
         "更新内容": "更新內容",
         "无法打开更新内容": "無法開啟更新內容",
         "与操作系统同步": "與作業系統同步",
+        "不是有效的主题文件": "不是有效的主題檔",
+        "请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。": "請選擇 colors-*.css 檔案，且內容需包含 @type: color-theme 標記或至少一個可解析的顏色變數。",
         // 侧边栏
         "打开文件夹": "開啟資料夾",
         "暂未打开工作区\n点击“打开文件夹”开始": "尚未開啟工作區\n按一下「開啟資料夾」開始",
@@ -509,6 +511,8 @@ enum L10n {
         "更新内容": "Changelog",
         "无法打开更新内容": "Unable to open changelog",
         "与操作系统同步": "Sync with OS",
+        "不是有效的主题文件": "Not a valid theme file",
+        "请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。": "Please choose a colors-*.css file whose content contains the @type: color-theme marker or at least one parseable color variable.",
         "打开文件夹": "Open Folder",
         "暂未打开工作区\n点击“打开文件夹”开始": "No workspace open\nClick “Open Folder” to start",
         "就绪": "Ready",

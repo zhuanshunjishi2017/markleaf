@@ -1056,21 +1056,37 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         panel.canChooseDirectories = false
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let source = panel.url else { return }
-            let dest = dir.appendingPathComponent(source.lastPathComponent)
-            if FileManager.default.fileExists(atPath: dest.path) {
-                let alert = NSAlert()
-                alert.messageText = L10n.f("主题文件“%@”已存在，是否覆盖？", dest.lastPathComponent)
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: L10n.t("覆盖"))
-                alert.addButton(withTitle: L10n.t("取消"))
-                alert.buttons.first?.hasDestructiveAction = true
-                alert.beginSheetModal(for: window) { resp in
-                    guard resp == .alertFirstButtonReturn else { return }
-                    self?.copyThemeFile(from: source, to: dest)
-                }
-            } else {
-                self?.copyThemeFile(from: source, to: dest)
+            self?.validateAndImportTheme(from: source, to: dir, window: window)
+        }
+    }
+
+    /// 校验主题文件名与内容后导入；不合格时弹窗提示、不复制。
+    private func validateAndImportTheme(from source: URL, to dir: URL, window: NSWindow) {
+        let fileName = source.lastPathComponent
+        guard StyleManager.isThemeFileName(fileName),
+              let css = try? String(contentsOf: source, encoding: .utf8),
+              StyleManager.isValidThemeContent(css) else {
+            let alert = NSAlert()
+            alert.messageText = L10n.t("不是有效的主题文件")
+            alert.informativeText = L10n.t("请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。")
+            alert.alertStyle = .warning
+            alert.beginSheetModal(for: window)
+            return
+        }
+        let dest = dir.appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            let alert = NSAlert()
+            alert.messageText = L10n.f("主题文件“%@”已存在，是否覆盖？", dest.lastPathComponent)
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L10n.t("覆盖"))
+            alert.addButton(withTitle: L10n.t("取消"))
+            alert.buttons.first?.hasDestructiveAction = true
+            alert.beginSheetModal(for: window) { resp in
+                guard resp == .alertFirstButtonReturn else { return }
+                self.copyThemeFile(from: source, to: dest)
             }
+        } else {
+            copyThemeFile(from: source, to: dest)
         }
     }
 
