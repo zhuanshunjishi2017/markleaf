@@ -362,15 +362,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         var payload = manager.applyStylesPayload()
         let saved = SettingsService.shared.settings
 
-        // 应用已保存的颜色主题
-        if let theme = colorThemes.first(where: { $0.id == saved.colorTheme }) {
+        // 应用已保存的颜色主题；开启「与操作系统同步」时改用系统外观对应的默认主题
+        if !saved.followSystemTheme, let theme = colorThemes.first(where: { $0.id == saved.colorTheme }) {
             payload["colorThemeCss"] = theme.css
             currentThemeId = theme.id
             applySystemAppearance(for: theme)
         } else {
-            currentThemeId = manager.defaultThemeId
-            if let fallback = colorThemes.first(where: { $0.id == currentThemeId }) {
-                applySystemAppearance(for: fallback)
+            let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let id = manager.defaultThemeID(forDark: dark) ?? manager.defaultThemeId
+            currentThemeId = id
+            if let theme = colorThemes.first(where: { $0.id == id }) {
+                payload["colorThemeCss"] = theme.css
+                applySystemAppearance(for: theme)
             }
         }
         // 应用已保存的排版样式
@@ -544,6 +547,38 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         send("requestSnapshot")
     }
 
+    /// 是否开启「与操作系统同步」（读取当前设置）。
+    var isFollowSystemTheme: Bool {
+        SettingsService.shared.settings.followSystemTheme
+    }
+
+    private var systemThemeObserver: NSObjectProtocol?
+
+    /// 注册系统外观变化监听（浅色/深色切换时重新解析默认主题）。
+    private func startFollowingSystemAppearance() {
+        guard systemThemeObserver == nil else { return }
+        systemThemeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil, queue: .main) { [weak self] _ in
+            self?.applyFollowSystemTheme()
+        }
+    }
+
+    /// 跟随系统外观：重新解析默认主题并换肤（开关切换或系统外观变化时调用）。
+    func applyFollowSystemTheme() {
+        guard isFollowSystemTheme else { return }
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        guard let manager = StyleManager(directories: styleDirectories),
+              let id = manager.defaultThemeID(forDark: dark), id != currentThemeId else { return }
+        currentThemeId = id
+        guard let theme = colorThemes.first(where: { $0.id == id }) else { return }
+        applySystemAppearance(for: theme)
+        var payload = manager.applyStylesPayload()
+        payload["colorThemeCss"] = theme.css
+        payload["activeStyle"] = currentStyleId
+        send("applyStyles", payload: payload)
+    }
+
     func setStyle(_ id: String) {
         currentStyleId = id
         SettingsService.shared.update { $0.markdownStyle = id }
@@ -551,6 +586,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func setTheme(_ id: String) {
+        // 跟随系统外观时忽略手动主题选择（偏好设置与菜单均已禁用）
+        guard !isFollowSystemTheme else { return }
         currentThemeId = id
         SettingsService.shared.update { $0.colorTheme = id }
         guard let theme = colorThemes.first(where: { $0.id == id }) else { return }
@@ -566,9 +603,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private func applySystemAppearance(for theme: ColorThemeInfo) {
         DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             let dark = theme.isDark
-            NSApp.appearance = dark ? NSAppearance(named: .darkAqua) : nil
-            self?.applyScrollbarAppearance(dark: dark)
+            if self.isFollowSystemTheme {
+                NSApp.appearance = nil
+            } else {
+                NSApp.appearance = dark ? NSAppearance(named: .darkAqua) : nil
+            }
+            self.applyScrollbarAppearance(dark: dark)
         }
     }
 
@@ -1057,6 +1099,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 供窗口控制器在展示后调用：记录初始加载意图，编辑器就绪后真正执行。
     func openInitialDocument(path: String? = nil) {
+        startFollowingSystemAppearance()
         if let path {
             pendingInitialOpenPath = path
         } else {
