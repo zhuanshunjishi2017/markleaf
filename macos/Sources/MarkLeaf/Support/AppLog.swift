@@ -37,4 +37,21 @@ enum AppLog {
         logger.error("\(message, privacy: .public)")
         appendToFile("ERROR", message)
     }
+
+    /// 清理超过指定天数的旧日志文件（对齐 Windows 1.1.3 CleanOldLogs）。
+    /// 文件缺失或日期属性不可读时静默忽略。
+    static func cleanup(fileURL: URL, olderThanDays days: Int, now: Date = Date()) {
+        guard days > 0,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let modified = attributes[.modificationDate] as? Date else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now
+        if modified < cutoff {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
+    /// 清理默认日志文件（对齐 Windows 1.1.3 CleanOldLogs）。
+    static func cleanupOldLogs(olderThanDays days: Int, now: Date = Date()) {
+        cleanup(fileURL: AppLog.fileURL, olderThanDays: days, now: now)
+    }
 }

@@ -1016,6 +1016,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // 正常退出：清理本进程的恢复快照（崩溃遗留的留给下次恢复）
         RecoveryService.shared.deleteOwnFiles()
+        // 对齐 Windows 1.1.3：退出时自动清理 7 天前的日志
+        AppLog.cleanupOldLogs(olderThanDays: 7)
     }
 
     /// 启动时检测崩溃遗留快照（对应 C# RecoverUnsavedFiles）。
