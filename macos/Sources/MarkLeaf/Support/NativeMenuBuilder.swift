@@ -243,6 +243,7 @@ final class NativeMenuBuilder {
     private func helpMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
+        menu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("MarkLeaf 项目主页"), "openHomepage"))
         menu.addItem(commandItem(L10n.t("MarkLeaf 帮助"), "openHelp"))
@@ -350,6 +351,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             }
         case "recoverUnsavedFiles":
             AppWindowManager.shared.showRecoveryDialog()
+        case "openChangelog":
+            AppWindowManager.shared.openChangelog()
         case "openHomepage":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf") {
                 NSWorkspace.shared.open(url)

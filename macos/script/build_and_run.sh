@@ -48,6 +48,10 @@ chmod +x "$APP_BINARY"
 mkdir -p "$APP_CONTENTS/Resources"
 cp -R "$ROOT_DIR/Resources/EditorWeb" "$APP_CONTENTS/Resources/EditorWeb"
 cp -R "$ROOT_DIR/Resources/Styles" "$APP_CONTENTS/Resources/Styles"
+if [ -d "$ROOT_DIR/Changelog" ]; then
+  mkdir -p "$APP_CONTENTS/Resources/Changelog"
+  cp "$ROOT_DIR/Changelog/changelog.txt" "$APP_CONTENTS/Resources/Changelog/changelog.txt"
+fi
 if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
   cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 fi

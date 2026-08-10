@@ -203,6 +203,31 @@ final class AppWindowManager {
     }
 
     /// 快捷键参考窗口。
+    /// 打开「更新内容」（对应 Windows ShowChangelog：复制到可写缓存目录后在当前窗口打开）。
+    func openChangelog() {
+        guard let source = Bundle.main.url(forResource: "changelog", withExtension: "txt", subdirectory: "Changelog") else {
+            activeSession?.statusText = L10n.t("无法打开更新内容")
+            return
+        }
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let cacheDir = base.appendingPathComponent("MarkLeaf/Cache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let target = cacheDir.appendingPathComponent("changelog.txt")
+        do {
+            try? FileManager.default.removeItem(at: target)
+            try FileManager.default.copyItem(at: source, to: target)
+        } catch {
+            activeSession?.statusText = L10n.t("无法打开更新内容")
+            return
+        }
+        if let session = activeSession {
+            session.openDocument(at: target)
+        } else {
+            NSWorkspace.shared.open(target)
+        }
+    }
+
     func showShortcuts() {
         let controller = ShortcutWindowController()
         shortcutController = controller

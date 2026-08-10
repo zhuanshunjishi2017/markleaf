@@ -154,6 +154,8 @@ enum L10n {
         "快捷键": "快速鍵",
         "MarkLeaf 项目主页": "MarkLeaf 專案首頁",
         "MarkLeaf 帮助": "MarkLeaf 說明",
+        "更新内容": "更新內容",
+        "无法打开更新内容": "無法開啟更新內容",
         // 侧边栏
         "打开文件夹": "開啟資料夾",
         "暂未打开工作区\n点击“打开文件夹”开始": "尚未開啟工作區\n按一下「開啟資料夾」開始",
@@ -503,6 +505,8 @@ enum L10n {
         "快捷键": "Keyboard Shortcuts",
         "MarkLeaf 项目主页": "MarkLeaf Project Home",
         "MarkLeaf 帮助": "MarkLeaf Help",
+        "更新内容": "Changelog",
+        "无法打开更新内容": "Unable to open changelog",
         "打开文件夹": "Open Folder",
         "暂未打开工作区\n点击“打开文件夹”开始": "No workspace open\nClick “Open Folder” to start",
         "就绪": "Ready",
