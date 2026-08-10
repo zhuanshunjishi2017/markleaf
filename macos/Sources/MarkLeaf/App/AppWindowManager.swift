@@ -203,6 +203,18 @@ final class AppWindowManager {
     }
 
     /// 快捷键参考窗口。
+    /// 跟随系统开关变化后刷新所有会话的主题（开→跟随系统；关→恢复手动主题）。
+    func applyThemeModeToAll() {
+        let follow = SettingsService.shared.settings.followSystemTheme
+        for controller in windowControllers {
+            if follow {
+                controller.session.applyFollowSystemTheme()
+            } else {
+                controller.session.setTheme(SettingsService.shared.settings.colorTheme)
+            }
+        }
+    }
+
     /// 打开「更新内容」（对应 Windows ShowChangelog：复制到可写缓存目录后在当前窗口打开）。
     func openChangelog() {
         guard let source = Bundle.main.url(forResource: "changelog", withExtension: "txt", subdirectory: "Changelog") else {

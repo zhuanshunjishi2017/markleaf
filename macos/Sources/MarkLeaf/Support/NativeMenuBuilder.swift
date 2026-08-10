@@ -295,6 +295,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
 
     /// 视图菜单勾选状态（对应 Windows RefreshStates）。
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        // 跟随系统外观时禁用主题选择（对应偏好设置置灰）
+        if menuItem.action == #selector(chooseTheme(_:)) {
+            return !SettingsService.shared.settings.followSystemTheme
+        }
         guard let command = menuItem.representedObject as? String else { return true }
         let s = session
         switch command {

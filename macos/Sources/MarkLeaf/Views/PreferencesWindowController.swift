@@ -29,6 +29,7 @@ final class PreferencesWindowController: NSWindowController {
     // 触控板捏合始终可用；此开关仅控制 ⌘ + 滚轮缩放
     private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: L10n.t("使用 ⌘ + 滚轮进行缩放"), target: nil, action: nil)
     private let topMostCheck = NSButton(checkboxWithTitle: L10n.t("将窗口置于顶层"), target: nil, action: nil)
+    private let followSystemCheck = NSButton(checkboxWithTitle: L10n.t("与操作系统同步"), target: nil, action: nil)
 
     // 通用
     private let languagePopup = NSPopUpButton()
@@ -102,6 +103,8 @@ final class PreferencesWindowController: NSWindowController {
         restoreZoomCheck.state = settings.restoreZoomOnOpen ? .on : .off
         ctrlWheelZoomCheck.state = settings.ctrlWheelZoom ? .on : .off
         topMostCheck.state = settings.topMostWindow ? .on : .off
+        followSystemCheck.state = settings.followSystemTheme ? .on : .off
+        themePopup.isEnabled = !settings.followSystemTheme
 
         // i18n：简体中文 / 繁體中文 / English
         let currentLang = settings.displayLanguage
@@ -218,6 +221,7 @@ final class PreferencesWindowController: NSWindowController {
         formPage(rows: [
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
+            .field("", followSystemCheck),
             .field(L10n.t("颜色主题"), themePopup),
             .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
@@ -294,6 +298,7 @@ final class PreferencesWindowController: NSWindowController {
             settings.restoreZoomOnOpen = restoreZoomCheck.state == .on
             settings.ctrlWheelZoom = ctrlWheelZoomCheck.state == .on
             settings.topMostWindow = topMostCheck.state == .on
+            settings.followSystemTheme = followSystemCheck.state == .on
 
             settings.associateMarkdownFiles = associateMDCheck.state == .on
             settings.associateTextFiles = associateTextCheck.state == .on
@@ -311,6 +316,9 @@ final class PreferencesWindowController: NSWindowController {
             }
         }
         let languageChanged = SettingsService.shared.settings.displayLanguage != oldLanguage
+        // 跟随系统开关变化：更新下拉可用性并立即刷新各窗口主题
+        themePopup.isEnabled = followSystemCheck.state != .on
+        AppWindowManager.shared.applyThemeModeToAll()
         onSettingsChanged?()
         // 文件关联开关变更 → 立即应用（绑定/还原默认打开程序）
         FileAssociationService.shared.apply(settings: SettingsService.shared.settings)
