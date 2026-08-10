@@ -165,7 +165,7 @@ final class AppWindowManager {
     /// 关于 MarkLeaf：macOS 原生关于面板（同 LyricsX，orderFrontStandardAboutPanel）。
     /// credits 排版：居中、行距、仓库链接可点击。
     func showAbout() {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.3"
         let linkURL = URL(string: "https://github.com/zhuanshunjishi2017/markleaf")!
 
         let paragraph = NSMutableParagraphStyle()
