@@ -93,6 +93,7 @@ public enum AppCommand
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    FollowSystemColorMode,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -124,4 +125,5 @@ public readonly record struct CommandContext(
     string? TableAlign = null,
     bool ImageSelected = false,
     bool DocumentSaved = false,
-    bool StatusBarVisible = true);
+    bool StatusBarVisible = true,
+    bool FollowSystemColorMode = false);

@@ -770,6 +770,65 @@ internal sealed partial class MainForm
         }
     }
 
+    private async Task MoveWorkspaceEntryAsync(string sourcePath, string targetDirectory)
+    {
+        try
+        {
+            var sourceParent = Path.GetDirectoryName(sourcePath)!;
+            if (string.Equals(sourceParent, targetDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var name = Path.GetFileName(sourcePath);
+            var target = Path.Combine(targetDirectory, name);
+
+            if (File.Exists(target) || Directory.Exists(target))
+            {
+                ShowMessage(this, Loc.Format("workspace.moveConflict", name), "MarkLeaf",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var isOpenDocument = _document?.FilePath is not null
+                && string.Equals(_document.FilePath, sourcePath, StringComparison.OrdinalIgnoreCase);
+
+            if (isOpenDocument && _document!.IsDirty)
+            {
+                if (!await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+                {
+                    return;
+                }
+            }
+
+            var isDirectory = Directory.Exists(sourcePath);
+            if (isDirectory)
+            {
+                Directory.Move(sourcePath, target);
+            }
+            else
+            {
+                File.Move(sourcePath, target);
+            }
+
+            if (isOpenDocument)
+            {
+                await OpenDocumentPathAsync(target);
+            }
+
+            await RefreshWorkspaceDirectoryAsync(sourceParent);
+            if (!string.Equals(sourceParent, targetDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                await RefreshWorkspaceDirectoryAsync(targetDirectory);
+            }
+            await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ShowWorkspaceOperationError(exception);
+        }
+    }
+
     private async Task RenameWorkspaceEntryAsync(WorkspaceEntry entry)
     {
         using var dialog = new TextInputDialog(Loc.Get("workspace.rename"), Loc.Get("workspace.newName"), Path.GetFileName(entry.FullPath));
@@ -782,6 +841,15 @@ internal sealed partial class MainForm
         {
             var parent = Path.GetDirectoryName(entry.FullPath)!;
             var target = GetSafeChildPath(parent, dialog.InputText);
+            var isOpenDocument = !entry.IsDirectory
+                && _document?.FilePath is not null
+                && string.Equals(_document.FilePath, entry.FullPath, StringComparison.OrdinalIgnoreCase);
+
+            if (isOpenDocument)
+            {
+                StopWatchingDocument();
+            }
+
             if (entry.IsDirectory)
             {
                 Directory.Move(entry.FullPath, target);
@@ -790,7 +858,20 @@ internal sealed partial class MainForm
             {
                 File.Move(entry.FullPath, target);
             }
+
+            if (isOpenDocument)
+            {
+                _document!.FilePath = target;
+                _document.LastKnownWriteTime = File.GetLastWriteTimeUtc(target);
+                UpdateDocumentChrome();
+                StartWatchingDocument(target);
+            }
+
             await RefreshWorkspaceDirectoryAsync(parent);
+            if (isOpenDocument)
+            {
+                _workspaceTree.SelectedPath = target;
+            }
             await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)

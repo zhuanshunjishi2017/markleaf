@@ -104,13 +104,19 @@ internal static partial class ColorThemeService
         }
     }
 
+    public static string DefaultLightThemeId { get; set; } = "white-only";
+
+    public static string DefaultDarkThemeId { get; set; } = "dark";
+
     public static string GetDefaultLightThemeId()
     {
-        return TryGetTheme("white-only") is not null ? "white-only" : "white";
+        return TryGetTheme(DefaultLightThemeId) is not null ? DefaultLightThemeId
+            : TryGetTheme("white-only") is not null ? "white-only" : "white";
     }
 
     public static string GetDefaultDarkThemeId()
     {
+        if (TryGetTheme(DefaultDarkThemeId) is not null) return DefaultDarkThemeId;
         if (TryGetTheme("dark") is not null) return "dark";
         var fallback = Themes.Find(t => t.IsDark);
         return fallback?.Id ?? "dark";

@@ -79,7 +79,6 @@ internal sealed partial class MainForm : Form
     private SolidBrush _menuTextBrush = new(Color.Black);
     private SolidBrush _menuDisabledBrush = new(Color.FromArgb(0x6D, 0x6D, 0x6D));
     private bool _menuDarkMode;
-    private bool _settingsSaved;
     private bool _focusMode;
     private bool _sidebarVisibleBeforeFocus = true;
     private bool _editorSmokeStarted;
@@ -109,6 +108,8 @@ internal sealed partial class MainForm : Form
         _markdownStyle = StyleService.TryGetStyle(settings.MarkdownStyle) is not null
             ? settings.MarkdownStyle
             : StyleService.DefaultStyleId;
+        ColorThemeService.DefaultLightThemeId = settings.Appearance.DefaultLightThemeId;
+        ColorThemeService.DefaultDarkThemeId = settings.Appearance.DefaultDarkThemeId;
         _colorTheme = ColorThemeService.TryGetTheme(settings.ColorTheme) is not null
             ? settings.ColorTheme
             : ColorThemeService.All.Count > 0 ? ColorThemeService.All[0].Id : "white";
@@ -127,7 +128,7 @@ internal sealed partial class MainForm : Form
         _viewToggleButton.Width = this.ScaleForDpi(18);
         _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
-        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme);
+        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme, () => _settings.Appearance.FollowSystemColorMode);
         _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
             TimeSpan.FromMilliseconds(500),
             QueueWorkspaceRefresh);
@@ -253,7 +254,7 @@ internal sealed partial class MainForm : Form
         panel.Controls.Add(_outlinePanelHost);
         panel.Controls.Add(_workspacePanelHost);
 
-        ShowSidebarView(outline: false);
+        ShowSidebarView(outline: _settings.MainWindow.SidebarActiveOutline);
         return panel;
     }
 
@@ -354,6 +355,8 @@ internal sealed partial class MainForm : Form
             _ = ShowWorkspaceFolderMenuAtAsync(args.ScreenPoint);
         _workspaceTree.FilesDropped += (_, args) =>
             _ = ImportWorkspaceFilesAsync(args.Paths);
+        _workspaceTree.NodeMoved += (_, args) =>
+            _ = MoveWorkspaceEntryAsync(args.SourcePath, args.TargetDirectory);
         return _workspaceTree;
     }
 
@@ -541,7 +544,10 @@ internal sealed partial class MainForm : Form
 
             if (_menuService.TryGetColorThemeByCommandId((uint)commandId, out var colorThemeId))
             {
-                SetColorTheme(colorThemeId);
+                if (!_settings.Appearance.FollowSystemColorMode)
+                {
+                    SetColorTheme(colorThemeId);
+                }
                 return;
             }
 
@@ -728,7 +734,8 @@ internal sealed partial class MainForm : Form
             ImageSelected: _editorCommandStatus.ImageSelected,
             DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
-            OutlineActive: _sidebarActiveOutline);
+            OutlineActive: _sidebarActiveOutline,
+            FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
             && context.EditorReady
@@ -878,6 +885,9 @@ internal sealed partial class MainForm : Form
             case AppCommand.ZoomReset:
                 SetZoomPercent(100);
                 break;
+            case AppCommand.FollowSystemColorMode:
+                ToggleFollowSystemColorMode();
+                break;
             case AppCommand.Exit:
                 Close();
                 break;
@@ -1023,6 +1033,38 @@ internal sealed partial class MainForm : Form
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
+    }
+
+    private void ToggleFollowSystemColorMode()
+    {
+        var follow = !_settings.Appearance.FollowSystemColorMode;
+        _settings.Appearance.FollowSystemColorMode = follow;
+        if (follow)
+        {
+            _colorTheme = ColorThemeService.GetSystemDefaultThemeId();
+        }
+        else
+        {
+            _colorTheme = _settings.ColorTheme;
+        }
+        ColorThemeService.SetActiveTheme(_colorTheme);
+        ApplySidebarColors();
+        _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
+        _menuService.RefreshStates();
+        ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
+    }
+
+    private void ReloadUiLanguage(string culture)
+    {
+        var localesDir = Path.Combine(AppContext.BaseDirectory, "Resources", "Locales");
+        Loc.Initialize(localesDir, culture);
+        _menuService.Attach(Handle);
+        OnEditorStateChanged();
+        RefreshPersistentStatusBar();
+        UpdateDocumentChrome();
+        _sidebarTabBar.ReloadTexts();
+        _editorHost?.SendFindBarLocalization();
+        _openFolderPrompt.Invalidate();
     }
 
     private void SetColorTheme(string themeId)
@@ -1673,12 +1715,13 @@ internal sealed partial class MainForm : Form
         var previousLanguage = _settings.General.UiLanguage ?? "";
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
 
+        ColorThemeService.DefaultLightThemeId = _settings.Appearance.DefaultLightThemeId;
+        ColorThemeService.DefaultDarkThemeId = _settings.Appearance.DefaultDarkThemeId;
+
         var newLanguage = _settings.General.UiLanguage ?? "";
         if (!string.Equals(previousLanguage, newLanguage, StringComparison.Ordinal))
         {
-            ShowMessage(this,
-                Loc.Get("dialog.languageRestart"),
-                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ReloadUiLanguage(newLanguage);
         }
 
         _recoveryTimer.Interval = Math.Clamp(_settings.File.SnapshotIntervalSeconds, 10, 300) * 1000;
@@ -1704,6 +1747,8 @@ internal sealed partial class MainForm : Form
         }
 
         UpdateDocumentChrome();
+
+        SaveSettings();
     }
 
     private void ShowAbout()
@@ -2383,14 +2428,8 @@ internal sealed partial class MainForm : Form
         BeginInvoke(Close);
     }
 
-    private void SaveSettings()
+    private void CollectWindowState()
     {
-        if (_settingsSaved)
-        {
-            return;
-        }
-
-        _settingsSaved = true;
         var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
         _settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         _settings.MainWindow = new WindowSettings
@@ -2405,6 +2444,8 @@ internal sealed partial class MainForm : Form
                 _sidebarSplit.SplitterDistance,
                 _effectiveDpi),
             OutlineWidth = _settings.MainWindow.OutlineWidth,
+            SidebarCollapsed = _sidebarSplit.Panel1Collapsed,
+            SidebarActiveOutline = _sidebarActiveOutline,
         };
         _settings.Workspace.LastFolder = _workspaceRoot;
         _settings.Workspace.LastFile = _document?.FilePath;
@@ -2416,18 +2457,33 @@ internal sealed partial class MainForm : Form
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private void SaveWindowState()
+    {
+        CollectWindowState();
+        PersistSettings("Window state saved.", "Window state could not be saved.");
+    }
+
+    private void SaveSettings()
+    {
+        CollectWindowState();
         _settings.MarkdownStyle = _markdownStyle;
         _settings.ColorTheme = _colorTheme;
         _settings.Appearance.ZoomPercent = _zoomPercent;
+        PersistSettings("Settings saved.", "Settings could not be saved.");
+    }
 
+    private void PersistSettings(string successMessage, string errorMessage)
+    {
         try
         {
             _settingsService.SaveAsync(_settings).GetAwaiter().GetResult();
-            _logger.Info("Window settings saved.");
+            _logger.Info(successMessage);
         }
         catch (Exception exception)
         {
-            _logger.Error("Window settings could not be saved.", exception);
+            _logger.Error(errorMessage, exception);
         }
     }
 

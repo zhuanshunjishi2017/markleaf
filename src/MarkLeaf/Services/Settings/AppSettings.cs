@@ -100,6 +100,10 @@ public sealed class AppearanceSettings
 
     public bool FollowSystemColorMode { get; set; }
 
+    public string DefaultLightThemeId { get; set; } = "white-only";
+
+    public string DefaultDarkThemeId { get; set; } = "dark";
+
     public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.DarkThemeOnly;
 }
 
@@ -180,4 +184,6 @@ public sealed class WindowSettings
     public int OutlineWidth { get; set; } = 220;
 
     public bool SidebarCollapsed { get; set; }
+
+    public bool SidebarActiveOutline { get; set; }
 }

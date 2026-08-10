@@ -35,6 +35,7 @@ internal sealed class NativeMenuService : IDisposable
     private readonly Func<string> _currentStyleProvider;
     private readonly Func<int> _currentZoomProvider;
     private readonly Func<string> _currentColorThemeProvider;
+    private readonly Func<bool> _followSystemProvider;
     private readonly Dictionary<uint, string> _styleCommandIds = new();
     private readonly Dictionary<uint, int> _zoomCommandIds = new();
     private readonly Dictionary<uint, string> _colorCommandIds = new();
@@ -51,7 +52,8 @@ internal sealed class NativeMenuService : IDisposable
         Func<IReadOnlyList<string>> recentFileProvider,
         Func<string> currentStyleProvider,
         Func<int> currentZoomProvider,
-        Func<string> currentColorThemeProvider)
+        Func<string> currentColorThemeProvider,
+        Func<bool> followSystemProvider)
     {
         _router = router;
         _recentWorkspaceProvider = recentWorkspaceProvider;
@@ -59,6 +61,7 @@ internal sealed class NativeMenuService : IDisposable
         _currentStyleProvider = currentStyleProvider;
         _currentZoomProvider = currentZoomProvider;
         _currentColorThemeProvider = currentColorThemeProvider;
+        _followSystemProvider = followSystemProvider;
     }
 
     public void Attach(nint window)
@@ -506,6 +509,8 @@ internal sealed class NativeMenuService : IDisposable
 
         _colorCommandIds.Clear();
         var current = _currentColorThemeProvider();
+        var followSystem = _followSystemProvider();
+        var themeEnabled = !followSystem;
         var lightThemes = ColorThemeService.All.Where(t => !t.IsDark).ToArray();
         var darkThemes = ColorThemeService.All.Where(t => t.IsDark).ToArray();
 
@@ -513,7 +518,7 @@ internal sealed class NativeMenuService : IDisposable
         {
             if ((uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count) > CommandCatalog.ColorCommandMax)
                 break;
-            AppendColorThemeItem(theme, current);
+            AppendColorThemeItem(theme, current, themeEnabled);
         }
 
         if (lightThemes.Length > 0 && darkThemes.Length > 0)
@@ -523,20 +528,26 @@ internal sealed class NativeMenuService : IDisposable
         {
             if ((uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count) > CommandCatalog.ColorCommandMax)
                 break;
-            AppendColorThemeItem(theme, current);
+            AppendColorThemeItem(theme, current, themeEnabled);
         }
+
+        AppendSeparator(_colorMenu);
+        Append(
+            _colorMenu,
+            NativeMethods.MfString | (followSystem ? NativeMethods.MfChecked : NativeMethods.MfUnchecked),
+            (uint)AppCommand.FollowSystemColorMode,
+            Loc.Get("prefs.appearance.followSystemColor"));
     }
 
-    private void AppendColorThemeItem(ColorTheme theme, string current)
+    private void AppendColorThemeItem(ColorTheme theme, string current, bool enabled)
     {
         var commandId = (uint)(CommandCatalog.ColorCommandBase + _colorCommandIds.Count);
         var isCurrent = string.Equals(theme.Id, current, StringComparison.Ordinal);
         _colorCommandIds[commandId] = theme.Id;
-        Append(
-            _colorMenu,
-            NativeMethods.MfString | (isCurrent ? NativeMethods.MfChecked : NativeMethods.MfUnchecked),
-            commandId,
-            theme.DisplayName);
+        var flags = NativeMethods.MfString
+            | (isCurrent ? NativeMethods.MfChecked : NativeMethods.MfUnchecked)
+            | (enabled ? NativeMethods.MfEnabled : NativeMethods.MfGrayed);
+        Append(_colorMenu, flags, commandId, theme.DisplayName);
     }
 
     private static nint BuildViewMenu()

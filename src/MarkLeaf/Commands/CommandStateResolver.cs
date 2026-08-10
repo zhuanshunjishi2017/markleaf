@@ -11,7 +11,8 @@ public static class CommandStateResolver
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
-                or AppCommand.RecoverUnsavedFiles => new(true),
+                or AppCommand.RecoverUnsavedFiles
+                or AppCommand.FollowSystemColorMode => new(true),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ViewTree or AppCommand.ViewList => new(true),

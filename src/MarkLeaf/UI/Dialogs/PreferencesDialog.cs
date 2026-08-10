@@ -73,6 +73,7 @@ internal sealed class PreferencesDialog : Form
     private readonly ComboBox _themeCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _followSystemCheck;
+    private readonly Button _defaultThemeButton;
     private readonly Button _addThemeButton = new()
     { Text = Loc.Get("prefs.appearance.addTheme"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _openThemeFolderButton = new()
@@ -221,6 +222,22 @@ internal sealed class PreferencesDialog : Form
         { Text = Loc.Get("prefs.appearance.autoHideScrollbars"), AutoSize = true, FlatStyle = FlatStyle.System };
         _followSystemCheck = new CheckBox
         { Text = Loc.Get("prefs.appearance.followSystemColor"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _followSystemCheck.CheckedChanged += (_, _) =>
+            _themeCombo.Enabled = !_followSystemCheck.Checked;
+
+        _defaultThemeButton = new Button
+        { Text = Loc.Get("prefs.appearance.defaultTheme"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _defaultThemeButton.Click += (_, _) =>
+        {
+            using var dialog = new DefaultThemeDialog(
+                _settings.Appearance.DefaultLightThemeId,
+                _settings.Appearance.DefaultDarkThemeId);
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.Appearance.DefaultLightThemeId = dialog.LightThemeId;
+                _settings.Appearance.DefaultDarkThemeId = dialog.DarkThemeId;
+            }
+        };
 
         _associateMarkdownCheck = new CheckBox
         { Text = Loc.Get("prefs.general.associateMarkdown"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -604,30 +621,33 @@ internal sealed class PreferencesDialog : Form
 
         //panel.Controls.Add(NewLabel("颜色模式(&M)"), 0, 4);
         panel.Controls.Add(_followSystemCheck, 1, 4);
-        panel.Controls.Add(Gap(), 0, 5);
         panel.Controls.Add(Gap(), 1, 5);
-
-        var themeFolderRow = new FlowLayoutPanel { AutoSize = true };
-        themeFolderRow.Controls.Add(_addThemeButton);
-        themeFolderRow.Controls.Add(_openThemeFolderButton);
-        panel.Controls.Add(themeFolderRow, 1, 6);
-        panel.Controls.Add(Gap(), 0, 6);
-
+        panel.Controls.Add(_defaultThemeButton, 1, 6);
 
         panel.Controls.Add(Gap(), 0, 7);
         panel.Controls.Add(Gap(), 1, 7);
 
-        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.window.label")), 0, 8);
-        panel.Controls.Add(BuildWindowPanel(), 1, 8);
+        var themeFolderRow = new FlowLayoutPanel { AutoSize = true };
+        themeFolderRow.Controls.Add(_addThemeButton);
+        themeFolderRow.Controls.Add(_openThemeFolderButton);
+        panel.Controls.Add(themeFolderRow, 1, 8);
+        panel.Controls.Add(Gap(), 0, 8);
+
 
         panel.Controls.Add(Gap(), 0, 9);
         panel.Controls.Add(Gap(), 1, 9);
 
-        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.menuStyle.label")), 0, 10);
-        panel.Controls.Add(BuildMenuStylePanel(), 1, 10);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.window.label")), 0, 10);
+        panel.Controls.Add(BuildWindowPanel(), 1, 10);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 11);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 11);
+        panel.Controls.Add(Gap(), 0, 11);
+        panel.Controls.Add(Gap(), 1, 11);
+
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.menuStyle.label")), 0, 12);
+        panel.Controls.Add(BuildMenuStylePanel(), 1, 12);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 13);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 13);
 
         return panel;
     }
@@ -970,6 +990,7 @@ internal sealed class PreferencesDialog : Form
         _topMostCheck.Checked = appearance.TopMostWindow;
         _autoHideScrollbarsCheck.Checked = appearance.AutoHideScrollbars;
         _followSystemCheck.Checked = appearance.FollowSystemColorMode;
+        _themeCombo.Enabled = !appearance.FollowSystemColorMode;
         _menuStyleCombo.SelectedIndex = (int)appearance.MenuBarStyle;
 
         _associateMarkdownCheck.Checked = _settings.General.AssociateMarkdownFiles;

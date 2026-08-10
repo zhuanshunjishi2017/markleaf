@@ -38,6 +38,12 @@ internal sealed class SidebarTabBar : Control
         ForeColor = _textPrimary;
     }
 
+    public void ReloadTexts()
+    {
+        _tabs = [Loc.Get("sidebar.workspace"), Loc.Get("sidebar.outline")];
+        Invalidate();
+    }
+
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
     {
         if (colors.TryGetValue("bg-primary", out var c)) _bgPrimary = c;

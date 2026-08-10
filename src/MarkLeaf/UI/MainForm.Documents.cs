@@ -423,7 +423,7 @@ internal sealed partial class MainForm
         if (_closeApproved)
         {
             CleanOldLogs();
-            SaveSettings();
+            SaveWindowState();
             return;
         }
 
