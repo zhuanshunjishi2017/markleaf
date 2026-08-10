@@ -773,6 +773,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func openDocument(at url: URL) {
+        confirmDiscardOrSave { [weak self] proceed in
+            guard proceed, let self else { return }
+            self.performOpenDocument(at: url)
+        }
+    }
+
+    private func performOpenDocument(at url: URL) {
         do {
             let markdown = try String(contentsOf: url, encoding: .utf8)
             loadDocument(markdown: markdown, fileURL: url)
@@ -781,6 +788,42 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         } catch {
             AppLog.error("打开文档失败: \(url.path) \(error.localizedDescription)")
             presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+        }
+    }
+
+    /// 对齐 Windows ConfirmDiscardOrSaveAsync：切换文档前处理未保存修改。
+    /// 开启「切换文档时自动保存」且已有文件路径 → 直接保存；否则弹 保存/不保存/取消。
+    private func confirmDiscardOrSave(completion: @escaping (Bool) -> Void) {
+        guard isDirty else { completion(true); return }
+        let settings = SettingsService.shared.settings
+        if settings.saveOnDocumentSwitch, let fileURL = documentURL {
+            writeCurrentDocument(to: fileURL) { success in
+                completion(success)
+            }
+            return
+        }
+        guard let window = webView?.window else { completion(true); return }
+        let alert = NSAlert()
+        alert.messageText = L10n.f("是否保存对“%@”的修改？", windowTitle)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("保存"))
+        alert.addButton(withTitle: L10n.t("不保存"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                guard let self, let fileURL = self.documentURL else {
+                    completion(false)
+                    return
+                }
+                self.writeCurrentDocument(to: fileURL) { success in
+                    completion(success)
+                }
+            case .alertSecondButtonReturn:
+                completion(true)
+            default:
+                completion(false)
+            }
         }
     }
 
@@ -804,7 +847,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
-    private func writeCurrentDocument(to url: URL) {
+    private func writeCurrentDocument(to url: URL, completion: ((Bool) -> Void)? = nil) {
         requestSnapshot { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -822,11 +865,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                         self?.isDirty = false
                         self?.statusText = L10n.t("已保存")
                         AppLog.info("文档已保存: \(url.path)")
+                        completion?(true)
                     } catch {
                         self?.presentError(L10n.f("保存失败：%@", error.localizedDescription))
+                        completion?(false)
                     }
                 case .failure(let error):
                     self?.presentError(L10n.f("获取文档内容失败：%@", error.localizedDescription))
+                    completion?(false)
                 }
             }
         }

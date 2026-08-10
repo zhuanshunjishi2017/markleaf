@@ -8,6 +8,7 @@ final class PreferencesWindowController: NSWindowController {
     // 文件
     private let startupPopup = NSPopUpButton()
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
+    private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
     private let newLinePopup = NSPopUpButton()
     private let recordRecentFilesCheck = NSButton(checkboxWithTitle: L10n.t("记录最近文件"), target: nil, action: nil)
@@ -81,6 +82,7 @@ final class PreferencesWindowController: NSWindowController {
         startupPopup.selectItem(at: settings.startupAction == .newDocument ? 0
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
+        saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
         newLinePopup.addItems(withTitles: ["CRLF", "LF"])
         newLinePopup.selectItem(at: settings.newLineStyle == "crlf" ? 0 : 1)
@@ -167,8 +169,16 @@ final class PreferencesWindowController: NSWindowController {
         }
         window.contentViewController = tabViewController
 
+        // 数值字段：数字格式化并限制到 Windows 对应范围
+        Self.configureNumberField(snapshotIntervalField, min: Double(AppSettings.snapshotIntervalRange.lowerBound), max: Double(AppSettings.snapshotIntervalRange.upperBound))
+        Self.configureNumberField(lineHeightField, min: AppSettings.visualLineHeightRange.lowerBound, max: AppSettings.visualLineHeightRange.upperBound, fractionDigits: 2)
+        Self.configureNumberField(fontSizeField, min: Double(AppSettings.visualFontSizeRange.lowerBound), max: Double(AppSettings.visualFontSizeRange.upperBound))
+        Self.configureNumberField(maxWidthField, min: Double(AppSettings.visualMaxContentWidthRange.lowerBound), max: Double(AppSettings.visualMaxContentWidthRange.upperBound))
+        Self.configureNumberField(sourceFontSizeField, min: Double(AppSettings.sourceFontSizeRange.lowerBound), max: Double(AppSettings.sourceFontSizeRange.upperBound))
+        Self.configureNumberField(sourceIndentField, min: Double(AppSettings.sourceIndentWidthRange.lowerBound), max: Double(AppSettings.sourceIndentWidthRange.upperBound))
+
         // 绑定
-        let controls: [NSControl] = [startupPopup, autoSaveCheck, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, autoSaveCheck, saveOnSwitchCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
@@ -184,6 +194,16 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    private static func configureNumberField(_ field: NSTextField, min: Double, max: Double, fractionDigits: Int = 0) {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimum = NSNumber(value: min)
+        formatter.maximum = NSNumber(value: max)
+        formatter.maximumFractionDigits = fractionDigits
+        formatter.minimumFractionDigits = fractionDigits
+        field.formatter = formatter
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -196,6 +216,7 @@ final class PreferencesWindowController: NSWindowController {
             .field(L10n.t("启动操作"), startupPopup),
             .header(L10n.t("保存选项")),
             .field("", autoSaveCheck),
+            .field("", saveOnSwitchCheck),
             .field(L10n.t("快照保存间隔"), fieldRow(snapshotIntervalField, unit: L10n.t("秒"))),
             .field("", linkButton(L10n.t("恢复未保存的文档…"), #selector(recoverUnsavedFiles))),
             .header(L10n.t("换行风格")),
@@ -290,6 +311,7 @@ final class PreferencesWindowController: NSWindowController {
                 }
             }
             settings.autoSaveEnabled = autoSaveCheck.state == .on
+            settings.saveOnDocumentSwitch = saveOnSwitchCheck.state == .on
             settings.snapshotIntervalSeconds = max(5, Int(snapshotIntervalField.stringValue) ?? 30)
             settings.newLineStyle = newLinePopup.indexOfSelectedItem == 0 ? "crlf" : "lf"
             settings.recordRecentFiles = recordRecentFilesCheck.state == .on
@@ -328,6 +350,8 @@ final class PreferencesWindowController: NSWindowController {
             if languagePopup.indexOfSelectedItem >= 0, languagePopup.indexOfSelectedItem < languageCodes.count {
                 settings.displayLanguage = languageCodes[languagePopup.indexOfSelectedItem]
             }
+            // 数值设置夹紧到 Windows 对应范围（对齐 NumericUpDown 边界）
+            settings.clampSettingRanges()
         }
         let languageChanged = SettingsService.shared.settings.displayLanguage != oldLanguage
         // 跟随系统开关变化：更新下拉可用性并立即刷新各窗口主题

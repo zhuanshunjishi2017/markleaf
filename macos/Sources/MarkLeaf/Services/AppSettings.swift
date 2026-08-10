@@ -34,6 +34,7 @@ struct AppSettings: Codable {
         recordRecentFiles = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFiles) ?? true
         recordRecentFolders = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFolders) ?? true
         autoSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveEnabled) ?? false
+        saveOnDocumentSwitch = try container.decodeIfPresent(Bool.self, forKey: .saveOnDocumentSwitch) ?? true
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         topMostWindow = try container.decodeIfPresent(Bool.self, forKey: .topMostWindow) ?? false
@@ -98,6 +99,8 @@ struct AppSettings: Codable {
     var recordRecentFiles = true
     var recordRecentFolders = true
     var autoSaveEnabled = false
+    /// 切换文档（打开另一文件）时自动保存当前文档（对齐 Windows FileSettings.SaveOnDocumentSwitch）。
+    var saveOnDocumentSwitch = true
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var topMostWindow = false
@@ -124,6 +127,29 @@ struct AppSettings: Codable {
         case newDocument
         case openLastWorkspace
         case openLastWorkspaceAndFiles
+    }
+
+    // MARK: - 数值边界（对齐 Windows PreferencesDialog NumericUpDown 范围）
+
+    static let snapshotIntervalRange = 10...300
+    static let visualLineHeightRange: ClosedRange<Double> = 1.0...3.0
+    static let visualFontSizeRange = 12...24
+    static let visualMaxContentWidthRange = 600...1200
+    static let sourceFontSizeRange = 12...24
+    static let sourceIndentWidthRange = 2...8
+
+    /// 将数值设置夹紧到 Windows 对应范围（UI 保存前调用）。
+    mutating func clampSettingRanges() {
+        snapshotIntervalSeconds = Self.clamp(snapshotIntervalSeconds, to: Self.snapshotIntervalRange)
+        visualLineHeight = min(max(visualLineHeight, Self.visualLineHeightRange.lowerBound), Self.visualLineHeightRange.upperBound)
+        visualFontSize = Self.clamp(visualFontSize, to: Self.visualFontSizeRange)
+        visualMaxContentWidth = Self.clamp(visualMaxContentWidth, to: Self.visualMaxContentWidthRange)
+        sourceFontSize = Self.clamp(sourceFontSize, to: Self.sourceFontSizeRange)
+        sourceIndentWidth = Self.clamp(sourceIndentWidth, to: Self.sourceIndentWidthRange)
+    }
+
+    private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 }
 
