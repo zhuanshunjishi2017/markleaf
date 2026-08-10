@@ -156,6 +156,16 @@ final class StyleManager {
         return Metadata(name: name, dependsOn: dependsOn, mode: mode)
     }
 
+    /// 从 CSS 文本解析形如 `--name: #RRGGBB[AA];` 的颜色变量值（含 #）。找不到返回 nil。
+    static func parseColorVariable(_ name: String, in css: String) -> String? {
+        let pattern = "\(NSRegularExpression.escapedPattern(for: name))\\s*:\\s*(#[0-9a-fA-F]{3,8})\\s*;"
+        guard let range = css.range(of: pattern, options: .regularExpression) else { return nil }
+        let match = String(css[range])
+        return match.split(separator: ":").last?
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ";", with: "")
+    }
+
     /// 依赖拓扑排序：被依赖的样式先注入（对应 C# TopologicalSort）。
     private static func topologicalSort(_ styles: [StyleDefinition]) -> [StyleDefinition] {
         var sorted: [StyleDefinition] = []

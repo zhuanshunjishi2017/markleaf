@@ -128,6 +128,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
             applyStyles()
+            // 对齐 Windows 1.1.3：前端就绪后再揭示 WebView，避免深色模式白闪
+            (webView?.superview as? EditorWebContainerView)?.revealEditor()
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true
                 loadInitialDocument()
@@ -401,6 +403,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let themeID = currentThemeId,
               let theme = colorThemes.first(where: { $0.id == themeID }) else { return false }
         return theme.isDark
+    }
+
+    /// 当前主题的 --bg-primary 背景色（用于加载期打底，对齐 Windows DefaultBackgroundColor）。
+    var themeBackgroundColor: NSColor? {
+        guard let id = currentThemeId,
+              let theme = colorThemes.first(where: { $0.id == id }),
+              let hex = StyleManager.parseColorVariable("--bg-primary", in: theme.css) else { return nil }
+        return NSColor(hexString: hex)
     }
 
     func loadDocument(markdown: String, fileURL: URL?) {

@@ -40,6 +40,9 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             webView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
+        // 深色模式防白闪：前端就绪前保持隐藏，露出系统/主题背景（对齐 Windows 1.1.3）。
+        webView.isHidden = true
+
         session.webView = webView
         // 拖放：图片文件插入，md/txt 打开
         registerForDraggedTypes([.fileURL, .png, .tiff])
@@ -85,6 +88,17 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
                 AppLog.warning("color-scheme 注入失败: \(error.localizedDescription)")
             }
         }
+        // 对齐 Windows 1.1.3：页面背景与宿主容器使用主题 --bg-primary，减少加载期明暗跳变。
+        if let background = session?.themeBackgroundColor {
+            webView.underPageBackgroundColor = background
+            wantsLayer = true
+            layer?.backgroundColor = background.cgColor
+        }
+    }
+
+    /// 编辑器前端就绪后揭示 WebView。
+    func revealEditor() {
+        webView.isHidden = false
     }
 
     private func loadEditor() {
@@ -106,10 +120,12 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         AppLog.error("编辑器加载失败: \(error.localizedDescription)")
+        revealEditor()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         AppLog.error("编辑器导航失败: \(error.localizedDescription)")
+        revealEditor()
     }
 
     func webView(_ webView: WKWebView,
@@ -125,5 +141,26 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             return
         }
         decisionHandler(.allow)
+    }
+}
+
+extension NSColor {
+    /// 从 `#RRGGBB` 或 `#RRGGBBAA` 解析颜色（对应 Windows DefaultBackgroundColor 的 hex 解析）。
+    convenience init?(hexString: String) {
+        let cleaned = hexString.replacingOccurrences(of: "#", with: "")
+        guard cleaned.count == 6 || cleaned.count == 8,
+              let value = UInt64(cleaned, radix: 16) else { return nil }
+        let mask: UInt64 = 0xFF
+        if cleaned.count == 8 {
+            self.init(srgbRed: CGFloat((value >> 24) & mask) / 255,
+                      green: CGFloat((value >> 16) & mask) / 255,
+                      blue: CGFloat((value >> 8) & mask) / 255,
+                      alpha: CGFloat(value & mask) / 255)
+        } else {
+            self.init(srgbRed: CGFloat((value >> 16) & mask) / 255,
+                      green: CGFloat((value >> 8) & mask) / 255,
+                      blue: CGFloat(value & mask) / 255,
+                      alpha: 1)
+        }
     }
 }
