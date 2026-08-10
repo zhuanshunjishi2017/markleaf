@@ -213,6 +213,7 @@ final class AppWindowManager {
                 controller.session.setTheme(SettingsService.shared.settings.colorTheme)
             }
         }
+        preferencesController?.syncFollowSystemThemeState()
     }
 
     /// 打开「更新内容」（对应 Windows ShowChangelog：复制到可写缓存目录后在当前窗口打开）。

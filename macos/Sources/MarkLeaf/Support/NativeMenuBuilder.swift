@@ -229,6 +229,7 @@ final class NativeMenuBuilder {
             themeMenu.addItem(item)
         }
         menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
+        menu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
 
         menu.addItem(.separator())
 
@@ -308,6 +309,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         case "treeView": menuItem.state = s?.workspaceListMode == false ? .on : .off
         case "listView": menuItem.state = s?.workspaceListMode == true ? .on : .off
         case "toggleStatusBar": menuItem.state = s?.statusBarVisible == true ? .on : .off
+        case "toggleFollowSystemTheme":
+            menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "sourceMode": menuItem.state = s?.isSourceMode == true ? .on : .off
 
         // 无选中图片时置灰（对应 Windows 命令状态）
@@ -357,6 +360,11 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             AppWindowManager.shared.showRecoveryDialog()
         case "openChangelog":
             AppWindowManager.shared.openChangelog()
+        case "toggleFollowSystemTheme":
+            let newValue = !SettingsService.shared.settings.followSystemTheme
+            SettingsService.shared.update { $0.followSystemTheme = newValue }
+            AppWindowManager.shared.applyThemeModeToAll()
+            NativeMenuBuilder.refreshIfNeeded()
         case "openHomepage":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf") {
                 NSWorkspace.shared.open(url)

@@ -30,6 +30,13 @@ final class PreferencesWindowController: NSWindowController {
     private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: L10n.t("使用 ⌘ + 滚轮进行缩放"), target: nil, action: nil)
     private let topMostCheck = NSButton(checkboxWithTitle: L10n.t("将窗口置于顶层"), target: nil, action: nil)
     private let followSystemCheck = NSButton(checkboxWithTitle: L10n.t("与操作系统同步"), target: nil, action: nil)
+    private let themeRow: NSStackView = {
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        return stack
+    }()
 
     // 通用
     private let languagePopup = NSPopUpButton()
@@ -100,6 +107,8 @@ final class PreferencesWindowController: NSWindowController {
         if let idx = themes.firstIndex(where: { $0.id == settings.colorTheme }) {
             themePopup.selectItem(at: idx)
         }
+        themeRow.addView(themePopup, in: .leading)
+        themeRow.addView(followSystemCheck, in: .trailing)
         restoreZoomCheck.state = settings.restoreZoomOnOpen ? .on : .off
         ctrlWheelZoomCheck.state = settings.ctrlWheelZoom ? .on : .off
         topMostCheck.state = settings.topMostWindow ? .on : .off
@@ -161,7 +170,7 @@ final class PreferencesWindowController: NSWindowController {
         // 绑定
         let controls: [NSControl] = [startupPopup, autoSaveCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
-                                     restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, languagePopup,
+                                     restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
         for control in controls {
@@ -221,8 +230,7 @@ final class PreferencesWindowController: NSWindowController {
         formPage(rows: [
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
-            .field("", followSystemCheck),
-            .field(L10n.t("颜色主题"), themePopup),
+            .field(L10n.t("颜色主题"), themeRow),
             .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
             .header(L10n.t("窗口设置")),
@@ -264,6 +272,12 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     // MARK: - Actions
+
+    /// 同步「与操作系统同步」开关状态（外观菜单切换后保持偏好设置一致）。
+    func syncFollowSystemThemeState() {
+        followSystemCheck.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
+        themePopup.isEnabled = !SettingsService.shared.settings.followSystemTheme
+    }
 
     @objc private func controlChanged() {
         let oldLanguage = SettingsService.shared.settings.displayLanguage
