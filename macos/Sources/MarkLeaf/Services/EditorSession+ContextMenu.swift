@@ -17,7 +17,7 @@ extension EditorSession {
         menu.addItem(.separator())
         let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
         for level in 1...3 {
-            addFormatCommand(menu, "\(levelNames[level - 1])标题", "setHeading\(level)", "\(level)")
+            addFormatCommand(menu, L10n.f("%@级标题", levelNames[level - 1]), "setHeading\(level)", "\(level)")
         }
         addFormatCommand(menu, L10n.t("正文"), "setParagraph")
         menu.addItem(.separator())

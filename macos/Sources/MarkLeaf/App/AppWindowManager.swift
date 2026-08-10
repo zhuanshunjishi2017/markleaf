@@ -173,7 +173,7 @@ final class AppWindowManager {
         paragraph.lineSpacing = 5
         paragraph.paragraphSpacing = 2
 
-        let text = "macOS 原生轻量化 Markdown 编辑器\n\n作者：zhuanshunjishi2017\n\(linkURL.absoluteString)"
+        let text = L10n.t("macOS 原生轻量化 Markdown 编辑器") + "\n\n" + L10n.t("作者：") + " zhuanshunjishi2017\n" + linkURL.absoluteString
         let credits = NSMutableAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
             .foregroundColor: NSColor.secondaryLabelColor,
