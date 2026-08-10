@@ -20,6 +20,7 @@ struct AppSettings: Codable {
         restoreZoomOnOpen = try container.decodeIfPresent(Bool.self, forKey: .restoreZoomOnOpen) ?? true
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
         autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? false
+        followSystemTheme = try container.decodeIfPresent(Bool.self, forKey: .followSystemTheme) ?? true
         visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.6
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
@@ -73,6 +74,8 @@ struct AppSettings: Codable {
     // 是否启用 ⌘ + 滚轮缩放（触控板捏合始终可用，不受此开关控制）
     var ctrlWheelZoom = true
     var autoHideScrollbars = false
+    /// 与操作系统同步：系统浅色/深色自动使用默认浅色/深色主题（对齐 Windows「跟随系统颜色模式」）。
+    var followSystemTheme = true
 
     // 编辑器
     var visualLineHeight: Double = 1.6

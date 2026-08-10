@@ -123,6 +123,19 @@ final class StyleManager {
         return payload
     }
 
+    // MARK: - 默认主题（跟随系统外观）
+
+    /// 跟随系统外观时的默认浅色/深色主题（对齐 Windows 1.1.2 的 dark/white-only 默认）。
+    static let defaultLightThemeID = "colors-white-only"
+    static let defaultDarkThemeID = "colors-dark"
+
+    /// 返回指定外观的默认主题 id；内置默认主题缺失时回退到解析出的默认主题。
+    func defaultThemeID(forDark dark: Bool) -> String? {
+        let preferred = dark ? Self.defaultDarkThemeID : Self.defaultLightThemeID
+        if colorThemes.contains(where: { $0.id == preferred }) { return preferred }
+        return defaultThemeId
+    }
+
     // MARK: - Helpers
 
     private struct Metadata {
