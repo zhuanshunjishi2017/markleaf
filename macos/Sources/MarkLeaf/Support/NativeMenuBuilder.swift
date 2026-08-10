@@ -255,8 +255,9 @@ final class NativeMenuBuilder {
     // MARK: - Helpers
 
     private static func levelName(_ level: Int) -> String {
-        // 英文直接用数字（Heading 1）；中文用「一/二/…」
-        if SettingsService.shared.settings.displayLanguage == "en" { return "\(level)" }
+        // 英文/日文直接用数字（Heading 1 / 見出し 1）；中文用「一/二/…」
+        let lang = SettingsService.shared.settings.displayLanguage
+        if lang == "en" || lang == "ja" { return "\(level)" }
         return ["一", "二", "三", "四", "五", "六"][level - 1]
     }
 

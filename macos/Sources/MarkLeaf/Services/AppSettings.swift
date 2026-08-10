@@ -58,11 +58,12 @@ struct AppSettings: Codable {
     var displayLanguage = AppSettings.detectSystemLanguage()
 
     /// 首次运行未设置语言时跟随系统语言。
-    static func detectSystemLanguage() -> String {
-        let lang = Locale.preferredLanguages.first ?? "zh-Hans"
+    static func detectSystemLanguage(preferred: [String] = Locale.preferredLanguages) -> String {
+        let lang = preferred.first ?? "zh-Hans"
         if lang.hasPrefix("zh-Hant") || lang.hasPrefix("zh-HK") || lang.hasPrefix("zh-TW") || lang.hasPrefix("zh-MO") {
             return "zh-Hant"
         }
+        if lang.hasPrefix("ja") { return "ja" }
         if lang.hasPrefix("en") { return "en" }
         return "zh-Hans"
     }

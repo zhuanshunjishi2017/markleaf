@@ -119,7 +119,7 @@ final class PreferencesWindowController: NSWindowController {
 
         // i18n：简体中文 / 繁體中文 / English
         let currentLang = settings.displayLanguage
-        let languageCodes = ["zh-Hans", "zh-Hant", "en"]
+        let languageCodes = ["zh-Hans", "zh-Hant", "en", "ja"]
         languagePopup.removeAllItems()
         for code in languageCodes {
             languagePopup.addItem(withTitle: L10n.langDisplayName(code, currentLang: currentLang))
@@ -346,7 +346,7 @@ final class PreferencesWindowController: NSWindowController {
             settings.prefixRelativeWithDotSlash = prefixDotSlashCheck.state == .on
 
             // 显示语言（i18n）
-            let languageCodes = ["zh-Hans", "zh-Hant", "en"]
+            let languageCodes = ["zh-Hans", "zh-Hant", "en", "ja"]
             if languagePopup.indexOfSelectedItem >= 0, languagePopup.indexOfSelectedItem < languageCodes.count {
                 settings.displayLanguage = languageCodes[languagePopup.indexOfSelectedItem]
             }
