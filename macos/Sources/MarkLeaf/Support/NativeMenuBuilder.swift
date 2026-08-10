@@ -228,8 +228,9 @@ final class NativeMenuBuilder {
             item.state = theme.id == session?.currentThemeId ? .on : .off
             themeMenu.addItem(item)
         }
+        themeMenu.addItem(.separator())
+        themeMenu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
         menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
-        menu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
 
         menu.addItem(.separator())
 
