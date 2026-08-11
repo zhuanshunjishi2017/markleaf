@@ -204,6 +204,24 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         reloadData()
     }
 
+    /// 树形模式：单击目录行即展开/收起（点三角仍走系统逻辑），对齐 Windows 工作区树交互。
+    override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        if row >= 0, !listMode,
+           let entry = item(atRow: row) as? WorkspaceEntry, entry.isDirectory {
+            let outlineFrame = frameOfOutlineCell(atRow: row)
+            if !outlineFrame.contains(point) {
+                if isItemExpanded(entry) {
+                    collapseItem(entry)
+                } else {
+                    expandItem(entry)
+                }
+            }
+        }
+        super.mouseUp(with: event)
+    }
+
     override func reloadData() {
         activeScanners.values.forEach { $0.cancel() }
         activeScanners.removeAll()
