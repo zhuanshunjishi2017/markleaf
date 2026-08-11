@@ -211,7 +211,8 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         if row >= 0, !listMode,
            let entry = item(atRow: row) as? WorkspaceEntry, entry.isDirectory {
             let outlineFrame = frameOfOutlineCell(atRow: row)
-            if !outlineFrame.contains(point) {
+            // 单击切换展开/收起；双击的第二次点击不再反向切换，保证双击也有稳定响应
+            if !outlineFrame.contains(point), event.clickCount == 1 {
                 if isItemExpanded(entry) {
                     collapseItem(entry)
                 } else {
