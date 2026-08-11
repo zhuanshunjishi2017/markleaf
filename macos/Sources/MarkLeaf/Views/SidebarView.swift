@@ -182,9 +182,6 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
-    /// 最近一次由行点击触发的展开/收起（用于双击防抖，避免第二次点击反向切换）。
-    private var lastToggle: (path: String, time: TimeInterval)?
-
     func configure(session: EditorSession) {
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
@@ -206,41 +203,26 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         reloadData()
     }
 
-    /// 树形模式：单击/双击目录行均切换展开/收起（点三角仍走系统逻辑），对齐 Windows 工作区树交互。
-    override func mouseUp(with event: NSEvent) {
+    /// 树形模式：单击目录行即展开/收起（点三角仍走系统逻辑），对齐 Windows 工作区树交互。
+    override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
+        var directoryItemToToggle: Any?
         if row >= 0, !listMode,
-           let entry = item(atRow: row) as? WorkspaceEntry, entry.isDirectory {
-            let onDisclosure = isClickOnDisclosure(point: point, row: row, entry: entry)
-            if !onDisclosure {
-                let now = ProcessInfo.processInfo.systemUptime
-                let isDoubleClickRepeat = lastToggle.path == entry.path
-                    && (now - lastToggle.time) < NSEvent.doubleClickInterval
-                if !isDoubleClickRepeat {
-                    toggleExpansion(of: entry)
-                    lastToggle = (entry.path, now)
-                    AppLog.info("工作区树行点击切换: \(entry.name) expanded=\(isItemExpanded(entry))")
-                }
+           let item = item(atRow: row),
+           let entry = item as? WorkspaceEntry, entry.isDirectory {
+            let outlineFrame = frameOfOutlineCell(atRow: row)
+            // 单击切换展开/收起；双击的第二次点击不再反向切换，保证双击也有稳定响应
+            if !outlineFrame.contains(point), event.clickCount == 1 {
+                directoryItemToToggle = item
             }
         }
-        super.mouseUp(with: event)
-    }
-
-    /// 手工判断点击是否落在展开三角区域（不依赖 frameOfOutlineCell，避免部分系统返回整行区域）。
-    private func isClickOnDisclosure(point: NSPoint, row: Int, entry: WorkspaceEntry) -> Bool {
-        let rowRect = rect(ofRow: row)
-        let indent = CGFloat(level(forItem: entry)) * indentationPerLevel
-        let disclosureX = rowRect.minX + indent
-        let width: CGFloat = 16
-        return point.x >= disclosureX && point.x <= disclosureX + width
-    }
-
-    private func toggleExpansion(of entry: WorkspaceEntry) {
-        if isItemExpanded(entry) {
-            collapseItem(entry)
+        super.mouseDown(with: event)
+        guard let item = directoryItemToToggle else { return }
+        if isItemExpanded(item) {
+            collapseItem(item)
         } else {
-            expandItem(entry)
+            expandItem(item)
         }
     }
 
@@ -361,6 +343,10 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         return menuItem
     }
 
+    func reloadDirectoryChildren(_ entry: WorkspaceEntry) {
+        reloadItem(entry, reloadChildren: true)
+    }
+
     // MARK: - 懒加载子目录
 
     private func children(for entry: WorkspaceEntry) -> [WorkspaceEntry] {
@@ -372,7 +358,7 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
                 guard let self else { return }
                 self.childrenCache[entry.path] = entries
                 self.activeScanners[entry.path] = nil
-                self.reloadItem(entry)
+                self.reloadDirectoryChildren(entry)
             }
         }
         activeScanners[entry.path] = scanner
