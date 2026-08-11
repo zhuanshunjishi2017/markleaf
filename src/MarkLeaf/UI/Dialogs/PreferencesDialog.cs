@@ -55,16 +55,14 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
 
-    private readonly NumericUpDown _sourceFontSize;
     private readonly NumericUpDown _sourceIndentWidth;
-    private readonly Button _selectCjkFontButton = new()
-    { Text = Loc.Get("prefs.editor.selectCjkFont"), AutoSize = true, FlatStyle = FlatStyle.System };
-    private readonly Label _cjkFontLabel = new()
-    { AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly Button _selectWesternFontButton = new()
-    { Text = Loc.Get("prefs.editor.selectWesternFont"), AutoSize = true, FlatStyle = FlatStyle.System };
-    private readonly Label _westernFontLabel = new()
-    { AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
+    private string _cjkFontFamily = "Microsoft YaHei";
+    private string _westernFontFamily = "Cascadia Mono";
+    private int _sourceFontSize = 14;
+    private readonly ComboBox _cjkLanguageTagCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList};
+    private readonly Button _fontSettingsButton = new()
+    { Text = Loc.Get("prefs.editor.fontSettings"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly (string Id, string DisplayName)[] _styleOptions;
     private readonly ComboBox _styleCombo = new()
@@ -168,6 +166,11 @@ internal sealed class PreferencesDialog : Form
         _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.lastWorkspace"));
         _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.lastWorkspaceAndFiles"));
 
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.sc"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.tc"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.ja"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.ko"));
+
         _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.saveToDefault"));
         _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssets"));
         _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssetsUpload"));
@@ -204,8 +207,6 @@ internal sealed class PreferencesDialog : Form
         _visualMaxWidth = new NumericUpDown
         { Minimum = 600, Maximum = 1200, Increment = 20 };
 
-        _sourceFontSize = new NumericUpDown
-        { Minimum = 12, Maximum = 24, Increment = 1 };
         _sourceIndentWidth = new NumericUpDown
         { Minimum = 2, Maximum = 8, Increment = 2 };
 
@@ -266,8 +267,7 @@ internal sealed class PreferencesDialog : Form
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         _recoverButton.Click += (_, _) => _onRecover?.Invoke();
         _editShortcutsButton.Click += (_, _) => _onShowShortcuts?.Invoke();
-        _selectCjkFontButton.Click += (_, _) => SelectCjkFont();
-        _selectWesternFontButton.Click += (_, _) => SelectWesternFont();
+        _fontSettingsButton.Click += (_, _) => OpenFontSettings();
         _addThemeButton.Click += (_, _) => _onAddTheme?.Invoke();
         _openThemeFolderButton.Click += (_, _) => _onOpenThemeFolder?.Invoke();
         _openCacheFolderButton.Click += (_, _) => _onOpenCacheFolder?.Invoke();
@@ -556,6 +556,13 @@ internal sealed class PreferencesDialog : Form
         widthRow.Controls.Add(_visualMaxWidth);
         widthRow.Controls.Add(new Label { Text = Loc.Get("prefs.editor.pixels"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         panel.Controls.Add(widthRow, 1, 4);
+        panel.Controls.Add(Gap(), 0, 5);
+
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.cjkLang.label"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 6);
+        panel.Controls.Add(_cjkLanguageTagCombo, 1, 6);
 
         return panel;
     }
@@ -571,30 +578,26 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualFontSize"),
-                                        AutoSize = true,
-                                        TextAlign = ContentAlignment.MiddleLeft,
-                                        Padding = new Padding(0, 5, 0, 0), }, 0, 0);
-        panel.Controls.Add(_sourceFontSize, 1, 0);
-        panel.Controls.Add(Gap(), 0, 1);
-
-        
-        panel.Controls.Add(_selectCjkFontButton, 0, 4);
-        panel.Controls.Add(_cjkFontLabel, 1, 4);
-
-        panel.Controls.Add(Gap(), 0, 3);
-
-        panel.Controls.Add(_selectWesternFontButton, 0, 6);
-        panel.Controls.Add(_westernFontLabel, 1, 6);
-        panel.Controls.Add(Gap(), 0, 5);
-
         panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.sourceIndentWidth"),
                                         AutoSize = true,
                                         TextAlign = ContentAlignment.MiddleLeft,
-                                        Padding = new Padding(0, 5, 0, 0), }, 0, 2);
-        panel.Controls.Add(_sourceIndentWidth, 1, 2);
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 0);
+        panel.Controls.Add(_sourceIndentWidth, 1, 0);
+        panel.Controls.Add(Gap(), 0, 1);
+
+        panel.Controls.Add(_fontSettingsButton, 0, 2);
 
         return panel;
+    }
+
+    private void OpenFontSettings()
+    {
+        using var dialog = new FontSettingsDialog(_cjkFontFamily, _westernFontFamily, _sourceFontSize);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _cjkFontFamily = dialog.CjkFontFamily;
+        _westernFontFamily = dialog.WesternFontFamily;
+        _sourceFontSize = dialog.FontSize;
     }
 
     private Control BuildAppearanceTab()
@@ -876,48 +879,6 @@ internal sealed class PreferencesDialog : Form
         return panel;
     }
 
-    private void SelectCjkFont()
-    {
-        using var dialog = new FontDialog
-        {
-            FontMustExist = true,
-            AllowScriptChange = false,
-            ShowColor = false,
-            ShowEffects = false,
-        };
-        if (!string.IsNullOrWhiteSpace(_cjkFontLabel.Text))
-        {
-            try { dialog.Font = new Font(_cjkFontLabel.Text, (float)_sourceFontSize.Value); }
-            catch { }
-        }
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-            return;
-
-        _cjkFontLabel.Text = dialog.Font.Name;
-        dialog.Font.Dispose();
-    }
-
-    private void SelectWesternFont()
-    {
-        using var dialog = new FontDialog
-        {
-            FontMustExist = true,
-            AllowScriptChange = false,
-            ShowColor = false,
-            ShowEffects = false,
-        };
-        if (!string.IsNullOrWhiteSpace(_westernFontLabel.Text))
-        {
-            try { dialog.Font = new Font(_westernFontLabel.Text, (float)_sourceFontSize.Value); }
-            catch { }
-        }
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-            return;
-
-        _westernFontLabel.Text = dialog.Font.Name;
-        dialog.Font.Dispose();
-    }
-
     private void BrowseDefaultDirectory()
     {
         var current = _defaultDirectoryTextBox.Text.Trim();
@@ -979,9 +940,10 @@ internal sealed class PreferencesDialog : Form
         _visualLineHeight.Value = (decimal)editor.VisualLineHeight;
         _visualFontSize.Value = editor.VisualFontSize;
         _visualMaxWidth.Value = editor.VisualMaxContentWidth;
-        _sourceFontSize.Value = editor.SourceFontSize;
-        _cjkFontLabel.Text = editor.SourceCjkFontFamily;
-        _westernFontLabel.Text = editor.SourceFontFamily;
+        _sourceFontSize = editor.SourceFontSize;
+        _cjkFontFamily = editor.SourceCjkFontFamily;
+        _westernFontFamily = editor.SourceFontFamily;
+        _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
 
         var appearance = _settings.Appearance;
@@ -1075,11 +1037,13 @@ internal sealed class PreferencesDialog : Form
         editor.VisualLineHeight = (float)_visualLineHeight.Value;
         editor.VisualFontSize = (int)_visualFontSize.Value;
         editor.VisualMaxContentWidth = (int)_visualMaxWidth.Value;
-        editor.SourceFontSize = (int)_sourceFontSize.Value;
-        if (!string.IsNullOrWhiteSpace(_cjkFontLabel.Text))
-            editor.SourceCjkFontFamily = _cjkFontLabel.Text;
-        if (!string.IsNullOrWhiteSpace(_westernFontLabel.Text))
-            editor.SourceFontFamily = _westernFontLabel.Text;
+        editor.SourceFontSize = _sourceFontSize;
+        if (!string.IsNullOrWhiteSpace(_cjkFontFamily))
+            editor.SourceCjkFontFamily = _cjkFontFamily;
+        if (!string.IsNullOrWhiteSpace(_westernFontFamily))
+            editor.SourceFontFamily = _westernFontFamily;
+        if (_cjkLanguageTagCombo.SelectedIndex >= 0)
+            editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
 
         if (_styleCombo.SelectedIndex >= 0 && _styleCombo.SelectedIndex < _styleOptions.Length)
@@ -1127,9 +1091,10 @@ internal sealed class PreferencesDialog : Form
         _contentPanel.Padding = new Padding(
             this.ScaleForDpi(14), this.ScaleForDpi(17), this.ScaleForDpi(14), 0);
 
-        var comboW = this.ScaleForDpi(183);
+        var comboW = this.ScaleForDpi(210);
         _startupAction.Width = comboW;
         _newLineStyleCombo.Width = comboW;
+        _cjkLanguageTagCombo.Width = this.ScaleForDpi(100);
         _styleCombo.Width = comboW;
         _themeCombo.Width = comboW;
         _menuStyleCombo.Width = comboW;
@@ -1143,7 +1108,6 @@ internal sealed class PreferencesDialog : Form
         _visualLineHeight.Width = nudW;
         _visualFontSize.Width = nudW;
         _visualMaxWidth.Width = nudW;
-        _sourceFontSize.Width = nudW;
         _sourceIndentWidth.Width = nudW;
 
         var btnW = this.ScaleForDpi(86);

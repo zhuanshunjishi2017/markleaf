@@ -18,9 +18,9 @@ internal sealed class OutlineTreeView : Control
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
-    private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _primaryFont = new("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _secondaryFont = new("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _selectedFont = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
 
     // Theme colors (defaults match white theme).
@@ -29,6 +29,7 @@ internal sealed class OutlineTreeView : Control
     private Color _bgSelected = Color.FromArgb(0xE0, 0xE0, 0xE0);
     private Color _bgSelectedHover = Color.FromArgb(0xD0, 0xD0, 0xD0);
     private Color _textPrimary = Color.Black;
+    private Color _textSecondary = Color.FromArgb(0x6D, 0x6D, 0x6D);
     private Color _textTertiary = Color.FromArgb(0x6D, 0x6D, 0x6D);
     private Color _textSelected = Color.Black;
     private Color _icon = Color.FromArgb(0x80, 0x80, 0x80);
@@ -85,6 +86,7 @@ internal sealed class OutlineTreeView : Control
         if (colors.TryGetValue("bg-selected", out c)) _bgSelected = c;
         if (colors.TryGetValue("bg-selected-hover", out c)) _bgSelectedHover = c;
         if (colors.TryGetValue("text-primary", out c)) _textPrimary = c;
+        if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
         if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
         if (colors.TryGetValue("text-selected", out c)) _textSelected = c;
         if (colors.TryGetValue("icon", out c)) _icon = c;
@@ -129,9 +131,9 @@ internal sealed class OutlineTreeView : Control
         var previousSecondary = _secondaryFont;
         var previousSelected = _selectedFont;
         var previousArrowFont = _arrowFont;
-        _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _primaryFont = new Font("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        _secondaryFont = new Font("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        _selectedFont = new Font("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
@@ -169,17 +171,7 @@ internal sealed class OutlineTreeView : Control
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
-            if (isSelected && isHovered)
-            {
-                using var brush = new SolidBrush(_bgSelectedHover);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-            else if (isSelected)
-            {
-                using var brush = new SolidBrush(_bgSelected);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-            else if (isHovered)
+            if (isHovered)
             {
                 using var brush = new SolidBrush(_bgHover);
                 SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
@@ -204,7 +196,8 @@ internal sealed class OutlineTreeView : Control
                 eventArgs.Graphics,
                 string.IsNullOrWhiteSpace(node.Item.Text) ? Loc.Get("sidebar.untitled") : node.Item.Text,
                 isSelected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
-                textBounds);
+                textBounds,
+                isSelected ? null : _textSecondary);
         }
     }
 

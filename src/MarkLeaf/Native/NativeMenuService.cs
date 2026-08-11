@@ -556,6 +556,7 @@ internal sealed class NativeMenuService : IDisposable
         try
         {
             AppendCommand(menu, AppCommand.ToggleSidebar, Loc.Get("menu.view.toggleSidebar"));
+            AppendCommand(menu, AppCommand.ShowStatusBar, Loc.Get("menu.view.showStatusBar"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.SwitchToWorkspace, Loc.Get("menu.view.workspace"));
             AppendCommand(menu, AppCommand.SwitchToOutline, Loc.Get("menu.view.outline"));
@@ -563,8 +564,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.ViewTree, Loc.Get("menu.view.treeView"));
             AppendCommand(menu, AppCommand.ViewList, Loc.Get("menu.view.documentList"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ShowStatusBar, Loc.Get("menu.view.showStatusBar"));
             AppendCommand(menu, AppCommand.ToggleSourceMode, Loc.Get("menu.view.sourceMode"));
+            AppendCommand(menu, AppCommand.ToggleFocusMode, Loc.Get("menu.view.focusMode"));
             return menu;
         }
         catch

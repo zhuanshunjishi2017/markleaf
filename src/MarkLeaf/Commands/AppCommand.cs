@@ -83,6 +83,7 @@ public enum AppCommand
     ToggleSourceMode = 0x1305,
     SwitchToWorkspace = 0x1306,
     SwitchToOutline = 0x1307,
+    ToggleFocusMode = 0x1308,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,

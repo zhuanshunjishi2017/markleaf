@@ -223,7 +223,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "")
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "")
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -233,12 +233,17 @@ internal sealed class EditorHostController : IDisposable
         parts.Add("monospace");
         var fontFamilyValue = string.Join(", ", parts);
         var familyJs = $"document.documentElement.style.setProperty('--ml-source-font-family','{fontFamilyValue}');";
+        var langJs = string.IsNullOrWhiteSpace(cjkLang)
+            ? string.Empty
+            : $"document.documentElement.setAttribute('lang','{cjkLang}');" +
+              $"document.documentElement.style.setProperty('--ml-cjk-lang','{cjkLang}');";
         var script =
             $"document.documentElement.style.setProperty('--ml-line-height','{lineHeight:F2}');" +
             $"document.documentElement.style.setProperty('--ml-font-size','{fontSize}px');" +
             $"document.documentElement.style.setProperty('--ml-max-width','{maxWidth}px');" +
             $"document.documentElement.style.setProperty('--ml-source-font-size','{sourceFontSize}px');" +
-            familyJs;
+            familyJs +
+            langJs;
         EnqueueOrRun(() =>
         {
             if (_webView.CoreWebView2 is not null)

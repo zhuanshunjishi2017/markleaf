@@ -15,6 +15,7 @@ public static class CommandStateResolver
                 or AppCommand.FollowSystemColorMode => new(true),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
+            AppCommand.ToggleFocusMode => new(true, context.FocusMode),
             AppCommand.ViewTree or AppCommand.ViewList => new(true),
             AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
             AppCommand.ToggleSourceMode => new(context.EditorReady, context.SourceMode),

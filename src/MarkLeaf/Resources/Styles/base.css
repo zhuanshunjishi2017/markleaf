@@ -11,7 +11,7 @@
   width: min(100%, var(--ml-max-width));
   margin: 0 auto;
   outline: none;
-  font-family: serif;
+  font-family: serif, "Source Han Serif CN", "Noto Serif CJK CN";
   font-size: var(--ml-font-size);
   line-height: var(--ml-line-height);
   caret-color: var(--theme-dark);

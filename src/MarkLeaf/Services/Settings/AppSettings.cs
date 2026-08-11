@@ -34,6 +34,26 @@ public enum MenuBarStyle
     System,
 }
 
+public enum CjkLanguageTag
+{
+    SimplifiedChinese,
+    TraditionalChinese,
+    Japanese,
+    Korean,
+}
+
+public static class CjkLanguageTagExtensions
+{
+    public static string ToBcp47(this CjkLanguageTag tag) => tag switch
+    {
+        CjkLanguageTag.SimplifiedChinese => "zh-Hans",
+        CjkLanguageTag.TraditionalChinese => "zh-Hant",
+        CjkLanguageTag.Japanese => "ja",
+        CjkLanguageTag.Korean => "ko",
+        _ => "zh-Hans",
+    };
+}
+
 public sealed class AppSettings
 {
     public const int CurrentSchemaVersion = 3;
@@ -120,6 +140,8 @@ public sealed class EditorSettings
     public string SourceFontFamily { get; set; } = "Cascadia Mono";
 
     public string SourceCjkFontFamily { get; set; } = "Microsoft YaHei";
+
+    public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
     public int SourceIndentWidth { get; set; } = 2;
 }
