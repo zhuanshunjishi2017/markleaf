@@ -177,6 +177,8 @@ final class SidebarView: NSView {
 final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private weak var session: EditorSession?
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
+    /// 进行中的子目录扫描（强引用，避免扫描器在异步任务执行前被释放导致子目录永远不加载）。
+    private var activeScanners: [String: WorkspaceScanner] = [:]
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
@@ -203,6 +205,8 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
     }
 
     override func reloadData() {
+        activeScanners.values.forEach { $0.cancel() }
+        activeScanners.removeAll()
         childrenCache.removeAll()
         super.reloadData()
     }
@@ -325,10 +329,13 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         }
         let scanner = WorkspaceScanner(root: entry.path) { [weak self] entries in
             DispatchQueue.main.async {
-                self?.childrenCache[entry.path] = entries
-                self?.reloadItem(entry)
+                guard let self else { return }
+                self.childrenCache[entry.path] = entries
+                self.activeScanners[entry.path] = nil
+                self.reloadItem(entry)
             }
         }
+        activeScanners[entry.path] = scanner
         scanner.scan()
         return []
     }
