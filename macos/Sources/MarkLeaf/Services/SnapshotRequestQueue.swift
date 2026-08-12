@@ -7,13 +7,18 @@ final class SnapshotRequestQueue {
 
     var isEmpty: Bool { completions.isEmpty }
 
-    func enqueue(_ completion: @escaping Completion) {
+    @discardableResult
+    func enqueue(_ completion: @escaping Completion) -> Bool {
+        let shouldStart = completions.isEmpty
         completions.append(completion)
+        return shouldStart
     }
 
-    func completeNext(_ result: Result<String, Error>) {
-        guard !completions.isEmpty else { return }
+    @discardableResult
+    func completeNext(_ result: Result<String, Error>) -> Bool {
+        guard !completions.isEmpty else { return false }
         completions.removeFirst()(result)
+        return !completions.isEmpty
     }
 
     func cancelAll(with error: Error) {

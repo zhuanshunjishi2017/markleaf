@@ -84,7 +84,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var revision: Int64 = 0
     private var fileMonitorSource: DispatchSourceFileSystemObject?
     private var monitoredFileDescriptor: Int32 = -1
-    private var lastExternalChange: TimeInterval = 0
+    private let externalChangeTracker = ExternalDocumentChangeTracker()
+    private var isPresentingExternalChange = false
 
     // 均匀 10% 步进（Windows 为 [50,75,90,100,110,125,150,175,200]，100→125→150 跨度 25% 偏大）
     static let zoomOptions = Array(stride(from: 50, through: 200, by: 10))
@@ -170,7 +171,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "snapshot":
             let markdown = payload?["markdown"] as? String ?? ""
-            snapshotRequests.completeNext(.success(markdown))
+            if snapshotRequests.completeNext(.success(markdown)) {
+                send("requestSnapshot")
+            }
 
         case "dirtyChanged":
             let dirty = payload?["dirty"] as? Bool ?? false
@@ -510,9 +513,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 外部文件变更监控（对应 C# FileSystemWatcher + ExternalChangeDialog）
 
-    private func startExternalChangeWatch(for url: URL) {
+    private func startExternalChangeWatch(for url: URL, acceptingCurrentVersion: Bool = true) {
         stopExternalChangeWatch()
-        let fd = open(url.path, O_EVTONLY)
+        let normalizedURL = url.standardizedFileURL.resolvingSymlinksInPath()
+        if acceptingCurrentVersion {
+            try? externalChangeTracker.acceptCurrentVersion(at: normalizedURL)
+        }
+        let fd = open(normalizedURL.path, O_EVTONLY)
         guard fd >= 0 else { return }
         monitoredFileDescriptor = fd
         let source = DispatchSource.makeFileSystemObjectSource(
@@ -521,10 +528,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             queue: .main)
         fileMonitorSource = source
         source.setEventHandler { [weak self] in
-            let now = Date().timeIntervalSince1970
-            guard now - (self?.lastExternalChange ?? 0) > 1.5 else { return }
-            self?.lastExternalChange = now
-            self?.handleExternalChange(url)
+            self?.handleExternalChangeEvent(for: normalizedURL)
         }
         source.setCancelHandler {
             close(fd)
@@ -544,6 +548,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             return
         }
         guard let window = webView?.window else { return }
+        guard !isPresentingExternalChange else { return }
+        isPresentingExternalChange = true
         let alert = NSAlert()
         alert.messageText = L10n.t("文件已在外部修改")
         alert.informativeText = isDirty
@@ -553,14 +559,37 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.addButton(withTitle: L10n.t("重新加载"))
         alert.addButton(withTitle: L10n.t("忽略"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            do {
-                let markdown = try String(contentsOf: url, encoding: .utf8)
-                self?.loadDocument(markdown: markdown, fileURL: url)
-                self?.statusText = L10n.t("已重新加载外部更改")
-            } catch {
-                self?.statusText = L10n.t("外部文件读取失败")
+            guard let self else { return }
+            self.isPresentingExternalChange = false
+            if response == .alertFirstButtonReturn {
+                do {
+                    let markdown = try String(contentsOf: url, encoding: .utf8)
+                    self.loadDocument(markdown: markdown, fileURL: url)
+                    self.statusText = L10n.t("已重新加载外部更改")
+                } catch {
+                    self.statusText = L10n.t("外部文件读取失败")
+                }
+            } else {
+                try? self.externalChangeTracker.acceptCurrentVersion(at: url)
             }
+        }
+    }
+
+    private func handleExternalChangeEvent(for url: URL) {
+        do {
+            switch try externalChangeTracker.decision(forEventAt: url) {
+            case .ignore:
+                return
+            case .missing:
+                statusText = L10n.t("文件已被外部删除")
+            case .rebindAndRecheck:
+                startExternalChangeWatch(for: url, acceptingCurrentVersion: false)
+                handleExternalChangeEvent(for: url)
+            case .presentExternalChange:
+                handleExternalChange(url)
+            }
+        } catch {
+            AppLog.warning("检查外部文件变化失败: \(url.path) \(error.localizedDescription)")
         }
     }
 
@@ -575,8 +604,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func requestSnapshot(completion: @escaping (Result<String, Error>) -> Void) {
-        snapshotRequests.enqueue(completion)
-        send("requestSnapshot")
+        if snapshotRequests.enqueue(completion) {
+            send("requestSnapshot")
+        }
     }
 
     /// 是否开启「与操作系统同步」（读取当前设置）。
@@ -938,8 +968,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                                SettingsService.shared.settings.newLineStyle == "crlf" {
                                 markdown = rawMarkdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
                             }
+                            self.stopExternalChangeWatch()
+                            self.externalChangeTracker.beginSelfWrite()
                             try markdown.write(to: url, atomically: true, encoding: .utf8)
                             self.documentURL = url
+                            try self.externalChangeTracker.finishSelfWrite(at: url)
+                            self.startExternalChangeWatch(for: url, acceptingCurrentVersion: false)
                             SettingsService.shared.update { $0.lastFile = url.path }
                             self.isDirty = false
                             self.statusText = L10n.t("已保存")
