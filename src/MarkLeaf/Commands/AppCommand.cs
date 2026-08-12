@@ -75,6 +75,8 @@ public enum AppCommand
     AlignTableCenter,
     AlignTableRight,
     DeleteTable,
+    InsertLineBefore = 0x122C,
+    InsertLineAfter,
 
     ToggleSidebar = 0x1301,
     ViewTree = 0x1302,

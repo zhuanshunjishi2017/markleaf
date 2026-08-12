@@ -9,6 +9,51 @@ namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
+    private async Task RevealPathInTreeAsync(string filePath)
+    {
+        if (_workspaceRoot is null)
+        {
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(filePath);
+        var rootFull = Path.GetFullPath(_workspaceRoot);
+        var relative = Path.GetRelativePath(rootFull, fullPath);
+        if (relative.StartsWith("..", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(fullPath);
+        if (directory is null)
+        {
+            return;
+        }
+
+        var ancestors = new List<string>();
+        var current = directory;
+        while (!PathEquals(current, rootFull))
+        {
+            ancestors.Insert(0, current);
+            var parent = Path.GetDirectoryName(current);
+            if (parent is null || PathEquals(parent, current))
+            {
+                break;
+            }
+            current = parent;
+        }
+
+        foreach (var ancestor in ancestors)
+        {
+            await LoadWorkspaceDirectoryAsync(
+                ancestor,
+                _workspaceLoadCancellation?.Token ?? CancellationToken.None);
+            _workspaceTree.Expand(ancestor);
+        }
+
+        _workspaceTree.SelectedPath = fullPath;
+    }
+
     private async Task ActivateWorkspaceDocumentAsync(string path)
     {
         if (_document?.FilePath is not null && PathEquals(_document.FilePath, path))

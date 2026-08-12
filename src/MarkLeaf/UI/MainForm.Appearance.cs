@@ -94,6 +94,10 @@ internal sealed partial class MainForm
             _editorPanel.BackColor = bg;
             _workspaceContentPanel.BackColor = bg;
             _editorLoadingView.BackColor = bg;
+            if (_searchResultsHost is not null)
+            {
+                _searchResultsHost.BackColor = bg;
+            }
         }
         if (colors.TryGetValue("bg-hover", out var splitter))
             _sidebarSplit.BackColor = splitter;
@@ -115,6 +119,10 @@ internal sealed partial class MainForm
         _workspaceTree.ApplyThemeColors(colors);
         _workspaceDocumentList.ApplyThemeColors(colors);
         _outlineTree.ApplyThemeColors(colors);
+        if (_searchResultsView is not null)
+        {
+            _searchResultsView.ApplyThemeColors(colors);
+        }
 
         if (colors.TryGetValue("bg-primary", out var menuBg))
         {

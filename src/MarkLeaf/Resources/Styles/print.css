@@ -195,6 +195,27 @@
   text-indent: 0 !important;
 }
 
+.markleaf-style-print .markleaf-document ul[data-type='taskList'] > li {
+  display: flex;
+  gap: 0.55em;
+  align-items: center;
+}
+
+.markleaf-style-print .markleaf-document ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
+.markleaf-style-print .markleaf-document ul[data-type='taskList'] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.markleaf-style-print .markleaf-document ul[data-type='taskList'] > li > div > p {
+  margin: 0;
+  text-indent: 0;
+}
+
 .markleaf-style-print .markleaf-document h1,
 .markleaf-style-print .markleaf-document h2,
 .markleaf-style-print .markleaf-document h3,
@@ -245,4 +266,32 @@
 .markleaf-style-print .markleaf-document b {
   font-family: "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
   font-weight: normal;
+}
+
+html[lang="ja"] .markleaf-style-print .markleaf-document {
+  font-family: "Times New Roman", "Yu Mincho", "方正书宋_GBK", "宋体", serif;
+}
+
+html[lang="ja"] .markleaf-style-print .markleaf-document p {
+  font-family: "Times New Roman", "Yu Mincho", "方正书宋_GBK", "宋体", serif;
+}
+
+html[lang="ja"] .markleaf-style-print .markleaf-document blockquote p {
+  font-family: "Times New Roman", "Yu Mincho", "仿宋", "FangSong", serif;
+}
+
+html[lang="ja"] .markleaf-style-print .markleaf-document h1,
+html[lang="ja"] .markleaf-style-print .markleaf-document h2,
+html[lang="ja"] .markleaf-style-print .markleaf-document h3,
+html[lang="ja"] .markleaf-style-print .markleaf-document h4,
+html[lang="ja"] .markleaf-style-print .markleaf-document h5,
+html[lang="ja"] .markleaf-style-print .markleaf-document h6 {
+  font-family: "Helvetica", "Yu Gothic", "方正黑体_GBK", "黑体", sans-serif;
+  font-weight: bold;
+}
+
+html[lang="ja"] .markleaf-style-print .markleaf-document strong,
+html[lang="ja"] .markleaf-style-print .markleaf-document b {
+  font-family: "Helvetica", "Yu Gothic", "方正黑体_GBK", "黑体", sans-serif;
+  font-weight: bold;
 }

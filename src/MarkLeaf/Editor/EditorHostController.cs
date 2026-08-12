@@ -50,6 +50,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
 
+    public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
+
     public event EventHandler<EditorOutline>? OutlineChanged;
 
     public event EventHandler<int?>? OutlineSelectionChanged;
@@ -90,9 +92,19 @@ internal sealed class EditorHostController : IDisposable
 
     public Point EditorPointToScreen(EditorContextMenuRequest request)
     {
+        return EditorPointToScreen(request.ClientX, request.ClientY);
+    }
+
+    public Point EditorPointToScreen(EditorBlockMenuRequest request)
+    {
+        return EditorPointToScreen(request.ClientX, request.ClientY);
+    }
+
+    private Point EditorPointToScreen(double clientX, double clientY)
+    {
         var devicePoint = EditorCoordinateConverter.CssToDevicePoint(
-            request.ClientX,
-            request.ClientY,
+            clientX,
+            clientY,
             _webView.DeviceDpi,
             _webView.ZoomFactor);
         return _webView.PointToScreen(devicePoint);
@@ -318,6 +330,18 @@ internal sealed class EditorHostController : IDisposable
             closeLabel = Loc.Get("findBar.closeLabel"),
             replaced = Loc.Get("findBar.replaced"),
             noResults = Loc.Get("findBar.noResults"),
+            blockParagraph = Loc.Get("blockHandle.paragraph"),
+            blockHeading1 = Loc.Get("blockHandle.heading1"),
+            blockHeading2 = Loc.Get("blockHandle.heading2"),
+            blockHeading3 = Loc.Get("blockHandle.heading3"),
+            blockHeading4 = Loc.Get("blockHandle.heading4"),
+            blockHeading5 = Loc.Get("blockHandle.heading5"),
+            blockHeading6 = Loc.Get("blockHandle.heading6"),
+            blockBulletList = Loc.Get("blockHandle.bulletList"),
+            blockOrderedList = Loc.Get("blockHandle.orderedList"),
+            blockTaskList = Loc.Get("blockHandle.taskList"),
+            blockBlockquote = Loc.Get("blockHandle.blockquote"),
+            blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
         };
         EnqueueOrRun(() => Post("localizeFindBar", payload));
     }
@@ -328,6 +352,11 @@ internal sealed class EditorHostController : IDisposable
         bool applyToCurrentTextBlockWhenEmpty = false)
     {
         EnqueueOrRun(() => Post("command", new { command, text, applyToCurrentTextBlockWhenEmpty }));
+    }
+
+    public void ClearBlockHighlight()
+    {
+        ExecuteCommand("clearBlockHighlight");
     }
 
     public async Task<bool> ExecuteCommandAsync(
@@ -791,6 +820,14 @@ internal sealed class EditorHostController : IDisposable
                     new EditorContextMenuRequest(
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble()));
+                break;
+            case "blockMenuRequested":
+                BlockMenuRequested?.Invoke(
+                    this,
+                    new EditorBlockMenuRequest(
+                        message.Payload.GetProperty("clientX").GetDouble(),
+                        message.Payload.GetProperty("clientY").GetDouble(),
+                        message.Payload.GetProperty("position").GetInt32()));
                 break;
             case "outlineChanged":
                 OutlineChanged?.Invoke(this, EditorOutline.FromPayload(message.Payload));

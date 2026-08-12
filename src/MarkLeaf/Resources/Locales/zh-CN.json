@@ -41,6 +41,8 @@
 
   "menu.paragraph.label": "段落(&P)",
   "menu.paragraph.paragraph": "正文(&P)",
+  "menu.paragraph.insertLineBefore": "在段前插入行(&B)",
+  "menu.paragraph.insertLineAfter": "在段后插入行(&A)",
   "menu.paragraph.heading": "标题(&H)",
   "menu.paragraph.heading1": "一级标题\tCtrl+1",
   "menu.paragraph.heading2": "二级标题\tCtrl+2",
@@ -425,6 +427,9 @@
   "sidebar.noDocuments": "暂无可用文档",
   "sidebar.noOutline": "暂无文档大纲",
   "sidebar.untitled": "(无标题)",
+  "sidebar.searchPlaceholder": "在\"{0}\"中搜索...",
+  "sidebar.searchOutline": "搜索大纲",
+  "sidebar.noSearchResults": "未找到匹配结果",
 
   "fileFilter.markdown": "Markdown 文件 (*.md;*.markdown)|*.md;*.markdown|文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
   "fileFilter.images": "图片文件 (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|所有文件 (*.*)|*.*",
@@ -594,5 +599,18 @@
   "findBar.close": "关闭",
   "findBar.closeLabel": "关闭查找栏",
   "findBar.replaced": "已替换 {0} 处",
-  "findBar.noResults": "0/0"
+  "findBar.noResults": "0/0",
+
+  "blockHandle.paragraph": "段",
+  "blockHandle.heading1": "标₁",
+  "blockHandle.heading2": "标₂",
+  "blockHandle.heading3": "标₃",
+  "blockHandle.heading4": "标₄",
+  "blockHandle.heading5": "标₅",
+  "blockHandle.heading6": "标₆",
+  "blockHandle.bulletList": "无",
+  "blockHandle.orderedList": "有",
+  "blockHandle.taskList": "任",
+  "blockHandle.blockquote": "引",
+  "blockHandle.codeBlock": "码"
 }

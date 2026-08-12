@@ -29,6 +29,26 @@ internal sealed class NativeMenuService : IDisposable
         AppCommand.Paste,
     ];
 
+    internal static readonly AppCommand[] BlockHandleCommands =
+    [
+        AppCommand.SetParagraph,
+        AppCommand.InsertLineBefore,
+        AppCommand.InsertLineAfter,
+        AppCommand.SetHeading1,
+        AppCommand.SetHeading2,
+        AppCommand.SetHeading3,
+        AppCommand.SetHeading4,
+        AppCommand.SetHeading5,
+        AppCommand.SetHeading6,
+        AppCommand.ToggleQuote,
+        AppCommand.ToggleCodeBlock,
+        AppCommand.ToggleBulletList,
+        AppCommand.ToggleOrderedList,
+        AppCommand.ToggleTaskList,
+        AppCommand.InsertHorizontalRule,
+        AppCommand.InsertTable,
+    ];
+
     private readonly CommandRouter _router;
     private readonly Func<IReadOnlyList<string>> _recentWorkspaceProvider;
     private readonly Func<IReadOnlyList<string>> _recentFileProvider;
@@ -186,6 +206,85 @@ internal sealed class NativeMenuService : IDisposable
         finally
         {
             NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    public void ShowBlockHandleMenu(nint window, Point screenPoint)
+    {
+        var menu = BuildBlockHandleMenu();
+        try
+        {
+            foreach (var command in BlockHandleCommands)
+            {
+                var state = _router.GetState(command);
+                NativeMethods.EnableMenuItem(
+                    menu,
+                    (uint)command,
+                    NativeMethods.MfByCommand | (state.IsEnabled ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
+                NativeMethods.CheckMenuItem(
+                    menu,
+                    (uint)command,
+                    NativeMethods.MfByCommand | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
+            }
+
+            NativeMethods.SetForegroundWindow(window);
+            var selectedCommand = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmLeftButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                window,
+                0);
+            NativeMethods.PostMessage(window, NativeMethods.WmNull, 0, 0);
+            if (selectedCommand != 0)
+            {
+                _router.TryExecuteById((int)selectedCommand);
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    private static nint BuildBlockHandleMenu()
+    {
+        var menu = CreateMenu(true);
+        try
+        {
+            AppendCommand(menu, AppCommand.SetParagraph, Loc.Get("menu.paragraph.paragraph"));
+
+            var headings = CreateMenu(true);
+            AppendCommand(headings, AppCommand.SetHeading1, Loc.Get("menu.paragraph.heading1"));
+            AppendCommand(headings, AppCommand.SetHeading2, Loc.Get("menu.paragraph.heading2"));
+            AppendCommand(headings, AppCommand.SetHeading3, Loc.Get("menu.paragraph.heading3"));
+            AppendCommand(headings, AppCommand.SetHeading4, Loc.Get("menu.paragraph.heading4"));
+            AppendCommand(headings, AppCommand.SetHeading5, Loc.Get("menu.paragraph.heading5"));
+            AppendCommand(headings, AppCommand.SetHeading6, Loc.Get("menu.paragraph.heading6"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.heading"), headings);
+
+            AppendCommand(menu, AppCommand.ToggleQuote, Loc.Get("menu.paragraph.quote"));
+            AppendCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
+            AppendSeparator(menu);
+
+            var lists = CreateMenu(true);
+            AppendCommand(lists, AppCommand.ToggleBulletList, Loc.Get("menu.paragraph.bulletList"));
+            AppendCommand(lists, AppCommand.ToggleOrderedList, Loc.Get("menu.paragraph.orderedList"));
+            AppendCommand(lists, AppCommand.ToggleTaskList, Loc.Get("menu.paragraph.taskList"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.list"), lists);
+
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
+            AppendCommand(menu, AppCommand.InsertTable, Loc.Get("menu.paragraph.insertTable"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
+            AppendCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.paragraph.insertLineAfter"));
+            return menu;
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
         }
     }
 
@@ -357,6 +456,10 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(table);
             AppendCommand(table, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
             AppendPopup(menu, Loc.Get("menu.paragraph.table"), table);
+
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
+            AppendCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.paragraph.insertLineAfter"));
             return menu;
         }
         catch

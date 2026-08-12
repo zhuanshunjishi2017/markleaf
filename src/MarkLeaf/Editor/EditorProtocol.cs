@@ -19,6 +19,7 @@ public static class EditorProtocol
         "commandStateChanged",
         "editorStatusChanged",
         "contextMenuRequested",
+        "blockMenuRequested",
         "outlineChanged",
         "outlineSelectionChanged",
         "requestSave",
@@ -157,6 +158,9 @@ public static class EditorProtocol
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY"),
+            "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
+                && HasNonNegativeNumber(payload, "clientY")
+                && HasNonNegativeInteger(payload, "position"),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
             "findResult" => HasFindResultPayload(payload),

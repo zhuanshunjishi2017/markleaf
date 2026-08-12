@@ -8,6 +8,10 @@ namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
+    private SearchResultsView _searchResultsView = default!;
+    private Panel _searchResultsHost = default!;
+    private CancellationTokenSource? _searchCancellation;
+
     private SplitContainer CreateSidebarSplit(int sidebarWidth)
     {
         var split = new SplitContainer
@@ -42,7 +46,20 @@ internal sealed partial class MainForm
             if (index == 0) ToggleWorkspaceView();
         };
         _sidebarTabBar.CollapseClicked += OnSidebarCollapseClicked;
+        _sidebarTabBar.SearchTextChanged += OnSidebarSearchTextChanged;
+        _sidebarTabBar.SearchModeChanged += OnSidebarSearchModeChanged;
         panel.Controls.Add(_sidebarTabBar);
+
+        _searchResultsView = new SearchResultsView();
+        _searchResultsView.ResultActivated += OnSearchResultActivated;
+        _searchResultsHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Visible = false,
+        };
+        _searchResultsHost.Controls.Add(_searchResultsView);
+        panel.Controls.Add(_searchResultsHost);
 
         _workspacePanelHost = CreateWorkspacePanel();
         _workspacePanelHost.Dock = DockStyle.Fill;
@@ -181,11 +198,80 @@ internal sealed partial class MainForm
         _workspaceTree.AutoHideScrollbar = enabled;
         _workspaceDocumentList.AutoHideScrollbar = enabled;
         _outlineTree.AutoHideScrollbar = enabled;
+        _searchResultsView.AutoHideScrollbar = enabled;
     }
 
     private void OnSidebarCollapseClicked(object? sender, EventArgs e)
     {
         ToggleSidebarWithWindowResize();
+    }
+
+    private async void OnSearchResultActivated(object? sender, string path)
+    {
+        _sidebarTabBar.ExitSearchMode();
+        _searchCancellation?.Cancel();
+        _searchResultsHost.Visible = false;
+        await ActivateWorkspaceDocumentAsync(path);
+        await RevealPathInTreeAsync(path);
+    }
+
+    private async void OnSidebarSearchTextChanged(object? sender, string text)
+    {
+        if (_sidebarActiveOutline)
+        {
+            ApplyOutlineSearch(text);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(text) || _workspaceRoot is null)
+        {
+            _searchCancellation?.Cancel();
+            _searchResultsHost.Visible = false;
+            return;
+        }
+
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = new CancellationTokenSource();
+        var token = _searchCancellation.Token;
+        var query = text.Trim();
+
+        try
+        {
+            var results = await _workspaceService.SearchAsync(_workspaceRoot, query, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+            _searchResultsView.SetResults(results);
+            _searchResultsHost.Visible = true;
+            _searchResultsHost.BringToFront();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning($"Workspace search failed: {exception.GetType().Name}.");
+        }
+    }
+
+    private void OnSidebarSearchModeChanged(object? sender, bool active)
+    {
+        if (active)
+        {
+            return;
+        }
+
+        if (_sidebarActiveOutline)
+        {
+            ExitOutlineSearch();
+        }
+        else
+        {
+            _searchCancellation?.Cancel();
+            _searchResultsHost.Visible = false;
+        }
     }
 
     /// <summary>
@@ -206,6 +292,7 @@ internal sealed partial class MainForm
     private void CollapseSidebar()
     {
         if (_sidebarSplit.Panel1Collapsed) return;
+        _sidebarTabBar.ExitSearchMode();
         _sidebarSplit.Panel1Collapsed = true;
         _settings.MainWindow.SidebarCollapsed = true;
         UpdateViewToggleIcon();
@@ -237,6 +324,13 @@ internal sealed partial class MainForm
         else
         {
             _workspacePanelHost.BringToFront();
+        }
+
+        // 切换到大纲时退出搜索并隐藏结果容器
+        if (outline)
+        {
+            _searchCancellation?.Cancel();
+            _searchResultsHost.Visible = false;
         }
 
         if (_workspaceRoot is null)

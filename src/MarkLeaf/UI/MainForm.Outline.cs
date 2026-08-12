@@ -7,6 +7,8 @@ internal sealed partial class MainForm
     private int? _activeOutlinePosition;
     private int? _pendingOutlinePosition;
     private DateTime _pendingOutlineUntilUtc;
+    private IReadOnlyList<EditorOutlineItem> _currentOutline = [];
+    private bool _outlineSearchActive;
 
     private void OnEditorOutlineChanged(object? sender, EditorOutline outline)
     {
@@ -16,7 +18,11 @@ internal sealed partial class MainForm
             return;
         }
 
-        _outlineTree.SetItems(outline.Headings);
+        _currentOutline = outline.Headings;
+        if (!_outlineSearchActive)
+        {
+            _outlineTree.SetItems(outline.Headings);
+        }
         _outlineTree.SelectedPosition = _activeOutlinePosition;
     }
 
@@ -58,5 +64,36 @@ internal sealed partial class MainForm
             _outlineTree.SelectedPosition = position;
             _editorHost.ExecuteCommand("scrollToPosition", position.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
+
+        ExitOutlineSearch();
+    }
+
+    private void ApplyOutlineSearch(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ExitOutlineSearch();
+            return;
+        }
+
+        _outlineSearchActive = true;
+        var query = text.Trim();
+        var filtered = _currentOutline
+            .Where(item => item.Text.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        _outlineTree.SetFlatItems(filtered);
+        _outlineTree.SelectedPosition = null;
+    }
+
+    private void ExitOutlineSearch()
+    {
+        if (!_outlineSearchActive)
+        {
+            return;
+        }
+
+        _outlineSearchActive = false;
+        _outlineTree.SetItems(_currentOutline);
+        _outlineTree.SelectedPosition = _activeOutlinePosition;
     }
 }

@@ -35,6 +35,52 @@ body {
   color: var(--text-selected);
 }
 
+/* 段落左侧浮动操作按钮（块手柄） */
+.markleaf-document {
+  position: relative;
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: "Microsoft YaHei", sans-serif;
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.markleaf-document:hover .ml-block-handle,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
+}
+
+/* 点击加号后整个段落的 bg-hover 高亮 */
+.markleaf-block-active {
+  background: var(--bg-hover, #f0f0f0);
+  border-radius: 6px;
+}
+
 .find-bar {
   position: sticky;
   z-index: 10;
@@ -164,12 +210,6 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
   background: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
-}
-
-@media (max-width: 720px) {
-  #editor {
-    padding: 28px 24px 64px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -41,6 +41,8 @@
 
   "menu.paragraph.label": "&Paragraph",
   "menu.paragraph.paragraph": "&Paragraph",
+  "menu.paragraph.insertLineBefore": "Insert line &before",
+  "menu.paragraph.insertLineAfter": "Insert line &after",
   "menu.paragraph.heading": "&Heading",
   "menu.paragraph.heading1": "Heading 1\tCtrl+1",
   "menu.paragraph.heading2": "Heading 2\tCtrl+2",
@@ -425,6 +427,9 @@
   "sidebar.noDocuments": "No documents available",
   "sidebar.noOutline": "No document outline",
   "sidebar.untitled": "(Untitled)",
+  "sidebar.searchPlaceholder": "Search in \"{0}\"...",
+  "sidebar.searchOutline": "Search outline",
+  "sidebar.noSearchResults": "No results found",
 
   "fileFilter.markdown": "Markdown Files (*.md;*.markdown)|*.md;*.markdown|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
   "fileFilter.images": "Image Files (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|All Files (*.*)|*.*",
@@ -591,5 +596,18 @@
   "findBar.close": "Close",
   "findBar.closeLabel": "Close find bar",
   "findBar.replaced": "Replaced {0} occurrences",
-  "findBar.noResults": "0/0"
+  "findBar.noResults": "0/0",
+
+  "blockHandle.paragraph": "¶",
+  "blockHandle.heading1": "H1",
+  "blockHandle.heading2": "H2",
+  "blockHandle.heading3": "H3",
+  "blockHandle.heading4": "H4",
+  "blockHandle.heading5": "H5",
+  "blockHandle.heading6": "H6",
+  "blockHandle.bulletList": "•",
+  "blockHandle.orderedList": "1.",
+  "blockHandle.taskList": "☑",
+  "blockHandle.blockquote": "❝",
+  "blockHandle.codeBlock": "</>"
 }

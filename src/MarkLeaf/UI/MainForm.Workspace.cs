@@ -46,6 +46,7 @@ internal sealed partial class MainForm
         {
             rootName = fullPath;
         }
+        _sidebarTabBar.WorkspaceName = rootName;
         _workspaceTree.SetRoot(new WorkspaceEntry(rootName, fullPath, true));
         await LoadWorkspaceDirectoryAsync(fullPath, _workspaceLoadCancellation.Token);
         await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation.Token);
@@ -67,6 +68,8 @@ internal sealed partial class MainForm
         StopWatchingWorkspace();
         _workspaceRoot = null;
         _settings.Workspace.LastFolder = null;
+        _sidebarTabBar.WorkspaceName = string.Empty;
+        _sidebarTabBar.ExitSearchMode();
         _sidebarVisibleBeforeFocus = false;
         ClearWorkspacePlaceholder();
         _openFolderPrompt.Visible = true;

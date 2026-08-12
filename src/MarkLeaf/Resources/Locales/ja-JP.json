@@ -41,6 +41,8 @@
 
   "menu.paragraph.label": "段落(&P)",
   "menu.paragraph.paragraph": "本文(&P)",
+  "menu.paragraph.insertLineBefore": "段落の前に挿入(&B)",
+  "menu.paragraph.insertLineAfter": "段落の後に挿入(&A)",
   "menu.paragraph.heading": "見出し(&H)",
   "menu.paragraph.heading1": "見出し1\tCtrl+1",
   "menu.paragraph.heading2": "見出し2\tCtrl+2",
@@ -425,6 +427,9 @@
   "sidebar.noDocuments": "利用可能なドキュメントはありません",
   "sidebar.noOutline": "ドキュメントアウトラインはありません",
   "sidebar.untitled": "(無題)",
+  "sidebar.searchPlaceholder": "\"{0}\"を検索...",
+  "sidebar.searchOutline": "アウトラインを検索",
+  "sidebar.noSearchResults": "一致する結果がありません",
 
   "fileFilter.markdown": "Markdownファイル (*.md;*.markdown)|*.md;*.markdown|テキストファイル (*.txt)|*.txt|すべてのファイル (*.*)|*.*",
   "fileFilter.images": "画像ファイル (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|すべてのファイル (*.*)|*.*",
@@ -591,5 +596,18 @@
   "findBar.close": "閉じる",
   "findBar.closeLabel": "検索バーを閉じる",
   "findBar.replaced": "{0} 件置換しました",
-  "findBar.noResults": "0/0"
+  "findBar.noResults": "0/0",
+
+  "blockHandle.paragraph": "段",
+  "blockHandle.heading1": "見₁",
+  "blockHandle.heading2": "見₂",
+  "blockHandle.heading3": "見₃",
+  "blockHandle.heading4": "見₄",
+  "blockHandle.heading5": "見₅",
+  "blockHandle.heading6": "見₆",
+  "blockHandle.bulletList": "箇",
+  "blockHandle.orderedList": "番",
+  "blockHandle.taskList": "タ",
+  "blockHandle.blockquote": "引",
+  "blockHandle.codeBlock": "コ"
 }

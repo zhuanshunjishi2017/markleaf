@@ -18,9 +18,9 @@ internal sealed class OutlineTreeView : Control
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
-    private Font _primaryFont = new("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _secondaryFont = new("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _selectedFont = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
 
     // Theme colors (defaults match white theme).
@@ -125,15 +125,28 @@ internal sealed class OutlineTreeView : Control
         Invalidate();
     }
 
+    public void SetFlatItems(IReadOnlyList<EditorOutlineItem> items)
+    {
+        _roots.Clear();
+        foreach (var item in items)
+        {
+            _roots.Add(new OutlineNode(item, 0));
+        }
+
+        UpdateScrollBar();
+        EnsureSelectionVisible();
+        Invalidate();
+    }
+
     public void ConfigureTypography(int dpi)
     {
         var previousPrimary = _primaryFont;
         var previousSecondary = _secondaryFont;
         var previousSelected = _selectedFont;
         var previousArrowFont = _arrowFont;
-        _primaryFont = new Font("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-        _secondaryFont = new Font("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-        _selectedFont = new Font("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
+        _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
@@ -171,12 +184,6 @@ internal sealed class OutlineTreeView : Control
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
-            if (isHovered)
-            {
-                using var brush = new SolidBrush(_bgHover);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-
             var indent = this.ScaleForDpi(18) * node.Depth;
             var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
@@ -197,7 +204,7 @@ internal sealed class OutlineTreeView : Control
                 string.IsNullOrWhiteSpace(node.Item.Text) ? Loc.Get("sidebar.untitled") : node.Item.Text,
                 isSelected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
                 textBounds,
-                isSelected ? null : _textSecondary);
+                isSelected || isHovered ? null : _textSecondary);
         }
     }
 

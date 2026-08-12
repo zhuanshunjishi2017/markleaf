@@ -200,6 +200,7 @@ internal sealed partial class MainForm : Form
             _workspaceTree.ConfigureTypography(_effectiveDpi);
             _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
             _outlineTree.ConfigureTypography(_effectiveDpi);
+            _searchResultsView.ConfigureTypography(_effectiveDpi);
         };
     }
 

@@ -41,6 +41,8 @@
 
   "menu.paragraph.label": "段落(&P)",
   "menu.paragraph.paragraph": "正文(&P)",
+  "menu.paragraph.insertLineBefore": "在段落前插入行(&B)",
+  "menu.paragraph.insertLineAfter": "在段落後插入行(&A)",
   "menu.paragraph.heading": "標題(&H)",
   "menu.paragraph.heading1": "一級標題\tCtrl+1",
   "menu.paragraph.heading2": "二級標題\tCtrl+2",
@@ -425,6 +427,9 @@
   "sidebar.noDocuments": "暫無可用文件",
   "sidebar.noOutline": "暫無文件大綱",
   "sidebar.untitled": "(無標題)",
+  "sidebar.searchPlaceholder": "在\"{0}\"中搜尋...",
+  "sidebar.searchOutline": "搜尋大綱",
+  "sidebar.noSearchResults": "找不到符合的結果",
 
   "fileFilter.markdown": "Markdown 檔案 (*.md;*.markdown)|*.md;*.markdown|文字檔案 (*.txt)|*.txt|所有檔案 (*.*)|*.*",
   "fileFilter.images": "圖片檔案 (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|所有檔案 (*.*)|*.*",
@@ -591,5 +596,18 @@
   "findBar.close": "關閉",
   "findBar.closeLabel": "關閉尋找列",
   "findBar.replaced": "已取代 {0} 處",
-  "findBar.noResults": "0/0"
+  "findBar.noResults": "0/0",
+
+  "blockHandle.paragraph": "段",
+  "blockHandle.heading1": "標₁",
+  "blockHandle.heading2": "標₂",
+  "blockHandle.heading3": "標₃",
+  "blockHandle.heading4": "標₄",
+  "blockHandle.heading5": "標₅",
+  "blockHandle.heading6": "標₆",
+  "blockHandle.bulletList": "無",
+  "blockHandle.orderedList": "有",
+  "blockHandle.taskList": "任",
+  "blockHandle.blockquote": "引",
+  "blockHandle.codeBlock": "碼"
 }

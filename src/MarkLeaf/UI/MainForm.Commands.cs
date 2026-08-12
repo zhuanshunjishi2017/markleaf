@@ -324,6 +324,8 @@ internal sealed partial class MainForm
             AppCommand.AlignTableCenter => "alignTableCenter",
             AppCommand.AlignTableRight => "alignTableRight",
             AppCommand.DeleteTable => "deleteTable",
+            AppCommand.InsertLineBefore => "insertLineBefore",
+            AppCommand.InsertLineAfter => "insertLineAfter",
             _ => string.Empty,
         };
         return editorCommand.Length > 0;
@@ -335,6 +337,7 @@ internal sealed partial class MainForm
             || command is >= AppCommand.SetParagraph and <= AppCommand.DeleteTable
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
+            || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
             || command == AppCommand.ToggleSourceMode;
     }
 
@@ -377,6 +380,24 @@ internal sealed partial class MainForm
         {
             _editorContextMenuActive = false;
         }
+    }
+
+    private void OnEditorBlockMenuRequested(object? sender, EditorBlockMenuRequest request)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnEditorBlockMenuRequested(sender, request));
+            return;
+        }
+
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        var screenPoint = _editorHost.EditorPointToScreen(request);
+        _menuService.ShowBlockHandleMenu(Handle, screenPoint);
+        _editorHost.ClearBlockHighlight();
     }
 
     private void OnOpenLinkRequested(object? sender, string url)

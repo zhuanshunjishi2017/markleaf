@@ -13,6 +13,8 @@ import {
   replaceCurrentInEditor,
   replaceEditorDocument,
   resetEditorViewport,
+  setBlockHighlight,
+  setBlockTypeLabels,
 } from './editor'
 import { SourceEditor } from './source-editor'
 import {
@@ -66,6 +68,7 @@ let findBarLoc: Record<string, string> = {}
 
 function applyFindBarLocalization(loc: Record<string, string>): void {
   findBarLoc = loc
+  setBlockTypeLabels(loc)
   findInput.placeholder = loc.find ?? 'Find'
   findInput.ariaLabel = loc.findLabel ?? 'Find'
   replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
@@ -182,7 +185,11 @@ function sendEditorState(): void {
 }
 
 function bindEditorEvents(targetEditor: typeof editor): void {
-  targetEditor.on('update', () => {
+  targetEditor.on('update', ({ transaction }) => {
+    // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
+    if (!transaction.docChanged) {
+      return
+    }
     if (suppressUpdate || compositionActive) {
       if (compositionActive) {
         compositionChanged = true
@@ -397,6 +404,21 @@ sourceMount.addEventListener('contextmenu', (event) => {
   sourceEditor?.focus()
   sendEditorState()
   send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
+})
+
+editorMount.addEventListener('markleaf-block-handle', (event) => {
+  const detail = (event as CustomEvent<{ clientX: number; clientY: number; position: number }>).detail
+  if (!detail || typeof detail.clientX !== 'number' || typeof detail.clientY !== 'number') {
+    return
+  }
+  if (!sourceMode) {
+    setBlockHighlight(editor, typeof detail.position === 'number' ? detail.position : null)
+  }
+  send('blockMenuRequested', {
+    clientX: detail.clientX,
+    clientY: detail.clientY,
+    position: detail.position,
+  })
 })
 
 editorMount.addEventListener('dragover', (event) => {
