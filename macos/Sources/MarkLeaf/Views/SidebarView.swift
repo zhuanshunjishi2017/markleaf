@@ -2,19 +2,41 @@ import AppKit
 
 /// 侧边栏：工作区文件树（对应 C# WorkspaceTreeView + SidebarTabBar）。
 final class SidebarView: NSView {
-    let session: EditorSession
+    static let emptyStateIdentifier = NSUserInterfaceItemIdentifier("Sidebar.emptyState")
 
-    private let tabControl = NSSegmentedControl(labels: [L10n.t("工作区"), L10n.t("大纲")], trackingMode: .selectOne, target: nil, action: nil)
+    let session: EditorSession
+    private let localize: (String) -> String
+
+    let tabControl: NSSegmentedControl
+    let headerOpenFolderButton = NSButton()
+    let emptyStateLabel: NSTextField
+    let emptyStateOpenFolderButton: NSButton
+    let emptyStateView: NSStackView
     private let containerView = NSView()
     private let workspaceTree = WorkspaceTreeView()
     private let outlineTree = OutlineTreeView()
     private let workspaceScroll = NSScrollView()
     private let outlineScroll = NSScrollView()
-    private let openFolderButton = NSButton(title: L10n.t("打开文件夹"), target: nil, action: nil)
-    private let placeholder = NSTextField(labelWithString: "暂未打开工作区\n点击“打开文件夹”开始")
 
-    init(session: EditorSession) {
+    init(
+        session: EditorSession,
+        localize: @escaping (String) -> String = { L10n.t($0) }
+    ) {
         self.session = session
+        self.localize = localize
+        tabControl = NSSegmentedControl(
+            labels: [localize("工作区"), localize("大纲")],
+            trackingMode: .selectOne,
+            target: nil,
+            action: nil
+        )
+        emptyStateLabel = NSTextField(labelWithString: localize("暂未打开工作区"))
+        emptyStateOpenFolderButton = NSButton(
+            title: localize("打开文件夹"),
+            target: nil,
+            action: nil
+        )
+        emptyStateView = NSStackView()
         super.init(frame: .zero)
 
         tabControl.selectedSegment = 0
@@ -23,20 +45,41 @@ final class SidebarView: NSView {
         tabControl.target = self
         tabControl.action = #selector(tabChanged)
 
-        openFolderButton.bezelStyle = .rounded
-        openFolderButton.controlSize = .regular
-        openFolderButton.target = self
-        openFolderButton.action = #selector(openFolder)
-        let header = NSStackView(views: [tabControl, NSView(), openFolderButton])
+        headerOpenFolderButton.image = NSImage(
+            systemSymbolName: "folder.badge.plus",
+            accessibilityDescription: nil
+        )
+        headerOpenFolderButton.title = ""
+        headerOpenFolderButton.imagePosition = .imageOnly
+        headerOpenFolderButton.bezelStyle = .rounded
+        headerOpenFolderButton.controlSize = .regular
+        headerOpenFolderButton.target = self
+        headerOpenFolderButton.action = #selector(openFolder)
+        headerOpenFolderButton.translatesAutoresizingMaskIntoConstraints = false
+        headerOpenFolderButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
+
+        let header = NSStackView(views: [tabControl, NSView(), headerOpenFolderButton])
         header.orientation = .horizontal
         header.spacing = 6
         header.alignment = .centerY
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        placeholder.alignment = .center
-        placeholder.textColor = .secondaryLabelColor
-        placeholder.font = .systemFont(ofSize: 12)
-        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateLabel.alignment = .center
+        emptyStateLabel.textColor = .secondaryLabelColor
+        emptyStateLabel.font = .systemFont(ofSize: 12)
+
+        emptyStateOpenFolderButton.bezelStyle = .rounded
+        emptyStateOpenFolderButton.controlSize = .regular
+        emptyStateOpenFolderButton.target = self
+        emptyStateOpenFolderButton.action = #selector(openFolder)
+
+        emptyStateView.orientation = .vertical
+        emptyStateView.alignment = .centerX
+        emptyStateView.spacing = 10
+        emptyStateView.identifier = Self.emptyStateIdentifier
+        emptyStateView.addArrangedSubview(emptyStateLabel)
+        emptyStateView.addArrangedSubview(emptyStateOpenFolderButton)
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
 
         containerView.translatesAutoresizingMaskIntoConstraints = false
         workspaceTree.configure(session: session)
@@ -67,7 +110,7 @@ final class SidebarView: NSView {
 
         addSubview(header)
         addSubview(containerView)
-        addSubview(placeholder)
+        addSubview(emptyStateView)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: topAnchor, constant: 11),
             header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
@@ -76,8 +119,8 @@ final class SidebarView: NSView {
             containerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            placeholder.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            placeholder.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            emptyStateView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            emptyStateView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
         ])
 
         session.onWorkspaceChanged = { [weak self] in
@@ -86,6 +129,7 @@ final class SidebarView: NSView {
         session.onOutlineChanged = { [weak self] in
             DispatchQueue.main.async { self?.outlineChanged() }
         }
+        applyLanguage()
         showTab(0)
     }
 
@@ -93,12 +137,15 @@ final class SidebarView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// 界面语言切换：更新分段标签、打开文件夹按钮与占位文案。
+    /// 界面语言切换：更新分段标签、打开文件夹控件与空状态文案。
     func applyLanguage() {
-        tabControl.setLabel(L10n.t("工作区"), forSegment: 0)
-        tabControl.setLabel(L10n.t("大纲"), forSegment: 1)
-        openFolderButton.title = L10n.t("打开文件夹")
-        placeholder.stringValue = L10n.t("暂未打开工作区\n点击“打开文件夹”开始")
+        tabControl.setLabel(localize("工作区"), forSegment: 0)
+        tabControl.setLabel(localize("大纲"), forSegment: 1)
+        let openFolderTitle = localize("打开文件夹")
+        headerOpenFolderButton.toolTip = openFolderTitle
+        headerOpenFolderButton.setAccessibilityLabel(openFolderTitle)
+        emptyStateLabel.stringValue = localize("暂未打开工作区")
+        emptyStateOpenFolderButton.title = openFolderTitle
     }
 
     @objc private func tabChanged() {
@@ -127,8 +174,8 @@ final class SidebarView: NSView {
         // 先同步会话标签索引：workspaceChanged/outlineChanged 会读取它判断占位文案
         session.sidebarTabIndex = index
         let workspaceActive = index == 0
-        openFolderButton.isHidden = !workspaceActive
-        placeholder.isHidden = !(workspaceActive && session.workspaceRoot == nil)
+        headerOpenFolderButton.isHidden = !workspaceActive
+        updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
         if workspaceActive {
             workspaceChanged()
         } else {
@@ -149,9 +196,12 @@ final class SidebarView: NSView {
     }
 
     private func workspaceChanged() {
-        let hasWorkspace = session.workspaceRoot != nil
-        placeholder.isHidden = !(session.sidebarTabIndex == 0 && !hasWorkspace)
+        updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
         workspaceTree.reloadData()
+    }
+
+    func updateEmptyStateVisibility(hasWorkspace: Bool) {
+        emptyStateView.isHidden = !(session.sidebarTabIndex == 0 && !hasWorkspace)
     }
 
     private func outlineChanged() {
@@ -160,7 +210,7 @@ final class SidebarView: NSView {
 
     @objc private func openFolder() {
         let panel = NSOpenPanel()
-        panel.title = L10n.t("打开工作区文件夹")
+        panel.title = localize("打开工作区文件夹")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false

@@ -599,10 +599,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 func placeholderVisible(in view: NSView) -> Bool? {
+                    if view.identifier == SidebarView.emptyStateIdentifier {
+                        return !view.isHidden
+                    }
                     for sub in view.subviews {
-                        if let tf = sub as? NSTextField, tf.stringValue.contains("暂未打开工作区") {
-                            return !tf.isHidden
-                        }
                         if let found = placeholderVisible(in: sub) {
                             return found
                         }
