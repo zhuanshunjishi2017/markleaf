@@ -952,6 +952,32 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         openDocument(at: URL(fileURLWithPath: entry.path))
     }
 
+    @discardableResult
+    func moveWorkspaceEntry(from sourceURL: URL, toDirectory targetDirectory: URL) throws -> URL {
+        guard let workspaceRoot else { throw WorkspaceMoveError.outsideWorkspace }
+        let destination = try WorkspaceMovePolicy.destination(
+            source: sourceURL,
+            targetDirectory: targetDirectory,
+            workspaceRoot: URL(fileURLWithPath: workspaceRoot, isDirectory: true)
+        )
+        let movesOpenDocument = documentURL?.standardizedFileURL == sourceURL.standardizedFileURL
+        if movesOpenDocument { stopExternalChangeWatch() }
+        do {
+            try FileManager.default.moveItem(at: sourceURL, to: destination)
+        } catch {
+            if movesOpenDocument, let documentURL { startExternalChangeWatch(for: documentURL) }
+            throw error
+        }
+        if movesOpenDocument {
+            documentURL = destination
+            statusText = destination.lastPathComponent
+            startExternalChangeWatch(for: destination)
+            SettingsService.shared.update { $0.lastFile = destination.path }
+        }
+        rescanWorkspace()
+        return destination
+    }
+
     func scrollToPosition(_ position: Int) {
         execute("scrollToPosition", text: "\(position)")
     }

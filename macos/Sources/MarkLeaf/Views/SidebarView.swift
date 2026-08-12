@@ -243,6 +243,7 @@ final class FinderWorkspaceRowView: NSTableRowView {
 }
 
 class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    static let localDragPasteboardType = NSPasteboard.PasteboardType("com.markleaf.workspace-entry-path")
     private weak var session: EditorSession?
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
     /// 进行中的子目录扫描（强引用，避免扫描器在异步任务执行前被释放导致子目录永远不加载）。
@@ -265,6 +266,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         rowHeight = 26
         backgroundColor = .clear
         columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        registerForDraggedTypes([.fileURL, Self.localDragPasteboardType])
+        setDraggingSourceOperationMask(.move, forLocal: true)
+        setDraggingSourceOperationMask(.copy, forLocal: false)
     }
 
     func setListMode(_ listMode: Bool) {
@@ -380,6 +384,59 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         if listMode { return false }
         return (item as? WorkspaceEntry)?.isDirectory ?? false
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        guard let entry = item as? WorkspaceEntry else { return nil }
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(URL(fileURLWithPath: entry.path).absoluteString, forType: .fileURL)
+        pasteboardItem.setString(entry.path, forType: Self.localDragPasteboardType)
+        return pasteboardItem
+    }
+
+    override func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        context == .withinApplication ? .move : .copy
+    }
+
+    func dropTargetDirectory(for item: Any?, workspaceRoot: String?) -> URL? {
+        guard let workspaceRoot else { return nil }
+        guard let item else { return URL(fileURLWithPath: workspaceRoot, isDirectory: true) }
+        guard let entry = item as? WorkspaceEntry, entry.isDirectory else { return nil }
+        return URL(fileURLWithPath: entry.path, isDirectory: true)
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        guard info.draggingPasteboard.string(forType: Self.localDragPasteboardType) != nil,
+              dropTargetDirectory(for: item, workspaceRoot: session?.workspaceRoot) != nil
+        else { return [] }
+        setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .move
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        acceptDrop info: NSDraggingInfo,
+        item: Any?,
+        childIndex index: Int
+    ) -> Bool {
+        guard let sourcePath = info.draggingPasteboard.string(forType: Self.localDragPasteboardType),
+              let target = dropTargetDirectory(for: item, workspaceRoot: session?.workspaceRoot)
+        else { return false }
+        do {
+            try session?.moveWorkspaceEntry(from: URL(fileURLWithPath: sourcePath), toDirectory: target)
+            return true
+        } catch {
+            session?.presentError(L10n.f("无法移动工作区项目：%@", error.localizedDescription))
+            return false
+        }
     }
 
     // MARK: - Delegate
