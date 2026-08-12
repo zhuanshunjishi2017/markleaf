@@ -1,6 +1,21 @@
 import AppKit
 import UniformTypeIdentifiers
 
+struct PreferencesRestoration: Equatable {
+    let selectedPageIndex: Int
+    let frame: NSRect
+}
+
+struct PreferencesRefreshState {
+    let selectedPageIndex: Int
+    let frame: NSRect
+    let wasVisible: Bool
+
+    var restoration: PreferencesRestoration? {
+        wasVisible ? PreferencesRestoration(selectedPageIndex: selectedPageIndex, frame: frame) : nil
+    }
+}
+
 /// 多窗口管理器：持有所有编辑器窗口，广播偏好设置变更。
 final class AppWindowManager {
     static let shared = AppWindowManager()
@@ -68,14 +83,7 @@ final class AppWindowManager {
     /// 打开偏好设置窗口（单例）。
     func showPreferences() {
         if preferencesController == nil {
-            guard let session = primarySession else { return }
-            let controller = PreferencesWindowController(
-                styles: session.styles,
-                themes: session.colorThemes)
-            controller.onSettingsChanged = { [weak self] in
-                self?.applyPreferencesToAll()
-            }
-            preferencesController = controller
+            preferencesController = makePreferences()
         }
         preferencesController?.showWindow(nil)
         preferencesController?.window?.makeKeyAndOrderFront(nil)
@@ -85,17 +93,49 @@ final class AppWindowManager {
     /// 界面语言切换：重建菜单、重建偏好设置窗口、刷新所有编辑器窗口与前端。
     func applyLanguage() {
         NativeMenuBuilder.refreshIfNeeded()
-        // 重建偏好设置（标签在 init 时按当前语言生成）
-        if let prefs = preferencesController {
-            prefs.window?.close()
-            preferencesController = nil
+
+        let refreshState = preferencesController.flatMap { controller -> PreferencesRefreshState? in
+            guard let window = controller.window else { return nil }
+            return PreferencesRefreshState(
+                selectedPageIndex: controller.selectedPageIndex,
+                frame: window.frame,
+                wasVisible: window.isVisible
+            )
         }
+
+        preferencesController?.window?.close()
+        preferencesController = nil
+
         for controller in windowControllers {
             controller.applyLanguage()
         }
         findPanelController?.applyLanguage()
-        showPreferences()
+
+        guard let restoration = refreshState?.restoration,
+              let controller = makePreferences(restoration: restoration)
+        else { return }
+        preferencesController = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func makePreferences(
+        restoration: PreferencesRestoration? = nil
+    ) -> PreferencesWindowController? {
+        guard let session = primarySession else { return nil }
+        let controller = PreferencesWindowController(
+            styles: session.styles,
+            themes: session.colorThemes,
+            initialSelectedPageIndex: restoration?.selectedPageIndex ?? 0
+        )
+        if let frame = restoration?.frame {
+            controller.window?.setFrame(frame, display: false)
+        }
+        controller.onSettingsChanged = { [weak self] in
+            self?.applyPreferencesToAll()
+        }
+        return controller
     }
 
     func applyPreferencesToAll() {

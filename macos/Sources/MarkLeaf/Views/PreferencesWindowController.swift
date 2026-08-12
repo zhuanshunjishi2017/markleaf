@@ -18,6 +18,15 @@ struct ThemeDefaultsSelectionModel {
 /// 完整对应 Windows PreferencesDialog 的 5 个分类（文件/编辑器/外观/通用/图片），即时生效。
 final class PreferencesWindowController: NSWindowController {
     var onSettingsChanged: (() -> Void)?
+    private let tabViewController = NSTabViewController()
+
+    var selectedPageIndex: Int {
+        get { tabViewController.selectedTabViewItemIndex }
+        set {
+            let upper = max(0, tabViewController.tabViewItems.count - 1)
+            tabViewController.selectedTabViewItemIndex = min(max(0, newValue), upper)
+        }
+    }
 
     // 文件
     private let startupPopup = NSPopUpButton()
@@ -83,7 +92,11 @@ final class PreferencesWindowController: NSWindowController {
         case field(String, NSView)
     }
 
-    init(styles: [StyleDefinition], themes: [ColorThemeInfo]) {
+    init(
+        styles: [StyleDefinition],
+        themes: [ColorThemeInfo],
+        initialSelectedPageIndex: Int = 0
+    ) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
             styleMask: [.titled, .closable],
@@ -191,7 +204,6 @@ final class PreferencesWindowController: NSWindowController {
         imageDirectoryField.bezelStyle = .roundedBezel
 
         // ---- 标签页（LyricsX 式：NSTabViewController + 工具栏样式） ----
-        let tabViewController = NSTabViewController()
         tabViewController.tabStyle = .toolbar
         let tabs: [(String, String, NSView)] = [
             (L10n.t("文件"), "doc.text", filePage()),
@@ -208,6 +220,7 @@ final class PreferencesWindowController: NSWindowController {
             item.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
             tabViewController.addTabViewItem(item)
         }
+        selectedPageIndex = initialSelectedPageIndex
         window.contentViewController = tabViewController
 
         // 数值字段：数字格式化并限制到 Windows 对应范围
