@@ -51,10 +51,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         // 应用保存的侧边栏宽度与视图状态（NSSplitView 不会自动给宽度；applyViewState 启动时不会自动跑）
         DispatchQueue.main.async { [weak self] in
             guard let self, let splitView = self.splitView else { return }
-            let saved = CGFloat(SettingsService.shared.settings.workspaceWidth)
-            if saved >= 160 {
-                splitView.setPosition(saved, ofDividerAt: 0)
-            }
+            let saved = SidebarLayout.clampedWorkspaceWidth(
+                SettingsService.shared.settings.workspaceWidth
+            )
+            splitView.setPosition(saved, ofDividerAt: 0)
             self.applyViewState()
         }
     }
@@ -153,9 +153,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBarHeight.isActive = true
 
         window.contentView = rootView
-        let sidebarWidth = SettingsService.shared.settings.workspaceWidth
+        let sidebarWidth = SidebarLayout.clampedWorkspaceWidth(
+            SettingsService.shared.settings.workspaceWidth
+        )
         window.setContentSize(NSSize(width: 1100 + sidebarWidth - 240, height: 760))
-        workspaceDividerPosition = CGFloat(sidebarWidth)
+        workspaceDividerPosition = sidebarWidth
     }
 
     /// 界面语言切换：刷新状态栏与侧边栏文案。
@@ -218,7 +220,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         // 侧边栏：平滑展开/收起（手动插值分隔线位置）
         if session.sidebarVisible {
             sidebar?.isHidden = false
-            let saved = max(CGFloat(SettingsService.shared.settings.workspaceWidth), 160)
+            let saved = SidebarLayout.clampedWorkspaceWidth(
+                SettingsService.shared.settings.workspaceWidth
+            )
             animateSidebar(to: saved) {}
         } else {
             sidebar?.isHidden = false
@@ -267,7 +271,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
            let splitView = container.superview as? NSSplitView,
            splitView.arrangedSubviews.count == 2 {
             let width = splitView.arrangedSubviews[0].frame.width
-            if width > 150 {
+            if width >= SidebarLayout.minimumWidth {
                 SettingsService.shared.update { $0.workspaceWidth = Int(width) }
             }
         }
@@ -276,13 +280,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
 extension EditorWindowController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        // 折叠动画期间允许收起到 0；平时保持 150 最小宽度
+        // 折叠动画期间允许收起到 0；平时保持可用最小宽度
         if isAnimatingSidebar { return 0 }
-        return max(proposedMinimumPosition, 150)
+        return max(proposedMinimumPosition, SidebarLayout.minimumWidth)
     }
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        min(proposedMaximumPosition, splitView.bounds.width - 420)
+        min(
+            proposedMaximumPosition,
+            SidebarLayout.maximumSidebarWidth(totalWidth: splitView.bounds.width)
+        )
     }
 
     func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
