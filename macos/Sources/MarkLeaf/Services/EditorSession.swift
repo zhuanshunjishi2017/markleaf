@@ -96,6 +96,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var recoveryTimer: Timer?
 
     private let snapshotRequests = SnapshotRequestQueue()
+    private let writeCoordinator = SerialWriteCoordinator()
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
     var pendingExportContext: ExportContext?
@@ -915,31 +916,44 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     private func writeCurrentDocument(to url: URL, completion: ((Bool) -> Void)? = nil) {
-        requestSnapshot { [weak self] result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let rawMarkdown):
-                    do {
-                        // 新建文件按设置写入换行风格；已打开文件保留原样
-                        var markdown = rawMarkdown
-                        if self?.documentURL == nil,
-                           SettingsService.shared.settings.newLineStyle == "crlf" {
-                            markdown = rawMarkdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
+        writeCoordinator.enqueue { [weak self] finish in
+            guard let self else {
+                completion?(false)
+                finish()
+                return
+            }
+            self.requestSnapshot { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else {
+                        completion?(false)
+                        finish()
+                        return
+                    }
+                    switch result {
+                    case .success(let rawMarkdown):
+                        do {
+                            // 新建文件按设置写入换行风格；已打开文件保留原样
+                            var markdown = rawMarkdown
+                            if self.documentURL == nil,
+                               SettingsService.shared.settings.newLineStyle == "crlf" {
+                                markdown = rawMarkdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
+                            }
+                            try markdown.write(to: url, atomically: true, encoding: .utf8)
+                            self.documentURL = url
+                            SettingsService.shared.update { $0.lastFile = url.path }
+                            self.isDirty = false
+                            self.statusText = L10n.t("已保存")
+                            AppLog.info("文档已保存: \(url.path)")
+                            completion?(true)
+                        } catch {
+                            self.presentError(L10n.f("保存失败：%@", error.localizedDescription))
+                            completion?(false)
                         }
-                        try markdown.write(to: url, atomically: true, encoding: .utf8)
-                        self?.documentURL = url
-                        SettingsService.shared.update { $0.lastFile = url.path }
-                        self?.isDirty = false
-                        self?.statusText = L10n.t("已保存")
-                        AppLog.info("文档已保存: \(url.path)")
-                        completion?(true)
-                    } catch {
-                        self?.presentError(L10n.f("保存失败：%@", error.localizedDescription))
+                    case .failure(let error):
+                        self.presentError(L10n.f("获取文档内容失败：%@", error.localizedDescription))
                         completion?(false)
                     }
-                case .failure(let error):
-                    self?.presentError(L10n.f("获取文档内容失败：%@", error.localizedDescription))
-                    completion?(false)
+                    finish()
                 }
             }
         }
