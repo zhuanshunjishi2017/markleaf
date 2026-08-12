@@ -4,12 +4,151 @@ import XCTest
 
 final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     @MainActor
+    func testWorkspaceTreeUsesFinderStyleSelectionRows() throws {
+        let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        let entry = WorkspaceEntry(name: "file.md", path: "/probe/file.md", isDirectory: false)
+
+        let rowView = try XCTUnwrap(outline.outlineView(outline, rowViewForItem: entry))
+
+        XCTAssertTrue(rowView is FinderWorkspaceRowView)
+        XCTAssertEqual(outline.selectionHighlightStyle, .none)
+        XCTAssertTrue(
+            FinderWorkspaceRowView.selectionColor.isEqual(NSColor.unemphasizedSelectedContentBackgroundColor)
+        )
+    }
+
+    @MainActor
+    func testDoubleClickOnActualDirectoryNameForwardsClickToDisclosureFrame() throws {
+        let dataSource = WorkspaceTreeProbeDataSource()
+        let outline = DisclosureRoutingWorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        outline.dataSource = dataSource
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = outline
+        window.makeKeyAndOrderFront(nil)
+        WorkspaceTreeTestRetention.objects.append(contentsOf: [window, outline, dataSource])
+
+        outline.reloadData()
+        outline.layoutSubtreeIfNeeded()
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        cell.layoutSubtreeIfNeeded()
+        let textField = try XCTUnwrap(cell.textField)
+        textField.layoutSubtreeIfNeeded()
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
+        XCTAssertFalse(outline.frameOfOutlineCell(atRow: 0).contains(point))
+        let windowPoint = outline.convert(point, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 2,
+            pressure: 1
+        ))
+        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp + 0.01,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 2,
+            pressure: 0
+        ))
+
+        NSApp.postEvent(mouseUp, atStart: true)
+        outline.mouseDown(with: mouseDown)
+
+        XCTAssertNotNil(outline.forwardedDisclosureButton)
+    }
+
+    @MainActor
+    func testDoubleClickOnActualDirectoryNameExpandsRow() throws {
+        let dataSource = WorkspaceTreeProbeDataSource()
+        let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        outline.dataSource = dataSource
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = outline
+        window.makeKeyAndOrderFront(nil)
+        WorkspaceTreeTestRetention.objects.append(contentsOf: [window, outline, dataSource])
+
+        outline.reloadData()
+        outline.layoutSubtreeIfNeeded()
+        let directoryItem = try XCTUnwrap(outline.item(atRow: 0))
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        let textField = try XCTUnwrap(cell.textField)
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
+        let windowPoint = outline.convert(point, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 2,
+            pressure: 1
+        ))
+        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp + 0.01,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 2,
+            pressure: 0
+        ))
+
+        NSApp.postEvent(mouseUp, atStart: true)
+        outline.mouseDown(with: mouseDown)
+
+        XCTAssertTrue(outline.isItemExpanded(directoryItem))
+    }
+
+    @MainActor
+    func testMarkdownFileCanBecomeSelectedAfterOpening() {
+        let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        let file = WorkspaceEntry(name: "file.md", path: "/probe/file.md", isDirectory: false)
+
+        XCTAssertTrue(outline.outlineView(outline, shouldSelectItem: file))
+    }
+
+    @MainActor
     func testMouseDownOnExpandedDirectoryNameKeepsRowExpanded() throws {
         let dataSource = WorkspaceTreeProbeDataSource()
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
         outline.dataSource = dataSource
-        outline.delegate = nil
 
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
@@ -26,8 +165,13 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         outline.expandItem(directoryItem)
         XCTAssertTrue(outline.isItemExpanded(directoryItem))
 
-        let rowRect = outline.rect(ofRow: 0)
-        let point = NSPoint(x: rowRect.maxX - 24, y: rowRect.midY)
+        outline.layoutSubtreeIfNeeded()
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        let textField = try XCTUnwrap(cell.textField)
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
         let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
@@ -120,7 +264,6 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
         outline.dataSource = dataSource
-        outline.delegate = nil
 
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
@@ -137,32 +280,18 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         outline.expandItem(directoryItem)
         XCTAssertTrue(outline.isItemExpanded(directoryItem))
 
-        let rowRect = outline.rect(ofRow: 0)
-        let point = NSPoint(x: rowRect.maxX - 24, y: rowRect.midY)
+        outline.layoutSubtreeIfNeeded()
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        cell.layoutSubtreeIfNeeded()
+        let textField = try XCTUnwrap(cell.textField)
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
+        XCTAssertFalse(outline.frameOfOutlineCell(atRow: 0).contains(point))
+        XCTAssertEqual(outline.row(at: point), 0)
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let firstMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1
-        ))
-        let firstMouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 1,
-            pressure: 0
-        ))
         let secondMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
             with: .leftMouseDown,
             location: windowPoint,
@@ -171,7 +300,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 3,
-            clickCount: 1,
+            clickCount: 2,
             pressure: 1
         ))
         let secondMouseUp = try XCTUnwrap(NSEvent.mouseEvent(
@@ -182,12 +311,13 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 4,
-            clickCount: 1,
+            clickCount: 2,
             pressure: 0
         ))
+        let eventPoint = outline.convert(secondMouseDown.locationInWindow, from: nil)
+        XCTAssertEqual(outline.row(at: eventPoint), 0)
+        XCTAssertFalse(outline.frameOfOutlineCell(atRow: 0).contains(eventPoint))
 
-        NSApp.postEvent(firstMouseUp, atStart: true)
-        outline.mouseDown(with: firstMouseDown)
         NSApp.postEvent(secondMouseUp, atStart: true)
         outline.mouseDown(with: secondMouseDown)
 
@@ -200,7 +330,6 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         let outline = DisclosureRoutingWorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
         outline.dataSource = dataSource
-        outline.delegate = nil
 
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
@@ -213,8 +342,13 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         WorkspaceTreeTestRetention.objects.append(contentsOf: [window, outline, dataSource])
 
         outline.reloadData()
-        let rowRect = outline.rect(ofRow: 0)
-        let point = NSPoint(x: rowRect.maxX - 24, y: rowRect.midY)
+        outline.layoutSubtreeIfNeeded()
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        let textField = try XCTUnwrap(cell.textField)
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
         let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
@@ -243,9 +377,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         NSApp.postEvent(mouseUp, atStart: true)
         outline.mouseDown(with: mouseDown)
 
-        let forwardedEvent = try XCTUnwrap(outline.forwardedDisclosureMouseDown)
-        let forwardedPoint = outline.convert(forwardedEvent.locationInWindow, from: nil)
-        XCTAssertTrue(outline.frameOfOutlineCell(atRow: 0).contains(forwardedPoint))
+        XCTAssertNotNil(outline.forwardedDisclosureButton)
     }
 
     @MainActor
@@ -254,7 +386,6 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
         outline.dataSource = dataSource
-        outline.delegate = nil
 
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
@@ -272,8 +403,13 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         _ = try XCTUnwrap(directoryItem as? WorkspaceEntry)
         XCTAssertFalse(outline.isItemExpanded(directoryItem))
 
-        let rowRect = outline.rect(ofRow: 0)
-        let point = NSPoint(x: rowRect.maxX - 24, y: rowRect.midY)
+        outline.layoutSubtreeIfNeeded()
+        let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        let textField = try XCTUnwrap(cell.textField)
+        let point = outline.convert(
+            NSPoint(x: textField.bounds.midX, y: textField.bounds.midY),
+            from: textField
+        )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
         let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
@@ -364,10 +500,10 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
 }
 
 private final class DisclosureRoutingWorkspaceTreeView: WorkspaceTreeView {
-    var forwardedDisclosureMouseDown: NSEvent?
+    var forwardedDisclosureButton: NSButton?
 
-    override func performNativeDisclosureMouseDown(_ event: NSEvent) {
-        forwardedDisclosureMouseDown = event
+    override func performNativeDisclosureClick(_ disclosureButton: NSButton) {
+        forwardedDisclosureButton = disclosureButton
     }
 }
 

@@ -224,6 +224,24 @@ final class SidebarView: NSView {
 
 // MARK: - 工作区文件树
 
+final class FinderWorkspaceRowView: NSTableRowView {
+    static let selectionColor = NSColor.unemphasizedSelectedContentBackgroundColor
+    static let horizontalInset: CGFloat = 5
+    static let verticalInset: CGFloat = 2
+    static let cornerRadius: CGFloat = 7
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard isSelected else { return }
+        Self.selectionColor.setFill()
+        NSBezierPath(
+            roundedRect: bounds.insetBy(dx: Self.horizontalInset, dy: Self.verticalInset),
+            xRadius: Self.cornerRadius,
+            yRadius: Self.cornerRadius
+        ).fill()
+    }
+}
+
 class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private weak var session: EditorSession?
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
@@ -243,7 +261,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         dataSource = self
         delegate = self
         rowSizeStyle = .medium
-        selectionHighlightStyle = .sourceList
+        selectionHighlightStyle = .none
         rowHeight = 26
         backgroundColor = .clear
         columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -283,46 +301,34 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         if !clickedDirectoryName {
             lastDirectoryNameClick = nil
         }
+        if let row = directoryRowToToggle {
+            performNativeDisclosureClick(atRow: row)
+            return
+        }
         super.mouseDown(with: event)
-        guard let row = directoryRowToToggle else { return }
-        performNativeDisclosureClick(atRow: row, sourceEvent: event)
     }
 
     /// 将目录名称点击转发到系统 disclosure control，复用三角按钮原生展开/收起动画。
-    private func performNativeDisclosureClick(atRow row: Int, sourceEvent: NSEvent) {
+    private func performNativeDisclosureClick(atRow row: Int) {
         let outlineFrame = frameOfOutlineCell(atRow: row)
-        guard !outlineFrame.isEmpty, let window else { return }
-        let outlinePoint = NSPoint(x: outlineFrame.midX, y: outlineFrame.midY)
-        let windowPoint = convert(outlinePoint, to: nil)
-        let timestamp = ProcessInfo.processInfo.systemUptime
-        guard let mouseDown = NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: sourceEvent.modifierFlags,
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: sourceEvent.eventNumber + 1,
-            clickCount: 1,
-            pressure: 1
-        ), let mouseUp = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: sourceEvent.modifierFlags,
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: sourceEvent.eventNumber + 2,
-            clickCount: 1,
-            pressure: 0
-        ) else { return }
-
-        NSApp.postEvent(mouseUp, atStart: true)
-        performNativeDisclosureMouseDown(mouseDown)
+        guard !outlineFrame.isEmpty,
+              let item = item(atRow: row)
+        else { return }
+        let wasExpanded = isItemExpanded(item)
+        if let disclosureButton = hitTest(NSPoint(x: outlineFrame.midX, y: outlineFrame.midY)) as? NSButton {
+            disclosureButton.state = wasExpanded ? .on : .off
+            performNativeDisclosureClick(disclosureButton)
+            if isItemExpanded(item) != wasExpanded { return }
+        }
+        if wasExpanded {
+            collapseItem(item)
+        } else {
+            expandItem(item)
+        }
     }
 
-    func performNativeDisclosureMouseDown(_ event: NSEvent) {
-        super.mouseDown(with: event)
+    func performNativeDisclosureClick(_ disclosureButton: NSButton) {
+        disclosureButton.performClick(nil)
     }
 
     override func reloadData() {
@@ -362,6 +368,10 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     // MARK: - Delegate
 
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        FinderWorkspaceRowView()
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let entry = item as? WorkspaceEntry else { return nil }
         let id = NSUserInterfaceItemIdentifier("cell")
@@ -397,7 +407,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         if let entry = item as? WorkspaceEntry, !entry.isDirectory {
             session?.openWorkspaceEntry(entry)
         }
-        return (item as? WorkspaceEntry)?.isDirectory == true
+        return item is WorkspaceEntry
     }
 
     func outlineView(_ outlineView: NSOutlineView, menuFor event: NSEvent) -> NSMenu? {
