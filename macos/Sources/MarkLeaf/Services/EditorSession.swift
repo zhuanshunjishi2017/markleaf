@@ -44,6 +44,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     var onWorkspaceChanged: (() -> Void)?
     var onOutlineChanged: (() -> Void)?
+    var onOutlineSelectionChanged: (() -> Void)?
     var onStylesReady: (() -> Void)?
     var onExportComplete: ((Bool) -> Void)?
     var onViewStateChanged: (() -> Void)?
@@ -212,8 +213,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "outlineSelectionChanged":
             if let position = payload?["position"] as? Int {
                 activeOutlinePosition = position
-                onOutlineChanged?()
+            } else {
+                activeOutlinePosition = nil
             }
+            onOutlineSelectionChanged?()
 
         case "contextMenuRequested":
             if let payload, let x = payload["clientX"] as? Double, let y = payload["clientY"] as? Double {

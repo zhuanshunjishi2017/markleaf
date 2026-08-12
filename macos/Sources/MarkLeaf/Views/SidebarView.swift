@@ -90,7 +90,9 @@ final class SidebarView: NSView {
 
         containerView.translatesAutoresizingMaskIntoConstraints = false
         workspaceTree.configure(session: session)
-        outlineTree.configure(session: session)
+        outlineTree.configure(session: session) { [weak session] heading in
+            session?.scrollToPosition(heading.position)
+        }
 
         // 树放入滚动容器，Auto Layout 固定填满；两棵常驻，用 isHidden 切换
         workspaceScroll.documentView = workspaceTree
@@ -135,6 +137,9 @@ final class SidebarView: NSView {
         }
         session.onOutlineChanged = { [weak self] in
             DispatchQueue.main.async { self?.outlineChanged() }
+        }
+        session.onOutlineSelectionChanged = { [weak self] in
+            DispatchQueue.main.async { self?.outlineSelectionChanged() }
         }
         applyLanguage()
         showTab(session.sidebarTabIndex, persist: false)
@@ -216,7 +221,11 @@ final class SidebarView: NSView {
     }
 
     private func outlineChanged() {
-        outlineTree.reloadData()
+        outlineTree.reloadData(activePosition: session.activeOutlinePosition)
+    }
+
+    private func outlineSelectionChanged() {
+        outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
     }
 
     @objc private func openFolder() {
@@ -571,9 +580,17 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     static let headingLeadingConstraintIdentifier = "OutlineHeadingLeading"
     private weak var session: EditorSession?
+    private var onHeadingActivated: ((OutlineHeading) -> Void)?
+    private var isSynchronizingSelection = false
 
-    func configure(session: EditorSession) {
+    func configure(
+        session: EditorSession,
+        onHeadingActivated: ((OutlineHeading) -> Void)? = nil
+    ) {
         self.session = session
+        self.onHeadingActivated = onHeadingActivated ?? { [weak session] heading in
+            session?.scrollToPosition(heading.position)
+        }
         let column = NSTableColumn(identifier: .init("heading"))
         column.title = ""
         addTableColumn(column)
@@ -582,6 +599,25 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         dataSource = self
         delegate = self
         SidebarTreePresentation.apply(to: self)
+    }
+
+    func synchronizeSelection(to position: Int?) {
+        isSynchronizingSelection = true
+        defer { isSynchronizingSelection = false }
+        guard let position,
+              let row = (0..<numberOfRows).first(where: {
+                  (item(atRow: $0) as? OutlineHeading)?.position == position
+              })
+        else {
+            deselectAll(nil)
+            return
+        }
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+
+    func reloadData(activePosition: Int?) {
+        super.reloadData()
+        synchronizeSelection(to: activePosition)
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
@@ -631,10 +667,15 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        if let heading = item as? OutlineHeading {
-            session?.scrollToPosition(heading.position)
-        }
-        return item is OutlineHeading
+        item is OutlineHeading
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard !isSynchronizingSelection,
+              selectedRow >= 0,
+              let heading = item(atRow: selectedRow) as? OutlineHeading
+        else { return }
+        onHeadingActivated?(heading)
     }
 
 }
