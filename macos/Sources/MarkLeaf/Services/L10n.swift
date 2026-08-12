@@ -167,7 +167,7 @@ enum L10n {
         "是否保存对“%@”的修改？": "「%@」への変更を保存しますか？",
         "请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。": "colors-*.css ファイルを選択してください。内容には @type: color-theme マーカーか、解析可能な色変数が少なくとも 1 つ必要です。",
         "打开文件夹": "フォルダを開く",
-        "暂未打开工作区\n点击“打开文件夹”开始": "ワークスペースはまだ開かれていません\n「フォルダを開く」をクリックして開始",
+        "暂未打开工作区": "ワークスペースはまだ開かれていません",
         "就绪": "準備完了",
         "未命名": "無題",
         "已保存": "保存済み",
@@ -524,7 +524,7 @@ enum L10n {
         "请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。": "請選擇 colors-*.css 檔案，且內容需包含 @type: color-theme 標記或至少一個可解析的顏色變數。",
         // 侧边栏
         "打开文件夹": "開啟資料夾",
-        "暂未打开工作区\n点击“打开文件夹”开始": "尚未開啟工作區\n按一下「開啟資料夾」開始",
+        "暂未打开工作区": "尚未開啟工作區",
         // 状态/窗口
         "就绪": "就緒",
         "未命名": "未命名",
@@ -880,7 +880,7 @@ enum L10n {
         "是否保存对“%@”的修改？": "Do you want to save the changes to “%@”?",
         "请选择 colors-*.css 文件，且内容需包含 @type: color-theme 标记或至少一个可解析的颜色变量。": "Please choose a colors-*.css file whose content contains the @type: color-theme marker or at least one parseable color variable.",
         "打开文件夹": "Open Folder",
-        "暂未打开工作区\n点击“打开文件夹”开始": "No workspace open\nClick “Open Folder” to start",
+        "暂未打开工作区": "No workspace open",
         "就绪": "Ready",
         "未命名": "Untitled",
         "已保存": "Saved",
