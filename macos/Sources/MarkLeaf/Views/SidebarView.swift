@@ -174,7 +174,7 @@ final class SidebarView: NSView {
 
 // MARK: - 工作区文件树
 
-final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
+class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private weak var session: EditorSession?
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
     /// 进行中的子目录扫描（强引用，避免扫描器在异步任务执行前被释放导致子目录永远不加载）。
@@ -182,6 +182,7 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
+    private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
     func configure(session: EditorSession) {
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
@@ -203,27 +204,75 @@ final class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutline
         reloadData()
     }
 
-    /// 树形模式：单击目录行即展开/收起（点三角仍走系统逻辑），对齐 Windows 工作区树交互。
+    /// 树形模式：目录名称双击切换展开/收起，三角按钮保留系统单击行为。
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
-        var directoryItemToToggle: Any?
+        var directoryRowToToggle: Int?
+        var clickedDirectoryName = false
         if row >= 0, !listMode,
            let item = item(atRow: row),
            let entry = item as? WorkspaceEntry, entry.isDirectory {
             let outlineFrame = frameOfOutlineCell(atRow: row)
-            // 单击切换展开/收起；双击的第二次点击不再反向切换，保证双击也有稳定响应
-            if !outlineFrame.contains(point), event.clickCount == 1 {
-                directoryItemToToggle = item
+            // 名称单击只选择，双击才切换展开状态；三角按钮仍保留系统单击行为。
+            if !outlineFrame.contains(point) {
+                clickedDirectoryName = true
+                let isRepeatedClick = lastDirectoryNameClick.map {
+                    let elapsed = event.timestamp - $0.timestamp
+                    return $0.path == entry.path && elapsed >= 0 && elapsed <= NSEvent.doubleClickInterval
+                } ?? false
+                let isSecondClick = event.clickCount >= 2 || isRepeatedClick
+                if isSecondClick {
+                    directoryRowToToggle = row
+                    lastDirectoryNameClick = nil
+                } else {
+                    lastDirectoryNameClick = (entry.path, event.timestamp)
+                }
             }
         }
-        super.mouseDown(with: event)
-        guard let item = directoryItemToToggle else { return }
-        if isItemExpanded(item) {
-            collapseItem(item)
-        } else {
-            expandItem(item)
+        if !clickedDirectoryName {
+            lastDirectoryNameClick = nil
         }
+        super.mouseDown(with: event)
+        guard let row = directoryRowToToggle else { return }
+        performNativeDisclosureClick(atRow: row, sourceEvent: event)
+    }
+
+    /// 将目录名称点击转发到系统 disclosure control，复用三角按钮原生展开/收起动画。
+    private func performNativeDisclosureClick(atRow row: Int, sourceEvent: NSEvent) {
+        let outlineFrame = frameOfOutlineCell(atRow: row)
+        guard !outlineFrame.isEmpty, let window else { return }
+        let outlinePoint = NSPoint(x: outlineFrame.midX, y: outlineFrame.midY)
+        let windowPoint = convert(outlinePoint, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        guard let mouseDown = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: sourceEvent.modifierFlags,
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: sourceEvent.eventNumber + 1,
+            clickCount: 1,
+            pressure: 1
+        ), let mouseUp = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: sourceEvent.modifierFlags,
+            timestamp: timestamp + 0.01,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: sourceEvent.eventNumber + 2,
+            clickCount: 1,
+            pressure: 0
+        ) else { return }
+
+        NSApp.postEvent(mouseUp, atStart: true)
+        performNativeDisclosureMouseDown(mouseDown)
+    }
+
+    func performNativeDisclosureMouseDown(_ event: NSEvent) {
+        super.mouseDown(with: event)
     }
 
     override func reloadData() {
