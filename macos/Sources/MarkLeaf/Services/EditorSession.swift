@@ -88,6 +88,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var didRunInitialLoad = false
     private var pendingInitialOpenPath: String?
     private var useStartupAction = false
+    private let documentDisposition = DocumentDispositionCoordinator()
     private(set) var isReady = false
 
     var windowTitle: String {
@@ -790,8 +791,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func openDocument(at url: URL) {
-        confirmDiscardOrSave { [weak self] proceed in
-            guard proceed, let self else { return }
+        requestDisposition(for: .replaceDocument) { [weak self] result in
+            guard result == .proceed, let self else { return }
             self.performOpenDocument(at: url)
         }
     }
@@ -808,59 +809,88 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
-    /// 对齐 Windows ConfirmDiscardOrSaveAsync：切换文档前处理未保存修改。
-    /// 开启「切换文档时自动保存」且已有文件路径 → 直接保存；否则弹 保存/不保存/取消。
-    private func confirmDiscardOrSave(completion: @escaping (Bool) -> Void) {
-        guard isDirty else { completion(true); return }
-        let settings = SettingsService.shared.settings
-        if settings.saveOnDocumentSwitch, let fileURL = documentURL {
-            writeCurrentDocument(to: fileURL) { success in
-                completion(success)
-            }
-            return
-        }
-        guard let window = webView?.window else { completion(true); return }
-        let alert = NSAlert()
-        alert.messageText = L10n.f("是否保存对“%@”的修改？", windowTitle)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.t("保存"))
-        alert.addButton(withTitle: L10n.t("不保存"))
-        alert.addButton(withTitle: L10n.t("取消"))
-        alert.beginSheetModal(for: window) { [weak self] response in
-            switch response {
-            case .alertFirstButtonReturn:
+    /// 统一未保存文档处置：关闭/替换/退出共用同一协调器。
+    @discardableResult
+    func requestDisposition(
+        for reason: DocumentDispositionReason,
+        completion: @escaping (DocumentDispositionResult) -> Void
+    ) -> Bool {
+        documentDisposition.request(
+            isDirty: isDirty,
+            hasFileURL: documentURL != nil,
+            reason: reason,
+            settings: SettingsService.shared.settings,
+            saveExisting: { [weak self] finish in
                 guard let self, let fileURL = self.documentURL else {
-                    completion(false)
+                    finish(false)
                     return
                 }
-                self.writeCurrentDocument(to: fileURL) { success in
-                    completion(success)
+                self.writeCurrentDocument(to: fileURL, completion: finish)
+            },
+            saveAs: { [weak self] finish in
+                self?.saveDocumentAs(completion: finish)
+            },
+            presentSavedPrompt: { [weak self] finish in
+                guard let self, let window = self.webView?.window else {
+                    finish(.cancel)
+                    return
                 }
-            case .alertSecondButtonReturn:
-                completion(true)
-            default:
-                completion(false)
-            }
-        }
+                let alert = NSAlert()
+                alert.messageText = L10n.f("是否保存对“%@”的修改？", self.windowTitle)
+                alert.informativeText = L10n.t("如果不保存，您的更改将会丢失。")
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: L10n.t("保存"))
+                alert.addButton(withTitle: L10n.t("取消"))
+                alert.addButton(withTitle: L10n.t("不保存"))
+                alert.beginSheetModal(for: window) { response in
+                    switch response {
+                    case .alertFirstButtonReturn: finish(.save)
+                    case .alertSecondButtonReturn: finish(.cancel)
+                    default: finish(.discard)
+                    }
+                }
+            },
+            presentUntitledPrompt: { [weak self] finish in
+                guard let self, let window = self.webView?.window else {
+                    finish(.cancel)
+                    return
+                }
+                let alert = NSAlert()
+                alert.messageText = L10n.t("是否保留这个新文档？")
+                alert.informativeText = L10n.t("如果不保存，这个文档将被删除。")
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: L10n.t("保存…"))
+                alert.addButton(withTitle: L10n.t("取消"))
+                alert.addButton(withTitle: L10n.t("删除"))
+                alert.beginSheetModal(for: window) { response in
+                    switch response {
+                    case .alertFirstButtonReturn: finish(.saveAs)
+                    case .alertSecondButtonReturn: finish(.cancel)
+                    default: finish(.delete)
+                    }
+                }
+            },
+            completion: completion
+        )
     }
 
-    func saveDocument() {
+    func saveDocument(completion: ((Bool) -> Void)? = nil) {
         if let url = documentURL {
-            writeCurrentDocument(to: url)
+            writeCurrentDocument(to: url, completion: completion)
         } else {
-            saveDocumentAs()
+            saveDocumentAs(completion: completion)
         }
     }
 
-    func saveDocumentAs() {
+    func saveDocumentAs(completion: ((Bool) -> Void)? = nil) {
         let panel = NSSavePanel()
         panel.title = L10n.t("保存 Markdown 文档")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
         panel.nameFieldStringValue = documentURL?.lastPathComponent ?? L10n.t("未命名.md")
-        guard let window = webView?.window else { return }
+        guard let window = webView?.window else { completion?(false); return }
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.writeCurrentDocument(to: url)
+            guard response == .OK, let url = panel.url else { completion?(false); return }
+            self?.writeCurrentDocument(to: url, completion: completion)
         }
     }
 
