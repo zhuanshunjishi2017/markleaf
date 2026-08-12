@@ -42,6 +42,32 @@ final class WorkspaceMovePolicyTests: XCTestCase {
         }
     }
 
+    func testKeepingFileInSameSidebarFolderIsANoOp() throws {
+        let source = root.appendingPathComponent("note.md")
+        try Data("note".utf8).write(to: source)
+
+        let disposition = try WorkspaceMovePolicy.disposition(
+            source: source,
+            targetDirectory: root,
+            workspaceRoot: root
+        )
+
+        XCTAssertEqual(disposition, .noOp)
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "note")
+    }
+
+    func testNoOpClassificationDoesNotHideAMissingSource() throws {
+        let missingSource = root.appendingPathComponent("missing.md")
+
+        XCTAssertThrowsError(try WorkspaceMovePolicy.disposition(
+            source: missingSource,
+            targetDirectory: root,
+            workspaceRoot: root
+        )) { error in
+            XCTAssertEqual(error as? WorkspaceMoveError, .missingSource)
+        }
+    }
+
     func testExistingDestinationIsNeverOverwritten() throws {
         let source = root.appendingPathComponent("note.md")
         let targetDirectory = root.appendingPathComponent("archive", isDirectory: true)

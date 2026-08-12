@@ -9,7 +9,30 @@ enum WorkspaceMoveError: Error, Equatable {
     case destinationExists
 }
 
+enum WorkspaceMoveDisposition: Equatable {
+    case noOp
+    case move(URL)
+}
+
 enum WorkspaceMovePolicy {
+    static func disposition(
+        source: URL,
+        targetDirectory: URL,
+        workspaceRoot: URL,
+        fileManager: FileManager = .default
+    ) throws -> WorkspaceMoveDisposition {
+        do {
+            return .move(try destination(
+                source: source,
+                targetDirectory: targetDirectory,
+                workspaceRoot: workspaceRoot,
+                fileManager: fileManager
+            ))
+        } catch WorkspaceMoveError.sameParent {
+            return .noOp
+        }
+    }
+
     static func destination(
         source: URL,
         targetDirectory: URL,

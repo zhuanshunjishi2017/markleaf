@@ -963,11 +963,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     @discardableResult
     func moveWorkspaceEntry(from sourceURL: URL, toDirectory targetDirectory: URL) throws -> URL {
         guard let workspaceRoot else { throw WorkspaceMoveError.outsideWorkspace }
-        let destination = try WorkspaceMovePolicy.destination(
+        let disposition = try WorkspaceMovePolicy.disposition(
             source: sourceURL,
             targetDirectory: targetDirectory,
             workspaceRoot: URL(fileURLWithPath: workspaceRoot, isDirectory: true)
         )
+        guard case .move(let destination) = disposition else {
+            return sourceURL.standardizedFileURL.resolvingSymlinksInPath()
+        }
         let movesOpenDocument = documentURL?.standardizedFileURL == sourceURL.standardizedFileURL
         if movesOpenDocument { stopExternalChangeWatch() }
         do {
