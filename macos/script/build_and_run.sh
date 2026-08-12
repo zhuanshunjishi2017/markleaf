@@ -6,11 +6,13 @@
 #   ./script/build_and_run.sh --logs          # 运行并流式查看进程日志
 #   ./script/build_and_run.sh --telemetry     # 运行并按 subsystem 过滤统一日志
 #   ./script/build_and_run.sh --verify        # 运行并验证进程存在
+#   ./script/build_and_run.sh --build-only    # 仅构建打包，不启动应用（适合 CI/受限环境）
 #   ./script/build_and_run.sh -- --open file.md    # 将额外参数透传给应用
 set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="MarkLeaf"
+APP_VERSION="1.1.6"
 BUNDLE_ID="com.markleaf.app"
 MIN_SYSTEM_VERSION="13.0"
 
@@ -75,9 +77,9 @@ cat > "$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.1.5</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1.1.5</string>
+  <string>$APP_VERSION</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
@@ -161,8 +163,11 @@ case "$MODE" in
       exit 1
     fi
     ;;
+  --build-only|build-only)
+    echo "[build] 已完成构建，不启动 $APP_NAME"
+    ;;
   *)
-    echo "用法: $0 [run|--debug|--logs|--telemetry|--verify] [-- args...]" >&2
+    echo "用法: $0 [run|--debug|--logs|--telemetry|--verify|--build-only] [-- args...]" >&2
     exit 2
     ;;
 esac
