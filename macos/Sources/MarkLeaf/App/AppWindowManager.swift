@@ -317,9 +317,12 @@ final class AppWindowManager {
         preferencesController?.syncFollowSystemThemeState()
     }
 
-    /// 打开「更新内容」（对应 Windows ShowChangelog：复制到可写缓存目录后在当前窗口打开）。
+    /// 打开「更新内容」（对应 Windows ShowChangelog：按语言复制到可写缓存目录后在当前窗口打开）。
     func openChangelog() {
-        guard let source = Bundle.main.url(forResource: "changelog", withExtension: "txt", subdirectory: "Changelog") else {
+        guard let source = ChangelogResource.bundledURL(
+            in: Bundle.main,
+            displayLanguage: SettingsService.shared.settings.displayLanguage
+        ) else {
             activeSession?.statusText = L10n.t("无法打开更新内容")
             return
         }
@@ -327,7 +330,7 @@ final class AppWindowManager {
             ?? FileManager.default.homeDirectoryForCurrentUser
         let cacheDir = base.appendingPathComponent("MarkLeaf/Cache", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        let target = cacheDir.appendingPathComponent("changelog.txt")
+        let target = ChangelogResource.cachedURL(for: source, cacheDirectory: cacheDir)
         do {
             try? FileManager.default.removeItem(at: target)
             try FileManager.default.copyItem(at: source, to: target)
