@@ -29,6 +29,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         // 应用已保存的视图状态
         session.sidebarVisible = SettingsService.shared.settings.sidebarVisible
         session.statusBarVisible = SettingsService.shared.settings.statusBarVisible
+        session.sidebarTabIndex = SettingsService.shared.settings.sidebarTab == "outline" ? 1 : 0
         window.setFrameAutosaveName("MarkLeafMainWindow")
         window.center()
         super.init(window: window)

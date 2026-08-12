@@ -23,4 +23,28 @@ final class AppSettingsFollowSystemTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
         XCTAssertTrue(decoded.followSystemTheme)
     }
+
+    func testThemeDefaultsAndSidebarTabUseBackwardCompatibleDefaults() throws {
+        let data = Data("{\"schemaVersion\":3}".utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(settings.defaultLightThemeID, "colors-white-only")
+        XCTAssertEqual(settings.defaultDarkThemeID, "colors-dark")
+        XCTAssertEqual(settings.sidebarTab, "workspace")
+    }
+
+    func testThemeDefaultsAndSidebarTabRoundTrip() throws {
+        var settings = AppSettings()
+        settings.defaultLightThemeID = "colors-morandi"
+        settings.defaultDarkThemeID = "colors-forest"
+        settings.sidebarTab = "outline"
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.defaultLightThemeID, "colors-morandi")
+        XCTAssertEqual(decoded.defaultDarkThemeID, "colors-forest")
+        XCTAssertEqual(decoded.sidebarTab, "outline")
+    }
 }

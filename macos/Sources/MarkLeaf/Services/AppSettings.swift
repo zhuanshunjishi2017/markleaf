@@ -21,6 +21,8 @@ struct AppSettings: Codable {
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
         autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? false
         followSystemTheme = try container.decodeIfPresent(Bool.self, forKey: .followSystemTheme) ?? true
+        defaultLightThemeID = try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "colors-white-only"
+        defaultDarkThemeID = try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "colors-dark"
         visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.6
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
@@ -78,6 +80,8 @@ struct AppSettings: Codable {
     var autoHideScrollbars = false
     /// 与操作系统同步：系统浅色/深色自动使用默认浅色/深色主题（对齐 Windows「跟随系统颜色模式」）。
     var followSystemTheme = true
+    var defaultLightThemeID = "colors-white-only"
+    var defaultDarkThemeID = "colors-dark"
 
     // 编辑器
     var visualLineHeight: Double = 1.6

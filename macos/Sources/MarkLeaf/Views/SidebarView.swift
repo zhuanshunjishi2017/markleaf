@@ -6,6 +6,7 @@ final class SidebarView: NSView {
 
     let session: EditorSession
     private let localize: (String) -> String
+    private let persistSidebarTab: (String) -> Void
 
     let tabControl: NSSegmentedControl
     let headerOpenFolderButton = NSButton()
@@ -20,10 +21,16 @@ final class SidebarView: NSView {
 
     init(
         session: EditorSession,
+        persistSidebarTab: @escaping (String) -> Void = { tab in
+            if SettingsService.shared.settings.sidebarTab != tab {
+                SettingsService.shared.update { $0.sidebarTab = tab }
+            }
+        },
         localize: @escaping (String) -> String = { L10n.t($0) }
     ) {
         self.session = session
         self.localize = localize
+        self.persistSidebarTab = persistSidebarTab
         tabControl = NSSegmentedControl(
             labels: [localize("工作区"), localize("大纲")],
             trackingMode: .selectOne,
@@ -130,7 +137,7 @@ final class SidebarView: NSView {
             DispatchQueue.main.async { self?.outlineChanged() }
         }
         applyLanguage()
-        showTab(0)
+        showTab(session.sidebarTabIndex, persist: false)
     }
 
     required init?(coder: NSCoder) {
@@ -169,10 +176,14 @@ final class SidebarView: NSView {
         showTab(tabControl.selectedSegment)
     }
 
-    private func showTab(_ index: Int) {
+    private func showTab(_ index: Int, persist: Bool = true) {
         tabControl.selectedSegment = index
         // 先同步会话标签索引：workspaceChanged/outlineChanged 会读取它判断占位文案
         session.sidebarTabIndex = index
+        if persist {
+            let tab = index == 1 ? "outline" : "workspace"
+            persistSidebarTab(tab)
+        }
         let workspaceActive = index == 0
         headerOpenFolderButton.isHidden = !workspaceActive
         updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
@@ -297,6 +308,22 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         super.mouseDown(with: event)
     }
 
+    override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        super.mouseUp(with: event)
+        guard event.type == .leftMouseUp,
+              row >= 0,
+              let entry = item(atRow: row) as? WorkspaceEntry,
+              !entry.isDirectory
+        else { return }
+        activateWorkspaceEntry(entry)
+    }
+
+    func activateWorkspaceEntry(_ entry: WorkspaceEntry) {
+        session?.openWorkspaceEntry(entry)
+    }
+
     /// 将目录名称点击转发到系统 disclosure control，复用三角按钮原生展开/收起动画。
     private func performNativeDisclosureClick(atRow row: Int) {
         let outlineFrame = frameOfOutlineCell(atRow: row)
@@ -393,9 +420,6 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        if let entry = item as? WorkspaceEntry, !entry.isDirectory {
-            session?.openWorkspaceEntry(entry)
-        }
         return item is WorkspaceEntry
     }
 

@@ -1,5 +1,19 @@
 import AppKit
 
+struct ThemeDefaultsSelectionModel {
+    let lightThemes: [ColorThemeInfo]
+    let darkThemes: [ColorThemeInfo]
+    let selectedLightIndex: Int
+    let selectedDarkIndex: Int
+
+    init(themes: [ColorThemeInfo], selectedLightID: String, selectedDarkID: String) {
+        lightThemes = themes.filter { !$0.isDark }
+        darkThemes = themes.filter(\.isDark)
+        selectedLightIndex = lightThemes.firstIndex(where: { $0.id == selectedLightID }) ?? 0
+        selectedDarkIndex = darkThemes.firstIndex(where: { $0.id == selectedDarkID }) ?? 0
+    }
+}
+
 /// 偏好设置窗口：LyricsX 式顶部标签页（NSTabViewController + 工具栏样式）。
 /// 完整对应 Windows PreferencesDialog 的 5 个分类（文件/编辑器/外观/通用/图片），即时生效。
 final class PreferencesWindowController: NSWindowController {
@@ -31,6 +45,8 @@ final class PreferencesWindowController: NSWindowController {
     private let ctrlWheelZoomCheck = NSButton(checkboxWithTitle: L10n.t("使用 ⌘ + 滚轮进行缩放"), target: nil, action: nil)
     private let topMostCheck = NSButton(checkboxWithTitle: L10n.t("将窗口置于顶层"), target: nil, action: nil)
     private let followSystemCheck = NSButton(checkboxWithTitle: L10n.t("与操作系统同步"), target: nil, action: nil)
+    private let defaultLightThemePopup = NSPopUpButton()
+    private let defaultDarkThemePopup = NSPopUpButton()
     private let themeRow: NSStackView = {
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -53,6 +69,8 @@ final class PreferencesWindowController: NSWindowController {
 
     private var styleIDs: [String] = []
     private var themeIDs: [String] = []
+    private var defaultLightThemeIDs: [String] = []
+    private var defaultDarkThemeIDs: [String] = []
 
 
     /// 表单网格行：组标题 / 提示 / 标签+控件
@@ -116,6 +134,19 @@ final class PreferencesWindowController: NSWindowController {
         topMostCheck.state = settings.topMostWindow ? .on : .off
         followSystemCheck.state = settings.followSystemTheme ? .on : .off
         themePopup.isEnabled = !settings.followSystemTheme
+        let themeDefaults = ThemeDefaultsSelectionModel(
+            themes: themes,
+            selectedLightID: settings.defaultLightThemeID,
+            selectedDarkID: settings.defaultDarkThemeID
+        )
+        defaultLightThemeIDs = themeDefaults.lightThemes.map(\.id)
+        defaultDarkThemeIDs = themeDefaults.darkThemes.map(\.id)
+        defaultLightThemePopup.addItems(withTitles: themeDefaults.lightThemes.map { L10n.t($0.displayName) })
+        defaultDarkThemePopup.addItems(withTitles: themeDefaults.darkThemes.map { L10n.t($0.displayName) })
+        if !defaultLightThemeIDs.isEmpty { defaultLightThemePopup.selectItem(at: themeDefaults.selectedLightIndex) }
+        if !defaultDarkThemeIDs.isEmpty { defaultDarkThemePopup.selectItem(at: themeDefaults.selectedDarkIndex) }
+        defaultLightThemePopup.isEnabled = settings.followSystemTheme
+        defaultDarkThemePopup.isEnabled = settings.followSystemTheme
 
         // i18n：简体中文 / 繁體中文 / English
         let currentLang = settings.displayLanguage
@@ -180,6 +211,7 @@ final class PreferencesWindowController: NSWindowController {
         // 绑定
         let controls: [NSControl] = [startupPopup, autoSaveCheck, saveOnSwitchCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
+                                     defaultLightThemePopup, defaultDarkThemePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
@@ -252,6 +284,8 @@ final class PreferencesWindowController: NSWindowController {
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
             .field(L10n.t("颜色主题"), themeRow),
+            .field(L10n.t("默认浅色主题"), defaultLightThemePopup),
+            .field(L10n.t("默认深色主题"), defaultDarkThemePopup),
             .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
             .header(L10n.t("窗口设置")),
@@ -298,6 +332,8 @@ final class PreferencesWindowController: NSWindowController {
     func syncFollowSystemThemeState() {
         followSystemCheck.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         themePopup.isEnabled = !SettingsService.shared.settings.followSystemTheme
+        defaultLightThemePopup.isEnabled = SettingsService.shared.settings.followSystemTheme
+        defaultDarkThemePopup.isEnabled = SettingsService.shared.settings.followSystemTheme
     }
 
     @objc private func controlChanged() {
@@ -335,6 +371,14 @@ final class PreferencesWindowController: NSWindowController {
             settings.ctrlWheelZoom = ctrlWheelZoomCheck.state == .on
             settings.topMostWindow = topMostCheck.state == .on
             settings.followSystemTheme = followSystemCheck.state == .on
+            if defaultLightThemePopup.indexOfSelectedItem >= 0,
+               defaultLightThemePopup.indexOfSelectedItem < defaultLightThemeIDs.count {
+                settings.defaultLightThemeID = defaultLightThemeIDs[defaultLightThemePopup.indexOfSelectedItem]
+            }
+            if defaultDarkThemePopup.indexOfSelectedItem >= 0,
+               defaultDarkThemePopup.indexOfSelectedItem < defaultDarkThemeIDs.count {
+                settings.defaultDarkThemeID = defaultDarkThemeIDs[defaultDarkThemePopup.indexOfSelectedItem]
+            }
 
             settings.associateMarkdownFiles = associateMDCheck.state == .on
             settings.associateTextFiles = associateTextCheck.state == .on
@@ -356,6 +400,8 @@ final class PreferencesWindowController: NSWindowController {
         let languageChanged = SettingsService.shared.settings.displayLanguage != oldLanguage
         // 跟随系统开关变化：更新下拉可用性并立即刷新各窗口主题
         themePopup.isEnabled = followSystemCheck.state != .on
+        defaultLightThemePopup.isEnabled = followSystemCheck.state == .on
+        defaultDarkThemePopup.isEnabled = followSystemCheck.state == .on
         AppWindowManager.shared.applyThemeModeToAll()
         onSettingsChanged?()
         // 文件关联开关变更 → 立即应用（绑定/还原默认打开程序）

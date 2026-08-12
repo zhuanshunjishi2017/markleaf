@@ -143,6 +143,53 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingMarkdownFileDoesNotActivateBeforeMouseUp() {
+        let outline = ActivationProbeWorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        let file = WorkspaceEntry(name: "file.md", path: "/probe/file.md", isDirectory: false)
+
+        XCTAssertTrue(outline.outlineView(outline, shouldSelectItem: file))
+
+        XCTAssertTrue(outline.activatedEntries.isEmpty)
+    }
+
+    @MainActor
+    func testMouseUpOnMarkdownFileActivatesExactlyOnce() throws {
+        let dataSource = WorkspaceFileProbeDataSource()
+        let outline = ActivationProbeWorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        outline.configure(session: EditorSession())
+        outline.dataSource = dataSource
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 320, height: 180),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = outline
+        window.makeKeyAndOrderFront(nil)
+        WorkspaceTreeTestRetention.objects.append(contentsOf: [window, outline, dataSource])
+        outline.reloadData()
+        outline.layoutSubtreeIfNeeded()
+        let rowRect = outline.rect(ofRow: 0)
+        let windowPoint = outline.convert(NSPoint(x: rowRect.midX, y: rowRect.midY), to: nil)
+        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 1,
+            pressure: 0
+        ))
+
+        outline.mouseUp(with: mouseUp)
+
+        XCTAssertEqual(outline.activatedEntries.map(\.path), ["/probe/file.md"])
+    }
+
+    @MainActor
     func testMouseDownOnExpandedDirectoryNameKeepsRowExpanded() throws {
         let dataSource = WorkspaceTreeProbeDataSource()
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
@@ -506,6 +553,14 @@ private final class DisclosureRoutingWorkspaceTreeView: WorkspaceTreeView {
     }
 }
 
+private final class ActivationProbeWorkspaceTreeView: WorkspaceTreeView {
+    var activatedEntries: [WorkspaceEntry] = []
+
+    override func activateWorkspaceEntry(_ entry: WorkspaceEntry) {
+        activatedEntries.append(entry)
+    }
+}
+
 @MainActor
 private enum WorkspaceTreeTestRetention {
     static var objects: [AnyObject] = []
@@ -531,5 +586,21 @@ private final class WorkspaceTreeProbeDataSource: NSObject, NSOutlineViewDataSou
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         (item as? WorkspaceEntry)?.isDirectory == true
+    }
+}
+
+private final class WorkspaceFileProbeDataSource: NSObject, NSOutlineViewDataSource {
+    private let file = WorkspaceEntry(name: "file.md", path: "/probe/file.md", isDirectory: false)
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        item == nil ? 1 : 0
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        file
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        false
     }
 }

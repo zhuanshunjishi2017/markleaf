@@ -25,4 +25,48 @@ final class StyleManagerThemeDefaultsTests: XCTestCase {
         XCTAssertEqual(manager.defaultThemeID(forDark: false), manager.defaultThemeId)
         XCTAssertEqual(manager.defaultThemeID(forDark: true), manager.defaultThemeId)
     }
+
+    func testConfiguredLightAndDarkThemesWinWhenAvailable() throws {
+        let manager = try makeManager(themeIDs: [
+            "colors-white-only", "colors-dark", "colors-morandi", "colors-forest",
+        ])
+
+        XCTAssertEqual(
+            manager.defaultThemeID(
+                forDark: false,
+                preferredLight: "colors-morandi",
+                preferredDark: "colors-forest"
+            ),
+            "colors-morandi"
+        )
+        XCTAssertEqual(
+            manager.defaultThemeID(
+                forDark: true,
+                preferredLight: "colors-morandi",
+                preferredDark: "colors-forest"
+            ),
+            "colors-forest"
+        )
+    }
+
+    func testMissingConfiguredThemesFallBackToBuiltIns() throws {
+        let manager = try makeManager(themeIDs: ["colors-white-only", "colors-dark"])
+
+        XCTAssertEqual(
+            manager.defaultThemeID(
+                forDark: false,
+                preferredLight: "colors-missing-light",
+                preferredDark: "colors-missing-dark"
+            ),
+            "colors-white-only"
+        )
+        XCTAssertEqual(
+            manager.defaultThemeID(
+                forDark: true,
+                preferredLight: "colors-missing-light",
+                preferredDark: "colors-missing-dark"
+            ),
+            "colors-dark"
+        )
+    }
 }

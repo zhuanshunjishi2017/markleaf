@@ -130,10 +130,16 @@ final class StyleManager {
     static let defaultDarkThemeID = "colors-dark"
 
     /// 返回指定外观的默认主题 id；内置默认主题缺失时回退到解析出的默认主题。
-    func defaultThemeID(forDark dark: Bool) -> String? {
-        let preferred = dark ? Self.defaultDarkThemeID : Self.defaultLightThemeID
+    func defaultThemeID(
+        forDark dark: Bool,
+        preferredLight: String = StyleManager.defaultLightThemeID,
+        preferredDark: String = StyleManager.defaultDarkThemeID
+    ) -> String? {
+        let preferred = dark ? preferredDark : preferredLight
         if colorThemes.contains(where: { $0.id == preferred }) { return preferred }
-        return defaultThemeId
+        let builtIn = dark ? Self.defaultDarkThemeID : Self.defaultLightThemeID
+        if colorThemes.contains(where: { $0.id == builtIn }) { return builtIn }
+        return dark ? colorThemes.first(where: \.isDark)?.id ?? defaultThemeId : defaultThemeId
     }
 
     // MARK: - 主题文件校验（导入前使用）

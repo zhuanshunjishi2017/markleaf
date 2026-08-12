@@ -17,9 +17,9 @@ final class SidebarViewTests: XCTestCase {
     @MainActor
     func testApplyLanguageRefreshesEverySidebarControl() {
         var language = "en"
-        let sidebar = SidebarView(session: EditorSession()) {
+        let sidebar = SidebarView(session: EditorSession(), localize: {
             L10n.translate($0, language: language)
-        }
+        })
 
         language = "ja"
         sidebar.applyLanguage()
@@ -85,9 +85,25 @@ final class SidebarViewTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingOutlinePersistsActiveSidebarTab() {
+        let session = EditorSession()
+        var persistedTabs: [String] = []
+        let sidebar = SidebarView(
+            session: session,
+            persistSidebarTab: { persistedTabs.append($0) },
+            localize: { $0 }
+        )
+
+        sidebar.selectTab(1)
+
+        XCTAssertEqual(session.sidebarTabIndex, 1)
+        XCTAssertEqual(persistedTabs, ["outline"])
+    }
+
+    @MainActor
     private func makeSidebar(language: String) -> SidebarView {
-        SidebarView(session: EditorSession()) {
+        SidebarView(session: EditorSession(), localize: {
             L10n.translate($0, language: language)
-        }
+        })
     }
 }

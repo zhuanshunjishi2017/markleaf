@@ -369,7 +369,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             applySystemAppearance(for: theme)
         } else {
             let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let id = manager.defaultThemeID(forDark: dark) ?? manager.defaultThemeId
+            let id = manager.defaultThemeID(
+                forDark: dark,
+                preferredLight: saved.defaultLightThemeID,
+                preferredDark: saved.defaultDarkThemeID
+            ) ?? manager.defaultThemeId
             currentThemeId = id
             if let theme = colorThemes.first(where: { $0.id == id }) {
                 payload["colorThemeCss"] = theme.css
@@ -568,8 +572,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func applyFollowSystemTheme() {
         guard isFollowSystemTheme else { return }
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let settings = SettingsService.shared.settings
         guard let manager = StyleManager(directories: styleDirectories),
-              let id = manager.defaultThemeID(forDark: dark), id != currentThemeId else { return }
+              let id = manager.defaultThemeID(
+                forDark: dark,
+                preferredLight: settings.defaultLightThemeID,
+                preferredDark: settings.defaultDarkThemeID
+              ), id != currentThemeId else { return }
         currentThemeId = id
         guard let theme = colorThemes.first(where: { $0.id == id }) else { return }
         applySystemAppearance(for: theme)
