@@ -2,11 +2,8 @@ import XCTest
 @testable import MarkLeaf
 
 final class L10nJapaneseTests: XCTestCase {
-    func testJapaneseCoversAllEnglishKeys() {
-        let en = L10n.translationKeys(for: "en")
-        let ja = L10n.translationKeys(for: "ja")
-        XCTAssertTrue(en.isSubset(of: ja))
-        XCTAssertEqual(ja.count, 357)
+    func testJapaneseCoversExactlyTheEnglishKeys() {
+        XCTAssertEqual(L10n.translationKeys(for: "ja"), L10n.translationKeys(for: "en"))
     }
 
     func testJapaneseSpotTranslations() {

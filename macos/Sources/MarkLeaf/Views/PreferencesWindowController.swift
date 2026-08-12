@@ -30,6 +30,7 @@ final class PreferencesWindowController: NSWindowController {
 
     // 文件
     private let startupPopup = NSPopUpButton()
+    private let externalFileOpenModePopup = NSPopUpButton()
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
     private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
@@ -115,6 +116,8 @@ final class PreferencesWindowController: NSWindowController {
         startupPopup.addItems(withTitles: [L10n.t("新建文档"), L10n.t("打开上次工作区"), L10n.t("打开上次工作区及文件")])
         startupPopup.selectItem(at: settings.startupAction == .newDocument ? 0
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
+        externalFileOpenModePopup.addItems(withTitles: ExternalFileOpenPreferenceModel.titles(language: settings.displayLanguage))
+        externalFileOpenModePopup.selectItem(at: ExternalFileOpenPreferenceModel.selectedIndex(for: settings.externalFileOpenMode))
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
@@ -232,7 +235,7 @@ final class PreferencesWindowController: NSWindowController {
         Self.configureNumberField(sourceIndentField, min: Double(AppSettings.sourceIndentWidthRange.lowerBound), max: Double(AppSettings.sourceIndentWidthRange.upperBound))
 
         // 绑定
-        let controls: [NSControl] = [startupPopup, autoSaveCheck, saveOnSwitchCheck, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      cjkLanguagePopup,
@@ -270,6 +273,7 @@ final class PreferencesWindowController: NSWindowController {
         formPage(rows: [
             .header(L10n.t("启动")),
             .field(L10n.t("启动操作"), startupPopup),
+            .field(L10n.t("外部文件打开方式"), externalFileOpenModePopup),
             .header(L10n.t("保存选项")),
             .field("", autoSaveCheck),
             .field("", saveOnSwitchCheck),
@@ -371,6 +375,9 @@ final class PreferencesWindowController: NSWindowController {
             }
             settings.autoSaveEnabled = autoSaveCheck.state == .on
             settings.saveOnDocumentSwitch = saveOnSwitchCheck.state == .on
+            settings.externalFileOpenMode = ExternalFileOpenPreferenceModel.mode(
+                at: externalFileOpenModePopup.indexOfSelectedItem
+            )
             settings.snapshotIntervalSeconds = max(5, Int(snapshotIntervalField.stringValue) ?? 30)
             settings.newLineStyle = newLinePopup.indexOfSelectedItem == 0 ? "crlf" : "lf"
             settings.recordRecentFiles = recordRecentFilesCheck.state == .on

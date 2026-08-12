@@ -9,6 +9,30 @@ enum CJKLanguageTag: String, Codable, CaseIterable {
 
 /// 应用设置：镜像 C# AppSettings 的核心子集，JSON 持久化到
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
+enum ExternalFileOpenMode: String, Codable, CaseIterable {
+    case newWindow
+    case currentWindow
+}
+
+enum ExternalFileOpenPreferenceModel {
+    static let orderedModes = ExternalFileOpenMode.allCases
+
+    static func titles(language: String) -> [String] {
+        [
+            L10n.translate("始终在新窗口中打开", language: language),
+            L10n.translate("在当前窗口中打开", language: language),
+        ]
+    }
+
+    static func selectedIndex(for mode: ExternalFileOpenMode) -> Int {
+        orderedModes.firstIndex(of: mode) ?? 0
+    }
+
+    static func mode(at index: Int) -> ExternalFileOpenMode {
+        orderedModes.indices.contains(index) ? orderedModes[index] : .newWindow
+    }
+}
+
 struct AppSettings: Codable {
     var schemaVersion = 3
 
@@ -45,6 +69,10 @@ struct AppSettings: Codable {
         recordRecentFolders = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFolders) ?? true
         autoSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveEnabled) ?? false
         saveOnDocumentSwitch = try container.decodeIfPresent(Bool.self, forKey: .saveOnDocumentSwitch) ?? true
+        externalFileOpenMode = try container.decodeIfPresent(
+            ExternalFileOpenMode.self,
+            forKey: .externalFileOpenMode
+        ) ?? .newWindow
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         topMostWindow = try container.decodeIfPresent(Bool.self, forKey: .topMostWindow) ?? false
@@ -115,6 +143,7 @@ struct AppSettings: Codable {
     var autoSaveEnabled = false
     /// 切换文档（打开另一文件）时自动保存当前文档（对齐 Windows FileSettings.SaveOnDocumentSwitch）。
     var saveOnDocumentSwitch = true
+    var externalFileOpenMode = ExternalFileOpenMode.newWindow
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var topMostWindow = false

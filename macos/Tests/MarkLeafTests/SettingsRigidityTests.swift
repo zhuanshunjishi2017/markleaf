@@ -53,4 +53,19 @@ final class SettingsRigidityTests: XCTestCase {
         XCTAssertEqual(settings.sourceFontSize, 14)
         XCTAssertEqual(settings.sourceIndentWidth, 2)
     }
+
+
+    func testExternalFileOpenModeDefaultsToNewWindowWhenKeyIsMissing() throws {
+        let data = Data("{\"schemaVersion\":3}".utf8)
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(settings.externalFileOpenMode, .newWindow)
+    }
+
+    func testExternalFileOpenModeRoundTripsCurrentWindow() throws {
+        var settings = AppSettings()
+        settings.externalFileOpenMode = .currentWindow
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.externalFileOpenMode, .currentWindow)
+    }
+
 }
