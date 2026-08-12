@@ -15,6 +15,7 @@ import {
   resetEditorViewport,
 } from './editor'
 import { SourceEditor } from './source-editor'
+import { FormatPainterController, captureFormat } from './format-painter'
 import {
   isHostMessage,
   postToHost,
@@ -57,6 +58,7 @@ let sourceIndentWidth = 2
 let replaceMode = false
 
 let editor = createEditor(editorMount)
+const formatPainter = new FormatPainterController()
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -139,6 +141,8 @@ function sendCommandState(): void {
     ...getEditorCommandState(editor),
     hasSelection: sourceSelection ? !sourceSelection.empty : getEditorCommandState(editor).hasSelection,
     sourceMode,
+    canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
+    formatPainterArmed: !sourceMode && formatPainter.isArmed,
   })
 }
 
@@ -179,6 +183,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
   targetEditor.on('selectionUpdate', () => {
     if (!compositionActive) {
+      formatPainter.handleSelectionUpdate(targetEditor)
       send('selectionChanged', {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
@@ -229,6 +234,7 @@ function getActiveMarkdown(): string {
 
 function setSourceMode(enabled: boolean): void {
   if (enabled === sourceMode) return
+  formatPainter.cancel()
   if (enabled) {
     sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth)
     editorMount.hidden = true
@@ -318,6 +324,12 @@ window.addEventListener('keydown', event => {
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'h') {
     event.preventDefault()
     showFindBar(true)
+    return
+  }
+  if (event.key === 'Escape' && formatPainter.isArmed) {
+    event.preventDefault()
+    formatPainter.cancel()
+    sendEditorState()
     return
   }
   if (event.key === 'Escape' && !findBar.hidden) {
@@ -443,6 +455,7 @@ function handleMessage(value: unknown): void {
       break
     }
     case 'loadDocument': {
+      formatPainter.cancel()
       const payload = message.payload as { markdown?: unknown }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
@@ -551,6 +564,12 @@ function handleMessage(value: unknown): void {
         }
         if (payload.command === 'exportSelection') {
           send('selectionExport', getSelectionExport(), message.requestId)
+          break
+        }
+        if (payload.command === 'formatPainter') {
+          const success = !sourceMode && formatPainter.arm(editor)
+          if (message.requestId) send('commandResult', { success }, message.requestId)
+          sendEditorState()
           break
         }
         if (payload.command === 'exportDocument') {

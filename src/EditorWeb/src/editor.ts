@@ -293,6 +293,8 @@ export type EditorCommandState = {
   inTable: boolean
   tableAlign: 'left' | 'center' | 'right' | null
   imageSelected: boolean
+  canStartFormatPainter: boolean
+  formatPainterArmed: boolean
 }
 
 export type EditorStatus = {
@@ -512,6 +514,8 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     inTable,
     tableAlign,
     imageSelected: getSelectedImage(editor) !== null,
+    canStartFormatPainter: false,
+    formatPainterArmed: false,
   }
 }
 
