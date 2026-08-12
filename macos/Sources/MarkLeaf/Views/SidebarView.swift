@@ -242,6 +242,18 @@ final class FinderWorkspaceRowView: NSTableRowView {
     }
 }
 
+enum SidebarTreePresentation {
+    static let rowFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+
+    static func apply(to outlineView: NSOutlineView) {
+        outlineView.rowSizeStyle = .medium
+        outlineView.selectionHighlightStyle = .sourceList
+        outlineView.rowHeight = 26
+        outlineView.backgroundColor = .clear
+        outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+    }
+}
+
 class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     static let localDragPasteboardType = NSPasteboard.PasteboardType("com.markleaf.workspace-entry-path")
     private weak var session: EditorSession?
@@ -262,11 +274,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         headerView = nil
         dataSource = self
         delegate = self
-        rowSizeStyle = .medium
-        selectionHighlightStyle = .sourceList
-        rowHeight = 26
-        backgroundColor = .clear
-        columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        SidebarTreePresentation.apply(to: self)
         registerForDraggedTypes([.fileURL, Self.localDragPasteboardType])
         setDraggingSourceOperationMask(.move, forLocal: true)
         setDraggingSourceOperationMask(.copy, forLocal: false)
@@ -483,6 +491,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             return cell
         }()
         cell.textField?.stringValue = entry.name
+        cell.textField?.font = SidebarTreePresentation.rowFont
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)
         return cell
     }
@@ -560,6 +569,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 // MARK: - 大纲树
 
 final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    static let headingLeadingConstraintIdentifier = "OutlineHeadingLeading"
     private weak var session: EditorSession?
 
     func configure(session: EditorSession) {
@@ -571,12 +581,7 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         headerView = nil
         dataSource = self
         delegate = self
-        rowSizeStyle = .large
-        selectionHighlightStyle = .sourceList
-        rowHeight = 28
-        intercellSpacing = NSSize(width: 0, height: 3)
-        backgroundColor = .clear
-        columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        SidebarTreePresentation.apply(to: self)
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
@@ -602,17 +607,21 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
             textField.lineBreakMode = .byTruncatingTail
             cell.addSubview(textField)
             cell.textField = textField
+            let leading = textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2)
+            leading.identifier = Self.headingLeadingConstraintIdentifier
             NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                leading,
                 textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
                 textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
             return cell
         }()
         cell.textField?.stringValue = heading.text
-        cell.textField?.font = .systemFont(ofSize: 13, weight: heading.level <= 2 ? .semibold : .regular)
+        cell.textField?.font = SidebarTreePresentation.rowFont
         let indent = CGFloat(max(0, heading.level - 1)) * 12
-        cell.textField?.constraints.first { $0.firstAttribute == .leading }?.constant = 2 + indent
+        cell.constraints.first {
+            $0.identifier == Self.headingLeadingConstraintIdentifier
+        }?.constant = 2 + indent
         return cell
     }
 
