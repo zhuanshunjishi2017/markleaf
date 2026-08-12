@@ -154,7 +154,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testMouseUpOnMarkdownFileActivatesExactlyOnce() throws {
+    func testRealAppKitClickOnMarkdownFileActivatesExactlyOnce() throws {
         let dataSource = WorkspaceFileProbeDataSource()
         let outline = ActivationProbeWorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
@@ -170,13 +170,26 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         WorkspaceTreeTestRetention.objects.append(contentsOf: [window, outline, dataSource])
         outline.reloadData()
         outline.layoutSubtreeIfNeeded()
+
         let rowRect = outline.rect(ofRow: 0)
         let windowPoint = outline.convert(NSPoint(x: rowRect.midX, y: rowRect.midY), to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        ))
         let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
             with: .leftMouseUp,
             location: windowPoint,
             modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
+            timestamp: timestamp + 0.01,
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 2,
@@ -184,7 +197,8 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
             pressure: 0
         ))
 
-        outline.mouseUp(with: mouseUp)
+        NSApp.postEvent(mouseUp, atStart: true)
+        NSApp.sendEvent(mouseDown)
 
         XCTAssertEqual(outline.activatedEntries.map(\.path), ["/probe/file.md"])
     }

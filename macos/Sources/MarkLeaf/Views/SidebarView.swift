@@ -252,6 +252,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     private var listMode = false
     private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
+    private var beganDraggingEntryDuringMouseDown = false
     func configure(session: EditorSession) {
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
@@ -280,6 +281,13 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
+        let fileToActivate: WorkspaceEntry?
+        if event.clickCount == 1, row >= 0 {
+            fileToActivate = item(atRow: row) as? WorkspaceEntry
+        } else {
+            fileToActivate = nil
+        }
+        beganDraggingEntryDuringMouseDown = false
         var directoryRowToToggle: Int?
         var clickedDirectoryName = false
         if row >= 0, !listMode,
@@ -310,18 +318,20 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             return
         }
         super.mouseDown(with: event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let row = row(at: point)
-        super.mouseUp(with: event)
-        guard event.type == .leftMouseUp,
-              row >= 0,
-              let entry = item(atRow: row) as? WorkspaceEntry,
+        guard !beganDraggingEntryDuringMouseDown,
+              let entry = fileToActivate,
               !entry.isDirectory
         else { return }
         activateWorkspaceEntry(entry)
+    }
+
+    override func beginDraggingSession(
+        with items: [NSDraggingItem],
+        event: NSEvent,
+        source: NSDraggingSource
+    ) -> NSDraggingSession {
+        beganDraggingEntryDuringMouseDown = true
+        return super.beginDraggingSession(with: items, event: event, source: source)
     }
 
     func activateWorkspaceEntry(_ entry: WorkspaceEntry) {
@@ -388,6 +398,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         guard let entry = item as? WorkspaceEntry else { return nil }
+        beganDraggingEntryDuringMouseDown = true
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(URL(fileURLWithPath: entry.path).absoluteString, forType: .fileURL)
         pasteboardItem.setString(entry.path, forType: Self.localDragPasteboardType)
