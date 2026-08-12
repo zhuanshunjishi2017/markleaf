@@ -43,6 +43,7 @@ artifacts/
 .claude/
 .superpowers/
 .codex-build/
+/.worktrees/
 docs/
 CLAUDE.md
 AGENTS.md
