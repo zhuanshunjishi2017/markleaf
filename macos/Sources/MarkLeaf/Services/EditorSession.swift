@@ -95,7 +95,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var wheelZoomAccumulator: Double = 0
     private var recoveryTimer: Timer?
 
-    private var pendingSnapshot: ((Result<String, Error>) -> Void)?
+    private let snapshotRequests = SnapshotRequestQueue()
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
     var pendingExportContext: ExportContext?
@@ -169,8 +169,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "snapshot":
             let markdown = payload?["markdown"] as? String ?? ""
-            pendingSnapshot?(.success(markdown))
-            pendingSnapshot = nil
+            snapshotRequests.completeNext(.success(markdown))
 
         case "dirtyChanged":
             let dirty = payload?["dirty"] as? Bool ?? false
@@ -575,7 +574,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func requestSnapshot(completion: @escaping (Result<String, Error>) -> Void) {
-        pendingSnapshot = completion
+        snapshotRequests.enqueue(completion)
         send("requestSnapshot")
     }
 
