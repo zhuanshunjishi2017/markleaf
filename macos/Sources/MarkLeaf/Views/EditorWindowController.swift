@@ -20,6 +20,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var keyEventMonitor: Any?
 
     private(set) var isFocusMode = false
+    private var allowsNextClose = false
 
     var onWindowClose: ((EditorWindowController) -> Void)?
 
@@ -328,6 +329,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if allowsNextClose {
+            allowsNextClose = false
+            return true
+        }
+        guard !session.isDocumentDispositionInProgress else { return false }
+        _ = session.requestDisposition(for: .closeWindow) { [weak self, weak sender] result in
+            guard result == .proceed, let self, let sender else { return }
+            self.allowsNextClose = true
+            sender.performClose(nil)
+        }
+        return false
+    }
 
     func windowWillClose(_ notification: Notification) {
         exitFocusMode()

@@ -1009,6 +1009,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppWindowManager.shared.primarySession
     }
 
+    private var terminationRequestInProgress = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminationRequestInProgress else { return .terminateLater }
+        terminationRequestInProgress = true
+        AppWindowManager.shared.requestApplicationTermination { [weak self, weak sender] allowed in
+            self?.terminationRequestInProgress = false
+            sender?.reply(toApplicationShouldTerminate: allowed)
+        }
+        return .terminateLater
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }

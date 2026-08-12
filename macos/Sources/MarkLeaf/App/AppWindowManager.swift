@@ -42,6 +42,22 @@ final class AppWindowManager {
         return controller
     }
 
+    /// 顺序处理所有编辑器窗口的未保存文档后，回复 AppKit 是否允许退出。
+    func requestApplicationTermination(completion: @escaping (Bool) -> Void) {
+        let requests = windowControllers.map { controller in
+            { (finish: @escaping (DocumentDispositionResult) -> Void) in
+                let started = controller.session.requestDisposition(
+                    for: .terminateApplication,
+                    completion: finish
+                )
+                if !started { finish(.cancel) }
+            }
+        }
+        SequentialDocumentDispositionQueue.run(requests) { result in
+            completion(result == .proceed)
+        }
+    }
+
     /// 在设置、图标、文件关联和菜单完成配置后，建立唯一的初始窗口。
     func completeBootstrapAndEnsureInitialWindow() {
         switch bootstrapState.complete() {

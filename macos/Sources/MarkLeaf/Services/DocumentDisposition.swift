@@ -87,3 +87,24 @@ final class DocumentDispositionCoordinator {
         return true
     }
 }
+
+enum SequentialDocumentDispositionQueue {
+    typealias Request = (@escaping (DocumentDispositionResult) -> Void) -> Void
+
+    static func run(
+        _ requests: [Request],
+        completion: @escaping (DocumentDispositionResult) -> Void
+    ) {
+        func advance(_ index: Int) {
+            guard requests.indices.contains(index) else { completion(.proceed); return }
+            let request = requests[index]
+            request { result in
+                switch result {
+                case .proceed: advance(index + 1)
+                case .cancel: completion(.cancel)
+                }
+            }
+        }
+        advance(0)
+    }
+}
