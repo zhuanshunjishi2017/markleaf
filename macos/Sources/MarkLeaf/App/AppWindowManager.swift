@@ -43,8 +43,13 @@ final class AppWindowManager {
 
     /// 当前活跃（键窗口）会话；无键窗口时退回第一个。
     var activeSession: EditorSession? {
-        windowControllers.first { $0.window?.isKeyWindow == true }?.session
-            ?? windowControllers.first?.session
+        activeWindowController?.session
+    }
+
+    /// 当前活跃（键窗口）控制器；窗口级命令（如专注模式）使用它路由。
+    var activeWindowController: EditorWindowController? {
+        windowControllers.first { $0.window?.isKeyWindow == true }
+            ?? windowControllers.first
     }
 
     /// 文件 > 在新窗口中打开…（对应 Windows AppCommand.OpenDocumentInNewWindow）。
@@ -165,7 +170,7 @@ final class AppWindowManager {
     /// 关于 MarkLeaf：macOS 原生关于面板（同 LyricsX，orderFrontStandardAboutPanel）。
     /// credits 排版：居中、行距、仓库链接可点击。
     func showAbout() {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.3"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.5"
         let linkURL = URL(string: "https://github.com/zhuanshunjishi2017/markleaf")!
 
         let paragraph = NSMutableParagraphStyle()

@@ -6,6 +6,10 @@ import WebKit
 /// - 作为 WKScriptMessageHandler 接收编辑器发来的消息（ready/snapshot/dirtyChanged...）
 /// - 通过 evaluateJavaScript 向编辑器发送宿主消息（applyStyles/loadDocument/command...）
 final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+    static func cjkLanguageScript(for tag: CJKLanguageTag) -> String {
+        let value = tag.rawValue
+        return "document.documentElement.setAttribute('lang','\(value)');document.documentElement.style.setProperty('--ml-cjk-lang','\(value)');"
+    }
     // MARK: 可观察状态（AppKit 通过 onStateChanged 刷新 UI）
 
     var statusText = L10n.t("就绪") {
@@ -733,6 +737,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         document.documentElement.style.setProperty('--ml-max-width','\(String(format: "%.2f", targetWidth))px');
         document.documentElement.style.setProperty('--ml-source-font-size','\(String(format: "%.2f", sourceFont))px');
         document.documentElement.style.setProperty('--ml-source-font-family','\(sourceFontFamily)');
+        \(Self.cjkLanguageScript(for: settings.cjkLanguageTag))
         """
         webView?.evaluateJavaScript(script)
     }

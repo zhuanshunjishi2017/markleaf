@@ -175,6 +175,12 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
+        menu.addItem(commandItem(
+            L10n.t("专注模式"),
+            "toggleFocusMode",
+            key: String(UnicodeScalar(NSF11FunctionKey)!),
+            mask: []
+        ))
         menu.addItem(.separator())
 
         // 缩放（对齐 Windows fccc7ad：缩放菜单从外观移到视图）
@@ -311,6 +317,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         case "treeView": menuItem.state = s?.workspaceListMode == false ? .on : .off
         case "listView": menuItem.state = s?.workspaceListMode == true ? .on : .off
         case "toggleStatusBar": menuItem.state = s?.statusBarVisible == true ? .on : .off
+        case "toggleFocusMode":
+            menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "sourceMode": menuItem.state = s?.isSourceMode == true ? .on : .off
@@ -367,6 +375,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             SettingsService.shared.update { $0.followSystemTheme = newValue }
             AppWindowManager.shared.applyThemeModeToAll()
             NativeMenuBuilder.refreshIfNeeded()
+        case "toggleFocusMode":
+            AppWindowManager.shared.activeWindowController?.toggleFocusMode()
         case "openHomepage":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf") {
                 NSWorkspace.shared.open(url)

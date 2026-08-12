@@ -1,5 +1,12 @@
 import Foundation
 
+enum CJKLanguageTag: String, Codable, CaseIterable {
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+    case japanese = "ja"
+    case korean = "ko"
+}
+
 /// 应用设置：镜像 C# AppSettings 的核心子集，JSON 持久化到
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
 struct AppSettings: Codable {
@@ -29,6 +36,7 @@ struct AppSettings: Codable {
         sourceFontSize = try container.decodeIfPresent(Int.self, forKey: .sourceFontSize) ?? 14
         sourceFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceFontFamily) ?? Self.defaultSourceFontFamily
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
+        cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? true
@@ -92,6 +100,7 @@ struct AppSettings: Codable {
     var sourceFontFamily = AppSettings.defaultSourceFontFamily
     /// 源码模式中文字体：对应 Windows SourceCjkFontFamily（默认 Microsoft YaHei）
     var sourceCjkFontFamily = AppSettings.defaultSourceCjkFontFamily
+    var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var sourceIndentWidth = 2
 
     static let defaultSourceFontFamily = "Menlo"

@@ -14,6 +14,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var isAnimatingSidebar = false
     private var workspaceDividerPosition: CGFloat = 240
+    private var sidebarVisibleBeforeFocus = true
+    private var statusBarVisibleBeforeFocus = true
+    private var presentationOptionsBeforeFocus: NSApplication.PresentationOptions = []
+    private var keyEventMonitor: Any?
+
+    private(set) var isFocusMode = false
 
     var onWindowClose: ((EditorWindowController) -> Void)?
 
@@ -36,10 +42,17 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         buildContent()
         bindState()
+        installFocusModeKeyMonitor()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let keyEventMonitor {
+            NSEvent.removeMonitor(keyEventMonitor)
+        }
     }
 
     /// 窗口展示后加载初始文档/工作区。
@@ -182,6 +195,62 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// F11 进入/退出专注模式；仅临时隐藏界面元素，不覆盖用户保存的视图偏好。
+    func toggleFocusMode() {
+        if isFocusMode {
+            exitFocusMode()
+            return
+        }
+
+        sidebarVisibleBeforeFocus = session.sidebarVisible
+        statusBarVisibleBeforeFocus = session.statusBarVisible
+        presentationOptionsBeforeFocus = NSApp.presentationOptions
+        isFocusMode = true
+        session.sidebarVisible = false
+        session.statusBarVisible = false
+        session.statusText = L10n.t("专注模式已开启")
+        NSApp.presentationOptions.insert(.autoHideMenuBar)
+        session.onViewStateChanged?()
+        session.onStateChanged?()
+        NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    /// Esc 或再次按 F11 退出，并恢复进入专注模式前的侧栏和状态栏状态。
+    func exitFocusMode() {
+        guard isFocusMode else { return }
+        isFocusMode = false
+        session.sidebarVisible = sidebarVisibleBeforeFocus
+        session.statusBarVisible = statusBarVisibleBeforeFocus
+        session.statusText = L10n.t("专注模式已关闭")
+        NSApp.presentationOptions = presentationOptionsBeforeFocus
+        session.onViewStateChanged?()
+        session.onStateChanged?()
+        NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    private func installFocusModeKeyMonitor() {
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            return self.handleFocusModeKey(keyCode: event.keyCode) ? nil : event
+        }
+    }
+
+    /// 返回是否消费按键。F11=103，Escape=53。
+    @discardableResult
+    func handleFocusModeKey(keyCode: UInt16) -> Bool {
+        // macOS 不允许第三方菜单项声明 .function 修饰键，因此在窗口级监听，
+        // 保证编辑器/WebView 聚焦时仍能可靠切换。
+        if keyCode == 103 {
+            toggleFocusMode()
+            return true
+        }
+        if isFocusMode, keyCode == 53 {
+            exitFocusMode()
+            return true
+        }
+        return false
+    }
+
     /// 手动插值动画侧边栏分隔线位置（NSSplitView 的 animator().setPosition 不生效）。
     private func animateSidebar(to target: CGFloat, completion: @escaping () -> Void) {
         guard let splitView else { completion(); return }
@@ -261,6 +330,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
+        exitFocusMode()
         session.cleanupForClose()
         onWindowClose?(self)
     }

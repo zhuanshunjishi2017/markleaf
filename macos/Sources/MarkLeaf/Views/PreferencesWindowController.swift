@@ -36,6 +36,9 @@ final class PreferencesWindowController: NSWindowController {
     private var sourceFontField: FontField!
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
+    private let cjkLanguagePopup = NSPopUpButton()
+    private let fontSettingsButton = NSButton(title: L10n.t("字体设置…"), target: nil, action: nil)
+    private let fontSettingsSummary = NSTextField(labelWithString: "")
 
     // 外观
     private let stylePopup = NSPopUpButton()
@@ -118,6 +121,13 @@ final class PreferencesWindowController: NSWindowController {
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
+        cjkLanguagePopup.addItems(withTitles: [
+            L10n.t("简体中文"), L10n.t("繁体中文"), L10n.t("日文字形"), L10n.t("韩文字形"),
+        ])
+        cjkLanguagePopup.selectItem(at: CJKLanguageTag.allCases.firstIndex(of: settings.cjkLanguageTag) ?? 0)
+        updateFontSettingsSummary()
+        fontSettingsButton.target = self
+        fontSettingsButton.action = #selector(openFontSettings)
 
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
@@ -212,6 +222,7 @@ final class PreferencesWindowController: NSWindowController {
         let controls: [NSControl] = [startupPopup, autoSaveCheck, saveOnSwitchCheck, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
+                                     cjkLanguagePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
@@ -268,9 +279,8 @@ final class PreferencesWindowController: NSWindowController {
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
             .header(L10n.t("源码模式")),
-            .field(L10n.t("基础字号"), sourceFontSizeField),
-            .field(L10n.t("西文字体"), sourceFontField),
-            .field(L10n.t("中文字体"), sourceCjkFontField),
+            .field(L10n.t("字体设置"), NSStackView(views: [fontSettingsSummary, fontSettingsButton])),
+            .field(L10n.t("汉字优先字型"), cjkLanguagePopup),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
@@ -359,6 +369,10 @@ final class PreferencesWindowController: NSWindowController {
             settings.sourceFontSize = Int(sourceFontSizeField.stringValue) ?? 14
             settings.sourceFontFamily = sourceFontField.fontName
             settings.sourceCjkFontFamily = sourceCjkFontField.fontName
+            if cjkLanguagePopup.indexOfSelectedItem >= 0,
+               cjkLanguagePopup.indexOfSelectedItem < CJKLanguageTag.allCases.count {
+                settings.cjkLanguageTag = CJKLanguageTag.allCases[cjkLanguagePopup.indexOfSelectedItem]
+            }
             settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
 
             if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {
@@ -416,6 +430,25 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func importTheme() {
         AppWindowManager.shared.activeSession?.importTheme()
+    }
+
+    @objc private func openFontSettings() {
+        let dialog = FontSettingsWindowController(
+            cjkFontFamily: sourceCjkFontField.fontName,
+            westernFontFamily: sourceFontField.fontName,
+            fontSize: Int(sourceFontSizeField.stringValue) ?? 14
+        )
+        guard dialog.runModal() else { return }
+        sourceCjkFontField = FontField(fontName: dialog.cjkFontFamily) { _ in }
+        sourceFontField = FontField(fontName: dialog.westernFontFamily) { _ in }
+        sourceFontSizeField.stringValue = "\(dialog.fontSize)"
+        updateFontSettingsSummary()
+        controlChanged()
+    }
+
+    private func updateFontSettingsSummary() {
+        fontSettingsSummary.stringValue = "\(sourceCjkFontField.fontName) / \(sourceFontField.fontName) / \(sourceFontSizeField.stringValue)px"
+        fontSettingsSummary.textColor = .secondaryLabelColor
     }
 
     @objc private func recoverUnsavedFiles() {

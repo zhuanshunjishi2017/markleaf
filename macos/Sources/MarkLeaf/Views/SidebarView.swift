@@ -605,11 +605,16 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         return cell
     }
 
+    /// 与 Workspace 共用非强调的 source-list 选中样式，呈现系统灰色阴影而非蓝色高亮。
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        FinderWorkspaceRowView()
+    }
+
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         if let heading = item as? OutlineHeading {
             session?.scrollToPosition(heading.position)
         }
-        return false
+        return item is OutlineHeading
     }
 
 }
