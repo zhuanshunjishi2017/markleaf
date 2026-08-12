@@ -225,20 +225,9 @@ final class SidebarView: NSView {
 // MARK: - 工作区文件树
 
 final class FinderWorkspaceRowView: NSTableRowView {
-    static let selectionColor = NSColor.unemphasizedSelectedContentBackgroundColor
-    static let horizontalInset: CGFloat = 5
-    static let verticalInset: CGFloat = 2
-    static let cornerRadius: CGFloat = 7
-
-    override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
-        guard isSelected else { return }
-        Self.selectionColor.setFill()
-        NSBezierPath(
-            roundedRect: bounds.insetBy(dx: Self.horizontalInset, dy: Self.verticalInset),
-            xRadius: Self.cornerRadius,
-            yRadius: Self.cornerRadius
-        ).fill()
+    override var isEmphasized: Bool {
+        get { false }
+        set { super.isEmphasized = false }
     }
 }
 
@@ -261,7 +250,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         dataSource = self
         delegate = self
         rowSizeStyle = .medium
-        selectionHighlightStyle = .none
+        selectionHighlightStyle = .sourceList
         rowHeight = 26
         backgroundColor = .clear
         columnAutoresizingStyle = .uniformColumnAutoresizingStyle

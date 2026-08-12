@@ -14,7 +14,7 @@ The workspace tree currently uses the default blue source-list selection highlig
 
 ## Chosen Design
 
-Introduce a small `NSTableRowView` subclass dedicated to workspace selection. It draws only the selected state as an inset rounded rectangle using the semantic AppKit color `unemphasizedSelectedContentBackgroundColor`. The semantic color follows the active macOS appearance without fixed RGB values.
+Introduce a small `NSTableRowView` subclass dedicated to workspace selection. Keep the original AppKit `.sourceList` selection drawing intact, but force the row's `isEmphasized` state to `false`. AppKit therefore retains the original blue highlight's size, insets, and corner geometry while resolving it as the system's non-emphasized gray selection.
 
 `WorkspaceTreeView` supplies this row view through its existing `NSOutlineViewDelegate` implementation. The outline's selection model remains unchanged, so files continue to open and remain selected, folders remain selectable, and folder-name double-click handling continues to use the existing disclosure path.
 
@@ -22,8 +22,7 @@ The custom drawing affects only the workspace tree. The Outline tab and the side
 
 ## Visual Details
 
-- Use a small horizontal and vertical inset so the highlight does not touch the row edges.
-- Use a system-like corner radius comparable to Finder sidebar selection.
+- Preserve the exact native source-list highlight geometry rather than drawing a new background shape.
 - Do not recolor icons or hard-code label colors; AppKit continues to resolve their foreground appearance.
 - Use one neutral gray treatment regardless of keyboard focus, matching the supplied Finder reference.
 
@@ -32,7 +31,7 @@ The custom drawing affects only the workspace tree. The Outline tab and the side
 Automated tests will verify that:
 
 - Workspace rows use the Finder-style row-view class.
-- The semantic gray selection color is used instead of the accent-color highlight.
+- The native source-list selection style remains enabled while the row refuses emphasized/accent-color selection.
 - Directory and file items remain selectable.
 - Existing workspace mouse-interaction tests continue to pass.
 

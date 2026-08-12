@@ -4,18 +4,17 @@ import XCTest
 
 final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     @MainActor
-    func testWorkspaceTreeUsesFinderStyleSelectionRows() throws {
+    func testWorkspaceTreeKeepsNativeSourceListGeometryWithGraySelection() throws {
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
         let entry = WorkspaceEntry(name: "file.md", path: "/probe/file.md", isDirectory: false)
 
         let rowView = try XCTUnwrap(outline.outlineView(outline, rowViewForItem: entry))
+        rowView.isEmphasized = true
 
         XCTAssertTrue(rowView is FinderWorkspaceRowView)
-        XCTAssertEqual(outline.selectionHighlightStyle, .none)
-        XCTAssertTrue(
-            FinderWorkspaceRowView.selectionColor.isEqual(NSColor.unemphasizedSelectedContentBackgroundColor)
-        )
+        XCTAssertEqual(outline.selectionHighlightStyle, .sourceList)
+        XCTAssertFalse(rowView.isEmphasized)
     }
 
     @MainActor
