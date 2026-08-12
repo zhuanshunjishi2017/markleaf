@@ -14,6 +14,10 @@ extension EditorSession {
         addFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
         addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
         addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
+        let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
+        painterItem.representedObject = "formatPainter"
+        painterItem.isEnabled = !isSourceMode && canStartFormatPainter && !isFormatPainterArmed
+        menu.addItem(painterItem)
         menu.addItem(.separator())
         let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
         for level in 1...3 {

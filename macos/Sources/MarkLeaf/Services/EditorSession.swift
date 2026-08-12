@@ -47,6 +47,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var inTable = false
     private(set) var canUndo = false
     private(set) var canRedo = false
+    private(set) var canStartFormatPainter = false
+    private(set) var isFormatPainterArmed = false
     private(set) var headingLevel: Int?
 
     // 工作区 / 大纲
@@ -191,6 +193,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             inTable = payload?["inTable"] as? Bool ?? false
             canUndo = payload?["canUndo"] as? Bool ?? false
             canRedo = payload?["canRedo"] as? Bool ?? false
+            canStartFormatPainter = payload?["canStartFormatPainter"] as? Bool ?? false
+            isFormatPainterArmed = payload?["formatPainterArmed"] as? Bool ?? false
             headingLevel = payload?["headingLevel"] as? Int
 
         case "outlineChanged":
