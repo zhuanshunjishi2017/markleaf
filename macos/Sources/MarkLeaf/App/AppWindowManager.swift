@@ -42,6 +42,18 @@ final class AppWindowManager {
         return controller
     }
 
+    func newWindow(preparedDocument: PreparedDocument) -> EditorWindowController {
+        let session = EditorSession()
+        let controller = EditorWindowController(session: session)
+        windowControllers.append(controller)
+        controller.onWindowClose = { [weak self] closed in
+            self?.windowControllers.removeAll { $0 === closed }
+        }
+        controller.showWindow(nil)
+        controller.openInitialDocument(prepared: preparedDocument)
+        return controller
+    }
+
     /// 顺序处理所有编辑器窗口的未保存文档后，回复 AppKit 是否允许退出。
     func requestApplicationTermination(completion: @escaping (Bool) -> Void) {
         let requests = windowControllers.map { controller in
@@ -61,8 +73,30 @@ final class AppWindowManager {
     /// 在设置、图标、文件关联和菜单完成配置后，建立唯一的初始窗口。
     func completeBootstrapAndEnsureInitialWindow() {
         switch bootstrapState.complete() {
-        case .createInitialWindow(let documentPath):
-            _ = newWindow(documentPath: documentPath)
+        case .createInitialWindow(let documentPath, let additionalDocumentPaths):
+            _ = startupActionState.consume()
+            let initialController: EditorWindowController
+            if let documentPath {
+                do {
+                    let prepared = try PreparedDocument.read(from: URL(fileURLWithPath: documentPath))
+                    initialController = newWindow(preparedDocument: prepared)
+                } catch {
+                    AppLog.error("无法打开启动文档: \(documentPath) \(error.localizedDescription)")
+                    initialController = newWindow()
+                    initialController.session.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                }
+            } else {
+                initialController = newWindow()
+            }
+            for path in additionalDocumentPaths {
+                do {
+                    let prepared = try PreparedDocument.read(from: URL(fileURLWithPath: path))
+                    _ = newWindow(preparedDocument: prepared)
+                } catch {
+                    AppLog.error("无法打开外部文档: \(path) \(error.localizedDescription)")
+                    initialController.session.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                }
+            }
         case .noOp:
             return
         }
@@ -91,8 +125,14 @@ final class AppWindowManager {
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            _ = self?.newWindow(documentPath: url.path)
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                let prepared = try PreparedDocument.read(from: url)
+                _ = self.newWindow(preparedDocument: prepared)
+            } catch {
+                AppLog.error("无法打开文档: \(url.path) \(error.localizedDescription)")
+                self.activeSession?.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+            }
         }
     }
 
@@ -332,16 +372,37 @@ final class AppWindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// 打开文件（Finder 关联 / 命令行）。
-    func openDocumentInFrontWindow(_ url: URL) {
-        guard !bootstrapState.cacheIncomingDocumentIfNeeded(url.path) else {
-            return
-        }
-        if let session = primarySession {
-            routeIncomingDocument(url, to: session)
-        } else {
-            _ = newWindow(documentPath: url.path)
-        }
+    /// 打开外部文件（Finder 关联 / Open With / Dock / 命令行），支持多文件与去重。
+    func openExternalDocuments(_ urls: [URL]) {
+        let paths = urls.filter(\.isFileURL).map { IncomingFileRouter.normalized($0).path }
+        guard !paths.isEmpty else { return }
+        if bootstrapState.cacheIncomingDocumentsIfNeeded(paths) { return }
+
+        let openDocuments = windowControllers.compactMap { $0.session.documentURL }
+        IncomingFileRouter.route(
+            urls: urls,
+            mode: SettingsService.shared.settings.externalFileOpenMode,
+            activeEditor: activeWindowController != nil,
+            openDocuments: openDocuments,
+            activateExisting: { [weak self] url in
+                self?.windowControllers.first { $0.session.documentURL == url }?
+                    .window?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            },
+            replaceActive: { [weak self] url in
+                self?.activeWindowController?.session.openDocument(at: url)
+            },
+            createWindow: { [weak self] url in
+                guard let self else { return }
+                do {
+                    let prepared = try PreparedDocument.read(from: url)
+                    _ = self.newWindow(preparedDocument: prepared)
+                } catch {
+                    AppLog.error("无法打开外部文档: \(url.path) \(error.localizedDescription)")
+                    self.activeWindowController?.session.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                }
+            }
+        )
     }
 
     /// 将 Finder 文件意图路由到已有会话；内部可见以覆盖冷启动关联文件路径。

@@ -1050,8 +1050,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - 文件关联打开（对应 Info.plist CFBundleDocumentTypes / 双击打开）
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        AppWindowManager.shared.openDocumentInFrontWindow(url)
+        AppWindowManager.shared.openExternalDocuments(urls)
     }
 
     // MARK: - 自动化验证

@@ -61,6 +61,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.openInitialDocument(path: path)
     }
 
+    /// 窗口展示后直接装载已预读的文档。
+    func openInitialDocument(prepared: PreparedDocument) {
+        session.openInitialDocument(prepared: prepared)
+    }
+
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         // 应用保存的侧边栏宽度与视图状态（NSSplitView 不会自动给宽度；applyViewState 启动时不会自动跑）

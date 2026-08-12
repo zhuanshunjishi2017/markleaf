@@ -5,28 +5,33 @@ final class StartupIntegrationStateTests: XCTestCase {
     func testBootstrapCompletionRequestsOneBlankInitialWindowThenBecomesNoOp() {
         var state = StartupBootstrapState()
 
-        XCTAssertEqual(state.complete(), .createInitialWindow(documentPath: nil))
+        XCTAssertEqual(state.complete(), .createInitialWindow(documentPath: nil, additionalDocumentPaths: []))
         XCTAssertEqual(state.complete(), .noOp)
     }
 
-    func testEarlyFinderFileIsCachedUntilBootstrapCompletion() {
+    func testColdStartCachesEveryFinderFileWithoutOverwritingTheFirst() {
         var state = StartupBootstrapState()
+        XCTAssertTrue(state.cacheIncomingDocumentsIfNeeded(["/a.md", "/b.md", "/c.md"]))
+        XCTAssertEqual(state.complete(), .createInitialWindow(
+            documentPath: "/a.md",
+            additionalDocumentPaths: ["/b.md", "/c.md"]
+        ))
+    }
 
-        XCTAssertTrue(state.cacheIncomingDocumentIfNeeded("/finder/early.md"))
-        XCTAssertEqual(state.pendingDocumentPath, "/finder/early.md")
-        XCTAssertEqual(
-            state.complete(),
-            .createInitialWindow(documentPath: "/finder/early.md")
-        )
-        XCTAssertNil(state.pendingDocumentPath)
+    func testColdStartCollapsesDuplicateFinderPathsInTheirFirstSeenOrder() {
+        var state = StartupBootstrapState()
+        XCTAssertTrue(state.cacheIncomingDocumentsIfNeeded(["/a.md", "/a.md", "/b.md"]))
+        XCTAssertEqual(state.complete(), .createInitialWindow(
+            documentPath: "/a.md",
+            additionalDocumentPaths: ["/b.md"]
+        ))
     }
 
     func testFinderFileAfterBootstrapIsNotCached() {
         var state = StartupBootstrapState()
         _ = state.complete()
 
-        XCTAssertFalse(state.cacheIncomingDocumentIfNeeded("/finder/after-bootstrap.md"))
-        XCTAssertNil(state.pendingDocumentPath)
+        XCTAssertFalse(state.cacheIncomingDocumentsIfNeeded(["/finder/after-bootstrap.md"]))
     }
 
     func testColdStartFinderFileIsStoredAsPendingInitialSessionIntent() {

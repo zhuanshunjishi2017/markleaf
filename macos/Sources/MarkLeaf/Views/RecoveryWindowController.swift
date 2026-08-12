@@ -161,7 +161,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             guard response == .OK, let url = panel.url else { return }
             do {
                 try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
-                AppWindowManager.shared.openDocumentInFrontWindow(url)
+                AppWindowManager.shared.openExternalDocuments([url])
                 RecoveryService.shared.delete(documentId: snapshot.documentId)
                 AppLog.info("已恢复并另存: \(url.path)")
             } catch {

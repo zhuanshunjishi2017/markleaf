@@ -2,6 +2,19 @@ import AppKit
 import UniformTypeIdentifiers
 import WebKit
 
+struct PreparedDocument: Equatable {
+    let url: URL
+    let markdown: String
+
+    static func read(from url: URL) throws -> PreparedDocument {
+        let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
+        return PreparedDocument(
+            url: standardized,
+            markdown: try String(contentsOf: standardized, encoding: .utf8)
+        )
+    }
+}
+
 /// 编辑器宿主会话：对应 C# EditorHostController + 文档管理。
 /// - 作为 WKScriptMessageHandler 接收编辑器发来的消息（ready/snapshot/dirtyChanged...）
 /// - 通过 evaluateJavaScript 向编辑器发送宿主消息（applyStyles/loadDocument/command...）
@@ -98,6 +111,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     var currentDocumentIdentifier: String { documentId }
     var pendingInitialDocumentPath: String? { pendingInitialOpenPath }
+    var isDocumentDispositionInProgress: Bool { documentDisposition.isInProgress }
+    private(set) var dispositionRequestCount = 0
+    private var pendingInitialPreparedDocument: PreparedDocument?
 
     private func notify() {
         DispatchQueue.main.async { [weak self] in
@@ -791,22 +807,22 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func openDocument(at url: URL) {
-        requestDisposition(for: .replaceDocument) { [weak self] result in
-            guard result == .proceed, let self else { return }
-            self.performOpenDocument(at: url)
-        }
-    }
-
-    private func performOpenDocument(at url: URL) {
         do {
-            let markdown = try String(contentsOf: url, encoding: .utf8)
-            loadDocument(markdown: markdown, fileURL: url)
-            SettingsService.shared.addRecentFile(url.path)
-            SettingsService.shared.update { $0.lastFile = url.path }
+            let prepared = try PreparedDocument.read(from: url)
+            requestDisposition(for: .replaceDocument) { [weak self] result in
+                guard result == .proceed, let self else { return }
+                self.loadPreparedDocument(prepared)
+            }
         } catch {
             AppLog.error("打开文档失败: \(url.path) \(error.localizedDescription)")
             presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
         }
+    }
+
+    private func loadPreparedDocument(_ prepared: PreparedDocument) {
+        loadDocument(markdown: prepared.markdown, fileURL: prepared.url)
+        SettingsService.shared.addRecentFile(prepared.url.path)
+        SettingsService.shared.update { $0.lastFile = prepared.url.path }
     }
 
     /// 统一未保存文档处置：关闭/替换/退出共用同一协调器。
@@ -815,7 +831,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         for reason: DocumentDispositionReason,
         completion: @escaping (DocumentDispositionResult) -> Void
     ) -> Bool {
-        documentDisposition.request(
+        dispositionRequestCount += 1
+        return documentDisposition.request(
             isDirty: isDirty,
             hasFileURL: documentURL != nil,
             reason: reason,
@@ -1248,6 +1265,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 供窗口控制器在展示后调用：直接装载已预读的文档（绕过一次性启动解析器）。
+    func openInitialDocument(prepared: PreparedDocument) {
+        startFollowingSystemAppearance()
+        pendingInitialPreparedDocument = prepared
+        if isReady {
+            runInitialLoad()
+        }
+    }
+
     private func loadInitialDocument() {
         runInitialLoad()
     }
@@ -1255,6 +1281,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private func runInitialLoad() {
         guard !didRunInitialLoad else { return }
         didRunInitialLoad = true
+
+        if let prepared = pendingInitialPreparedDocument {
+            loadPreparedDocument(prepared)
+            return
+        }
 
         let explicitPath = pendingInitialOpenPath ?? Self.argumentValue("--open")
         if useStartupAction || explicitPath != nil {
