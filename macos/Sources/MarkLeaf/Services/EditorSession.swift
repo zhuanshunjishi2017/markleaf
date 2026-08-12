@@ -886,40 +886,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     finish(.cancel)
                     return
                 }
-                let alert = NSAlert()
-                alert.messageText = L10n.f("是否保存对“%@”的修改？", self.windowTitle)
-                alert.informativeText = L10n.t("如果不保存，您的更改将会丢失。")
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: L10n.t("保存"))
-                alert.addButton(withTitle: L10n.t("取消"))
-                alert.addButton(withTitle: L10n.t("不保存"))
-                alert.beginSheetModal(for: window) { response in
-                    switch response {
-                    case .alertFirstButtonReturn: finish(.save)
-                    case .alertSecondButtonReturn: finish(.cancel)
-                    default: finish(.discard)
-                    }
-                }
+                DocumentDispositionSheetPresenter.presentSaved(
+                    for: window,
+                    filename: self.windowTitle,
+                    completion: finish
+                )
             },
             presentUntitledPrompt: { [weak self] finish in
                 guard let self, let window = self.webView?.window else {
                     finish(.cancel)
                     return
                 }
-                let alert = NSAlert()
-                alert.messageText = L10n.t("是否保留这个新文档？")
-                alert.informativeText = L10n.t("如果不保存，这个文档将被删除。")
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: L10n.t("保存…"))
-                alert.addButton(withTitle: L10n.t("取消"))
-                alert.addButton(withTitle: L10n.t("删除"))
-                alert.beginSheetModal(for: window) { response in
-                    switch response {
-                    case .alertFirstButtonReturn: finish(.saveAs)
-                    case .alertSecondButtonReturn: finish(.cancel)
-                    default: finish(.delete)
-                    }
-                }
+                DocumentDispositionSheetPresenter.presentUntitled(for: window, completion: finish)
             },
             completion: completion
         )

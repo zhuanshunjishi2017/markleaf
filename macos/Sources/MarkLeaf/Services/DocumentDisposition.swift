@@ -11,8 +11,8 @@ enum DocumentDispositionResult: Equatable {
     case cancel
 }
 
-enum SavedDocumentChoice { case save, discard, cancel }
-enum UntitledDocumentChoice { case saveAs, delete, cancel }
+enum SavedDocumentChoice: Equatable { case save, discard, cancel }
+enum UntitledDocumentChoice: Equatable { case saveAs, delete, cancel }
 enum DocumentDispositionDecision: Equatable { case proceed, autoSave, promptSaved, promptUntitled }
 
 enum DocumentDispositionPolicy {
