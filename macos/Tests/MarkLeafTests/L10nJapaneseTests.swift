@@ -6,7 +6,7 @@ final class L10nJapaneseTests: XCTestCase {
         let en = L10n.translationKeys(for: "en")
         let ja = L10n.translationKeys(for: "ja")
         XCTAssertTrue(en.isSubset(of: ja))
-        XCTAssertEqual(ja.count, 356)
+        XCTAssertEqual(ja.count, 357)
     }
 
     func testJapaneseSpotTranslations() {

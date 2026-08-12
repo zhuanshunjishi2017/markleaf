@@ -1,37 +1,58 @@
 import AppKit
 
+enum RecoveryWindowCopy {
+    private static let singular = "检测到 1 个未保存的文档。请选择要恢复的快照："
+    private static let plural = "检测到 %d 个未保存的文档。请选择要恢复的快照："
+
+    static func introduction(snapshotCount: Int, language: String) -> String {
+        if snapshotCount == 1 {
+            return L10n.translate(singular, language: language)
+        }
+        return L10n.format(plural, language: language, arguments: [snapshotCount])
+    }
+}
+
 /// 恢复未保存的文件对话框（对应 Windows RecoveryDialog）。
 final class RecoveryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private var snapshots: [RecoverySnapshot]
+    private let language: String
     private let tableView = NSTableView()
     private let timeFormatter = DateFormatter()
+    let introductionLabel: NSTextField
 
-    init(snapshots: [RecoverySnapshot]) {
+    init(
+        snapshots: [RecoverySnapshot],
+        language: String = SettingsService.shared.settings.displayLanguage
+    ) {
         self.snapshots = snapshots
+        self.language = language
+        introductionLabel = NSTextField(labelWithString: RecoveryWindowCopy.introduction(
+            snapshotCount: snapshots.count,
+            language: language
+        ))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 360),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
-        window.title = L10n.t("恢复未保存的文档")
+        window.title = L10n.translate("恢复未保存的文档", language: language)
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
 
         timeFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
 
-        let label = NSTextField(labelWithString: "检测到 \(snapshots.count) 个未保存的文档（上次异常退出遗留）。选择要恢复的快照：")
-        label.font = .systemFont(ofSize: 12)
-        label.translatesAutoresizingMaskIntoConstraints = false
+        introductionLabel.font = .systemFont(ofSize: 12)
+        introductionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let column1 = NSTableColumn(identifier: .init("name"))
-        column1.title = L10n.t("名称")
+        column1.title = L10n.translate("名称", language: language)
         column1.width = 200
         let column2 = NSTableColumn(identifier: .init("time"))
-        column2.title = L10n.t("时间")
+        column2.title = L10n.translate("时间", language: language)
         column2.width = 150
         let column3 = NSTableColumn(identifier: .init("path"))
-        column3.title = L10n.t("原路径")
+        column3.title = L10n.translate("原路径", language: language)
         column3.width = 160
         tableView.addTableColumn(column1)
         tableView.addTableColumn(column2)
@@ -46,11 +67,11 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         scroll.hasVerticalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let saveButton = NSButton(title: L10n.t("另存为…"), target: self, action: #selector(saveAs))
+        let saveButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
         saveButton.keyEquivalent = "\r"
-        let discardButton = NSButton(title: L10n.t("全部丢弃"), target: self, action: #selector(discardAll))
+        let discardButton = NSButton(title: L10n.translate("全部丢弃", language: language), target: self, action: #selector(discardAll))
         discardButton.bezelStyle = .rounded
-        let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancel))
+        let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
         cancelButton.bezelStyle = .rounded
 
         let buttons = NSStackView(views: [saveButton, discardButton, cancelButton])
@@ -59,14 +80,14 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
-        root.addSubview(label)
+        root.addSubview(introductionLabel)
         root.addSubview(scroll)
         root.addSubview(buttons)
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
-            label.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
-            scroll.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 10),
+            introductionLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
+            introductionLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            introductionLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
+            scroll.topAnchor.constraint(equalTo: introductionLabel.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -12),
@@ -107,11 +128,11 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         }()
         switch column.identifier.rawValue {
         case "name":
-            cell.textField?.stringValue = snapshot.displayName ?? L10n.t("未命名文档")
+            cell.textField?.stringValue = snapshot.displayName ?? L10n.translate("未命名文档", language: language)
         case "time":
             cell.textField?.stringValue = timeFormatter.string(from: snapshot.timestamp)
         default:
-            cell.textField?.stringValue = snapshot.documentPath ?? L10n.t("（未保存）")
+            cell.textField?.stringValue = snapshot.documentPath ?? L10n.translate("（未保存）", language: language)
         }
         return cell
     }

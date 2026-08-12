@@ -18,6 +18,10 @@ enum L10n {
         tables[language].map { Set($0.keys) } ?? []
     }
 
+    static func format(_ format: String, language: String, arguments: [CVarArg]) -> String {
+        String(format: translate(format, language: language), arguments: arguments)
+    }
+
     /// 带格式化参数的本地化：先翻译格式串，再填入参数（%d / %@ / %%）。
     static func f(_ format: String, _ args: CVarArg...) -> String {
         let translated = t(format)
@@ -277,7 +281,8 @@ enum L10n {
         "未命名文档": "無題のドキュメント",
         "请先选择一个要恢复的文档": "復元するドキュメントを選択してください",
         "（未保存）": "（未保存）",
-        "检测到 %d 个未保存的文档（上次异常退出遗留）。选择要恢复的快照：": "%d 件の未保存ドキュメントを検出しました（前回の異常終了によるもの）。復元するスナップショットを選択してください：",
+        "检测到 1 个未保存的文档。请选择要恢复的快照：": "1 件の未保存ドキュメントが見つかりました。復元するスナップショットを選択してください：",
+        "检测到 %d 个未保存的文档。请选择要恢复的快照：": "%d 件の未保存ドキュメントが見つかりました。復元するスナップショットを選択してください：",
         "已修改": "変更済み",
         "前端错误": "フロントエンドエラー",
         "文件已被外部删除": "ファイルが外部で削除されました",
@@ -653,7 +658,8 @@ enum L10n {
         "未命名文档": "未命名文件",
         "请先选择一个要恢复的文档": "請先選擇一個要復原的文件",
         "（未保存）": "（未儲存）",
-        "检测到 %d 个未保存的文档（上次异常退出遗留）。选择要恢复的快照：": "偵測到 %d 個未儲存的文件（上次異常結束遺留）。選擇要復原的快照：",
+        "检测到 1 个未保存的文档。请选择要恢复的快照：": "偵測到 1 個未儲存的文件。請選擇要復原的快照：",
+        "检测到 %d 个未保存的文档。请选择要恢复的快照：": "偵測到 %d 個未儲存的文件。請選擇要復原的快照：",
         "已修改": "已修改",
         "前端错误": "前端錯誤",
         "文件已被外部删除": "檔案已被外部刪除",
@@ -1019,7 +1025,8 @@ enum L10n {
         "未命名文档": "Untitled Document",
         "请先选择一个要恢复的文档": "Please select a document to recover first",
         "（未保存）": "(Unsaved)",
-        "检测到 %d 个未保存的文档（上次异常退出遗留）。选择要恢复的快照：": "Detected %d unsaved documents left from an abnormal exit. Choose a snapshot to recover:",
+        "检测到 1 个未保存的文档。请选择要恢复的快照：": "Found 1 unsaved document. Choose a snapshot to recover:",
+        "检测到 %d 个未保存的文档。请选择要恢复的快照：": "Found %d unsaved documents. Choose a snapshot to recover:",
         "已修改": "Modified",
         "前端错误": "Frontend Error",
         "文件已被外部删除": "File was deleted externally",
