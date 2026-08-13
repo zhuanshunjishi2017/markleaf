@@ -67,4 +67,10 @@ final class RecoveryWindowLocalizationTests: XCTestCase {
             XCTAssertFalse(L10n.translationKeys(for: language).contains(obsolete))
         }
     }
+
+    func testSingleDiscardIsLocalizedInEveryTranslatedLanguage() {
+        XCTAssertEqual(L10n.translate("丢弃", language: "zh-Hant"), "丟棄")
+        XCTAssertEqual(L10n.translate("丢弃", language: "en"), "Discard")
+        XCTAssertEqual(L10n.translate("丢弃", language: "ja"), "破棄")
+    }
 }

@@ -16,11 +16,13 @@ enum RecoveryWindowCopy {
 final class RecoveryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private var snapshots: [RecoverySnapshot]
     private let language: String
-    private let tableView = NSTableView()
+    let tableView = NSTableView()
     private let timeFormatter = DateFormatter()
     let introductionLabel: NSTextField
     private var saveOriginalButton: NSButton?
     private var saveAsButton: NSButton?
+    private(set) var discardSelectedButton: NSButton?
+    private(set) var discardAllButton: NSButton?
 
     init(
         snapshots: [RecoverySnapshot],
@@ -77,12 +79,36 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         saveAsButton.keyEquivalent = "\r"
         saveAsButton.isEnabled = false
         self.saveAsButton = saveAsButton
-        let discardButton = NSButton(title: L10n.translate("全部丢弃", language: language), target: self, action: #selector(discardAll))
-        discardButton.bezelStyle = .rounded
+
+        let discardSelectedButton = NSButton(
+            title: L10n.translate("丢弃", language: language),
+            target: self,
+            action: #selector(discardSelected)
+        )
+        discardSelectedButton.bezelStyle = .rounded
+        discardSelectedButton.hasDestructiveAction = true
+        discardSelectedButton.isEnabled = false
+        self.discardSelectedButton = discardSelectedButton
+
+        let discardAllButton = NSButton(
+            title: L10n.translate("全部丢弃", language: language),
+            target: self,
+            action: #selector(discardAll)
+        )
+        discardAllButton.bezelStyle = .rounded
+        discardAllButton.hasDestructiveAction = true
+        self.discardAllButton = discardAllButton
+
         let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
         cancelButton.bezelStyle = .rounded
 
-        let buttons = NSStackView(views: [saveOriginalButton, saveAsButton, discardButton, cancelButton])
+        let buttons = NSStackView(views: [
+            saveOriginalButton,
+            saveAsButton,
+            discardSelectedButton,
+            discardAllButton,
+            cancelButton,
+        ])
         buttons.orientation = .horizontal
         buttons.spacing = 10
         buttons.translatesAutoresizingMaskIntoConstraints = false
@@ -146,11 +172,16 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        updateActionAvailability()
+    }
+
+    private func updateActionAvailability() {
         let row = tableView.selectedRow
         let selected = row >= 0 && row < snapshots.count
         let hasPath = selected && (snapshots[row].documentPath?.isEmpty == false)
         saveOriginalButton?.isHidden = !hasPath
         saveAsButton?.isEnabled = selected
+        discardSelectedButton?.isEnabled = selected
     }
 
     // MARK: - Actions
@@ -178,12 +209,11 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             do {
                 try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
                 AppWindowManager.shared.openExternalDocuments([url])
-                RecoveryService.shared.delete(documentId: snapshot.documentId)
                 AppLog.info("已恢复并另存: \(url.path)")
+                self?.completeProcessing(row: row)
             } catch {
                 AppLog.error("恢复另存失败: \(error.localizedDescription)")
             }
-            self?.close()
         }
     }
 
@@ -195,10 +225,9 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         let url = URL(fileURLWithPath: path)
         do {
             try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
-            RecoveryService.shared.delete(documentId: snapshot.documentId)
             AppWindowManager.shared.openExternalDocuments([url])
             AppLog.info("已恢复到原文件: \(url.path)")
-            close()
+            completeProcessing(row: row)
         } catch {
             presentSaveFailure(error: error)
         }
@@ -242,6 +271,31 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
                 break
             }
         }
+    }
+
+    @objc private func discardSelected() {
+        completeProcessing(row: tableView.selectedRow)
+    }
+
+    private func completeProcessing(row: Int) {
+        guard snapshots.indices.contains(row) else { return }
+        let snapshot = snapshots.remove(at: row)
+        RecoveryService.shared.delete(documentId: snapshot.documentId)
+        introductionLabel.stringValue = RecoveryWindowCopy.introduction(
+            snapshotCount: snapshots.count,
+            language: language
+        )
+        tableView.reloadData()
+
+        guard let nextRow = RecoveryQueueSelection.nextRow(
+            afterRemoving: row,
+            remainingCount: snapshots.count
+        ) else {
+            close()
+            return
+        }
+        tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
+        updateActionAvailability()
     }
 
     @objc private func discardAll() {
