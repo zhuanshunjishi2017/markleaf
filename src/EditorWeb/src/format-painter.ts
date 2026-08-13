@@ -251,3 +251,13 @@ export class FormatPainterController {
     return applied
   }
 }
+
+/// 快捷键“应用格式刷”：仅应用已吸附的格式，不负责吸附或切换状态。
+export function executeFormatPainterApply(
+  editor: Editor,
+  painter: FormatPainterController,
+  sourceMode: boolean,
+): boolean {
+  if (sourceMode || !painter.isArmed) return false
+  return painter.applyOnSelection(editor)
+}

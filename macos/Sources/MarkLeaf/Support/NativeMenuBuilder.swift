@@ -154,7 +154,8 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter"))
+        menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
+        menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
         menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
@@ -341,6 +342,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             menuItem.state = s?.isFormatPainterArmed == true ? .on : .off
             return s?.isSourceMode == false
                 && (s?.canStartFormatPainter == true || s?.isFormatPainterArmed == true)
+        case "formatPainterApply":
+            return s?.isSourceMode == false && s?.isFormatPainterArmed == true
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
@@ -560,7 +563,7 @@ extension EditorSession {
         case "demoteHeading": execute("demoteHeading")
         case "toggleUnderline": executeInlineFormat("toggleUnderline")
         case "toggleCode": executeInlineFormat("toggleCode")
-        case "formatPainter": execute("formatPainter")
+        case "formatPainter", "formatPainterApply": execute(command)
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "insertHorizontalRule": execute("insertHorizontalRule")

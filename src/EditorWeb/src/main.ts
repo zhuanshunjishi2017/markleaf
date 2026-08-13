@@ -16,7 +16,12 @@ import {
 } from './editor'
 import { SourceEditor } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
-import { FormatPainterController, captureFormat, normalizeContextMenuCaretPosition } from './format-painter'
+import {
+  executeFormatPainterApply,
+  FormatPainterController,
+  captureFormat,
+  normalizeContextMenuCaretPosition,
+} from './format-painter'
 import {
   isHostMessage,
   postToHost,
@@ -615,6 +620,13 @@ function handleMessage(value: unknown): void {
           } else {
             success = formatPainter.arm(editor)
           }
+          updateFormatPainterCursor()
+          if (message.requestId) send('commandResult', { success }, message.requestId)
+          sendEditorState()
+          break
+        }
+        if (payload.command === 'formatPainterApply') {
+          const success = executeFormatPainterApply(editor, formatPainter, sourceMode)
           updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)
           sendEditorState()

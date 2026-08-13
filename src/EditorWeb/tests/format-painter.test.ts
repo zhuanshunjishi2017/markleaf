@@ -4,6 +4,7 @@ import { createEditor } from '../src/editor'
 import {
   applyCapturedFormat,
   captureFormat,
+  executeFormatPainterApply,
   FormatPainterController,
   normalizeContextMenuCaretPosition,
   type FormatPainterSnapshot,
@@ -307,6 +308,27 @@ it('keeps captured marks when painting an empty caret paragraph before typing', 
   expect(painter.applyOnSelection(editor)).toBe(true)
   editor.commands.insertContent('typed')
   expect(editor.getMarkdown()).toContain('**typed**')
+})
+
+it('applies an armed format through the shortcut command', () => {
+  const editor = makeEditor('**source** target')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  selectText(editor, 'target')
+
+  expect(executeFormatPainterApply(editor, painter, false)).toBe(true)
+  expect(editor.getMarkdown()).toBe('**source** **target**')
+  expect(painter.isArmed).toBe(false)
+})
+
+it('rejects the shortcut command when source mode or unarmed', () => {
+  const editor = makeEditor('source target')
+  const painter = new FormatPainterController()
+  selectText(editor, 'target')
+
+  expect(executeFormatPainterApply(editor, painter, true)).toBe(false)
+  expect(executeFormatPainterApply(editor, painter, false)).toBe(false)
 })
 
 it('paints paragraph format from a caret source to a caret target', () => {
