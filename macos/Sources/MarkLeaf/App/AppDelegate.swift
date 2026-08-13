@@ -1014,9 +1014,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationRequestInProgress else { return .terminateLater }
         terminationRequestInProgress = true
-        AppWindowManager.shared.requestApplicationTermination { [weak self, weak sender] allowed in
-            self?.terminationRequestInProgress = false
-            sender?.reply(toApplicationShouldTerminate: allowed)
+        // 延迟到终止握手之后呈现保存提示，避免 beginSheet 与退出流程重入冲突（对齐窗口关闭的处置）。
+        DispatchQueue.main.async { [weak self, weak sender] in
+            AppWindowManager.shared.requestApplicationTermination { allowed in
+                self?.terminationRequestInProgress = false
+                sender?.reply(toApplicationShouldTerminate: allowed)
+            }
         }
         return .terminateLater
     }
