@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6757FF"/>
+      <stop offset="0.52" stop-color="#4D8DFF"/>
+      <stop offset="1" stop-color="#40D5C8"/>
+    </linearGradient>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6757FF" stop-opacity="0.18"/>
+      <stop offset="0.42" stop-color="#4D8DFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="640" height="400" fill="#F8FAFD"/>
+  <rect x="0" y="0" width="640" height="104" fill="#FFFFFF"/>
+  <path d="M0 0H410C350 28 324 74 252 104H0Z" fill="url(#wash)"/>
+  <rect x="0" y="103" width="640" height="1" fill="#E7EBF2"/>
+
+  <rect x="30" y="24" width="56" height="56" rx="15" fill="url(#accent)"/>
+  <text x="58" y="61" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="28" font-weight="800" fill="#FFFFFF">M</text>
+  <text x="104" y="49" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="24" font-weight="700" fill="#171B26">MarkLeaf</text>
+  <text x="104" y="72" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="12" font-weight="600" letter-spacing="1.6" fill="#657087">MARKDOWN WITHOUT DISTRACTION</text>
+
+  <g transform="translate(273 201)">
+    <text x="47" y="0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="18" font-weight="500" fill="#3E475A">drag to</text>
+    <path d="M4 29H80" fill="none" stroke="#69758B" stroke-width="2" stroke-linecap="round"/>
+    <path d="M71 21l10 8-10 8" fill="none" stroke="#69758B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="320" y="354" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="12" fill="#8A93A5">Drag MarkLeaf into Applications to install</text>
+</svg>
