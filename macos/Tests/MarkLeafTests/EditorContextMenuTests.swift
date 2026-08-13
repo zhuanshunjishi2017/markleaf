@@ -14,4 +14,22 @@ final class EditorContextMenuTests: XCTestCase {
             NSPoint(x: 42, y: 582)
         )
     }
+
+    func testFormatPainterUsesFreshCaretCapabilityForContextMenu() {
+        XCTAssertTrue(EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: false,
+            canStartFormatPainter: true,
+            isFormatPainterArmed: false
+        ))
+        XCTAssertTrue(EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: false,
+            canStartFormatPainter: false,
+            isFormatPainterArmed: true
+        ))
+        XCTAssertFalse(EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: true,
+            canStartFormatPainter: true,
+            isFormatPainterArmed: false
+        ))
+    }
 }

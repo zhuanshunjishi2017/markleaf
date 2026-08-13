@@ -394,14 +394,24 @@ editorMount.addEventListener('contextmenu', (event) => {
   }
   editor.commands.focus()
   sendEditorState()
-  send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
+  send('contextMenuRequested', {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
+    formatPainterArmed: !sourceMode && formatPainter.isArmed,
+  })
 })
 
 sourceMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   sourceEditor?.focus()
   sendEditorState()
-  send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
+  send('contextMenuRequested', {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    canStartFormatPainter: false,
+    formatPainterArmed: false,
+  })
 })
 
 editorMount.addEventListener('dragover', (event) => {

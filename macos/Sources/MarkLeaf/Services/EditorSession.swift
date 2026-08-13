@@ -261,7 +261,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "contextMenuRequested":
             if let payload, let x = payload["clientX"] as? Double, let y = payload["clientY"] as? Double {
-                showEditorContextMenu(clientX: x, clientY: y)
+                showEditorContextMenu(
+                    clientX: x,
+                    clientY: y,
+                    canStartFormatPainter: payload["canStartFormatPainter"] as? Bool,
+                    formatPainterArmed: payload["formatPainterArmed"] as? Bool
+                )
             }
 
         case "pasteImage":

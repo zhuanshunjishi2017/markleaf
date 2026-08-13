@@ -2,7 +2,12 @@ import AppKit
 
 extension EditorSession {
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
-    func showEditorContextMenu(clientX: Double, clientY: Double) {
+    func showEditorContextMenu(
+        clientX: Double,
+        clientY: Double,
+        canStartFormatPainter: Bool? = nil,
+        formatPainterArmed: Bool? = nil
+    ) {
         guard let webView, let window = webView.window else { return }
         // WKWebView 是 flipped 视图（原点在左上），因此 JS clientY 可直接映射到
         // webView 局部坐标；这里统一换算到屏幕坐标后以 in: nil 弹出，避免依赖
@@ -21,8 +26,14 @@ extension EditorSession {
         addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
         let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
         painterItem.representedObject = "formatPainter"
-        painterItem.isEnabled = !isSourceMode && (canStartFormatPainter || isFormatPainterArmed)
-        painterItem.state = isFormatPainterArmed ? .on : .off
+        let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
+        let currentArmed = formatPainterArmed ?? isFormatPainterArmed
+        painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: isSourceMode,
+            canStartFormatPainter: currentCanStart,
+            isFormatPainterArmed: currentArmed
+        )
+        painterItem.state = currentArmed ? .on : .off
         menu.addItem(painterItem)
         menu.addItem(.separator())
         let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
