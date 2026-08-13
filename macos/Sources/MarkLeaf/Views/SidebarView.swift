@@ -72,12 +72,12 @@ final class SidebarView: NSView {
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
         // 使用 small 的搜索控件，避免 regular 在 Retina 下撑满工具栏；
-        // 通过 22pt 高度把它从“明显偏小”调整到与其他控件视觉接近。
+        // 通过 24pt 高度把它从“略小”调整到与其他控件视觉接近。
         searchField.controlSize = .small
         searchField.sendsSearchStringImmediately = true
         searchField.target = self
         searchField.action = #selector(searchChanged(_:))
-        searchField.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        searchField.heightAnchor.constraint(equalToConstant: 24).isActive = true
         searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
         searchField.setAccessibilityLabel(localize("搜索"))
 
