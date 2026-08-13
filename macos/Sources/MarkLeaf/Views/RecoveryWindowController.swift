@@ -19,6 +19,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
     private let tableView = NSTableView()
     private let timeFormatter = DateFormatter()
     let introductionLabel: NSTextField
+    private var saveOriginalButton: NSButton?
 
     init(
         snapshots: [RecoverySnapshot],
@@ -67,14 +68,18 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         scroll.hasVerticalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let saveButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
-        saveButton.keyEquivalent = "\r"
+        let saveOriginalButton = NSButton(title: L10n.translate("保存", language: language), target: self, action: #selector(saveToOriginal))
+        saveOriginalButton.isHidden = true
+        self.saveOriginalButton = saveOriginalButton
+
+        let saveAsButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
+        saveAsButton.keyEquivalent = "\r"
         let discardButton = NSButton(title: L10n.translate("全部丢弃", language: language), target: self, action: #selector(discardAll))
         discardButton.bezelStyle = .rounded
         let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
         cancelButton.bezelStyle = .rounded
 
-        let buttons = NSStackView(views: [saveButton, discardButton, cancelButton])
+        let buttons = NSStackView(views: [saveOriginalButton, saveAsButton, discardButton, cancelButton])
         buttons.orientation = .horizontal
         buttons.spacing = 10
         buttons.translatesAutoresizingMaskIntoConstraints = false
@@ -137,6 +142,12 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         return cell
     }
 
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let row = tableView.selectedRow
+        let hasPath = row >= 0 && row < snapshots.count && (snapshots[row].documentPath?.isEmpty == false)
+        saveOriginalButton?.isHidden = !hasPath
+    }
+
     // MARK: - Actions
 
     @objc private func saveAs() {
@@ -168,6 +179,63 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
                 AppLog.error("恢复另存失败: \(error.localizedDescription)")
             }
             self?.close()
+        }
+    }
+
+    @objc private func saveToOriginal() {
+        let row = tableView.selectedRow
+        guard row >= 0, row < snapshots.count,
+              let path = snapshots[row].documentPath, !path.isEmpty else { return }
+        let snapshot = snapshots[row]
+        let url = URL(fileURLWithPath: path)
+        do {
+            try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
+            RecoveryService.shared.delete(documentId: snapshot.documentId)
+            AppWindowManager.shared.openExternalDocuments([url])
+            AppLog.info("已恢复到原文件: \(url.path)")
+            close()
+        } catch {
+            presentSaveFailure(error: error)
+        }
+    }
+
+    private func presentSaveFailure(error: Error) {
+        let failure = RecoverySaveFailure.classify(error: error)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        switch failure {
+        case .fileMissing:
+            alert.messageText = L10n.t("原文件已不存在")
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .unreachableVolume:
+            alert.messageText = L10n.t("存储设备不可达")
+            alert.addButton(withTitle: L10n.t("重试"))
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .readOnly:
+            alert.messageText = L10n.t("没有写入权限")
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .diskFull:
+            alert.messageText = L10n.t("磁盘空间不足")
+            alert.addButton(withTitle: L10n.t("好"))
+        case .other:
+            alert.messageText = L10n.f("保存失败：%@", error.localizedDescription)
+            alert.addButton(withTitle: L10n.t("好"))
+        }
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            switch failure {
+            case .fileMissing, .readOnly:
+                if response == .alertFirstButtonReturn { self.saveAs() }
+            case .unreachableVolume:
+                if response == .alertFirstButtonReturn { self.saveToOriginal() }
+                else if response == .alertSecondButtonReturn { self.saveAs() }
+            case .diskFull, .other:
+                break
+            }
         }
     }
 
