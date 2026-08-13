@@ -44,8 +44,21 @@ function selectText(editor: Editor, text: string): void {
   editor.commands.setTextSelection({ from, to })
 }
 
-function editorWithCaret(): Editor {
-  return makeEditor('plain paragraph')
+function placeCaret(editor: Editor, text: string, offset = 1): void {
+  let pos = -1
+  editor.state.doc.descendants((node, p) => {
+    if (pos >= 0) return false
+    if (node.isText) {
+      const index = node.text!.indexOf(text)
+      if (index >= 0) {
+        pos = p + index + offset
+        return false
+      }
+    }
+    return true
+  })
+  expect(pos).toBeGreaterThanOrEqual(0)
+  editor.commands.setTextSelection(pos)
 }
 
 function editorWithCrossParagraphSelection(): Editor {
@@ -116,13 +129,22 @@ it('captures a heading and uniform supported marks', () => {
   })
 })
 
-it('rejects caret, cross-block, list, table, node, and mixed-mark sources', () => {
-  expect(captureFormat(editorWithCaret())).toBeNull()
+it('rejects cross-block, list, table, node, and mixed-mark sources', () => {
   expect(captureFormat(editorWithCrossParagraphSelection())).toBeNull()
   expect(captureFormat(editorWithListSelection())).toBeNull()
   expect(captureFormat(editorWithTableSelection())).toBeNull()
   expect(captureFormat(editorWithSelectedImage())).toBeNull()
   expect(captureFormat(editorWithPartiallyBoldSelection())).toBeNull()
+})
+
+it('captures the block and active marks at a caret', () => {
+  const editor = makeEditor('## **source** tail')
+  placeCaret(editor, 'source', 1)
+  const snapshot = captureFormat(editor)
+  expect(snapshot).toEqual({
+    block: 'heading2',
+    marks: { bold: true, italic: false, underline: false, strike: false, code: false },
+  })
 })
 
 it('applies once without changing text or link href and one undo restores the target', () => {
@@ -240,6 +262,27 @@ it('preserves the href when non-code formatting targets a link', () => {
   selectText(editor, 'target')
   expect(painter.applyOnSelection(editor)).toBe(true)
   expect(editor.getMarkdown()).toContain('[**target**](https://example.com)')
+})
+
+it('applies captured format to the paragraph at a caret', () => {
+  const editor = makeEditor('**source**\n\ntarget paragraph')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  placeCaret(editor, 'target paragraph', 3)
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(painter.isArmed).toBe(false)
+  expect(editor.getMarkdown()).toContain('**target paragraph**')
+})
+
+it('paints paragraph format from a caret source to a caret target', () => {
+  const editor = makeEditor('## heading text\n\nplain target')
+  placeCaret(editor, 'heading text', 2)
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  placeCaret(editor, 'plain target', 2)
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('## plain target')
 })
 
 it('applies a synthetic all-mark snapshot through the public API', () => {
