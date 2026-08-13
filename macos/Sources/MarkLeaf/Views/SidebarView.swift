@@ -71,13 +71,13 @@ final class SidebarView: NSView {
         headerOpenFolderButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        // 搜索框与顶部的分段按钮、打开文件夹按钮保持同一控制高度。
-        // small 会让 NSSearchField 明显矮一截，尤其在深色工具栏中更明显。
-        searchField.controlSize = .regular
+        // 使用 small 的搜索控件，避免 regular 在 Retina 下撑满工具栏；
+        // 通过 22pt 高度把它从“明显偏小”调整到与其他控件视觉接近。
+        searchField.controlSize = .small
         searchField.sendsSearchStringImmediately = true
         searchField.target = self
         searchField.action = #selector(searchChanged(_:))
-        searchField.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        searchField.heightAnchor.constraint(equalToConstant: 22).isActive = true
         searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
         searchField.setAccessibilityLabel(localize("搜索"))
 
