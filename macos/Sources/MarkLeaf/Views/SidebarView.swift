@@ -24,6 +24,9 @@ final class SidebarView: NSView {
     private let searchService = WorkspaceSearchService()
     private var isSearching = false
 
+    /// Exposes the native search field to @testable layout regression tests.
+    var searchFieldForTesting: NSSearchField { searchField }
+
     init(
         session: EditorSession,
         persistSidebarTab: @escaping (String) -> Void = { tab in
@@ -81,10 +84,21 @@ final class SidebarView: NSView {
         searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
         searchField.setAccessibilityLabel(localize("搜索"))
 
-        let header = NSStackView(views: [tabControl, searchField, NSView(), headerOpenFolderButton])
-        header.orientation = .horizontal
+        // Keep navigation and search on separate rows so localized labels never
+        // compete for the same horizontal space.
+        let navigationRow = NSStackView(views: [tabControl, NSView(), headerOpenFolderButton])
+        navigationRow.orientation = .horizontal
+        navigationRow.spacing = 6
+        navigationRow.alignment = .centerY
+
+        let searchRow = NSStackView(views: [searchField])
+        searchRow.orientation = .horizontal
+        searchRow.alignment = .width
+
+        let header = NSStackView(views: [navigationRow, searchRow])
+        header.orientation = .vertical
         header.spacing = 6
-        header.alignment = .centerY
+        header.alignment = .width
         header.translatesAutoresizingMaskIntoConstraints = false
 
         emptyStateLabel.alignment = .center

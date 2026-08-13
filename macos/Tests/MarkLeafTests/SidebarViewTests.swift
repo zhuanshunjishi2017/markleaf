@@ -70,6 +70,61 @@ final class SidebarViewTests: XCTestCase {
     }
 
     @MainActor
+    func testSidebarHeaderUsesTwoRows() throws {
+        let sidebar = makeSidebar(language: "en")
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 230, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = sidebar
+        sidebar.frame = NSRect(x: 0, y: 0, width: 230, height: 600)
+        sidebar.layoutSubtreeIfNeeded()
+
+        let navigationRow = try XCTUnwrap(sidebar.tabControl.superview as? NSStackView)
+        let header = try XCTUnwrap(navigationRow.superview as? NSStackView)
+        let searchRow = try XCTUnwrap(sidebar.searchFieldForTesting.superview as? NSStackView)
+
+        XCTAssertEqual(header.orientation, .vertical)
+        XCTAssertEqual(header.arrangedSubviews.count, 2)
+        XCTAssertEqual(navigationRow.orientation, .horizontal)
+        XCTAssertEqual(searchRow.orientation, .horizontal)
+        XCTAssertEqual(sidebar.searchFieldForTesting.frame.width, 218, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(sidebar.tabControl.frame.maxX, sidebar.tabControl.frame.minX)
+        XCTAssertEqual(sidebar.headerOpenFolderButton.frame.width, 32, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testSidebarHeaderKeepsTwoRowsAcrossLanguagesAndUpdatesOutlinePlaceholder() throws {
+        for language in ["zh", "en", "ja"] {
+            let sidebar = makeSidebar(language: language)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 200, height: 600),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = sidebar
+            sidebar.frame = NSRect(x: 0, y: 0, width: 200, height: 600)
+            sidebar.layoutSubtreeIfNeeded()
+
+            let navigationRow = try XCTUnwrap(sidebar.tabControl.superview as? NSStackView)
+            let header = try XCTUnwrap(navigationRow.superview as? NSStackView)
+            XCTAssertEqual(header.orientation, .vertical)
+            XCTAssertEqual(header.arrangedSubviews.count, 2)
+            XCTAssertGreaterThanOrEqual(sidebar.searchFieldForTesting.frame.width, 188)
+            XCTAssertFalse(sidebar.searchFieldForTesting.placeholderString?.isEmpty ?? true)
+
+            if language == "en" {
+                XCTAssertEqual(sidebar.searchFieldForTesting.placeholderString, "Search Workspace")
+                sidebar.selectTab(1)
+                XCTAssertEqual(sidebar.searchFieldForTesting.placeholderString, "Search Outline")
+            }
+        }
+    }
+
+    @MainActor
     func testEmptyStateFollowsTabAndWorkspaceAvailability() {
         let sidebar = makeSidebar(language: "en")
 
