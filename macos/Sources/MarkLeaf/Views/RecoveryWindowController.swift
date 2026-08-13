@@ -135,8 +135,19 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
 
     private static func styleDestructive(_ button: NSButton) {
         button.hasDestructiveAction = true
-        let titleColor = NSColor.systemRed.withAlphaComponent(0.72)
-        button.bezelColor = NSColor.systemRed.withAlphaComponent(0.10)
+        let titleColor = NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(srgbRed: 0.863, green: 0.224, blue: 0.161, alpha: 1)
+                : NSColor.systemRed.withAlphaComponent(0.72)
+        }
+        let bezelColor = NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(srgbRed: 0.365, green: 0.227, blue: 0.220, alpha: 1)
+                : NSColor.systemRed.withAlphaComponent(0.10)
+        }
+        button.bezelColor = bezelColor
         let font = button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
         button.attributedTitle = NSAttributedString(
             string: button.title,

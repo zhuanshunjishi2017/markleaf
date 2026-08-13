@@ -44,11 +44,11 @@ When a save panel is cancelled or a save operation fails, retain the selected
 
 Use `NSButton.hasDestructiveAction = true` for both “全部丢弃” and “丢弃” before
 the buttons are presented. AppKit does not visually style destructive buttons in
-a regular `NSWindow` (unlike an `NSAlert`), so also apply semantic
-`NSColor.systemRed` once before presentation for the subtle bezel and title.
-Do not use fixed RGB values or delayed recoloring. Add the “丢弃” translation to
-the existing Simplified Chinese, Traditional Chinese, English, and Japanese
-localization tables.
+a regular `NSWindow` (unlike an `NSAlert`), so also apply appearance-resolved
+TextEdit-style colors once before presentation: in dark mode use the sampled
+title `#DC3929` and bezel `#5D3A38`; light mode remains system-adaptive. Do not
+use delayed recoloring. Add the “丢弃” translation to the existing Simplified
+Chinese, Traditional Chinese, English, and Japanese localization tables.
 
 ## Queue Refresh Rules
 

@@ -4,7 +4,7 @@
 
 **Goal:** Show selected-snapshot actions only when a table row is selected and tone destructive controls closer to TextEdit's restrained red.
 
-**Architecture:** Keep selection state as the single source of truth in `RecoveryWindowController.updateActionAvailability()`. Use semantic destructive behavior plus a shared muted system-red color for the button title and bezel, with no delayed recoloring.
+**Architecture:** Keep selection state as the single source of truth in `RecoveryWindowController.updateActionAvailability()`. Use semantic destructive behavior plus appearance-resolved TextEdit-style colors for the button title and bezel, with no delayed recoloring.
 
 **Tech Stack:** Swift, AppKit, SwiftPM, standalone AppKit probes.
 
@@ -13,7 +13,7 @@
 - “全部丢弃” remains visible regardless of selection.
 - “保存”, “另存为…” and selected “丢弃” are hidden when no row is selected.
 - Selected actions are shown only for a valid selected row; “保存” still requires an original path.
-- Use dynamic system colors rather than fixed RGB values.
+- Resolve colors from the current appearance; in dark mode match the supplied TextEdit reference (`#DC3929` title and `#5D3A38` bezel), while light mode remains system-adaptive.
 
 ---
 
@@ -43,7 +43,7 @@ Run the existing standalone probe compile/run command with the macOS 26.5 SDK. E
 
 ---
 
-### Task 2: Implement selection-driven visibility and muted destructive styling
+### Task 2: Implement selection-driven visibility and TextEdit-style destructive styling
 
 **Files:**
 - Modify: `macos/Sources/MarkLeaf/Views/RecoveryWindowController.swift`
@@ -65,9 +65,9 @@ discardSelectedButton?.isEnabled = selected
 
 Keep `saveOriginalButton?.isHidden = !hasPath` unchanged.
 
-- [ ] **Step 3: Replace saturated red with a shared restrained system-red style**
+- [ ] **Step 3: Replace saturated red with appearance-resolved TextEdit colors**
 
-Define one dynamic color such as `NSColor.systemRed.withAlphaComponent(0.72)` for title/icon and a lower-alpha bezel fill such as `0.10`. Apply the same title color to both destructive buttons while retaining `hasDestructiveAction = true`.
+Define dynamic colors that resolve to sRGB title `#DC3929` and bezel `#5D3A38` in dark appearance, with the existing softer system-red alpha treatment in light appearance. Apply the same title color to both destructive buttons while retaining `hasDestructiveAction = true`.
 
 - [ ] **Step 4: Run the probe and verify it passes**
 

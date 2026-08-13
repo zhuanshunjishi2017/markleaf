@@ -59,6 +59,7 @@ enum RecoverySaveFailure {
 enum RecoveryWindowActionsProbe {
     static func main() {
         _ = NSApplication.shared
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         let snapshots = [
             RecoverySnapshot(
                 documentId: "first",
@@ -84,11 +85,20 @@ enum RecoveryWindowActionsProbe {
         precondition(controller.discardSelectedButton?.hasDestructiveAction == true)
         precondition(controller.discardAllButton?.bezelColor != nil)
         precondition(controller.discardSelectedButton?.bezelColor != nil)
-        precondition(controller.discardAllButton?.attributedTitle.attribute(
+        let titleColor = controller.discardAllButton?.attributedTitle.attribute(
             .foregroundColor,
             at: 0,
             effectiveRange: nil
-        ) as? NSColor != NSColor.systemRed)
+        ) as? NSColor
+        let titleSRGB = titleColor?.usingColorSpace(.sRGB)
+        precondition(titleSRGB.map { abs($0.redComponent - 0.863) < 0.03 } == true)
+        precondition(titleSRGB.map { abs($0.greenComponent - 0.224) < 0.03 } == true)
+        precondition(titleSRGB.map { abs($0.blueComponent - 0.161) < 0.03 } == true)
+
+        let bezelSRGB = controller.discardAllButton?.bezelColor?.usingColorSpace(.sRGB)
+        precondition(bezelSRGB.map { abs($0.redComponent - 0.365) < 0.03 } == true)
+        precondition(bezelSRGB.map { abs($0.greenComponent - 0.227) < 0.03 } == true)
+        precondition(bezelSRGB.map { abs($0.blueComponent - 0.220) < 0.03 } == true)
         precondition(controller.saveAsButton?.isHidden == true)
         precondition(controller.discardSelectedButton?.isHidden == true)
         precondition(controller.discardSelectedButton?.isEnabled == false)
