@@ -586,6 +586,7 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     private weak var session: EditorSession?
     private var onHeadingActivated: ((OutlineHeading) -> Void)?
     private var isSynchronizingSelection = false
+    private var suppressScrollSyncUntil: Date?
 
     func configure(
         session: EditorSession,
@@ -606,6 +607,10 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     func synchronizeSelection(to position: Int?) {
+        if let until = suppressScrollSyncUntil, Date() < until {
+            return
+        }
+        suppressScrollSyncUntil = nil
         isSynchronizingSelection = true
         defer { isSynchronizingSelection = false }
         guard let position,
@@ -688,7 +693,8 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
               selectedRow >= 0,
               let heading = item(atRow: selectedRow) as? OutlineHeading
         else { return }
-        // 延迟到鼠标事件结束后再滚动，避免首次点击时选中高亮被滚动回同步覆盖。
+        // 点击标题会滚动编辑器，随后滚动位置会回同步一次；短暂抑制以避免覆盖本次高亮。
+        suppressScrollSyncUntil = Date().addingTimeInterval(0.25)
         DispatchQueue.main.async { [weak self] in
             self?.onHeadingActivated?(heading)
         }
