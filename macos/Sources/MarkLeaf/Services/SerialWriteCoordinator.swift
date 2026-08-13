@@ -26,3 +26,15 @@ final class SerialWriteCoordinator {
         }
     }
 }
+
+enum DocumentSaveRevisionPolicy {
+    static func isDirty(savedRevision: Int64, currentRevision: Int64) -> Bool {
+        savedRevision != currentRevision
+    }
+}
+
+enum DocumentWriteWatchPolicy {
+    static func originalDocumentURL(previousDocumentURL: URL?) -> URL? {
+        previousDocumentURL
+    }
+}

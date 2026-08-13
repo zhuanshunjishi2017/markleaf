@@ -148,6 +148,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func handleEditorMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
         let payload = message["payload"] as? [String: Any]
+        let messageRevision: Int64?
+        if let value = message["revision"] as? NSNumber {
+            messageRevision = value.int64Value
+        } else if let value = message["revision"] as? Int64 {
+            messageRevision = value
+        } else if let value = message["revision"] as? Int {
+            messageRevision = Int64(value)
+        } else {
+            messageRevision = nil
+        }
+        if let messageRevision {
+            revision = max(revision, messageRevision)
+        }
 
         switch type {
         case "ready":
@@ -171,7 +184,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "snapshot":
             let markdown = payload?["markdown"] as? String ?? ""
-            if snapshotRequests.completeNext(.success(markdown)) {
+            let snapshot = EditorSnapshot(
+                markdown: markdown,
+                revision: messageRevision ?? revision
+            )
+            if snapshotRequests.completeNext(.success(snapshot)) {
                 send("requestSnapshot")
             }
 
@@ -604,6 +621,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func requestSnapshot(completion: @escaping (Result<String, Error>) -> Void) {
+        requestVersionedSnapshot { result in
+            completion(result.map(\.markdown))
+        }
+    }
+
+    private func requestVersionedSnapshot(
+        completion: @escaping (Result<EditorSnapshot, Error>) -> Void
+    ) {
         if snapshotRequests.enqueue(completion) {
             send("requestSnapshot")
         }
@@ -930,7 +955,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 finish()
                 return
             }
-            self.requestSnapshot { [weak self] result in
+            let previousDocumentURL = self.documentURL
+            self.requestVersionedSnapshot { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self else {
                         completion?(false)
@@ -938,26 +964,39 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                         return
                     }
                     switch result {
-                    case .success(let rawMarkdown):
+                    case .success(let snapshot):
                         do {
                             // 新建文件按设置写入换行风格；已打开文件保留原样
-                            var markdown = rawMarkdown
+                            var markdown = snapshot.markdown
                             if self.documentURL == nil,
                                SettingsService.shared.settings.newLineStyle == "crlf" {
-                                markdown = rawMarkdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
+                                markdown = snapshot.markdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
                             }
                             self.stopExternalChangeWatch()
                             self.externalChangeTracker.beginSelfWrite()
                             try markdown.write(to: url, atomically: true, encoding: .utf8)
-                            self.documentURL = url
                             try self.externalChangeTracker.finishSelfWrite(at: url)
+                            self.documentURL = url
                             self.startExternalChangeWatch(for: url, acceptingCurrentVersion: false)
                             SettingsService.shared.update { $0.lastFile = url.path }
-                            self.isDirty = false
-                            self.statusText = L10n.t("已保存")
+                            self.isDirty = DocumentSaveRevisionPolicy.isDirty(
+                                savedRevision: snapshot.revision,
+                                currentRevision: self.revision
+                            )
+                            self.statusText = self.isDirty ? L10n.t("已修改") : L10n.t("已保存")
                             AppLog.info("文档已保存: \(url.path)")
                             completion?(true)
                         } catch {
+                            self.externalChangeTracker.cancelSelfWrite()
+                            if let restoreURL = DocumentWriteWatchPolicy.originalDocumentURL(
+                                previousDocumentURL: previousDocumentURL
+                            ) {
+                                self.startExternalChangeWatch(
+                                    for: restoreURL,
+                                    acceptingCurrentVersion: false
+                                )
+                                self.handleExternalChangeEvent(for: restoreURL)
+                            }
                             self.presentError(L10n.f("保存失败：%@", error.localizedDescription))
                             completion?(false)
                         }

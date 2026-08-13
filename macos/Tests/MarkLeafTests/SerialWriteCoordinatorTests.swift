@@ -2,6 +2,27 @@ import XCTest
 @testable import MarkLeaf
 
 final class SerialWriteCoordinatorTests: XCTestCase {
+    func testSaveCompletionStaysDirtyWhenRevisionAdvancedAfterSnapshot() {
+        XCTAssertFalse(DocumentSaveRevisionPolicy.isDirty(
+            savedRevision: 7,
+            currentRevision: 7
+        ))
+        XCTAssertTrue(DocumentSaveRevisionPolicy.isDirty(
+            savedRevision: 7,
+            currentRevision: 8
+        ))
+    }
+
+    func testFailedSaveAsRestoresTheOriginalDocumentWatch() {
+        let original = URL(fileURLWithPath: "/tmp/original.md")
+
+        XCTAssertEqual(
+            DocumentWriteWatchPolicy.originalDocumentURL(previousDocumentURL: original),
+            original
+        )
+        XCTAssertNil(DocumentWriteWatchPolicy.originalDocumentURL(previousDocumentURL: nil))
+    }
+
     func testStartsOnlyOneWriteUntilTheFirstFinishes() {
         let coordinator = SerialWriteCoordinator()
         var started: [String] = []

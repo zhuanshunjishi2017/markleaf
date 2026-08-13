@@ -1,7 +1,12 @@
 import Foundation
 
+struct EditorSnapshot: Equatable {
+    let markdown: String
+    let revision: Int64
+}
+
 final class SnapshotRequestQueue {
-    typealias Completion = (Result<String, Error>) -> Void
+    typealias Completion = (Result<EditorSnapshot, Error>) -> Void
 
     private var completions: [Completion] = []
 
@@ -15,7 +20,7 @@ final class SnapshotRequestQueue {
     }
 
     @discardableResult
-    func completeNext(_ result: Result<String, Error>) -> Bool {
+    func completeNext(_ result: Result<EditorSnapshot, Error>) -> Bool {
         guard !completions.isEmpty else { return false }
         completions.removeFirst()(result)
         return !completions.isEmpty

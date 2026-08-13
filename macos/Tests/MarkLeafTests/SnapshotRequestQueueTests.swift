@@ -8,23 +8,27 @@ final class SnapshotRequestQueueTests: XCTestCase {
         let queue = SnapshotRequestQueue()
         var received: [String] = []
         queue.enqueue { result in
-            if case .success(let value) = result { received.append("first: \(value)") }
+            if case .success(let snapshot) = result {
+                received.append("first: \(snapshot.markdown)@\(snapshot.revision)")
+            }
         }
         queue.enqueue { result in
-            if case .success(let value) = result { received.append("second: \(value)") }
+            if case .success(let snapshot) = result {
+                received.append("second: \(snapshot.markdown)@\(snapshot.revision)")
+            }
         }
 
-        queue.completeNext(.success("one"))
-        queue.completeNext(.success("two"))
+        queue.completeNext(.success(EditorSnapshot(markdown: "one", revision: 4)))
+        queue.completeNext(.success(EditorSnapshot(markdown: "two", revision: 7)))
 
-        XCTAssertEqual(received, ["first: one", "second: two"])
+        XCTAssertEqual(received, ["first: one@4", "second: two@7"])
         XCTAssertTrue(queue.isEmpty)
     }
 
     func testCompletionWithNoRequestDoesNothing() {
         let queue = SnapshotRequestQueue()
 
-        queue.completeNext(.success("orphan"))
+        queue.completeNext(.success(EditorSnapshot(markdown: "orphan", revision: 1)))
 
         XCTAssertTrue(queue.isEmpty)
     }

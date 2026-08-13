@@ -52,6 +52,10 @@ final class ExternalDocumentChangeTracker {
         try acceptCurrentVersion(at: url)
     }
 
+    func cancelSelfWrite() {
+        needsRecheck = false
+    }
+
     func decision(forEventAt url: URL) throws -> ExternalDocumentChangeDecision {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return .missing

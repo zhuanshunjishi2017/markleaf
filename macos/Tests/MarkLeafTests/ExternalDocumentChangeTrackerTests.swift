@@ -62,4 +62,28 @@ final class ExternalDocumentChangeTrackerTests: XCTestCase {
 
         XCTAssertEqual(try tracker.decision(forEventAt: url), .missing)
     }
+
+    func testFailedSelfWriteCanRestoreTheAcceptedOriginalVersion() throws {
+        let url = try makeFile("before")
+        let tracker = ExternalDocumentChangeTracker()
+        try tracker.acceptCurrentVersion(at: url)
+
+        tracker.beginSelfWrite()
+        tracker.cancelSelfWrite()
+
+        XCTAssertEqual(try tracker.decision(forEventAt: url), .ignore)
+    }
+
+    func testFailedSelfWriteDoesNotAcceptAnExternalReplacement() throws {
+        let url = try makeFile("before")
+        let tracker = ExternalDocumentChangeTracker()
+        try tracker.acceptCurrentVersion(at: url)
+
+        tracker.beginSelfWrite()
+        try "external".write(to: url, atomically: true, encoding: .utf8)
+        tracker.cancelSelfWrite()
+
+        XCTAssertEqual(try tracker.decision(forEventAt: url), .rebindAndRecheck)
+        XCTAssertEqual(try tracker.decision(forEventAt: url), .presentExternalChange)
+    }
 }
