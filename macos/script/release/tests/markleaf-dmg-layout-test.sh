@@ -40,6 +40,8 @@ TEST_CAPTURE="$CAPTURE" OSASCRIPT_BIN="$FAKE_OSASCRIPT" \
     bash "$HELPER" apply "$STAGE"
 
 for expected in \
+    'set mountedPath to item 2 of argv' \
+    'set targetDisk to disk (POSIX file mountedPath as alias)' \
     'set bounds of targetWindow to {100, 100, 740, 500}' \
     'set icon size of viewOptions to 112' \
     'set text size of viewOptions to 13' \

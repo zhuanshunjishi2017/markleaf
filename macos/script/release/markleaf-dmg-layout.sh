@@ -42,12 +42,12 @@ case "$ACTION" in
             exit 0
         fi
 
-        MOUNTED_DISK_NAME="$(basename "$DMG_ROOT")"
-        if ! "$OSASCRIPT_BIN" - "$MOUNTED_DISK_NAME" <<'APPLESCRIPT'
+        MOUNTED_PATH="$(cd "$DMG_ROOT" && pwd)"
+        if ! "$OSASCRIPT_BIN" - "$MOUNTED_PATH" <<'APPLESCRIPT'
 on run argv
-    set mountedDiskName to item 1 of argv
+    set mountedPath to item 2 of argv
     tell application "Finder"
-        set targetDisk to disk mountedDiskName
+        set targetDisk to disk (POSIX file mountedPath as alias)
         open targetDisk
         delay 1
         set targetWindow to container window of targetDisk
