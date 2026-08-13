@@ -20,6 +20,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
     private let timeFormatter = DateFormatter()
     let introductionLabel: NSTextField
     private var saveOriginalButton: NSButton?
+    private var saveAsButton: NSButton?
 
     init(
         snapshots: [RecoverySnapshot],
@@ -74,6 +75,8 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
 
         let saveAsButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
         saveAsButton.keyEquivalent = "\r"
+        saveAsButton.isEnabled = false
+        self.saveAsButton = saveAsButton
         let discardButton = NSButton(title: L10n.translate("全部丢弃", language: language), target: self, action: #selector(discardAll))
         discardButton.bezelStyle = .rounded
         let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
@@ -144,8 +147,10 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = tableView.selectedRow
-        let hasPath = row >= 0 && row < snapshots.count && (snapshots[row].documentPath?.isEmpty == false)
+        let selected = row >= 0 && row < snapshots.count
+        let hasPath = selected && (snapshots[row].documentPath?.isEmpty == false)
         saveOriginalButton?.isHidden = !hasPath
+        saveAsButton?.isEnabled = selected
     }
 
     // MARK: - Actions
