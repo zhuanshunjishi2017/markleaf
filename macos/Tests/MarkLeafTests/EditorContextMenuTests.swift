@@ -42,4 +42,5 @@ final class EditorContextMenuTests: XCTestCase {
         XCTAssertTrue(EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: false))
         XCTAssertFalse(EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: true))
     }
+
 }

@@ -562,7 +562,7 @@ extension EditorSession {
         case "demoteHeading": execute("demoteHeading")
         case "toggleUnderline": executeInlineFormat("toggleUnderline")
         case "toggleCode": executeInlineFormat("toggleCode")
-        case "formatPainter", "formatPainterApply": execute(command)
+        case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "insertHorizontalRule": execute("insertHorizontalRule")

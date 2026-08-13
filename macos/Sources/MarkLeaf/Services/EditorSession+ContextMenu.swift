@@ -25,7 +25,7 @@ extension EditorSession {
         addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
         addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
         let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
-        painterItem.representedObject = "formatPainter"
+        painterItem.representedObject = "formatPainterArm"
         let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
         let currentArmed = formatPainterArmed ?? isFormatPainterArmed
         painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(

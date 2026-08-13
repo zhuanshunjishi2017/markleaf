@@ -66,6 +66,7 @@ let documentType: DocumentType = 'markdown'
 
 let editor = createEditor(editorMount)
 const formatPainter = new FormatPainterController()
+let contextMenuSelection: { from: number; to: number } | null = null
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -398,6 +399,10 @@ editorMount.addEventListener('contextmenu', (event) => {
     }
   }
   editor.commands.focus()
+  contextMenuSelection = {
+    from: editor.state.selection.from,
+    to: editor.state.selection.to,
+  }
   sendEditorState()
   send('contextMenuRequested', {
     clientX: event.clientX,
@@ -620,6 +625,20 @@ function handleMessage(value: unknown): void {
           } else {
             success = formatPainter.arm(editor)
           }
+          updateFormatPainterCursor()
+          if (message.requestId) send('commandResult', { success }, message.requestId)
+          sendEditorState()
+          break
+        }
+        if (payload.command === 'formatPainterArm') {
+          let success = false
+          if (!sourceMode) {
+            if (contextMenuSelection) {
+              editor.commands.setTextSelection(contextMenuSelection)
+            }
+            success = formatPainter.arm(editor)
+          }
+          contextMenuSelection = null
           updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)
           sendEditorState()
