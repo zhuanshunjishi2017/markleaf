@@ -210,6 +210,9 @@ private final class DocumentDispositionSheetController: NSViewController {
             return
         }
         parent.endSheet(sheet)
-        completion(actionIndex)
+        // 等 sheet 完全收起后再回调，避免在下滑动画期间重入关闭流程。
+        DispatchQueue.main.async {
+            completion(actionIndex)
+        }
     }
 }

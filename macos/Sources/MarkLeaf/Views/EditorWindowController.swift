@@ -341,10 +341,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             return true
         }
         guard !session.isDocumentDispositionInProgress else { return false }
-        _ = session.requestDisposition(for: .closeWindow) { [weak self, weak sender] result in
-            guard result == .proceed, let self, let sender else { return }
-            self.allowsNextClose = true
-            sender.performClose(nil)
+        // 延迟到关闭握手之后呈现保存提示，避免 beginSheet 与窗口关闭流程重入冲突。
+        DispatchQueue.main.async { [weak self, weak sender] in
+            guard let self, let sender else { return }
+            _ = self.session.requestDisposition(for: .closeWindow) { result in
+                guard result == .proceed else { return }
+                self.allowsNextClose = true
+                sender.performClose(nil)
+            }
         }
         return false
     }
