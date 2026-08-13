@@ -26,10 +26,20 @@ final class EditorContextMenuTests: XCTestCase {
             canStartFormatPainter: false,
             isFormatPainterArmed: true
         ))
+        XCTAssertTrue(EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: false,
+            canStartFormatPainter: false,
+            isFormatPainterArmed: false
+        ))
         XCTAssertFalse(EditorContextMenuState.formatPainterEnabled(
             isSourceMode: true,
             canStartFormatPainter: true,
             isFormatPainterArmed: false
         ))
+    }
+
+    func testFormatPainterShortcutMenuDoesNotDependOnCachedCaretCapability() {
+        XCTAssertTrue(EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: false))
+        XCTAssertFalse(EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: true))
     }
 }

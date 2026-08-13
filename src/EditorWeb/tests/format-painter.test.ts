@@ -169,6 +169,20 @@ it('normalizes a document-boundary context-menu position into the final paragrap
   expect(captureFormat(editor)).not.toBeNull()
 })
 
+it('captures format when the editor reports the document boundary as a caret', () => {
+  const editor = makeEditor('plain paragraph')
+  editor.commands.setTextSelection(editor.state.doc.content.size)
+  expect(editor.state.selection.empty).toBe(true)
+  expect(captureFormat(editor)).not.toBeNull()
+})
+
+it('captures a selection whose end is reported as the document boundary', () => {
+  const editor = makeEditor('plain paragraph')
+  editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size })
+  expect(editor.state.selection.empty).toBe(false)
+  expect(captureFormat(editor)).not.toBeNull()
+})
+
 it('applies once without changing text or link href and one undo restores the target', () => {
   const editor = makeEditor('## **source**\n\n[target](https://example.com)')
   selectText(editor, 'source')

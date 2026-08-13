@@ -340,8 +340,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         // 格式刷：可视化模式下，可吸附来源或已激活时均可点（再次点击取消，对齐 Word 按钮切换）
         case "formatPainter":
             menuItem.state = s?.isFormatPainterArmed == true ? .on : .off
-            return s?.isSourceMode == false
-                && (s?.canStartFormatPainter == true || s?.isFormatPainterArmed == true)
+            return EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: s?.isSourceMode ?? true)
         case "formatPainterApply":
             return s?.isSourceMode == false && s?.isFormatPainterArmed == true
         // 撤销/重做
