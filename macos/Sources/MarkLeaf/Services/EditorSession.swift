@@ -84,6 +84,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var revision: Int64 = 0
     private var fileMonitorSource: DispatchSourceFileSystemObject?
     private var monitoredFileDescriptor: Int32 = -1
+    private var externalWatchGeneration = ExternalDocumentWatchGeneration()
     private let externalChangeTracker = ExternalDocumentChangeTracker()
     private var isPresentingExternalChange = false
 
@@ -109,8 +110,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isReady = false
 
     var windowTitle: String {
-        let base = documentURL?.lastPathComponent ?? L10n.t("未命名")
-        return isDirty ? base + L10n.t(" — 已编辑") : base
+        documentURL?.lastPathComponent ?? L10n.t("未命名")
     }
 
     var currentDocumentIdentifier: String { documentId }
@@ -532,6 +532,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private func startExternalChangeWatch(for url: URL, acceptingCurrentVersion: Bool = true) {
         stopExternalChangeWatch()
+        let generation = externalWatchGeneration.beginWatch()
         let normalizedURL = url.standardizedFileURL.resolvingSymlinksInPath()
         if acceptingCurrentVersion {
             try? externalChangeTracker.acceptCurrentVersion(at: normalizedURL)
@@ -545,7 +546,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             queue: .main)
         fileMonitorSource = source
         source.setEventHandler { [weak self] in
-            self?.handleExternalChangeEvent(for: normalizedURL)
+            guard let self, self.externalWatchGeneration.isCurrent(generation) else { return }
+            self.handleExternalChangeEvent(for: normalizedURL)
         }
         source.setCancelHandler {
             close(fd)
@@ -554,6 +556,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     private func stopExternalChangeWatch() {
+        externalWatchGeneration.invalidate()
         fileMonitorSource?.cancel()
         fileMonitorSource = nil
         monitoredFileDescriptor = -1
@@ -913,7 +916,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 }
                 DocumentDispositionSheetPresenter.presentSaved(
                     for: window,
-                    filename: self.windowTitle,
+                    filename: self.documentURL?.lastPathComponent ?? self.windowTitle,
                     completion: finish
                 )
             },

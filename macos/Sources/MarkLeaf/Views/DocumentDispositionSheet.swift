@@ -1,7 +1,14 @@
 import AppKit
 
+enum DocumentDispositionSheetActionRole: Equatable {
+    case `default`
+    case destructive
+    case cancel
+}
+
 struct DocumentDispositionSheetAction: Equatable {
     let title: String
+    let role: DocumentDispositionSheetActionRole
 }
 
 struct DocumentDispositionSheetSpec {
@@ -16,41 +23,41 @@ struct DocumentDispositionSheetSpec {
             title: L10n.f("是否保存对“%@”的修改？", filename),
             informativeText: L10n.t("如果不保存，您的更改将会丢失。"),
             actions: [
-                .init(title: L10n.t("不保存")),
-                .init(title: L10n.t("取消")),
-                .init(title: L10n.t("保存"))
+                .init(title: L10n.t("保存"), role: .default),
+                .init(title: L10n.t("不保存"), role: .destructive),
+                .init(title: L10n.t("取消"), role: .cancel)
             ],
-            defaultActionIndex: 2,
-            cancelActionIndex: 1
+            defaultActionIndex: 0,
+            cancelActionIndex: 2
         )
     }
 
     static func untitled() -> DocumentDispositionSheetSpec {
         DocumentDispositionSheetSpec(
-            title: L10n.t("是否保留这个新文档？"),
+            title: L10n.t("是否保存此文档？"),
             informativeText: L10n.t("如果不保存，这个文档将被删除。"),
             actions: [
-                .init(title: L10n.t("删除")),
-                .init(title: L10n.t("取消")),
-                .init(title: L10n.t("保存…"))
+                .init(title: L10n.t("保存…"), role: .default),
+                .init(title: L10n.t("删除"), role: .destructive),
+                .init(title: L10n.t("取消"), role: .cancel)
             ],
-            defaultActionIndex: 2,
-            cancelActionIndex: 1
+            defaultActionIndex: 0,
+            cancelActionIndex: 2
         )
     }
 
     func savedChoice(forActionIndex index: Int) -> SavedDocumentChoice {
         switch index {
-        case 0: return .discard
-        case 2: return .save
+        case 0: return .save
+        case 1: return .discard
         default: return .cancel
         }
     }
 
     func untitledChoice(forActionIndex index: Int) -> UntitledDocumentChoice {
         switch index {
-        case 0: return .delete
-        case 2: return .saveAs
+        case 0: return .saveAs
+        case 1: return .delete
         default: return .cancel
         }
     }
@@ -85,7 +92,7 @@ final class DocumentDispositionSheetPresenter {
     ) {
         let controller = DocumentDispositionSheetController(spec: spec, completion: completion)
         let sheet = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 174),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 286),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
@@ -140,22 +147,26 @@ private final class DocumentDispositionSheetController: NSViewController {
         header.translatesAutoresizingMaskIntoConstraints = false
 
         let actions = NSStackView()
-        actions.orientation = .horizontal
-        actions.alignment = .centerY
-        actions.spacing = 8
+        actions.orientation = .vertical
+        actions.alignment = .width
+        actions.spacing = 10
         actions.translatesAutoresizingMaskIntoConstraints = false
         for (index, action) in spec.actions.enumerated() {
             let button = NSButton(title: action.title, target: self, action: #selector(selectAction(_:)))
             button.tag = index
             button.bezelStyle = .rounded
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 82).isActive = true
+            button.controlSize = .large
+            button.heightAnchor.constraint(equalToConstant: 38).isActive = true
             if index == spec.defaultActionIndex {
                 button.keyEquivalent = "\r"
                 button.bezelColor = .controlAccentColor
             }
             if index == spec.cancelActionIndex {
                 button.keyEquivalent = "\u{1b}"
+            }
+            if action.role == .destructive {
+                button.bezelColor = .systemRed
+                button.contentTintColor = .white
             }
             actions.addArrangedSubview(button)
         }
@@ -168,8 +179,9 @@ private final class DocumentDispositionSheetController: NSViewController {
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 28),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -28),
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 26),
+            actions.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 28),
             actions.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -28),
-            actions.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -24)
+            actions.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -22)
         ])
 
         view = root

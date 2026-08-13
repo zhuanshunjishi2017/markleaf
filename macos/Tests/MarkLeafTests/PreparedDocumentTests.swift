@@ -53,4 +53,13 @@ final class PreparedDocumentTests: XCTestCase {
         XCTAssertFalse(session.isDirty)
         XCTAssertEqual(session.currentDocumentIdentifier, originalID)
     }
+
+    func testWindowTitleDoesNotAddEditedSuffix() {
+        let session = EditorSession()
+        let url = URL(fileURLWithPath: "/tmp/edited-markleaf-document.md")
+        session.loadDocument(markdown: "content", fileURL: url)
+        session.handleEditorMessage(["type": "dirtyChanged", "payload": ["dirty": true]])
+
+        XCTAssertEqual(session.windowTitle, url.lastPathComponent)
+    }
 }

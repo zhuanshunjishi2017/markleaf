@@ -28,6 +28,23 @@ struct DocumentFileVersion: Equatable {
     }
 }
 
+struct ExternalDocumentWatchGeneration {
+    private(set) var current = 0
+
+    mutating func beginWatch() -> Int {
+        current += 1
+        return current
+    }
+
+    mutating func invalidate() {
+        current += 1
+    }
+
+    func isCurrent(_ generation: Int) -> Bool {
+        generation == current
+    }
+}
+
 enum ExternalDocumentChangeDecision: Equatable {
     case ignore
     case rebindAndRecheck
@@ -38,6 +55,7 @@ enum ExternalDocumentChangeDecision: Equatable {
 final class ExternalDocumentChangeTracker {
     private var acceptedVersion: DocumentFileVersion?
     private var needsRecheck = false
+    private var isSelfWriteInProgress = false
 
     func acceptCurrentVersion(at url: URL) throws {
         acceptedVersion = try DocumentFileVersion.read(from: url)
@@ -46,17 +64,21 @@ final class ExternalDocumentChangeTracker {
 
     func beginSelfWrite() {
         needsRecheck = false
+        isSelfWriteInProgress = true
     }
 
     func finishSelfWrite(at url: URL) throws {
+        defer { isSelfWriteInProgress = false }
         try acceptCurrentVersion(at: url)
     }
 
     func cancelSelfWrite() {
         needsRecheck = false
+        isSelfWriteInProgress = false
     }
 
     func decision(forEventAt url: URL) throws -> ExternalDocumentChangeDecision {
+        guard !isSelfWriteInProgress else { return .ignore }
         guard FileManager.default.fileExists(atPath: url.path) else {
             return .missing
         }

@@ -2,6 +2,18 @@ import XCTest
 @testable import MarkLeaf
 
 final class ExternalDocumentChangeTrackerTests: XCTestCase {
+    func testRebindingInvalidatesQueuedEventsFromThePreviousWatch() {
+        var generation = ExternalDocumentWatchGeneration()
+        let first = generation.beginWatch()
+        let second = generation.beginWatch()
+
+        XCTAssertFalse(generation.isCurrent(first))
+        XCTAssertTrue(generation.isCurrent(second))
+
+        generation.invalidate()
+        XCTAssertFalse(generation.isCurrent(second))
+    }
+
     private func makeFile(_ text: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("markleaf-change-tracker-\(UUID().uuidString)", isDirectory: true)
@@ -21,6 +33,20 @@ final class ExternalDocumentChangeTrackerTests: XCTestCase {
         try "after".write(to: url, atomically: true, encoding: .utf8)
         try tracker.finishSelfWrite(at: url)
 
+        XCTAssertEqual(try tracker.decision(forEventAt: url), .ignore)
+    }
+
+    func testWatcherEventDuringAtomicSelfWriteIsIgnored() throws {
+        let url = try makeFile("before")
+        let tracker = ExternalDocumentChangeTracker()
+        try tracker.acceptCurrentVersion(at: url)
+
+        tracker.beginSelfWrite()
+        try "during write".write(to: url, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try tracker.decision(forEventAt: url), .ignore)
+
+        try tracker.finishSelfWrite(at: url)
         XCTAssertEqual(try tracker.decision(forEventAt: url), .ignore)
     }
 
