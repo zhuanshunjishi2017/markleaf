@@ -147,6 +147,12 @@ it('captures the block and active marks at a caret', () => {
   })
 })
 
+it('captures the format immediately before a caret at the end of a marked run', () => {
+  const editor = makeEditor('**source** plain')
+  placeCaret(editor, 'source', 'source'.length)
+  expect(captureFormat(editor)?.marks.bold).toBe(true)
+})
+
 it('applies once without changing text or link href and one undo restores the target', () => {
   const editor = makeEditor('## **source**\n\n[target](https://example.com)')
   selectText(editor, 'source')
@@ -273,6 +279,19 @@ it('applies captured format to the paragraph at a caret', () => {
   expect(painter.applyOnSelection(editor)).toBe(true)
   expect(painter.isArmed).toBe(false)
   expect(editor.getMarkdown()).toContain('**target paragraph**')
+})
+
+it('keeps captured marks when painting an empty caret paragraph before typing', () => {
+  const editor = makeEditor('**source**\n\ntarget')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  selectText(editor, 'target')
+  editor.commands.deleteSelection()
+  expect(editor.state.selection.empty).toBe(true)
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  editor.commands.insertContent('typed')
+  expect(editor.getMarkdown()).toContain('**typed**')
 })
 
 it('paints paragraph format from a caret source to a caret target', () => {

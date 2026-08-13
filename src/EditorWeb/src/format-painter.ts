@@ -21,6 +21,37 @@ const forbiddenAncestorNames = new Set([
   'tableHeader',
 ])
 
+function marksSnapshotFromNames(names: ReadonlySet<string>): FormatPainterSnapshot['marks'] {
+  return {
+    bold: names.has('bold'),
+    italic: names.has('italic'),
+    underline: names.has('underline'),
+    strike: names.has('strike'),
+    code: names.has('code'),
+  }
+}
+
+function marksAtCaret(editor: Editor, pos: number): FormatPainterSnapshot['marks'] {
+  const storedMarks = editor.state.storedMarks
+  if (storedMarks) {
+    return marksSnapshotFromNames(new Set(storedMarks.map((mark) => mark.type.name)))
+  }
+
+  const resolved = editor.state.doc.resolve(pos)
+  const adjacent = resolved.nodeBefore?.isText
+    ? resolved.nodeBefore
+    : resolved.nodeAfter?.isText
+      ? resolved.nodeAfter
+      : null
+  if (adjacent) {
+    return marksSnapshotFromNames(new Set(adjacent.marks.map((mark) => mark.type.name)))
+  }
+
+  return marksSnapshotFromNames(new Set(
+    supportedMarks.filter((mark) => editor.isActive(mark)),
+  ))
+}
+
 /// 光标/选区所在块是否为可涂抹的段落或标题（且不在列表/表格等容器内）。
 function blockAt($from: ResolvedPos): PaintableBlock | null {
   const parent = $from.parent
@@ -94,13 +125,7 @@ export function captureFormat(editor: Editor): FormatPainterSnapshot | null {
   if (selection.empty) {
     return {
       block,
-      marks: {
-        bold: editor.isActive('bold'),
-        italic: editor.isActive('italic'),
-        underline: editor.isActive('underline'),
-        strike: editor.isActive('strike'),
-        code: editor.isActive('code'),
-      },
+      marks: marksAtCaret(editor, from),
     }
   }
 
@@ -142,10 +167,18 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
   for (const mark of supportedMarks) {
     chain = snapshot.marks[mark] ? chain.setMark(mark) : chain.unsetMark(mark)
   }
-  if (!hasSelection) {
-    chain = chain.setTextSelection(from)
-  }
+  if (!hasSelection) chain = chain.setTextSelection(from)
   chain.run()
+
+  if (!hasSelection && targetFrom === targetTo) {
+    const storedMarks = supportedMarks
+      .filter((mark) => snapshot.marks[mark])
+      .flatMap((mark) => {
+        const markType = editor.schema.marks[mark]
+        return markType ? [markType.create()] : []
+      })
+    editor.view.dispatch(editor.state.tr.setStoredMarks(storedMarks))
+  }
   return true
 }
 
