@@ -269,6 +269,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 )
             }
 
+        case "blockMenuRequested":
+            if let payload,
+               let x = payload["clientX"] as? Double,
+               let y = payload["clientY"] as? Double,
+               let position = payload["position"] as? Int {
+                showBlockMenu(clientX: x, clientY: y, position: position)
+            }
+
         case "pasteImage":
             pasteFromClipboard()
 

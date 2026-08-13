@@ -52,7 +52,7 @@ final class ChangelogMenuTests: XCTestCase {
         for language in ["zh-Hans", "zh-Hant", "en", "ja"] {
             let url = changelogDirectory.appendingPathComponent("changelog.\(language).md")
             let text = try String(contentsOf: url, encoding: .utf8)
-            for version in ["1.1.6", "1.1.5", "1.1.4", "1.1.3"] {
+            for version in ["1.1.7", "1.1.6", "1.1.5", "1.1.4", "1.1.3"] {
                 XCTAssertTrue(text.contains(version), "\(language) is missing \(version)")
             }
         }

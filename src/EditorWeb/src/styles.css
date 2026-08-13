@@ -149,7 +149,47 @@ body {
 
 /* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
 .markleaf-document {
+  position: relative;
   min-height: calc(100vh - 140px);
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.markleaf-document:hover .ml-block-handle,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
+}
+
+.markleaf-block-active {
+  background: var(--bg-hover, #f0f0f0);
+  border-radius: 6px;
 }
 
 /* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */

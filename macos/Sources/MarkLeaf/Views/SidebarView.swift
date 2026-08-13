@@ -18,6 +18,11 @@ final class SidebarView: NSView {
     private let outlineTree = OutlineTreeView()
     private let workspaceScroll = NSScrollView()
     private let outlineScroll = NSScrollView()
+    private let searchField = NSSearchField()
+    private let searchScroll = NSScrollView()
+    private let searchResults = WorkspaceSearchResultsView()
+    private let searchService = WorkspaceSearchService()
+    private var isSearching = false
 
     init(
         session: EditorSession,
@@ -65,7 +70,15 @@ final class SidebarView: NSView {
         headerOpenFolderButton.translatesAutoresizingMaskIntoConstraints = false
         headerOpenFolderButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
 
-        let header = NSStackView(views: [tabControl, NSView(), headerOpenFolderButton])
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.controlSize = .small
+        searchField.sendsSearchStringImmediately = true
+        searchField.target = self
+        searchField.action = #selector(searchChanged(_:))
+        searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
+        searchField.setAccessibilityLabel(localize("搜索"))
+
+        let header = NSStackView(views: [tabControl, searchField, NSView(), headerOpenFolderButton])
         header.orientation = .horizontal
         header.spacing = 6
         header.alignment = .centerY
@@ -103,8 +116,18 @@ final class SidebarView: NSView {
         outlineScroll.hasVerticalScroller = true
         outlineScroll.drawsBackground = false
         outlineScroll.translatesAutoresizingMaskIntoConstraints = false
+        searchResults.configure()
+        searchResults.onActivate = { [weak self] result in
+            self?.session.openWorkspaceEntry(result.entry)
+            self?.endSearch()
+        }
+        searchScroll.documentView = searchResults
+        searchScroll.hasVerticalScroller = true
+        searchScroll.drawsBackground = false
+        searchScroll.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(workspaceScroll)
         containerView.addSubview(outlineScroll)
+        containerView.addSubview(searchScroll)
         NSLayoutConstraint.activate([
             workspaceScroll.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             workspaceScroll.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
@@ -114,8 +137,13 @@ final class SidebarView: NSView {
             outlineScroll.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             outlineScroll.topAnchor.constraint(equalTo: containerView.topAnchor),
             outlineScroll.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            searchScroll.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            searchScroll.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            searchScroll.topAnchor.constraint(equalTo: containerView.topAnchor),
+            searchScroll.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])
         outlineScroll.isHidden = true
+        searchScroll.isHidden = true
 
         addSubview(header)
         addSubview(containerView)
@@ -158,9 +186,13 @@ final class SidebarView: NSView {
         headerOpenFolderButton.setAccessibilityLabel(openFolderTitle)
         emptyStateLabel.stringValue = localize("暂未打开工作区")
         emptyStateOpenFolderButton.title = openFolderTitle
+        searchField.placeholderString = localize(session.sidebarTabIndex == 1 ? "搜索大纲" : "搜索")
+        searchField.setAccessibilityLabel(localize("搜索"))
     }
 
     @objc private func tabChanged() {
+        endSearch()
+        searchField.stringValue = ""
         showTab(tabControl.selectedSegment)
     }
 
@@ -190,6 +222,12 @@ final class SidebarView: NSView {
             persistSidebarTab(tab)
         }
         let workspaceActive = index == 0
+        if !workspaceActive {
+            searchService.cancel()
+        }
+        if searchField.stringValue.isEmpty {
+            endSearch()
+        }
         headerOpenFolderButton.isHidden = !workspaceActive
         updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
         if workspaceActive {
@@ -197,6 +235,7 @@ final class SidebarView: NSView {
         } else {
             outlineChanged()
         }
+        searchField.placeholderString = localize(workspaceActive ? "搜索" : "搜索大纲")
         // 交叉淡入淡出切换
         workspaceScroll.isHidden = false
         outlineScroll.isHidden = false
@@ -208,6 +247,7 @@ final class SidebarView: NSView {
         } completionHandler: { [weak self] in
             self?.workspaceScroll.isHidden = !workspaceActive
             self?.outlineScroll.isHidden = workspaceActive
+            self?.searchScroll.isHidden = !(self?.isSearching ?? false) || self?.session.sidebarTabIndex == 1
         }
     }
 
@@ -218,6 +258,10 @@ final class SidebarView: NSView {
 
     func updateEmptyStateVisibility(hasWorkspace: Bool) {
         emptyStateView.isHidden = !(session.sidebarTabIndex == 0 && !hasWorkspace)
+        searchField.isEnabled = session.sidebarTabIndex == 1 || hasWorkspace
+        if !hasWorkspace && session.sidebarTabIndex == 0 && isSearching {
+            endSearch()
+        }
     }
 
     private func outlineChanged() {
@@ -226,6 +270,45 @@ final class SidebarView: NSView {
 
     private func outlineSelectionChanged() {
         outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
+    }
+
+    @objc private func searchChanged(_ sender: NSSearchField) {
+        let query = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            endSearch()
+            return
+        }
+        isSearching = true
+        if session.sidebarTabIndex == 1 {
+            workspaceScroll.isHidden = true
+            outlineScroll.isHidden = false
+            searchScroll.isHidden = true
+            outlineTree.setFilter(query)
+        } else if let root = session.workspaceRoot {
+            workspaceScroll.isHidden = true
+            outlineScroll.isHidden = true
+            searchScroll.isHidden = false
+            searchService.search(root: root, query: query) { [weak self] results in
+                guard let self, self.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
+                self.searchResults.setResults(results)
+            }
+        } else {
+            workspaceScroll.isHidden = true
+            outlineScroll.isHidden = true
+            searchScroll.isHidden = false
+            searchResults.setResults([])
+        }
+    }
+
+    private func endSearch() {
+        searchService.cancel()
+        isSearching = false
+        searchResults.setResults([])
+        outlineTree.setFilter("")
+        searchScroll.isHidden = true
+        let workspaceActive = session.sidebarTabIndex == 0
+        workspaceScroll.isHidden = !workspaceActive
+        outlineScroll.isHidden = workspaceActive
     }
 
     @objc private func openFolder() {
@@ -587,6 +670,17 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     private var onHeadingActivated: ((OutlineHeading) -> Void)?
     private var isSynchronizingSelection = false
     private var suppressScrollSyncUntil: Date?
+    private var filter = ""
+
+    func setFilter(_ value: String) {
+        filter = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        reloadData(activePosition: session?.activeOutlinePosition)
+    }
+
+    private var visibleHeadings: [OutlineHeading] {
+        guard !filter.isEmpty else { return session?.outlineHeadings ?? [] }
+        return (session?.outlineHeadings ?? []).filter { $0.text.lowercased().contains(filter) }
+    }
 
     func configure(
         session: EditorSession,
@@ -639,11 +733,11 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        item == nil ? (session?.outlineHeadings.count ?? 0) : 0
+        item == nil ? visibleHeadings.count : 0
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        session?.outlineHeadings[index] as Any
+        visibleHeadings[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {

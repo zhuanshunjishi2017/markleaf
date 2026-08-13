@@ -78,6 +78,109 @@ const ThemedSelection = Extension.create({
   },
 })
 
+const blockHandleKey = new PluginKey('markleaf-block-handle')
+type BlockHandleState = { activeBlock: number | null }
+
+let blockTypeLabels: Record<string, string> = {}
+
+export function setBlockTypeLabels(labels: Record<string, string>): void {
+  blockTypeLabels = labels
+}
+
+function getBlockTypeLabel(state: Editor['state'], from: number): string {
+  const $from = state.doc.resolve(from)
+  for (let depth = $from.depth; depth >= 1; depth -= 1) {
+    const node = $from.node(depth)
+    if (node.type.name === 'heading') return blockTypeLabels[`blockHeading${node.attrs.level}`] ?? 'H'
+    if (node.type.name === 'bulletList') return blockTypeLabels.blockBulletList ?? '•'
+    if (node.type.name === 'orderedList') return blockTypeLabels.blockOrderedList ?? '1.'
+    if (node.type.name === 'taskList') return blockTypeLabels.blockTaskList ?? '☑'
+    if (node.type.name === 'blockquote') return blockTypeLabels.blockBlockquote ?? '❝'
+    if (node.type.name === 'codeBlock') return blockTypeLabels.blockCodeBlock ?? '</>'
+  }
+  return blockTypeLabels.blockParagraph ?? '¶'
+}
+
+const BlockHandle = Extension.create({
+  name: 'markleafBlockHandle',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: blockHandleKey,
+      state: {
+        init: (): BlockHandleState => ({ activeBlock: null }),
+        apply(transaction, previous): BlockHandleState {
+          return transaction.getMeta(blockHandleKey) as BlockHandleState | undefined ?? previous
+        },
+      },
+      props: {
+        decorations(state) {
+          const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
+          const decorations: Decoration[] = []
+          const { from, empty } = state.selection
+          const $from = state.doc.resolve(from)
+          const parentName = $from.parent.type.name
+          let insideList = false
+          for (let depth = $from.depth; depth >= 1; depth -= 1) {
+            if (['bulletList', 'orderedList', 'taskList'].includes($from.node(depth).type.name)) {
+              insideList = true
+              break
+            }
+          }
+          if (empty && !insideList && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock')) {
+            const nodePos = $from.before($from.depth)
+            decorations.push(Decoration.widget(
+              $from.start(),
+              () => createBlockHandle(nodePos, getBlockTypeLabel(state, from), activeBlock === nodePos),
+              { side: -1 },
+            ))
+          }
+          if (activeBlock !== null) {
+            const node = state.doc.nodeAt(activeBlock)
+            if (node) decorations.push(Decoration.node(
+              activeBlock,
+              activeBlock + node.nodeSize,
+              { class: 'markleaf-block-active' },
+            ))
+          }
+          return decorations.length > 0
+            ? DecorationSet.create(state.doc, decorations)
+            : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
+function createBlockHandle(nodePos: number, label: string, active: boolean): HTMLButtonElement {
+  const handle = document.createElement('button')
+  handle.type = 'button'
+  handle.className = active ? 'ml-block-handle ml-block-handle-active' : 'ml-block-handle'
+  handle.contentEditable = 'false'
+  handle.setAttribute('aria-label', '段落操作')
+  handle.setAttribute('tabindex', '-1')
+  handle.textContent = label
+  handle.addEventListener('mousedown', event => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = handle.getBoundingClientRect()
+    handle.dispatchEvent(new CustomEvent('markleaf-block-handle', {
+      bubbles: true,
+      detail: { clientX: rect.left, clientY: rect.bottom + 6, position: nodePos },
+    }))
+  })
+  requestAnimationFrame(() => {
+    if (!handle.isConnected) return
+    const documentElement = handle.closest('.markleaf-document')
+    if (!documentElement) return
+    handle.style.top = `${handle.getBoundingClientRect().top - documentElement.getBoundingClientRect().top}px`
+  })
+  return handle
+}
+
+export function setBlockHighlight(editor: Editor, position: number | null): void {
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position }))
+}
+
 function parseImageMetadata(title: unknown): ImageMetadata {
   if (typeof title !== 'string') {
     return { title: null, width: null, height: null, rotation: 0 }
@@ -332,6 +435,7 @@ export const editorExtensions = [
   }),
   FindHighlight,
   ThemedSelection,
+  BlockHandle,
 ]
 
 export function createEditor(element: HTMLElement, content = ''): Editor {
@@ -612,6 +716,8 @@ export function executeEditorCommand(
       return chain.extendMarkRange('link').setLink({ href: text }).run()
     },
     setParagraph: () => chain.setParagraph().run(),
+    insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
+    insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     setHeading1: () => chain.setHeading({ level: 1 }).run(),
     setHeading2: () => chain.setHeading({ level: 2 }).run(),
     setHeading3: () => chain.setHeading({ level: 3 }).run(),
@@ -677,6 +783,16 @@ export function executeEditorCommand(
       ).find((element) => element.textContent?.trim() === text)
       heading?.scrollIntoView({ block: 'start' })
       return heading !== undefined
+    },
+    setBlockHighlight: () => {
+      const position = Number.parseInt(text ?? '', 10)
+      if (!Number.isInteger(position) || position < 0 || position > editor.state.doc.content.size) return false
+      setBlockHighlight(editor, position)
+      return true
+    },
+    clearBlockHighlight: () => {
+      setBlockHighlight(editor, null)
+      return true
     },
     scrollToPosition: () => {
       const position = Number.parseInt(text ?? '', 10)
@@ -820,6 +936,16 @@ function demoteHeadingLevel(editor: Editor): boolean {
   }
   // 非标题（段落/列表/引用等）：“降低标题级别”不适用，保持原样
   return false
+}
+
+function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): boolean {
+  const { from } = editor.state.selection
+  const $from = editor.state.doc.resolve(from)
+  if (!$from.parent.isTextblock) return false
+  const blockStart = $from.before($from.depth)
+  const blockNode = $from.node($from.depth)
+  const insertPos = position === 'before' ? blockStart : blockStart + blockNode.nodeSize
+  return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
 }
 
 export function rotateSelectedImageClockwise(editor: Editor): boolean {

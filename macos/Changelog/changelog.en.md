@@ -1,5 +1,11 @@
 # MarkLeaf Changelog
 
+## 1.1.7 — 2026-08-13
+
+- Search workspace Markdown/TXT files by name or content, and filter outline headings from the sidebar.
+- Add a paragraph block handle with native block actions and insert-before/after commands.
+- Align task-list checkboxes with the theme accent color and use Yu Mincho/Yu Gothic for Japanese printing.
+
 ## 1.1.6 — 2026-08-12
 
 - Configure externally opened files to open in new windows or the current window, activating an already-open file instead of duplicating it.

@@ -225,12 +225,11 @@
 .markleaf-document ul[data-type='taskList'] > li {
   display: flex;
   gap: 0.55em;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .markleaf-document ul[data-type='taskList'] > li > label {
   flex: 0 0 auto;
-  margin-top: 0.25em;
   line-height: 1;
   user-select: none;
 }
@@ -238,6 +237,7 @@
 .markleaf-document ul[data-type='taskList'] > li > label input {
   display: block;
   margin: 0;
+  accent-color: var(--theme-light);
 }
 
 .markleaf-document ul[data-type='taskList'] > li > div {

@@ -112,6 +112,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
+        menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
+        menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
 
         let lists = NSMenu(title: L10n.t("列表"))
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
@@ -567,6 +569,8 @@ extension EditorSession {
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "insertHorizontalRule": execute("insertHorizontalRule")
         case "insertTable": execute("insertTable")
+        case "insertLineBefore": execute("insertLineBefore")
+        case "insertLineAfter": execute("insertLineAfter")
         case "addRowBefore": execute("addRowBefore")
         case "addRowAfter": execute("addRowAfter")
         case "deleteRow": execute("deleteRow")

@@ -1,6 +1,64 @@
 import AppKit
 
 extension EditorSession {
+    /// 段落左侧句柄菜单（对应 Windows ParagraphBlockHandleMenu）。
+    /// 菜单弹出期间由前端高亮当前块，菜单关闭后清除高亮。
+    func showBlockMenu(clientX: Double, clientY: Double, position: Int) {
+        guard let webView, let window = webView.window else { return }
+        let pointInView = Self.editorContextMenuPoint(
+            clientX: clientX,
+            clientY: clientY,
+            viewHeight: webView.bounds.height,
+            isFlipped: webView.isFlipped
+        )
+        let menu = NSMenu()
+        addFormatCommand(menu, L10n.t("正文"), "setParagraph")
+        let headings = NSMenu(title: L10n.t("标题"))
+        for level in 1...6 {
+            headings.addItem(menuItem(L10n.f("%@级标题", Self.headingLevelName(level)), #selector(handleCommand(_:))))
+            headings.items.last?.representedObject = "setHeading\(level)"
+        }
+        let headingItem = NSMenuItem(title: L10n.t("标题"), action: nil, keyEquivalent: "")
+        headingItem.submenu = headings
+        menu.addItem(headingItem)
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("引用"), "toggleBlockquote")
+        addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
+        let lists = NSMenu(title: L10n.t("列表"))
+        for (title, command) in [(L10n.t("无序列表"), "toggleBulletList"),
+                                 (L10n.t("有序列表"), "toggleOrderedList"),
+                                 (L10n.t("任务列表"), "toggleTaskList")] {
+            let item = menuItem(title, #selector(handleCommand(_:)))
+            item.representedObject = command
+            lists.addItem(item)
+        }
+        let listItem = NSMenuItem(title: L10n.t("列表"), action: nil, keyEquivalent: "")
+        listItem.submenu = lists
+        menu.addItem(listItem)
+        addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+        addFormatCommand(menu, L10n.t("插入表格"), "insertTable")
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
+        addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
+
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        execute("clearBlockHighlight")
+        _ = position
+    }
+
+    private static func headingLevelName(_ level: Int) -> String {
+        switch level {
+        case 1: return L10n.t("一级")
+        case 2: return L10n.t("二级")
+        case 3: return L10n.t("三级")
+        case 4: return L10n.t("四级")
+        case 5: return L10n.t("五级")
+        default: return L10n.t("六级")
+        }
+    }
+
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
     func showEditorContextMenu(
         clientX: Double,
