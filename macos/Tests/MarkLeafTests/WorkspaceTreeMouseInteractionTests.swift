@@ -204,7 +204,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testMouseDownOnExpandedDirectoryNameKeepsRowExpanded() throws {
+    func testFirstClickOnDirectoryNameSelectsWithoutExpandingRow() throws {
         let dataSource = WorkspaceTreeProbeDataSource()
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
@@ -222,8 +222,8 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
 
         outline.reloadData()
         let directoryItem = try XCTUnwrap(outline.item(atRow: 0))
-        outline.expandItem(directoryItem)
-        XCTAssertTrue(outline.isItemExpanded(directoryItem))
+        XCTAssertEqual(outline.selectedRow, -1)
+        XCTAssertFalse(outline.isItemExpanded(directoryItem))
 
         outline.layoutSubtreeIfNeeded()
         let cell = try XCTUnwrap(outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
@@ -259,6 +259,35 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
 
         NSApp.postEvent(mouseUp, atStart: true)
         outline.mouseDown(with: mouseDown)
+
+        XCTAssertEqual(outline.selectedRow, 0)
+        XCTAssertFalse(outline.isItemExpanded(directoryItem))
+
+        let secondMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp + 0.1,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 3,
+            clickCount: 1,
+            pressure: 1
+        ))
+        let secondMouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp + 0.11,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 4,
+            clickCount: 1,
+            pressure: 0
+        ))
+
+        NSApp.postEvent(secondMouseUp, atStart: true)
+        outline.mouseDown(with: secondMouseDown)
 
         XCTAssertTrue(outline.isItemExpanded(directoryItem))
     }

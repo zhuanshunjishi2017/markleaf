@@ -4,6 +4,56 @@ import XCTest
 
 @MainActor
 final class OutlineSelectionInteractionTests: XCTestCase {
+    @MainActor
+    func testFirstMouseClickSelectsHeadingAndActivatesExactlyOnce() throws {
+        let probe = OutlineProbeDataSource()
+        var activated: [Int] = []
+        let outline = configuredOutline(probe: probe) { activated.append($0.position) }
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 260, height: 180),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = outline
+        window.makeKeyAndOrderFront(nil)
+        OutlineTestRetention.objects.append(contentsOf: [window, outline, probe])
+        outline.layoutSubtreeIfNeeded()
+
+        let rowRect = outline.rect(ofRow: 0)
+        let windowPoint = outline.convert(NSPoint(x: rowRect.midX, y: rowRect.midY), to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        ))
+        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: windowPoint,
+            modifierFlags: [],
+            timestamp: timestamp + 0.01,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 1,
+            pressure: 0
+        ))
+
+        NSApp.postEvent(mouseUp, atStart: true)
+        outline.mouseDown(with: mouseDown)
+
+        XCTAssertEqual(outline.selectedRow, 0)
+        XCTAssertEqual(activated, [0])
+        XCTAssertTrue(outline.rowView(atRow: 0, makeIfNecessary: true)?.isSelected == true)
+    }
+
     func testFirstNativeSelectionSelectsHeadingAndActivatesExactlyOnce() {
         let probe = OutlineProbeDataSource()
         var activated: [Int] = []
@@ -80,6 +130,11 @@ final class OutlineSelectionInteractionTests: XCTestCase {
         return outline
     }
 
+}
+
+@MainActor
+private enum OutlineTestRetention {
+    static var objects: [AnyObject] = []
 }
 
 private final class OutlineProbeDataSource: NSObject, NSOutlineViewDataSource {

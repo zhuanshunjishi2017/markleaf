@@ -272,7 +272,6 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
-    private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
     private var beganDraggingEntryDuringMouseDown = false
     func configure(session: EditorSession) {
         self.session = session
@@ -294,7 +293,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         reloadData()
     }
 
-    /// 树形模式：目录名称双击切换展开/收起，三角按钮保留系统单击行为。
+    /// 树形模式：首次名称单击先选中；选中后单击或任意双击切换展开/收起。
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
@@ -307,34 +306,27 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         beganDraggingEntryDuringMouseDown = false
         var directoryRowToToggle: Int?
         var clickedDirectoryName = false
+        var shouldToggleSelectedDirectory = false
         if row >= 0, !listMode,
            let item = item(atRow: row),
            let entry = item as? WorkspaceEntry, entry.isDirectory {
             let outlineFrame = frameOfOutlineCell(atRow: row)
-            // 名称单击只选择，双击才切换展开状态；三角按钮仍保留系统单击行为。
+            // 名称首次单击只选择；已选中目录的单击，以及双击，切换展开状态。
             if !outlineFrame.contains(point) {
                 clickedDirectoryName = true
-                let isRepeatedClick = lastDirectoryNameClick.map {
-                    let elapsed = event.timestamp - $0.timestamp
-                    return $0.path == entry.path && elapsed >= 0 && elapsed <= NSEvent.doubleClickInterval
-                } ?? false
-                let isSecondClick = event.clickCount >= 2 || isRepeatedClick
-                if isSecondClick {
-                    directoryRowToToggle = row
-                    lastDirectoryNameClick = nil
-                } else {
-                    lastDirectoryNameClick = (entry.path, event.timestamp)
-                }
+                shouldToggleSelectedDirectory = selectedRow == row || event.clickCount >= 2
             }
         }
-        if !clickedDirectoryName {
-            lastDirectoryNameClick = nil
+        if row >= 0 {
+            selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        }
+        super.mouseDown(with: event)
+        if clickedDirectoryName, shouldToggleSelectedDirectory, row >= 0 {
+            directoryRowToToggle = row
         }
         if let row = directoryRowToToggle {
             performNativeDisclosureClick(atRow: row)
-            return
         }
-        super.mouseDown(with: event)
         guard !beganDraggingEntryDuringMouseDown,
               let entry = fileToActivate,
               !entry.isDirectory
@@ -618,6 +610,15 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     func reloadData(activePosition: Int?) {
         super.reloadData()
         synchronizeSelection(to: activePosition)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        if row >= 0, selectedRow != row {
+            selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        }
+        super.mouseDown(with: event)
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
