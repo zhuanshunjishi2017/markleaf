@@ -15,6 +15,7 @@ import {
   resetEditorViewport,
 } from './editor'
 import { SourceEditor } from './source-editor'
+import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import { FormatPainterController, captureFormat } from './format-painter'
 import {
   isHostMessage,
@@ -56,6 +57,7 @@ let sourceEditor: SourceEditor | null = null
 let sourceMode = false
 let sourceIndentWidth = 2
 let replaceMode = false
+let documentType: DocumentType = 'markdown'
 
 let editor = createEditor(editorMount)
 const formatPainter = new FormatPainterController()
@@ -233,6 +235,7 @@ function getActiveMarkdown(): string {
 }
 
 function setSourceMode(enabled: boolean): void {
+  if (documentType === 'plainText') return
   if (enabled === sourceMode) return
   formatPainter.cancel()
   if (enabled) {
@@ -456,7 +459,7 @@ function handleMessage(value: unknown): void {
     }
     case 'loadDocument': {
       formatPainter.cancel()
-      const payload = message.payload as { markdown?: unknown }
+      const payload = message.payload as { markdown?: unknown; documentType?: unknown }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
         return
@@ -464,15 +467,23 @@ function handleMessage(value: unknown): void {
       documentId = message.documentId
       documentLoaded = true
       revision = message.revision
+      documentType = isPlainTextDocumentType(payload?.documentType) ? 'plainText' : 'markdown'
       suppressUpdate = true
       sourceEditor?.destroy()
       sourceEditor = null
-      sourceMode = false
-      sourceMount.hidden = true
-      editorMount.hidden = false
-      editor = replaceEditorDocument(editor, editorMount, payload.markdown)
-      bindEditorEvents(editor)
-      resetEditorViewport(editor, editorMount)
+      if (documentType === 'plainText') {
+        sourceMode = true
+        sourceMount.hidden = false
+        editorMount.hidden = true
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth)
+      } else {
+        sourceMode = false
+        sourceMount.hidden = true
+        editorMount.hidden = false
+        editor = replaceEditorDocument(editor, editorMount, payload.markdown)
+        bindEditorEvents(editor)
+        resetEditorViewport(editor, editorMount)
+      }
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
       sendOutline()

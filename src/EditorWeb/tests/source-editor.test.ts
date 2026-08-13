@@ -40,6 +40,16 @@ describe('source editor', () => {
     expect(getMarkdown(visual)).toContain('**bold**')
   })
 
+  it('preserves consecutive blank lines in plain text exactly', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const content = 'first\n\n\nsecond\n'
+    const source = new SourceEditor(parent, content, () => {})
+    sources.push(source)
+
+    expect(source.getText()).toBe(content)
+  })
+
   it('exports and replaces the selected Markdown source', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

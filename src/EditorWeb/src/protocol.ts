@@ -1,5 +1,7 @@
 export const protocolVersion = 1
-export const maximumMessageBytes = 1024 * 1024
+// Documents are sent as a single host message. Keep enough headroom for
+// ordinary multi-megabyte text files plus JSON framing and escaping.
+export const maximumMessageBytes = 16 * 1024 * 1024
 
 export type HostMessage = {
   protocolVersion: number

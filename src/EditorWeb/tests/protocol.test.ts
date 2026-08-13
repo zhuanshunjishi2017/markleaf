@@ -37,4 +37,14 @@ describe('editor protocol validation', () => {
       revision: -1,
     })).toBe(false)
   })
+
+  it('accepts a large plain-text document load within the supported document limit', () => {
+    expect(isHostMessage({
+      protocolVersion,
+      type: 'loadDocument',
+      documentId: 'document-id',
+      revision: 0,
+      payload: { markdown: 'x'.repeat(2 * 1024 * 1024), documentType: 'plainText' },
+    })).toBe(true)
+  })
 })

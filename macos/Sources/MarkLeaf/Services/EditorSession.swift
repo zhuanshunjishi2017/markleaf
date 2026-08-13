@@ -483,7 +483,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             stopExternalChangeWatch()
         }
         startRecoveryTimer()
-        send("loadDocument", payload: ["markdown": markdown])
+        let extensionName = fileURL?.pathExtension.lowercased()
+        let type = extensionName == "txt" ? "plainText" : "markdown"
+        send("loadDocument", payload: ["markdown": markdown, "documentType": type])
     }
 
     // MARK: - 崩溃恢复 / 自动保存（对应 C# RecoveryService + OnRecoveryTimerTick + OnAutoSaveTimerTick）
