@@ -204,7 +204,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testFirstClickOnDirectoryNameSelectsWithoutExpandingRow() throws {
+    func testSingleClickOnDirectoryNameSelectsWithoutExpandingEvenWhenSelected() throws {
         let dataSource = WorkspaceTreeProbeDataSource()
         let outline = WorkspaceTreeView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         outline.configure(session: EditorSession())
@@ -289,7 +289,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         NSApp.postEvent(secondMouseUp, atStart: true)
         outline.mouseDown(with: secondMouseDown)
 
-        XCTAssertTrue(outline.isItemExpanded(directoryItem))
+        XCTAssertFalse(outline.isItemExpanded(directoryItem))
     }
 
     @MainActor

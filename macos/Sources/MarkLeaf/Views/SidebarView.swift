@@ -293,7 +293,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         reloadData()
     }
 
-    /// 树形模式：首次名称单击先选中；选中后单击或任意双击切换展开/收起。
+    /// 树形模式：名称单击只选中，双击切换展开/收起。
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
@@ -311,10 +311,10 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
            let item = item(atRow: row),
            let entry = item as? WorkspaceEntry, entry.isDirectory {
             let outlineFrame = frameOfOutlineCell(atRow: row)
-            // 名称首次单击只选择；已选中目录的单击，以及双击，切换展开状态。
+            // 名称单击只选择；只有双击才切换展开状态。
             if !outlineFrame.contains(point) {
                 clickedDirectoryName = true
-                shouldToggleSelectedDirectory = selectedRow == row || event.clickCount >= 2
+                shouldToggleSelectedDirectory = event.clickCount >= 2
             }
         }
         if row >= 0 {
