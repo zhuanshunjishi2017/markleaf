@@ -47,31 +47,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         XCTAssertFalse(outline.frameOfOutlineCell(atRow: 0).contains(point))
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 2,
-            pressure: 1
-        ))
-        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 2,
-            pressure: 0
-        ))
-
-        NSApp.postEvent(mouseUp, atStart: true)
-        outline.mouseDown(with: mouseDown)
+        try performDoubleClick(on: outline, at: windowPoint, timestamp: timestamp)
 
         XCTAssertNotNil(outline.forwardedDisclosureButton)
     }
@@ -104,31 +80,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 2,
-            pressure: 1
-        ))
-        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 2,
-            pressure: 0
-        ))
-
-        NSApp.postEvent(mouseUp, atStart: true)
-        outline.mouseDown(with: mouseDown)
+        try performDoubleClick(on: outline, at: windowPoint, timestamp: timestamp)
 
         XCTAssertTrue(outline.isItemExpanded(directoryItem))
     }
@@ -267,7 +219,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
             with: .leftMouseDown,
             location: windowPoint,
             modifierFlags: [],
-            timestamp: timestamp + 0.1,
+            timestamp: timestamp + NSEvent.doubleClickInterval + 0.25,
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 3,
@@ -278,7 +230,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
             with: .leftMouseUp,
             location: windowPoint,
             modifierFlags: [],
-            timestamp: timestamp + 0.11,
+            timestamp: timestamp + NSEvent.doubleClickInterval + 0.26,
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 4,
@@ -381,34 +333,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         XCTAssertEqual(outline.row(at: point), 0)
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let secondMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.1,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 3,
-            clickCount: 2,
-            pressure: 1
-        ))
-        let secondMouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.11,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 4,
-            clickCount: 2,
-            pressure: 0
-        ))
-        let eventPoint = outline.convert(secondMouseDown.locationInWindow, from: nil)
-        XCTAssertEqual(outline.row(at: eventPoint), 0)
-        XCTAssertFalse(outline.frameOfOutlineCell(atRow: 0).contains(eventPoint))
-
-        NSApp.postEvent(secondMouseUp, atStart: true)
-        outline.mouseDown(with: secondMouseDown)
+        try performDoubleClick(on: outline, at: windowPoint, timestamp: timestamp)
 
         XCTAssertFalse(outline.isItemExpanded(directoryItem))
     }
@@ -440,31 +365,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 2,
-            pressure: 1
-        ))
-        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 2,
-            pressure: 0
-        ))
-
-        NSApp.postEvent(mouseUp, atStart: true)
-        outline.mouseDown(with: mouseDown)
+        try performDoubleClick(on: outline, at: windowPoint, timestamp: timestamp)
 
         XCTAssertNotNil(outline.forwardedDisclosureButton)
     }
@@ -501,31 +402,7 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
         )
         let windowPoint = outline.convert(point, to: nil)
         let timestamp = ProcessInfo.processInfo.systemUptime
-        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 2,
-            pressure: 1
-        ))
-        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: windowPoint,
-            modifierFlags: [],
-            timestamp: timestamp + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 2,
-            pressure: 0
-        ))
-
-        NSApp.postEvent(mouseUp, atStart: true)
-        outline.mouseDown(with: mouseDown)
+        try performDoubleClick(on: outline, at: windowPoint, timestamp: timestamp)
 
         XCTAssertTrue(outline.isItemExpanded(directoryItem))
     }
@@ -586,6 +463,20 @@ final class WorkspaceTreeMouseInteractionTests: XCTestCase {
 
         XCTAssertEqual(outline.numberOfRows, 2)
     }
+}
+
+@MainActor
+private func performDoubleClick(on outline: NSOutlineView, at windowPoint: NSPoint, timestamp: TimeInterval) throws {
+    let windowNumber = outline.window?.windowNumber ?? 0
+    let firstDown = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: [], timestamp: timestamp, windowNumber: windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+    let firstUp = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: windowPoint, modifierFlags: [], timestamp: timestamp + 0.01, windowNumber: windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
+    NSApp.postEvent(firstUp, atStart: true)
+    outline.mouseDown(with: firstDown)
+
+    let secondDown = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: [], timestamp: timestamp + 0.1, windowNumber: windowNumber, context: nil, eventNumber: 3, clickCount: 2, pressure: 1))
+    let secondUp = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: windowPoint, modifierFlags: [], timestamp: timestamp + 0.11, windowNumber: windowNumber, context: nil, eventNumber: 4, clickCount: 2, pressure: 0))
+    NSApp.postEvent(secondUp, atStart: true)
+    outline.mouseDown(with: secondDown)
 }
 
 private final class DisclosureRoutingWorkspaceTreeView: WorkspaceTreeView {

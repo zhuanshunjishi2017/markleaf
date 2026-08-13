@@ -50,6 +50,7 @@ final class OutlineSelectionInteractionTests: XCTestCase {
         outline.mouseDown(with: mouseDown)
 
         XCTAssertEqual(outline.selectedRow, 0)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(activated, [0])
         XCTAssertTrue(outline.rowView(atRow: 0, makeIfNecessary: true)?.isSelected == true)
     }
@@ -62,6 +63,7 @@ final class OutlineSelectionInteractionTests: XCTestCase {
         outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
 
         XCTAssertEqual(outline.selectedRow, 0)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(activated, [0])
     }
 

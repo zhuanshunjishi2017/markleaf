@@ -272,6 +272,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
+    private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
     private var beganDraggingEntryDuringMouseDown = false
     func configure(session: EditorSession) {
         self.session = session
@@ -293,7 +294,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         reloadData()
     }
 
-    /// 树形模式：名称单击只选中，双击切换展开/收起。
+    /// 树形模式：名称单击只选中，仅连续两次点击同一目录名称（双击）才切换展开/收起。
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
@@ -311,11 +312,22 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
            let item = item(atRow: row),
            let entry = item as? WorkspaceEntry, entry.isDirectory {
             let outlineFrame = frameOfOutlineCell(atRow: row)
-            // 名称单击只选择；只有双击才切换展开状态。
+            // 名称单击只选择；只有连续两次点击同一目录（真双击）才切换展开状态。
             if !outlineFrame.contains(point) {
                 clickedDirectoryName = true
-                shouldToggleSelectedDirectory = event.clickCount >= 2
+                if let last = lastDirectoryNameClick,
+                   last.path == entry.path,
+                   event.timestamp >= last.timestamp,
+                   event.timestamp - last.timestamp <= NSEvent.doubleClickInterval {
+                    shouldToggleSelectedDirectory = true
+                    lastDirectoryNameClick = nil
+                } else {
+                    lastDirectoryNameClick = (entry.path, event.timestamp)
+                }
             }
+        }
+        if !clickedDirectoryName {
+            lastDirectoryNameClick = nil
         }
         if row >= 0 {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -654,7 +666,7 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
             return cell
         }()
         cell.textField?.stringValue = heading.text
-        cell.textField?.font = SidebarTreePresentation.rowFont
+        cell.textField?.font = .systemFont(ofSize: 13, weight: heading.level <= 2 ? .semibold : .regular)
         let indent = CGFloat(max(0, heading.level - 1)) * 12
         cell.constraints.first {
             $0.identifier == Self.headingLeadingConstraintIdentifier
@@ -676,7 +688,10 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
               selectedRow >= 0,
               let heading = item(atRow: selectedRow) as? OutlineHeading
         else { return }
-        onHeadingActivated?(heading)
+        // 延迟到鼠标事件结束后再滚动，避免首次点击时选中高亮被滚动回同步覆盖。
+        DispatchQueue.main.async { [weak self] in
+            self?.onHeadingActivated?(heading)
+        }
     }
 
 }
