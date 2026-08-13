@@ -919,6 +919,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 DocumentDispositionSheetPresenter.presentSaved(
                     for: window,
                     filename: self.documentURL?.lastPathComponent ?? self.windowTitle,
+                    deferCompletion: reason != .terminateApplication,
                     completion: finish
                 )
             },
@@ -927,7 +928,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     finish(.cancel)
                     return
                 }
-                DocumentDispositionSheetPresenter.presentUntitled(for: window, completion: finish)
+                DocumentDispositionSheetPresenter.presentUntitled(
+                    for: window,
+                    deferCompletion: reason != .terminateApplication,
+                    completion: finish
+                )
             },
             completion: completion
         )

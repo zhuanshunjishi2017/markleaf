@@ -67,20 +67,22 @@ final class DocumentDispositionSheetPresenter {
     static func presentSaved(
         for parentWindow: NSWindow,
         filename: String,
+        deferCompletion: Bool = true,
         completion: @escaping (SavedDocumentChoice) -> Void
     ) {
         let spec = DocumentDispositionSheetSpec.saved(filename: filename)
-        present(spec: spec, for: parentWindow) { index in
+        present(spec: spec, for: parentWindow, deferCompletion: deferCompletion) { index in
             completion(spec.savedChoice(forActionIndex: index))
         }
     }
 
     static func presentUntitled(
         for parentWindow: NSWindow,
+        deferCompletion: Bool = true,
         completion: @escaping (UntitledDocumentChoice) -> Void
     ) {
         let spec = DocumentDispositionSheetSpec.untitled()
-        present(spec: spec, for: parentWindow) { index in
+        present(spec: spec, for: parentWindow, deferCompletion: deferCompletion) { index in
             completion(spec.untitledChoice(forActionIndex: index))
         }
     }
@@ -88,9 +90,10 @@ final class DocumentDispositionSheetPresenter {
     private static func present(
         spec: DocumentDispositionSheetSpec,
         for parentWindow: NSWindow,
+        deferCompletion: Bool,
         completion: @escaping (Int) -> Void
     ) {
-        let controller = DocumentDispositionSheetController(spec: spec, completion: completion)
+        let controller = DocumentDispositionSheetController(spec: spec, deferCompletion: deferCompletion, completion: completion)
         let sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 286),
             styleMask: [.titled],
@@ -108,10 +111,12 @@ final class DocumentDispositionSheetPresenter {
 
 private final class DocumentDispositionSheetController: NSViewController {
     private let spec: DocumentDispositionSheetSpec
+    private let deferCompletion: Bool
     private var completion: ((Int) -> Void)?
 
-    init(spec: DocumentDispositionSheetSpec, completion: @escaping (Int) -> Void) {
+    init(spec: DocumentDispositionSheetSpec, deferCompletion: Bool, completion: @escaping (Int) -> Void) {
         self.spec = spec
+        self.deferCompletion = deferCompletion
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
     }
@@ -210,8 +215,13 @@ private final class DocumentDispositionSheetController: NSViewController {
             return
         }
         parent.endSheet(sheet)
-        // 等 sheet 完全收起后再回调，避免在下滑动画期间重入关闭流程。
-        DispatchQueue.main.async {
+        if deferCompletion {
+            // 关闭窗口/替换文档时，等 sheet 收起后再回调，避免下滑动画期间重入。
+            DispatchQueue.main.async {
+                completion(actionIndex)
+            }
+        } else {
+            // 退出应用时，主队列不会被终止循环排空，必须同步回调以正确 reply。
             completion(actionIndex)
         }
     }
