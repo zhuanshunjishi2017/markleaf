@@ -295,6 +295,7 @@ export type EditorCommandState = {
   imageSelected: boolean
   canStartFormatPainter: boolean
   formatPainterArmed: boolean
+  formatPainterMode: 'single' | 'lock' | null
 }
 
 export type EditorStatus = {
@@ -516,6 +517,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     imageSelected: getSelectedImage(editor) !== null,
     canStartFormatPainter: false,
     formatPainterArmed: false,
+    formatPainterMode: null,
   }
 }
 

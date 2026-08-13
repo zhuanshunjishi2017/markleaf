@@ -145,6 +145,7 @@ function sendCommandState(): void {
     sourceMode,
     canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
     formatPainterArmed: !sourceMode && formatPainter.isArmed,
+    formatPainterMode: !sourceMode && formatPainter.isArmed ? formatPainter.currentMode : null,
   })
 }
 
@@ -168,6 +169,10 @@ function sendEditorState(): void {
   sendEditorStatus()
 }
 
+function updateFormatPainterCursor(): void {
+  editorMount.classList.toggle('format-painter-armed', !sourceMode && formatPainter.isArmed)
+}
+
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', () => {
     if (suppressUpdate || compositionActive) {
@@ -185,13 +190,23 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
   targetEditor.on('selectionUpdate', () => {
     if (!compositionActive) {
-      formatPainter.handleSelectionUpdate(targetEditor)
       send('selectionChanged', {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
       })
       sendEditorState()
       sendOutlineSelectionFromCursor()
+    }
+  })
+
+  // 格式刷在「鼠标抬起」时应用，而不是在选区开始变化的瞬间（对齐 Word 的涂抹交互）。
+  targetEditor.view.dom.addEventListener('mouseup', () => {
+    if (compositionActive) return
+    const wasArmed = formatPainter.isArmed
+    formatPainter.applyOnSelection(targetEditor)
+    if (wasArmed !== formatPainter.isArmed) {
+      updateFormatPainterCursor()
+      sendEditorState()
     }
   })
 
@@ -238,6 +253,7 @@ function setSourceMode(enabled: boolean): void {
   if (documentType === 'plainText') return
   if (enabled === sourceMode) return
   formatPainter.cancel()
+  updateFormatPainterCursor()
   if (enabled) {
     sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth)
     editorMount.hidden = true
@@ -332,6 +348,7 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && formatPainter.isArmed) {
     event.preventDefault()
     formatPainter.cancel()
+    updateFormatPainterCursor()
     sendEditorState()
     return
   }
@@ -459,6 +476,7 @@ function handleMessage(value: unknown): void {
     }
     case 'loadDocument': {
       formatPainter.cancel()
+      updateFormatPainterCursor()
       const payload = message.payload as { markdown?: unknown; documentType?: unknown }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
@@ -501,6 +519,7 @@ function handleMessage(value: unknown): void {
         clientX?: unknown
         clientY?: unknown
         applyToCurrentTextBlockWhenEmpty?: unknown
+        mode?: unknown
       }
       if (typeof payload?.command === 'string') {
         if (payload.command === 'find' || payload.command === 'replace') {
@@ -578,7 +597,18 @@ function handleMessage(value: unknown): void {
           break
         }
         if (payload.command === 'formatPainter') {
-          const success = !sourceMode && formatPainter.arm(editor)
+          const mode: 'single' | 'lock' = payload.mode === 'lock' ? 'lock' : 'single'
+          let success = false
+          if (sourceMode) {
+            success = false
+          } else if (formatPainter.isArmed) {
+            // 再次点击 = 关闭（对齐 Word 的切换语义）。
+            formatPainter.cancel()
+            success = true
+          } else {
+            success = formatPainter.arm(editor, mode)
+          }
+          updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)
           sendEditorState()
           break

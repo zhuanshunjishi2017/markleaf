@@ -155,6 +155,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter"))
+        menu.addItem(commandItem(L10n.t("格式刷（保持锁定）"), "formatPainterLock"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
         menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
@@ -336,11 +337,15 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             return s?.inTable == true
         // 插入表格：仅在表格外可用
         case "insertTable": return s?.inTable == false
-        // 格式刷：仅可视化模式且来源可选时可用，armed 后置灰
+        // 格式刷：可视化模式下，可吸附来源或已激活时均可点（再次点击取消，对齐 Word 按钮切换）
         case "formatPainter":
+            menuItem.state = (s?.isFormatPainterArmed == true && s?.formatPainterMode == "single") ? .on : .off
             return s?.isSourceMode == false
-                && s?.canStartFormatPainter == true
-                && s?.isFormatPainterArmed == false
+                && (s?.canStartFormatPainter == true || s?.isFormatPainterArmed == true)
+        case "formatPainterLock":
+            menuItem.state = (s?.isFormatPainterArmed == true && s?.formatPainterMode == "lock") ? .on : .off
+            return s?.isSourceMode == false
+                && (s?.canStartFormatPainter == true || s?.isFormatPainterArmed == true)
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
@@ -560,7 +565,8 @@ extension EditorSession {
         case "demoteHeading": execute("demoteHeading")
         case "toggleUnderline": executeInlineFormat("toggleUnderline")
         case "toggleCode": executeInlineFormat("toggleCode")
-        case "formatPainter": execute("formatPainter")
+        case "formatPainter": toggleFormatPainter(lock: false)
+        case "formatPainterLock": toggleFormatPainter(lock: true)
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "insertHorizontalRule": execute("insertHorizontalRule")

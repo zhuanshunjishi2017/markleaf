@@ -6,9 +6,8 @@ export type FormatPainterSnapshot = {
   block: PaintableBlock
   marks: { bold: boolean; italic: boolean; underline: boolean; strike: boolean; code: boolean }
 }
-export type FormatPainterState =
-  | { mode: 'idle' }
-  | { mode: 'armed'; snapshot: FormatPainterSnapshot; sourceRange: { from: number; to: number } }
+/// single = 单击（应用一次后自动关闭）；lock = 双击/锁定（反复应用直到取消）。
+export type FormatPainterMode = 'single' | 'lock'
 
 const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code'] as const
 const forbiddenAncestorNames = new Set([
@@ -111,28 +110,48 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
 }
 
 export class FormatPainterController {
-  state: FormatPainterState = { mode: 'idle' }
-  get isArmed(): boolean { return this.state.mode === 'armed' }
+  private snapshot: FormatPainterSnapshot | null = null
+  private sourceRange: { from: number; to: number } | null = null
+  private mode: FormatPainterMode = 'single'
+  private armed = false
 
-  arm(editor: Editor): boolean {
+  get isArmed(): boolean { return this.armed }
+  get currentMode(): FormatPainterMode { return this.mode }
+
+  /// 吸附格式刷（对应 Word 单击/双击格式刷按钮）。
+  arm(editor: Editor, mode: FormatPainterMode = 'single'): boolean {
     const snapshot = captureFormat(editor)
     if (!snapshot) return false
     const { from, to } = editor.state.selection
-    this.state = { mode: 'armed', snapshot, sourceRange: { from, to } }
+    this.snapshot = snapshot
+    this.sourceRange = { from, to }
+    this.mode = mode
+    this.armed = true
     return true
   }
 
   cancel(): void {
-    this.state = { mode: 'idle' }
+    this.armed = false
+    this.snapshot = null
+    this.sourceRange = null
   }
 
-  handleSelectionUpdate(editor: Editor): 'waiting' | 'applied' | 'cancelled' {
-    if (this.state.mode !== 'armed') return 'waiting'
-    const armed = this.state
+  /// 鼠标抬起时应用：若当前是一个新的可涂抹文本选区，则套用已捕获格式。
+  /// single 模式应用后自动关闭；lock 模式保持激活，可继续涂抹下一处。
+  applyOnSelection(editor: Editor): boolean {
+    if (!this.armed || !this.snapshot) return false
     const { from, to } = editor.state.selection
-    if (from === armed.sourceRange.from && to === armed.sourceRange.to) return 'waiting'
-    this.state = { mode: 'idle' }
-    if (!isPaintableTextSelection(editor)) return 'cancelled'
-    return applyCapturedFormat(editor, armed.snapshot) ? 'applied' : 'cancelled'
+    const sr = this.sourceRange
+    if (sr && from === sr.from && to === sr.to) return false
+    if (!isPaintableTextSelection(editor)) return false
+
+    const applied = applyCapturedFormat(editor, this.snapshot)
+    if (this.mode === 'lock') {
+      // 保持激活；清空来源锚点，使下一次选区改变可再次应用。
+      this.sourceRange = null
+      return applied
+    }
+    this.cancel()
+    return applied
   }
 }

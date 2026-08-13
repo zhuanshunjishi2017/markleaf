@@ -49,6 +49,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var canRedo = false
     private(set) var canStartFormatPainter = false
     private(set) var isFormatPainterArmed = false
+    private(set) var formatPainterMode: String?
     private(set) var headingLevel: Int?
 
     // 工作区 / 大纲
@@ -215,6 +216,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             canRedo = payload?["canRedo"] as? Bool ?? false
             canStartFormatPainter = payload?["canStartFormatPainter"] as? Bool ?? false
             isFormatPainterArmed = payload?["formatPainterArmed"] as? Bool ?? false
+            formatPainterMode = payload?["formatPainterMode"] as? String
             headingLevel = payload?["headingLevel"] as? Int
 
         case "outlineChanged":
@@ -729,6 +731,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func executeInlineFormat(_ command: String) {
         var payload: [String: Any] = ["command": command, "applyToCurrentTextBlockWhenEmpty": true]
         send("command", payload: payload)
+    }
+
+    /// 格式刷：单击 = 单次涂抹；锁定 = 反复涂抹。再次调用即取消（对齐 Word 的按钮切换）。
+    func toggleFormatPainter(lock: Bool) {
+        send("command", payload: ["command": "formatPainter", "mode": lock ? "lock" : "single"])
     }
 
     /// 文档加载完成后应用持久化设置（缩放/自动隐藏滚动条）。

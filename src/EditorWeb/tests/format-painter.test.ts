@@ -131,29 +131,31 @@ it('applies once without changing text or link href and one undo restores the ta
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target')
-  expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(painter.applyOnSelection(editor)).toBe(true)
   expect(painter.isArmed).toBe(false)
   expect(editor.getMarkdown()).toContain('## [**target**](https://example.com)')
   editor.commands.undo()
   expect(editor.getMarkdown()).toContain('[target](https://example.com)')
 })
 
-it('cancels on invalid target and never remains armed', () => {
+it('keeps armed on an invalid target and applies nothing', () => {
   const editor = makeEditor('**source**\n\n- target')
   const painter = new FormatPainterController()
   selectText(editor, 'source')
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target')
-  expect(painter.handleSelectionUpdate(editor)).toBe('cancelled')
+  expect(painter.applyOnSelection(editor)).toBe(false)
+  expect(painter.isArmed).toBe(true)
+  painter.cancel()
   expect(painter.isArmed).toBe(false)
 })
 
-it('returns waiting for the unchanged source range', () => {
+it('returns false for the unchanged source range', () => {
   const editor = makeEditor('**source**\n\ntarget')
   selectText(editor, 'source')
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
-  expect(painter.handleSelectionUpdate(editor)).toBe('waiting')
+  expect(painter.applyOnSelection(editor)).toBe(false)
   expect(painter.isArmed).toBe(true)
   painter.cancel()
   expect(painter.isArmed).toBe(false)
@@ -165,7 +167,7 @@ it('round-trips paragraph and heading levels 1 through 6', () => {
   const paragraphPainter = new FormatPainterController()
   expect(paragraphPainter.arm(editor)).toBe(true)
   selectText(editor, 'target')
-  expect(paragraphPainter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(paragraphPainter.applyOnSelection(editor)).toBe(true)
   expect(editor.getMarkdown()).toContain('target')
 
   for (let level = 1; level <= 6; level += 1) {
@@ -174,7 +176,7 @@ it('round-trips paragraph and heading levels 1 through 6', () => {
     const painter = new FormatPainterController()
     expect(painter.arm(headingEditor)).toBe(true)
     selectText(headingEditor, 'target')
-    expect(painter.handleSelectionUpdate(headingEditor)).toBe('applied')
+    expect(painter.applyOnSelection(headingEditor)).toBe(true)
     expect(headingEditor.getMarkdown()).toContain(`${'#'.repeat(level)} target`)
   }
 })
@@ -188,7 +190,7 @@ it('replaces each supported mark on the target', () => {
     const painter = new FormatPainterController()
     expect(painter.arm(editor)).toBe(true)
     selectText(editor, 'target')
-    expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+    expect(painter.applyOnSelection(editor)).toBe(true)
     expect(editor.isActive(mark)).toBe(true)
   }
 })
@@ -200,34 +202,51 @@ it('keeps target text byte-for-byte unchanged', () => {
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target text')
-  expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(painter.applyOnSelection(editor)).toBe(true)
   expect(editor.state.doc.textContent).toBe(before)
 })
 
-it('applying twice changes only the first target', () => {
+it('single mode disarms after one paint', () => {
   const editor = makeEditor('**source**\n\ntarget one\n\ntarget two')
   selectText(editor, 'source')
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target one')
-  expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(painter.isArmed).toBe(false)
 
-  selectText(editor, 'source')
-  expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target two')
-  expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(painter.applyOnSelection(editor)).toBe(false)
+  expect(editor.getMarkdown()).toContain('**target one**')
+  expect(editor.getMarkdown()).toContain('target two')
+})
+
+it('lock mode stays armed and paints repeatedly until cancelled', () => {
+  const editor = makeEditor('**source**\n\ntarget one\n\ntarget two')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor, 'lock')).toBe(true)
+  expect(painter.isArmed).toBe(true)
+
+  selectText(editor, 'target one')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(painter.isArmed).toBe(true)
+
+  selectText(editor, 'target two')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(painter.isArmed).toBe(true)
 
   expect(editor.getMarkdown()).toContain('**target one**')
   expect(editor.getMarkdown()).toContain('**target two**')
 })
 
-it('cancels before applying when a code source targets linked text', () => {
+it('disarms without applying when a code source targets linked text', () => {
   const editor = makeEditor('`source`\n\n[target](https://example.com)')
   selectText(editor, 'source')
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target')
-  expect(painter.handleSelectionUpdate(editor)).toBe('cancelled')
+  expect(painter.applyOnSelection(editor)).toBe(false)
   expect(painter.isArmed).toBe(false)
   expect(editor.getMarkdown()).toContain('[target](https://example.com)')
 })
@@ -238,7 +257,7 @@ it('preserves the href when non-code formatting targets a link', () => {
   const painter = new FormatPainterController()
   expect(painter.arm(editor)).toBe(true)
   selectText(editor, 'target')
-  expect(painter.handleSelectionUpdate(editor)).toBe('applied')
+  expect(painter.applyOnSelection(editor)).toBe(true)
   expect(editor.getMarkdown()).toContain('[**target**](https://example.com)')
 })
 
