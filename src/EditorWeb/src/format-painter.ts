@@ -6,8 +6,6 @@ export type FormatPainterSnapshot = {
   block: PaintableBlock
   marks: { bold: boolean; italic: boolean; underline: boolean; strike: boolean; code: boolean }
 }
-/// single = 单击（应用一次后自动关闭）；lock = 双击/锁定（反复应用直到取消）。
-export type FormatPainterMode = 'single' | 'lock'
 
 const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code'] as const
 const forbiddenAncestorNames = new Set([
@@ -112,20 +110,17 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
 export class FormatPainterController {
   private snapshot: FormatPainterSnapshot | null = null
   private sourceRange: { from: number; to: number } | null = null
-  private mode: FormatPainterMode = 'single'
   private armed = false
 
   get isArmed(): boolean { return this.armed }
-  get currentMode(): FormatPainterMode { return this.mode }
 
-  /// 吸附格式刷（对应 Word 单击/双击格式刷按钮）。
-  arm(editor: Editor, mode: FormatPainterMode = 'single'): boolean {
+  /// 吸附格式刷（对齐 Word 单击格式刷按钮）。
+  arm(editor: Editor): boolean {
     const snapshot = captureFormat(editor)
     if (!snapshot) return false
     const { from, to } = editor.state.selection
     this.snapshot = snapshot
     this.sourceRange = { from, to }
-    this.mode = mode
     this.armed = true
     return true
   }
@@ -136,8 +131,7 @@ export class FormatPainterController {
     this.sourceRange = null
   }
 
-  /// 鼠标抬起时应用：若当前是一个新的可涂抹文本选区，则套用已捕获格式。
-  /// single 模式应用后自动关闭；lock 模式保持激活，可继续涂抹下一处。
+  /// 鼠标抬起时应用：若当前是一个新的可涂抹文本选区，则套用已捕获格式后自动关闭。
   applyOnSelection(editor: Editor): boolean {
     if (!this.armed || !this.snapshot) return false
     const { from, to } = editor.state.selection
@@ -146,11 +140,6 @@ export class FormatPainterController {
     if (!isPaintableTextSelection(editor)) return false
 
     const applied = applyCapturedFormat(editor, this.snapshot)
-    if (this.mode === 'lock') {
-      // 保持激活；清空来源锚点，使下一次选区改变可再次应用。
-      this.sourceRange = null
-      return applied
-    }
     this.cancel()
     return applied
   }

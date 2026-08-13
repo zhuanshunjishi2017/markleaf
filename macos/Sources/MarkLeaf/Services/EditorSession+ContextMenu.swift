@@ -22,14 +22,8 @@ extension EditorSession {
         let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
         painterItem.representedObject = "formatPainter"
         painterItem.isEnabled = !isSourceMode && (canStartFormatPainter || isFormatPainterArmed)
-        painterItem.state = (isFormatPainterArmed && formatPainterMode == "single") ? .on : .off
+        painterItem.state = isFormatPainterArmed ? .on : .off
         menu.addItem(painterItem)
-
-        let painterLockItem = menuItem(L10n.t("格式刷（保持锁定）"), #selector(handleCommand(_:)))
-        painterLockItem.representedObject = "formatPainterLock"
-        painterLockItem.isEnabled = !isSourceMode && (canStartFormatPainter || isFormatPainterArmed)
-        painterLockItem.state = (isFormatPainterArmed && formatPainterMode == "lock") ? .on : .off
-        menu.addItem(painterLockItem)
         menu.addItem(.separator())
         let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
         for level in 1...3 {

@@ -145,7 +145,6 @@ function sendCommandState(): void {
     sourceMode,
     canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
     formatPainterArmed: !sourceMode && formatPainter.isArmed,
-    formatPainterMode: !sourceMode && formatPainter.isArmed ? formatPainter.currentMode : null,
   })
 }
 
@@ -519,7 +518,6 @@ function handleMessage(value: unknown): void {
         clientX?: unknown
         clientY?: unknown
         applyToCurrentTextBlockWhenEmpty?: unknown
-        mode?: unknown
       }
       if (typeof payload?.command === 'string') {
         if (payload.command === 'find' || payload.command === 'replace') {
@@ -597,7 +595,6 @@ function handleMessage(value: unknown): void {
           break
         }
         if (payload.command === 'formatPainter') {
-          const mode: 'single' | 'lock' = payload.mode === 'lock' ? 'lock' : 'single'
           let success = false
           if (sourceMode) {
             success = false
@@ -606,7 +603,7 @@ function handleMessage(value: unknown): void {
             formatPainter.cancel()
             success = true
           } else {
-            success = formatPainter.arm(editor, mode)
+            success = formatPainter.arm(editor)
           }
           updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)

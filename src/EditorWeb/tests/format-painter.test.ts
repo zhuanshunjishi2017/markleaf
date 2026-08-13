@@ -221,25 +221,6 @@ it('single mode disarms after one paint', () => {
   expect(editor.getMarkdown()).toContain('target two')
 })
 
-it('lock mode stays armed and paints repeatedly until cancelled', () => {
-  const editor = makeEditor('**source**\n\ntarget one\n\ntarget two')
-  selectText(editor, 'source')
-  const painter = new FormatPainterController()
-  expect(painter.arm(editor, 'lock')).toBe(true)
-  expect(painter.isArmed).toBe(true)
-
-  selectText(editor, 'target one')
-  expect(painter.applyOnSelection(editor)).toBe(true)
-  expect(painter.isArmed).toBe(true)
-
-  selectText(editor, 'target two')
-  expect(painter.applyOnSelection(editor)).toBe(true)
-  expect(painter.isArmed).toBe(true)
-
-  expect(editor.getMarkdown()).toContain('**target one**')
-  expect(editor.getMarkdown()).toContain('**target two**')
-})
-
 it('disarms without applying when a code source targets linked text', () => {
   const editor = makeEditor('`source`\n\n[target](https://example.com)')
   selectText(editor, 'source')
