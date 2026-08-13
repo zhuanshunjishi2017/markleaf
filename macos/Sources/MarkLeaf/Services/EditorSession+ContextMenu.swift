@@ -3,12 +3,15 @@ import AppKit
 extension EditorSession {
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
     func showEditorContextMenu(clientX: Double, clientY: Double) {
-        guard let webView, webView.window != nil else { return }
-        // JS clientY 原点在左上；AppKit 原点在左下，需翻转
+        guard let webView, let window = webView.window else { return }
+        // WKWebView 是 flipped 视图（原点在左上），因此 JS clientY 可直接映射到
+        // webView 局部坐标；这里统一换算到屏幕坐标后以 in: nil 弹出，避免依赖
+        // WKWebView 内部子视图的翻转语义。
         let pointInView = Self.editorContextMenuPoint(
             clientX: clientX,
             clientY: clientY,
-            viewHeight: webView.bounds.height
+            viewHeight: webView.bounds.height,
+            isFlipped: webView.isFlipped
         )
 
         let menu = NSMenu()
@@ -46,13 +49,14 @@ extension EditorSession {
         menu.addItem(copyAs)
         menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
 
-        // NSMenu expects the point in the coordinate system of `in:`. Passing
-        // the WebView-local point avoids a second conversion through window/screen space.
-        menu.popUp(positioning: nil, at: pointInView, in: webView)
+        // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
 
-    static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat) -> NSPoint {
-        NSPoint(x: clientX, y: viewHeight - clientY)
+    static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat, isFlipped: Bool) -> NSPoint {
+        NSPoint(x: clientX, y: isFlipped ? clientY : Double(viewHeight) - clientY)
     }
 
     // MARK: - 拖放图片导入（对应 C# ImportFileAsync + InsertImportedImageAsync）
