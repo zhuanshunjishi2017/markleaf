@@ -5,6 +5,7 @@ import {
   applyCapturedFormat,
   captureFormat,
   FormatPainterController,
+  normalizeContextMenuCaretPosition,
   type FormatPainterSnapshot,
 } from '../src/format-painter'
 
@@ -151,6 +152,20 @@ it('captures the format immediately before a caret at the end of a marked run', 
   const editor = makeEditor('**source** plain')
   placeCaret(editor, 'source', 'source'.length)
   expect(captureFormat(editor)?.marks.bold).toBe(true)
+})
+
+it('captures a caret positioned at the end of the final paragraph', () => {
+  const editor = makeEditor('plain paragraph')
+  editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+  expect(editor.state.selection.empty).toBe(true)
+  expect(captureFormat(editor)).not.toBeNull()
+})
+
+it('normalizes a document-boundary context-menu position into the final paragraph', () => {
+  const editor = makeEditor('plain paragraph')
+  const position = normalizeContextMenuCaretPosition(editor, editor.state.doc.content.size)
+  editor.commands.setTextSelection(position)
+  expect(captureFormat(editor)).not.toBeNull()
 })
 
 it('applies once without changing text or link href and one undo restores the target', () => {

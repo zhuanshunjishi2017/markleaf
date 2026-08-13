@@ -16,7 +16,7 @@ import {
 } from './editor'
 import { SourceEditor } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
-import { FormatPainterController, captureFormat } from './format-painter'
+import { FormatPainterController, captureFormat, normalizeContextMenuCaretPosition } from './format-painter'
 import {
   isHostMessage,
   postToHost,
@@ -389,7 +389,7 @@ editorMount.addEventListener('contextmenu', (event) => {
   if (resolved) {
     const selection = editor.state.selection
     if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
-      editor.commands.setTextSelection(resolved.pos)
+      editor.commands.setTextSelection(normalizeContextMenuCaretPosition(editor, resolved.pos))
     }
   }
   editor.commands.focus()

@@ -52,6 +52,25 @@ function marksAtCaret(editor: Editor, pos: number): FormatPainterSnapshot['marks
   ))
 }
 
+/**
+ * Convert a DOM context-menu position into a caret position inside a
+ * paintable text block.  At the visual end of a paragraph ProseMirror can
+ * report the document boundary (`doc.content.size`), whose resolved parent
+ * is the document rather than the paragraph.  That position cannot be used
+ * by `captureFormat`, so walk back to the nearest valid text-block position.
+ */
+export function normalizeContextMenuCaretPosition(editor: Editor, position: number): number {
+  const lastCaretPosition = Math.max(1, editor.state.doc.content.size - 1)
+  let candidate = Math.max(1, Math.min(position, lastCaretPosition))
+  while (candidate > 1) {
+    if (editor.state.doc.resolve(candidate).parent.isTextblock) {
+      return candidate
+    }
+    candidate -= 1
+  }
+  return candidate
+}
+
 /// 光标/选区所在块是否为可涂抹的段落或标题（且不在列表/表格等容器内）。
 function blockAt($from: ResolvedPos): PaintableBlock | null {
   const parent = $from.parent
