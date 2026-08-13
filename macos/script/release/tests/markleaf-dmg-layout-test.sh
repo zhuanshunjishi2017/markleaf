@@ -40,12 +40,17 @@ TEST_CAPTURE="$CAPTURE" OSASCRIPT_BIN="$FAKE_OSASCRIPT" \
     bash "$HELPER" apply "$STAGE"
 
 for expected in \
-    'set mountedPath to item 2 of argv' \
+    'set mountedPath to item 1 of argv' \
     'set targetDisk to disk (POSIX file mountedPath as alias)' \
+    'try' \
+    'close oldWindow' \
+    'delay 4' \
     'set bounds of targetWindow to {100, 100, 740, 500}' \
     'set icon size of viewOptions to 112' \
     'set text size of viewOptions to 13' \
-    'set background picture of viewOptions to file ".background:MarkLeaf-dmg-background.png" of targetDisk' \
+    'set backgroundFile to (POSIX file (mountedPath & "/.background/MarkLeaf-dmg-background.png")) as alias' \
+    'set background picture of viewOptions to backgroundFile' \
+    'delay 3' \
     'set position of item "MarkLeaf.app" of targetDisk to {165, 220}' \
     'set position of item "Applications" of targetDisk to {475, 220}'; do
     grep -Fq "$expected" "$CAPTURE" || fail "Finder layout missing: $expected"

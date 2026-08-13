@@ -43,13 +43,18 @@ case "$ACTION" in
         fi
 
         MOUNTED_PATH="$(cd "$DMG_ROOT" && pwd)"
+        echo "[dmg-layout] applying Finder layout at $MOUNTED_PATH"
         if ! "$OSASCRIPT_BIN" - "$MOUNTED_PATH" <<'APPLESCRIPT'
 on run argv
-    set mountedPath to item 2 of argv
+    set mountedPath to item 1 of argv
     tell application "Finder"
         set targetDisk to disk (POSIX file mountedPath as alias)
+        try
+            set oldWindow to container window of targetDisk
+            close oldWindow
+        end try
         open targetDisk
-        delay 1
+        delay 4
         set targetWindow to container window of targetDisk
         set current view of targetWindow to icon view
         set toolbar visible of targetWindow to false
@@ -60,7 +65,9 @@ on run argv
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 112
         set text size of viewOptions to 13
-        set background picture of viewOptions to file ".background:MarkLeaf-dmg-background.png" of targetDisk
+        set backgroundFile to (POSIX file (mountedPath & "/.background/MarkLeaf-dmg-background.png")) as alias
+        set background picture of viewOptions to backgroundFile
+        delay 3
         set position of item "MarkLeaf.app" of targetDisk to {165, 220}
         set position of item "Applications" of targetDisk to {475, 220}
         update targetDisk without registering applications
