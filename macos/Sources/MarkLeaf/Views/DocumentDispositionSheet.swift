@@ -94,6 +94,9 @@ final class DocumentDispositionSheetPresenter {
         completion: @escaping (Int) -> Void
     ) {
         let controller = DocumentDispositionSheetController(spec: spec, deferCompletion: deferCompletion, completion: completion)
+        // contentViewController 会把窗口缩放到 preferredContentSize；不设置会塌陷成 0 高度，
+        // 导致保存提示看不见（退出/关闭时看起来“卡死”）。
+        controller.preferredContentSize = NSSize(width: 460, height: 286)
         let sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 286),
             styleMask: [.titled],
