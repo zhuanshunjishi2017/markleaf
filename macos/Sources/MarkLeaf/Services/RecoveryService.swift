@@ -58,8 +58,20 @@ final class RecoveryService {
     }
 
     func delete(documentId: String) {
-        try? fm.removeItem(at: dataPath(for: documentId))
-        try? fm.removeItem(at: metaPath(for: documentId))
+        // documentId 是唯一 UUID；恢复流程里快照可能来自上一次崩溃的进程（PID 不同），
+        // 因此按 documentId 后缀删除，而不是用当前 PID 重建文件名。
+        let dataSuffix = "-\(documentId).md"
+        let metaSuffix = "-\(documentId).md.meta"
+        guard fm.fileExists(atPath: recoveryDirectory.path),
+              let files = try? fm.contentsOfDirectory(at: recoveryDirectory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files {
+            let name = file.lastPathComponent
+            if name.hasSuffix(dataSuffix) || name.hasSuffix(metaSuffix) {
+                try? fm.removeItem(at: file)
+            }
+        }
     }
 
     /// 正常退出时清理本进程快照。
