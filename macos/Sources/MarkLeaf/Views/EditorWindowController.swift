@@ -21,6 +21,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     private(set) var isFocusMode = false
     private var allowsNextClose = false
+    private var pendingCloseAfterSheetEnds = false
 
     var onWindowClose: ((EditorWindowController) -> Void)?
 
@@ -346,11 +347,23 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let sender else { return }
             _ = self.session.requestDisposition(for: .closeWindow) { result in
                 guard result == .proceed else { return }
-                self.allowsNextClose = true
-                sender.performClose(nil)
+                if sender.attachedSheet != nil {
+                    // NSAlert 的完成回调在 sheet 收起动画结束前触发，此时窗口仍挂着 sheet，
+                    // 直接 performClose 会被忽略；等 windowDidEndSheet 后再关闭。
+                    self.pendingCloseAfterSheetEnds = true
+                } else {
+                    self.allowsNextClose = true
+                    sender.performClose(nil)
+                }
             }
         }
         return false
+    }
+    func windowDidEndSheet(_ notification: Notification) {
+        guard pendingCloseAfterSheetEnds else { return }
+        pendingCloseAfterSheetEnds = false
+        allowsNextClose = true
+        window?.performClose(nil)
     }
 
     func windowWillClose(_ notification: Notification) {
