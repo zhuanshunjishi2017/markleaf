@@ -20,7 +20,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
     private let timeFormatter = DateFormatter()
     let introductionLabel: NSTextField
     private var saveOriginalButton: NSButton?
-    private var saveAsButton: NSButton?
+    private(set) var saveAsButton: NSButton?
     private(set) var discardSelectedButton: NSButton?
     private(set) var discardAllButton: NSButton?
 
@@ -77,6 +77,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
 
         let saveAsButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
         saveAsButton.keyEquivalent = "\r"
+        saveAsButton.isHidden = true
         saveAsButton.isEnabled = false
         self.saveAsButton = saveAsButton
 
@@ -87,6 +88,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         )
         discardSelectedButton.bezelStyle = .rounded
         Self.styleDestructive(discardSelectedButton)
+        discardSelectedButton.isHidden = true
         discardSelectedButton.isEnabled = false
         self.discardSelectedButton = discardSelectedButton
 
@@ -133,11 +135,12 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
 
     private static func styleDestructive(_ button: NSButton) {
         button.hasDestructiveAction = true
-        button.bezelColor = NSColor.systemRed.withAlphaComponent(0.16)
+        let titleColor = NSColor.systemRed.withAlphaComponent(0.72)
+        button.bezelColor = NSColor.systemRed.withAlphaComponent(0.10)
         let font = button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
         button.attributedTitle = NSAttributedString(
             string: button.title,
-            attributes: [.font: font, .foregroundColor: NSColor.systemRed]
+            attributes: [.font: font, .foregroundColor: titleColor]
         )
     }
 
@@ -190,6 +193,8 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
         let selected = row >= 0 && row < snapshots.count
         let hasPath = selected && (snapshots[row].documentPath?.isEmpty == false)
         saveOriginalButton?.isHidden = !hasPath
+        saveAsButton?.isHidden = !selected
+        discardSelectedButton?.isHidden = !selected
         saveAsButton?.isEnabled = selected
         discardSelectedButton?.isEnabled = selected
     }
