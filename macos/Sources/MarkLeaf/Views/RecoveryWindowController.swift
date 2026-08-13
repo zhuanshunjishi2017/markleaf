@@ -86,7 +86,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             action: #selector(discardSelected)
         )
         discardSelectedButton.bezelStyle = .rounded
-        discardSelectedButton.hasDestructiveAction = true
+        Self.styleDestructive(discardSelectedButton)
         discardSelectedButton.isEnabled = false
         self.discardSelectedButton = discardSelectedButton
 
@@ -96,7 +96,7 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             action: #selector(discardAll)
         )
         discardAllButton.bezelStyle = .rounded
-        discardAllButton.hasDestructiveAction = true
+        Self.styleDestructive(discardAllButton)
         self.discardAllButton = discardAllButton
 
         let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
@@ -129,6 +129,16 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
         ])
         window.contentView = root
+    }
+
+    private static func styleDestructive(_ button: NSButton) {
+        button.hasDestructiveAction = true
+        button.bezelColor = NSColor.systemRed.withAlphaComponent(0.16)
+        let font = button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        button.attributedTitle = NSAttributedString(
+            string: button.title,
+            attributes: [.font: font, .foregroundColor: NSColor.systemRed]
+        )
     }
 
     required init?(coder: NSCoder) {

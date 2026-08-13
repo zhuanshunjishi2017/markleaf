@@ -82,6 +82,15 @@ enum RecoveryWindowActionsProbe {
 
         precondition(controller.discardAllButton?.hasDestructiveAction == true)
         precondition(controller.discardSelectedButton?.hasDestructiveAction == true)
+        precondition(controller.discardAllButton?.bezelColor != nil)
+        precondition(controller.discardSelectedButton?.bezelColor != nil)
+        precondition(
+            controller.discardAllButton?.attributedTitle.attribute(
+                .foregroundColor,
+                at: 0,
+                effectiveRange: nil
+            ) as? NSColor == NSColor.systemRed
+        )
         precondition(controller.discardSelectedButton?.isEnabled == false)
 
         controller.tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)

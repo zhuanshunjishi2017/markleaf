@@ -16,7 +16,7 @@
 - Save-panel cancellation and write failure retain the snapshot, selection, and window.
 - “全部丢弃” removes all recovery snapshots and closes immediately.
 - “取消” closes without changing recovery snapshots.
-- “丢弃” and “全部丢弃” use `hasDestructiveAction`; no hard-coded colors or delayed recoloring.
+- “丢弃” and “全部丢弃” use `hasDestructiveAction` plus semantic `NSColor.systemRed` styling applied once before presentation; no fixed RGB values or delayed recoloring.
 - Add “丢弃” in Simplified Chinese, Traditional Chinese, English, and Japanese.
 - Use `/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` because the default SDK is newer than the installed Swift compiler.
 
