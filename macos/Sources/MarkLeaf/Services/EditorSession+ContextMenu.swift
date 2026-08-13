@@ -3,11 +3,13 @@ import AppKit
 extension EditorSession {
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
     func showEditorContextMenu(clientX: Double, clientY: Double) {
-        guard let webView, let window = webView.window else { return }
+        guard let webView, webView.window != nil else { return }
         // JS clientY 原点在左上；AppKit 原点在左下，需翻转
-        let pointInView = NSPoint(x: clientX, y: webView.bounds.height - clientY)
-        let pointInWindow = webView.convert(pointInView, to: nil)
-        let screenPoint = window.convertToScreen(NSRect(origin: pointInWindow, size: .zero)).origin
+        let pointInView = Self.editorContextMenuPoint(
+            clientX: clientX,
+            clientY: clientY,
+            viewHeight: webView.bounds.height
+        )
 
         let menu = NSMenu()
         addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
@@ -44,7 +46,13 @@ extension EditorSession {
         menu.addItem(copyAs)
         menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
 
-        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        // NSMenu expects the point in the coordinate system of `in:`. Passing
+        // the WebView-local point avoids a second conversion through window/screen space.
+        menu.popUp(positioning: nil, at: pointInView, in: webView)
+    }
+
+    static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat) -> NSPoint {
+        NSPoint(x: clientX, y: viewHeight - clientY)
     }
 
     // MARK: - 拖放图片导入（对应 C# ImportFileAsync + InsertImportedImageAsync）
