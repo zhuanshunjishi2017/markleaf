@@ -114,6 +114,7 @@ final class AppWindowManager {
     /// 当前活跃（键窗口）控制器；窗口级命令（如专注模式）使用它路由。
     var activeWindowController: EditorWindowController? {
         windowControllers.first { $0.window?.isKeyWindow == true }
+            ?? windowControllers.first { $0.window?.isMainWindow == true }
             ?? windowControllers.first
     }
 
@@ -339,18 +340,24 @@ final class AppWindowManager {
             return
         }
 
-        // 只读打开：聚焦已打开的更新内容窗口，或在新窗口以只读文档加载。
-        if let existing = windowControllers.first(where: { $0.session.isReadOnly && $0.session.documentURL == target }) {
-            existing.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
         do {
             let markdown = try String(contentsOf: target, encoding: .utf8)
             let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: true)
-            let controller = newWindow(preparedDocument: prepared)
-            controller.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            // 菜单跟踪期间新窗口无法成为 key window，等跟踪结束后再创建并激活，
+            // 避免只读窗口虽然打开却仍停留在旧窗口焦点上。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self else { return }
+                if let existing = self.windowControllers.first(where: {
+                    $0.session.isReadOnly && $0.session.documentURL == target
+                }) {
+                    existing.window?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                    return
+                }
+                let controller = self.newWindow(preparedDocument: prepared)
+                controller.window?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
         } catch {
             activeSession?.statusText = L10n.t("无法打开更新内容")
         }
