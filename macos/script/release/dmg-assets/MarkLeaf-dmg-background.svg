@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" preserveAspectRatio="xMidYMid meet">
   <defs>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6757FF"/>
@@ -13,13 +13,14 @@
     </linearGradient>
   </defs>
 
-  <rect width="640" height="400" fill="#F8FAFD"/>
+  <rect width="640" height="640" fill="#F8FAFD"/>
+
+  <g transform="translate(0 120)">
   <rect x="0" y="0" width="640" height="104" fill="#FFFFFF"/>
   <path d="M0 0H410C350 28 324 74 252 104H0Z" fill="url(#wash)"/>
   <rect x="0" y="103" width="640" height="1" fill="#E7EBF2"/>
 
-  <rect x="30" y="24" width="56" height="56" rx="15" fill="url(#accent)"/>
-  <text x="58" y="61" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="28" font-weight="800" fill="#FFFFFF">M</text>
+  <image href="MarkLeaf-app-icon.png" x="30" y="24" width="56" height="56" preserveAspectRatio="xMidYMid meet"/>
   <text x="104" y="49" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="24" font-weight="700" fill="#171B26">MarkLeaf</text>
   <text x="104" y="72" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="12" font-weight="600" letter-spacing="1.6" fill="#657087">MARKDOWN WITHOUT DISTRACTION</text>
 
@@ -30,4 +31,5 @@
   </g>
 
   <text x="320" y="354" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif" font-size="12" fill="#8A93A5">Drag MarkLeaf into Applications to install</text>
+  </g>
 </svg>
