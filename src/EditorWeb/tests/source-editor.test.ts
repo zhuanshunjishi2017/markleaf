@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { SourceEditor } from '../src/source-editor'
 import { createEditor, getMarkdown, replaceEditorDocument } from '../src/editor'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+// 模拟宿主注入的排版样式：base.css 曾在源码模式下隐藏原生光标，
+// 该交互正是“光标不可见”回归的复现条件。
+const baseCss = readFileSync(resolve(import.meta.dirname, '../../MarkLeaf/Resources/Styles/base.css'), 'utf8')
+const stylesCss = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
 
 const sources: SourceEditor[] = []
 const editorsForSourceTests: ReturnType<typeof createEditor>[] = []
@@ -12,6 +18,31 @@ afterEach(() => {
 })
 
 describe('source editor', () => {
+  it('keeps a visible caret in source mode', () => {
+    const hostStyles = document.createElement('style')
+    hostStyles.textContent = `${baseCss}\n${stylesCss}`
+    document.head.append(hostStyles)
+    const rules = (Array.from(hostStyles.sheet?.cssRules ?? []) as CSSRule[]).filter(
+      (rule): rule is CSSStyleRule => rule instanceof CSSStyleRule
+    )
+
+    // jsdom 无法按 !important 计算 caret-color，这里直接校验样式契约：
+    // 源码编辑器不得再隐藏原生光标，且必须提供可见的 caret 颜色。
+    const caretHidingRules = rules.filter(rule =>
+      rule.selectorText.includes('.cm-content') &&
+      rule.style.getPropertyValue('caret-color').trim() === 'transparent'
+    )
+    expect(caretHidingRules).toHaveLength(0)
+
+    const visibleCaretRules = rules.filter(rule =>
+      rule.selectorText.includes('#source-editor') &&
+      rule.selectorText.includes('.cm-content') &&
+      !['', 'transparent', 'auto'].includes(rule.style.getPropertyValue('caret-color').trim())
+    )
+    expect(visibleCaretRules.length).toBeGreaterThan(0)
+    hostStyles.remove()
+  })
+
   it('finds and replaces Markdown without losing source text', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

@@ -58,11 +58,6 @@
   box-shadow: 0 0 0 1px var(--theme-dark);
 }
 
-/* 隐藏 contenteditable 原生光标：源码模式光标由 CodeMirror 的 .cm-cursor 图层绘制 */
-.cm-editor .cm-content {
-  caret-color: transparent !important;
-}
-
 /* 装饰 span 已提供背景，隐藏 contenteditable 的原生选区（WebKit 忽略 ::selection 且默认画系统蓝） */
 .cm-editor .cm-content ::selection,
 .cm-editor .cm-content::selection,

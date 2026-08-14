@@ -117,6 +117,12 @@ body {
   font-family: var(--ml-source-font-family, 'SF Mono', ui-monospace, Menlo, Monaco, monospace);
 }
 
+/* 源码模式使用原生 contenteditable 光标（未启用 drawSelection），
+   显式指定主题色，避免深色主题下光标不可见。 */
+#source-editor .cm-content {
+  caret-color: var(--text-primary);
+}
+
 /* ---- 源码模式语法高亮（class-based，颜色随主题变量） ---- */
 .tok-comment   { color: var(--text-tertiary); font-style: italic; }
 .tok-heading   { color: var(--text-primary); font-weight: 600; }
