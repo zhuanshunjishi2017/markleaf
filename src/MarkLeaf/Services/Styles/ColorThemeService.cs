@@ -87,6 +87,46 @@ internal static partial class ColorThemeService
         return theme?.IsDark == true;
     }
 
+    public static bool IsSystemDarkMode()
+    {
+        try
+        {
+            var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key is null) return false;
+            var value = key.GetValue("AppsUseLightTheme");
+            key.Close();
+            return value is int intValue && intValue == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static string DefaultLightThemeId { get; set; } = "white-only";
+
+    public static string DefaultDarkThemeId { get; set; } = "dark";
+
+    public static string GetDefaultLightThemeId()
+    {
+        return TryGetTheme(DefaultLightThemeId) is not null ? DefaultLightThemeId
+            : TryGetTheme("white-only") is not null ? "white-only" : "white";
+    }
+
+    public static string GetDefaultDarkThemeId()
+    {
+        if (TryGetTheme(DefaultDarkThemeId) is not null) return DefaultDarkThemeId;
+        if (TryGetTheme("dark") is not null) return "dark";
+        var fallback = Themes.Find(t => t.IsDark);
+        return fallback?.Id ?? "dark";
+    }
+
+    public static string GetSystemDefaultThemeId()
+    {
+        return IsSystemDarkMode() ? GetDefaultDarkThemeId() : GetDefaultLightThemeId();
+    }
+
     public static void SetActiveTheme(string id)
     {
         if (!string.Equals(ActiveThemeId, id, StringComparison.Ordinal)

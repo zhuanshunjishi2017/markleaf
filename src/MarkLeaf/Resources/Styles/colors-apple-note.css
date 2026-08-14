@@ -1,25 +1,31 @@
 /* @type: color-theme
-   @name: 薄荷
+   @name: 备忘录(macOS配色)
    @mode: light */
 
 :root {
-  --bg-primary:          #F4FAF6;
-  --bg-hover:            #E6F2EA;
-  --bg-selected:         #D4E8DA;
-  --bg-selected-hover:   #C0DCC8;
-  --text-primary:        #253528;
-  --text-secondary:      #4A604E;
-  --text-tertiary:       #6A8070;
-  --text-selected:              #FFFFFF;
-  --text-tertiary-selected:     #E8F4EC;
-  --icon:                       #4A604E;
+  --bg-primary:          #FFFFFF;
+  --bg-hover:            #F3F2F8;
+  --bg-selected:         #e7e7ef;
+  --bg-selected-hover:   #e4e2eb;
+  --text-primary:        #000000;
+  --text-secondary:      #99989D;
+  --text-tertiary:       #8C8C8C;
+  --text-selected:       #FFFFFF;
+  --text-tertiary-selected:     #FFEEA0;
+  --icon:                       #EAB614;
   --icon-selected:              #FFFFFF;
-  --icon-secondary:             #6A8070;
-  --scrollbar-idle:      #B8D0C0;
-  --scrollbar-active:    #90B098;
-  --theme-light:         #2E8B57;
-  --theme-dark:          #1E6B40;
+  --icon-secondary:      #505864;
+  --scrollbar-idle:      #8B8B8B;
+  --scrollbar-active:    #636363;
+  --theme-light:         #E4AF0B;
+  --theme-dark:          #dba608;
 }
+
+
+/* ============================================================
+   编辑器颜色覆盖
+   规则按优先级从低到高排列，级联覆写 base.css 中的默认色。
+   ============================================================ */
 
 /* ---- 全局 ---- */
 body,
@@ -32,7 +38,7 @@ body,
   caret-color: var(--theme-dark);
 }
 
-/* ---- 选区 ---- */
+/* ---- 选区（特异性对齐 base.css 的 .markleaf-document *::selection） ---- */
 .markleaf-document::selection,
 .markleaf-document *::selection,
 .ProseMirror::selection,
@@ -100,18 +106,18 @@ body,
   color: var(--text-tertiary);
 }
 
-/* ---- 代码、引用中的选区 ---- */
+/* ---- 代码、引用中的选区文字 ---- */
 .markleaf-document pre ::selection,
 .markleaf-document blockquote ::selection {
   color: var(--text-tertiary-selected);
 }
 
-/* ---- 选中块边框 ---- */
+/* ---- 选中块边框（ProseMirror 选中节点） ---- */
 .ProseMirror-selectednode {
   outline: 2px solid var(--theme-light);
 }
 
-/* ---- 图片手柄 ---- */
+/* ---- 图片拖拽手柄 ---- */
 .markleaf-image-resize-handle {
   background: var(--theme-dark);
   border-color: var(--bg-primary);

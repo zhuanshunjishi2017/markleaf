@@ -22,11 +22,13 @@ internal sealed record EditorCommandStatus(
     bool InTable,
     string? TableAlign,
     bool ImageSelected,
+    bool MathInline,
+    bool MathBlock,
     bool SourceMode)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false);
+        false, false, null, false, false, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -54,6 +56,8 @@ internal sealed record EditorCommandStatus(
                 ? null
                 : payload.GetProperty("tableAlign").GetString(),
             payload.GetProperty("imageSelected").GetBoolean(),
+            payload.GetProperty("mathInline").GetBoolean(),
+            payload.GetProperty("mathBlock").GetBoolean(),
             payload.GetProperty("sourceMode").GetBoolean());
     }
 }

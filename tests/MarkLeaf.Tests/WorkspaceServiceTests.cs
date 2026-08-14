@@ -6,6 +6,9 @@ namespace MarkLeaf.Tests;
 [TestClass]
 public sealed class WorkspaceServiceTests
 {
+    [TestInitialize]
+    public void Setup() => LocTestHelper.EnsureInitialized();
+
     [TestMethod]
     public async Task GetChildrenAsync_SortsFoldersBeforeFilesAndSkipsHiddenEntries()
     {

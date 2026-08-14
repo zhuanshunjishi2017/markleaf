@@ -35,6 +35,60 @@ body {
   color: var(--text-selected);
 }
 
+/* 段落左侧浮动操作按钮（块手柄） */
+.markleaf-document {
+  position: relative;
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: "Microsoft YaHei", sans-serif;
+  font-weight: bold;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.markleaf-document:hover .ml-block-handle,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
+}
+
+/* 点击加号后整个段落的 bg-hover 高亮 */
+.markleaf-block-active {
+  background: var(--bg-hover, #f0f0f0);
+  border-radius: 6px;
+}
+
+/* 数学公式（KaTeX 渲染） */
+.markleaf-math-block {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .find-bar {
   position: sticky;
   z-index: 10;
@@ -114,7 +168,7 @@ body {
 #source-editor .cm-content,
 #source-editor .cm-gutters {
   font-size: var(--ml-source-font-size, 14px);
-  font-family: var(--ml-source-font-family, 'SF Mono', ui-monospace, Menlo, Monaco, monospace);
+  font-family: var(--ml-source-font-family, 'Cascadia Mono', 'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace);
 }
 
 /* 源码模式使用原生 contenteditable 光标（未启用 drawSelection），
@@ -212,7 +266,7 @@ body {
   height: 10px;
 }
 
-/* 自动隐藏滚动条：空闲时滑块透明（隐藏），滚动中或鼠标移至右边缘时显示。
+/* 自动隐藏滚动条：收窄至 8px，空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
    同时作用于 html 和 body，覆盖不同 overflow 归属场景。 */
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
 body.markleaf-auto-hide-scrollbar::-webkit-scrollbar,

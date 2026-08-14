@@ -1,3 +1,6 @@
+using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal enum ExternalChangeChoice
@@ -13,7 +16,7 @@ internal sealed class ExternalChangeDialog : Form
 {
     public ExternalChangeDialog(string fileName)
     {
-        Text = "检测到外部修改";
+        Text = Loc.Get("dialog.externalChangeTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -22,14 +25,14 @@ internal sealed class ExternalChangeDialog : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        Padding = new Padding(16);
+        Padding = new Padding(this.ScaleForDpi(9));
         FormClosing += (_, _) => Choice = Choice == default ? ExternalChangeChoice.Cancel : Choice;
 
         var message = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(560, 0),
-            Text = $"磁盘上的“{fileName}”已被其他程序修改。MarkLeaf 不会静默覆盖该版本。\r\n\r\n请选择如何处理当前编辑内容：",
+            MaximumSize = new Size(this.ScaleForDpi(320), 0),
+            Text = Loc.Format("document.externalChangeMessage", fileName),
         };
         var actions = new FlowLayoutPanel
         {
@@ -38,13 +41,13 @@ internal sealed class ExternalChangeDialog : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 16, 0, 0),
+            Margin = new Padding(0, this.ScaleForDpi(9), 0, 0),
         };
-        actions.Controls.Add(CreateButton("重新加载", ExternalChangeChoice.Reload));
-        actions.Controls.Add(CreateButton("比较...", ExternalChangeChoice.Compare));
-        actions.Controls.Add(CreateButton("另存为...", ExternalChangeChoice.SaveAs));
-        actions.Controls.Add(CreateButton("强制覆盖", ExternalChangeChoice.ForceOverwrite));
-        actions.Controls.Add(CreateButton("取消", ExternalChangeChoice.Cancel));
+        actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeReload"), ExternalChangeChoice.Reload));
+        actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeCompare"), ExternalChangeChoice.Compare));
+        actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeSaveAs"), ExternalChangeChoice.SaveAs));
+        actions.Controls.Add(CreateButton(Loc.Get("dialog.externalChangeForceOverwrite"), ExternalChangeChoice.ForceOverwrite));
+        actions.Controls.Add(CreateButton(Loc.Get("common.cancel"), ExternalChangeChoice.Cancel));
 
         var layout = new TableLayoutPanel
         {
@@ -66,8 +69,8 @@ internal sealed class ExternalChangeDialog : Form
         var button = new Button
         {
             AutoSize = true,
-            MinimumSize = new Size(88, 0),
-            Padding = new Padding(10, 3, 10, 3),
+            MinimumSize = new Size(this.ScaleForDpi(50), 0),
+            Padding = new Padding(this.ScaleForDpi(6), this.ScaleForDpi(2), this.ScaleForDpi(6), this.ScaleForDpi(2)),
             FlatStyle = FlatStyle.System,
             Text = text,
             UseVisualStyleBackColor = true,

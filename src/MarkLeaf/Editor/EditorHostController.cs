@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using MarkLeaf.Documents;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
@@ -49,6 +50,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
 
+    public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
+
     public event EventHandler<EditorOutline>? OutlineChanged;
 
     public event EventHandler<int?>? OutlineSelectionChanged;
@@ -89,9 +92,19 @@ internal sealed class EditorHostController : IDisposable
 
     public Point EditorPointToScreen(EditorContextMenuRequest request)
     {
+        return EditorPointToScreen(request.ClientX, request.ClientY);
+    }
+
+    public Point EditorPointToScreen(EditorBlockMenuRequest request)
+    {
+        return EditorPointToScreen(request.ClientX, request.ClientY);
+    }
+
+    private Point EditorPointToScreen(double clientX, double clientY)
+    {
         var devicePoint = EditorCoordinateConverter.CssToDevicePoint(
-            request.ClientX,
-            request.ClientY,
+            clientX,
+            clientY,
             _webView.DeviceDpi,
             _webView.ZoomFactor);
         return _webView.PointToScreen(devicePoint);
@@ -107,13 +120,13 @@ internal sealed class EditorHostController : IDisposable
 
         if (!File.Exists(Path.Combine(_editorWebPath, "index.html")))
         {
-            Fail("编辑器静态资源缺失。请重新构建 EditorWeb。", null);
+            Fail(Loc.Get("editor.resourceMissing"), null);
             return;
         }
 
         _initializationTimer.Restart();
         _session.TransitionTo(EditorLifecycleState.Initializing);
-        ShowLoading("正在初始化 WebView2…", "正在检查运行时并创建编辑器环境。");
+        ShowLoading(Loc.Get("editor.initMessage"), Loc.Get("editor.initDetail"));
         NotifyStateChanged();
 
         try
@@ -124,22 +137,28 @@ internal sealed class EditorHostController : IDisposable
                 userDataFolder: _webView2UserDataDirectory).WaitAsync(_initializationCancellation.Token);
             var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
             controllerOptions.AllowHostInputProcessing = true;
+            var themeColors = ColorThemeService.GetActiveColors();
+            if (themeColors.TryGetValue("bg-primary", out var bgColor))
+            {
+                controllerOptions.DefaultBackgroundColor = bgColor;
+                _loadingView.SetThemeBackground(bgColor);
+            }
             await _webView.EnsureCoreWebView2Async(environment, controllerOptions).WaitAsync(_initializationCancellation.Token);
             ConfigureCoreWebView2();
 
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
-            ShowLoading("正在加载编辑器…", "正在载入本地编辑器资源。");
+            ShowLoading(Loc.Get("editor.loadingMessage"), Loc.Get("editor.loadingDetail"));
             NotifyStateChanged();
             _webView.Source = _editorUri;
             BeginReadyTimeout();
         }
         catch (OperationCanceledException exception)
         {
-            Fail("WebView2 初始化超时。", exception);
+            Fail(Loc.Get("editor.timeout"), exception);
         }
         catch (Exception exception)
         {
-            Fail("WebView2 初始化失败。请确认 Evergreen Runtime 已安装。", exception);
+            Fail(Loc.Get("editor.runtimeFailed"), exception);
         }
     }
 
@@ -155,7 +174,7 @@ internal sealed class EditorHostController : IDisposable
         _session.ResetForRetry();
         _failureShown = false;
         _webView.Visible = false;
-        _loadingView.ShowLoading("正在重试编辑器…", "正在重新创建 WebView2 环境。");
+        _loadingView.ShowLoading(Loc.Get("editor.retrying"), Loc.Get("editor.retryingDetail"));
         NotifyStateChanged();
         await InitializeAsync();
     }
@@ -216,13 +235,27 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "")
     {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(sourceFontFamily))
+            parts.Add($"\"{sourceFontFamily.Replace("\"", "\\\"")}\"");
+        if (!string.IsNullOrWhiteSpace(sourceCjkFontFamily))
+            parts.Add($"\"{sourceCjkFontFamily.Replace("\"", "\\\"")}\"");
+        parts.Add("monospace");
+        var fontFamilyValue = string.Join(", ", parts);
+        var familyJs = $"document.documentElement.style.setProperty('--ml-source-font-family','{fontFamilyValue}');";
+        var langJs = string.IsNullOrWhiteSpace(cjkLang)
+            ? string.Empty
+            : $"document.documentElement.setAttribute('lang','{cjkLang}');" +
+              $"document.documentElement.style.setProperty('--ml-cjk-lang','{cjkLang}');";
         var script =
             $"document.documentElement.style.setProperty('--ml-line-height','{lineHeight:F2}');" +
             $"document.documentElement.style.setProperty('--ml-font-size','{fontSize}px');" +
             $"document.documentElement.style.setProperty('--ml-max-width','{maxWidth}px');" +
-            $"document.documentElement.style.setProperty('--ml-source-font-size','{sourceFontSize}px');";
+            $"document.documentElement.style.setProperty('--ml-source-font-size','{sourceFontSize}px');" +
+            familyJs +
+            langJs;
         EnqueueOrRun(() =>
         {
             if (_webView.CoreWebView2 is not null)
@@ -279,12 +312,52 @@ internal sealed class EditorHostController : IDisposable
         EnqueueOrRun(() => Post("applyStyles", payload));
     }
 
+    public void SendFindBarLocalization()
+    {
+        var payload = new
+        {
+            find = Loc.Get("findBar.find"),
+            findLabel = Loc.Get("findBar.findLabel"),
+            replaceWith = Loc.Get("findBar.replaceWith"),
+            replaceLabel = Loc.Get("findBar.replaceLabel"),
+            caseSensitive = Loc.Get("findBar.caseSensitive"),
+            wholeWord = Loc.Get("findBar.wholeWord"),
+            previous = Loc.Get("findBar.previous"),
+            next = Loc.Get("findBar.next"),
+            replace = Loc.Get("findBar.replace"),
+            replaceAll = Loc.Get("findBar.replaceAll"),
+            close = Loc.Get("findBar.close"),
+            closeLabel = Loc.Get("findBar.closeLabel"),
+            replaced = Loc.Get("findBar.replaced"),
+            noResults = Loc.Get("findBar.noResults"),
+            blockParagraph = Loc.Get("blockHandle.paragraph"),
+            blockHeading1 = Loc.Get("blockHandle.heading1"),
+            blockHeading2 = Loc.Get("blockHandle.heading2"),
+            blockHeading3 = Loc.Get("blockHandle.heading3"),
+            blockHeading4 = Loc.Get("blockHandle.heading4"),
+            blockHeading5 = Loc.Get("blockHandle.heading5"),
+            blockHeading6 = Loc.Get("blockHandle.heading6"),
+            blockBulletList = Loc.Get("blockHandle.bulletList"),
+            blockOrderedList = Loc.Get("blockHandle.orderedList"),
+            blockTaskList = Loc.Get("blockHandle.taskList"),
+            blockBlockquote = Loc.Get("blockHandle.blockquote"),
+            blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
+            blockTable = Loc.Get("blockHandle.table"),
+        };
+        EnqueueOrRun(() => Post("localizeFindBar", payload));
+    }
+
     public void ExecuteCommand(
         string command,
         string? text = null,
         bool applyToCurrentTextBlockWhenEmpty = false)
     {
         EnqueueOrRun(() => Post("command", new { command, text, applyToCurrentTextBlockWhenEmpty }));
+    }
+
+    public void ClearBlockHighlight()
+    {
+        ExecuteCommand("clearBlockHighlight");
     }
 
     public async Task<bool> ExecuteCommandAsync(
@@ -408,6 +481,12 @@ internal sealed class EditorHostController : IDisposable
         float marginRight,
         CancellationToken cancellationToken = default)
     {
+        // Use CSS @page margins instead of print-setting margins so the html/body
+        // background color fills the full page. @page margins apply per-page,
+        // unlike body padding which only affects the first and last page.
+        var pageRule = $"@page {{ margin: {marginTop}mm {marginRight}mm {marginBottom}mm {marginLeft}mm; background-color: var(--bg-primary); }} html {{ background: var(--bg-primary); }}";
+        html = html.Replace("</style>", $"{pageRule}\n</style>");
+
         var tempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.html");
         await File.WriteAllTextAsync(tempPath, html, System.Text.Encoding.UTF8, cancellationToken);
 
@@ -452,10 +531,10 @@ internal sealed class EditorHostController : IDisposable
             var (widthIn, heightIn) = PaperSizeToInches(paperSize, landscape);
             settings.PageWidth = widthIn;
             settings.PageHeight = heightIn;
-            settings.MarginTop = marginTop / 25.4f;
-            settings.MarginBottom = marginBottom / 25.4f;
-            settings.MarginLeft = marginLeft / 25.4f;
-            settings.MarginRight = marginRight / 25.4f;
+            settings.MarginTop = 0;
+            settings.MarginBottom = 0;
+            settings.MarginLeft = 0;
+            settings.MarginRight = 0;
             settings.ShouldPrintBackgrounds = true;
 
             var pdfTempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.pdf");
@@ -667,7 +746,7 @@ internal sealed class EditorHostController : IDisposable
         if (State == EditorLifecycleState.LoadingPage)
         {
             _session.TransitionTo(EditorLifecycleState.WaitingForEditorReady);
-            ShowLoading("正在准备编辑器…", "编辑器页面已加载，正在等待通信握手。");
+            ShowLoading(Loc.Get("editor.handshakeMessage"), Loc.Get("editor.handshakeDetail"));
             NotifyStateChanged();
         }
     }
@@ -676,7 +755,7 @@ internal sealed class EditorHostController : IDisposable
     {
         if (!eventArgs.IsSuccess)
         {
-            Fail($"编辑器页面加载失败：{eventArgs.WebErrorStatus}", null);
+            Fail(Loc.Format("editor.pageLoadFailed", eventArgs.WebErrorStatus), null);
         }
     }
 
@@ -688,7 +767,7 @@ internal sealed class EditorHostController : IDisposable
 
     private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs eventArgs)
     {
-        Fail($"WebView2 进程异常终止：{eventArgs.ProcessFailedKind}", null);
+        Fail(Loc.Format("editor.processCrashed", eventArgs.ProcessFailedKind), null);
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
@@ -742,6 +821,14 @@ internal sealed class EditorHostController : IDisposable
                     new EditorContextMenuRequest(
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble()));
+                break;
+            case "blockMenuRequested":
+                BlockMenuRequested?.Invoke(
+                    this,
+                    new EditorBlockMenuRequest(
+                        message.Payload.GetProperty("clientX").GetDouble(),
+                        message.Payload.GetProperty("clientY").GetDouble(),
+                        message.Payload.GetProperty("position").GetInt32()));
                 break;
             case "outlineChanged":
                 OutlineChanged?.Invoke(this, EditorOutline.FromPayload(message.Payload));
@@ -861,9 +948,7 @@ internal sealed class EditorHostController : IDisposable
         _session.TransitionTo(EditorLifecycleState.Ready);
         _readyTimeoutCancellation?.Cancel();
         _initializationTimer.Stop();
-        _loadingView.Visible = false;
         _webView.Visible = true;
-        _webView.BringToFront();
         _logger.Info($"Editor ready after {_initializationTimer.ElapsedMilliseconds} ms.");
         NotifyStateChanged();
         Ready?.Invoke(this, EventArgs.Empty);
@@ -917,6 +1002,7 @@ internal sealed class EditorHostController : IDisposable
 
         _initializationTimer.Stop();
         _webView.Visible = false;
+        _loadingView.Visible = true;
         _loadingView.ShowFailure(message);
         _logger.Error(message, exception);
         NotifyStateChanged();
@@ -925,8 +1011,6 @@ internal sealed class EditorHostController : IDisposable
     private void ShowLoading(string title, string detail)
     {
         _loadingView.ShowLoading(title, detail);
-        _loadingView.Visible = true;
-        _loadingView.BringToFront();
     }
 
     private void NotifyStateChanged() => _stateChanged();
@@ -945,7 +1029,7 @@ internal sealed class EditorHostController : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
             if (State is EditorLifecycleState.LoadingPage or EditorLifecycleState.WaitingForEditorReady)
             {
-                Fail("编辑器页面未在规定时间内就绪。", null);
+                Fail(Loc.Get("editor.readyTimeout"), null);
             }
         }
         catch (OperationCanceledException)

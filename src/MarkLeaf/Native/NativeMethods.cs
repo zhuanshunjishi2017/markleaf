@@ -17,6 +17,7 @@ internal static class NativeMethods
     internal const uint MfSeparator = 0x0800;
     internal const uint MfByCommand = 0x0000;
     internal const uint MfByPosition = 0x0400;
+    internal const uint TpmLeftButton = 0x0000;
     internal const uint TpmRightButton = 0x0002;
     internal const uint TpmReturnCommand = 0x0100;
     internal const uint WmNull = 0x0000;

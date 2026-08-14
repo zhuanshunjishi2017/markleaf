@@ -1,0 +1,57 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputType>Msi</OutputType>
+    <!-- Runtime: win-x64 | win-x86 | win-arm64 -->
+    <Runtime Condition="'$(Runtime)' == ''">win-x64</Runtime>
+    <ArchLabel>$([System.String]::Copy('$(Runtime)').Substring(4))</ArchLabel>
+    <InstallerPlatform>$(ArchLabel)</InstallerPlatform>
+    <ProgramFilesRef Condition="'$(Runtime)' == 'win-x86'">ProgramFilesFolder</ProgramFilesRef>
+    <ProgramFilesRef Condition="'$(Runtime)' != 'win-x86'">ProgramFiles64Folder</ProgramFilesRef>
+    <Cultures>zh-CN</Cultures>
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
+    <!-- self-contained → with-runtime, framework-dependent → no suffix -->
+    <Suffix Condition="'$(SelfContained)' == 'true'">-with-runtime</Suffix>
+    <Suffix Condition="'$(SelfContained)' != 'true'" />
+    <OutputName>MarkLeaf-$(Version)-$(ArchLabel)$(Suffix)</OutputName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Heat" Version="5.0.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepoRoot>
+    <PublishDir>$(RepoRoot)\obj\publish-$(Runtime)-$(SelfContained)\</PublishDir>
+    <DefineConstants>PublishSource=$(PublishDir);SelfContained=$(SelfContained);Runtime=$(Runtime);ProductVersion=$(Version).0</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Clean previous publish + rebuild fresh -->
+  <Target Name="PublishApp" BeforeTargets="BeforeBuild">
+    <RemoveDir Directories="$(PublishDir)" Condition="Exists('$(PublishDir)')" />
+    <Message Importance="high" Text="Publishing MarkLeaf ($(Runtime), self-contained=$(SelfContained))..." />
+    <Exec Command="dotnet publish &quot;$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
+          WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+  <Target Name="RenameMsi" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(TargetPath).msi"
+          Condition="!Exists('$(TargetPath).msi')" />
+    <Message Importance="high" Text="MSI: $(TargetPath).msi" />
+  </Target>
+
+  <ItemGroup>
+    <EmbeddedResource Include="zh-CN.wxl" />
+
+    <HarvestDirectory Include="$(PublishDir)">
+      <ComponentGroupName>PublishedComponents</ComponentGroupName>
+      <DirectoryRefId>INSTALLFOLDER</DirectoryRefId>
+      <SuppressCom>true</SuppressCom>
+      <SuppressRegistry>true</SuppressRegistry>
+      <SuppressRootDirectory>true</SuppressRootDirectory>
+      <PreprocessorVariable>var.PublishSource</PreprocessorVariable>
+    </HarvestDirectory>
+  </ItemGroup>
+</Project>

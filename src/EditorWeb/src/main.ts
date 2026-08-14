@@ -95,6 +95,26 @@ let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
 let scrollbarHideTimer = 0
 
+let findBarLoc: Record<string, string> = {}
+
+function applyFindBarLocalization(loc: Record<string, string>): void {
+  findBarLoc = loc
+  setBlockTypeLabels(loc)
+  findInput.placeholder = loc.find ?? 'Find'
+  findInput.ariaLabel = loc.findLabel ?? 'Find'
+  replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
+  replaceInput.ariaLabel = loc.replaceLabel ?? 'Replace with'
+  caseInput.nextSibling!.textContent = ' ' + (loc.caseSensitive ?? 'Case sensitive')
+  wholeInput.nextSibling!.textContent = ' ' + (loc.wholeWord ?? 'Whole word')
+  findPrevious.textContent = loc.previous ?? 'Previous'
+  findNext.textContent = loc.next ?? 'Next'
+  replaceOne.textContent = loc.replace ?? 'Replace'
+  replaceAll.textContent = loc.replaceAll ?? 'Replace all'
+  findClose.textContent = loc.close ?? 'Close'
+  findClose.ariaLabel = loc.closeLabel ?? 'Close find bar'
+  findResult.textContent = loc.noResults ?? '0/0'
+}
+
 function send(type: Parameters<typeof postToHost>[0]['type'], payload?: unknown, requestId?: string): void {
   postToHost({
     protocolVersion,
@@ -204,7 +224,10 @@ function updateFormatPainterCursor(): void {
 
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', ({ transaction }) => {
-    if (!transaction.docChanged) return
+    // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
+    if (!transaction.docChanged) {
+      return
+    }
     if (suppressUpdate || compositionActive) {
       if (compositionActive) {
         compositionChanged = true
@@ -473,6 +496,21 @@ sourceMount.addEventListener('contextmenu', (event) => {
   })
 })
 
+editorMount.addEventListener('markleaf-block-handle', (event) => {
+  const detail = (event as CustomEvent<{ clientX: number; clientY: number; position: number }>).detail
+  if (!detail || typeof detail.clientX !== 'number' || typeof detail.clientY !== 'number') {
+    return
+  }
+  if (!sourceMode) {
+    setBlockHighlight(editor, typeof detail.position === 'number' ? detail.position : null)
+  }
+  send('blockMenuRequested', {
+    clientX: detail.clientX,
+    clientY: detail.clientY,
+    position: detail.position,
+  })
+})
+
 editorMount.addEventListener('dragover', (event) => {
   if (event.dataTransfer?.types.includes('Files')) {
     event.preventDefault()
@@ -510,12 +548,17 @@ function handleMessage(value: unknown): void {
 
   // 文档尚未加载时，宿主的会话 documentId 还是随机占位值，与前端不一致；
   // 此时 applyStyles/setAutoHideScrollbar 等文档无关的偏好推送必须放行。
-  if (message.type !== 'loadDocument' && message.type !== 'applyStyles'
+  if (message.type !== 'loadDocument' && message.type !== 'applyStyles' && message.type !== 'localizeFindBar'
       && documentLoaded && message.documentId !== documentId) {
     return
   }
 
   switch (message.type) {
+    case 'localizeFindBar': {
+      const payload = message.payload as Record<string, string>
+      if (payload) applyFindBarLocalization(payload)
+      break
+    }
     case 'applyStyles': {
       const payload = message.payload as {
         baseCss?: unknown

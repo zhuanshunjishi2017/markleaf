@@ -19,6 +19,7 @@ public static class EditorProtocol
         "commandStateChanged",
         "editorStatusChanged",
         "contextMenuRequested",
+        "blockMenuRequested",
         "outlineChanged",
         "outlineSelectionChanged",
         "requestSave",
@@ -38,6 +39,7 @@ public static class EditorProtocol
         "requestSnapshot",
         "command",
         "applyStyles",
+        "localizeFindBar",
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -156,6 +158,9 @@ public static class EditorProtocol
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY"),
+            "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
+                && HasNonNegativeNumber(payload, "clientY")
+                && HasNonNegativeInteger(payload, "position"),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
             "findResult" => HasFindResultPayload(payload),
@@ -212,6 +217,8 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "inTable")
             && HasNullableEnum(payload, "tableAlign", "left", "center", "right")
             && HasBooleanProperty(payload, "imageSelected")
+            && HasBooleanProperty(payload, "mathInline")
+            && HasBooleanProperty(payload, "mathBlock")
             && HasBooleanProperty(payload, "sourceMode");
     }
 

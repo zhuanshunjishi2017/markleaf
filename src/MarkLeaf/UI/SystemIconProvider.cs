@@ -21,6 +21,7 @@ internal static class SystemIconProvider
     // View toggle icons
     public static string TreeViewIcon => IsWindows11 ? "" : "";
     public static string ListViewIcon => IsWindows11 ? "" : "";
+    public static string ExpandSidebarIcon => IsWindows11 ? "" : "";
 
     // Folder icons (Win10 uses same icon for both states)
     public static string FolderExpandedIcon => IsWindows11 ? "" : "";

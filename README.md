@@ -87,7 +87,6 @@ src/
 │   └── Workspace/         # 工作区模型与服务
 ├── EditorWeb/             # TypeScript 前端 (Tiptap + CodeMirror)
 │   └── src/
-└── MarkLeaf.Prototype/    # 早期技术原型
 tests/
 ├── MarkLeaf.Tests/        # C# 单元测试
 └── TestData/              # 测试用 Markdown 数据

@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.Documents;
 
@@ -112,7 +113,7 @@ public sealed partial class ImageAssetService
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            throw new ArgumentException("仅支持 HTTP/HTTPS 图片地址。", nameof(url));
+            throw new ArgumentException(Loc.Get("image.urlOnly"), nameof(url));
         }
 
         using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -125,13 +126,13 @@ public sealed partial class ImageAssetService
 
         if (!AllowedExtensions.Contains(extension))
         {
-            throw new InvalidDataException($"不支持的图片格式：{extension}。支持 {string.Join("、", AllowedExtensions)}。");
+            throw new InvalidDataException(Loc.Format("image.unsupportedFormat", extension, string.Join("、", AllowedExtensions)));
         }
 
         var contentLength = response.Content.Headers.ContentLength ?? 0;
         if (contentLength > MaximumImageBytes)
         {
-            throw new InvalidDataException("图片超过 50 MiB 大小限制。");
+            throw new InvalidDataException(Loc.Get("image.tooLarge"));
         }
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -144,7 +145,7 @@ public sealed partial class ImageAssetService
             totalRead += read;
             if (totalRead > MaximumImageBytes)
             {
-                throw new InvalidDataException("图片超过 50 MiB 大小限制。");
+                throw new InvalidDataException(Loc.Get("image.tooLarge"));
             }
             memory.Write(buffer, 0, read);
         }
@@ -152,7 +153,7 @@ public sealed partial class ImageAssetService
         var bytes = memory.ToArray();
         if (bytes.Length == 0)
         {
-            throw new InvalidDataException("下载的图片内容为空。");
+            throw new InvalidDataException(Loc.Get("image.downloadEmpty"));
         }
 
         ValidateImageSignature(bytes, extension);

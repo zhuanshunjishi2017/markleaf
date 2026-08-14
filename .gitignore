@@ -61,7 +61,25 @@ AGENTS.md
 .github/.copilot*
 
 # App resources (generated)
-src/MarkLeaf/Resources/App/
+src/MarkLeaf/Resources/App/*
+!src/MarkLeaf/Resources/App/App.ico
+!src/MarkLeaf/Resources/App/App.png
+!src/MarkLeaf/Resources/App/fileicon.ico
 
-# Prototype
-src/MarkLeaf.Prototype/EditorWeb/
+# Root icon files (keep only appicon.png)
+/App.png
+/appicon.ico
+/fileicon.ico
+
+# Build scripts (user-specific)
+/build-dotnet.bat
+/build-markleaf.bat
+/release.bat
+
+# WiX publish output (generated at build)
+setup/publish/
+setup/obj/
+setup/bin/
+
+# Release output
+release/

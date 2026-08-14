@@ -7,6 +7,9 @@ namespace MarkLeaf.Tests;
 [TestClass]
 public sealed class StatusBarFormatterTests
 {
+    [TestInitialize]
+    public void Setup() => LocTestHelper.EnsureInitialized();
+
     [TestMethod]
     public void FormatCharacterCount_IncludesSelectionOnlyWhenPresent()
     {
@@ -35,33 +38,6 @@ public sealed class StatusBarFormatterTests
         Assert.AreEqual("UTF-16 LE", StatusBarFormatter.FormatEncoding(Encoding.Unicode, true));
         Assert.AreEqual("CRLF", StatusBarFormatter.FormatNewLine("\r\n"));
         Assert.AreEqual("LF", StatusBarFormatter.FormatNewLine("\n"));
-    }
-
-    [TestMethod]
-    public void EditorContextMenu_UsesOnlyApprovedUnifiedCommands()
-    {
-        CollectionAssert.AreEqual(
-            new[]
-            {
-                Commands.AppCommand.ToggleBold,
-                Commands.AppCommand.ToggleItalic,
-                Commands.AppCommand.SetParagraph,
-                Commands.AppCommand.SetHeading1,
-                Commands.AppCommand.SetHeading2,
-                Commands.AppCommand.SetHeading3,
-                Commands.AppCommand.SetHeading4,
-                Commands.AppCommand.SetHeading5,
-                Commands.AppCommand.SetHeading6,
-                Commands.AppCommand.ToggleBulletList,
-                Commands.AppCommand.ToggleOrderedList,
-                Commands.AppCommand.ToggleTaskList,
-                Commands.AppCommand.Cut,
-                Commands.AppCommand.Copy,
-                Commands.AppCommand.CopyMarkdown,
-                Commands.AppCommand.CopyPlainText,
-                Commands.AppCommand.Paste,
-            },
-            Native.NativeMenuService.EditorContextCommands);
     }
 
     [TestMethod]

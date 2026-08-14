@@ -1,3 +1,6 @@
+using MarkLeaf.Services;
+using MarkLeaf.UI.Controls;
+
 namespace MarkLeaf.UI.Dialogs;
 
 internal sealed class LinkInputDialog : Form
@@ -10,7 +13,7 @@ internal sealed class LinkInputDialog : Form
 
     public LinkInputDialog()
     {
-        Text = "插入链接";
+        Text = Loc.Get("dialog.insertLinkTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -24,22 +27,22 @@ internal sealed class LinkInputDialog : Form
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            Text = "链接地址(&A)：",
-            Padding = new Padding(0, 0, 0, 6),
+            Text = Loc.Get("dialog.linkAddress"),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(3)),
         };
         label.UseMnemonic = true;
 
         var okButton = new Button
         {
             AutoSize = true,
-            Text = "确定",
+            Text = Loc.Get("common.ok"),
             DialogResult = DialogResult.OK,
             Enabled = false,
         };
         var cancelButton = new Button
         {
             AutoSize = true,
-            Text = "取消",
+            Text = Loc.Get("common.cancel"),
             DialogResult = DialogResult.Cancel,
         };
         _address.TextChanged += (_, _) => okButton.Enabled = IsAllowedLink(_address.Text);
@@ -49,7 +52,7 @@ internal sealed class LinkInputDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(0, 12, 0, 0),
+            Padding = new Padding(0, this.ScaleForDpi(7), 0, 0),
         };
         buttons.Controls.Add(cancelButton);
         buttons.Controls.Add(okButton);
@@ -60,8 +63,8 @@ internal sealed class LinkInputDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(14),
-            MinimumSize = new Size(420, 0),
+            Padding = new Padding(this.ScaleForDpi(8)),
+            MinimumSize = new Size(this.ScaleForDpi(240), 0),
         };
         content.Controls.Add(label, 0, 0);
         content.Controls.Add(_address, 0, 1);

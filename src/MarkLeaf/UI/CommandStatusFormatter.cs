@@ -1,46 +1,47 @@
 using MarkLeaf.Commands;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI;
 
 internal static class CommandStatusFormatter
 {
-    public static string FormatExecuted(AppCommand command) => $"已执行：{GetDisplayName(command)}";
+    public static string FormatExecuted(AppCommand command) => Loc.Format("status.commandExecuted", GetDisplayName(command));
 
     private static string GetDisplayName(AppCommand command)
     {
         return command switch
         {
-            AppCommand.Undo => "撤销",
-            AppCommand.Redo => "重做",
-            AppCommand.SetParagraph => "正文",
-            AppCommand.SetHeading1 => "一级标题",
-            AppCommand.SetHeading2 => "二级标题",
-            AppCommand.SetHeading3 => "三级标题",
-            AppCommand.SetHeading4 => "四级标题",
-            AppCommand.SetHeading5 => "五级标题",
-            AppCommand.SetHeading6 => "六级标题",
-            AppCommand.ToggleBold => "粗体",
-            AppCommand.ToggleItalic => "斜体",
-            AppCommand.InsertLink => "插入链接",
-            AppCommand.RotateImageClockwise => "顺时针旋转图片",
-            AppCommand.ToggleQuote => "引用",
-            AppCommand.ToggleCodeBlock => "代码块",
-            AppCommand.ToggleBulletList => "无序列表",
-            AppCommand.ToggleOrderedList => "有序列表",
-            AppCommand.ToggleTaskList => "任务列表",
-            AppCommand.InsertHorizontalRule => "水平线",
-            AppCommand.InsertTable => "插入表格",
-            AppCommand.AddTableRowBefore => "在上方添加行",
-            AppCommand.AddTableRowAfter => "在下方添加行",
-            AppCommand.DeleteTableRow => "删除当前行",
-            AppCommand.AddTableColumnBefore => "在左侧添加列",
-            AppCommand.AddTableColumnAfter => "在右侧添加列",
-            AppCommand.DeleteTableColumn => "删除当前列",
-            AppCommand.AlignTableLeft => "表格左对齐",
-            AppCommand.AlignTableCenter => "表格居中对齐",
-            AppCommand.AlignTableRight => "表格右对齐",
-            AppCommand.DeleteTable => "删除表格",
-            _ => "操作",
+            AppCommand.Undo => Loc.Get("cmd.undo"),
+            AppCommand.Redo => Loc.Get("cmd.redo"),
+            AppCommand.SetParagraph => Loc.Get("cmd.paragraph"),
+            AppCommand.SetHeading1 => Loc.Get("cmd.heading1"),
+            AppCommand.SetHeading2 => Loc.Get("cmd.heading2"),
+            AppCommand.SetHeading3 => Loc.Get("cmd.heading3"),
+            AppCommand.SetHeading4 => Loc.Get("cmd.heading4"),
+            AppCommand.SetHeading5 => Loc.Get("cmd.heading5"),
+            AppCommand.SetHeading6 => Loc.Get("cmd.heading6"),
+            AppCommand.ToggleBold => Loc.Get("cmd.bold"),
+            AppCommand.ToggleItalic => Loc.Get("cmd.italic"),
+            AppCommand.InsertLink => Loc.Get("cmd.insertLink"),
+            AppCommand.RotateImageClockwise => Loc.Get("cmd.rotateImage"),
+            AppCommand.ToggleQuote => Loc.Get("cmd.quote"),
+            AppCommand.ToggleCodeBlock => Loc.Get("cmd.codeBlock"),
+            AppCommand.ToggleBulletList => Loc.Get("cmd.bulletList"),
+            AppCommand.ToggleOrderedList => Loc.Get("cmd.orderedList"),
+            AppCommand.ToggleTaskList => Loc.Get("cmd.taskList"),
+            AppCommand.InsertHorizontalRule => Loc.Get("cmd.horizontalRule"),
+            AppCommand.InsertTable => Loc.Get("cmd.insertTable"),
+            AppCommand.AddTableRowBefore => Loc.Get("cmd.addRowAbove"),
+            AppCommand.AddTableRowAfter => Loc.Get("cmd.addRowBelow"),
+            AppCommand.DeleteTableRow => Loc.Get("cmd.deleteRow"),
+            AppCommand.AddTableColumnBefore => Loc.Get("cmd.addColumnLeft"),
+            AppCommand.AddTableColumnAfter => Loc.Get("cmd.addColumnRight"),
+            AppCommand.DeleteTableColumn => Loc.Get("cmd.deleteColumn"),
+            AppCommand.AlignTableLeft => Loc.Get("cmd.alignLeft"),
+            AppCommand.AlignTableCenter => Loc.Get("cmd.alignCenter"),
+            AppCommand.AlignTableRight => Loc.Get("cmd.alignRight"),
+            AppCommand.DeleteTable => Loc.Get("cmd.deleteTable"),
+            _ => Loc.Get("cmd.operation"),
         };
     }
 }

@@ -1,5 +1,6 @@
 using MarkLeaf.Documents;
 using MarkLeaf.Native;
+using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
@@ -17,10 +18,11 @@ internal sealed class PreferencesDialog : Form
     private readonly Action? _onClearLogs;
     private readonly Action? _onOpenSettingsJson;
     private readonly Action? _onClearHistory;
+    private readonly Action? _onAddTheme;
     private readonly Action? _onResetAll;
 
     private readonly Button _resetAllButton = new()
-    { Text = "重置所有设置(&R)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.resetAll"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly PreferencesTabBar _tabBar = new();
     private readonly Panel _contentPanel = new()
@@ -28,13 +30,12 @@ internal sealed class PreferencesDialog : Form
         Dock = DockStyle.Fill,
         AutoScroll = true,
         Margin = Padding.Empty,
-        Padding = new Padding(25, 10, 25, 10),
         BackColor = SystemColors.ControlLightLight,
     };
     private Control[] _tabContents = [];
 
     private readonly ComboBox _startupAction = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly CheckBox _autoSaveCheck;
     private readonly CheckBox _saveOnSwitchCheck;
@@ -44,9 +45,9 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _recordRecentFilesCheck;
     private readonly CheckBox _recordRecentFoldersCheck;
     private readonly Button _clearHistoryButton = new()
-    { Text = "清除历史记录(&C)", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.clearHistory"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly ComboBox _newLineStyleCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly Button _editShortcutsButton;
 
@@ -54,84 +55,78 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
 
-    private readonly NumericUpDown _sourceFontSize;
     private readonly NumericUpDown _sourceIndentWidth;
+    private string _cjkFontFamily = "Microsoft YaHei";
+    private string _westernFontFamily = "Cascadia Mono";
+    private int _sourceFontSize = 14;
+    private readonly ComboBox _cjkLanguageTagCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList};
+    private readonly Button _fontSettingsButton = new()
+    { Text = Loc.Get("prefs.editor.fontSettings"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly (string Id, string DisplayName)[] _styleOptions;
     private readonly ComboBox _styleCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly (string Id, string DisplayName)[] _themeOptions;
     private readonly ComboBox _themeCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _followSystemCheck;
+    private readonly Button _defaultThemeButton;
+    private readonly Button _addThemeButton = new()
+    { Text = Loc.Get("prefs.appearance.addTheme"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _openThemeFolderButton = new()
-    { Text = "打开主题文件夹(&O)...", AutoSize = true, FlatStyle = FlatStyle.System };
-    private readonly ComboBox _zoomCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
-    private readonly Button _zoomResetButton = new()
-    { Text = "重置(&R)", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.appearance.openThemeFolder"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly CheckBox _restoreZoomCheck;
     private readonly CheckBox _ctrlWheelZoomCheck;
     private readonly CheckBox _topMostCheck;
     private readonly CheckBox _autoHideScrollbarsCheck;
+    private readonly ComboBox _menuStyleCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly ComboBox _languageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _openCacheFolderButton = new()
-    { Text = "打开缓存目录(&C)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.general.openCacheFolder"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _openLogFolderButton = new()
-    { Text = "打开日志目录(&O)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.general.openLogFolder"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _clearLogsButton = new()
-    { Text = "清除日志(&E)", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.general.clearLogs"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly Button _openSettingsJsonButton = new()
-    { Text = "配置 JSON 文件(&J)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.general.openSettingsJson"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly CheckBox _associateMarkdownCheck;
     private readonly CheckBox _associateTextCheck;
 
     private readonly ComboBox _clipboardImageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _fileImageCombo = new()
-    { DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
+    { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _defaultDirectoryTextBox = new()
-    { Width = 320 };
+    { };
     private readonly Button _browseDirectoryButton = new()
-    { Text = "浏览(&B)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.images.browse"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly CheckBox _useRelativePathsCheck;
     private readonly CheckBox _prefixRelativeWithDotSlashCheck;
     private readonly Button _imageUploadButton = new()
-    { Text = "图片上传配置(&U)...", AutoSize = true, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("prefs.images.uploadConfig"), AutoSize = true, FlatStyle = FlatStyle.System };
 
     private readonly Button _okButton = new()
-    { Text = "确定", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.ok"), FlatStyle = FlatStyle.System };
 
     private readonly Button _cancelButton = new()
-    { Text = "取消", Width = 150, Height = 45, FlatStyle = FlatStyle.System };
+    { Text = Loc.Get("common.cancel"), FlatStyle = FlatStyle.System };
 
-    private static readonly string[] StartupActionItems =
-    [
-        "新建文件",
-        "打开上次的工作区",
-        "打开上次的工作区和文件",
-    ];
+    private static readonly string[] StartupActionItems = [];
 
-    private static readonly string[] ClipboardImageHandlingItems =
-    [
-        "保存到默认目录",
-        "复制到./文件名.assets路径",
-        "复制到./文件名.assets路径（上传）",
-    ];
+    private static readonly string[] ClipboardImageHandlingItems = [];
 
-    private static readonly string[] FileImageHandlingItems =
-    [
-        "引用原有位置",
-        "复制到./文件名.assets路径",
-        "复制到./文件名.assets路径（上传）",
-    ];
+    private static readonly string[] FileImageHandlingItems = [];
 
     public PreferencesDialog(
         AppSettings settings,
         Action? onRecover = null,
         Action? onShowShortcuts = null,
         Action? onOpenThemeFolder = null,
+        Action? onAddTheme = null,
         Action? onOpenCacheFolder = null,
         Action? onOpenLogFolder = null,
         Action? onClearLogs = null,
@@ -143,6 +138,7 @@ internal sealed class PreferencesDialog : Form
         _onRecover = onRecover;
         _onShowShortcuts = onShowShortcuts;
         _onOpenThemeFolder = onOpenThemeFolder;
+        _onAddTheme = onAddTheme;
         _onOpenCacheFolder = onOpenCacheFolder;
         _onOpenLogFolder = onOpenLogFolder;
         _onClearLogs = onClearLogs;
@@ -150,8 +146,10 @@ internal sealed class PreferencesDialog : Form
         _onClearHistory = onClearHistory;
         _onResetAll = onResetAll;
 
-        _languageCombo.Items.Add("简体中文");
-        _languageCombo.SelectedIndex = 0;
+        _languageCombo.Items.Add(Loc.Get("language.zh-CN"));
+        _languageCombo.Items.Add(Loc.Get("language.zh-TW"));
+        _languageCombo.Items.Add(Loc.Get("language.en-US"));
+        _languageCombo.Items.Add(Loc.Get("language.ja-JP"));
 
         _styleOptions = StyleService.GetAllStyles().ToArray();
         foreach (var (_, displayName) in _styleOptions)
@@ -160,78 +158,105 @@ internal sealed class PreferencesDialog : Form
             .Select(t => (t.Id, t.DisplayName)).ToArray();
         foreach (var (_, displayName) in _themeOptions)
             _themeCombo.Items.Add(displayName);
-        foreach (var percent in AppearanceSettings.ZoomPercentOptions)
-            _zoomCombo.Items.Add($"{percent}%");
+        _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.darkOnly"));
+        _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.alwaysOwnerDraw"));
+        _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.system"));
 
-        foreach (var item in StartupActionItems)
-            _startupAction.Items.Add(item);
+        _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.newFile"));
+        _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.lastWorkspace"));
+        _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.lastWorkspaceAndFiles"));
 
-        foreach (var item in ClipboardImageHandlingItems)
-            _clipboardImageCombo.Items.Add(item);
-        foreach (var item in FileImageHandlingItems)
-            _fileImageCombo.Items.Add(item);
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.sc"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.tc"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.ja"));
+        _cjkLanguageTagCombo.Items.Add(Loc.Get("prefs.editor.cjkLang.ko"));
+
+        _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.saveToDefault"));
+        _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssets"));
+        _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssetsUpload"));
+        _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.referenceOriginal"));
+        _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.copyToAssets"));
+        _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.copyToAssetsUpload"));
 
         _useRelativePathsCheck = new CheckBox
-        { Text = "在可用时使用相对路径(&R)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.images.useRelativePaths"), AutoSize = true, FlatStyle = FlatStyle.System };
         _prefixRelativeWithDotSlashCheck = new CheckBox
-        { Text = "相对路径前加\"./\"(&S)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.images.prefixWithDotSlash"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _autoSaveCheck = new CheckBox
-        { Text = "自动保存文件(&A)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.file.autoSave"), AutoSize = true, FlatStyle = FlatStyle.System };
         _saveOnSwitchCheck = new CheckBox
-        { Text = "切换文档时保存上个文档的修改(&S)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.file.saveOnSwitch"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _snapshotInterval = new NumericUpDown
-        { Minimum = 10, Maximum = 300, Increment = 5, Width = 70 };
+        { Minimum = 10, Maximum = 300, Increment = 5 };
         _recoverButton = new Button
-        { Text = "恢复未保存的文档(&R)...", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.file.recoverUnsaved"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _recordRecentFilesCheck = new CheckBox
-        { Text = "文件(&F)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.file.recordRecentFiles"), AutoSize = true, FlatStyle = FlatStyle.System };
         _recordRecentFoldersCheck = new CheckBox
-        { Text = "文件夹(&D)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.file.recordRecentFolders"), AutoSize = true, FlatStyle = FlatStyle.System };
         _newLineStyleCombo.Items.Add("LF");
         _newLineStyleCombo.Items.Add("CRLF");
 
         _visualLineHeight = new NumericUpDown
-        { Minimum = 1.0m, Maximum = 3.0m, Increment = 0.05m, DecimalPlaces = 2, Width = 70 };
+        { Minimum = 1.0m, Maximum = 3.0m, Increment = 0.05m, DecimalPlaces = 2 };
         _visualFontSize = new NumericUpDown
-        { Minimum = 12, Maximum = 24, Increment = 1, Width = 70 };
+        { Minimum = 12, Maximum = 24, Increment = 1 };
         _visualMaxWidth = new NumericUpDown
-        { Minimum = 600, Maximum = 1200, Increment = 20, Width = 70 };
+        { Minimum = 600, Maximum = 1200, Increment = 20 };
 
-        _sourceFontSize = new NumericUpDown
-        { Minimum = 12, Maximum = 24, Increment = 1, Width = 70 };
         _sourceIndentWidth = new NumericUpDown
-        { Minimum = 2, Maximum = 8, Increment = 2, Width = 70 };
+        { Minimum = 2, Maximum = 8, Increment = 2 };
 
         _editShortcutsButton = new Button
-        { Text = "编辑快捷键(&K)...", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.general.editShortcuts"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _restoreZoomCheck = new CheckBox
-        { Text = "打开时还原上次的缩放比例(&O)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.editor.restoreZoom"), AutoSize = true, FlatStyle = FlatStyle.System };
         _ctrlWheelZoomCheck = new CheckBox
-        { Text = "按住Ctrl时滚动鼠标滚轮以缩放(&W)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.editor.ctrlWheelZoom"), AutoSize = true, FlatStyle = FlatStyle.System };
         _topMostCheck = new CheckBox
-        { Text = "将窗口置于顶层(&T)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.appearance.topMost"), AutoSize = true, FlatStyle = FlatStyle.System };
         _autoHideScrollbarsCheck = new CheckBox
-        { Text = "自动隐藏滚动条(&A)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.appearance.autoHideScrollbars"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _followSystemCheck = new CheckBox
+        { Text = Loc.Get("prefs.appearance.followSystemColor"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _followSystemCheck.CheckedChanged += (_, _) =>
+            _themeCombo.Enabled = !_followSystemCheck.Checked;
+
+        _defaultThemeButton = new Button
+        { Text = Loc.Get("prefs.appearance.defaultTheme"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _defaultThemeButton.Click += (_, _) =>
+        {
+            using var dialog = new DefaultThemeDialog(
+                _settings.Appearance.DefaultLightThemeId,
+                _settings.Appearance.DefaultDarkThemeId);
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.Appearance.DefaultLightThemeId = dialog.LightThemeId;
+                _settings.Appearance.DefaultDarkThemeId = dialog.DarkThemeId;
+            }
+        };
 
         _associateMarkdownCheck = new CheckBox
-        { Text = "Markdown文件(&M)(.md/.markdown)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.general.associateMarkdown"), AutoSize = true, FlatStyle = FlatStyle.System };
         _associateTextCheck = new CheckBox
-        { Text = "纯文本文件(&T)(.txt)", AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.general.associateText"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         LoadSettingsIntoControls();
 
-        Text = "首选项";
+        ApplyDpiSizes();
+
+        Text = Loc.Get("prefs.title");
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(780, 940);
+        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(537));
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
@@ -242,8 +267,9 @@ internal sealed class PreferencesDialog : Form
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         _recoverButton.Click += (_, _) => _onRecover?.Invoke();
         _editShortcutsButton.Click += (_, _) => _onShowShortcuts?.Invoke();
+        _fontSettingsButton.Click += (_, _) => OpenFontSettings();
+        _addThemeButton.Click += (_, _) => _onAddTheme?.Invoke();
         _openThemeFolderButton.Click += (_, _) => _onOpenThemeFolder?.Invoke();
-        _zoomResetButton.Click += (_, _) => _zoomCombo.SelectedIndex = FindZoomIndex(100);
         _openCacheFolderButton.Click += (_, _) => _onOpenCacheFolder?.Invoke();
         _openLogFolderButton.Click += (_, _) => _onOpenLogFolder?.Invoke();
         _clearLogsButton.Click += (_, _) => _onClearLogs?.Invoke();
@@ -253,8 +279,8 @@ internal sealed class PreferencesDialog : Form
         {
             if (MessageBox.Show(
                     this,
-                    "这将把首选项里的所有设置都重置为默认值。是否继续？",
-                    "重置所有设置",
+                    Loc.Get("prefs.resetAll.confirm"),
+                    Loc.Get("prefs.resetAll.title"),
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning,
                     MessageBoxDefaultButton.Button2) != DialogResult.Yes)
@@ -279,7 +305,7 @@ internal sealed class PreferencesDialog : Form
         _browseDirectoryButton.Click += (_, _) => BrowseDefaultDirectory();
         _imageUploadButton.Click += (_, _) => MessageBox.Show(
             this,
-            "图片上传配置功能将在后续版本中提供。",
+            Loc.Get("dialog.imageUploadNotAvailable"),
             "MarkLeaf",
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
@@ -287,11 +313,11 @@ internal sealed class PreferencesDialog : Form
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
-            Height = 45,
+            Height = this.ScaleForDpi(26),
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
-            Margin = new Padding(35, 40, 35, 0),
+            Margin = new Padding(this.ScaleForDpi(20), this.ScaleForDpi(23), this.ScaleForDpi(20), 0),
             BackColor = SystemColors.ControlLightLight,
         };
         buttons.Controls.Add(_cancelButton);
@@ -300,7 +326,7 @@ internal sealed class PreferencesDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(0, 0, 0, 40),
+            Padding = new Padding(0, 0, 0, this.ScaleForDpi(23)),
             BackColor = SystemColors.ControlLightLight,
             ColumnCount = 1,
             RowCount = 3,
@@ -347,31 +373,31 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("启动操作(&O)"), 0, 0);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.startupAction.label")), 0, 0);
         panel.Controls.Add(_startupAction, 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
 
-        panel.Controls.Add(NewLabel("保存选项(&S)"), 0, 2);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.saveOptions.label")), 0, 2);
         panel.Controls.Add(BuildSaveOptionsPanel(), 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(NewLabel("换行风格(&N)"), 0, 4);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.newLineStyle.label")), 0, 4);
         panel.Controls.Add(BuildNewLinePanel(), 1, 4);
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
-        panel.Controls.Add(NewLabel("历史记录(&H)"), 0, 6);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.history.label")), 0, 6);
         panel.Controls.Add(BuildHistoryPanel(), 1, 6);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
@@ -394,7 +420,7 @@ internal sealed class PreferencesDialog : Form
         checks.Controls.Add(_recordRecentFilesCheck);
         checks.Controls.Add(_recordRecentFoldersCheck);
         panel.Controls.Add(checks, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_clearHistoryButton, 0, 2);
         return panel;
     }
@@ -409,12 +435,12 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_newLineStyleCombo, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(new Label
         {
-            Text = "此设置项仅控制新建文件的换行符，打开的文件将保留其原有换行风格。",
+            Text = Loc.Get("prefs.file.newLineHint"),
             AutoSize = true,
-            MaximumSize = new Size(430, 0),
+            MaximumSize = new Size(this.ScaleForDpi(246), 0),
             ForeColor = SystemColors.GrayText,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
 
@@ -433,17 +459,17 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         panel.Controls.Add(_autoSaveCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_saveOnSwitchCheck, 0, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
+        panel.Controls.Add(Gap(), 0, 3);
 
         var intervalRow = new FlowLayoutPanel { AutoSize = true };
-        intervalRow.Controls.Add(new Label { Text = "快照保存间隔(&I)", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.snapshotInterval"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         intervalRow.Controls.Add(_snapshotInterval);
-        intervalRow.Controls.Add(new Label { Text = " 秒", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.seconds"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         panel.Controls.Add(intervalRow, 0, 4);
 
-        panel.Controls.Add(Gap(10), 0, 5);
+        panel.Controls.Add(Gap(), 0, 5);
         panel.Controls.Add(_recoverButton, 0, 6);
 
         return panel;
@@ -455,36 +481,42 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("可视化"), 0, 0);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.visual")), 0, 0);
         panel.Controls.Add(BuildVisualPanel(), 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
-        panel.Controls.Add(NewLabel("源码模式"), 0, 2);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.source")), 0, 2);
         panel.Controls.Add(BuildSourcePanel(), 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 4);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 4);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.editor.zoom.label")), 0, 4);
+        panel.Controls.Add(BuildZoomPanel(), 1, 4);
 
-        var noteLabel = new Label
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 6);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 6);
+
+       /*  var noteLabel = new Label
         {
-            Text = "某些设置可能由当前的排版样式接管，转到“外观”以更改。",
+            Text = "某些设置可能由当前的排版样式接管，转到”外观”以更改。",
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
         };
-        panel.Controls.Add(noteLabel, 0, 5);
-        panel.SetColumnSpan(noteLabel, 2);
+        panel.Controls.Add(noteLabel, 0, 7);
+        panel.SetColumnSpan(noteLabel, 2); */
 
         return panel;
     }
@@ -500,21 +532,37 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(NewLabel("基础行高(&H)"), 0, 0);
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualLineHeight"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 0);
         panel.Controls.Add(_visualLineHeight, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
 
 
-        panel.Controls.Add(NewLabel("基础字号(&F)"), 0, 2);
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualFontSize"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 2);
         panel.Controls.Add(_visualFontSize, 1, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
+        panel.Controls.Add(Gap(), 0, 3);
 
 
-        panel.Controls.Add(NewLabel("最大内容宽度(&W)"), 0, 4);
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.visualMaxWidth"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 4);
         var widthRow = new FlowLayoutPanel { AutoSize = true };
         widthRow.Controls.Add(_visualMaxWidth);
-        widthRow.Controls.Add(new Label { Text = " px", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
+        widthRow.Controls.Add(new Label { Text = Loc.Get("prefs.editor.pixels"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         panel.Controls.Add(widthRow, 1, 4);
+        panel.Controls.Add(Gap(), 0, 5);
+
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.cjkLang.label"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 6);
+        panel.Controls.Add(_cjkLanguageTagCombo, 1, 6);
 
         return panel;
     }
@@ -530,15 +578,26 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        panel.Controls.Add(NewLabel("基础字号(&F)"), 0, 0);
-        panel.Controls.Add(_sourceFontSize, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(new Label { Text = Loc.Get("prefs.editor.sourceIndentWidth"),
+                                        AutoSize = true,
+                                        TextAlign = ContentAlignment.MiddleLeft,
+                                        Padding = new Padding(0, 5, 0, 0), }, 0, 0);
+        panel.Controls.Add(_sourceIndentWidth, 1, 0);
+        panel.Controls.Add(Gap(), 0, 1);
 
-
-        panel.Controls.Add(NewLabel("默认缩进宽度(&I)"), 0, 2);
-        panel.Controls.Add(_sourceIndentWidth, 1, 2);
+        panel.Controls.Add(_fontSettingsButton, 0, 2);
 
         return panel;
+    }
+
+    private void OpenFontSettings()
+    {
+        using var dialog = new FontSettingsDialog(_cjkFontFamily, _westernFontFamily, _sourceFontSize);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _cjkFontFamily = dialog.CjkFontFamily;
+        _westernFontFamily = dialog.WesternFontFamily;
+        _sourceFontSize = dialog.FontSize;
     }
 
     private Control BuildAppearanceTab()
@@ -547,40 +606,51 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
 
-        panel.Controls.Add(NewLabel("排版样式(&Y)"), 0, 0);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.style.label")), 0, 0);
         panel.Controls.Add(_styleCombo, 1, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
-        panel.Controls.Add(Gap(10), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
-        panel.Controls.Add(NewLabel("颜色主题(&C)"), 0, 2);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.colorScheme.label")), 0, 2);
         panel.Controls.Add(_themeCombo, 1, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
-        panel.Controls.Add(Gap(10), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(_openThemeFolderButton, 1, 4);
-        panel.Controls.Add(Gap(10), 0, 4);
+        //panel.Controls.Add(NewLabel("颜色模式(&M)"), 0, 4);
+        panel.Controls.Add(_followSystemCheck, 1, 4);
+        panel.Controls.Add(Gap(), 1, 5);
+        panel.Controls.Add(_defaultThemeButton, 1, 6);
+
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
+
+        var themeFolderRow = new FlowLayoutPanel { AutoSize = true };
+        themeFolderRow.Controls.Add(_addThemeButton);
+        themeFolderRow.Controls.Add(_openThemeFolderButton);
+        panel.Controls.Add(themeFolderRow, 1, 8);
+        panel.Controls.Add(Gap(), 0, 8);
 
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(Gap(), 1, 9);
 
-        panel.Controls.Add(NewLabel("缩放视图(&S)"), 0, 6);
-        panel.Controls.Add(BuildZoomPanel(), 1, 6);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.window.label")), 0, 10);
+        panel.Controls.Add(BuildWindowPanel(), 1, 10);
 
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 11);
+        panel.Controls.Add(Gap(), 1, 11);
 
-        panel.Controls.Add(NewLabel("窗口设置(&W)"), 0, 8);
-        panel.Controls.Add(BuildWindowPanel(), 1, 8);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.menuStyle.label")), 0, 12);
+        panel.Controls.Add(BuildMenuStylePanel(), 1, 12);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 9);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 13);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 13);
 
         return panel;
     }
@@ -595,19 +665,9 @@ internal sealed class PreferencesDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        var zoomRow = new FlowLayoutPanel { AutoSize = true };
-        //zoomRow.Controls.Add(NewLabel("设置缩放(&Z)"));
-        zoomRow.Controls.Add(_zoomCombo);
-        panel.Controls.Add(zoomRow, 0, 0);
-
-        panel.Controls.Add(Gap(10), 0, 1);
-        panel.Controls.Add(_zoomResetButton, 0, 2);
-        panel.Controls.Add(Gap(10), 0, 3);
-        panel.Controls.Add(_restoreZoomCheck, 0, 4);
-        panel.Controls.Add(Gap(10), 0, 5);
-        panel.Controls.Add(_ctrlWheelZoomCheck, 0, 6);
-
+        panel.Controls.Add(_restoreZoomCheck, 0, 0);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(_ctrlWheelZoomCheck, 0, 2);
         return panel;
     }
 
@@ -621,8 +681,21 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_topMostCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_autoHideScrollbarsCheck, 0, 2);
+        return panel;
+    }
+
+    private Control BuildMenuStylePanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.Controls.Add(_menuStyleCombo, 0, 0);
         return panel;
     }
 
@@ -632,42 +705,42 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("显示语言(&L)"), 0, 0);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.language.label")), 0, 0);
         panel.Controls.Add(_languageCombo, 1, 0);
 
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
-        panel.Controls.Add(NewLabel("快捷键(&O)"), 0, 2);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.shortcuts.label")), 0, 2);
         panel.Controls.Add(_editShortcutsButton, 1, 2);
 
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(NewLabel("文件关联(&F)"), 0, 4);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.fileAssociation.label")), 0, 4);
         panel.Controls.Add(BuildFileAssociationPanel(), 1, 4);
 
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
-        panel.Controls.Add(NewLabel("储存管理(&S)"), 0, 6);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.storage.label")), 0, 6);
         panel.Controls.Add(BuildStoragePanel(), 1, 6);
 
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
 
-        panel.Controls.Add(NewLabel("日志管理(&M)"), 0, 8);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.logs.label")), 0, 8);
         panel.Controls.Add(BuildLogsPanel(), 1, 8);
 
-        panel.Controls.Add(Gap(20), 0, 9);
-        panel.Controls.Add(Gap(20), 1, 9);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(Gap(), 1, 9);
 
-        panel.Controls.Add(NewLabel("高级(&A)"), 0, 10);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.general.advanced.label")), 0, 10);
         panel.Controls.Add(BuildAdvancedPanel(), 1, 10);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 11);
@@ -716,7 +789,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_openSettingsJsonButton, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_resetAllButton, 0, 2);
         return panel;
     }
@@ -731,7 +804,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_associateMarkdownCheck, 0, 0);
-        panel.Controls.Add(Gap(10), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_associateTextCheck, 0, 2);
         return panel;
     }
@@ -742,32 +815,32 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(30, 20, 25, 12),
+            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        panel.Controls.Add(NewLabel("剪切板图片(&C)"), 0, 0);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.images.clipboard.label")), 0, 0);
         panel.Controls.Add(_clipboardImageCombo, 1, 0);
-        panel.Controls.Add(Gap(20), 0, 1);
-        panel.Controls.Add(Gap(20), 1, 1);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
 
-        panel.Controls.Add(NewLabel("来自文件(&F)"), 0, 2);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.images.fromFile.label")), 0, 2);
         panel.Controls.Add(_fileImageCombo, 1, 2);
-        panel.Controls.Add(Gap(20), 0, 3);
-        panel.Controls.Add(Gap(20), 1, 3);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(NewLabel("默认目录(&D)"), 0, 4);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.images.defaultDirectory.label")), 0, 4);
         panel.Controls.Add(BuildDefaultDirectoryPanel(), 1, 4);
-        panel.Controls.Add(Gap(20), 0, 5);
-        panel.Controls.Add(Gap(20), 1, 5);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(Gap(), 1, 5);
 
-        panel.Controls.Add(NewLabel("引用方式(&R)"), 0, 6);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.images.reference.label")), 0, 6);
         panel.Controls.Add(BuildReferencePanel(), 1, 6);
-        panel.Controls.Add(Gap(20), 0, 7);
-        panel.Controls.Add(Gap(20), 1, 7);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(Gap(), 1, 7);
 
-        panel.Controls.Add(NewLabel("图片上传(&U)"), 0, 8);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.images.upload.label")), 0, 8);
         panel.Controls.Add(_imageUploadButton, 1, 8);
 
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
@@ -786,7 +859,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_defaultDirectoryTextBox, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_browseDirectoryButton, 0, 2);
         return panel;
     }
@@ -801,7 +874,7 @@ internal sealed class PreferencesDialog : Form
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_useRelativePathsCheck, 0, 0);
-        panel.Controls.Add(Gap(6), 0, 1);
+        panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_prefixRelativeWithDotSlashCheck, 0, 2);
         return panel;
     }
@@ -811,7 +884,7 @@ internal sealed class PreferencesDialog : Form
         var current = _defaultDirectoryTextBox.Text.Trim();
         using var dialog = new FolderBrowserDialog
         {
-            Description = "选择默认图片目录",
+            Description = Loc.Get("prefs.images.selectDefaultDir"),
             UseDescriptionForTitle = true,
             SelectedPath = current.Length > 0 && Directory.Exists(current) ? current : string.Empty,
         };
@@ -831,8 +904,8 @@ internal sealed class PreferencesDialog : Form
         {
             var choice = MessageBox.Show(
                 this,
-                "若更换目录，所有链接到此处的图片将失效。是否继续？",
-                "更换默认图片目录",
+                Loc.Get("dialog.imageDirChangeWarn"),
+                Loc.Get("dialog.imageDirChangeTitle"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2);
@@ -867,18 +940,24 @@ internal sealed class PreferencesDialog : Form
         _visualLineHeight.Value = (decimal)editor.VisualLineHeight;
         _visualFontSize.Value = editor.VisualFontSize;
         _visualMaxWidth.Value = editor.VisualMaxContentWidth;
-        _sourceFontSize.Value = editor.SourceFontSize;
+        _sourceFontSize = editor.SourceFontSize;
+        _cjkFontFamily = editor.SourceCjkFontFamily;
+        _westernFontFamily = editor.SourceFontFamily;
+        _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
 
         var appearance = _settings.Appearance;
-        _zoomCombo.SelectedIndex = FindZoomIndex(appearance.ZoomPercent);
         _restoreZoomCheck.Checked = appearance.RestoreZoomOnOpen;
         _ctrlWheelZoomCheck.Checked = appearance.CtrlWheelZoom;
         _topMostCheck.Checked = appearance.TopMostWindow;
         _autoHideScrollbarsCheck.Checked = appearance.AutoHideScrollbars;
+        _followSystemCheck.Checked = appearance.FollowSystemColorMode;
+        _themeCombo.Enabled = !appearance.FollowSystemColorMode;
+        _menuStyleCombo.SelectedIndex = (int)appearance.MenuBarStyle;
 
         _associateMarkdownCheck.Checked = _settings.General.AssociateMarkdownFiles;
         _associateTextCheck.Checked = _settings.General.AssociateTextFiles;
+        _languageCombo.SelectedIndex = LanguageToIndex(_settings.General.UiLanguage);
 
         var image = _settings.Image;
         _clipboardImageCombo.SelectedIndex = ToComboIndex((int)image.ClipboardHandling, _clipboardImageCombo);
@@ -896,19 +975,17 @@ internal sealed class PreferencesDialog : Form
         return value >= 0 && value < combo.Items.Count ? value : 0;
     }
 
-    private static int FindZoomIndex(int percent)
-    {
-        var options = AppearanceSettings.ZoomPercentOptions;
-        var closest = 0;
-        for (var index = 0; index < options.Length; index++)
-        {
-            if (Math.Abs(options[index] - percent) < Math.Abs(options[closest] - percent))
-            {
-                closest = index;
-            }
-        }
+    private static readonly string[] LocaleCodes = ["zh-CN", "zh-TW", "en-US", "ja-JP"];
 
-        return closest;
+    private static int LanguageToIndex(string code)
+    {
+        var index = Array.IndexOf(LocaleCodes, code);
+        return index >= 0 ? index : 0;
+    }
+
+    private static string IndexToLanguage(int index)
+    {
+        return index >= 0 && index < LocaleCodes.Length ? LocaleCodes[index] : "zh-CN";
     }
 
     private int FindStyleIndex(string styleId)
@@ -960,7 +1037,13 @@ internal sealed class PreferencesDialog : Form
         editor.VisualLineHeight = (float)_visualLineHeight.Value;
         editor.VisualFontSize = (int)_visualFontSize.Value;
         editor.VisualMaxContentWidth = (int)_visualMaxWidth.Value;
-        editor.SourceFontSize = (int)_sourceFontSize.Value;
+        editor.SourceFontSize = _sourceFontSize;
+        if (!string.IsNullOrWhiteSpace(_cjkFontFamily))
+            editor.SourceCjkFontFamily = _cjkFontFamily;
+        if (!string.IsNullOrWhiteSpace(_westernFontFamily))
+            editor.SourceFontFamily = _westernFontFamily;
+        if (_cjkLanguageTagCombo.SelectedIndex >= 0)
+            editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
 
         if (_styleCombo.SelectedIndex >= 0 && _styleCombo.SelectedIndex < _styleOptions.Length)
@@ -974,18 +1057,17 @@ internal sealed class PreferencesDialog : Form
         }
 
         var appearance = _settings.Appearance;
-        var zoomOptions = AppearanceSettings.ZoomPercentOptions;
-        if (_zoomCombo.SelectedIndex >= 0 && _zoomCombo.SelectedIndex < zoomOptions.Length)
-        {
-            appearance.ZoomPercent = zoomOptions[_zoomCombo.SelectedIndex];
-        }
         appearance.RestoreZoomOnOpen = _restoreZoomCheck.Checked;
         appearance.CtrlWheelZoom = _ctrlWheelZoomCheck.Checked;
         appearance.TopMostWindow = _topMostCheck.Checked;
         appearance.AutoHideScrollbars = _autoHideScrollbarsCheck.Checked;
+        appearance.FollowSystemColorMode = _followSystemCheck.Checked;
+        if (_menuStyleCombo.SelectedIndex >= 0)
+            appearance.MenuBarStyle = (MenuBarStyle)_menuStyleCombo.SelectedIndex;
 
         _settings.General.AssociateMarkdownFiles = _associateMarkdownCheck.Checked;
         _settings.General.AssociateTextFiles = _associateTextCheck.Checked;
+        _settings.General.UiLanguage = IndexToLanguage(_languageCombo.SelectedIndex);
 
         var image = _settings.Image;
         if (_clipboardImageCombo.SelectedIndex >= 0)
@@ -1004,7 +1086,39 @@ internal sealed class PreferencesDialog : Form
         Close();
     }
 
-    private static Label NewLabel(string text)
+    private void ApplyDpiSizes()
+    {
+        _contentPanel.Padding = new Padding(
+            this.ScaleForDpi(14), this.ScaleForDpi(17), this.ScaleForDpi(14), 0);
+
+        var comboW = this.ScaleForDpi(210);
+        _startupAction.Width = comboW;
+        _newLineStyleCombo.Width = comboW;
+        _cjkLanguageTagCombo.Width = this.ScaleForDpi(100);
+        _styleCombo.Width = comboW;
+        _themeCombo.Width = comboW;
+        _menuStyleCombo.Width = comboW;
+        _languageCombo.Width = comboW;
+        _clipboardImageCombo.Width = comboW;
+        _fileImageCombo.Width = comboW;
+        _defaultDirectoryTextBox.Width = comboW;
+
+        var nudW = this.ScaleForDpi(40);
+        _snapshotInterval.Width = nudW;
+        _visualLineHeight.Width = nudW;
+        _visualFontSize.Width = nudW;
+        _visualMaxWidth.Width = nudW;
+        _sourceIndentWidth.Width = nudW;
+
+        var btnW = this.ScaleForDpi(86);
+        var btnH = this.ScaleForDpi(26);
+        _okButton.Width = btnW;
+        _okButton.Height = btnH;
+        _cancelButton.Width = btnW;
+        _cancelButton.Height = btnH;
+    }
+
+    private Label NewLabel(string text)
     {
         return new Label
         {
@@ -1013,13 +1127,13 @@ internal sealed class PreferencesDialog : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = SystemColors.GrayText,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
-            Padding = new Padding(10, 10, 0, 0),
+            Padding = new Padding(this.ScaleForDpi(6), this.ScaleForDpi(6), 0, 0),
 
         };
     }
 
-    private static Control Gap(int height)
+    private Control Gap()
     {
-        return new Panel { Height = height, Dock = DockStyle.None };
+        return new Panel { Height = this.ScaleGapForDpi(), Width = 0, Dock = DockStyle.None };
     }
 }

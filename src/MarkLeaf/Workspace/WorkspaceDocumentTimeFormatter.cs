@@ -1,3 +1,5 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.Workspace;
 
 internal static class WorkspaceDocumentTimeFormatter
@@ -8,10 +10,10 @@ internal static class WorkspaceDocumentTimeFormatter
         return dayDifference switch
         {
             <= 0 => modifiedTime.ToString("HH:mm"),
-            1 => $"昨天{modifiedTime:HH:mm}",
-            2 => $"前天{modifiedTime:HH:mm}",
-            <= 7 => $"{dayDifference}天前",
-            _ when modifiedTime.Year == now.Year => $"{modifiedTime.Month}月{modifiedTime.Day}日",
+            1 => Loc.Format("time.yesterday", modifiedTime.ToString("HH:mm")),
+            2 => Loc.Format("time.dayBefore", modifiedTime.ToString("HH:mm")),
+            <= 7 => Loc.Format("time.daysAgo", dayDifference),
+            _ when modifiedTime.Year == now.Year => Loc.Format("time.monthDay", modifiedTime.Month, modifiedTime.Day),
             _ => $"{modifiedTime.Year}/{modifiedTime.Month}/{modifiedTime.Day}",
         };
     }

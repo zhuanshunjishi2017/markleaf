@@ -38,4 +38,17 @@ internal static class SidebarGdi
 
     public static int ScaleForDpi(this Control control, int value)
         => (int)Math.Round(value * control.DeviceDpi / 96d);
+
+    public static int ScaleGapForDpi(this Control control)
+        => control.DeviceDpi switch
+        {
+            96 => 0,
+            120 => 3,
+            144 => 9,
+            168 => 12,
+            192 => 16,
+            216 => 20,
+            240 => 25,
+            _ => control.ScaleForDpi(6),
+        };
 }

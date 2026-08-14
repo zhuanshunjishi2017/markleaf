@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI.Controls;
@@ -73,7 +74,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public string PlaceholderText { get; set; } = "暂无可用文档";
+    public string PlaceholderText { get; set; } = Loc.Get("sidebar.noDocuments");
 
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
     {

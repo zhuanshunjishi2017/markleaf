@@ -23,3 +23,5 @@ internal sealed record EditorStatus(
 }
 
 internal sealed record EditorContextMenuRequest(double ClientX, double ClientY);
+
+internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);

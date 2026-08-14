@@ -104,6 +104,8 @@ public sealed class EditorProtocolTests
                 "inTable": true,
                 "tableAlign": "center",
                 "imageSelected": true,
+                "mathInline": false,
+                "mathBlock": false,
                 "sourceMode": false
               }
             }

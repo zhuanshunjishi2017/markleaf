@@ -75,6 +75,10 @@ public enum AppCommand
     AlignTableCenter,
     AlignTableRight,
     DeleteTable,
+    InsertLineBefore = 0x122C,
+    InsertLineAfter,
+    InsertMathInline,
+    InsertMathBlock,
 
     ToggleSidebar = 0x1301,
     ViewTree = 0x1302,
@@ -83,14 +87,23 @@ public enum AppCommand
     ToggleSourceMode = 0x1305,
     SwitchToWorkspace = 0x1306,
     SwitchToOutline = 0x1307,
+    ToggleFocusMode = 0x1308,
+    SelectAll = 0x1309,
+    ExitCode = 0x130A,
+    EditMath = 0x130B,
+    ConvertMath = 0x130C,
+    DeleteMath = 0x130D,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,
     ShowAbout,
+    ShowChangelog,
     OpenThemeFolder,
+    AddTheme,
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    FollowSystemColorMode,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -122,4 +135,5 @@ public readonly record struct CommandContext(
     string? TableAlign = null,
     bool ImageSelected = false,
     bool DocumentSaved = false,
-    bool StatusBarVisible = true);
+    bool StatusBarVisible = true,
+    bool FollowSystemColorMode = false);

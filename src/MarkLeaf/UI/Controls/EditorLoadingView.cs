@@ -1,3 +1,5 @@
+using MarkLeaf.Services;
+
 namespace MarkLeaf.UI.Controls;
 
 internal sealed class EditorLoadingView : TableLayoutPanel
@@ -12,7 +14,7 @@ internal sealed class EditorLoadingView : TableLayoutPanel
     public EditorLoadingView()
     {
         Dock = DockStyle.Fill;
-        BackColor = Color.White;
+        BackColor = SystemColors.Window;
         ColumnCount = 1;
         RowCount = 6;
         ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -54,7 +56,7 @@ internal sealed class EditorLoadingView : TableLayoutPanel
         {
             AutoSize = true,
             Anchor = AnchorStyles.None,
-            Text = "重试",
+            Text = Loc.Get("common.retry"),
             FlatStyle = FlatStyle.System,
             UseVisualStyleBackColor = true,
             Margin = new Padding(0, 14, 0, 0),
@@ -78,9 +80,14 @@ internal sealed class EditorLoadingView : TableLayoutPanel
         _retryButton.Visible = false;
     }
 
+    public void SetThemeBackground(Color color)
+    {
+        BackColor = color;
+    }
+
     public void ShowFailure(string detail)
     {
-        _title.Text = "编辑器启动失败";
+        _title.Text = Loc.Get("editor.failed");
         _title.Visible = true;
         _detail.Text = detail;
         _detail.Visible = true;

@@ -1,4 +1,5 @@
 using System.Text;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI;
 
@@ -7,32 +8,33 @@ internal static class StatusBarFormatter
     public static string FormatCharacterCount(Editor.EditorStatus status)
     {
         return status.SelectedCharacterCount > 0
-            ? $"字数 {status.CharacterCount}（已选 {status.SelectedCharacterCount}）"
-            : $"字数 {status.CharacterCount}";
+            ? Loc.Format("statusBar.wordCountWithSelection", status.CharacterCount, status.SelectedCharacterCount)
+            : Loc.Format("statusBar.wordCount", status.CharacterCount);
     }
 
     public static string FormatBlockType(string blockType)
     {
         return blockType switch
         {
-            "heading1" => "标题 1",
-            "heading2" => "标题 2",
-            "heading3" => "标题 3",
-            "heading4" => "标题 4",
-            "heading5" => "标题 5",
-            "heading6" => "标题 6",
-            "blockquote" => "引用",
-            "codeBlock" => "代码块",
-            "bulletList" => "无序列表",
-            "orderedList" => "有序列表",
-            "taskList" => "任务列表",
-            "table" => "表格",
-            "image" => "图片",
-            _ => "正文",
+            "heading1" => Loc.Get("statusBar.blockType.heading1"),
+            "heading2" => Loc.Get("statusBar.blockType.heading2"),
+            "heading3" => Loc.Get("statusBar.blockType.heading3"),
+            "heading4" => Loc.Get("statusBar.blockType.heading4"),
+            "heading5" => Loc.Get("statusBar.blockType.heading5"),
+            "heading6" => Loc.Get("statusBar.blockType.heading6"),
+            "blockquote" => Loc.Get("statusBar.blockType.quote"),
+            "codeBlock" => Loc.Get("statusBar.blockType.codeBlock"),
+            "bulletList" => Loc.Get("statusBar.blockType.bulletList"),
+            "orderedList" => Loc.Get("statusBar.blockType.orderedList"),
+            "taskList" => Loc.Get("statusBar.blockType.taskList"),
+            "table" => Loc.Get("statusBar.blockType.table"),
+            "image" => Loc.Get("statusBar.blockType.image"),
+            _ => Loc.Get("statusBar.blockType.paragraph"),
         };
     }
 
-    public static string FormatPosition(Editor.EditorStatus status) => $"行 {status.Line}，列 {status.Column}";
+    public static string FormatPosition(Editor.EditorStatus status) =>
+        Loc.Format("statusBar.position", status.Line, status.Column);
 
     public static string FormatEncoding(Encoding encoding, bool hasBom)
     {
@@ -52,7 +54,7 @@ internal static class StatusBarFormatter
             "\r\n" => "CRLF",
             "\n" => "LF",
             "\r" => "CR",
-            _ => "未知换行",
+            _ => Loc.Get("statusBar.newline.unknown"),
         };
     }
 }

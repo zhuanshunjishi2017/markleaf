@@ -27,6 +27,33 @@ public enum FileImageHandling
     Upload,
 }
 
+public enum MenuBarStyle
+{
+    DarkThemeOnly,
+    Always,
+    System,
+}
+
+public enum CjkLanguageTag
+{
+    SimplifiedChinese,
+    TraditionalChinese,
+    Japanese,
+    Korean,
+}
+
+public static class CjkLanguageTagExtensions
+{
+    public static string ToBcp47(this CjkLanguageTag tag) => tag switch
+    {
+        CjkLanguageTag.SimplifiedChinese => "zh-Hans",
+        CjkLanguageTag.TraditionalChinese => "zh-Hant",
+        CjkLanguageTag.Japanese => "ja",
+        CjkLanguageTag.Korean => "ko",
+        _ => "zh-Hans",
+    };
+}
+
 public sealed class AppSettings
 {
     public const int CurrentSchemaVersion = 3;
@@ -73,6 +100,8 @@ public sealed class GeneralSettings
     public bool AssociateMarkdownFiles { get; set; }
 
     public bool AssociateTextFiles { get; set; }
+
+    public string UiLanguage { get; set; } = "";
 }
 
 public sealed class AppearanceSettings
@@ -88,6 +117,14 @@ public sealed class AppearanceSettings
     public bool TopMostWindow { get; set; }
 
     public bool AutoHideScrollbars { get; set; }
+
+    public bool FollowSystemColorMode { get; set; }
+
+    public string DefaultLightThemeId { get; set; } = "white-only";
+
+    public string DefaultDarkThemeId { get; set; } = "dark";
+
+    public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.DarkThemeOnly;
 }
 
 public sealed class EditorSettings
@@ -99,6 +136,12 @@ public sealed class EditorSettings
     public int VisualMaxContentWidth { get; set; } = 820;
 
     public int SourceFontSize { get; set; } = 14;
+
+    public string SourceFontFamily { get; set; } = "Cascadia Mono";
+
+    public string SourceCjkFontFamily { get; set; } = "Microsoft YaHei";
+
+    public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
     public int SourceIndentWidth { get; set; } = 2;
 }
@@ -161,4 +204,8 @@ public sealed class WindowSettings
     public int WorkspaceWidth { get; set; } = 220;
 
     public int OutlineWidth { get; set; } = 220;
+
+    public bool SidebarCollapsed { get; set; }
+
+    public bool SidebarActiveOutline { get; set; }
 }

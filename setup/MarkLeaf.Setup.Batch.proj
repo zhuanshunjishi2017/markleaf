@@ -1,0 +1,39 @@
+<Project DefaultTargets="BuildAll">
+  <!--
+    Batch builds all 6 MarkLeaf MSI variants.
+    Usage: dotnet build setup/MarkLeaf.Setup.Batch.proj
+    Version read automatically from src/MarkLeaf/MarkLeaf.csproj.
+  -->
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepoRoot>
+  </PropertyGroup>
+
+  <Target Name="ReadVersion">
+    <XmlPeek XmlInputPath="$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj"
+             Query="/Project/PropertyGroup/Version/text()">
+      <Output TaskParameter="Result" PropertyName="Version" />
+    </XmlPeek>
+    <Message Importance="high" Text="MarkLeaf v$(Version)" />
+  </Target>
+
+  <Target Name="BuildAll" DependsOnTargets="ReadVersion">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-x64;SelfContained=true;Version=$(Version);Configuration=Release" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-x64;SelfContained=false;Version=$(Version);Configuration=Release" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-x86;SelfContained=true;Version=$(Version);Configuration=Release" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-x86;SelfContained=false;Version=$(Version);Configuration=Release" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-arm64;SelfContained=true;Version=$(Version);Configuration=Release" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
+             Targets="Restore;Build" BuildInParallel="false"
+             Properties="Runtime=win-arm64;SelfContained=false;Version=$(Version);Configuration=Release" />
+  </Target>
+</Project>

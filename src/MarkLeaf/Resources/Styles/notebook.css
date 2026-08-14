@@ -28,9 +28,6 @@
   text-align: center;
   border-bottom: 0;
   padding-bottom: 0.4em;
-  text-decoration: underline;
-  text-decoration-color: var(--theme-light);
-  text-underline-offset: 0.3em;
 }
 
 .markleaf-style-notebook .markleaf-document h2 {

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI.Controls;
@@ -37,11 +38,17 @@ internal sealed class WorkspaceTreeView : Control
     private Color _iconSecondary = Color.FromArgb(0x80, 0x80, 0x80);
 
     private WorkspaceNode? _root;
-    private string? _placeholderText = "暂未打开工作区";
+    private string? _placeholderText = Loc.Get("sidebar.noWorkspace");
     private string? _selectedPath;
     private string? _hoveredPath;
     private string? _keyboardHoverPath;
     private string? _contextMenuPath;
+    private Point _mouseDownPoint;
+    private string? _mouseDownPath;
+    private bool _mouseDownIsDirectory;
+    private string? _dropTargetDir;
+    private Rectangle _dropTargetBounds;
+    private bool _internalDragActive;
     private int _rowHeight;
     private int _rootTitleHeight;
     private WorkspaceDocumentSortOrder _sortOrder = WorkspaceDocumentSortOrder.ModifiedTimeDescending;
@@ -67,6 +74,8 @@ internal sealed class WorkspaceTreeView : Control
     public event EventHandler<WorkspaceTreeContextEventArgs>? NodeContextRequested;
     public event EventHandler<WorkspaceTreeContextEventArgs>? WorkspaceMenuRequested;
     public event EventHandler<WorkspaceFilesDroppedEventArgs>? FilesDropped;
+
+    public event EventHandler<WorkspaceNodeMovedEventArgs>? NodeMoved;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -351,6 +360,17 @@ internal sealed class WorkspaceTreeView : Control
             DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, isSelected ? _textSelected : ForeColor);
 
         }
+
+        if (_dropTargetDir is not null && _dropTargetBounds != Rectangle.Empty)
+        {
+            var bgBounds = new Rectangle(
+                _dropTargetBounds.X + this.ScaleForDpi(4),
+                _dropTargetBounds.Y,
+                Math.Max(0, _dropTargetBounds.Width - this.ScaleForDpi(8)),
+                _dropTargetBounds.Height);
+            using var pen = new Pen(_textSecondary, 2);
+            SidebarGdi.DrawRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), pen);
+        }
     }
 
     protected override void OnMouseDown(MouseEventArgs eventArgs)
@@ -370,6 +390,7 @@ internal sealed class WorkspaceTreeView : Control
         }
         if (row is null)
         {
+            _mouseDownPath = null;
             if (eventArgs.Button == MouseButtons.Right && _root is not null)
             {
                 WorkspaceMenuRequested?.Invoke(this, new WorkspaceTreeContextEventArgs(
@@ -394,26 +415,67 @@ internal sealed class WorkspaceTreeView : Control
             return;
         }
 
-        if (eventArgs.Clicks != 1)
+        _mouseDownPoint = eventArgs.Location;
+        _mouseDownPath = node.Entry.FullPath;
+        _mouseDownIsDirectory = node.Entry.IsDirectory;
+
+        if (node.Entry.IsDirectory)
+        {
+            if (eventArgs.Clicks == 1)
+            {
+                ToggleNode(node);
+            }
+        }
+    }
+
+    protected override void OnMouseUp(MouseEventArgs eventArgs)
+    {
+        base.OnMouseUp(eventArgs);
+        if (_mouseDownPath is null || eventArgs.Button != MouseButtons.Left)
         {
             return;
         }
 
-        _keyboardHoverPath = null;
-        if (node.Entry.IsDirectory)
+        var row = HitTestRow(eventArgs.Location);
+        if (row is null || row.Value.Node.Entry.FullPath != _mouseDownPath)
         {
-            ToggleNode(node);
+            _mouseDownPath = null;
+            return;
         }
-        else
+
+        if (!_mouseDownIsDirectory)
         {
-            SelectedPath = node.Entry.FullPath;
-            NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(node.Entry));
+            SelectedPath = row.Value.Node.Entry.FullPath;
+            _keyboardHoverPath = null;
+            NodeActivated?.Invoke(this, new WorkspaceTreeNodeEventArgs(row.Value.Node.Entry));
         }
+
+        _mouseDownPath = null;
     }
 
     protected override void OnMouseMove(MouseEventArgs eventArgs)
     {
         base.OnMouseMove(eventArgs);
+        if (_mouseDownPath is not null && eventArgs.Button == MouseButtons.Left)
+        {
+            var dragSize = SystemInformation.DragSize;
+            if (Math.Abs(eventArgs.X - _mouseDownPoint.X) >= dragSize.Width
+                || Math.Abs(eventArgs.Y - _mouseDownPoint.Y) >= dragSize.Height)
+            {
+                var sourcePath = _mouseDownPath;
+                _mouseDownPath = null;
+                var data = new DataObject();
+                data.SetData(typeof(string), sourcePath);
+                data.SetData(DataFormats.FileDrop, new[] { sourcePath });
+                DoDragDrop(data, DragDropEffects.Move | DragDropEffects.Copy);
+                _dropTargetDir = null;
+                _dropTargetBounds = Rectangle.Empty;
+                _internalDragActive = false;
+                Invalidate();
+                return;
+            }
+        }
+
         var row = HitTestRow(eventArgs.Location);
         var hoveredPath = row?.Node.Entry.FullPath;
         if (!PathEquals(hoveredPath, _hoveredPath))
@@ -534,19 +596,95 @@ internal sealed class WorkspaceTreeView : Control
     protected override void OnDragEnter(DragEventArgs eventArgs)
     {
         base.OnDragEnter(eventArgs);
+        if (eventArgs.Data?.GetDataPresent(typeof(string)) == true)
+        {
+            eventArgs.Effect = DragDropEffects.Move;
+            _internalDragActive = true;
+            return;
+        }
         eventArgs.Effect = eventArgs.Data?.GetDataPresent(DataFormats.FileDrop) == true
             && GetDroppableFiles(eventArgs.Data).Length > 0
             ? DragDropEffects.Copy
             : DragDropEffects.None;
     }
 
+    protected override void OnDragOver(DragEventArgs eventArgs)
+    {
+        base.OnDragOver(eventArgs);
+        if (!_internalDragActive && eventArgs.Data?.GetDataPresent(DataFormats.FileDrop) != true)
+        {
+            eventArgs.Effect = DragDropEffects.None;
+            return;
+        }
+
+        var clientPoint = PointToClient(new Point(eventArgs.X, eventArgs.Y));
+        var oldDir = _dropTargetDir;
+        _dropTargetDir = null;
+        _dropTargetBounds = Rectangle.Empty;
+
+        var row = HitTestRow(clientPoint);
+        if (row is not null)
+        {
+            if (row.Value.Node.Entry.IsDirectory)
+            {
+                _dropTargetDir = row.Value.Node.Entry.FullPath;
+                _dropTargetBounds = row.Value.Bounds;
+            }
+            else
+            {
+                _dropTargetDir = Path.GetDirectoryName(row.Value.Node.Entry.FullPath);
+                _dropTargetBounds = row.Value.Bounds;
+            }
+        }
+        else if (_root is not null)
+        {
+            _dropTargetDir = _root.Entry.FullPath;
+        }
+
+        eventArgs.Effect = _dropTargetDir is not null
+            ? (_internalDragActive ? DragDropEffects.Move : DragDropEffects.Copy)
+            : DragDropEffects.None;
+
+        if (_dropTargetDir != oldDir) Invalidate();
+
+        // Auto-scroll near edges.
+        if (clientPoint.Y < _rowHeight)
+            _scrollBar.Value = Math.Max(0, _scrollBar.Value - _scrollBar.SmallChange);
+        else if (clientPoint.Y > ClientSize.Height - _rowHeight)
+            _scrollBar.Value = Math.Min(GetMaximumScrollValue(), _scrollBar.Value + _scrollBar.SmallChange);
+    }
+
+    protected override void OnDragLeave(EventArgs eventArgs)
+    {
+        base.OnDragLeave(eventArgs);
+        _dropTargetDir = null;
+        _dropTargetBounds = Rectangle.Empty;
+        _internalDragActive = false;
+        Invalidate();
+    }
+
     protected override void OnDragDrop(DragEventArgs eventArgs)
     {
         base.OnDragDrop(eventArgs);
+        var targetDir = _dropTargetDir;
+        var wasInternal = _internalDragActive;
+        _dropTargetDir = null;
+        _dropTargetBounds = Rectangle.Empty;
+        _internalDragActive = false;
+        Invalidate();
+
+        if (wasInternal && eventArgs.Data?.GetData(typeof(string)) is string sourcePath && targetDir is not null)
+        {
+            NodeMoved?.Invoke(this, new WorkspaceNodeMovedEventArgs(sourcePath, targetDir));
+            return;
+        }
+
         var paths = GetDroppableFiles(eventArgs.Data);
         if (paths.Length == 0) return;
         FilesDropped?.Invoke(this, new WorkspaceFilesDroppedEventArgs(paths));
     }
+
+
 
     public void ClearContextMenuHighlight()
     {
@@ -776,4 +914,10 @@ internal sealed class WorkspaceTreeContextEventArgs(WorkspaceEntry entry, Point 
 internal sealed class WorkspaceFilesDroppedEventArgs(IReadOnlyList<string> paths) : EventArgs
 {
     public IReadOnlyList<string> Paths { get; } = paths;
+}
+
+internal sealed class WorkspaceNodeMovedEventArgs(string sourcePath, string targetDirectory) : EventArgs
+{
+    public string SourcePath { get; } = sourcePath;
+    public string TargetDirectory { get; } = targetDirectory;
 }

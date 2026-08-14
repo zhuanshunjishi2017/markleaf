@@ -1,4 +1,5 @@
 using MarkLeaf.Editor;
+using MarkLeaf.Services;
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
@@ -28,6 +29,7 @@ internal sealed class OutlineTreeView : Control
     private Color _bgSelected = Color.FromArgb(0xE0, 0xE0, 0xE0);
     private Color _bgSelectedHover = Color.FromArgb(0xD0, 0xD0, 0xD0);
     private Color _textPrimary = Color.Black;
+    private Color _textSecondary = Color.FromArgb(0x6D, 0x6D, 0x6D);
     private Color _textTertiary = Color.FromArgb(0x6D, 0x6D, 0x6D);
     private Color _textSelected = Color.Black;
     private Color _icon = Color.FromArgb(0x80, 0x80, 0x80);
@@ -84,6 +86,7 @@ internal sealed class OutlineTreeView : Control
         if (colors.TryGetValue("bg-selected", out c)) _bgSelected = c;
         if (colors.TryGetValue("bg-selected-hover", out c)) _bgSelectedHover = c;
         if (colors.TryGetValue("text-primary", out c)) _textPrimary = c;
+        if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
         if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
         if (colors.TryGetValue("text-selected", out c)) _textSelected = c;
         if (colors.TryGetValue("icon", out c)) _icon = c;
@@ -122,6 +125,19 @@ internal sealed class OutlineTreeView : Control
         Invalidate();
     }
 
+    public void SetFlatItems(IReadOnlyList<EditorOutlineItem> items)
+    {
+        _roots.Clear();
+        foreach (var item in items)
+        {
+            _roots.Add(new OutlineNode(item, 0));
+        }
+
+        UpdateScrollBar();
+        EnsureSelectionVisible();
+        Invalidate();
+    }
+
     public void ConfigureTypography(int dpi)
     {
         var previousPrimary = _primaryFont;
@@ -150,7 +166,7 @@ internal sealed class OutlineTreeView : Control
         {
             DrawNodeText(
                 eventArgs.Graphics,
-                "暂无文档大纲",
+                Loc.Get("sidebar.noOutline"),
                 _secondaryFont,
                 new Rectangle(this.ScaleForDpi(24), 0, ClientSize.Width - this.ScaleForDpi(28), _secondaryRowHeight));
             return;
@@ -168,22 +184,6 @@ internal sealed class OutlineTreeView : Control
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
-            if (isSelected && isHovered)
-            {
-                using var brush = new SolidBrush(_bgSelectedHover);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-            else if (isSelected)
-            {
-                using var brush = new SolidBrush(_bgSelected);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-            else if (isHovered)
-            {
-                using var brush = new SolidBrush(_bgHover);
-                SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
-            }
-
             var indent = this.ScaleForDpi(18) * node.Depth;
             var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
@@ -201,9 +201,10 @@ internal sealed class OutlineTreeView : Control
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
-                string.IsNullOrWhiteSpace(node.Item.Text) ? "(无标题)" : node.Item.Text,
+                string.IsNullOrWhiteSpace(node.Item.Text) ? Loc.Get("sidebar.untitled") : node.Item.Text,
                 isSelected ? _selectedFont : (node.Item.Level <= 2 ? _primaryFont : _secondaryFont),
-                textBounds);
+                textBounds,
+                isSelected || isHovered ? null : _textSecondary);
         }
     }
 

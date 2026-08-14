@@ -61,13 +61,13 @@ internal static class FileAssociationService
 
         using (var progIdKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{ProgId}"))
         {
-            progIdKey.SetValue("", "MarkLeaf Markdown 文档");
+            progIdKey.SetValue("", Loc.Get("fileAssociation.description"));
         }
 
         using (var iconKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{ProgId}\DefaultIcon"))
         {
-            // exe 内嵌的应用程序图标（csproj ApplicationIcon），索引 0。
-            iconKey.SetValue("", $"\"{exePath}\",0");
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "App", "fileicon.ico");
+            iconKey.SetValue("", $"\"{iconPath}\",0");
         }
 
         using (var openKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{ProgId}\shell\open\command"))
