@@ -10,6 +10,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
+import { MathBlock, MathInline } from './math'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -90,6 +91,12 @@ export function setBlockTypeLabels(labels: Record<string, string>): void {
 
 function getBlockTypeLabel(state: Editor['state'], from: number): string {
   const $from = state.doc.resolve(from)
+  // 表格优先：只要位于表格内，无论内部是段落还是标题，都显示“表”。
+  for (let depth = 1; depth <= $from.depth; depth += 1) {
+    if ($from.node(depth).type.name === 'table') {
+      return blockTypeLabels.blockTable ?? '表'
+    }
+  }
   for (let depth = $from.depth; depth >= 1; depth -= 1) {
     const node = $from.node(depth)
     if (node.type.name === 'heading') return blockTypeLabels[`blockHeading${node.attrs.level}`] ?? 'H'
@@ -167,7 +174,7 @@ function createBlockHandle(nodePos: number, label: string, active: boolean): HTM
     const rect = handle.getBoundingClientRect()
     handle.dispatchEvent(new CustomEvent('markleaf-block-handle', {
       bubbles: true,
-      detail: { clientX: rect.left, clientY: rect.bottom + 6, position: nodePos },
+      detail: { clientX: rect.left, clientY: rect.bottom + 10, position: nodePos },
     }))
   })
   requestAnimationFrame(() => {
@@ -247,6 +254,17 @@ function getSelectedImage(editor: Editor): SelectedImageNode | null {
   }
   const node = selection.node as SelectedImageNode
   return node.type.name === 'image' ? node : null
+}
+
+function getSelectedMathMode(editor: Editor): 'inline' | 'block' | null {
+  const selection = editor.state.selection
+  if (!('node' in selection)) {
+    return null
+  }
+  const node = selection.node as SelectedImageNode
+  if (node.type.name === 'mathInline') return 'inline'
+  if (node.type.name === 'mathBlock') return 'block'
+  return null
 }
 
 const MarkLeafImage = Image.extend({
@@ -404,6 +422,8 @@ export type EditorCommandState = {
   inTable: boolean
   tableAlign: 'left' | 'center' | 'right' | null
   imageSelected: boolean
+  mathInline: boolean
+  mathBlock: boolean
   canStartFormatPainter: boolean
   formatPainterArmed: boolean
 }
@@ -444,6 +464,8 @@ export const editorExtensions = [
   FindHighlight,
   ThemedSelection,
   BlockHandle,
+  MathInline,
+  MathBlock,
 ]
 
 export function createEditor(element: HTMLElement, content = '', readOnly = false): Editor {
@@ -606,6 +628,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   const currentHeader = editor.getAttributes('tableHeader')
   const align = (currentCell.align ?? currentHeader.align) as unknown
   const tableAlign = align === 'left' || align === 'center' || align === 'right' ? align : null
+  const mathMode = getSelectedMathMode(editor)
 
   return {
     canUndo: editor.can().undo(),
@@ -627,6 +650,8 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     inTable,
     tableAlign,
     imageSelected: getSelectedImage(editor) !== null,
+    mathInline: mathMode === 'inline',
+    mathBlock: mathMode === 'block',
     canStartFormatPainter: false,
     formatPainterArmed: false,
   }
@@ -738,6 +763,13 @@ export function executeEditorCommand(
     setParagraph: () => chain.setParagraph().run(),
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
+    insertMathInline: () => insertMath(editor, 'inline', text),
+    insertMathBlock: () => insertMath(editor, 'block', text),
+    updateMath: () => updateMath(editor, text),
+    convertMath: () => convertMath(editor),
+    deleteMath: () => deleteMath(editor),
+    selectAll: () => editor.commands.selectAll(),
+    exitCode: () => exitCodeBlock(editor),
     setHeading1: () => chain.setHeading({ level: 1 }).run(),
     setHeading2: () => chain.setHeading({ level: 2 }).run(),
     setHeading3: () => chain.setHeading({ level: 3 }).run(),
@@ -969,6 +1001,70 @@ function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): bo
   const blockNode = $from.node($from.depth)
   const insertPos = position === 'before' ? blockStart : blockStart + blockNode.nodeSize
   return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
+}
+
+function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): boolean {
+  const nodeType = mode === 'inline' ? 'mathInline' : 'mathBlock'
+  const { from, to, empty } = editor.state.selection
+  const chain = editor.chain().focus()
+
+  // 有选区：直接用选区文本套 $...$ / $$...$$
+  if (!empty) {
+    const selected = editor.state.doc.textBetween(from, to)
+    return chain.insertContentAt({ from, to }, {
+      type: nodeType,
+      content: [{ type: 'text', text: selected }],
+    }).run()
+  }
+
+  // 无选区：插入传入的 LaTeX 文本
+  const latex = (text ?? '').trim()
+  if (!latex) return false
+  return chain.insertContent({
+    type: nodeType,
+    content: [{ type: 'text', text: latex }],
+  }).run()
+}
+
+type SelectedMathNode = { type: { name: string }; textContent: string }
+
+function getSelectedMath(editor: Editor): { node: SelectedMathNode; from: number; to: number } | null {
+  const selection = editor.state.selection
+  if (!('node' in selection)) return null
+  const node = selection.node as unknown as SelectedMathNode
+  if (node.type.name !== 'mathInline' && node.type.name !== 'mathBlock') return null
+  return { node, from: selection.from, to: selection.to }
+}
+
+function updateMath(editor: Editor, text?: string): boolean {
+  const latex = (text ?? '').trim()
+  const selected = getSelectedMath(editor)
+  if (!selected || !latex) return false
+  return editor.chain().focus().insertContentAt(
+    { from: selected.from, to: selected.to },
+    { type: selected.node.type.name, content: [{ type: 'text', text: latex }] },
+  ).run()
+}
+
+function convertMath(editor: Editor): boolean {
+  const selected = getSelectedMath(editor)
+  if (!selected) return false
+  const latex = selected.node.textContent
+  const targetType = selected.node.type.name === 'mathInline' ? 'mathBlock' : 'mathInline'
+  return editor.chain().focus().insertContentAt(
+    { from: selected.from, to: selected.to },
+    { type: targetType, content: [{ type: 'text', text: latex }] },
+  ).run()
+}
+
+function deleteMath(editor: Editor): boolean {
+  if (!getSelectedMath(editor)) return false
+  return editor.chain().focus().deleteSelection().run()
+}
+
+function exitCodeBlock(editor: Editor): boolean {
+  if (!editor.isActive('codeBlock')) return false
+  return editor.chain().focus().toggleCodeBlock().run()
 }
 
 export function rotateSelectedImageClockwise(editor: Editor): boolean {

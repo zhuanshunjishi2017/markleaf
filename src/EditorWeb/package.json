@@ -23,7 +23,8 @@
     "@tiptap/extension-task-list": "3.29.2",
     "@tiptap/markdown": "3.29.2",
     "@tiptap/pm": "3.29.2",
-    "@tiptap/starter-kit": "3.29.2"
+    "@tiptap/starter-kit": "3.29.2",
+    "katex": "0.16.21"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

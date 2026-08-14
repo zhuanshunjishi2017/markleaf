@@ -162,15 +162,15 @@ body {
 .ml-block-handle {
   position: absolute;
   left: -36px;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: 4px;
   background: var(--bg-hover, #f0f0f0);
   color: var(--text-secondary, #555555);
   font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
   display: inline-flex;
@@ -196,6 +196,14 @@ body {
 .markleaf-block-active {
   background: var(--bg-hover, #f0f0f0);
   border-radius: 6px;
+}
+
+/* 数学公式（KaTeX 渲染） */
+.markleaf-math-block {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */

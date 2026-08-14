@@ -125,3 +125,9 @@
   color: var(--theme-dark);
   text-decoration: none;
 }
+
+.markleaf-style-latex .markleaf-document strong,
+.markleaf-style-latex .markleaf-document b {
+  font-weight: bold;
+  font-synthesis: none;
+}

@@ -7,9 +7,8 @@
    不随页宽响应式收窄。编辑器中由 #editor 的固定内边距承担，导出中由
    导出文档自身的内边距承担，两种样式均通过继承本规则获得固定边距。 */
 .markleaf-style-print .markleaf-document {
-  width: auto;
-  max-width: none;
-  margin: 0;
+  width: min(100%, var(--ml-max-width));
+  margin: 0 auto;
 }
 
 /* 无论页宽如何，印刷排版始终使用固定内边距，不启用窄窗的 @media 适配。
