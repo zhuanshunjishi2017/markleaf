@@ -317,6 +317,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         }
         guard let command = menuItem.representedObject as? String else { return true }
         let s = session
+        if s?.isReadOnly == true, EditorSession.readOnlyBlockedCommands.contains(command) {
+            return false
+        }
         switch command {
         case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
         case "workspaceTab": menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
@@ -526,6 +529,9 @@ final class WindowMenuDelegate: NSObject, NSMenuDelegate {
 extension EditorSession {
     /// 菜单命令分派（对应 Windows CommandRouter）。
     func performMenuCommand(_ command: String) {
+        if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
+            return
+        }
         switch command {
         case "new": newDocument()
         case "open": openDocument()

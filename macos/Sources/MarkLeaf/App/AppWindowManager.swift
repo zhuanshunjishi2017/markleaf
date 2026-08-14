@@ -338,10 +338,21 @@ final class AppWindowManager {
             activeSession?.statusText = L10n.t("无法打开更新内容")
             return
         }
-        if let session = activeSession {
-            session.openDocument(at: target)
-        } else {
-            NSWorkspace.shared.open(target)
+
+        // 只读打开：聚焦已打开的更新内容窗口，或在新窗口以只读文档加载。
+        if let existing = windowControllers.first(where: { $0.session.isReadOnly && $0.session.documentURL == target }) {
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        do {
+            let markdown = try String(contentsOf: target, encoding: .utf8)
+            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: true)
+            let controller = newWindow(preparedDocument: prepared)
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } catch {
+            activeSession?.statusText = L10n.t("无法打开更新内容")
         }
     }
 
