@@ -49,6 +49,7 @@ final class PreferencesWindowController: NSWindowController {
     private let cjkLanguagePopup = NSPopUpButton()
     private let fontSettingsButton = NSButton(title: L10n.t("字体设置…"), target: nil, action: nil)
     private let fontSettingsSummary = NSTextField(labelWithString: "")
+    private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
 
     // 外观
     private let stylePopup = NSPopUpButton()
@@ -137,6 +138,7 @@ final class PreferencesWindowController: NSWindowController {
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
+        blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
         cjkLanguagePopup.addItems(withTitles: [
             L10n.t("简体中文"), L10n.t("繁体中文"), L10n.t("日文字形"), L10n.t("韩文字形"),
         ])
@@ -239,7 +241,7 @@ final class PreferencesWindowController: NSWindowController {
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      cjkLanguagePopup,
-                                     restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck, followSystemCheck, languagePopup,
+                                     restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, topMostCheck, followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
         for control in controls {
@@ -292,6 +294,7 @@ final class PreferencesWindowController: NSWindowController {
     private func editorPage() -> NSView {
         formPage(rows: [
             .header(L10n.t("可视化")),
+            .field("", blockHandleCheck),
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
@@ -394,6 +397,7 @@ final class PreferencesWindowController: NSWindowController {
                 settings.cjkLanguageTag = CJKLanguageTag.allCases[cjkLanguagePopup.indexOfSelectedItem]
             }
             settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
+            settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 
             if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {
                 settings.markdownStyle = styleIDs[stylePopup.indexOfSelectedItem]

@@ -458,6 +458,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applyStyles()
         applyVisualVariables(fontSize: nil, maxWidth: nil)
         applySourceIndent()
+        applyBlockHandleVisibility(settings.showParagraphBlockHandle)
         if settings.restoreZoomOnOpen {
             applyZoom(settings.zoomPercent)
         }
@@ -754,6 +755,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             setAutoHideScrollbar(true)
         }
         applySourceIndent()
+        applyBlockHandleVisibility(settings.showParagraphBlockHandle)
     }
 
     /// 源码模式缩进宽度（对应偏好设置「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
@@ -766,6 +768,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func applySourceIndent() {
         let width = max(1, min(8, SettingsService.shared.settings.sourceIndentWidth))
         execute("setSourceIndent", text: "\(width)")
+    }
+
+    static func blockHandleVisibilityCommandText(for settings: AppSettings) -> String {
+        settings.showParagraphBlockHandle ? "1" : "0"
+    }
+
+    func applyBlockHandleVisibility(_ enabled: Bool) {
+        var settings = AppSettings()
+        settings.showParagraphBlockHandle = enabled
+        execute("setBlockHandleVisible", text: Self.blockHandleVisibilityCommandText(for: settings))
     }
 
     func setAutoHideScrollbar(_ enabled: Bool) {
