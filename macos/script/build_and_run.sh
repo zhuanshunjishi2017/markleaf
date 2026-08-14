@@ -12,7 +12,7 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="MarkLeaf"
-APP_VERSION="1.1.7"
+APP_VERSION="1.2.0"
 BUNDLE_ID="com.markleaf.app"
 MIN_SYSTEM_VERSION="13.0"
 

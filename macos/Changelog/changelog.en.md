@@ -1,5 +1,29 @@
 # MarkLeaf Changelog
 
+## 1.2.0 — 2026-08-14
+
+### New
+
+- Add LaTeX math formulas: inline `$...$` and block `$$...$$`, rendered with KaTeX as you type.
+- Add “Block Math” to the Paragraph menu and “Inline Math” to the Format menu; wrap the selection directly or prompt for LaTeX input.
+- The formula context menu supports editing, inline/block conversion, and deletion.
+- The context menu now adapts to context: source mode, tables, formulas, code blocks, and headings each show relevant actions.
+- The changelog now opens in a new read-only window, so it never replaces the current document, cannot be edited by accident, and never triggers save prompts.
+- Export HTML/PDF with math rendering (self-contained KaTeX CSS/fonts, woff2 only to keep size small).
+
+### Fixes & Improvements
+
+- Restore the visible I-beam caret in source mode.
+- Plain-text (.txt) documents stay in source mode, and the View > Source Mode menu item is disabled for them.
+- Fix the custom-table dialog flashing and closing from the Insert Table menu; align the row/column labels with their input fields.
+- Slightly increase the sidebar search field height.
+- Restore the recovery window’s Discard All / Discard Selected buttons to the default white button style.
+
+### Changes
+
+- Print styles respect the max-width setting; PDF tables size to their content.
+- Version bumped to 1.2.0.
+
 ## 1.1.7 — 2026-08-13
 
 - Search workspace Markdown/TXT files by name or content, and filter outline headings from the sidebar.
