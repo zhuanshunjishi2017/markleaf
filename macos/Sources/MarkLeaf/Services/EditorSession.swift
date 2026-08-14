@@ -44,6 +44,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var currentStyleId = "serif"
     private(set) var currentThemeId: String?
     private(set) var isSourceMode = false
+    private(set) var isPlainText = false
     private(set) var imageSelected = false
     private(set) var inTable = false
     private(set) var canUndo = false
@@ -524,6 +525,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         let extensionName = fileURL?.pathExtension.lowercased()
         let type = extensionName == "txt" ? "plainText" : "markdown"
+        isPlainText = type == "plainText"
         send("loadDocument", payload: ["markdown": markdown, "documentType": type, "readOnly": readOnly])
     }
 

@@ -29,6 +29,16 @@ final class PreparedDocumentTests: XCTestCase {
         XCTAssertFalse(saved)
     }
 
+    func testPlainTextDocumentTracksFileExtension() {
+        let session = EditorSession()
+        session.loadDocument(markdown: "hello", fileURL: URL(fileURLWithPath: "/tmp/a.txt"))
+
+        XCTAssertTrue(session.isPlainText)
+
+        session.loadDocument(markdown: "# hi", fileURL: URL(fileURLWithPath: "/tmp/a.md"))
+        XCTAssertFalse(session.isPlainText)
+    }
+
     func testReadsValidMarkdownAndStandardizesURL() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

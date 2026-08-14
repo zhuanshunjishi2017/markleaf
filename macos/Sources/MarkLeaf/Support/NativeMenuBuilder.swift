@@ -331,7 +331,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
-        case "sourceMode": menuItem.state = s?.isSourceMode == true ? .on : .off
+        case "sourceMode":
+            // 纯文本文档固定为源码模式，无法切换回可视化，直接置灰。
+            if s?.isPlainText == true { return false }
+            menuItem.state = s?.isSourceMode == true ? .on : .off
 
         // 无选中图片时置灰（对应 Windows 命令状态）
         case "rotateImage": return s?.imageSelected == true
