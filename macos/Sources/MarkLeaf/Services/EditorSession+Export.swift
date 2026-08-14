@@ -72,28 +72,33 @@ extension EditorSession {
         pendingExportContext = nil
 
         if context.options.format == "pdf" {
-            statusText = L10n.t("正在生成 PDF…")
-            AppLog.info("开始 PDF 导出流水线 (纸张 \(context.options.paperSize.rawValue))")
-            PDFGenerator().generatePDF(
+            statusText = L10n.t("正在打开打印面板…")
+            AppLog.info("开始 PDF 导出（系统打印面板，纸张 \(context.options.paperSize.rawValue)）")
+            guard let window = webView?.window else {
+                presentError(L10n.t("无法打开打印面板"))
+                onExportComplete?(false)
+                return
+            }
+            PDFGenerator().printPDF(
                 html: html,
                 paperSize: context.options.paperSize,
                 landscape: context.options.landscape,
-                margins: context.options.margins
+                margins: context.options.margins,
+                window: window
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
-                    case .success(let data):
-                        do {
-                            try data.write(to: context.saveURL)
+                    case .success(let printed):
+                        if printed {
                             self?.statusText = L10n.t("已导出 PDF")
-                            AppLog.info("PDF 已导出: \(context.saveURL.path) (\(data.count) bytes)")
+                            AppLog.info("PDF 已通过系统打印面板导出")
                             self?.onExportComplete?(true)
-                        } catch {
-                            self?.presentError("导出失败：\(error.localizedDescription)")
+                        } else {
+                            self?.statusText = ""
                             self?.onExportComplete?(false)
                         }
                     case .failure(let error):
-                        self?.presentError("PDF 生成失败：\(error.localizedDescription)")
+                        self?.presentError("PDF 导出失败：\(error.localizedDescription)")
                         self?.onExportComplete?(false)
                     }
                 }

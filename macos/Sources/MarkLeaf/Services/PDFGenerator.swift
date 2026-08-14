@@ -29,14 +29,28 @@ struct ExportMargins {
 }
 
 /// 将编辑器导出的 HTML 渲染为 PDF（对应 C# PrintExportToPdfAsync）。
-/// 使用离屏 WKWebView + NSPrintOperation（纸张/边距/方向）；打印失败时回退 createPDF。
+/// 离屏渲染导出：generatePDF 用 createPDF 生成 PDF；printPDF 走系统打印面板（纸张/边距/方向由面板控制）。
 final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var completion: ((Result<Data, Error>) -> Void)?
+    private var printCompletion: ((Result<Bool, Error>) -> Void)?
     private var webView: WKWebView?
     private var printInfo: NSPrintInfo?
+    private var targetWindow: NSWindow?
     private var watchdog: DispatchWorkItem?
     // 自持有：直到生成完成才释放（调用方为临时对象，无强引用会提前释放导致 delegate 失效）
     private var strongSelf: PDFGenerator?
+
+    enum PrintError: LocalizedError {
+        case timeout
+        case noWindow
+
+        var errorDescription: String? {
+            switch self {
+            case .timeout: return "打印面板启动超时"
+            case .noWindow: return "缺少宿主窗口"
+            }
+        }
+    }
 
     func generatePDF(
         html: String,
@@ -116,20 +130,131 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         AppLog.info("PDFGenerator: 页面渲染完成")
-        guard let printInfo else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.runPrint(webView: webView, printInfo: printInfo)
+            guard let self else { return }
+            if self.printCompletion != nil {
+                self.runPrintPanel(webView: webView)
+            } else if let printInfo = self.printInfo {
+                self.runPrint(webView: webView, printInfo: printInfo)
+            }
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         AppLog.error("PDFGenerator: 导航失败 \(error.localizedDescription)")
-        finish(.failure(error))
+        if printCompletion != nil {
+            finishPrint(.failure(error))
+        } else {
+            finish(.failure(error))
+        }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         AppLog.error("PDFGenerator: 初始导航失败 \(error.localizedDescription)")
-        finish(.failure(error))
+        if printCompletion != nil {
+            finishPrint(.failure(error))
+        } else {
+            finish(.failure(error))
+        }
+    }
+
+    // MARK: - 系统打印面板（导出 PDF 走系统打印面板，纸张/边距/方向由面板控制）
+
+    /// 将导出 HTML 载入离屏 WKWebView，并弹出系统打印面板（可“存储为 PDF”）。
+    /// completion(.success(true)) = 已打印或已保存为 PDF；.success(false) = 用户取消。
+    func printPDF(
+        html: String,
+        paperSize: PaperSize,
+        landscape: Bool,
+        margins: ExportMargins,
+        window: NSWindow,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        self.printCompletion = completion
+        self.strongSelf = self
+        self.targetWindow = window
+        AppLog.info("PDFGenerator: 启动系统打印面板 (纸张 \(paperSize.rawValue), 横向=\(landscape))")
+
+        let size = paperSize.sizeInches
+        let info = NSPrintInfo()
+        info.paperSize = NSSize(
+            width: landscape ? size.height : size.width,
+            height: landscape ? size.width : size.height)
+        info.orientation = landscape ? .landscape : .portrait
+        info.topMargin = margins.top
+        info.bottomMargin = margins.bottom
+        info.leftMargin = margins.left
+        info.rightMargin = margins.right
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        info.isHorizontallyCentered = false
+        info.isVerticallyCentered = false
+        self.printInfo = info
+
+        let configuration = WKWebViewConfiguration()
+        #if DEBUG
+        configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        #endif
+        // 初始帧按一页大小；printOperation(with:) 会自行按打印信息跨页分页。
+        let pointsPerInch: CGFloat = 72
+        let pageWidth = CGFloat(landscape ? size.height : size.width) * pointsPerInch
+        let pageHeight = CGFloat(landscape ? size.width : size.height) * pointsPerInch
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight), configuration: configuration)
+        webView.navigationDelegate = self
+        self.webView = webView
+
+        // 30 秒看门狗：仅覆盖“面板未弹出”的异常；面板弹出后取消。
+        let watchdog = DispatchWorkItem { [weak self] in
+            AppLog.error("PDFGenerator: 打印面板启动超时")
+            self?.finishPrint(.failure(PrintError.timeout))
+        }
+        self.watchdog = watchdog
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: watchdog)
+
+        // 系统打印面板负责纸张与边距，不注入 @page 边距；仅固定本地图片路径。
+        let adjustedHTML = Self.fixLocalImagePaths(in: html)
+        webView.loadHTMLString(adjustedHTML, baseURL: nil)
+        AppLog.info("PDFGenerator: 打印 HTML 已加载 (\(html.count) 字符)")
+    }
+
+    private func runPrintPanel(webView: WKWebView) {
+        guard let printInfo, let targetWindow else {
+            finishPrint(.failure(PrintError.noWindow))
+            return
+        }
+        // WKWebView 需要挂在窗口并完成布局，printOperation(with:) 才能正确渲染整篇内容并跨页分页。
+        if webView.superview == nil {
+            webView.frame.origin = NSPoint(x: -100000, y: 0)
+            targetWindow.contentView?.addSubview(webView, positioned: .below, relativeTo: nil)
+        }
+        webView.layoutSubtreeIfNeeded()
+        webView.displayIfNeeded()
+
+        let operation = webView.printOperation(with: printInfo)
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        watchdog?.cancel()
+        AppLog.info("PDFGenerator: 弹出系统打印面板")
+        operation.runModal(for: targetWindow, delegate: self, didRun: #selector(self.printDidRun(_:success:contextInfo:)), contextInfo: nil)
+    }
+
+    @objc private func printDidRun(_ printOperation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        AppLog.info("PDFGenerator: 打印面板结束 success=\(success)")
+        finishPrint(.success(success))
+    }
+
+    private func finishPrint(_ result: Result<Bool, Error>) {
+        watchdog?.cancel()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.printCompletion?(result)
+            self.printCompletion = nil
+            self.webView?.removeFromSuperview()
+            self.webView = nil
+            self.printInfo = nil
+            self.targetWindow = nil
+            self.strongSelf = nil
+        }
     }
 
     private func runPrint(webView: WKWebView, printInfo: NSPrintInfo) {

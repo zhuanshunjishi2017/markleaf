@@ -18,6 +18,7 @@
 - Fix the custom-table dialog flashing and closing from the Insert Table menu; align the row/column labels with their input fields.
 - Slightly increase the sidebar search field height.
 - Restore the recovery window’s Discard All / Discard Selected buttons to the default white button style.
+- Export PDF through the system print panel, so you can fully adjust paper size, orientation, and margins before saving as PDF.
 
 ### Changes
 
