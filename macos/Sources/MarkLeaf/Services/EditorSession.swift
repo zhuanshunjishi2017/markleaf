@@ -5,6 +5,7 @@ import WebKit
 struct PreparedDocument: Equatable {
     let url: URL
     let markdown: String
+    var isReadOnly: Bool = false
 
     static func read(from url: URL) throws -> PreparedDocument {
         let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
@@ -50,6 +51,24 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var canStartFormatPainter = false
     private(set) var isFormatPainterArmed = false
     private(set) var headingLevel: Int?
+    private(set) var isReadOnly = false
+
+    /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
+    static let readOnlyBlockedCommands: Set<String> = [
+        "save", "saveAs", "undo", "redo", "cut", "paste", "replace",
+        "replaceOne", "replaceAll", "pasteText", "deleteSelection",
+        "setParagraph", "setHeading1", "setHeading2", "setHeading3",
+        "setHeading4", "setHeading5", "setHeading6",
+        "promoteHeading", "demoteHeading",
+        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode",
+        "toggleBlockquote", "toggleCodeBlock", "toggleBulletList", "toggleOrderedList", "toggleTaskList",
+        "insertLink", "insertImage", "insertImageFromUrl", "insertHorizontalRule",
+        "insertTable", "insertLineBefore", "insertLineAfter",
+        "addRowBefore", "addRowAfter", "deleteRow",
+        "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
+        "alignTableLeft", "alignTableCenter", "alignTableRight",
+        "rotateImage", "formatPainter", "formatPainterArm", "formatPainterApply",
+    ]
 
     // 工作区 / 大纲
     private(set) var workspaceRoot: String?
@@ -211,10 +230,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             isSourceMode = payload?["sourceMode"] as? Bool ?? false
             imageSelected = payload?["imageSelected"] as? Bool ?? false
             inTable = payload?["inTable"] as? Bool ?? false
-            canUndo = payload?["canUndo"] as? Bool ?? false
-            canRedo = payload?["canRedo"] as? Bool ?? false
-            canStartFormatPainter = payload?["canStartFormatPainter"] as? Bool ?? false
-            isFormatPainterArmed = payload?["formatPainterArmed"] as? Bool ?? false
+            isReadOnly = payload?["readOnly"] as? Bool ?? false
+            canUndo = (payload?["canUndo"] as? Bool ?? false) && !isReadOnly
+            canRedo = (payload?["canRedo"] as? Bool ?? false) && !isReadOnly
+            canStartFormatPainter = (payload?["canStartFormatPainter"] as? Bool ?? false) && !isReadOnly
+            isFormatPainterArmed = (payload?["formatPainterArmed"] as? Bool ?? false) && !isReadOnly
             headingLevel = payload?["headingLevel"] as? Int
 
         case "outlineChanged":
@@ -482,7 +502,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         return NSColor(hexString: hex)
     }
 
-    func loadDocument(markdown: String, fileURL: URL?) {
+    func loadDocument(markdown: String, fileURL: URL?, readOnly: Bool = false) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
         startupRecoveryNotice = nil
@@ -490,16 +510,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         revision = 0
         isDirty = false
         documentURL = fileURL
+        isReadOnly = readOnly
         statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
-        if let fileURL {
+        if readOnly {
+            stopExternalChangeWatch()
+        } else if let fileURL {
             startExternalChangeWatch(for: fileURL)
         } else {
             stopExternalChangeWatch()
         }
-        startRecoveryTimer()
+        if !readOnly {
+            startRecoveryTimer()
+        }
         let extensionName = fileURL?.pathExtension.lowercased()
         let type = extensionName == "txt" ? "plainText" : "markdown"
-        send("loadDocument", payload: ["markdown": markdown, "documentType": type])
+        send("loadDocument", payload: ["markdown": markdown, "documentType": type, "readOnly": readOnly])
     }
 
     // MARK: - 崩溃恢复 / 自动保存（对应 C# RecoveryService + OnRecoveryTimerTick + OnAutoSaveTimerTick）
@@ -646,6 +671,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func execute(_ command: String, text: String? = nil) {
+        if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
+            return
+        }
         var payload: [String: Any] = ["command": command]
         if let text {
             payload["text"] = text
@@ -923,7 +951,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     private func loadPreparedDocument(_ prepared: PreparedDocument) {
-        loadDocument(markdown: prepared.markdown, fileURL: prepared.url)
+        loadDocument(markdown: prepared.markdown, fileURL: prepared.url, readOnly: prepared.isReadOnly)
+        guard !prepared.isReadOnly else { return }
         SettingsService.shared.addRecentFile(prepared.url.path)
         SettingsService.shared.update { $0.lastFile = prepared.url.path }
     }
@@ -934,6 +963,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         for reason: DocumentDispositionReason,
         completion: @escaping (DocumentDispositionResult) -> Void
     ) -> Bool {
+        if isReadOnly {
+            completion(.proceed)
+            return true
+        }
         dispositionRequestCount += 1
         return documentDisposition.request(
             isDirty: isDirty,
@@ -976,6 +1009,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func saveDocument(completion: ((Bool) -> Void)? = nil) {
+        guard !isReadOnly else { completion?(false); return }
         if let url = documentURL {
             writeCurrentDocument(to: url, completion: completion)
         } else {
@@ -984,6 +1018,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func saveDocumentAs(completion: ((Bool) -> Void)? = nil) {
+        guard !isReadOnly else { completion?(false); return }
         let panel = NSSavePanel()
         panel.title = L10n.t("保存 Markdown 文档")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]

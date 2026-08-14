@@ -2,6 +2,33 @@ import XCTest
 @testable import MarkLeaf
 
 final class PreparedDocumentTests: XCTestCase {
+    func testReadOnlyDefaultsToFalse() {
+        let doc = PreparedDocument(url: URL(fileURLWithPath: "/tmp/a.md"), markdown: "x")
+
+        XCTAssertFalse(doc.isReadOnly)
+    }
+
+    func testReadOnlyFlagIsPreserved() {
+        let doc = PreparedDocument(url: URL(fileURLWithPath: "/tmp/a.md"), markdown: "x", isReadOnly: true)
+
+        XCTAssertTrue(doc.isReadOnly)
+    }
+
+    func testReadOnlySessionSkipsDispositionAndSave() {
+        let session = EditorSession()
+        session.loadDocument(markdown: "changelog", fileURL: URL(fileURLWithPath: "/tmp/changelog.md"), readOnly: true)
+
+        XCTAssertTrue(session.isReadOnly)
+
+        var disposition: DocumentDispositionResult?
+        session.requestDisposition(for: .closeWindow) { disposition = $0 }
+        XCTAssertEqual(disposition, .proceed)
+
+        var saved = true
+        session.saveDocument { saved = $0 }
+        XCTAssertFalse(saved)
+    }
+
     func testReadsValidMarkdownAndStandardizesURL() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
