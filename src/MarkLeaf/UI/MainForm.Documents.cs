@@ -888,4 +888,126 @@ internal sealed partial class MainForm
         SetStatus(Loc.Get("status.imageInserted"));
         return true;
     }
+
+    private async Task ChangeImageAsync()
+    {
+        if (_document is null || _editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Filter = ImageFilter,
+            CheckFileExists = true,
+            Multiselect = false,
+            RestoreDirectory = true,
+            Title = Loc.Get("contextMenu.image.change"),
+        };
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var imported = await ImportFileByHandlingAsync(dialog.FileName);
+            var markdownPath = _settings.Image.UseRelativePaths
+                ? ImageAssetService.ToRelativeMarkdownPath(
+                    imported.PhysicalPath, _document.FilePath, _settings.Image.PrefixRelativeWithDotSlash)
+                    ?? imported.MarkdownPath
+                : imported.MarkdownPath;
+            _editorHost.ExecuteCommand("changeImage", markdownPath);
+            SetStatus(Loc.Get("status.imageChanged"));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException
+            or OperationCanceledException)
+        {
+            _logger.Warning($"Change image rejected: {exception.Message}");
+        }
+    }
+
+    private async Task SaveImageAsAsync()
+    {
+        if (_document is null || _editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var selection = await _editorHost.RequestSelectionExportAsync();
+            var src = ExtractImageSrc(selection.Markdown);
+            if (src is null)
+            {
+                SetStatus(Loc.Get("status.noImageSelected"));
+                return;
+            }
+
+            var absolutePath = ResolveImagePath(src);
+            if (!File.Exists(absolutePath))
+            {
+                ShowMessage(this, Loc.Get("document.imageMissing"), "MarkLeaf",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using var dialog = new SaveFileDialog
+            {
+                Filter = ImageFilter,
+                RestoreDirectory = true,
+                Title = Loc.Get("contextMenu.image.saveAs"),
+                FileName = Path.GetFileName(absolutePath),
+            };
+            if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+            {
+                return;
+            }
+
+            File.Copy(absolutePath, dialog.FileName, overwrite: true);
+            SetStatus(Loc.Get("status.imageSavedAs"));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
+        {
+            _logger.Error("Save image as failed.", exception);
+        }
+    }
+
+    private string ResolveImagePath(string markdownSrc)
+    {
+        if (Path.IsPathRooted(markdownSrc))
+        {
+            return markdownSrc;
+        }
+
+        var baseDir = _document?.FilePath is { } docPath
+            ? Path.GetDirectoryName(docPath)!
+            : Directory.GetCurrentDirectory();
+        return Path.GetFullPath(Path.Combine(baseDir, markdownSrc.Replace('/', Path.DirectorySeparatorChar)));
+    }
+
+    private static string? ExtractImageSrc(string markdown)
+    {
+        var open = markdown.IndexOf("](", StringComparison.Ordinal);
+        if (open < 0)
+        {
+            return null;
+        }
+
+        var srcStart = open + 2;
+        var close = markdown.IndexOf(')', srcStart);
+        if (close < 0)
+        {
+            close = markdown.Length;
+        }
+
+        var src = markdown[srcStart..close].Trim();
+        var quote = src.IndexOf('"');
+        if (quote > 0)
+        {
+            src = src[..quote].Trim();
+        }
+
+        return src.Length > 0 ? src : null;
+    }
 }

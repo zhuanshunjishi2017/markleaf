@@ -106,6 +106,7 @@ public sealed class EditorProtocolTests
                 "imageSelected": true,
                 "mathInline": false,
                 "mathBlock": false,
+                "mathLatex": null,
                 "sourceMode": false
               }
             }

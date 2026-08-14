@@ -15,11 +15,14 @@ import { MathBlock, MathInline } from './math'
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
 const imageMetadataPattern = /(?:^| \|\| )markleaf:width=(\d+);height=(\d+);rotation=(0|90|180|270)$/
+const imagePercentPattern = /(?:^| \|\| )markleaf:widthPct=(\d+);ratio=([\d.]+);rotation=(0|90|180|270)$/
 
 type ImageMetadata = {
   title: string | null
   width: number | null
   height: number | null
+  widthPercent: number | null
+  aspectRatio: number | null
   rotation: 0 | 90 | 180 | 270
 }
 
@@ -205,13 +208,30 @@ export function setBlockHighlight(editor: Editor, position: number | null): void
 }
 
 function parseImageMetadata(title: unknown): ImageMetadata {
+  const empty: ImageMetadata = {
+    title: null, width: null, height: null, widthPercent: null, aspectRatio: null, rotation: 0,
+  }
   if (typeof title !== 'string') {
-    return { title: null, width: null, height: null, rotation: 0 }
+    return empty
+  }
+
+  const percentMatch = imagePercentPattern.exec(title)
+  if (percentMatch) {
+    const metadataStart = percentMatch.index + (percentMatch[0].startsWith(imageMetadataSeparator) ? imageMetadataSeparator.length : 0)
+    const ordinaryTitle = title.slice(0, percentMatch.index).trimEnd()
+    return {
+      title: metadataStart === 0 ? null : ordinaryTitle || null,
+      width: null,
+      height: null,
+      widthPercent: Number(percentMatch[1]),
+      aspectRatio: Number(percentMatch[2]),
+      rotation: Number(percentMatch[3]) as ImageMetadata['rotation'],
+    }
   }
 
   const match = imageMetadataPattern.exec(title)
   if (!match) {
-    return { title, width: null, height: null, rotation: 0 }
+    return { ...empty, title }
   }
 
   const metadataStart = match.index + (match[0].startsWith(imageMetadataSeparator) ? imageMetadataSeparator.length : 0)
@@ -220,15 +240,29 @@ function parseImageMetadata(title: unknown): ImageMetadata {
     title: metadataStart === 0 ? null : ordinaryTitle || null,
     width: Number(match[1]),
     height: Number(match[2]),
+    widthPercent: null,
+    aspectRatio: null,
     rotation: Number(match[3]) as ImageMetadata['rotation'],
   }
 }
 
 function serializeImageTitle(attrs: Record<string, unknown>): string | null {
   const title = typeof attrs.title === 'string' && attrs.title.length > 0 ? attrs.title : null
+  const widthPercent = typeof attrs.widthPercent === 'number' && Number.isFinite(attrs.widthPercent)
+    ? Math.round(attrs.widthPercent)
+    : null
+  const aspectRatio = typeof attrs.aspectRatio === 'number' && Number.isFinite(attrs.aspectRatio)
+    ? attrs.aspectRatio
+    : null
+  const rotation = normalizeImageRotation(attrs.rotation)
+
+  if (widthPercent !== null && aspectRatio !== null) {
+    const metadata = `${imageMetadataPrefix}widthPct=${widthPercent};ratio=${aspectRatio.toFixed(4)};rotation=${rotation}`
+    return title ? `${title}${imageMetadataSeparator}${metadata}` : metadata
+  }
+
   const width = typeof attrs.width === 'number' && Number.isFinite(attrs.width) ? Math.round(attrs.width) : null
   const height = typeof attrs.height === 'number' && Number.isFinite(attrs.height) ? Math.round(attrs.height) : null
-  const rotation = normalizeImageRotation(attrs.rotation)
 
   if (width === null || height === null) {
     return title
@@ -242,12 +276,29 @@ function normalizeImageRotation(value: unknown): ImageMetadata['rotation'] {
   return value === 90 || value === 180 || value === 270 ? value : 0
 }
 
+function parseNullableNumber(value: string | null): number | null {
+  if (value === null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 function escapeMarkdownImageText(value: unknown): string {
   return typeof value === 'string' ? value.replace(/([\\\[\]])/g, '\\$1') : ''
 }
 
 function escapeMarkdownImageTitle(value: string): string {
   return value.replace(/([\\"])/g, '\\$1')
+}
+
+/// 动态获取当前正文内容区宽度（.markleaf-document），而非固定的最大宽度，
+/// 使图片百分比在窗口缩放时随内容区宽度实时变化。
+function getPageWidth(): number {
+  const doc = document.querySelector<HTMLElement>('.markleaf-document')
+  if (doc) {
+    const rect = doc.getBoundingClientRect()
+    if (rect.width > 0) return rect.width
+  }
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ml-max-width')) || 820
 }
 
 type SelectedImageNode = {
@@ -286,6 +337,20 @@ const MarkLeafImage = Image.extend({
           'data-markleaf-rotation': normalizeImageRotation(attributes.rotation),
         }),
       },
+      widthPercent: {
+        default: null,
+        parseHTML: element => parseNullableNumber(element.getAttribute('data-markleaf-width-percent')),
+        renderHTML: attributes => ({
+          'data-markleaf-width-percent': attributes.widthPercent ?? null,
+        }),
+      },
+      aspectRatio: {
+        default: null,
+        parseHTML: element => parseNullableNumber(element.getAttribute('data-markleaf-aspect-ratio')),
+        renderHTML: attributes => ({
+          'data-markleaf-aspect-ratio': attributes.aspectRatio ?? null,
+        }),
+      },
     }
   },
 
@@ -306,6 +371,8 @@ const MarkLeafImage = Image.extend({
       title: metadata.title,
       width: metadata.width,
       height: metadata.height,
+      widthPercent: metadata.widthPercent,
+      aspectRatio: metadata.aspectRatio,
       rotation: metadata.rotation,
     })
   },
@@ -329,8 +396,17 @@ const MarkLeafImage = Image.extend({
       frame.appendChild(image)
 
       const applyImageLayout = (attrs: Record<string, unknown>, previewWidth?: number, previewHeight?: number) => {
-        const width = previewWidth ?? (typeof attrs.width === 'number' ? attrs.width : null)
-        const height = previewHeight ?? (typeof attrs.height === 'number' ? attrs.height : null)
+        const widthPercent = typeof attrs.widthPercent === 'number' ? attrs.widthPercent : null
+        const aspectRatio = typeof attrs.aspectRatio === 'number' ? attrs.aspectRatio : null
+        let width = previewWidth ?? (typeof attrs.width === 'number' ? attrs.width : null)
+        let height = previewHeight ?? (typeof attrs.height === 'number' ? attrs.height : null)
+
+        if (previewWidth === undefined && previewHeight === undefined && widthPercent !== null && aspectRatio !== null) {
+          const pageWidth = getPageWidth()
+          width = Math.round(pageWidth * widthPercent / 100)
+          height = Math.round(width * aspectRatio)
+        }
+
         const rotation = normalizeImageRotation(attrs.rotation)
         const hasExplicitSize = width !== null && height !== null
 
@@ -378,10 +454,15 @@ const MarkLeafImage = Image.extend({
         onCommit: (width, height) => {
           const position = getPos()
           if (position === undefined) return
+          const pageWidth = getPageWidth()
+          const widthPercent = Math.round(width / pageWidth * 100)
+          const aspectRatio = height / width
           editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
             ...currentNode.attrs,
-            width: Math.round(width),
-            height: Math.round(height),
+            widthPercent,
+            aspectRatio,
+            width: null,
+            height: null,
           }))
           editor.commands.setNodeSelection(position)
         },
@@ -405,6 +486,26 @@ const MarkLeafImage = Image.extend({
       })
 
       syncImage(node.attrs)
+
+      // 监听窗口/编辑器尺寸变化，实时重算百分比尺寸的图片布局。
+      // 观察 #editor（随窗口宽度连续变化），而非 max-width 封顶的 .markleaf-document。
+      const container = document.getElementById('editor') ?? document.body
+      let observer: ResizeObserver | null = null
+      if (container) {
+        observer = new ResizeObserver(() => {
+          if (typeof currentNode.attrs.widthPercent === 'number') {
+            applyImageLayout(currentNode.attrs)
+          }
+        })
+        observer.observe(container)
+      }
+
+      const originalDestroy = nodeView.destroy?.bind(nodeView)
+      nodeView.destroy = () => {
+        observer?.disconnect()
+        originalDestroy?.()
+      }
+
       return nodeView
     }
   },
@@ -432,6 +533,7 @@ export type EditorCommandState = {
   imageSelected: boolean
   mathInline: boolean
   mathBlock: boolean
+  mathLatex: string | null
 }
 
 export type EditorStatus = {
@@ -657,6 +759,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     imageSelected: getSelectedImage(editor) !== null,
     mathInline: mathMode === 'inline',
     mathBlock: mathMode === 'block',
+    mathLatex: getSelectedMath(editor)?.node.textContent ?? null,
   }
 }
 
@@ -753,6 +856,7 @@ export function executeEditorCommand(
       return chain.extendMarkRange('link').setLink({ href: text }).run()
     },
     setParagraph: () => chain.setParagraph().run(),
+    clearFormat: () => clearParagraphFormat(editor),
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     insertMathInline: () => insertMath(editor, 'inline', text),
@@ -768,8 +872,8 @@ export function executeEditorCommand(
     setHeading4: () => chain.setHeading({ level: 4 }).run(),
     setHeading5: () => chain.setHeading({ level: 5 }).run(),
     setHeading6: () => chain.setHeading({ level: 6 }).run(),
-    toggleUnderline: () => chain.toggleUnderline().run(),
-    toggleStrike: () => chain.toggleStrike().run(),
+    toggleUnderline: () => toggleInlineMark(editor, 'underline', applyToCurrentTextBlockWhenEmpty),
+    toggleStrike: () => toggleInlineMark(editor, 'strike', applyToCurrentTextBlockWhenEmpty),
     toggleCode: () => chain.toggleCode().run(),
     promoteHeading: () => promoteHeadingLevel(editor),
     demoteHeading: () => demoteHeadingLevel(editor),
@@ -811,6 +915,8 @@ export function executeEditorCommand(
       }).run()
     },
     rotateImageClockwise: () => rotateSelectedImageClockwise(editor),
+    resizeImage: () => resizeImageToPercent(editor, Number(text)),
+    changeImage: () => changeImageSource(editor, text),
     appendText: () => {
       if (!text) {
         return false
@@ -915,22 +1021,25 @@ function highlightOutlineHeading(heading: HTMLElement): void {
 
 function toggleInlineMark(
   editor: Editor,
-  mark: 'bold' | 'italic',
+  mark: 'bold' | 'italic' | 'underline' | 'strike',
   applyToCurrentTextBlockWhenEmpty: boolean,
 ): boolean {
   const selection = editor.state.selection
   if (!applyToCurrentTextBlockWhenEmpty || !selection.empty || !selection.$from.parent.isTextblock) {
     const chain = editor.chain().focus()
-    return mark === 'bold' ? chain.toggleBold().run() : chain.toggleItalic().run()
+    if (mark === 'bold') return chain.toggleBold().run()
+    if (mark === 'italic') return chain.toggleItalic().run()
+    if (mark === 'underline') return chain.toggleUnderline().run()
+    return chain.toggleStrike().run()
   }
 
   const cursor = selection.from
   const block = { from: selection.$from.start(), to: selection.$from.end() }
   const chain = editor.chain().focus().setTextSelection(block)
-  if (mark === 'bold') {
-    return chain.toggleBold().setTextSelection(cursor).run()
-  }
-  return chain.toggleItalic().setTextSelection(cursor).run()
+  if (mark === 'bold') return chain.toggleBold().setTextSelection(cursor).run()
+  if (mark === 'italic') return chain.toggleItalic().setTextSelection(cursor).run()
+  if (mark === 'underline') return chain.toggleUnderline().setTextSelection(cursor).run()
+  return chain.toggleStrike().setTextSelection(cursor).run()
 }
 
 function promoteHeadingLevel(editor: Editor): boolean {
@@ -1049,10 +1158,78 @@ function exitCodeBlock(editor: Editor): boolean {
   return editor.chain().focus().toggleCodeBlock().run()
 }
 
+function clearParagraphFormat(editor: Editor): boolean {
+  const { state } = editor
+  const $from = state.doc.resolve(state.selection.from)
+  const blockFrom = $from.start()
+  const blockTo = $from.end()
+
+  // 行内公式是内联节点而非标记，unsetAllMarks 无法清除，需先替换为纯文本。
+  const tr = state.tr
+  state.doc.nodesBetween(blockFrom, blockTo, (node, pos) => {
+    if (node.type.name === 'mathInline') {
+      tr.replaceWith(pos, pos + node.nodeSize, state.schema.text(node.textContent))
+    }
+  })
+  if (tr.docChanged) {
+    editor.view.dispatch(tr)
+  }
+
+  // unsetAllMarks 在空选区下是 no-op，因此先选中整段，再清除块结构与所有标记。
+  const chain = editor.chain().focus()
+  const $current = editor.state.doc.resolve(editor.state.selection.from)
+  chain.setTextSelection({ from: $current.start(), to: $current.end() })
+  return chain.clearNodes().unsetAllMarks({ ignoreClearable: true }).run()
+}
+
 export function rotateSelectedImageClockwise(editor: Editor): boolean {
   const selection = editor.state.selection
   const selectedImage = getSelectedImage(editor)
   if (!selectedImage) {
+    return false
+  }
+
+  const rotation = normalizeImageRotation(selectedImage.attrs.rotation)
+  const nextRotation = ((rotation + 90) % 360) as ImageMetadata['rotation']
+  const widthPercent = typeof selectedImage.attrs.widthPercent === 'number' ? selectedImage.attrs.widthPercent : null
+  const aspectRatio = typeof selectedImage.attrs.aspectRatio === 'number' ? selectedImage.attrs.aspectRatio : null
+
+  if (widthPercent !== null && aspectRatio !== null) {
+    // 百分比尺寸：旋转 90° 时宽高互换，长宽比取倒数
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
+      ...selectedImage.attrs,
+      widthPercent: Math.max(1, Math.round(widthPercent * aspectRatio)),
+      aspectRatio: 1 / aspectRatio,
+      rotation: nextRotation,
+    }))
+  } else {
+    const nodeDom = editor.view.nodeDOM(selection.from) as HTMLElement | null
+    const frame = nodeDom?.matches('.markleaf-image-frame')
+      ? nodeDom
+      : nodeDom?.querySelector<HTMLElement>('.markleaf-image-frame')
+    const image = frame?.querySelector<HTMLImageElement>('img')
+    const currentWidth = typeof selectedImage.attrs.width === 'number'
+      ? selectedImage.attrs.width
+      : frame?.offsetWidth || image?.naturalWidth || 1
+    const currentHeight = typeof selectedImage.attrs.height === 'number'
+      ? selectedImage.attrs.height
+      : frame?.offsetHeight || image?.naturalHeight || 1
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
+      ...selectedImage.attrs,
+      width: Math.max(1, Math.round(currentHeight)),
+      height: Math.max(1, Math.round(currentWidth)),
+      rotation: nextRotation,
+    }))
+  }
+
+  editor.commands.setNodeSelection(selection.from)
+  return true
+}
+
+function resizeImageToPercent(editor: Editor, percent: number): boolean {
+  const selection = editor.state.selection
+  const selectedImage = getSelectedImage(editor)
+  if (!selectedImage || !Number.isFinite(percent) || percent <= 0) {
     return false
   }
 
@@ -1061,22 +1238,46 @@ export function rotateSelectedImageClockwise(editor: Editor): boolean {
     ? nodeDom
     : nodeDom?.querySelector<HTMLElement>('.markleaf-image-frame')
   const image = frame?.querySelector<HTMLImageElement>('img')
-  const currentWidth = typeof selectedImage.attrs.width === 'number'
-    ? selectedImage.attrs.width
-    : frame?.offsetWidth || image?.naturalWidth || 1
-  const currentHeight = typeof selectedImage.attrs.height === 'number'
-    ? selectedImage.attrs.height
-    : frame?.offsetHeight || image?.naturalHeight || 1
-  const rotation = normalizeImageRotation(selectedImage.attrs.rotation)
-  const nextRotation = ((rotation + 90) % 360) as ImageMetadata['rotation']
+
+  let aspectRatio = typeof selectedImage.attrs.aspectRatio === 'number'
+    ? selectedImage.attrs.aspectRatio
+    : null
+  if (aspectRatio === null) {
+    const currentWidth = typeof selectedImage.attrs.width === 'number'
+      ? selectedImage.attrs.width
+      : image?.naturalWidth ?? null
+    const currentHeight = typeof selectedImage.attrs.height === 'number'
+      ? selectedImage.attrs.height
+      : image?.naturalHeight ?? null
+    aspectRatio = currentWidth !== null && currentHeight !== null && currentWidth > 0
+      ? currentHeight / currentWidth
+      : null
+  }
+  if (aspectRatio === null) {
+    return false
+  }
 
   editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
     ...selectedImage.attrs,
-    width: Math.max(1, Math.round(currentHeight)),
-    height: Math.max(1, Math.round(currentWidth)),
-    rotation: nextRotation,
+    widthPercent: Math.round(percent),
+    aspectRatio,
+    width: null,
+    height: null,
   }))
   editor.commands.setNodeSelection(selection.from)
+  return true
+}
+
+function changeImageSource(editor: Editor, src?: string): boolean {
+  const selection = editor.state.selection
+  const selectedImage = getSelectedImage(editor)
+  if (!selectedImage || !src) {
+    return false
+  }
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
+    ...selectedImage.attrs,
+    src,
+  }))
   return true
 }
 

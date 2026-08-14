@@ -104,6 +104,12 @@ internal sealed partial class MainForm
             && command != AppCommand.InsertImage
             && command != AppCommand.InsertImageFromUrl
             && command != AppCommand.EditMath
+            && command != AppCommand.ChangeImage
+            && command != AppCommand.SaveImageAs
+            && command is not AppCommand.ResizeImage100
+                and not AppCommand.ResizeImage50
+                and not AppCommand.ResizeImage75
+                and not AppCommand.ResizeImage90
             && command is not AppCommand.Cut
                 and not AppCommand.Copy
                 and not AppCommand.CopyMarkdown
@@ -244,6 +250,24 @@ internal sealed partial class MainForm
             case AppCommand.InsertImageFromUrl:
                 _ = InsertImageFromUrlAsync();
                 break;
+            case AppCommand.ChangeImage:
+                _ = ChangeImageAsync();
+                break;
+            case AppCommand.SaveImageAs:
+                _ = SaveImageAsAsync();
+                break;
+            case AppCommand.ResizeImage100:
+                _editorHost?.ExecuteCommand("resizeImage", "100");
+                break;
+            case AppCommand.ResizeImage50:
+                _editorHost?.ExecuteCommand("resizeImage", "50");
+                break;
+            case AppCommand.ResizeImage75:
+                _editorHost?.ExecuteCommand("resizeImage", "75");
+                break;
+            case AppCommand.ResizeImage90:
+                _editorHost?.ExecuteCommand("resizeImage", "90");
+                break;
             case AppCommand.OpenThemeFolder:
                 OpenThemeFolder();
                 break;
@@ -282,7 +306,7 @@ internal sealed partial class MainForm
                 {
                     _editorHost.ExecuteCommand(
                         editorCommand,
-                        applyToCurrentTextBlockWhenEmpty: _editorContextMenuActive && IsInlineFormatCommand(command));
+                        applyToCurrentTextBlockWhenEmpty: IsInlineFormatCommand(command));
                     SetStatus(CommandStatusFormatter.FormatExecuted(command));
                     break;
                 }
@@ -342,6 +366,7 @@ internal sealed partial class MainForm
             AppCommand.ExitCode => "exitCode",
             AppCommand.ConvertMath => "convertMath",
             AppCommand.DeleteMath => "deleteMath",
+            AppCommand.ClearFormat => "clearFormat",
             _ => string.Empty,
         };
         return editorCommand.Length > 0;
@@ -357,11 +382,16 @@ internal sealed partial class MainForm
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock
             || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
                 or AppCommand.DeleteMath or AppCommand.EditMath
+            || command is AppCommand.ChangeImage or AppCommand.SaveImageAs
+                or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
+                or AppCommand.ResizeImage75 or AppCommand.ResizeImage90
+            || command is AppCommand.ClearFormat
             || command == AppCommand.ToggleSourceMode;
     }
 
     private static bool IsInlineFormatCommand(AppCommand command) =>
-        command is AppCommand.ToggleBold or AppCommand.ToggleItalic;
+        command is AppCommand.ToggleBold or AppCommand.ToggleItalic
+            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike;
 
     private void OnEditorCommandStateChanged(object? sender, EditorCommandStatus status)
     {
@@ -392,12 +422,12 @@ internal sealed partial class MainForm
         var screenPoint = _editorHost.EditorPointToScreen(request);
         try
         {
-            _editorContextMenuActive = true;
             _menuService.ShowEditorContextMenu(Handle, screenPoint, _editorCommandStatus);
         }
         finally
         {
-            _editorContextMenuActive = false;
+            // 原生菜单关闭时，同步隐藏前端格式菜单，保证两者同现同隐。
+            _editorHost.ExecuteCommand("hideFormatMenu");
         }
     }
 
@@ -417,6 +447,17 @@ internal sealed partial class MainForm
         var screenPoint = _editorHost.EditorPointToScreen(request);
         _menuService.ShowBlockHandleMenu(Handle, screenPoint);
         _editorHost.ClearBlockHighlight();
+    }
+
+    private void OnMathEditRequested(object? sender, EventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnMathEditRequested(sender, e));
+            return;
+        }
+
+        EditMath();
     }
 
     private void OnOpenLinkRequested(object? sender, string url)

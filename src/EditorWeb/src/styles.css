@@ -227,3 +227,97 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- 前端格式菜单（右键混合菜单：粗体/斜体/下划线）---- */
+.format-menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  background: #F9F9F9;
+  border: 1.5px solid #E5E5E5;
+  border-radius: 5px;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity 60ms ease;
+}
+
+.format-menu[hidden] {
+  display: none;
+}
+
+.format-menu.format-menu-visible {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.format-menu.format-menu-dark {
+  background: #2b2b2b;
+  border-color: #3E3E3E;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.25);
+}
+
+.format-menu-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #24292f;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  cursor: default;
+}
+
+.format-menu-dark .format-menu-button {
+  color: #FFFFFF;
+}
+
+.format-menu-button:hover,
+.format-menu-button:focus-visible {
+  background: #95CDFB;
+}
+
+.format-menu-dark .format-menu-button:hover,
+.format-menu-dark .format-menu-button:focus-visible {
+  background: #1165AA;
+}
+
+.format-menu-button.format-menu-button-active {
+  background: #95CDFB;
+}
+
+.format-menu-dark .format-menu-button.format-menu-button-active {
+  background: #1165AA;
+}
+
+/* 分隔线与标题按钮的 hidden 需要显式覆盖，否则会被 .format-menu-button 的 display 覆盖 */
+.format-menu [hidden] {
+  display: none;
+}
+
+.format-menu-separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 3px;
+  background: #E5E5E5;
+}
+
+.format-menu-dark .format-menu-separator {
+  background: #3E3E3E;
+}
+
+.format-menu-heading-button {
+  width: auto;
+  min-width: 28px;
+  padding: 0 7px;
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: regular;
+}

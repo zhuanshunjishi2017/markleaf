@@ -15,7 +15,7 @@ internal sealed class MathInputDialog : Form
         PlaceholderText = "x^2 + y^2",
     };
 
-    public MathInputDialog(bool isBlock)
+    public MathInputDialog(bool isBlock, string initialLatex = "")
     {
         Text = isBlock ? Loc.Get("dialog.mathBlockTitle") : Loc.Get("dialog.mathInlineTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -49,6 +49,7 @@ internal sealed class MathInputDialog : Form
             DialogResult = DialogResult.Cancel,
         };
         _latex.TextChanged += (_, _) => okButton.Enabled = !string.IsNullOrWhiteSpace(_latex.Text);
+        _latex.Text = initialLatex;
 
         var buttons = new FlowLayoutPanel
         {

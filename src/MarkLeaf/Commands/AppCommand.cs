@@ -93,6 +93,13 @@ public enum AppCommand
     EditMath = 0x130B,
     ConvertMath = 0x130C,
     DeleteMath = 0x130D,
+    ChangeImage = 0x130E,
+    ResizeImage100 = 0x130F,
+    ResizeImage50 = 0x1310,
+    ResizeImage75 = 0x1311,
+    ResizeImage90 = 0x1312,
+    SaveImageAs = 0x1313,
+    ClearFormat = 0x1314,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,

@@ -83,6 +83,10 @@ function applyFindBarLocalization(loc: Record<string, string>): void {
   findClose.textContent = loc.close ?? 'Close'
   findClose.ariaLabel = loc.closeLabel ?? 'Close find bar'
   findResult.textContent = loc.noResults ?? '0/0'
+  promoteHeadingButton.textContent = loc.formatPromoteHeading ?? '标+'
+  promoteHeadingButton.ariaLabel = loc.formatPromoteHeading ?? 'Promote heading'
+  demoteHeadingButton.textContent = loc.formatDemoteHeading ?? '标-'
+  demoteHeadingButton.ariaLabel = loc.formatDemoteHeading ?? 'Demote heading'
 }
 
 function send(type: Parameters<typeof postToHost>[0]['type'], payload?: unknown, requestId?: string): void {
@@ -398,6 +402,155 @@ function findMathNodeAt(pos: number): number | null {
   return null
 }
 
+const formatMenu = document.createElement('div')
+formatMenu.id = 'format-menu'
+formatMenu.className = 'format-menu'
+formatMenu.hidden = true
+const formatButtons: Array<{ command: string; glyph: string; label: string }> = [
+  { command: 'toggleBold', glyph: '', label: 'Bold' },
+  { command: 'toggleItalic', glyph: '', label: 'Italic' },
+  { command: 'toggleUnderline', glyph: '', label: 'Underline' },
+]
+const formatButtonElements: HTMLButtonElement[] = []
+
+// 原生菜单弹出期间是模态的并捕获鼠标，按下按钮时该 mousedown 会先关闭原生菜单、
+// 再透传给 WebView2。这里用 mousedown 而非 click，确保在菜单关闭、宿主发送
+// hideFormatMenu 之前就触发命令，避免按钮在 click 的 down/up 之间被隐藏而失效。
+function attachFormatCommand(button: HTMLButtonElement, command: string): void {
+  button.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    if (sourceMode) {
+      return
+    }
+    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline'
+    executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
+    hideFormatMenu()
+    sendEditorState()
+  })
+}
+
+for (const entry of formatButtons) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'format-menu-button'
+  button.dataset.command = entry.command
+  button.textContent = entry.glyph
+  button.setAttribute('aria-label', entry.label)
+  attachFormatCommand(button, entry.command)
+  formatButtonElements.push(button)
+  formatMenu.appendChild(button)
+}
+
+// 标题场景下的垂直分割线 + “标+ / 标-” 按钮
+const formatSeparator = document.createElement('div')
+formatSeparator.className = 'format-menu-separator'
+formatSeparator.hidden = true
+formatMenu.appendChild(formatSeparator)
+
+function createHeadingButton(command: string): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'format-menu-button format-menu-heading-button'
+  button.hidden = true
+  attachFormatCommand(button, command)
+  formatMenu.appendChild(button)
+  return button
+}
+
+const promoteHeadingButton = createHeadingButton('promoteHeading')
+const demoteHeadingButton = createHeadingButton('demoteHeading')
+const headingButtonElements = [promoteHeadingButton, demoteHeadingButton]
+
+document.body.appendChild(formatMenu)
+
+function parseCssColor(value: string): [number, number, number] | null {
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  if (hex) {
+    const raw = hex[1]!
+    const expanded = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw
+    return [
+      parseInt(expanded.slice(0, 2), 16),
+      parseInt(expanded.slice(2, 4), 16),
+      parseInt(expanded.slice(4, 6), 16),
+    ]
+  }
+  const rgb = value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i)
+  if (rgb) {
+    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])]
+  }
+  return null
+}
+
+function isDarkTheme(): boolean {
+  const value = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim()
+  const rgb = parseCssColor(value)
+  if (!rgb) {
+    return false
+  }
+  const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255
+  return luminance < 0.5
+}
+
+let formatMenuHideTimer = 0
+
+function showFormatMenu(
+  clientX: number,
+  clientY: number,
+  state: ReturnType<typeof getEditorCommandState>,
+): void {
+  window.clearTimeout(formatMenuHideTimer)
+  formatMenu.classList.toggle('format-menu-dark', isDarkTheme())
+  formatMenu.style.left = `${clientX}px`
+  formatMenu.style.top = `${clientY}px`
+  formatMenu.hidden = false
+  void formatMenu.offsetWidth
+  formatMenu.classList.add('format-menu-visible')
+
+  const activeByCommand: Record<string, boolean> = {
+    toggleBold: state.bold,
+    toggleItalic: state.italic,
+    toggleUnderline: state.underline,
+  }
+  for (const button of formatButtonElements) {
+    button.classList.toggle(
+      'format-menu-button-active',
+      activeByCommand[button.dataset.command ?? ''] === true,
+    )
+  }
+
+  const isHeading = state.headingLevel !== null
+  formatSeparator.hidden = !isHeading
+  for (const button of headingButtonElements) {
+    button.hidden = !isHeading
+  }
+}
+
+function hideFormatMenu(): void {
+  if (formatMenu.hidden) {
+    return
+  }
+  formatMenu.classList.remove('format-menu-visible')
+  window.clearTimeout(formatMenuHideTimer)
+  formatMenuHideTimer = window.setTimeout(() => {
+    formatMenu.hidden = true
+  }, 60)
+}
+
+function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): boolean {
+  if (sourceMode) {
+    return false
+  }
+  if (state.imageSelected || state.mathInline || state.mathBlock) {
+    return false
+  }
+  const inFormattableBlock = state.headingLevel !== null || state.paragraph
+    || state.bulletList || state.orderedList || state.taskList || state.blockquote || state.inTable
+  return state.hasSelection || inFormattableBlock
+}
+
 editorMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
@@ -414,7 +567,37 @@ editorMount.addEventListener('contextmenu', (event) => {
   }
   editor.commands.focus()
   sendEditorState()
-  send('contextMenuRequested', { clientX: event.clientX, clientY: event.clientY })
+
+  const state = getEditorCommandState(editor)
+  const showFormat = shouldShowFormatMenu(state)
+  if (showFormat) {
+    showFormatMenu(event.clientX, event.clientY, state)
+  } else {
+    hideFormatMenu()
+  }
+  send('contextMenuRequested', {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    menuHeight: showFormat ? formatMenu.offsetHeight : 0,
+  })
+})
+
+editorMount.addEventListener('dblclick', (event) => {
+  if (sourceMode) {
+    return
+  }
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (!resolved) {
+    return
+  }
+  const mathPos = findMathNodeAt(resolved.pos)
+  if (mathPos === null) {
+    return
+  }
+  event.preventDefault()
+  editor.commands.setNodeSelection(mathPos)
+  sendEditorState()
+  send('mathEditRequested', {})
 })
 
 sourceMount.addEventListener('contextmenu', (event) => {
@@ -557,6 +740,11 @@ function handleMessage(value: unknown): void {
         }
         if (payload.command === 'toggleSourceMode') {
           setSourceMode(!sourceMode)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'hideFormatMenu') {
+          hideFormatMenu()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }

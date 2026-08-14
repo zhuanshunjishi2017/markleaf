@@ -69,6 +69,7 @@ internal sealed partial class MainForm
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.BlockMenuRequested += OnEditorBlockMenuRequested;
+        _editorHost.MathEditRequested += OnMathEditRequested;
         _editorHost.OutlineChanged += OnEditorOutlineChanged;
         _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;
         _editorHost.OpenLinkRequested += OnOpenLinkRequested;

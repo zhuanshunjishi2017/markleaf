@@ -115,6 +115,7 @@ internal sealed class SidebarTabBar : Control
     public void ReloadTexts()
     {
         _tabs = [Loc.Get("sidebar.workspace"), Loc.Get("sidebar.outline")];
+        UpdateSearchPlaceholder();
         Invalidate();
     }
 

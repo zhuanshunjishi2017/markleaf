@@ -24,11 +24,12 @@ internal sealed record EditorCommandStatus(
     bool ImageSelected,
     bool MathInline,
     bool MathBlock,
-    bool SourceMode)
+    bool SourceMode,
+    string? MathLatex)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false, false, false);
+        false, false, null, false, false, false, false, null);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -58,6 +59,9 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("imageSelected").GetBoolean(),
             payload.GetProperty("mathInline").GetBoolean(),
             payload.GetProperty("mathBlock").GetBoolean(),
-            payload.GetProperty("sourceMode").GetBoolean());
+            payload.GetProperty("sourceMode").GetBoolean(),
+            payload.GetProperty("mathLatex").ValueKind == JsonValueKind.Null
+                ? null
+                : payload.GetProperty("mathLatex").GetString());
     }
 }

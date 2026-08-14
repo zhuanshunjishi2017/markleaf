@@ -17,7 +17,7 @@
 .markleaf-style-latex .markleaf-document h4,
 .markleaf-style-latex .markleaf-document h5,
 .markleaf-style-latex .markleaf-document h6 {
-  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "汉仪中黑简", "黑体", sans-serif;
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
   font-weight: bold;
   font-synthesis: none;
 }

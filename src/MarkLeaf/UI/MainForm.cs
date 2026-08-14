@@ -82,7 +82,6 @@ internal sealed partial class MainForm : Form
     private bool _documentSmokeStarted;
     private EditorCommandStatus _editorCommandStatus = EditorCommandStatus.Empty;
     private EditorStatus _editorStatus = EditorStatus.Empty;
-    private bool _editorContextMenuActive;
     private bool _workspaceListViewActive;
     private bool _sidebarActiveOutline;
     private bool _initialDocumentOpened;

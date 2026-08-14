@@ -289,7 +289,7 @@ internal sealed partial class MainForm
         }
 
         var isBlock = _editorCommandStatus.MathBlock;
-        using var dialog = new MathInputDialog(isBlock);
+        using var dialog = new MathInputDialog(isBlock, _editorCommandStatus.MathLatex ?? "");
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;

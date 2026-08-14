@@ -52,6 +52,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
 
+    public event EventHandler? MathEditRequested;
+
     public event EventHandler<EditorOutline>? OutlineChanged;
 
     public event EventHandler<int?>? OutlineSelectionChanged;
@@ -92,7 +94,9 @@ internal sealed class EditorHostController : IDisposable
 
     public Point EditorPointToScreen(EditorContextMenuRequest request)
     {
-        return EditorPointToScreen(request.ClientX, request.ClientY);
+        // 前端格式菜单占据右键位置上方一段高度，原生菜单需在其下方偏移 menuHeight + 10px 间距。
+        const double contextMenuGap = 10;
+        return EditorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap);
     }
 
     public Point EditorPointToScreen(EditorBlockMenuRequest request)
@@ -343,6 +347,8 @@ internal sealed class EditorHostController : IDisposable
             blockBlockquote = Loc.Get("blockHandle.blockquote"),
             blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
             blockTable = Loc.Get("blockHandle.table"),
+            formatPromoteHeading = Loc.Get("formatMenu.promoteHeading"),
+            formatDemoteHeading = Loc.Get("formatMenu.demoteHeading"),
         };
         EnqueueOrRun(() => Post("localizeFindBar", payload));
     }
@@ -820,7 +826,11 @@ internal sealed class EditorHostController : IDisposable
                     this,
                     new EditorContextMenuRequest(
                         message.Payload.GetProperty("clientX").GetDouble(),
-                        message.Payload.GetProperty("clientY").GetDouble()));
+                        message.Payload.GetProperty("clientY").GetDouble(),
+                        message.Payload.TryGetProperty("menuHeight", out var menuHeight)
+                            && menuHeight.ValueKind == System.Text.Json.JsonValueKind.Number
+                            ? menuHeight.GetDouble()
+                            : 0));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(
@@ -829,6 +839,9 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble(),
                         message.Payload.GetProperty("position").GetInt32()));
+                break;
+            case "mathEditRequested":
+                MathEditRequested?.Invoke(this, EventArgs.Empty);
                 break;
             case "outlineChanged":
                 OutlineChanged?.Invoke(this, EditorOutline.FromPayload(message.Payload));

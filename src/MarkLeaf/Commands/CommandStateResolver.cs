@@ -48,12 +48,17 @@ public static class CommandStateResolver
             AppCommand.InsertImage => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.InsertImageFromUrl => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.RotateImageClockwise => new(context.EditorReady && context.ImageSelected),
+            AppCommand.ChangeImage or AppCommand.SaveImageAs
+                or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
+                or AppCommand.ResizeImage75 or AppCommand.ResizeImage90
+                => new(context.EditorReady && context.ImageSelected),
             AppCommand.ToggleQuote => new(context.EditorReady, context.QuoteActive),
             AppCommand.ToggleCodeBlock => new(context.EditorReady, context.CodeBlockActive),
             AppCommand.ToggleBulletList => new(context.EditorReady, context.BulletListActive),
             AppCommand.ToggleOrderedList => new(context.EditorReady, context.OrderedListActive),
             AppCommand.ToggleTaskList => new(context.EditorReady, context.TaskListActive),
             AppCommand.InsertTable => new(context.EditorReady),
+            AppCommand.ClearFormat => new(context.EditorReady),
             AppCommand.AddTableRowBefore or AppCommand.AddTableRowAfter or AppCommand.DeleteTableRow
                 or AppCommand.AddTableColumnBefore or AppCommand.AddTableColumnAfter or AppCommand.DeleteTableColumn
                 or AppCommand.DeleteTable => new(context.EditorReady && context.InTable),
