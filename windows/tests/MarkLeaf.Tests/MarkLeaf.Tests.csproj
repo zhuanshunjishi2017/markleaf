@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\windows\MarkLeaf\MarkLeaf.csproj" />
+    <ProjectReference Include="..\..\MarkLeaf\MarkLeaf.csproj" />
   </ItemGroup>
 
   <ItemGroup>
