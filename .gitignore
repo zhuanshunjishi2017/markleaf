@@ -61,10 +61,10 @@ AGENTS.md
 .github/.copilot*
 
 # App resources (generated)
-src/MarkLeaf/Resources/App/*
-!src/MarkLeaf/Resources/App/App.ico
-!src/MarkLeaf/Resources/App/App.png
-!src/MarkLeaf/Resources/App/fileicon.ico
+windows/MarkLeaf/Resources/App/*
+!windows/MarkLeaf/Resources/App/App.ico
+!windows/MarkLeaf/Resources/App/App.png
+!windows/MarkLeaf/Resources/App/fileicon.ico
 
 # Root icon files (keep only appicon.png)
 /App.png

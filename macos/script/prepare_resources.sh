@@ -8,7 +8,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$ROOT_DIR/.."
-EDITOR_WEB_DIR="$REPO_DIR/src/EditorWeb"
+EDITOR_WEB_DIR="$REPO_DIR/windows/EditorWeb"
 RESOURCES_DIR="$ROOT_DIR/Resources"
 
 mkdir -p "$RESOURCES_DIR"
@@ -124,10 +124,9 @@ fi
 STYLES_DIR="$RESOURCES_DIR/Styles"
 rm -rf "$STYLES_DIR"
 mkdir -p "$STYLES_DIR"
-cp -R "$REPO_DIR/src/MarkLeaf/Resources/Styles/." "$STYLES_DIR/"
+cp -R "$REPO_DIR/windows/MarkLeaf/Resources/Styles/." "$STYLES_DIR/"
 
 # ---- 4. 应用图标 / 文件图标 ----
-# 优先使用 macOS 本地图标（macos/App.png），缺失时回退共享 App.png
 build_icns() {
   local src="$1" out="$2"
   local icon_dir="$ROOT_DIR/.icon-build"
@@ -166,15 +165,17 @@ ICNS_EOF
   rm -rf "$icon_dir"
 }
 
-if [ -f "$ROOT_DIR/App.png" ]; then
-  build_icns "$ROOT_DIR/App.png" "$RESOURCES_DIR/AppIcon.icns"
-elif [ -f "$REPO_DIR/App.png" ]; then
-  build_icns "$REPO_DIR/App.png" "$RESOURCES_DIR/AppIcon.icns"
+if [ -f "$ROOT_DIR/appicon.png" ]; then
+  build_icns "$ROOT_DIR/appicon.png" "$RESOURCES_DIR/AppIcon.icns"
+elif [ -f "$REPO_DIR/appicon.png" ]; then
+  build_icns "$REPO_DIR/appicon.png" "$RESOURCES_DIR/AppIcon.icns"
 fi
 
 # 文档类型图标（Finder 中 .md/.txt 的图标）
-if [ -f "$ROOT_DIR/FileIcon.png" ]; then
-  build_icns "$ROOT_DIR/FileIcon.png" "$RESOURCES_DIR/FileIcon.icns"
+if [ -f "$ROOT_DIR/fileicon.png" ]; then
+  build_icns "$ROOT_DIR/fileicon.png" "$RESOURCES_DIR/FileIcon.icns"
+elif [ -f "$REPO_DIR/fileicon.png" ]; then
+  build_icns "$REPO_DIR/fileicon.png" "$RESOURCES_DIR/FileIcon.icns"
 fi
 
 echo "[prepare] 资源准备完成"

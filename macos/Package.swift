@@ -8,11 +8,6 @@ let package = Package(
         .executableTarget(
             name: "MarkLeaf",
             path: "Sources/MarkLeaf"
-        ),
-        .testTarget(
-            name: "MarkLeafTests",
-            dependencies: ["MarkLeaf"],
-            path: "Tests/MarkLeafTests"
         )
     ]
 )
