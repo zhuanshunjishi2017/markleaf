@@ -3,9 +3,6 @@
 MarkLeaf 是一款**跨平台**的轻量化 Markdown 可视化编辑器，支持 **Windows 与 macOS**，
 提供接近所见即所得的编辑体验。界面风格简约低干扰，同时保留各平台桌面应用的原生系统行为。
 
-仓库采用 **Monorepo** 管理：原生应用按平台拆分到 `apps/`，跨平台共享代码沉淀到 `packages/`，
-做到高内聚、低耦合——共享部分改动一次，两个平台同时受益。
-
 ## 仓库结构
 
 ```text
@@ -37,8 +34,7 @@ markleaf/
 | macOS | Swift + AppKit + WKWebView | `apps/macos` |
 
 两个平台共享同一套编辑器前端（`packages/editor-web`）与打印样式（`packages/styles`），
-功能与行为保持一致；应用外壳则各用平台原生实现（原生窗口、菜单、对话框、文件系统集成），
-并各自提供独立的发布产物（Windows 安装包 / macOS DMG）。
+功能与行为保持一致；应用外壳则各用平台原生实现（原生窗口、菜单、对话框、文件系统集成）。
 
 ## 核心亮点
 
@@ -122,18 +118,3 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 # 发布打包（.app / ZIP / 品牌 DMG / 校验和）
 ./apps/macos/script/release/package.sh
 ```
-
-## 平台模块对应
-
-Windows 与 macOS 两套原生外壳按职责一一对应：
-
-| 职责 | Windows | macOS |
-|---|---|---|
-| 主窗口 / 外壳 | `apps/windows/MarkLeaf/UI/` | `apps/macos/Sources/MarkLeaf/Views/` |
-| 原生菜单 | `UI/NativeMenuService.cs` | `Support/NativeMenuBuilder.swift` |
-| 编辑器宿主 / 协议桥 | `Editor/EditorHostController.cs` | `Services/EditorSession.swift` |
-| 设置 / 偏好 | `Services/` | `Services/AppSettings.swift` |
-| 工作区 / 大纲 | `Workspace/` | `Services/Workspace*` + `Views/SidebarView.swift` |
-| 命令路由 / 状态 | `Commands/` | `Services/EditorSession+*` |
-| 共享前端 | `packages/editor-web/` | `packages/editor-web/` |
-| 共享样式 | `packages/styles/` | `packages/styles/` |
