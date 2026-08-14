@@ -58,6 +58,8 @@ let sourceEditor: SourceEditor | null = null
 let sourceMode = false
 let sourceIndentWidth = 2
 let replaceMode = false
+// 混合前端右键菜单（粗体/斜体/下划线工具栏）是否启用：由宿主下发，仅 Windows 端为 true。
+let frontendFormatMenuEnabled = false
 
 let editor = createEditor(editorMount)
 
@@ -540,6 +542,9 @@ function hideFormatMenu(): void {
 }
 
 function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): boolean {
+  if (!frontendFormatMenuEnabled) {
+    return false
+  }
   if (sourceMode) {
     return false
   }
@@ -676,6 +681,10 @@ function handleMessage(value: unknown): void {
         colorThemeCss?: unknown
         styles?: unknown
         activeStyle?: unknown
+        frontendFormatMenu?: unknown
+      }
+      if (typeof payload?.frontendFormatMenu === 'boolean') {
+        frontendFormatMenuEnabled = payload.frontendFormatMenu
       }
       if (typeof payload?.baseCss === 'string') baseCss = payload.baseCss
       if (Array.isArray(payload?.styles)) {

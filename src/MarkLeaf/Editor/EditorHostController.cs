@@ -312,6 +312,8 @@ internal sealed class EditorHostController : IDisposable
                 style.DependsOn,
             }),
             activeStyle,
+            // 混合前端右键菜单仅 Windows 端启用。
+            frontendFormatMenu = true,
         };
         EnqueueOrRun(() => Post("applyStyles", payload));
     }
