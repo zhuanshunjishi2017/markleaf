@@ -233,6 +233,9 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
         let columnsField = NSTextField(string: "\(selectedSize.columns > 0 ? selectedSize.columns : TableSizePickerModel.defaultSize.columns)")
         let rowsLabel = NSTextField(labelWithString: L10n.t("行数"))
         let columnsLabel = NSTextField(labelWithString: L10n.t("列数"))
+        // 只允许输入 1...maxCustomSize 的正整数；允许清空，非法输入直接拒绝。
+        rowsField.formatter = BoundedIntegerFormatter(min: 1, max: TableSizePickerModel.maxCustomSize)
+        columnsField.formatter = BoundedIntegerFormatter(min: 1, max: TableSizePickerModel.maxCustomSize)
 
         // NSAlert 的 accessoryView 保留显式尺寸；内部用文字基线约束，避免标签与输入内容视觉错位。
         rowsLabel.alignment = .right
@@ -267,7 +270,24 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
         alert.window.initialFirstResponder = rowsField
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
+        let okButton = alert.buttons.first
+        func refreshOKButton() {
+            okButton?.isEnabled = TableSizePickerModel.parse("\(rowsField.stringValue),\(columnsField.stringValue)") != nil
+        }
+        refreshOKButton()
+        let rowsToken = NotificationCenter.default.addObserver(
+            forName: NSControl.textDidChangeNotification,
+            object: rowsField,
+            queue: .main
+        ) { _ in refreshOKButton() }
+        let columnsToken = NotificationCenter.default.addObserver(
+            forName: NSControl.textDidChangeNotification,
+            object: columnsField,
+            queue: .main
+        ) { _ in refreshOKButton() }
         let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            NotificationCenter.default.removeObserver(rowsToken)
+            NotificationCenter.default.removeObserver(columnsToken)
             guard response == .alertFirstButtonReturn, let self else { return }
             guard let size = TableSizePickerModel.parse("\(rowsField.stringValue),\(columnsField.stringValue)") else {
                 NSSound.beep()

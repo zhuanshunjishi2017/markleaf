@@ -1288,7 +1288,17 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
         field.placeholderString = "x^2 + y^2"
         alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        var validationToken: NSObjectProtocol?
+        validationToken = bindAlertInputValidation(field: field, button: okButton) {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         alert.beginSheetModal(for: window) { response in
+            if let token = validationToken {
+                NotificationCenter.default.removeObserver(token)
+            }
             guard response == .alertFirstButtonReturn else {
                 completion(nil)
                 return
@@ -1311,10 +1321,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         field.placeholderString = "https://example.com"
         alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        var validationToken: NSObjectProtocol?
+        validationToken = bindAlertInputValidation(field: field, button: okButton) { text in
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = URL(string: trimmed) else { return false }
+            return url.scheme == "http" || url.scheme == "https" || url.scheme == "mailto"
+        }
         alert.beginSheetModal(for: window) { [weak self] response in
+            if let token = validationToken {
+                NotificationCenter.default.removeObserver(token)
+            }
             guard response == .alertFirstButtonReturn else { return }
             let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return }
             self?.execute("setLink", text: text)
         }
     }
@@ -1355,15 +1376,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.window.initialFirstResponder = urlField
 
         let insertButton = alert.buttons.first
-        insertButton?.isEnabled = false
-        insertUrlObserver = NotificationCenter.default.addObserver(
-            forName: NSControl.textDidChangeNotification,
-            object: urlField,
-            queue: .main
-        ) { [weak insertButton] _ in
-            let text = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+        insertUrlObserver = bindAlertInputValidation(field: urlField, button: insertButton) { text in
+            let text = text.trimmingCharacters(in: .whitespaces)
             let valid = URL(string: text).map { $0.scheme == "http" || $0.scheme == "https" } ?? false
-            insertButton?.isEnabled = valid
+            return valid
         }
 
         alert.beginSheetModal(for: window) { [weak self] response in
@@ -1380,6 +1396,23 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             self?.execute("insertImage", text: url + "\n图片")
             self?.statusText = L10n.t("图片已插入文档")
         }
+    }
+
+    /// 让对话框的确认按钮随输入有效性启用/禁用（空值、非法值一律不可确认）。
+    private func bindAlertInputValidation(
+        field: NSTextField,
+        button: NSButton?,
+        validate: @escaping (String) -> Bool
+    ) -> NSObjectProtocol {
+        let token = NotificationCenter.default.addObserver(
+            forName: NSControl.textDidChangeNotification,
+            object: field,
+            queue: .main
+        ) { [weak button] _ in
+            button?.isEnabled = validate(field.stringValue)
+        }
+        button?.isEnabled = validate(field.stringValue)
+        return token
     }
 
     func openRecentFile(_ path: String) {

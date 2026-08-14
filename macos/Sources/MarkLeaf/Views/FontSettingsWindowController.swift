@@ -24,6 +24,10 @@ final class FontSettingsWindowController: NSWindowController {
         cjkField = FontField(fontName: cjkFontFamily) { [weak self] in self?.cjkFontFamily = $0 }
         westernField = FontField(fontName: westernFontFamily) { [weak self] in self?.westernFontFamily = $0 }
         sizeField.stringValue = "\(fontSize)"
+        sizeField.formatter = BoundedIntegerFormatter(
+            min: AppSettings.sourceFontSizeRange.lowerBound,
+            max: AppSettings.sourceFontSizeRange.upperBound
+        )
         sizeField.alignment = .center
         sizeField.widthAnchor.constraint(equalToConstant: 80).isActive = true
 
