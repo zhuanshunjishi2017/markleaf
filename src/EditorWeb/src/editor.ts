@@ -80,6 +80,7 @@ const ThemedSelection = Extension.create({
 
 const blockHandleKey = new PluginKey('markleaf-block-handle')
 type BlockHandleState = { activeBlock: number | null }
+let blockHandleVisible = true
 
 let blockTypeLabels: Record<string, string> = {}
 
@@ -114,6 +115,7 @@ const BlockHandle = Extension.create({
       },
       props: {
         decorations(state) {
+          if (!blockHandleVisible) return DecorationSet.empty
           const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
           const decorations: Decoration[] = []
           const { from, empty } = state.selection
@@ -179,6 +181,12 @@ function createBlockHandle(nodePos: number, label: string, active: boolean): HTM
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position }))
+}
+
+export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
+  blockHandleVisible = visible
+  const state = blockHandleKey.getState(editor.state) ?? { activeBlock: null }
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, state))
 }
 
 function parseImageMetadata(title: unknown): ImageMetadata {

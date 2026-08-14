@@ -14,6 +14,7 @@ import {
   replaceEditorDocument,
   resetEditorViewport,
   setBlockHighlight,
+  setBlockHandleVisible,
   setBlockTypeLabels,
 } from './editor'
 import { SourceEditor } from './source-editor'
@@ -617,6 +618,11 @@ function handleMessage(value: unknown): void {
         }
         if (payload.command === 'setAutoHideScrollbar') {
           applyAutoHideScrollbar(payload.text === '1')
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'setBlockHandleVisible') {
+          setBlockHandleVisible(editor, payload.text === '1')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
