@@ -15,6 +15,7 @@ final class FindPanelController: NSWindowController {
     private let replaceButton = NSButton(title: "", target: nil, action: nil)
     private let replaceAllButton = NSButton(title: "", target: nil, action: nil)
     private let resultLabel = NSTextField(labelWithString: "0/0")
+    private var closeObserver: NSObjectProtocol?
 
     init(session: EditorSession?, replaceMode: Bool) {
         self.session = session
@@ -30,9 +31,24 @@ final class FindPanelController: NSWindowController {
         window.hidesOnDeactivate = false
         window.collectionBehavior = [.fullScreenAuxiliary]
         super.init(window: window)
+        // 标题栏关闭按钮与 ⌘W 走窗口自身的关闭路径，不会触发 closeClicked；
+        // 统一监听 willClose 通知前端清理查找高亮，避免关闭面板后蓝色高亮残留。
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.session?.execute("findClose")
+        }
         buildContent()
         applyLanguage()
         window.center()
+    }
+
+    deinit {
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+        }
     }
 
     required init?(coder: NSCoder) {
