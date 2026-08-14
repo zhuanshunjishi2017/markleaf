@@ -47,4 +47,22 @@ final class AppSettingsFollowSystemTests: XCTestCase {
         XCTAssertEqual(decoded.defaultDarkThemeID, "colors-forest")
         XCTAssertEqual(decoded.sidebarTab, "outline")
     }
+
+    func testParagraphBlockHandleDefaultsToEnabledWhenFieldMissing() throws {
+        let data = Data("{\"schemaVersion\":3}".utf8)
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(settings.showParagraphBlockHandle)
+    }
+
+    func testParagraphBlockHandleRoundTripsDisabled() throws {
+        var settings = AppSettings()
+        settings.showParagraphBlockHandle = false
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertFalse(decoded.showParagraphBlockHandle)
+    }
 }

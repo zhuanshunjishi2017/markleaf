@@ -62,6 +62,7 @@ struct AppSettings: Codable {
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
+        showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
         startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? true
         associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? true
@@ -130,6 +131,7 @@ struct AppSettings: Codable {
     var sourceCjkFontFamily = AppSettings.defaultSourceCjkFontFamily
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var sourceIndentWidth = 2
+    var showParagraphBlockHandle = true
 
     static let defaultSourceFontFamily = "Menlo"
     static let defaultSourceCjkFontFamily = "PingFang SC"
