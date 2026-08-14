@@ -217,9 +217,9 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
         pendingCustomTableMenu = nil
         let parentWindow = pendingCustomTableParent
         pendingCustomTableParent = nil
-        // 菜单关闭动画完全结束前不要弹 sheet，否则 sheet 会与关闭中的菜单窗口
-        // 竞争焦点/层级，出现“闪一下就被关闭”的竞态。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        // 菜单已关闭，仅留一帧余量再弹 sheet，避免与关闭中的菜单窗口
+        // 竞争焦点/层级，同时保持点击到弹窗的响应速度。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self else { return }
             if !NSApp.isActive {
                 NSApp.activate(ignoringOtherApps: true)
