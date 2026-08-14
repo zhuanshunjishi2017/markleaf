@@ -1,6 +1,6 @@
 import AppKit
 
-/// 原生菜单栏：按 Windows 版（NativeMenuService）菜单结构移植。
+/// 原生菜单栏：与 Windows 版（NativeMenuService）保持一致的菜单结构。
 /// 菜单 → AppMenu / 文件 / 编辑 / 段落 / 格式 / 视图 / 外观 / 帮助。
 /// macOS 惯例调整：关于/偏好设置/退出放在 App 菜单（Windows 在帮助/文件菜单）。
 final class NativeMenuBuilder {

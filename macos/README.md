@@ -1,7 +1,8 @@
-# MarkLeaf for macOS（移植中）
+# MarkLeaf for macOS
 
-将 Windows 原生 Markdown 编辑器 [MarkLeaf](https://github.com/zhuanshunjishi2017/markleaf)
-（.NET 10 WinForms + WebView2 + Tiptap/CodeMirror）移植到 macOS 的工程。
+[MarkLeaf](https://github.com/zhuanshunjishi2017/markleaf) 的 macOS 实现：
+跨平台 Markdown 可视化编辑器，与 Windows 实现（.NET 10 WinForms + WebView2）共享同一套
+TypeScript 编辑器前端（Tiptap/ProseMirror + CodeMirror），功能与行为保持一致。
 
 ## 架构
 
@@ -25,6 +26,10 @@
 通过注入的 `native-shim.js` 提供 WebView2 兼容的 `window.chrome.webview` API。
 
 ## 目录结构
+
+macOS 端与 Windows 端（`src/MarkLeaf/`）按职责平行对应：
+`Views/` ↔ `UI/`、`Support/` ↔ `Native/`、`Services/EditorSession` ↔ `Editor/EditorHostController`，
+共享前端见根 README 的「项目结构」。
 
 ```text
 markleaf-macos/
@@ -109,7 +114,7 @@ markleaf-macos/
 - 表单校验：公式/自定义表格等对话框对输入做严格校验（非空、正整数、最大值约束）
 - 发布：`package.sh` 生成品牌 DMG（Finder 图标布局 + 144 DPI @2x 背景 + 隐藏侧边栏）
 
-## 移植路线图（剩余）
+## 后续规划
 
 1. **阶段 7**：分发 —— App Sandbox + 签名 + 公证
 2. 更多：导出 PDF 走系统打印面板（完整纸张/边距控制）、拖放多文件导入、右键菜单
