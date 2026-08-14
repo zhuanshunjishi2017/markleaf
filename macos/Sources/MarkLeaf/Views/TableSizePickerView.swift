@@ -182,3 +182,18 @@ final class TableSizePickerView: NSView {
         commitSelection()
     }
 }
+
+func tableSizePickerMenuItem(onSelect: @escaping (TableSize) -> Void) -> NSMenuItem {
+    let menuItem = NSMenuItem()
+    let picker = TableSizePickerView()
+    picker.onSelect = { size in
+        onSelect(size)
+        menuItem.menu?.cancelTracking()
+    }
+    picker.onCancel = {
+        menuItem.menu?.cancelTracking()
+    }
+    menuItem.view = picker
+    menuItem.toolTip = L10n.t("选择表格大小")
+    return menuItem
+}

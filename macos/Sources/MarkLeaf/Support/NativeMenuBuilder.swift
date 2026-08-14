@@ -127,7 +127,9 @@ final class NativeMenuBuilder {
 
     private func tableMenu() -> NSMenu {
         let menu = NSMenu(title: L10n.t("表格"))
-        menu.addItem(commandItem(L10n.t("插入表格"), "insertTable"))
+        menu.addItem(tableSizePickerMenuItem { size in
+            AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
+        })
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在上方添加行"), "addRowBefore"))
         menu.addItem(commandItem(L10n.t("在下方添加行"), "addRowAfter"))

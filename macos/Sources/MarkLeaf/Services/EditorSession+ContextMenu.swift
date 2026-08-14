@@ -36,7 +36,9 @@ extension EditorSession {
         listItem.submenu = lists
         menu.addItem(listItem)
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-        addFormatCommand(menu, L10n.t("插入表格"), "insertTable")
+        menu.addItem(tableSizePickerMenuItem { [weak self] size in
+            self?.insertTable(rows: size.rows, columns: size.columns)
+        })
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
         addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
@@ -107,7 +109,9 @@ extension EditorSession {
         addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-        addFormatCommand(menu, L10n.t("插入表格"), "insertTable")
+        menu.addItem(tableSizePickerMenuItem { [weak self] size in
+            self?.insertTable(rows: size.rows, columns: size.columns)
+        })
         menu.addItem(.separator())
 
         let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")

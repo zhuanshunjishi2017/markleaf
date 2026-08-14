@@ -653,6 +653,17 @@ function countVisibleCharacters(text: string): number {
   return Array.from(text).filter(character => !/\s/u.test(character)).length
 }
 
+function parseTableSize(text?: string): { rows: number; cols: number } {
+  const parts = text?.split(',') ?? []
+  if (parts.length !== 2) return { rows: 3, cols: 3 }
+  const rows = Number(parts[0])
+  const cols = Number(parts[1])
+  if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1 || rows > 100 || cols > 100) {
+    return { rows: 3, cols: 3 }
+  }
+  return { rows, cols }
+}
+
 function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
   if (getSelectedImage(editor)) return 'image'
   if (editor.isActive('table')) return 'table'
@@ -743,7 +754,10 @@ export function executeEditorCommand(
     toggleBlockquote: () => chain.toggleBlockquote().run(),
     toggleCodeBlock: () => chain.toggleCodeBlock().run(),
     insertHorizontalRule: () => chain.setHorizontalRule().run(),
-    insertTable: () => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    insertTable: () => {
+      const size = parseTableSize(text)
+      return chain.insertTable({ rows: size.rows, cols: size.cols, withHeaderRow: true }).run()
+    },
     addRowBefore: () => chain.addRowBefore().run(),
     addRowAfter: () => chain.addRowAfter().run(),
     deleteRow: () => chain.deleteRow().run(),

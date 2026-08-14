@@ -631,6 +631,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 命令
 
+    static func tableCommandText(rows: Int, columns: Int) -> String {
+        guard rows > 0, columns > 0,
+              rows <= TableSizePickerModel.maxCustomSize,
+              columns <= TableSizePickerModel.maxCustomSize else {
+            let fallback = TableSizePickerModel.defaultSize
+            return "\(fallback.rows),\(fallback.columns)"
+        }
+        return "\(rows),\(columns)"
+    }
+
+    func insertTable(rows: Int, columns: Int) {
+        execute("insertTable", text: Self.tableCommandText(rows: rows, columns: columns))
+    }
+
     func execute(_ command: String, text: String? = nil) {
         var payload: [String: Any] = ["command": command]
         if let text {

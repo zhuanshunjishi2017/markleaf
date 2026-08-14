@@ -43,4 +43,10 @@ final class EditorContextMenuTests: XCTestCase {
         XCTAssertFalse(EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: true))
     }
 
+    func testTableSizePickerMenuItemUsesTheSharedPickerView() {
+        let item = tableSizePickerMenuItem { _ in }
+
+        XCTAssertTrue(item.view is TableSizePickerView)
+    }
+
 }
