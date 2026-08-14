@@ -37,6 +37,7 @@ tests/TestData/*.assets/
 artifacts/
 .artifacts/
 .pnpm-store/
+.build/
 
 # AI agent files
 .claude/

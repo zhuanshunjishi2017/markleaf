@@ -84,7 +84,9 @@ extension EditorSession {
                 paperSize: context.options.paperSize,
                 landscape: context.options.landscape,
                 margins: context.options.margins,
-                window: window
+                window: window,
+                showsPanel: headlessPrintURL == nil,
+                saveURL: headlessPrintURL
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {

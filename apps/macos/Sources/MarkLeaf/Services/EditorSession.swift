@@ -127,6 +127,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
     var pendingExportContext: ExportContext?
+    /// 无头打印（--print-pdf 自动化）：非 nil 时 PDF 直接保存到该路径，不弹系统打印面板。
+    var headlessPrintURL: URL?
     private var didLoadInitialDocument = false
     private var didRunInitialLoad = false
     private var pendingInitialOpenPath: String?

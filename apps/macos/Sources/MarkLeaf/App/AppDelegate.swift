@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let exportPath = EditorSession.argumentValue("--export-pdf") {
             scheduleExportPDF(path: exportPath)
         }
+        if let printPath = EditorSession.argumentValue("--print-pdf") {
+            schedulePrintPDF(path: printPath)
+        }
         if CommandLine.arguments.contains("--asset-test") {
             scheduleAssetTest()
         }
@@ -947,6 +950,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             options.format = "pdf"
             options.style = session.currentStyleId
             session.runExport(options: options, saveURL: URL(fileURLWithPath: path))
+        }
+    }
+
+    private func schedulePrintPDF(path: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) { [weak self] in
+            guard let session = self?.primarySession() else {
+                AppLog.error("--print-pdf: 无会话")
+                NSApp.terminate(nil)
+                return
+            }
+            // 无头验证：若同时传入 --open，显式打开该文档并等待其加载后再导出，
+            // 避免启动流程消耗掉 startup action 导致导出空文档。
+            if let openPath = EditorSession.argumentValue("--open") {
+                session.openDocument(at: URL(fileURLWithPath: openPath))
+            }
+            session.onExportComplete = { success in
+                AppLog.info("--print-pdf 完成: \(success ? "成功" : "失败")")
+                NSApp.terminate(nil)
+            }
+            session.headlessPrintURL = URL(fileURLWithPath: path)
+            var options = ExportOptions()
+            options.format = "pdf"
+            options.style = session.currentStyleId
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                session.runExport(options: options, saveURL: URL(fileURLWithPath: path))
+            }
         }
     }
 

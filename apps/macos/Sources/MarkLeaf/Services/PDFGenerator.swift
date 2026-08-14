@@ -36,6 +36,8 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var webView: WKWebView?
     private var printInfo: NSPrintInfo?
     private var targetWindow: NSWindow?
+    private var printWindow: NSWindow?
+    private var showsPrintPanel = true
     private var watchdog: DispatchWorkItem?
     // 自持有：直到生成完成才释放（调用方为临时对象，无强引用会提前释放导致 delegate 失效）
     private var strongSelf: PDFGenerator?
@@ -168,11 +170,14 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         landscape: Bool,
         margins: ExportMargins,
         window: NSWindow,
+        showsPanel: Bool = true,
+        saveURL: URL? = nil,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         self.printCompletion = completion
         self.strongSelf = self
         self.targetWindow = window
+        self.showsPrintPanel = showsPanel
         AppLog.info("PDFGenerator: 启动系统打印面板 (纸张 \(paperSize.rawValue), 横向=\(landscape))")
 
         let size = paperSize.sizeInches
@@ -190,6 +195,10 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
+        if !showsPanel, let saveURL {
+            info.jobDisposition = .save
+            info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = saveURL
+        }
         self.printInfo = info
 
         let configuration = WKWebViewConfiguration()
@@ -237,22 +246,33 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             finishPrint(.failure(PrintError.noWindow))
             return
         }
-        // WKWebView 需要挂在窗口并完成布局，printOperation(with:) 才能正确渲染整篇内容并跨页分页。
-        // 注意：不能把视图放到大幅离屏位置（如 x=-100000），WKWebView 会因此渲染空白；
-        // 放在 (0,0) 并置于编辑器内容之下即可被遮挡但仍可正常打印。
+        // WKWebView 需要挂在窗口中并完成布局，printOperation(with:) 才能渲染整篇内容并跨页分页。
+        // 不能放到大幅离屏位置（如 x=-100000），也不能被另一个 WKWebView 完全遮挡，否则输出空白；
+        // 因此为打印页单独建一个离屏窗口，打印面板仍挂在主窗口上。
         if webView.superview == nil {
-            webView.frame.origin = .zero
-            targetWindow.contentView?.addSubview(webView, positioned: .below, relativeTo: nil)
+            let printWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: webView.frame.width, height: webView.frame.height),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false)
+            printWindow.contentView?.addSubview(webView, positioned: .below, relativeTo: nil)
+            printWindow.setFrameOrigin(NSPoint(x: -4000, y: -4000))
+            printWindow.orderFrontRegardless()
+            self.printWindow = printWindow
         }
         webView.layoutSubtreeIfNeeded()
         webView.displayIfNeeded()
 
-        let operation = webView.printOperation(with: printInfo)
-        operation.showsPrintPanel = true
-        operation.showsProgressPanel = true
-        watchdog?.cancel()
-        AppLog.info("PDFGenerator: 弹出系统打印面板")
-        operation.runModal(for: targetWindow, delegate: self, didRun: #selector(self.printDidRun(_:success:contextInfo:)), contextInfo: nil)
+        // 离屏窗口中的 WKWebView 需要先完成一次合成渲染，立即打印会得到空白页。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self else { return }
+            let operation = webView.printOperation(with: printInfo)
+            operation.showsPrintPanel = self.showsPrintPanel
+            operation.showsProgressPanel = true
+            self.watchdog?.cancel()
+            AppLog.info("PDFGenerator: 弹出系统打印面板")
+            operation.runModal(for: targetWindow, delegate: self, didRun: #selector(self.printDidRun(_:success:contextInfo:)), contextInfo: nil)
+        }
     }
 
     @objc private func printDidRun(_ printOperation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
@@ -266,11 +286,17 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             guard let self else { return }
             self.printCompletion?(result)
             self.printCompletion = nil
-            self.webView?.removeFromSuperview()
-            self.webView = nil
-            self.printInfo = nil
-            self.targetWindow = nil
-            self.strongSelf = nil
+            // NSPrintOperation 仍在收尾（autorelease 排空）；延迟释放打印视图与窗口，
+            // 避免与操作内部的视图释放冲突导致 over-release 崩溃。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.printWindow?.close()
+                self?.printWindow = nil
+                self?.webView = nil
+                self?.printInfo = nil
+                self?.targetWindow = nil
+                self?.showsPrintPanel = true
+                self?.strongSelf = nil
+            }
         }
     }
 
