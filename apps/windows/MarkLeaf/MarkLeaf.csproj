@@ -34,7 +34,8 @@
     <Content Include="Resources\App\fileicon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\Styles\**\*">
+    <Content Include="..\..\..\packages\styles\**\*">
+      <Link>Resources\Styles\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\Locales\**\*">
@@ -46,7 +47,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\EditorWeb\dist\**\*">
+    <Content Include="..\..\..\packages\editor-web\dist\**\*">
       <Link>EditorWeb\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

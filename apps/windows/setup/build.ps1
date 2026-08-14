@@ -7,7 +7,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
 $setupProj = Join-Path $root "setup\MarkLeaf.Setup.wixproj"
 
-$csproj = Join-Path $root "windows\MarkLeaf\MarkLeaf.csproj"
+$csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
 $xml = [xml](Get-Content $csproj)
 $v = $xml.Project.PropertyGroup.Version
 if (-not $v) { Write-Error "Version not found"; exit 1 }

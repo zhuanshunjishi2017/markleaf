@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 // 模拟宿主注入的排版样式：base.css 曾在源码模式下隐藏原生光标，
 // 该交互正是“光标不可见”回归的复现条件。
-const baseCss = readFileSync(resolve(import.meta.dirname, '../../MarkLeaf/Resources/Styles/base.css'), 'utf8')
+const baseCss = readFileSync(resolve(import.meta.dirname, '../../styles/base.css'), 'utf8')
 const stylesCss = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
 
 const sources: SourceEditor[] = []

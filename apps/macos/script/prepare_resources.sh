@@ -7,8 +7,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_DIR="$ROOT_DIR/.."
-EDITOR_WEB_DIR="$REPO_DIR/windows/EditorWeb"
+REPO_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
+EDITOR_WEB_DIR="$REPO_DIR/packages/editor-web"
 RESOURCES_DIR="$ROOT_DIR/Resources"
 
 mkdir -p "$RESOURCES_DIR"
@@ -124,7 +124,7 @@ fi
 STYLES_DIR="$RESOURCES_DIR/Styles"
 rm -rf "$STYLES_DIR"
 mkdir -p "$STYLES_DIR"
-cp -R "$REPO_DIR/windows/MarkLeaf/Resources/Styles/." "$STYLES_DIR/"
+cp -R "$REPO_DIR/packages/styles/." "$STYLES_DIR/"
 
 # ---- 4. 应用图标 / 文件图标 ----
 build_icns() {

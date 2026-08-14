@@ -32,7 +32,7 @@
   <Target Name="PublishApp" BeforeTargets="BeforeBuild">
     <RemoveDir Directories="$(PublishDir)" Condition="Exists('$(PublishDir)')" />
     <Message Importance="high" Text="Publishing MarkLeaf ($(Runtime), self-contained=$(SelfContained))..." />
-    <Exec Command="dotnet publish &quot;$(RepoRoot)\src\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
+    <Exec Command="dotnet publish &quot;$(RepoRoot)\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
           WorkingDirectory="$(RepoRoot)" />
   </Target>
 

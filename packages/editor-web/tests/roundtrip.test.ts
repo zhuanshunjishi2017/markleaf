@@ -56,10 +56,7 @@ describe('selection export', () => {
 
 describe('Markdown semantic round trip', () => {
   it('preserves the Stage 5 golden document semantically', () => {
-    const markdown = readFileSync(
-      resolve(process.cwd(), '../../tests/TestData/stage5-golden.md'),
-      'utf8',
-    )
+    const markdown = readFileSync(resolve(import.meta.dirname, 'fixtures/stage5-golden.md'), 'utf8')
     const output = roundTrip(markdown)
 
     expect(output).toContain('# 阶段 5 黄金样例')

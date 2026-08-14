@@ -58,5 +58,5 @@ licenses. No GPL or AGPL code is included. A full transitive dependency
 tree with license metadata is available via:
 
 ```
-pnpm --dir windows/EditorWeb licenses list --json
+pnpm --dir packages/editor-web licenses list --json
 ```
