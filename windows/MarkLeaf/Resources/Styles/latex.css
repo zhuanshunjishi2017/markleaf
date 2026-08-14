@@ -1,0 +1,138 @@
+/* @type: typography
+   @name: LaTeX
+   @depends: print */
+/* LaTeX 风格：继承印刷排版，仅替换英文字体为 Computer Modern，
+   加入三线表、无边框代码块、斜体引用等 LaTeX 默认样式。
+   中文排版完全保留 print.css 规则，不做额外覆盖。 */
+
+/* ---- 正文：英文字体前插 CM，中文保留 print 的 宋体 ---- */
+.markleaf-style-latex .markleaf-document p {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "宋体-简", "宋体", serif;
+}
+
+/* ---- 标题：英文字体前插 CM，中文保留 print 的 黑体（不强制 faux bold）---- */
+.markleaf-style-latex .markleaf-document h1,
+.markleaf-style-latex .markleaf-document h2,
+.markleaf-style-latex .markleaf-document h3,
+.markleaf-style-latex .markleaf-document h4,
+.markleaf-style-latex .markleaf-document h5,
+.markleaf-style-latex .markleaf-document h6 {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
+  font-weight: bold;
+  font-synthesis: none;
+}
+
+/* ---- 标题字号与段前间距：仿 LaTeX 默认，比 print 略大 ---- */
+.markleaf-style-latex .markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 1.8);
+  margin-top: 1.8em;
+}
+
+.markleaf-style-latex .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.4);
+  margin-top: 1.5em;
+}
+
+.markleaf-style-latex .markleaf-document h3 {
+  font-size: calc(var(--ml-font-size) * 1.1);
+  margin-top: 1.3em;
+}
+
+.markleaf-style-latex .markleaf-document h4 {
+  font-size: var(--ml-font-size);
+  margin-top: 1.1em;
+}
+
+/* ---- 粗体：不强制 faux bold，由字体内建粗细决定 ---- */
+.markleaf-style-latex .markleaf-document strong,
+.markleaf-style-latex .markleaf-document b {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
+  font-synthesis: none;
+}
+
+/* ---- 斜体 ---- */
+.markleaf-style-latex .markleaf-document em,
+.markleaf-style-latex .markleaf-document i {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "楷体", "KaiTi", serif;
+  font-synthesis: none;
+}
+
+/* ---- 等宽字体 ---- */
+.markleaf-style-latex .markleaf-document code,
+.markleaf-style-latex .markleaf-document pre code {
+  font-family: "Latin Modern Mono", "Computer Modern Typewriter", "CMU Typewriter Text", "Courier New", monospace;
+}
+
+/* ---- 行内代码：去背景 ---- */
+.markleaf-style-latex .markleaf-document code:not(pre code) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/* ---- 代码块：无框，左侧灰线 ---- */
+.markleaf-style-latex .markleaf-document pre {
+  background: var(--bg-hover);
+  border: 0;
+  border-left: 3px solid var(--bg-selected-hover);
+  border-radius: 0;
+  padding: 0.8em 1em;
+  margin: 1em 0;
+}
+
+/* ---- 引用：无框，左侧灰线，斜体 ---- */
+.markleaf-style-latex .markleaf-document blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1.2em;
+  border: 0;
+  border-left: 3px solid var(--bg-selected-hover);
+  color: var(--text-secondary);
+  background: transparent;
+  font-style: italic;
+  font-synthesis: none;
+}
+
+.markleaf-style-latex .markleaf-document blockquote p {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "仿宋", "FangSong", serif;
+  color: var(--text-secondary);
+  text-indent: 0;
+}
+
+/* ---- 三线表 ---- */
+.markleaf-style-latex .markleaf-document table {
+  width: auto;
+  margin: 1em auto;
+  border: 0;
+  border-top: 1.5px solid var(--text-primary);
+  border-bottom: 1.5px solid var(--text-primary);
+  border-collapse: collapse;
+  background: transparent;
+}
+
+.markleaf-style-latex .markleaf-document th {
+  border: 0;
+  border-bottom: 0.75px solid var(--text-primary);
+  background: transparent;
+  padding: 4px 10px;
+}
+
+.markleaf-style-latex .markleaf-document td {
+  border: 0;
+  padding: 3px 10px;
+  background: transparent;
+}
+
+.markleaf-style-latex .markleaf-document table p {
+  text-indent: 0;
+}
+
+/* ---- 链接：去下划线 ---- */
+.markleaf-style-latex .markleaf-document a {
+  color: var(--theme-dark);
+  text-decoration: none;
+}
+
+.markleaf-style-latex .markleaf-document strong,
+.markleaf-style-latex .markleaf-document b {
+  font-weight: bold;
+  font-synthesis: none;
+}

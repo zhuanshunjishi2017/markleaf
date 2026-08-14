@@ -1,0 +1,317 @@
+/* 文档排版基础样式：所有排版样式的公共部分。
+   该文件同时用于编辑器渲染与导出 HTML，选择器不使用 #editor 前缀，
+   以便在 #editor（编辑器）与 #export-root（导出）两种根元素下均生效。 */
+:root {
+  --ml-line-height: 1.6;
+  --ml-font-size: 16px;
+  --ml-max-width: 820px;
+}
+
+.markleaf-document {
+  width: min(100%, var(--ml-max-width));
+  margin: 0 auto;
+  outline: none;
+  font-family: serif, "Source Han Serif CN", "Noto Serif CJK CN";
+  font-size: var(--ml-font-size);
+  line-height: var(--ml-line-height);
+  caret-color: var(--theme-dark);
+  font-synthesis: weight style;
+}
+
+.markleaf-document::selection,
+.markleaf-document *::selection,
+.ProseMirror::selection,
+.ProseMirror *::selection,
+.cm-editor::selection,
+.cm-content::selection,
+.cm-content *::selection {
+  background: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
+}
+
+/* WYSIWYG 编辑器选区装饰（WebKit 对 contenteditable 忽略 ::selection） */
+.markleaf-themed-selection {
+  background: var(--theme-light);
+  color: var(--text-selected);
+  -webkit-text-fill-color: var(--text-selected);
+}
+::selection {
+  background: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: var(--theme-light) !important;
+  color: var(--text-selected) !important;
+}
+
+/* 源码模式选区：真实 DOM 装饰 span（替代 drawSelection 图层，WKWebView 几何更稳） */
+.cm-editor .ml-source-selection {
+  background-color: var(--theme-light);
+  color: var(--text-selected);
+  -webkit-text-fill-color: var(--text-selected);
+  border-radius: 2px;
+  /* 深色主题下填充偏暗，加一圈主题色描边让选区边界清晰可见 */
+  box-shadow: 0 0 0 1px var(--theme-dark);
+}
+
+/* 装饰 span 已提供背景，隐藏 contenteditable 的原生选区（WebKit 忽略 ::selection 且默认画系统蓝） */
+.cm-editor .cm-content ::selection,
+.cm-editor .cm-content::selection,
+.cm-editor .cm-line ::selection,
+.cm-editor .cm-line::selection {
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+/* CodeMirror 源码模式：编辑器与行号栏跟随主题（Windows/macOS 共用） */
+.cm-editor {
+  background: var(--bg-primary);
+}
+.cm-editor .cm-gutters {
+  background-color: var(--bg-primary);
+  color: var(--text-tertiary);
+  border-right: 1px solid var(--bg-hover);
+}
+.cm-editor .cm-activeLineGutter {
+  background-color: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.cm-editor .cm-activeLine {
+  background-color: var(--bg-hover);
+}
+.cm-editor .cm-scroller {
+  font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: var(--ml-source-font-size, 14px);
+}
+
+.markleaf-document em {
+  font-style: italic;
+  font-synthesis: style;
+}
+
+.markleaf-document h1,
+.markleaf-document h2,
+.markleaf-document h3,
+.markleaf-document h4,
+.markleaf-document h5,
+.markleaf-document h6 {
+  color: var(--text-primary);
+  line-height: calc(var(--ml-line-height) * 0.8125);
+  margin: calc(var(--ml-line-height) * 1em) 0 calc(var(--ml-line-height) * 0.4em);
+}
+
+.markleaf-document .markleaf-outline-highlight {
+  animation: markleaf-outline-highlight 1.8s ease-out forwards;
+}
+
+@keyframes markleaf-outline-highlight {
+  0%,
+  25% {
+    background-color: var(--theme-light);
+    box-shadow: 0 0 0 4px var(--theme-light);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.markleaf-document h1 {
+  font-size: calc(var(--ml-font-size) * 2.0);
+  margin-top: 0;
+  padding-bottom: calc(var(--ml-line-height) * 0.22em);
+  border-bottom: 1px solid var(--bg-selected);
+}
+
+.markleaf-document h2 { font-size: calc(var(--ml-font-size) * 1.5); }
+.markleaf-document h3 { font-size: calc(var(--ml-font-size) * 1.25); }
+.markleaf-document h4 { font-size: calc(var(--ml-font-size) * 1.1); }
+.markleaf-document h5 { font-size: calc(var(--ml-font-size) * 1.0); }
+.markleaf-document h6 { font-size: calc(var(--ml-font-size) * 0.95); }
+
+.markleaf-document p,
+.markleaf-document ul,
+.markleaf-document ol,
+.markleaf-document blockquote,
+.markleaf-document pre,
+.markleaf-document table {
+  margin: calc(var(--ml-line-height) * 0.53em) 0;
+}
+
+.markleaf-document blockquote {
+  margin-left: 0;
+  padding-left: 1em;
+  color: var(--text-tertiary);
+  border-left: 3px solid var(--bg-selected);
+}
+
+.markleaf-document hr {
+  height: 1px;
+  margin: calc(var(--ml-line-height) * 1em) 0;
+  border: 0;
+  background: var(--bg-selected);
+}
+
+.markleaf-document code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: calc(var(--ml-font-size) * 0.9);
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  white-space: normal;
+  word-break: break-all;
+}
+
+.markleaf-document pre {
+  overflow-x: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--bg-selected);
+  border-radius: 4px;
+  background: var(--bg-hover);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markleaf-document pre code {
+  padding: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markleaf-document table {
+  width: 100%;
+  border-collapse: collapse;
+  line-height: calc(var(--ml-line-height) * 0.8875);
+}
+
+.markleaf-document th,
+.markleaf-document td {
+  height: auto;
+  padding: 3px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid var(--bg-selected-hover);
+}
+
+.markleaf-document table p {
+  margin: 0;
+}
+
+.markleaf-document th {
+  font-weight: 600;
+  background: var(--bg-hover);
+}
+
+.markleaf-document ul[data-type='taskList'] {
+  margin: calc(var(--ml-line-height) * 0.4em) 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.markleaf-document ul[data-type='taskList'] > li {
+  display: flex;
+  gap: 0.55em;
+  align-items: center;
+}
+
+.markleaf-document ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  line-height: 1;
+  user-select: none;
+}
+
+.markleaf-document ul[data-type='taskList'] > li > label input {
+  display: block;
+  margin: 0;
+  accent-color: var(--theme-light);
+}
+
+.markleaf-document ul[data-type='taskList'] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.markleaf-document ul[data-type='taskList'] > li > div > p {
+  margin: 0;
+}
+
+.markleaf-document ul[data-type='taskList'] > li + li {
+  margin-top: calc(var(--ml-line-height) * 0.175em);
+}
+
+.markleaf-document a {
+  color: var(--theme-dark);
+}
+
+.ProseMirror-selectednode {
+  outline: 2px solid var(--theme-light);
+}
+
+.markleaf-image-node {
+  justify-content: center;
+  margin: 0.85em auto;
+}
+
+.markleaf-image-resize-wrapper {
+  max-width: 100%;
+}
+
+.markleaf-image-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.markleaf-image-content {
+  display: block;
+  max-width: 100%;
+  user-select: none;
+}
+
+.markleaf-image-resize-handle {
+  display: none;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+  background: var(--theme-dark);
+  box-shadow: 0 0 0 1px var(--theme-dark);
+}
+
+.markleaf-image-node.ProseMirror-selectednode .markleaf-image-resize-handle,
+.markleaf-image-node.is-resizing .markleaf-image-resize-handle {
+  display: block;
+}
+
+.markleaf-image-resize-handle[data-resize-handle='top-left'],
+.markleaf-image-resize-handle[data-resize-handle='bottom-right'] {
+  cursor: nwse-resize;
+  transform: translate(-50%, -50%);
+}
+
+.markleaf-image-resize-handle[data-resize-handle='top-right'],
+.markleaf-image-resize-handle[data-resize-handle='bottom-left'] {
+  cursor: nesw-resize;
+  transform: translate(50%, -50%);
+}
+
+.markleaf-image-resize-handle[data-resize-handle='bottom-left'],
+.markleaf-image-resize-handle[data-resize-handle='bottom-right'] {
+  transform: translate(var(--markleaf-handle-x, -50%), 50%);
+}
+
+.markleaf-image-resize-handle[data-resize-handle='top-right'],
+.markleaf-image-resize-handle[data-resize-handle='bottom-right'] {
+  --markleaf-handle-x: 50%;
+}

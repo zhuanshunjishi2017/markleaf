@@ -1,0 +1,311 @@
+import AppKit
+
+enum RecoveryWindowCopy {
+    private static let singular = "检测到 1 个未保存的文档。请选择要恢复的快照："
+    private static let plural = "检测到 %d 个未保存的文档。请选择要恢复的快照："
+
+    static func introduction(snapshotCount: Int, language: String) -> String {
+        if snapshotCount == 1 {
+            return L10n.translate(singular, language: language)
+        }
+        return L10n.format(plural, language: language, arguments: [snapshotCount])
+    }
+}
+
+/// 恢复未保存的文件对话框（对应 Windows RecoveryDialog）。
+final class RecoveryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+    private var snapshots: [RecoverySnapshot]
+    private let language: String
+    let tableView = NSTableView()
+    private let timeFormatter = DateFormatter()
+    let introductionLabel: NSTextField
+    private var saveOriginalButton: NSButton?
+    private(set) var saveAsButton: NSButton?
+    private(set) var discardSelectedButton: NSButton?
+    private(set) var discardAllButton: NSButton?
+
+    init(
+        snapshots: [RecoverySnapshot],
+        language: String = SettingsService.shared.settings.displayLanguage
+    ) {
+        self.snapshots = snapshots
+        self.language = language
+        introductionLabel = NSTextField(labelWithString: RecoveryWindowCopy.introduction(
+            snapshotCount: snapshots.count,
+            language: language
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 360),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false)
+        window.title = L10n.translate("恢复未保存的文档", language: language)
+        window.isReleasedWhenClosed = false
+        window.center()
+        super.init(window: window)
+
+        timeFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        introductionLabel.font = .systemFont(ofSize: 12)
+        introductionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let column1 = NSTableColumn(identifier: .init("name"))
+        column1.title = L10n.translate("名称", language: language)
+        column1.width = 200
+        let column2 = NSTableColumn(identifier: .init("time"))
+        column2.title = L10n.translate("时间", language: language)
+        column2.width = 150
+        let column3 = NSTableColumn(identifier: .init("path"))
+        column3.title = L10n.translate("原路径", language: language)
+        column3.width = 160
+        tableView.addTableColumn(column1)
+        tableView.addTableColumn(column2)
+        tableView.addTableColumn(column3)
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.rowSizeStyle = .small
+        tableView.usesAlternatingRowBackgroundColors = true
+
+        let scroll = NSScrollView()
+        scroll.documentView = tableView
+        scroll.hasVerticalScroller = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        let saveOriginalButton = NSButton(title: L10n.translate("保存", language: language), target: self, action: #selector(saveToOriginal))
+        saveOriginalButton.isHidden = true
+        self.saveOriginalButton = saveOriginalButton
+
+        let saveAsButton = NSButton(title: L10n.translate("另存为…", language: language), target: self, action: #selector(saveAs))
+        saveAsButton.keyEquivalent = "\r"
+        saveAsButton.isHidden = true
+        saveAsButton.isEnabled = false
+        self.saveAsButton = saveAsButton
+
+        let discardSelectedButton = NSButton(
+            title: L10n.translate("丢弃", language: language),
+            target: self,
+            action: #selector(discardSelected)
+        )
+        discardSelectedButton.bezelStyle = .rounded
+        discardSelectedButton.isHidden = true
+        discardSelectedButton.isEnabled = false
+        self.discardSelectedButton = discardSelectedButton
+
+        let discardAllButton = NSButton(
+            title: L10n.translate("全部丢弃", language: language),
+            target: self,
+            action: #selector(discardAll)
+        )
+        discardAllButton.bezelStyle = .rounded
+        self.discardAllButton = discardAllButton
+
+        let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
+        cancelButton.bezelStyle = .rounded
+
+        let buttons = NSStackView(views: [
+            saveOriginalButton,
+            saveAsButton,
+            discardSelectedButton,
+            discardAllButton,
+            cancelButton,
+        ])
+        buttons.orientation = .horizontal
+        buttons.spacing = 10
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+
+        let root = NSView()
+        root.addSubview(introductionLabel)
+        root.addSubview(scroll)
+        root.addSubview(buttons)
+        NSLayoutConstraint.activate([
+            introductionLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
+            introductionLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            introductionLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
+            scroll.topAnchor.constraint(equalTo: introductionLabel.bottomAnchor, constant: 10),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -12),
+            buttons.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+        ])
+        window.contentView = root
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        snapshots.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard row < snapshots.count, let column = tableColumn else { return nil }
+        let snapshot = snapshots[row]
+        let id = NSUserInterfaceItemIdentifier("cell")
+        let cell = (tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? {
+            let cell = NSTableCellView()
+            cell.identifier = id
+            let text = NSTextField(labelWithString: "")
+            text.translatesAutoresizingMaskIntoConstraints = false
+            text.lineBreakMode = .byTruncatingTail
+            cell.addSubview(text)
+            cell.textField = text
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+            return cell
+        }()
+        switch column.identifier.rawValue {
+        case "name":
+            cell.textField?.stringValue = snapshot.displayName ?? L10n.translate("未命名文档", language: language)
+        case "time":
+            cell.textField?.stringValue = timeFormatter.string(from: snapshot.timestamp)
+        default:
+            cell.textField?.stringValue = snapshot.documentPath ?? L10n.translate("（未保存）", language: language)
+        }
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateActionAvailability()
+    }
+
+    private func updateActionAvailability() {
+        let row = tableView.selectedRow
+        let selected = row >= 0 && row < snapshots.count
+        let hasPath = selected && (snapshots[row].documentPath?.isEmpty == false)
+        saveOriginalButton?.isHidden = !hasPath
+        saveAsButton?.isHidden = !selected
+        discardSelectedButton?.isHidden = !selected
+        saveAsButton?.isEnabled = selected
+        discardSelectedButton?.isEnabled = selected
+    }
+
+    // MARK: - Actions
+
+    @objc private func saveAs() {
+        let row = tableView.selectedRow
+        guard row >= 0, row < snapshots.count else {
+            let alert = NSAlert()
+            alert.messageText = L10n.t("请先选择一个要恢复的文档")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L10n.t("好"))
+            alert.beginSheetModal(for: window!)
+            return
+        }
+        let snapshot = snapshots[row]
+        let panel = NSSavePanel()
+        panel.title = L10n.t("恢复并另存为")
+        let base = snapshot.documentPath?.isEmpty == false
+            ? (snapshot.documentPath! as NSString).lastPathComponent
+            : (snapshot.displayName ?? L10n.t("恢复的文档")) + ".md"
+        panel.nameFieldStringValue = base
+        guard let window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
+                AppWindowManager.shared.openExternalDocuments([url])
+                AppLog.info("已恢复并另存: \(url.path)")
+                self?.completeProcessing(row: row)
+            } catch {
+                AppLog.error("恢复另存失败: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc private func saveToOriginal() {
+        let row = tableView.selectedRow
+        guard row >= 0, row < snapshots.count,
+              let path = snapshots[row].documentPath, !path.isEmpty else { return }
+        let snapshot = snapshots[row]
+        let url = URL(fileURLWithPath: path)
+        do {
+            try snapshot.markdown.write(to: url, atomically: true, encoding: .utf8)
+            AppWindowManager.shared.openExternalDocuments([url])
+            AppLog.info("已恢复到原文件: \(url.path)")
+            completeProcessing(row: row)
+        } catch {
+            presentSaveFailure(error: error)
+        }
+    }
+
+    private func presentSaveFailure(error: Error) {
+        let failure = RecoverySaveFailure.classify(error: error)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        switch failure {
+        case .fileMissing:
+            alert.messageText = L10n.t("原文件已不存在")
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .unreachableVolume:
+            alert.messageText = L10n.t("存储设备不可达")
+            alert.addButton(withTitle: L10n.t("重试"))
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .readOnly:
+            alert.messageText = L10n.t("没有写入权限")
+            alert.addButton(withTitle: L10n.t("另存为…"))
+            alert.addButton(withTitle: L10n.t("取消"))
+        case .diskFull:
+            alert.messageText = L10n.t("磁盘空间不足")
+            alert.addButton(withTitle: L10n.t("好"))
+        case .other:
+            alert.messageText = L10n.f("保存失败：%@", error.localizedDescription)
+            alert.addButton(withTitle: L10n.t("好"))
+        }
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            switch failure {
+            case .fileMissing, .readOnly:
+                if response == .alertFirstButtonReturn { self.saveAs() }
+            case .unreachableVolume:
+                if response == .alertFirstButtonReturn { self.saveToOriginal() }
+                else if response == .alertSecondButtonReturn { self.saveAs() }
+            case .diskFull, .other:
+                break
+            }
+        }
+    }
+
+    @objc private func discardSelected() {
+        completeProcessing(row: tableView.selectedRow)
+    }
+
+    private func completeProcessing(row: Int) {
+        guard snapshots.indices.contains(row) else { return }
+        let snapshot = snapshots.remove(at: row)
+        RecoveryService.shared.delete(documentId: snapshot.documentId)
+        introductionLabel.stringValue = RecoveryWindowCopy.introduction(
+            snapshotCount: snapshots.count,
+            language: language
+        )
+        tableView.reloadData()
+
+        guard let nextRow = RecoveryQueueSelection.nextRow(
+            afterRemoving: row,
+            remainingCount: snapshots.count
+        ) else {
+            close()
+            return
+        }
+        tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
+        updateActionAvailability()
+    }
+
+    @objc private func discardAll() {
+        RecoveryService.discardAll()
+        close()
+    }
+
+    @objc private func cancel() {
+        close()
+    }
+}

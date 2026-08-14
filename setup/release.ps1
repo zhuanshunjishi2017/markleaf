@@ -14,7 +14,7 @@ $setupProj = Join-Path $root "setup\MarkLeaf.Setup.wixproj"
 $releaseDir = Join-Path $root "release"
 
 if (-not $Version) {
-    $csproj = Join-Path $root "src\MarkLeaf\MarkLeaf.csproj"
+    $csproj = Join-Path $root "windows\MarkLeaf\MarkLeaf.csproj"
     $xml = [xml](Get-Content $csproj)
     $Version = $xml.Project.PropertyGroup.Version
     if (-not $Version) { Write-Error "Version not found in $csproj"; exit 1 }
@@ -48,7 +48,7 @@ foreach ($rt in $runtimes) {
 }
 
 # Collect extras
-$changelog = Join-Path $root "src\MarkLeaf\Resources\Changelog\changelog.md"
+$changelog = Join-Path $root "windows\MarkLeaf\Resources\Changelog\changelog.md"
 if (Test-Path $changelog) { Copy-Item $changelog "$releaseDir\CHANGELOG.md" }
 
 # Checksums

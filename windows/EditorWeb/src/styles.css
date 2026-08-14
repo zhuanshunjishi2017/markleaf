@@ -1,0 +1,405 @@
+:root {
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --bg-primary: #FFFFFF;
+  --text-primary: #24292f;
+  --ml-line-height: 1.6;
+  --ml-font-size: 16px;
+  --ml-max-width: 820px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app,
+#editor {
+  min-height: 100%;
+  margin: 0;
+}
+
+#editor {
+  cursor: text;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* 主题化选区（ProseMirror decoration，替代 ::selection 确保跨平台一致） */
+.markleaf-themed-selection,
+.ml-source-selection {
+  background: var(--theme-light);
+  color: var(--text-selected);
+}
+
+/* 段落左侧浮动操作按钮（块手柄） */
+.markleaf-document {
+  position: relative;
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: "Microsoft YaHei", sans-serif;
+  font-weight: bold;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.markleaf-document:hover .ml-block-handle,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
+}
+
+/* 点击加号后整个段落的 bg-hover 高亮 */
+.markleaf-block-active {
+  background: var(--bg-hover, #f0f0f0);
+  border-radius: 6px;
+}
+
+/* 数学公式（KaTeX 渲染） */
+.markleaf-math-block {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.find-bar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bg-selected);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.find-fields,
+.find-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.find-fields {
+  flex-wrap: wrap;
+}
+
+.find-actions {
+  padding-left: 188px;
+}
+
+.find-bar[hidden],
+.find-bar [hidden] {
+  display: none;
+}
+
+.find-bar input[type='text'] {
+  width: 180px;
+  padding: 5px 7px;
+  border: 1px solid var(--bg-selected-hover);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.find-bar button {
+  padding: 4px 9px;
+  border: 1px solid var(--bg-selected-hover);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.find-bar button:hover {
+  background: var(--bg-hover);
+}
+
+.markleaf-find-match {
+  border-radius: 2px;
+  background: var(--theme-light);
+  box-shadow: 0 0 0 1px var(--theme-light);
+}
+
+.markleaf-find-match-current {
+  background: var(--theme-light);
+  box-shadow: 0 0 0 2px var(--theme-dark);
+}
+
+#source-editor {
+  height: 100vh;
+}
+
+/* 源码模式字号/字体由宿主 ApplyCssVariables 通过 --ml-source-font-size /
+   --ml-source-font-family 控制（对齐 Windows fccc7ad 的源码字体选择：西文与中文独立）。 */
+#source-editor .cm-content,
+#source-editor .cm-gutters {
+  font-size: var(--ml-source-font-size, 14px);
+  font-family: var(--ml-source-font-family, 'Cascadia Mono', 'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace);
+}
+
+/* 源码模式使用原生 contenteditable 光标（未启用 drawSelection），
+   显式指定主题色，避免深色主题下光标不可见。 */
+#source-editor .cm-content {
+  caret-color: var(--text-primary);
+}
+
+/* ---- 源码模式语法高亮（class-based，颜色随主题变量） ---- */
+.tok-comment   { color: var(--text-tertiary); font-style: italic; }
+.tok-heading   { color: var(--text-primary); font-weight: 600; }
+.tok-strong    { font-weight: 700; }
+.tok-emphasis  { font-style: italic; }
+.tok-strikethrough { text-decoration: line-through; }
+.tok-link      { color: var(--theme-light); text-decoration: underline; }
+.tok-keyword   { color: var(--theme-light); }
+.tok-string    { color: var(--theme-dark); }
+.tok-number    { color: var(--theme-dark); }
+.tok-type      { color: var(--theme-dark); }
+.tok-variable  { color: var(--text-primary); }
+.tok-function  { color: var(--theme-light); }
+.tok-property  { color: var(--text-primary); }
+.tok-operator  { color: var(--text-secondary); }
+.tok-punctuation { color: var(--text-secondary); }
+.tok-meta      { color: var(--text-secondary); }
+.tok-invalid   { color: var(--theme-light); text-decoration: line-through; }
+.tok-link      { color: var(--theme-dark); text-decoration: underline; }
+.tok-url       { color: var(--theme-dark); }
+.tok-monospace { color: var(--text-secondary); }
+.tok-meta      { color: var(--text-tertiary); }
+.tok-strikethrough { text-decoration: line-through; }
+.tok-list      { color: var(--theme-dark); }
+.tok-quote     { color: var(--text-tertiary); }
+
+#editor {
+  padding: 44px 56px 96px;
+}
+
+/* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
+.markleaf-document {
+  position: relative;
+  min-height: calc(100vh - 140px);
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.markleaf-document:hover .ml-block-handle,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
+}
+
+.markleaf-block-active {
+  background: var(--bg-hover, #f0f0f0);
+  border-radius: 6px;
+}
+
+/* 数学公式（KaTeX 渲染） */
+.markleaf-math-block {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* 自动隐藏滚动条：收窄至 8px，空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
+   同时作用于 html 和 body，覆盖不同 overflow 归属场景。 */
+html.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
+body.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
+html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
+}
+
+@media (max-width: 720px) {
+  #editor {
+    padding: 28px 24px 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* ---- 前端格式菜单（右键混合菜单：粗体/斜体/下划线）---- */
+.format-menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  background: #F9F9F9;
+  border: 1.5px solid #E5E5E5;
+  border-radius: 5px;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity 60ms ease;
+}
+
+.format-menu[hidden] {
+  display: none;
+}
+
+.format-menu.format-menu-visible {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.format-menu.format-menu-dark {
+  background: #2b2b2b;
+  border-color: #3E3E3E;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.25);
+}
+
+.format-menu-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #24292f;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  cursor: default;
+}
+
+.format-menu-dark .format-menu-button {
+  color: #FFFFFF;
+}
+
+.format-menu-button:hover,
+.format-menu-button:focus-visible {
+  background: #95CDFB;
+}
+
+.format-menu-dark .format-menu-button:hover,
+.format-menu-dark .format-menu-button:focus-visible {
+  background: #1165AA;
+}
+
+.format-menu-button.format-menu-button-active {
+  background: #95CDFB;
+}
+
+.format-menu-dark .format-menu-button.format-menu-button-active {
+  background: #1165AA;
+}
+
+/* 分隔线与标题按钮的 hidden 需要显式覆盖，否则会被 .format-menu-button 的 display 覆盖 */
+.format-menu [hidden] {
+  display: none;
+}
+
+.format-menu-separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 3px;
+  background: #E5E5E5;
+}
+
+.format-menu-dark .format-menu-separator {
+  background: #3E3E3E;
+}
+
+.format-menu-heading-button {
+  width: auto;
+  min-width: 28px;
+  padding: 0 7px;
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: regular;
+}
+
+
+/* 格式刷激活态：整片编辑区显示笔刷光标（对齐 Word 的格式刷反馈） */
+#editor.format-painter-armed,
+#editor.format-painter-armed * {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%20%3Cg%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%20%3Cg%20stroke%3D%22%23ffffff%22%20stroke-width%3D%224.6%22%3E%20%3Cline%20x1%3D%2211%22%20y1%3D%229%22%20x2%3D%2211%22%20y2%3D%2228%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%229%22%20x2%3D%2215%22%20y2%3D%229%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%2228%22%20x2%3D%2215%22%20y2%3D%2228%22/%3E%20%3C/g%3E%20%3Cg%20stroke%3D%22%231f1f1f%22%20stroke-width%3D%222.2%22%3E%20%3Cline%20x1%3D%2211%22%20y1%3D%229%22%20x2%3D%2211%22%20y2%3D%2228%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%229%22%20x2%3D%2215%22%20y2%3D%229%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%2228%22%20x2%3D%2215%22%20y2%3D%2228%22/%3E%20%3C/g%3E%20%3C/g%3E%20%3Cg%20transform%3D%22translate%2817%2027%29%20rotate%28-45%29%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.2%22%3E%20%3Cpath%20d%3D%22M0%200%20L6%20-3.5%20L6%203.5%20Z%22%20fill%3D%22%237a4b3a%22/%3E%20%3Crect%20x%3D%225%22%20y%3D%22-3.5%22%20width%3D%223%22%20height%3D%227%22%20rx%3D%221%22%20fill%3D%22%23b7bcc4%22/%3E%20%3Crect%20x%3D%228%22%20y%3D%22-3.5%22%20width%3D%229%22%20height%3D%227%22%20rx%3D%222.5%22%20fill%3D%22%232b579a%22/%3E%20%3C/g%3E%20%3C/svg%3E") 11 9, copy !important;
+}

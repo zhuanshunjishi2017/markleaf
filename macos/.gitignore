@@ -1,0 +1,6 @@
+# SwiftPM / 构建产物
+.build/
+.swiftpm/
+dist/
+# 生成的运行时资源（由 script/prepare_resources.sh 重建）
+Resources/
