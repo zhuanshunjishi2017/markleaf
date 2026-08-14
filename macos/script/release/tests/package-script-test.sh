@@ -16,15 +16,9 @@ fail() {
 for expected in \
     'prepare_resources.sh' \
     'DMG_VOLUME_NAME=' \
-    'mktemp -d /private/tmp/markleaf-dmg-stage' \
     'swift build' \
     'dsymutil' \
-    'hdiutil create' \
-    'hdiutil attach' \
-    'sleep 5' \
-    'hdiutil convert' \
-    'markleaf-dmg-layout.sh' \
-    'mktemp -d /private/tmp/markleaf-dmg-mount' \
+    'create-branded-dmg.sh' \
     'codesign --verify' \
     'shasum -a 256'; do
     grep -Fq "$expected" "$PACKAGE" || fail "Package script is missing: $expected"

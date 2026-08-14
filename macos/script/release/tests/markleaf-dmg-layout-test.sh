@@ -36,8 +36,13 @@ exit 23
 FAKE
 chmod +x "$FAKE_OSASCRIPT"
 
+set +e
 TEST_CAPTURE="$CAPTURE" OSASCRIPT_BIN="$FAKE_OSASCRIPT" \
     bash "$HELPER" apply "$STAGE"
+APPLY_STATUS=$?
+set -e
+
+[ "$APPLY_STATUS" -ne 0 ] || fail 'apply must fail when Finder cannot persist the branded layout'
 
 for expected in \
     'set mountedPath to item 1 of argv' \

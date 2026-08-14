@@ -31,15 +31,15 @@ case "$ACTION" in
     prepare)
         [ -f "$BACKGROUND_SOURCE" ] || fail "Missing DMG background: $BACKGROUND_SOURCE"
         mkdir -p "$DMG_ROOT/.background"
-        ditto "$BACKGROUND_SOURCE" "$DMG_ROOT/.background/$BACKGROUND_NAME"
+        cp "$BACKGROUND_SOURCE" "$DMG_ROOT/.background/$BACKGROUND_NAME"
+        xattr -c "$DMG_ROOT/.background/$BACKGROUND_NAME" 2>/dev/null || true
         chflags hidden "$DMG_ROOT/.background" 2>/dev/null || true
         echo '[dmg-layout] staged branded DMG background'
         ;;
     apply)
         OSASCRIPT_BIN="${OSASCRIPT_BIN:-/usr/bin/osascript}"
         if [ ! -x "$OSASCRIPT_BIN" ]; then
-            warn 'Finder layout tool unavailable; keeping the standard drag-install DMG'
-            exit 0
+            fail 'Finder layout tool unavailable; refusing to create an unbranded DMG'
         fi
 
         MOUNTED_PATH="$(cd "$DMG_ROOT" && pwd)"
@@ -77,8 +77,7 @@ on run argv
 end run
 APPLESCRIPT
         then
-            warn 'Finder layout could not be applied; keeping the standard drag-install DMG'
-            exit 0
+            fail 'Finder layout could not be applied; refusing to create an unbranded DMG'
         fi
         echo '[dmg-layout] applied branded Finder layout'
         ;;

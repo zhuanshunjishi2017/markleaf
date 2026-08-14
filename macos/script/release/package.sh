@@ -9,15 +9,11 @@ MACOS_DIR="$(cd "$HERE/../.." && pwd)"
 REPO_DIR="$(cd "$MACOS_DIR/.." && pwd)"
 APP_NAME="MarkLeaf"
 APP_VERSION="${MARKLEAF_VERSION:-1.1.7}"
-DMG_VOLUME_NAME="${MARKLEAF_DMG_VOLUME_NAME:-$APP_NAME $APP_VERSION Installer $(date +%s)}"
+DMG_VOLUME_NAME="${MARKLEAF_DMG_VOLUME_NAME:-$APP_NAME $APP_VERSION}"
 ARCH="arm64"
 OUTPUT_DIR="${1:-$MACOS_DIR/dist/release}"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/markleaf-release.XXXXXX")"
 APP_STAGE="$BUILD_ROOT/$APP_NAME.app"
-DMG_STAGE_DIR="$(mktemp -d /private/tmp/markleaf-dmg-stage.XXXXXX)"
-DMG_MOUNT_DIR="$(mktemp -d /private/tmp/markleaf-dmg-mount.XXXXXX)"
-DMG_RW="$BUILD_ROOT/$APP_NAME-$APP_VERSION-macos-$ARCH-rw.dmg"
-DMG_ATTACHED=0
 
 APP_ZIP="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.zip"
 APP_DMG="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.dmg"
@@ -25,11 +21,6 @@ DSYM_ZIP="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.dSYM.zip"
 CHECKSUMS="$OUTPUT_DIR/SHA256SUMS.txt"
 
 cleanup() {
-    if [ "$DMG_ATTACHED" = 1 ]; then
-        hdiutil detach "$DMG_MOUNT_DIR" >/dev/null 2>&1 || true
-    fi
-    rmdir "$DMG_MOUNT_DIR" >/dev/null 2>&1 || rm -rf "$DMG_MOUNT_DIR"
-    rm -rf "$DMG_STAGE_DIR"
     rm -rf "$BUILD_ROOT"
 }
 trap cleanup EXIT
@@ -100,19 +91,7 @@ ditto -c -k --sequesterRsrc --keepParent "$APP_STAGE" "$APP_ZIP"
 ditto -c -k --keepParent "$BUILD_ROOT/$APP_NAME.app.dSYM" "$DSYM_ZIP"
 
 echo '[package] creating branded DMG'
-ditto "$APP_STAGE" "$DMG_STAGE_DIR/$APP_NAME.app"
-ln -s /Applications "$DMG_STAGE_DIR/Applications"
-bash "$HERE/markleaf-dmg-layout.sh" prepare "$DMG_STAGE_DIR"
-xattr -cr "$DMG_STAGE_DIR/.background"
-hdiutil create -volname "$DMG_VOLUME_NAME" -srcfolder "$DMG_STAGE_DIR" -ov -format UDRW "$DMG_RW" >/dev/null
-hdiutil attach -readwrite -noverify -noautoopen -mountpoint "$DMG_MOUNT_DIR" "$DMG_RW" >/dev/null
-DMG_ATTACHED=1
-sleep 5
-bash "$HERE/markleaf-dmg-layout.sh" apply "$DMG_MOUNT_DIR"
-hdiutil detach "$DMG_MOUNT_DIR" >/dev/null
-DMG_ATTACHED=0
-hdiutil convert "$DMG_RW" -format UDZO -ov -o "$APP_DMG" >/dev/null
-hdiutil verify "$APP_DMG" >/dev/null
+bash "$HERE/create-branded-dmg.sh" "$APP_STAGE" "$APP_DMG" "$DMG_VOLUME_NAME"
 
 echo '[package] writing SHA-256 checksums'
 (
