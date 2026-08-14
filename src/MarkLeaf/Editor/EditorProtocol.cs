@@ -217,6 +217,8 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "inTable")
             && HasNullableEnum(payload, "tableAlign", "left", "center", "right")
             && HasBooleanProperty(payload, "imageSelected")
+            && HasBooleanProperty(payload, "mathInline")
+            && HasBooleanProperty(payload, "mathBlock")
             && HasBooleanProperty(payload, "sourceMode");
     }
 

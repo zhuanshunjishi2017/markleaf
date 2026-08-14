@@ -342,6 +342,7 @@ internal sealed class EditorHostController : IDisposable
             blockTaskList = Loc.Get("blockHandle.taskList"),
             blockBlockquote = Loc.Get("blockHandle.blockquote"),
             blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
+            blockTable = Loc.Get("blockHandle.table"),
         };
         EnqueueOrRun(() => Post("localizeFindBar", payload));
     }

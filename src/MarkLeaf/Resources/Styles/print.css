@@ -2,14 +2,12 @@
    @name: 印刷品(单色印刷) */
 /* 印刷排版同时被”印刷物(复古)”继承（见 retro-print.css 的 @depends）。 */
 
-/* 印刷排版采用固定版心边距：内容区填满可用宽度，左右留白与上下间距
-   固定为 44px/56px/96px（与历史 style.css 中 #editor 的内边距一致），
-   不随页宽响应式收窄。编辑器中由 #editor 的固定内边距承担，导出中由
-   导出文档自身的内边距承担，两种样式均通过继承本规则获得固定边距。 */
+/* 印刷排版采用固定版心边距：左右留白与上下间距固定为 44px/56px/96px
+   （与历史 style.css 中 #editor 的内边距一致）。与网页排版一致，正文
+   内容宽度响应 --ml-max-width 限制，超过时居中并留出两侧空白。 */
 .markleaf-style-print .markleaf-document {
-  width: auto;
-  max-width: none;
-  margin: 0;
+  width: min(100%, var(--ml-max-width));
+  margin: 0 auto;
 }
 
 /* 无论页宽如何，印刷排版始终使用固定内边距，不启用窄窗的 @media 适配。

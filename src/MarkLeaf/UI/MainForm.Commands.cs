@@ -103,6 +103,7 @@ internal sealed partial class MainForm
             && IsEditorCommand(command)
             && command != AppCommand.InsertImage
             && command != AppCommand.InsertImageFromUrl
+            && command != AppCommand.EditMath
             && command is not AppCommand.Cut
                 and not AppCommand.Copy
                 and not AppCommand.CopyMarkdown
@@ -228,6 +229,15 @@ internal sealed partial class MainForm
             case AppCommand.InsertLink:
                 InsertLink();
                 break;
+            case AppCommand.InsertMathInline:
+                InsertMath(isBlock: false);
+                break;
+            case AppCommand.InsertMathBlock:
+                InsertMath(isBlock: true);
+                break;
+            case AppCommand.EditMath:
+                EditMath();
+                break;
             case AppCommand.InsertImage:
                 _ = SelectAndInsertImagesAsync();
                 break;
@@ -326,6 +336,12 @@ internal sealed partial class MainForm
             AppCommand.DeleteTable => "deleteTable",
             AppCommand.InsertLineBefore => "insertLineBefore",
             AppCommand.InsertLineAfter => "insertLineAfter",
+            AppCommand.InsertMathInline => "insertMathInline",
+            AppCommand.InsertMathBlock => "insertMathBlock",
+            AppCommand.SelectAll => "selectAll",
+            AppCommand.ExitCode => "exitCode",
+            AppCommand.ConvertMath => "convertMath",
+            AppCommand.DeleteMath => "deleteMath",
             _ => string.Empty,
         };
         return editorCommand.Length > 0;
@@ -338,6 +354,9 @@ internal sealed partial class MainForm
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+            || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock
+            || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
+                or AppCommand.DeleteMath or AppCommand.EditMath
             || command == AppCommand.ToggleSourceMode;
     }
 
@@ -374,7 +393,7 @@ internal sealed partial class MainForm
         try
         {
             _editorContextMenuActive = true;
-            _menuService.ShowEditorContextMenu(Handle, screenPoint);
+            _menuService.ShowEditorContextMenu(Handle, screenPoint, _editorCommandStatus);
         }
         finally
         {

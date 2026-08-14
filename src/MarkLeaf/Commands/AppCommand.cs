@@ -77,6 +77,8 @@ public enum AppCommand
     DeleteTable,
     InsertLineBefore = 0x122C,
     InsertLineAfter,
+    InsertMathInline,
+    InsertMathBlock,
 
     ToggleSidebar = 0x1301,
     ViewTree = 0x1302,
@@ -86,6 +88,11 @@ public enum AppCommand
     SwitchToWorkspace = 0x1306,
     SwitchToOutline = 0x1307,
     ToggleFocusMode = 0x1308,
+    SelectAll = 0x1309,
+    ExitCode = 0x130A,
+    EditMath = 0x130B,
+    ConvertMath = 0x130C,
+    DeleteMath = 0x130D,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,

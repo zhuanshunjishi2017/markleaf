@@ -41,33 +41,6 @@ public sealed class StatusBarFormatterTests
     }
 
     [TestMethod]
-    public void EditorContextMenu_UsesOnlyApprovedUnifiedCommands()
-    {
-        CollectionAssert.AreEqual(
-            new[]
-            {
-                Commands.AppCommand.ToggleBold,
-                Commands.AppCommand.ToggleItalic,
-                Commands.AppCommand.SetParagraph,
-                Commands.AppCommand.SetHeading1,
-                Commands.AppCommand.SetHeading2,
-                Commands.AppCommand.SetHeading3,
-                Commands.AppCommand.SetHeading4,
-                Commands.AppCommand.SetHeading5,
-                Commands.AppCommand.SetHeading6,
-                Commands.AppCommand.ToggleBulletList,
-                Commands.AppCommand.ToggleOrderedList,
-                Commands.AppCommand.ToggleTaskList,
-                Commands.AppCommand.Cut,
-                Commands.AppCommand.Copy,
-                Commands.AppCommand.CopyMarkdown,
-                Commands.AppCommand.CopyPlainText,
-                Commands.AppCommand.Paste,
-            },
-            Native.NativeMenuService.EditorContextCommands);
-    }
-
-    [TestMethod]
     public void CommandStatus_UsesChineseCommandNames()
     {
         Assert.AreEqual("已执行：粗体", CommandStatusFormatter.FormatExecuted(Commands.AppCommand.ToggleBold));

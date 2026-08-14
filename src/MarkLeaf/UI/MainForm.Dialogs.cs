@@ -249,6 +249,61 @@ internal sealed partial class MainForm
         SetStatus(Loc.Get("status.linkInserted"));
     }
 
+    private void InsertMath(bool isBlock)
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        var command = isBlock ? "insertMathBlock" : "insertMathInline";
+
+        // 有选区：直接套 $...$ / $$...$$，不弹框
+        if (_editorCommandStatus.HasSelection)
+        {
+            _editorHost.ExecuteCommand(command);
+            SetStatus(isBlock ? Loc.Get("status.mathBlockInserted") : Loc.Get("status.mathInlineInserted"));
+            return;
+        }
+
+        using var dialog = new MathInputDialog(isBlock);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(dialog.Latex))
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand(command, dialog.Latex);
+        SetStatus(isBlock ? Loc.Get("status.mathBlockInserted") : Loc.Get("status.mathInlineInserted"));
+    }
+
+    private void EditMath()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        var isBlock = _editorCommandStatus.MathBlock;
+        using var dialog = new MathInputDialog(isBlock);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(dialog.Latex))
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("updateMath", dialog.Latex);
+        SetStatus(Loc.Get("status.mathUpdated"));
+    }
+
     private void RecoverUnsavedFiles()
     {
         var pending = RecoveryService.GetPendingRecoveries(_paths.RecoveryDirectory, _logger);

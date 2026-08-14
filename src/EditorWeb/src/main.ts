@@ -16,6 +16,7 @@ import {
   setBlockHighlight,
   setBlockTypeLabels,
 } from './editor'
+import { katexCss, renderMathInHtml } from './math'
 import { SourceEditor } from './source-editor'
 import {
   isHostMessage,
@@ -385,13 +386,30 @@ editorMount.addEventListener('click', (event) => {
   send('openLink', { url })
 })
 
+function findMathNodeAt(pos: number): number | null {
+  const node = editor.state.doc.nodeAt(pos)
+  if (node && (node.type.name === 'mathInline' || node.type.name === 'mathBlock')) {
+    return pos
+  }
+  const before = pos > 0 ? editor.state.doc.nodeAt(pos - 1) : null
+  if (before && (before.type.name === 'mathInline' || before.type.name === 'mathBlock')) {
+    return pos - 1
+  }
+  return null
+}
+
 editorMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
   if (resolved) {
-    const selection = editor.state.selection
-    if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
-      editor.commands.setTextSelection(resolved.pos)
+    const mathPos = findMathNodeAt(resolved.pos)
+    if (mathPos !== null) {
+      editor.commands.setNodeSelection(mathPos)
+    } else {
+      const selection = editor.state.selection
+      if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
+        editor.commands.setTextSelection(resolved.pos)
+      }
     }
   }
   editor.commands.focus()
@@ -608,7 +626,9 @@ function handleMessage(value: unknown): void {
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
-              : false
+              : payload.command === 'selectAll'
+                ? sourceEditor?.selectAll() ?? false
+                : false
           : executeEditorCommand(
             editor,
             payload.command,
@@ -777,7 +797,7 @@ function generateExportHtml(
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = rawBodyHtml.replace(
+  const bodyHtml = renderMathInHtml(rawBodyHtml).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
@@ -798,6 +818,7 @@ function generateExportHtml(
 <title>MarkLeaf 导出文档</title>
 <style>
 * { box-sizing: border-box; }
+${katexCss}
 ${baseCss}
 ${colorSchemeCss}
 ${resolved.css}
@@ -848,8 +869,9 @@ body { margin: 0; background: var(--bg-primary); }
   box-decoration-break: clone;
 }
 .markleaf-export-pdf .markleaf-document table {
-  width: 100%;
-  table-layout: fixed;
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }

@@ -134,6 +134,12 @@ export class SourceEditor {
     return this.replaceSelection('')
   }
 
+  selectAll(): boolean {
+    this.view.dispatch({ selection: { anchor: 0, head: this.view.state.doc.length } })
+    this.focus()
+    return true
+  }
+
   insertTab(): void {
     indentMore(this.view)
   }
