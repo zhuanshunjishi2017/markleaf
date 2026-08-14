@@ -64,10 +64,11 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         AppLog.info("PDFGenerator: 启动 (纸张 \(paperSize.rawValue), 横向=\(landscape))")
 
         let size = paperSize.sizeInches
+        let pointsPerInch: CGFloat = 72
         let printInfo = NSPrintInfo()
         printInfo.paperSize = NSSize(
-            width: landscape ? size.height : size.width,
-            height: landscape ? size.width : size.height)
+            width: (landscape ? size.height : size.width) * pointsPerInch,
+            height: (landscape ? size.width : size.height) * pointsPerInch)
         printInfo.orientation = landscape ? .landscape : .portrait
         printInfo.topMargin = margins.top
         printInfo.bottomMargin = margins.bottom
@@ -84,7 +85,6 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
         #endif
         // 按纸张尺寸设置离屏 webview 帧（72dpi 点），createPDF 按该尺寸分页
-        let pointsPerInch: CGFloat = 72
         let pageWidth = CGFloat(landscape ? size.height : size.width) * pointsPerInch
         let pageHeight = CGFloat(landscape ? size.width : size.height) * pointsPerInch
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight), configuration: configuration)
@@ -176,10 +176,11 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         AppLog.info("PDFGenerator: 启动系统打印面板 (纸张 \(paperSize.rawValue), 横向=\(landscape))")
 
         let size = paperSize.sizeInches
+        let pointsPerInch: CGFloat = 72
         let info = NSPrintInfo()
         info.paperSize = NSSize(
-            width: landscape ? size.height : size.width,
-            height: landscape ? size.width : size.height)
+            width: (landscape ? size.height : size.width) * pointsPerInch,
+            height: (landscape ? size.width : size.height) * pointsPerInch)
         info.orientation = landscape ? .landscape : .portrait
         info.topMargin = margins.top
         info.bottomMargin = margins.bottom
@@ -196,7 +197,6 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
         #endif
         // 初始帧按一页大小；printOperation(with:) 会自行按打印信息跨页分页。
-        let pointsPerInch: CGFloat = 72
         let pageWidth = CGFloat(landscape ? size.height : size.width) * pointsPerInch
         let pageHeight = CGFloat(landscape ? size.width : size.height) * pointsPerInch
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight), configuration: configuration)
@@ -211,10 +211,25 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         self.watchdog = watchdog
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: watchdog)
 
-        // 系统打印面板负责纸张与边距，不注入 @page 边距；仅固定本地图片路径。
-        let adjustedHTML = Self.fixLocalImagePaths(in: html)
+        // 系统打印面板负责纸张与边距，不注入 @page 边距；
+        // 额外强制输出 CSS 背景色（WebKit 打印默认不渲染背景），并固定本地图片路径。
+        let printHTML = Self.forcePrintBackgrounds(in: html)
+        let adjustedHTML = Self.fixLocalImagePaths(in: printHTML)
         webView.loadHTMLString(adjustedHTML, baseURL: nil)
         AppLog.info("PDFGenerator: 打印 HTML 已加载 (\(html.count) 字符)")
+    }
+
+    /// WebKit 打印默认不输出 CSS 背景色/背景图；强制输出以保持与 createPDF 时代一致。
+    private static func forcePrintBackgrounds(in html: String) -> String {
+        let rule = "*, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }"
+        if let range = html.range(of: "</style>") {
+            return html.replacingCharacters(in: range, with: rule + "\n</style>")
+        }
+        if let headRange = html.range(of: "</head>") {
+            let style = "<style>\n" + rule + "\n</style>\n"
+            return html.replacingCharacters(in: headRange, with: style + "</head>")
+        }
+        return "<style>\n" + rule + "\n</style>\n" + html
     }
 
     private func runPrintPanel(webView: WKWebView) {
