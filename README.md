@@ -2,6 +2,9 @@
 
 MarkLeaf 是一款 **Windows 原生**的轻量化 Markdown 可视化编辑器，提供接近所见即所得的编辑体验。界面风格简约低干扰，同时保留 Windows 桌面应用的完整系统行为。
 
+> **macOS 移植版**：同一仓库的 `macos/` 目录提供 AppKit + WKWebView 的 macOS 移植
+> （共享同一套 Web 编辑器前端），详见 [macos/README.md](macos/README.md)。
+
 ## 核心亮点
 
 ### Windows 原生
@@ -91,4 +94,3 @@ tests/
 ├── MarkLeaf.Tests/        # C# 单元测试
 └── TestData/              # 测试用 Markdown 数据
 ```
-
