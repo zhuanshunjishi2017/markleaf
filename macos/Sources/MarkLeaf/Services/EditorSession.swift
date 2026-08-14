@@ -45,6 +45,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var currentThemeId: String?
     private(set) var isSourceMode = false
     private(set) var isPlainText = false
+    private(set) var hasSelection = false
+    private(set) var mathInline = false
+    private(set) var mathBlock = false
+    private(set) var codeBlock = false
     private(set) var imageSelected = false
     private(set) var inTable = false
     private(set) var canUndo = false
@@ -69,6 +73,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
         "alignTableLeft", "alignTableCenter", "alignTableRight",
         "rotateImage", "formatPainter", "formatPainterArm", "formatPainterApply",
+        "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
     ]
 
     // 工作区 / 大纲
@@ -229,8 +234,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "commandStateChanged":
             isSourceMode = payload?["sourceMode"] as? Bool ?? false
+            hasSelection = payload?["hasSelection"] as? Bool ?? false
             imageSelected = payload?["imageSelected"] as? Bool ?? false
             inTable = payload?["inTable"] as? Bool ?? false
+            mathInline = payload?["mathInline"] as? Bool ?? false
+            mathBlock = payload?["mathBlock"] as? Bool ?? false
+            codeBlock = payload?["codeBlock"] as? Bool ?? false
             isReadOnly = payload?["readOnly"] as? Bool ?? false
             canUndo = (payload?["canUndo"] as? Bool ?? false) && !isReadOnly
             canRedo = (payload?["canRedo"] as? Bool ?? false) && !isReadOnly
@@ -1236,6 +1245,56 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         scanner.scanDocuments { [weak self] documents in
             self?.workspaceDocuments = documents
             self?.onWorkspaceChanged?()
+        }
+    }
+
+    // MARK: - 数学公式（对应 Windows InsertMath / EditMath）
+
+    /// 插入数学公式：有选区时直接套 $...$ / $$...$$，否则弹框输入 LaTeX。
+    func insertMath(isBlock: Bool) {
+        let command = isBlock ? "insertMathBlock" : "insertMathInline"
+        if hasSelection {
+            execute(command)
+            statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
+            return
+        }
+        presentMathInputDialog(title: isBlock ? L10n.t("插入段间公式") : L10n.t("插入行内公式")) { [weak self] latex in
+            guard let self, let latex else { return }
+            self.execute(command, text: latex)
+            self.statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
+        }
+    }
+
+    /// 编辑选中的公式（对应 Windows EditMath）。
+    func editMath() {
+        presentMathInputDialog(title: L10n.t("编辑公式")) { [weak self] latex in
+            guard let self, let latex else { return }
+            self.execute("updateMath", text: latex)
+            self.statusText = L10n.t("公式已更新")
+        }
+    }
+
+    private func presentMathInputDialog(title: String, completion: @escaping (String?) -> Void) {
+        guard let window = webView?.window else {
+            completion(nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = L10n.t("输入 LaTeX 公式：")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+        field.placeholderString = "x^2 + y^2"
+        alert.accessoryView = field
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else {
+                completion(nil)
+                return
+            }
+            let latex = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            completion(latex.isEmpty ? nil : latex)
         }
     }
 

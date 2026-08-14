@@ -80,48 +80,109 @@ extension EditorSession {
         )
 
         let menu = NSMenu()
-        addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
-        addFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
-        addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
-        addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
-        let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
-        painterItem.representedObject = "formatPainterArm"
-        let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
-        let currentArmed = formatPainterArmed ?? isFormatPainterArmed
-        painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(
-            isSourceMode: isSourceMode,
-            canStartFormatPainter: currentCanStart,
-            isFormatPainterArmed: currentArmed
-        )
-        painterItem.state = currentArmed ? .on : .off
-        menu.addItem(painterItem)
-        menu.addItem(.separator())
-        let levelNames = [L10n.t("一级"), L10n.t("二级"), L10n.t("三级")]
-        for level in 1...3 {
-            addFormatCommand(menu, L10n.f("%@级标题", levelNames[level - 1]), "setHeading\(level)", "\(level)")
+        if isSourceMode {
+            // 源码模式：剪贴板 + 全选
+            addFormatCommand(menu, L10n.t("剪切"), "cut")
+            addFormatCommand(menu, L10n.t("拷贝"), "copy")
+            addFormatCommand(menu, L10n.t("粘贴"), "paste")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("全选"), "selectAll")
+        } else if inTable {
+            // 表格：行/列操作 + 对齐 + 剪贴板 + 删除表格
+            addFormatCommand(menu, L10n.t("在上方添加行"), "addRowBefore")
+            addFormatCommand(menu, L10n.t("在下方添加行"), "addRowAfter")
+            addFormatCommand(menu, L10n.t("删除当前行"), "deleteRow")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("在左侧添加列"), "addColumnBefore")
+            addFormatCommand(menu, L10n.t("在右侧添加列"), "addColumnAfter")
+            addFormatCommand(menu, L10n.t("删除当前列"), "deleteColumn")
+            menu.addItem(.separator())
+            let align = NSMenu(title: L10n.t("对齐"))
+            addFormatCommand(align, L10n.t("左对齐"), "alignTableLeft")
+            addFormatCommand(align, L10n.t("居中对齐"), "alignTableCenter")
+            addFormatCommand(align, L10n.t("右对齐"), "alignTableRight")
+            let alignItem = NSMenuItem(title: L10n.t("对齐"), action: nil, keyEquivalent: "")
+            alignItem.submenu = align
+            menu.addItem(alignItem)
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("剪切"), "cut")
+            addFormatCommand(menu, L10n.t("拷贝"), "copy")
+            addFormatCommand(menu, L10n.t("粘贴"), "paste")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
+        } else if mathInline || mathBlock {
+            // 公式：编辑 / 行内块级互转 / 删除
+            addFormatCommand(menu, L10n.t("编辑公式"), "editMath")
+            addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("删除公式"), "deleteMath")
+        } else if codeBlock {
+            // 代码块：退出代码 + 剪贴板
+            addFormatCommand(menu, L10n.t("退出代码"), "exitCode")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("剪切"), "cut")
+            addFormatCommand(menu, L10n.t("拷贝"), "copy")
+            addFormatCommand(menu, L10n.t("粘贴"), "paste")
+        } else {
+            // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
+            if headingLevel != nil {
+                addFormatCommand(menu, L10n.t("提升标题级别"), "promoteHeading")
+                addFormatCommand(menu, L10n.t("降低标题级别"), "demoteHeading")
+                menu.addItem(.separator())
+            }
+            addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
+            addFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
+            addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
+            addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
+            let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
+            painterItem.representedObject = "formatPainterArm"
+            let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
+            let currentArmed = formatPainterArmed ?? isFormatPainterArmed
+            painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(
+                isSourceMode: isSourceMode,
+                canStartFormatPainter: currentCanStart,
+                isFormatPainterArmed: currentArmed
+            )
+            painterItem.state = currentArmed ? .on : .off
+            menu.addItem(painterItem)
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("正文"), "setParagraph")
+            let headings = NSMenu(title: L10n.t("标题"))
+            for level in 1...6 {
+                headings.addItem(menuItem(L10n.f("%@级标题", Self.headingLevelName(level)), #selector(handleCommand(_:))))
+                headings.items.last?.representedObject = "setHeading\(level)"
+            }
+            let headingItem = NSMenuItem(title: L10n.t("标题"), action: nil, keyEquivalent: "")
+            headingItem.submenu = headings
+            menu.addItem(headingItem)
+            let lists = NSMenu(title: L10n.t("列表"))
+            for (title, command) in [(L10n.t("无序列表"), "toggleBulletList"),
+                                     (L10n.t("有序列表"), "toggleOrderedList"),
+                                     (L10n.t("任务列表"), "toggleTaskList")] {
+                let item = menuItem(title, #selector(handleCommand(_:)))
+                item.representedObject = command
+                lists.addItem(item)
+            }
+            let listItem = NSMenuItem(title: L10n.t("列表"), action: nil, keyEquivalent: "")
+            listItem.submenu = lists
+            menu.addItem(listItem)
+            addFormatCommand(menu, L10n.t("引用块"), "toggleBlockquote")
+            addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+            menu.addItem(tableSizePickerSubmenu { [weak self] size in
+                self?.insertTable(rows: size.rows, columns: size.columns)
+            })
+            menu.addItem(.separator())
+            let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
+            let copyAsMenu = NSMenu()
+            copyAsMenu.addItem(menuItem(L10n.t("格式化"), #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
+            copyAsMenu.addItem(menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
+            copyAsMenu.addItem(menuItem("Markdown", #selector(copyMarkdown(_:))))
+            copyAs.submenu = copyAsMenu
+            menu.addItem(copyAs)
+            menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
         }
-        addFormatCommand(menu, L10n.t("正文"), "setParagraph")
-        menu.addItem(.separator())
-        addFormatCommand(menu, L10n.t("无序列表"), "toggleBulletList")
-        addFormatCommand(menu, L10n.t("有序列表"), "toggleOrderedList")
-        addFormatCommand(menu, L10n.t("任务列表"), "toggleTaskList")
-        addFormatCommand(menu, L10n.t("引用块"), "toggleBlockquote")
-        addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
-        menu.addItem(.separator())
-        addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-        menu.addItem(tableSizePickerSubmenu { [weak self] size in
-            self?.insertTable(rows: size.rows, columns: size.columns)
-        })
-        menu.addItem(.separator())
-
-        let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
-        let copyAsMenu = NSMenu()
-        copyAsMenu.addItem(menuItem(L10n.t("格式化"), #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
-        copyAsMenu.addItem(menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
-        copyAsMenu.addItem(menuItem("Markdown", #selector(copyMarkdown(_:))))
-        copyAs.submenu = copyAsMenu
-        menu.addItem(copyAs)
-        menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
         let windowPoint = webView.convert(pointInView, to: nil)
