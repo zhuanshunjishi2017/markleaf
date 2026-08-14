@@ -72,6 +72,20 @@ on run argv
         set position of item "Applications" of targetDisk to {475, 220}
         update targetDisk without registering applications
         delay 2
+        -- 隐藏 Finder 侧边栏（若可见），保证品牌背景在窗口中全宽居中，
+        -- 避免侧边栏把内容区右推导致 drag-to 看起来偏右。
+        try
+            tell application "System Events"
+                tell process "Finder"
+                    set frontmost to true
+                    perform action "AXRaise" of window (name of targetWindow)
+                    if exists menu item "Hide Sidebar" of menu 1 of menu bar item "View" of menu bar 1 then
+                        click menu item "Hide Sidebar" of menu 1 of menu bar item "View" of menu bar 1
+                    end if
+                end tell
+            end tell
+        end try
+        delay 1
         close targetWindow
     end tell
 end run
