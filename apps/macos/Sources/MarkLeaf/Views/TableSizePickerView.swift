@@ -26,18 +26,14 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    /// macOS 26+ 菜单栏是半透明 Liquid Glass：不声明不透明，避免把菜单背景涂成纯黑块。
+    /// macOS 26+ 菜单栏是半透明 Liquid Glass：不声明不透明，避免把菜单背景涂成纯黑块；
+    /// 同时不绘制整块背景，让玻璃效果与其它菜单项保持一致地透出。
     override var isOpaque: Bool { false }
 
     /// 网格线颜色：跟随外观的半透明色，配合玻璃背景而不是纯黑描边。
     private var gridStrokeColor: NSColor {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return dark ? NSColor.white.withAlphaComponent(0.32) : NSColor.black.withAlphaComponent(0.18)
-    }
-
-    /// 网格区背景：半透明圆角，让 Liquid Glass 效果透出。
-    private var gridBackgroundColor: NSColor {
-        NSColor.controlBackgroundColor.withAlphaComponent(0.45)
     }
 
     convenience init() {
@@ -94,10 +90,6 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let background = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
-        gridBackgroundColor.setFill()
-        background.fill()
-
         let gridOrigin = NSPoint(x: contentPadding, y: titleTopPadding + titleHeight + titleToGridSpacing)
         for row in 1...visibleLimit {
             for column in 1...visibleLimit {
