@@ -36,7 +36,7 @@ extension EditorSession {
         listItem.submenu = lists
         menu.addItem(listItem)
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-        menu.addItem(tableSizePickerMenuItem { [weak self] size in
+        menu.addItem(tableSizePickerSubmenu { [weak self] size in
             self?.insertTable(rows: size.rows, columns: size.columns)
         })
         menu.addItem(.separator())
@@ -109,7 +109,7 @@ extension EditorSession {
         addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-        menu.addItem(tableSizePickerMenuItem { [weak self] size in
+        menu.addItem(tableSizePickerSubmenu { [weak self] size in
             self?.insertTable(rows: size.rows, columns: size.columns)
         })
         menu.addItem(.separator())

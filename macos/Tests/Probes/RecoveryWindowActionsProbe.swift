@@ -81,24 +81,28 @@ enum RecoveryWindowActionsProbe {
         let controller = RecoveryWindowController(snapshots: snapshots, language: "zh-Hans")
         controller.showWindow(nil)
 
-        precondition(controller.discardAllButton?.hasDestructiveAction == true)
-        precondition(controller.discardSelectedButton?.hasDestructiveAction == true)
-        precondition(controller.discardAllButton?.bezelColor != nil)
-        precondition(controller.discardSelectedButton?.bezelColor != nil)
-        let titleColor = controller.discardAllButton?.attributedTitle.attribute(
-            .foregroundColor,
-            at: 0,
-            effectiveRange: nil
-        ) as? NSColor
-        let titleSRGB = titleColor?.usingColorSpace(.sRGB)
-        precondition(titleSRGB.map { abs($0.redComponent - 0.863) < 0.03 } == true)
-        precondition(titleSRGB.map { abs($0.greenComponent - 0.224) < 0.03 } == true)
-        precondition(titleSRGB.map { abs($0.blueComponent - 0.161) < 0.03 } == true)
-
-        let bezelSRGB = controller.discardAllButton?.bezelColor?.usingColorSpace(.sRGB)
-        precondition(bezelSRGB.map { abs($0.redComponent - 0.365) < 0.03 } == true)
-        precondition(bezelSRGB.map { abs($0.greenComponent - 0.227) < 0.03 } == true)
-        precondition(bezelSRGB.map { abs($0.blueComponent - 0.220) < 0.03 } == true)
+        guard
+            let discardAllButton = controller.discardAllButton,
+            let discardSelectedButton = controller.discardSelectedButton
+        else {
+            preconditionFailure("Recovery discard buttons are missing")
+        }
+        let discardAllReference = NSButton(title: discardAllButton.title, target: nil, action: nil)
+        discardAllReference.bezelStyle = .rounded
+        precondition(type(of: discardAllButton) == NSButton.self)
+        precondition(type(of: discardSelectedButton) == NSButton.self)
+        precondition(discardAllButton.bezelStyle == discardAllReference.bezelStyle)
+        precondition(discardAllButton.intrinsicContentSize == discardAllReference.intrinsicContentSize)
+        let actualInsets = discardAllButton.alignmentRectInsets
+        let referenceInsets = discardAllReference.alignmentRectInsets
+        precondition(actualInsets.top == referenceInsets.top)
+        precondition(actualInsets.left == referenceInsets.left)
+        precondition(actualInsets.bottom == referenceInsets.bottom)
+        precondition(actualInsets.right == referenceInsets.right)
+        precondition(discardAllButton.bezelColor == nil)
+        precondition(discardSelectedButton.bezelColor == nil)
+        precondition(discardAllButton.hasDestructiveAction == false)
+        precondition(discardSelectedButton.hasDestructiveAction == false)
         precondition(controller.saveAsButton?.isHidden == true)
         precondition(controller.discardSelectedButton?.isHidden == true)
         precondition(controller.discardSelectedButton?.isEnabled == false)
@@ -122,4 +126,5 @@ enum RecoveryWindowActionsProbe {
         precondition(RecoveryService.shared.deletedDocumentIDs == ["first", "second"])
         precondition(controller.window?.isVisible == false)
     }
+
 }

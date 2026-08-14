@@ -1,11 +1,14 @@
 import AppKit
 
-final class TableSizePickerView: NSView {
-    private let cellSize: CGFloat = 24
-    private let cellSpacing: CGFloat = 4
-    private let contentPadding: CGFloat = 12
-    private let titleHeight: CGFloat = 30
-    private let customButtonHeight: CGFloat = 28
+final class TableSizePickerView: NSView, NSMenuDelegate {
+    let cellSize: CGFloat = 18
+    let cellSpacing: CGFloat = 3
+    let contentPadding: CGFloat = 10
+    let titleHeight: CGFloat = 22
+    let titleTopPadding: CGFloat = 4
+    let titleToGridSpacing: CGFloat = 4
+    private let gridToButtonSpacing: CGFloat = 12
+    private let customButtonHeight: CGFloat = 24
 
     let visibleLimit: Int
     private(set) var selectedSize: TableSize
@@ -14,30 +17,40 @@ final class TableSizePickerView: NSView {
 
     private let titleField = NSTextField(labelWithString: "")
     private let customButton = NSButton(title: L10n.t("自定义表格…"), target: nil, action: nil)
+    /// 保持自定义表格 sheet 的 NSAlert 存活，避免弹窗闪一下即被关闭。
+    private var customTableAlert: NSAlert?
+    /// 等待菜单真正关闭后再弹出的自定义表格对话框状态。
+    private weak var pendingCustomTableMenu: NSMenu?
+    private var pendingCustomTableParent: NSWindow?
+    private var pendingCustomTableRequested = false
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
     convenience init() {
-        self.init(initialSize: TableSizePickerModel.defaultSize, visibleLimit: TableSizePickerModel.visibleLimit)
+        self.init(initialSize: TableSize(rows: 0, columns: 0), visibleLimit: TableSizePickerModel.visibleLimit)
     }
 
-    init(initialSize: TableSize = TableSizePickerModel.defaultSize, visibleLimit: Int = TableSizePickerModel.visibleLimit) {
+    init(initialSize: TableSize = TableSize(rows: 0, columns: 0), visibleLimit: Int = TableSizePickerModel.visibleLimit) {
         self.visibleLimit = max(1, visibleLimit)
-        self.selectedSize = TableSizePickerModel.clamped(rows: initialSize.rows, columns: initialSize.columns)
-        let gridWidth = CGFloat(self.visibleLimit) * 24 + CGFloat(max(0, self.visibleLimit - 1)) * 4
-        let width = 2 * 12 + gridWidth
-        let height = 12 + 30 + CGFloat(self.visibleLimit) * 24 + CGFloat(max(0, self.visibleLimit - 1)) * 4 + 12 + 28 + 12
+        self.selectedSize = TableSize(
+            rows: max(0, initialSize.rows),
+            columns: max(0, initialSize.columns)
+        )
+        let gridExtent = CGFloat(self.visibleLimit) * cellSize + CGFloat(max(0, self.visibleLimit - 1)) * cellSpacing
+        let width = 2 * contentPadding + gridExtent
+        let gridTop = titleTopPadding + titleHeight + titleToGridSpacing
+        let height = gridTop + gridExtent + gridToButtonSpacing + customButtonHeight + contentPadding
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
-        titleField.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleField.font = .systemFont(ofSize: 12, weight: .semibold)
         titleField.textColor = .labelColor
         titleField.alignment = .left
         titleField.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleField)
 
         customButton.bezelStyle = .rounded
-        customButton.font = .systemFont(ofSize: 13)
+        customButton.font = .systemFont(ofSize: 12)
         customButton.target = self
         customButton.action = #selector(showCustomTableDialog)
         customButton.translatesAutoresizingMaskIntoConstraints = false
@@ -46,7 +59,7 @@ final class TableSizePickerView: NSView {
         NSLayoutConstraint.activate([
             titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: contentPadding),
             titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -contentPadding),
-            titleField.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            titleField.topAnchor.constraint(equalTo: topAnchor, constant: titleTopPadding),
             titleField.heightAnchor.constraint(equalToConstant: titleHeight),
             customButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: contentPadding),
             customButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -contentPadding),
@@ -56,7 +69,7 @@ final class TableSizePickerView: NSView {
         updateTitle()
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
@@ -71,7 +84,7 @@ final class TableSizePickerView: NSView {
         NSColor.controlBackgroundColor.setFill()
         dirtyRect.fill()
 
-        let gridOrigin = NSPoint(x: contentPadding, y: 12 + titleHeight)
+        let gridOrigin = NSPoint(x: contentPadding, y: titleTopPadding + titleHeight + titleToGridSpacing)
         for row in 1...visibleLimit {
             for column in 1...visibleLimit {
                 let rect = cellRect(row: row, column: column, origin: gridOrigin)
@@ -92,6 +105,13 @@ final class TableSizePickerView: NSView {
         needsDisplay = true
     }
 
+    /// 鼠标离开网格选择区域时立即回到空白（0×0），不保留悬停选择。
+    func resetSelection() {
+        selectedSize = TableSize(rows: 0, columns: 0)
+        updateTitle()
+        needsDisplay = true
+    }
+
     func commitSelection() {
         onSelect?(selectedSize)
     }
@@ -100,10 +120,24 @@ final class TableSizePickerView: NSView {
         onCancel?()
     }
 
+    /// 悬停处理：仅当指针离开整个网格区域时重置为 0×0；
+    /// 停在格子之间的间隔里保持当前选择，避免闪烁回空白。
+    func handleHover(at point: NSPoint) {
+        guard gridRect().contains(point) else {
+            resetSelection()
+            return
+        }
+        if let cell = cell(at: point) {
+            updateSelection(row: cell.row, column: cell.column)
+        }
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        guard let cell = cell(at: point) else { return }
-        updateSelection(row: cell.row, column: cell.column)
+        handleHover(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        resetSelection()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -124,15 +158,24 @@ final class TableSizePickerView: NSView {
     }
 
     private func cell(at point: NSPoint) -> (row: Int, column: Int)? {
-        let origin = NSPoint(x: contentPadding, y: 12 + titleHeight)
         for row in 1...visibleLimit {
             for column in 1...visibleLimit {
-                if cellRect(row: row, column: column, origin: origin).contains(point) {
+                if cellRect(row: row, column: column, origin: gridRect().origin).contains(point) {
                     return (row, column)
                 }
             }
         }
         return nil
+    }
+
+    private func gridRect() -> NSRect {
+        let extent = CGFloat(visibleLimit) * cellSize + CGFloat(max(0, visibleLimit - 1)) * cellSpacing
+        return NSRect(
+            x: contentPadding,
+            y: titleTopPadding + titleHeight + titleToGridSpacing,
+            width: extent,
+            height: extent
+        )
     }
 
     private func cellRect(row: Int, column: Int, origin: NSPoint) -> NSRect {
@@ -145,55 +188,129 @@ final class TableSizePickerView: NSView {
     }
 
     private func updateTitle() {
-        titleField.stringValue = L10n.f("%@×%@ 表格", "\(selectedSize.rows)", "\(selectedSize.columns)")
+        if selectedSize.rows == 0 || selectedSize.columns == 0 {
+            titleField.stringValue = L10n.t("插入表格")
+        } else {
+            titleField.stringValue = L10n.f("%@×%@ 表格", "\(selectedSize.rows)", "\(selectedSize.columns)")
+        }
     }
 
     @objc private func showCustomTableDialog() {
-        let rowsField = NSTextField(string: "\(selectedSize.rows)")
-        let columnsField = NSTextField(string: "\(selectedSize.columns)")
+        // 菜单跟踪期间不能弹窗（runModal 会被菜单事件循环阻塞），
+        // 先记住文档窗口并关闭菜单；等菜单真正关闭（menuDidClose）后再以 sheet 形式弹出，
+        // 避免弹窗打断菜单关闭动画，导致菜单“闪一下并缓慢关闭”。
+        let parentWindow = NSApp.mainWindow ?? NSApp.keyWindow
+        if let menu = enclosingMenuItem?.menu {
+            pendingCustomTableMenu = menu
+            pendingCustomTableParent = parentWindow
+            pendingCustomTableRequested = true
+            menu.delegate = self
+            cancelSelection()
+        } else {
+            presentCustomTableDialog(parentWindow: parentWindow)
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        guard pendingCustomTableRequested, menu === pendingCustomTableMenu else { return }
+        pendingCustomTableRequested = false
+        pendingCustomTableMenu = nil
+        let parentWindow = pendingCustomTableParent
+        pendingCustomTableParent = nil
+        // 菜单关闭动画完全结束前不要弹 sheet，否则 sheet 会与关闭中的菜单窗口
+        // 竞争焦点/层级，出现“闪一下就被关闭”的竞态。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            if !NSApp.isActive {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            self.presentCustomTableDialog(parentWindow: parentWindow)
+        }
+    }
+
+    private func presentCustomTableDialog(parentWindow: NSWindow?) {
+        let rowsField = NSTextField(string: "\(selectedSize.rows > 0 ? selectedSize.rows : TableSizePickerModel.defaultSize.rows)")
+        let columnsField = NSTextField(string: "\(selectedSize.columns > 0 ? selectedSize.columns : TableSizePickerModel.defaultSize.columns)")
         let rowsLabel = NSTextField(labelWithString: L10n.t("行数"))
         let columnsLabel = NSTextField(labelWithString: L10n.t("列数"))
-        let rows = NSStackView(views: [rowsLabel, rowsField])
-        let columns = NSStackView(views: [columnsLabel, columnsField])
-        rows.orientation = .horizontal
-        columns.orientation = .horizontal
-        rows.spacing = 8
-        columns.spacing = 8
-        let fields = NSStackView(views: [rows, columns])
-        fields.orientation = .vertical
-        fields.spacing = 8
-        fields.edgeInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
-        rowsField.widthAnchor.constraint(equalToConstant: 80).isActive = true
-        columnsField.widthAnchor.constraint(equalToConstant: 80).isActive = true
+
+        // NSAlert 的 accessoryView 保留显式尺寸；内部用文字基线约束，避免标签与输入内容视觉错位。
+        rowsLabel.alignment = .right
+        columnsLabel.alignment = .right
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 32))
+        for subview in [rowsLabel, rowsField, columnsLabel, columnsField] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            accessory.addSubview(subview)
+        }
+        NSLayoutConstraint.activate([
+            rowsLabel.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+            rowsLabel.widthAnchor.constraint(equalToConstant: 40),
+            rowsLabel.firstBaselineAnchor.constraint(equalTo: rowsField.firstBaselineAnchor),
+            rowsField.leadingAnchor.constraint(equalTo: rowsLabel.trailingAnchor, constant: 4),
+            rowsField.centerYAnchor.constraint(equalTo: accessory.centerYAnchor),
+            rowsField.widthAnchor.constraint(equalToConstant: 80),
+            rowsField.heightAnchor.constraint(equalToConstant: 24),
+            columnsLabel.leadingAnchor.constraint(equalTo: rowsField.trailingAnchor, constant: 12),
+            columnsLabel.widthAnchor.constraint(equalToConstant: 40),
+            columnsLabel.firstBaselineAnchor.constraint(equalTo: columnsField.firstBaselineAnchor),
+            columnsField.leadingAnchor.constraint(equalTo: columnsLabel.trailingAnchor, constant: 4),
+            columnsField.centerYAnchor.constraint(equalTo: accessory.centerYAnchor),
+            columnsField.widthAnchor.constraint(equalToConstant: 80),
+            columnsField.heightAnchor.constraint(equalToConstant: 24),
+            columnsField.trailingAnchor.constraint(equalTo: accessory.trailingAnchor),
+        ])
+        accessory.layoutSubtreeIfNeeded()
 
         let alert = NSAlert()
         alert.messageText = L10n.t("自定义表格")
-        alert.accessoryView = fields
+        alert.accessoryView = accessory
+        alert.window.initialFirstResponder = rowsField
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard let size = TableSizePickerModel.parse("\(rowsField.stringValue),\(columnsField.stringValue)") else {
-            NSSound.beep()
-            return
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            guard let size = TableSizePickerModel.parse("\(rowsField.stringValue),\(columnsField.stringValue)") else {
+                NSSound.beep()
+                return
+            }
+            self.selectedSize = size
+            self.updateTitle()
+            self.needsDisplay = true
+            self.commitSelection()
         }
-        selectedSize = size
-        updateTitle()
-        needsDisplay = true
-        commitSelection()
+        customTableAlert = alert
+        if let parentWindow, parentWindow.isVisible {
+            alert.beginSheetModal(for: parentWindow) { [weak self] response in
+                self?.customTableAlert = nil
+                handleResponse(response)
+            }
+        } else {
+            customTableAlert = nil
+            handleResponse(alert.runModal())
+        }
     }
 }
 
 func tableSizePickerMenuItem(onSelect: @escaping (TableSize) -> Void) -> NSMenuItem {
     let menuItem = NSMenuItem()
     let picker = TableSizePickerView()
-    picker.onSelect = { size in
+    picker.onSelect = { [weak menuItem] size in
         onSelect(size)
-        menuItem.menu?.cancelTracking()
+        menuItem?.menu?.cancelTracking()
     }
-    picker.onCancel = {
-        menuItem.menu?.cancelTracking()
+    picker.onCancel = { [weak menuItem] in
+        menuItem?.menu?.cancelTracking()
     }
     menuItem.view = picker
     menuItem.toolTip = L10n.t("选择表格大小")
+    return menuItem
+}
+
+/// “插入表格”二级菜单：展开后才显示尺寸网格，避免右键菜单里直接铺开可视化选择器。
+func tableSizePickerSubmenu(onSelect: @escaping (TableSize) -> Void) -> NSMenuItem {
+    let menuItem = NSMenuItem(title: L10n.t("插入表格"), action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: L10n.t("插入表格"))
+    submenu.addItem(tableSizePickerMenuItem(onSelect: onSelect))
+    menuItem.submenu = submenu
     return menuItem
 }

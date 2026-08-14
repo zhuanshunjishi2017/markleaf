@@ -87,7 +87,6 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             action: #selector(discardSelected)
         )
         discardSelectedButton.bezelStyle = .rounded
-        Self.styleDestructive(discardSelectedButton)
         discardSelectedButton.isHidden = true
         discardSelectedButton.isEnabled = false
         self.discardSelectedButton = discardSelectedButton
@@ -98,7 +97,6 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             action: #selector(discardAll)
         )
         discardAllButton.bezelStyle = .rounded
-        Self.styleDestructive(discardAllButton)
         self.discardAllButton = discardAllButton
 
         let cancelButton = NSButton(title: L10n.translate("取消", language: language), target: self, action: #selector(cancel))
@@ -131,28 +129,6 @@ final class RecoveryWindowController: NSWindowController, NSTableViewDataSource,
             buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
         ])
         window.contentView = root
-    }
-
-    private static func styleDestructive(_ button: NSButton) {
-        button.hasDestructiveAction = true
-        let titleColor = NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(srgbRed: 0.863, green: 0.224, blue: 0.161, alpha: 1)
-                : NSColor.systemRed.withAlphaComponent(0.72)
-        }
-        let bezelColor = NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(srgbRed: 0.365, green: 0.227, blue: 0.220, alpha: 1)
-                : NSColor.systemRed.withAlphaComponent(0.10)
-        }
-        button.bezelColor = bezelColor
-        let font = button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        button.attributedTitle = NSAttributedString(
-            string: button.title,
-            attributes: [.font: font, .foregroundColor: titleColor]
-        )
     }
 
     required init?(coder: NSCoder) {

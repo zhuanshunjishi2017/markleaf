@@ -49,4 +49,29 @@ final class EditorContextMenuTests: XCTestCase {
         XCTAssertTrue(item.view is TableSizePickerView)
     }
 
+    func testTableSizePickerSitsInsideInsertTableSubmenu() {
+        let item = tableSizePickerSubmenu { _ in }
+
+        XCTAssertEqual(item.title, L10n.t("插入表格"))
+        XCTAssertEqual(item.submenu?.title, L10n.t("插入表格"))
+        XCTAssertEqual(item.submenu?.items.count, 1)
+        XCTAssertTrue(item.submenu?.items.first?.view is TableSizePickerView)
+    }
+
+    func testSubmenuComputedSizeTracksPicker() {
+        let item = tableSizePickerSubmenu { _ in }
+        let view = try? XCTUnwrap(item.submenu?.items.first?.view)
+        let submenu = try? XCTUnwrap(item.submenu)
+
+        XCTAssertLessThanOrEqual(submenu?.size.width ?? .infinity, (view?.frame.width ?? 0) + 4)
+        XCTAssertLessThanOrEqual(submenu?.size.height ?? .infinity, (view?.frame.height ?? 0) + 16)
+    }
+
+    func testPickerFrameUsesCompactMetrics() {
+        let view = TableSizePickerView()
+
+        XCTAssertLessThan(view.frame.width, 250)
+        XCTAssertLessThan(view.frame.height, 310)
+    }
+
 }

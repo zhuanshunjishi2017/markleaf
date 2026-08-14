@@ -294,10 +294,10 @@ final class PreferencesWindowController: NSWindowController {
     private func editorPage() -> NSView {
         formPage(rows: [
             .header(L10n.t("可视化")),
-            .field("", blockHandleCheck),
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
+            .field("", blockHandleCheck),
             .header(L10n.t("源码模式")),
             .field(L10n.t("字体设置"), NSStackView(views: [fontSettingsSummary, fontSettingsButton])),
             .field(L10n.t("汉字优先字型"), cjkLanguagePopup),
