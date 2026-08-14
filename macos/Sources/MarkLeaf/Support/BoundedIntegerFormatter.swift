@@ -2,7 +2,7 @@ import AppKit
 
 /// 限制为 `[min...max]` 正整数的文本输入格式化器：
 /// 只接受数字，允许清空（便于重新输入），非数字或超出范围直接拒绝。
-final class BoundedIntegerFormatter: NumberFormatter {
+final class BoundedIntegerFormatter: NumberFormatter, @unchecked Sendable {
     let range: ClosedRange<Int>
 
     init(min: Int, max: Int) {
