@@ -238,8 +238,10 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             return
         }
         // WKWebView 需要挂在窗口并完成布局，printOperation(with:) 才能正确渲染整篇内容并跨页分页。
+        // 注意：不能把视图放到大幅离屏位置（如 x=-100000），WKWebView 会因此渲染空白；
+        // 放在 (0,0) 并置于编辑器内容之下即可被遮挡但仍可正常打印。
         if webView.superview == nil {
-            webView.frame.origin = NSPoint(x: -100000, y: 0)
+            webView.frame.origin = .zero
             targetWindow.contentView?.addSubview(webView, positioned: .below, relativeTo: nil)
         }
         webView.layoutSubtreeIfNeeded()
