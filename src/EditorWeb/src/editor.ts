@@ -446,13 +446,14 @@ export const editorExtensions = [
   BlockHandle,
 ]
 
-export function createEditor(element: HTMLElement, content = ''): Editor {
+export function createEditor(element: HTMLElement, content = '', readOnly = false): Editor {
   return new Editor({
     element,
     extensions: editorExtensions,
     content,
     contentType: 'markdown',
     autofocus: false,
+    editable: !readOnly,
     editorProps: {
       attributes: {
         class: 'markleaf-document',
@@ -463,9 +464,9 @@ export function createEditor(element: HTMLElement, content = ''): Editor {
   })
 }
 
-export function replaceEditorDocument(editor: Editor, element: HTMLElement, content: string): Editor {
+export function replaceEditorDocument(editor: Editor, element: HTMLElement, content: string, readOnly = false): Editor {
   editor.destroy()
-  return createEditor(element, content)
+  return createEditor(element, content, readOnly)
 }
 
 export function toVirtualImageUrl(markdownPath: string): string {

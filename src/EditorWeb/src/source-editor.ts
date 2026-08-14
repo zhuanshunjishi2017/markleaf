@@ -74,9 +74,17 @@ function buildSelectionDecorations(view: EditorView): DecorationSet {
 export class SourceEditor {
   readonly view: EditorView
   private readonly onChange: (documentChanged: boolean) => void
+  private readonly readOnly: boolean
 
-  constructor(parent: HTMLElement, content: string, onChange: (documentChanged: boolean) => void, indentWidth = 2) {
+  constructor(
+    parent: HTMLElement,
+    content: string,
+    onChange: (documentChanged: boolean) => void,
+    indentWidth = 2,
+    readOnly = false,
+  ) {
     this.onChange = onChange
+    this.readOnly = readOnly
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -89,6 +97,7 @@ export class SourceEditor {
   private buildExtensions(indentWidth: number) {
     const width = Math.max(1, Math.min(8, Math.round(indentWidth) || 2))
     return [
+      ...(this.readOnly ? [EditorState.readOnly.of(true)] : []),
       lineNumbers(),
       themedSourceSelection,
       highlightActiveLine(),

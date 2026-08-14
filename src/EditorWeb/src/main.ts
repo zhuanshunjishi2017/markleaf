@@ -66,10 +66,29 @@ let sourceMode = false
 let sourceIndentWidth = 2
 let replaceMode = false
 let documentType: DocumentType = 'markdown'
+let readOnly = false
 
 let editor = createEditor(editorMount)
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
+
+/// 只读文档（如更新内容）中仍然允许的宿主命令白名单。
+const READ_ONLY_ALLOWED_COMMANDS = new Set([
+  'find',
+  'toggleSourceMode',
+  'setStyle',
+  'setSourceSelection',
+  'findText',
+  'findNext',
+  'findPrev',
+  'findClose',
+  'setLanguage',
+  'setSourceIndent',
+  'setAutoHideScrollbar',
+  'setBlockHandleVisible',
+  'exportSelection',
+  'exportDocument',
+])
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -152,6 +171,7 @@ function sendCommandState(): void {
     ...getEditorCommandState(editor),
     hasSelection: sourceSelection ? !sourceSelection.empty : getEditorCommandState(editor).hasSelection,
     sourceMode,
+    readOnly,
     canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
     formatPainterArmed: !sourceMode && formatPainter.isArmed,
   })
@@ -264,7 +284,7 @@ function setSourceMode(enabled: boolean): void {
   formatPainter.cancel()
   updateFormatPainterCursor()
   if (enabled) {
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth)
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -507,7 +527,7 @@ function handleMessage(value: unknown): void {
     case 'loadDocument': {
       formatPainter.cancel()
       updateFormatPainterCursor()
-      const payload = message.payload as { markdown?: unknown; documentType?: unknown }
+      const payload = message.payload as { markdown?: unknown; documentType?: unknown; readOnly?: unknown }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
         return
@@ -516,6 +536,7 @@ function handleMessage(value: unknown): void {
       documentLoaded = true
       revision = message.revision
       documentType = isPlainTextDocumentType(payload?.documentType) ? 'plainText' : 'markdown'
+      readOnly = payload?.readOnly === true
       suppressUpdate = true
       sourceEditor?.destroy()
       sourceEditor = null
@@ -523,12 +544,12 @@ function handleMessage(value: unknown): void {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly)
       } else {
         sourceMode = false
         sourceMount.hidden = true
         editorMount.hidden = false
-        editor = replaceEditorDocument(editor, editorMount, payload.markdown)
+        editor = replaceEditorDocument(editor, editorMount, payload.markdown, readOnly)
         bindEditorEvents(editor)
         resetEditorViewport(editor, editorMount)
       }
@@ -551,6 +572,10 @@ function handleMessage(value: unknown): void {
         applyToCurrentTextBlockWhenEmpty?: unknown
       }
       if (typeof payload?.command === 'string') {
+        if (readOnly && !READ_ONLY_ALLOWED_COMMANDS.has(payload.command)) {
+          if (message.requestId) send('commandResult', { success: false }, message.requestId)
+          break
+        }
         if (payload.command === 'find' || payload.command === 'replace') {
           showFindBar(payload.command === 'replace')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
