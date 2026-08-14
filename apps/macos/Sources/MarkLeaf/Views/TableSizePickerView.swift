@@ -26,6 +26,19 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    /// macOS 26+ 菜单栏是半透明 Liquid Glass：不声明不透明，避免把菜单背景涂成纯黑块。
+    override var isOpaque: Bool { false }
+
+    /// 网格线颜色：跟随外观的半透明色，配合玻璃背景而不是纯黑描边。
+    private var gridStrokeColor: NSColor {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return dark ? NSColor.white.withAlphaComponent(0.32) : NSColor.black.withAlphaComponent(0.18)
+    }
+
+    /// 网格区背景：半透明圆角，让 Liquid Glass 效果透出。
+    private var gridBackgroundColor: NSColor {
+        NSColor.controlBackgroundColor.withAlphaComponent(0.45)
+    }
 
     convenience init() {
         self.init(initialSize: TableSize(rows: 0, columns: 0), visibleLimit: TableSizePickerModel.visibleLimit)
@@ -81,17 +94,18 @@ final class TableSizePickerView: NSView, NSMenuDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        NSColor.controlBackgroundColor.setFill()
-        dirtyRect.fill()
+        let background = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
+        gridBackgroundColor.setFill()
+        background.fill()
 
         let gridOrigin = NSPoint(x: contentPadding, y: titleTopPadding + titleHeight + titleToGridSpacing)
         for row in 1...visibleLimit {
             for column in 1...visibleLimit {
                 let rect = cellRect(row: row, column: column, origin: gridOrigin)
                 let isSelected = row <= selectedSize.rows && column <= selectedSize.columns
-                (isSelected ? NSColor.controlAccentColor.withAlphaComponent(0.18) : NSColor.clear).setFill()
+                (isSelected ? NSColor.controlAccentColor.withAlphaComponent(0.22) : NSColor.clear).setFill()
                 rect.fill()
-                (isSelected ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
+                (isSelected ? NSColor.controlAccentColor : gridStrokeColor).setStroke()
                 let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
                 path.lineWidth = isSelected ? 1.5 : 1
                 path.stroke()
