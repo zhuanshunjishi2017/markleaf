@@ -115,7 +115,9 @@ export class SourceEditor {
       EditorView.theme({
         '&': { height: '100%' },
         '.cm-scroller': { fontFamily: 'Cascadia Mono, Consolas, monospace', lineHeight: '1.65' },
-        '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px', margin: '0 auto' },
+        // 正文不居中：行号栏固定在左侧，若把正文居中，侧边栏关闭（窗口变宽）时
+        // 行号与正文之间会出现一大段空白。
+        '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px' },
         '.cm-gutters': {
           background: 'var(--bg-hover)',
           borderRight: '1px solid var(--bg-selected)',
