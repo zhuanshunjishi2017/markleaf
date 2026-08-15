@@ -242,15 +242,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// 返回是否消费按键。F11=103，Escape=53。
+    /// 返回是否消费按键。专注模式下 Escape=53 退出。
     @discardableResult
     func handleFocusModeKey(keyCode: UInt16) -> Bool {
-        // macOS 不允许第三方菜单项声明 .function 修饰键，因此在窗口级监听，
-        // 保证编辑器/WebView 聚焦时仍能可靠切换。
-        if keyCode == 103 {
-            toggleFocusMode()
-            return true
-        }
         if isFocusMode, keyCode == 53 {
             exitFocusMode()
             return true

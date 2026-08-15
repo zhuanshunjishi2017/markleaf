@@ -188,8 +188,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(
             L10n.t("专注模式"),
             "toggleFocusMode",
-            key: String(UnicodeScalar(NSF11FunctionKey)!),
-            mask: []
+            key: "f",
+            mask: [.command, .shift]
         ))
         menu.addItem(.separator())
 
