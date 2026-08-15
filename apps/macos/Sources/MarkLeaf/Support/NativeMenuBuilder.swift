@@ -282,6 +282,11 @@ final class NativeMenuBuilder {
         item.target = MenuRouter.shared
         item.keyEquivalentModifierMask = mask
         item.representedObject = command
+        if let entry = ShortcutCatalog.entry(for: command) {
+            let (effectiveKey, effectiveMask) = ShortcutSettings.shared.effectiveKey(for: entry)
+            item.keyEquivalent = effectiveKey
+            item.keyEquivalentModifierMask = effectiveMask
+        }
         return item
     }
 
