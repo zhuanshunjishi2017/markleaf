@@ -57,46 +57,79 @@ final class ShortcutSettings {
         }
     }
 
+    /// 持久化状态：overrides 为自定义绑定；cleared 为“已清除（无快捷键）”的命令。
+    /// “清除”与“恢复默认”语义不同：清除 = 无快捷键；恢复默认 = 使用内置默认快捷键。
+    private struct Persisted: Codable {
+        var overrides: [String: Binding] = [:]
+        var cleared: [String] = []
+    }
+
     private static let storageKey = "customShortcuts"
-    private var overrides: [String: Binding]
+    private var state: Persisted
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
-           let decoded = try? JSONDecoder().decode([String: Binding].self, from: data) {
-            overrides = decoded
+           let decoded = try? JSONDecoder().decode(Persisted.self, from: data) {
+            state = decoded
+        } else if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+                  let legacy = try? JSONDecoder().decode([String: Binding].self, from: data) {
+            // 旧格式迁移：仅含 overrides。
+            state = Persisted(overrides: legacy, cleared: [])
         } else {
-            overrides = [:]
+            state = Persisted()
         }
     }
 
     func binding(for command: String) -> Binding? {
-        overrides[command]
+        state.overrides[command]
     }
 
-    /// 菜单项实际使用的快捷键：有自定义用自定义，否则用默认。
-    func effectiveKey(for entry: ShortcutEntry) -> (key: String, mask: NSEvent.ModifierFlags) {
-        if let binding = overrides[entry.command] {
+    /// 菜单项实际使用的快捷键：有自定义用自定义；被“清除”则无快捷键（nil）；
+    /// 否则用内置默认。
+    func effectiveKey(for entry: ShortcutEntry) -> (key: String, mask: NSEvent.ModifierFlags)? {
+        if let binding = state.overrides[entry.command] {
             return (binding.key, binding.mask)
+        }
+        if state.cleared.contains(entry.command) {
+            return nil
         }
         return (entry.defaultKey, entry.defaultMask)
     }
 
+    /// 录制新快捷键：写入自定义绑定，并取消“已清除”标记。
     func set(_ binding: Binding?, for command: String) {
+        state.cleared.removeAll { $0 == command }
         if let binding {
-            overrides[command] = binding
+            state.overrides[command] = binding
         } else {
-            overrides.removeValue(forKey: command)
+            state.overrides.removeValue(forKey: command)
         }
         persist()
     }
 
+    /// 清除快捷键：移除自定义绑定并标记为“无快捷键”。
+    func clear(_ command: String) {
+        state.overrides.removeValue(forKey: command)
+        if !state.cleared.contains(command) {
+            state.cleared.append(command)
+        }
+        persist()
+    }
+
+    /// 恢复默认：移除自定义绑定并取消“已清除”标记。
+    func restoreDefault(_ command: String) {
+        state.overrides.removeValue(forKey: command)
+        state.cleared.removeAll { $0 == command }
+        persist()
+    }
+
     func resetAll() {
-        overrides = [:]
+        state = Persisted()
         persist()
     }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(overrides) {
+        if let data = try? JSONEncoder().encode(state) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
     }
@@ -120,7 +153,7 @@ final class ShortcutSettings {
             return .systemReserved
         }
         for entry in ShortcutCatalog.entries where entry.command != command {
-            let (ek, em) = ShortcutSettings.shared.effectiveKey(for: entry)
+            guard let (ek, em) = ShortcutSettings.shared.effectiveKey(for: entry) else { continue }
             if ek == key && em == mask {
                 return .duplicate(command: entry.command)
             }

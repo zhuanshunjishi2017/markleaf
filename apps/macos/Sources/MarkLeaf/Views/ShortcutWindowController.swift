@@ -131,8 +131,11 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         }()
         let entry = entries[row]
         if column.identifier.rawValue == "key" {
-            let (key, mask) = ShortcutSettings.shared.effectiveKey(for: entry)
-            cell.textField?.stringValue = ShortcutDisplay.string(key: key, mask: mask)
+            if let (key, mask) = ShortcutSettings.shared.effectiveKey(for: entry) {
+                cell.textField?.stringValue = ShortcutDisplay.string(key: key, mask: mask)
+            } else {
+                cell.textField?.stringValue = "—"
+            }
             cell.textField?.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
             cell.textField?.alignment = .right
         } else {
@@ -194,13 +197,16 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
 
     @objc private func clearShortcut() {
         guard let command = selectedCommand() else { return }
-        ShortcutSettings.shared.set(nil, for: command)
+        ShortcutSettings.shared.clear(command)
         NativeMenuBuilder.refreshIfNeeded()
         tableView.reloadData()
     }
 
     @objc private func restoreDefault() {
-        clearShortcut()
+        guard let command = selectedCommand() else { return }
+        ShortcutSettings.shared.restoreDefault(command)
+        NativeMenuBuilder.refreshIfNeeded()
+        tableView.reloadData()
     }
 
     @objc private func resetAll() {

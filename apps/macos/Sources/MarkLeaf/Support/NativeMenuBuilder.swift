@@ -283,9 +283,14 @@ final class NativeMenuBuilder {
         item.keyEquivalentModifierMask = mask
         item.representedObject = command
         if let entry = ShortcutCatalog.entry(for: command) {
-            let (effectiveKey, effectiveMask) = ShortcutSettings.shared.effectiveKey(for: entry)
-            item.keyEquivalent = effectiveKey
-            item.keyEquivalentModifierMask = effectiveMask
+            if let (effectiveKey, effectiveMask) = ShortcutSettings.shared.effectiveKey(for: entry) {
+                item.keyEquivalent = effectiveKey
+                item.keyEquivalentModifierMask = effectiveMask
+            } else {
+                // 用户已“清除”该命令的快捷键。
+                item.keyEquivalent = ""
+                item.keyEquivalentModifierMask = []
+            }
         }
         return item
     }
