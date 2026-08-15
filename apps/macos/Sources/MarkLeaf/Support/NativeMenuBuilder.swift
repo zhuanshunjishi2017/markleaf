@@ -67,6 +67,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
+        menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
         menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
@@ -187,8 +188,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(
             L10n.t("专注模式"),
             "toggleFocusMode",
-            key: String(UnicodeScalar(NSF11FunctionKey)!),
-            mask: []
+            key: "f",
+            mask: [.command, .shift]
         ))
         menu.addItem(.separator())
 
@@ -281,6 +282,16 @@ final class NativeMenuBuilder {
         item.target = MenuRouter.shared
         item.keyEquivalentModifierMask = mask
         item.representedObject = command
+        if let entry = ShortcutCatalog.entry(for: command) {
+            if let (effectiveKey, effectiveMask) = ShortcutSettings.shared.effectiveKey(for: entry) {
+                item.keyEquivalent = effectiveKey
+                item.keyEquivalentModifierMask = effectiveMask
+            } else {
+                // 用户已“清除”该命令的快捷键。
+                item.keyEquivalent = ""
+                item.keyEquivalentModifierMask = []
+            }
+        }
         return item
     }
 
@@ -323,6 +334,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             return false
         }
         switch command {
+        case "print": return session != nil
         case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
         case "workspaceTab": menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
         case "outlineTab": menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
@@ -543,6 +555,7 @@ extension EditorSession {
         case "save": saveDocument()
         case "saveAs": saveDocumentAs()
         case "export": exportDocument()
+        case "print": printDocument()
         case "closeFolder": closeWorkspace()
         case "undo": execute("undo")
         case "redo": execute("redo")
@@ -587,6 +600,7 @@ extension EditorSession {
         case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
+        case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)
         case "insertHorizontalRule": execute("insertHorizontalRule")
         case "insertTable": execute("insertTable")
         case "insertLineBefore": execute("insertLineBefore")

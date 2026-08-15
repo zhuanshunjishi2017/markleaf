@@ -47,7 +47,17 @@ final class FontSettingsWindowController: NSWindowController {
         stack.orientation = .vertical
         stack.spacing = 18
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        // 按内容自适应窗口大小，避免 500×230 的固定尺寸让设置项之外显得空旷。
+        let fitting = stack.fittingSize
         window.contentView = stack
+        window.setContentSize(fitting)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

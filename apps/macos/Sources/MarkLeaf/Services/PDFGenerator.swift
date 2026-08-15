@@ -161,8 +161,10 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
 
     // MARK: - 系统打印面板（导出 PDF 走系统打印面板，纸张/边距/方向由面板控制）
 
-    /// 将导出 HTML 载入离屏 WKWebView，并弹出系统打印面板（可“存储为 PDF”）。
-    /// completion(.success(true)) = 已打印或已保存为 PDF；.success(false) = 用户取消。
+    /// 将导出 HTML 载入离屏 WKWebView，按模式输出：
+    /// - showsPanel=true：弹出系统打印面板（可打印或“存储为 PDF”）；
+    /// - showsPanel=false：按 saveURL 直接落盘（导出 PDF）。
+    /// completion(.success(true)) = 已打印/已保存；.success(false) = 用户取消。
     func printPDF(
         html: String,
         paperSize: PaperSize,
@@ -171,21 +173,17 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         window: NSWindow,
         showsPanel: Bool = true,
         saveURL: URL? = nil,
+        useSystemPaperDefaults: Bool = false,
+        printFriendly: Bool = false,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         self.printCompletion = completion
         self.strongSelf = self
         self.targetWindow = window
         self.showsPrintPanel = showsPanel
-        AppLog.info("PDFGenerator: 启动系统打印面板 (纸张 \(paperSize.rawValue), 横向=\(landscape))")
+        AppLog.info("PDFGenerator: 启动 (面板=\(showsPanel), 系统默认纸张=\(useSystemPaperDefaults), 打印友好=\(printFriendly))")
 
-        let size = paperSize.sizeInches
-        let pointsPerInch: CGFloat = 72
         let info = NSPrintInfo()
-        info.paperSize = NSSize(
-            width: (landscape ? size.height : size.width) * pointsPerInch,
-            height: (landscape ? size.width : size.height) * pointsPerInch)
-        info.orientation = landscape ? .landscape : .portrait
         info.topMargin = margins.top
         info.bottomMargin = margins.bottom
         info.leftMargin = margins.left
@@ -194,6 +192,14 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
+        if !useSystemPaperDefaults {
+            let size = paperSize.sizeInches
+            let pointsPerInch: CGFloat = 72
+            info.paperSize = NSSize(
+                width: (landscape ? size.height : size.width) * pointsPerInch,
+                height: (landscape ? size.width : size.height) * pointsPerInch)
+            info.orientation = landscape ? .landscape : .portrait
+        }
         if !showsPanel, let saveURL {
             info.jobDisposition = .save
             info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = saveURL
@@ -203,8 +209,8 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         // 初始帧按一页大小；printOperation(with:) 会自行按打印信息跨页分页。
         // 复用共享打印宿主窗口/WebView：打印操作在取消后仍可能引用打印视图，
         // 若在此销毁视图会触发 over-release 崩溃（SIGSEGV）。
-        let pageWidth = CGFloat(landscape ? size.height : size.width) * pointsPerInch
-        let pageHeight = CGFloat(landscape ? size.width : size.height) * pointsPerInch
+        let pageWidth = info.paperSize.width
+        let pageHeight = info.paperSize.height
         let host = PrintHost.shared
         host.window.setContentSize(NSSize(width: pageWidth, height: pageHeight))
         host.webView.frame = NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
@@ -221,9 +227,13 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: watchdog)
 
         // 系统打印面板负责纸张与边距，不注入 @page 边距；
-        // 额外强制输出 CSS 背景色（WebKit 打印默认不渲染背景），并固定本地图片路径。
+        // 强制输出 CSS 背景色（WebKit 打印默认不渲染背景）、固定本地图片路径；
+        // 打印场景再叠加“打印友好”浅色覆盖（白底深字）。
         let printHTML = Self.forcePrintBackgrounds(in: html)
-        let adjustedHTML = Self.fixLocalImagePaths(in: printHTML)
+        var adjustedHTML = Self.fixLocalImagePaths(in: printHTML)
+        if printFriendly {
+            adjustedHTML = Self.forcePrintFriendly(in: adjustedHTML)
+        }
         webView.loadHTMLString(adjustedHTML, baseURL: nil)
         AppLog.info("PDFGenerator: 打印 HTML 已加载 (\(html.count) 字符)")
     }
@@ -239,6 +249,34 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             return html.replacingCharacters(in: headRange, with: style + "</head>")
         }
         return "<style>\n" + rule + "\n</style>\n" + html
+    }
+
+    /// 打印友好：无论当前主题，强制白底深字。注入的 `:root` 变量覆盖位于主题 CSS 之后，
+    /// 同选择器同优先级下后声明生效，因此能压过导出 HTML 内嵌的主题配色。
+    private static func forcePrintFriendly(in html: String) -> String {
+        let rule = """
+        :root {
+          --bg-primary: #FFFFFF;
+          --bg-hover: #F3F2F8;
+          --bg-selected: #E7E7EF;
+          --bg-selected-hover: #E4E2EB;
+          --text-primary: #000000;
+          --text-secondary: #555555;
+          --text-tertiary: #6B6B6B;
+          --text-selected: #FFFFFF;
+          --theme-light: #0088FE;
+          --theme-dark: #0051A8;
+          --icon: #0088FE;
+          --icon-secondary: #505864;
+          --scrollbar-idle: #8B8B8B;
+          --scrollbar-active: #636363;
+        }
+        """
+        let style = "<style>\n" + rule + "\n</style>\n"
+        if let headRange = html.range(of: "</head>") {
+            return html.replacingCharacters(in: headRange, with: style + "</head>")
+        }
+        return style + html
     }
 
     private func runPrintPanel(webView: WKWebView) {
@@ -257,9 +295,13 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             guard let self else { return }
             let operation = webView.printOperation(with: printInfo)
             operation.showsPrintPanel = self.showsPrintPanel
-            operation.showsProgressPanel = true
+            operation.showsProgressPanel = self.showsPrintPanel
             self.watchdog?.cancel()
-            AppLog.info("PDFGenerator: 弹出系统打印面板")
+            if self.showsPrintPanel {
+                AppLog.info("PDFGenerator: 弹出系统打印面板")
+            } else {
+                AppLog.info("PDFGenerator: 直接保存 PDF（不弹面板）")
+            }
             operation.runModal(for: targetWindow, delegate: self, didRun: #selector(self.printDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
     }
