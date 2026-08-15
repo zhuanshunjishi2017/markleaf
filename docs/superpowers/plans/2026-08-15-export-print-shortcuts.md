@@ -391,7 +391,7 @@ struct ExportContext {
 ```swift
     /// 文件 → 打印…：生成打印 HTML 并弹出系统打印面板（纸张/方向跟随系统默认）。
     func printDocument() {
-        guard let window = webView?.window else { return }
+        guard webView?.window != nil else { return }
         var options = ExportOptions()
         options.format = "html"
         options.style = currentStyleId
@@ -648,9 +648,11 @@ final class ShortcutSettings {
                 || "=,-.".contains(Character(scalar)) else {
             return .invalid
         }
-        // 系统高风险组合。
+        // 系统高风险组合：⌘Space、⌃⌘F（全屏），以及会被系统菜单抢占的 ⌘Q/⌘W/⌘H/⌥⌘H/⌘M/⌘,。
+        let systemCmdKeys: Set<String> = ["q", "w", "h", "m", ","]
         if (key == " " && mask.contains(.command)) ||
-            (key.lowercased() == "f" && mask.contains(.control) && mask.contains(.command)) {
+            (key.lowercased() == "f" && mask.contains(.control) && mask.contains(.command)) ||
+            (mask.contains(.command) && systemCmdKeys.contains(key)) {
             return .systemReserved
         }
         for entry in ShortcutCatalog.entries where entry.command != command {
