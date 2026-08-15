@@ -1,3 +1,3 @@
 enum AppVersion {
-    static let fallback = "1.2.0"
+    static let fallback = "1.2.2"
 }

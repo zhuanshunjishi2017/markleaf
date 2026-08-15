@@ -1,6 +1,26 @@
 # MarkLeaf Changelog
 
-## 1.2.0 — 2026-08-15
+## 1.2.2 — 2026-08-15
+
+### New
+
+- Export PDF now saves directly to the chosen location without opening the system print panel.
+- Add a Print… command (⌘P) that prints the current document through the system print panel with a forced light background and dark text.
+- The Shortcuts window now supports custom shortcuts that apply immediately and persist.
+
+### Fixes & Improvements
+
+- Focus Mode now uses ⌘⇧F instead of F11 to avoid conflicting with Show Desktop.
+- Fix the Shortcuts window opening with a collapsed, strip-shaped layout.
+- Fix Clear in the Shortcuts window not removing the current shortcut.
+- Fix the font settings window opening larger than its content.
+- Fix bullet, ordered, and task lists in the Paragraph menu not applying formatting.
+- Fix heading menu items showing a duplicated “级” character (e.g., “一级级标题”).
+- Fix paragraph block handles not showing and format painter not working inside lists.
+- Fix an app crash when clicking “Cancel” in the system print panel.
+- Fix the overly wide gap between line numbers and text in source mode when the sidebar is closed.
+
+## 1.2.0 — 2026-08-14
 
 ### New
 
@@ -18,17 +38,7 @@
 - Fix the custom-table dialog flashing and closing from the Insert Table menu; align the row/column labels with their input fields.
 - Slightly increase the sidebar search field height.
 - Restore the recovery window’s Discard All / Discard Selected buttons to the default white button style.
-- Export PDF now saves directly to the chosen location without opening the system print panel.
-- Add a Print… command (⌘P) that prints the current document through the system print panel with a forced light background and dark text.
-- Focus Mode now uses ⌘⇧F instead of F11 to avoid conflicting with Show Desktop.
-- The Shortcuts window now supports custom shortcuts that apply immediately and persist.
-- Fix the Shortcuts window opening with a collapsed, strip-shaped layout.
-- Fix Clear in the Shortcuts window not removing the current shortcut.
-- Fix bullet, ordered, and task lists in the Paragraph menu not applying formatting.
-- Fix heading menu items showing a duplicated “级” character (e.g., “一级级标题”).
-- Fix paragraph block handles not showing and format painter not working inside lists.
-- Fix an app crash when clicking “Cancel” in the system print panel.
-- Fix the overly wide gap between line numbers and text in source mode when the sidebar is closed.
+- Export PDF through the system print panel, so you can fully adjust paper size, orientation, and margins before saving as PDF.
 
 ### Changes
 
