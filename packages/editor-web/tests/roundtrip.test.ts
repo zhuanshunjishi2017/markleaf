@@ -489,15 +489,16 @@ describe('paragraph menu commands', () => {
     expect(executeEditorCommand(editor, 'rotateImageClockwise')).toBe(true)
     const image = element.querySelector<HTMLImageElement>('.markleaf-image-content')
     expect(image?.style.transform).toContain('rotate(90deg)')
+    // 旋转后统一为百分比 + 宽高比；宽度保持设定宽度（320px = 39% of 820px），宽高比取倒数。
     expect(getMarkdown(editor)).toContain(
-      '"caption || markleaf:width=180;height=320;rotation=90"',
+      '"caption || markleaf:widthPct=39;ratio=1.7778;rotation=90"',
     )
 
     expect(executeEditorCommand(editor, 'rotateImageClockwise')).toBe(true)
     expect(executeEditorCommand(editor, 'rotateImageClockwise')).toBe(true)
     expect(executeEditorCommand(editor, 'rotateImageClockwise')).toBe(true)
     expect(getMarkdown(editor)).toContain(
-      '"caption || markleaf:width=320;height=180;rotation=0"',
+      '"caption || markleaf:widthPct=39;ratio=0.5625;rotation=0"',
     )
   })
 
@@ -568,6 +569,23 @@ describe('paragraph menu commands', () => {
     expect(getMarkdown(editor)).toContain('rotation=0')
     expect(executeEditorCommand(editor, 'redo')).toBe(true)
     expect(getMarkdown(editor)).toContain('rotation=90')
+  })
+
+  it('applies percentage width in exported HTML images', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(
+      element,
+      '![diagram](image.png "markleaf:widthPct=49;ratio=0.5625;rotation=0")',
+    )
+    editors.push(editor)
+
+    const html = editor.getHTML()
+    // 49% of the default 820px max-width = 402px; height = 402 * 0.5625 = 226px
+    expect(html).toMatch(/display:\s*block/)
+    expect(html).toMatch(/margin:\s*0.85em auto/)
+    expect(html).toMatch(/width:\s*402px/)
+    expect(html).toMatch(/aspect-ratio:\s*402\s*\/\s*226/)
   })
 
   it('inserts a dropped image at the document position resolved from mouse coordinates', () => {

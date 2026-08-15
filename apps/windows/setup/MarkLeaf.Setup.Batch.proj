@@ -1,15 +1,15 @@
 <Project DefaultTargets="BuildAll">
   <!--
     Batch builds all 6 MarkLeaf MSI variants.
-    Usage: dotnet build setup/MarkLeaf.Setup.Batch.proj
-    Version read automatically from windows/MarkLeaf/MarkLeaf.csproj.
+    Usage: dotnet build apps/windows/setup/MarkLeaf.Setup.Batch.proj
+    Version read automatically from apps/windows/MarkLeaf/MarkLeaf.csproj.
   -->
   <PropertyGroup>
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</RepoRoot>
   </PropertyGroup>
 
   <Target Name="ReadVersion">
-    <XmlPeek XmlInputPath="$(RepoRoot)\windows\MarkLeaf\MarkLeaf.csproj"
+    <XmlPeek XmlInputPath="$(RepoRoot)\MarkLeaf\MarkLeaf.csproj"
              Query="/Project/PropertyGroup/Version/text()">
       <Output TaskParameter="Result" PropertyName="Version" />
     </XmlPeek>

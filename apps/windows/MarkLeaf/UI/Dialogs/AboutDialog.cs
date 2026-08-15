@@ -77,7 +77,7 @@ internal sealed class AboutDialog : Form
         };
 
         infoPanel.Controls.Add(NewLabel("MarkLeaf", new Font("Times New Roman", 18F, FontStyle.Bold)), 0, 0);
-        infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription")), 0, 1);
+        infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription"), new Font("Times New Roman", 9F)), 0, 1);
         infoPanel.Controls.Add(NewSeparator(), 0, 2);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutVersion", AppVersion)), 0, 3);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutDate", BuildDate)), 0, 4);

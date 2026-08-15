@@ -394,7 +394,7 @@
   "dialog.shortcutsColumnKey": "Shortcut",
   "dialog.shortcutsColumnDesc": "Description",
   "dialog.aboutTitle": "About MarkLeaf",
-  "dialog.aboutDescription": "A lightweight native Markdown editor for Windows",
+  "dialog.aboutDescription": "Markdown without Distraction",
   "dialog.aboutVersion": "Version: {0}",
   "dialog.aboutDate": "Date: {0}",
   "dialog.aboutAuthor": "Author: {0}",

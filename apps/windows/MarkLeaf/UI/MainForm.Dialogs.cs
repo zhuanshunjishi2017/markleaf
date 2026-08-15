@@ -84,14 +84,14 @@ internal sealed partial class MainForm
 
     private async void ShowChangelog()
     {
-        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.txt");
+        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.md");
         if (!File.Exists(changelogPath))
         {
             SetStatus(Loc.Get("changelog.notFound"));
             return;
         }
 
-        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "changelog.txt");
+        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "changelog.md");
         try
         {
             File.Copy(changelogPath, cachePath, overwrite: true);

@@ -363,12 +363,39 @@ const MarkLeafImage = Image.extend({
     }
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
+    const attrs = node.attrs as Record<string, unknown>
     const markdownPath = typeof HTMLAttributes.src === 'string' ? HTMLAttributes.src : ''
+    const widthPercent = typeof attrs.widthPercent === 'number' ? attrs.widthPercent : null
+    const aspectRatio = typeof attrs.aspectRatio === 'number' ? attrs.aspectRatio : null
+    const rotation = normalizeImageRotation(attrs.rotation)
+
+    let width = typeof attrs.width === 'number' ? attrs.width : null
+    let height = typeof attrs.height === 'number' ? attrs.height : null
+
+    // 导出/复制 HTML 没有 NodeView，需在此把百分比尺寸换算成像素，
+    // 否则图片会按原始尺寸渲染（导出 PDF 时图片巨大）。
+    if (width === null && height === null && widthPercent !== null && aspectRatio !== null) {
+      width = Math.round(getPageWidth() * widthPercent / 100)
+      height = Math.round(width * aspectRatio)
+    }
+
+    const styles: string[] = ['display:block', 'margin:0.85em auto', 'max-width:100%']
+    if (width !== null && height !== null) {
+      const displayWidth = rotation === 90 || rotation === 270 ? height : width
+      const displayHeight = rotation === 90 || rotation === 270 ? width : height
+      // 用 aspect-ratio 代替固定高度：max-width 收缩时高度同步缩放，保持原始比例不变。
+      styles.push(`width:${displayWidth}px`, `aspect-ratio:${displayWidth} / ${displayHeight}`)
+    }
+    if (rotation !== 0) {
+      styles.push(`transform:rotate(${rotation}deg)`)
+    }
+
     return ['img', {
       ...HTMLAttributes,
       src: toVirtualImageUrl(markdownPath),
       'data-markleaf-path': markdownPath,
+      style: styles.join(';'),
     }]
   },
 
@@ -428,6 +455,8 @@ const MarkLeafImage = Image.extend({
           image.style.top = '50%'
           image.style.width = `${rotation === 90 || rotation === 270 ? height : width}px`
           image.style.height = `${rotation === 90 || rotation === 270 ? width : height}px`
+          // 旋转后内容尺寸可能大于 frame，禁用 max-width:100%，避免被压缩导致上下留白。
+          image.style.maxWidth = 'none'
           image.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`
         } else {
           frame.style.removeProperty('width')
@@ -437,6 +466,7 @@ const MarkLeafImage = Image.extend({
           image.style.removeProperty('top')
           image.style.width = 'auto'
           image.style.height = 'auto'
+          image.style.removeProperty('max-width')
           image.style.transform = rotation === 0 ? 'none' : `rotate(${rotation}deg)`
         }
       }
@@ -1226,18 +1256,14 @@ export function rotateSelectedImageClockwise(editor: Editor): boolean {
 
   const rotation = normalizeImageRotation(selectedImage.attrs.rotation)
   const nextRotation = ((rotation + 90) % 360) as ImageMetadata['rotation']
-  const widthPercent = typeof selectedImage.attrs.widthPercent === 'number' ? selectedImage.attrs.widthPercent : null
-  const aspectRatio = typeof selectedImage.attrs.aspectRatio === 'number' ? selectedImage.attrs.aspectRatio : null
 
-  if (widthPercent !== null && aspectRatio !== null) {
-    // 百分比尺寸：旋转 90° 时宽高互换，长宽比取倒数
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
-      ...selectedImage.attrs,
-      widthPercent: Math.max(1, Math.round(widthPercent * aspectRatio)),
-      aspectRatio: 1 / aspectRatio,
-      rotation: nextRotation,
-    }))
-  } else {
+  // 统一为「百分比宽度 + 宽高比」：widthPercent 是设定宽度，旋转不改变它，
+  // 仅宽高比取倒数（宽高互换），保证旋转后图片宽度仍为设定宽度。
+  let widthPercent = typeof selectedImage.attrs.widthPercent === 'number' ? selectedImage.attrs.widthPercent : null
+  let aspectRatio = typeof selectedImage.attrs.aspectRatio === 'number' ? selectedImage.attrs.aspectRatio : null
+
+  if (widthPercent === null || aspectRatio === null) {
+    // 像素尺寸（或尚未有尺寸信息）：换算成百分比，统一后续处理。
     const nodeDom = editor.view.nodeDOM(selection.from) as HTMLElement | null
     const frame = nodeDom?.matches('.markleaf-image-frame')
       ? nodeDom
@@ -1245,17 +1271,28 @@ export function rotateSelectedImageClockwise(editor: Editor): boolean {
     const image = frame?.querySelector<HTMLImageElement>('img')
     const currentWidth = typeof selectedImage.attrs.width === 'number'
       ? selectedImage.attrs.width
-      : frame?.offsetWidth || image?.naturalWidth || 1
+      : frame?.offsetWidth || image?.naturalWidth || null
     const currentHeight = typeof selectedImage.attrs.height === 'number'
       ? selectedImage.attrs.height
-      : frame?.offsetHeight || image?.naturalHeight || 1
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
-      ...selectedImage.attrs,
-      width: Math.max(1, Math.round(currentHeight)),
-      height: Math.max(1, Math.round(currentWidth)),
-      rotation: nextRotation,
-    }))
+      : frame?.offsetHeight || image?.naturalHeight || null
+    if (currentWidth !== null && currentHeight !== null && currentWidth > 0) {
+      widthPercent = Math.round(currentWidth / getPageWidth() * 100)
+      aspectRatio = currentHeight / currentWidth
+    }
   }
+
+  if (widthPercent === null || aspectRatio === null) {
+    return false
+  }
+
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
+    ...selectedImage.attrs,
+    widthPercent,
+    aspectRatio: 1 / aspectRatio,
+    width: null,
+    height: null,
+    rotation: nextRotation,
+  }))
 
   editor.commands.setNodeSelection(selection.from)
   return true

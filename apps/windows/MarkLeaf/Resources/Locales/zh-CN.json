@@ -394,7 +394,7 @@
   "dialog.shortcutsColumnKey": "快捷键",
   "dialog.shortcutsColumnDesc": "描述",
   "dialog.aboutTitle": "关于 MarkLeaf",
-  "dialog.aboutDescription": "Windows 原生轻量化 Markdown 编辑器",
+  "dialog.aboutDescription": "Markdown without Distraction",
   "dialog.aboutVersion": "版本： {0}",
   "dialog.aboutDate": "日期： {0}",
   "dialog.aboutAuthor": "作者： {0}",
