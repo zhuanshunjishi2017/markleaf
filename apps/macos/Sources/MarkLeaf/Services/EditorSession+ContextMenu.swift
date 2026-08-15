@@ -51,14 +51,10 @@ extension EditorSession {
     }
 
     private static func headingLevelName(_ level: Int) -> String {
-        switch level {
-        case 1: return L10n.t("一级")
-        case 2: return L10n.t("二级")
-        case 3: return L10n.t("三级")
-        case 4: return L10n.t("四级")
-        case 5: return L10n.t("五级")
-        default: return L10n.t("六级")
-        }
+        // 与菜单栏一致：只返回数字词（“一”…“六”），由外层 “%@级标题” 拼成完整标题。
+        let lang = SettingsService.shared.settings.displayLanguage
+        if lang == "en" || lang == "ja" { return "\(level)" }
+        return ["一", "二", "三", "四", "五", "六"][level - 1]
     }
 
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。

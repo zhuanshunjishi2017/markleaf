@@ -25,6 +25,7 @@
 - Fix the Shortcuts window opening with a collapsed, strip-shaped layout.
 - Fix Clear in the Shortcuts window not removing the current shortcut.
 - Fix bullet, ordered, and task lists in the Paragraph menu not applying formatting.
+- Fix heading menu items showing a duplicated “级” character (e.g., “一级级标题”).
 - Fix an app crash when clicking “Cancel” in the system print panel.
 - Fix the overly wide gap between line numbers and text in source mode when the sidebar is closed.
 
