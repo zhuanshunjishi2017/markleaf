@@ -22,6 +22,7 @@
 - Add a Print… command (⌘P) that prints the current document through the system print panel with a forced light background and dark text.
 - Focus Mode now uses ⌘⇧F instead of F11 to avoid conflicting with Show Desktop.
 - The Shortcuts window now supports custom shortcuts that apply immediately and persist.
+- Fix the Shortcuts window opening with a collapsed, strip-shaped layout.
 - Fix an app crash when clicking “Cancel” in the system print panel.
 - Fix the overly wide gap between line numbers and text in source mode when the sidebar is closed.
 

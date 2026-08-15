@@ -21,6 +21,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
             defer: false)
         window.title = L10n.t("快捷键")
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 520, height: 480)
         window.center()
         super.init(window: window)
         buildContent()
@@ -68,6 +69,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         resetAllButton.action = #selector(resetAll)
         let doneButton = NSButton(title: L10n.t("好"), target: self, action: #selector(closeWindow))
         doneButton.keyEquivalent = "\r"
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
 
         let buttonRow = NSStackView(views: [changeButton, clearButton, restoreButton, resetAllButton])
         buttonRow.orientation = .horizontal
@@ -79,6 +81,7 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
         root.addSubview(statusLabel)
         root.addSubview(buttonRow)
         root.addSubview(doneButton)
+        window.contentView = root
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
@@ -88,12 +91,18 @@ final class ShortcutWindowController: NSWindowController, NSTableViewDataSource,
             statusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             statusLabel.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
             buttonRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            buttonRow.trailingAnchor.constraint(lessThanOrEqualTo: doneButton.leadingAnchor, constant: -12),
             buttonRow.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
             doneButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
             doneButton.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
             doneButton.widthAnchor.constraint(equalToConstant: 80),
         ])
-        window.contentView = root
+        // 关键：给内容区固定尺寸约束，否则 Auto Layout 会按子视图最小 fitting size
+        // 把窗口塌缩成窄条（与 FindPanelController 同款做法）。
+        if let contentView = window.contentView {
+            contentView.widthAnchor.constraint(equalToConstant: 520).isActive = true
+            contentView.heightAnchor.constraint(equalToConstant: 480).isActive = true
+        }
     }
 
     // MARK: - 表格
