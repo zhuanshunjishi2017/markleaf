@@ -11,4 +11,5 @@ struct EditorSelectionExport {
 struct ExportContext {
     var options: ExportOptions
     var saveURL: URL
+    var forPrint = false
 }
