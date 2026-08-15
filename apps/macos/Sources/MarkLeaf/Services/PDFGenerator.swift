@@ -257,9 +257,13 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             guard let self else { return }
             let operation = webView.printOperation(with: printInfo)
             operation.showsPrintPanel = self.showsPrintPanel
-            operation.showsProgressPanel = true
+            operation.showsProgressPanel = self.showsPrintPanel
             self.watchdog?.cancel()
-            AppLog.info("PDFGenerator: 弹出系统打印面板")
+            if self.showsPrintPanel {
+                AppLog.info("PDFGenerator: 弹出系统打印面板")
+            } else {
+                AppLog.info("PDFGenerator: 直接保存 PDF（不弹面板）")
+            }
             operation.runModal(for: targetWindow, delegate: self, didRun: #selector(self.printDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
     }

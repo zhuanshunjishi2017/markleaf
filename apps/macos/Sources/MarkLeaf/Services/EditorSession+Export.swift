@@ -72,10 +72,10 @@ extension EditorSession {
         pendingExportContext = nil
 
         if context.options.format == "pdf" {
-            statusText = L10n.t("正在打开打印面板…")
-            AppLog.info("开始 PDF 导出（系统打印面板，纸张 \(context.options.paperSize.rawValue)）")
+            statusText = L10n.t("正在生成 PDF…")
+            AppLog.info("开始 PDF 导出（直接保存，纸张 \(context.options.paperSize.rawValue)）")
             guard let window = webView?.window else {
-                presentError(L10n.t("无法打开打印面板"))
+                presentError(L10n.t("无法导出 PDF"))
                 onExportComplete?(false)
                 return
             }
@@ -85,15 +85,15 @@ extension EditorSession {
                 landscape: context.options.landscape,
                 margins: context.options.margins,
                 window: window,
-                showsPanel: headlessPrintURL == nil,
-                saveURL: headlessPrintURL
+                showsPanel: false,
+                saveURL: context.saveURL
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let printed):
                         if printed {
                             self?.statusText = L10n.t("已导出 PDF")
-                            AppLog.info("PDF 已通过系统打印面板导出")
+                            AppLog.info("PDF 已导出: \(context.saveURL.path)")
                             self?.onExportComplete?(true)
                         } else {
                             self?.statusText = ""
