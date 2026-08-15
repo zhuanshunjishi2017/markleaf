@@ -36,7 +36,6 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var webView: WKWebView?
     private var printInfo: NSPrintInfo?
     private var targetWindow: NSWindow?
-    private var printWindow: NSWindow?
     private var showsPrintPanel = true
     private var watchdog: DispatchWorkItem?
     // 自持有：直到生成完成才释放（调用方为临时对象，无强引用会提前释放导致 delegate 失效）
@@ -201,14 +200,15 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         }
         self.printInfo = info
 
-        let configuration = WKWebViewConfiguration()
-        #if DEBUG
-        configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        #endif
         // 初始帧按一页大小；printOperation(with:) 会自行按打印信息跨页分页。
+        // 复用共享打印宿主窗口/WebView：打印操作在取消后仍可能引用打印视图，
+        // 若在此销毁视图会触发 over-release 崩溃（SIGSEGV）。
         let pageWidth = CGFloat(landscape ? size.height : size.width) * pointsPerInch
         let pageHeight = CGFloat(landscape ? size.width : size.height) * pointsPerInch
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight), configuration: configuration)
+        let host = PrintHost.shared
+        host.window.setContentSize(NSSize(width: pageWidth, height: pageHeight))
+        host.webView.frame = NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        let webView = host.webView
         webView.navigationDelegate = self
         self.webView = webView
 
@@ -248,18 +248,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         }
         // WKWebView 需要挂在窗口中并完成布局，printOperation(with:) 才能渲染整篇内容并跨页分页。
         // 不能放到大幅离屏位置（如 x=-100000），也不能被另一个 WKWebView 完全遮挡，否则输出空白；
-        // 因此为打印页单独建一个离屏窗口，打印面板仍挂在主窗口上。
-        if webView.superview == nil {
-            let printWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: webView.frame.width, height: webView.frame.height),
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false)
-            printWindow.contentView?.addSubview(webView, positioned: .below, relativeTo: nil)
-            printWindow.setFrameOrigin(NSPoint(x: -4000, y: -4000))
-            printWindow.orderFrontRegardless()
-            self.printWindow = printWindow
-        }
+        // 共享宿主窗口放在 (-4000,-4000) 离屏，打印面板仍挂在主窗口上。
         webView.layoutSubtreeIfNeeded()
         webView.displayIfNeeded()
 
@@ -286,17 +275,14 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             guard let self else { return }
             self.printCompletion?(result)
             self.printCompletion = nil
-            // NSPrintOperation 仍在收尾（autorelease 排空）；延迟释放打印视图与窗口，
-            // 避免与操作内部的视图释放冲突导致 over-release 崩溃。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.printWindow?.close()
-                self?.printWindow = nil
-                self?.webView = nil
-                self?.printInfo = nil
-                self?.targetWindow = nil
-                self?.showsPrintPanel = true
-                self?.strongSelf = nil
-            }
+            // 打印窗口/WebView 由共享宿主持有并跨导出复用；这里只解除本实例的引用，
+            // 绝不在打印操作仍可能引用视图时销毁它们，避免 over-release 崩溃。
+            self.webView?.navigationDelegate = nil
+            self.webView = nil
+            self.printInfo = nil
+            self.targetWindow = nil
+            self.showsPrintPanel = true
+            self.strongSelf = nil
         }
     }
 
@@ -347,5 +333,37 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             self?.webView = nil
             self?.strongSelf = nil
         }
+    }
+}
+
+/// 系统打印面板专用的离屏宿主窗口。
+/// 每次导出都会创建新的 NSPrintOperation，操作结束后（尤其用户点击“取消”时）
+/// WebKit 仍可能在 autorelease 排空阶段引用打印视图；如果此时销毁宿主窗口/WebView，
+/// 会触发 over-release 崩溃（SIGSEGV）。因此让窗口与 WebView 跨导出复用，
+/// 打印结束后只解除当前生成器的引用，视图本身保持存活。
+private final class PrintHost {
+    static let shared = PrintHost()
+
+    let window: NSWindow
+    let webView: WKWebView
+
+    private init() {
+        let configuration = WKWebViewConfiguration()
+        #if DEBUG
+        configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        #endif
+        let initialFrame = NSRect(x: 0, y: 0, width: 800, height: 800)
+        let webView = WKWebView(frame: initialFrame, configuration: configuration)
+        let window = NSWindow(
+            contentRect: initialFrame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false)
+        window.contentView?.addSubview(webView)
+        window.setFrameOrigin(NSPoint(x: -4000, y: -4000))
+        // WKWebView 需要所在窗口保持“已上屏”状态才能合成渲染，否则打印输出空白页。
+        window.orderFrontRegardless()
+        self.window = window
+        self.webView = webView
     }
 }
