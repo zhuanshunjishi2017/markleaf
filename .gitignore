@@ -3,7 +3,6 @@
 **/obj/
 **/node_modules/
 **/dist/
-**/packages/
 
 # IDE and editors
 .vs/
@@ -38,6 +37,7 @@ tests/TestData/*.assets/
 artifacts/
 .artifacts/
 .pnpm-store/
+.build/
 
 # AI agent files
 .claude/
@@ -61,10 +61,10 @@ AGENTS.md
 .github/.copilot*
 
 # App resources (generated)
-windows/MarkLeaf/Resources/App/*
-!windows/MarkLeaf/Resources/App/App.ico
-!windows/MarkLeaf/Resources/App/App.png
-!windows/MarkLeaf/Resources/App/fileicon.ico
+apps/windows/MarkLeaf/Resources/App/*
+!apps/windows/MarkLeaf/Resources/App/App.ico
+!apps/windows/MarkLeaf/Resources/App/App.png
+!apps/windows/MarkLeaf/Resources/App/fileicon.ico
 
 # Root icon files (keep only appicon.png)
 /App.png
@@ -77,9 +77,9 @@ windows/MarkLeaf/Resources/App/*
 /release.bat
 
 # WiX publish output (generated at build)
-setup/publish/
-setup/obj/
-setup/bin/
+apps/windows/setup/publish/
+apps/windows/setup/obj/
+apps/windows/setup/bin/
 
 # Release output
 release/

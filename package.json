@@ -1,0 +1,11 @@
+{
+  "name": "markleaf",
+  "version": "1.2.2",
+  "private": true,
+  "description": "MarkLeaf — 跨平台 Markdown 可视化编辑器（Monorepo）",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build:editor-web": "pnpm --dir packages/editor-web build",
+    "test:editor-web": "pnpm --dir packages/editor-web test"
+  }
+}

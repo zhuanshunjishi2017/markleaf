@@ -1,8 +1,6 @@
 <Solution>
-  <Folder Name="/windows/">
-    <Project Path="windows/MarkLeaf/MarkLeaf.csproj" />
-  </Folder>
-  <Folder Name="/windows/tests/">
-    <Project Path="windows/tests/MarkLeaf.Tests/MarkLeaf.Tests.csproj" />
+  <Folder Name="/src/">
+    <Project Path="apps/windows/MarkLeaf/MarkLeaf.csproj" />
+    <Project Path="apps/windows/tests/MarkLeaf.Tests/MarkLeaf.Tests.csproj" />
   </Folder>
 </Solution>
