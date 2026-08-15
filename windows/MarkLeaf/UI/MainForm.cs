@@ -68,7 +68,10 @@ internal sealed partial class MainForm : Form
     private readonly ToolStripStatusLabel _positionLabel = new(Loc.Format("statusBar.position", 1, 1));
     private readonly ToolStripStatusLabel _encodingLabel = new("UTF-8");
     private readonly ToolStripStatusLabel _newLineLabel = new("CRLF");
-    private readonly ToolStripStatusLabel _modeLabel = new(Loc.Get("statusBar.mode.visual"));
+    private readonly ToolStripButton _modeButton = new(Loc.Get("statusBar.mode.visual"))
+    {
+        DisplayStyle = ToolStripItemDisplayStyle.Text,
+    };
     private readonly ToolStripStatusLabel _zoomLabel = new("100%");
     private SolidBrush _menuBgBrush = new(Color.White);
     private SolidBrush _menuHighlightBrush = new(Color.FromArgb(0xF0, 0xF0, 0xF0));

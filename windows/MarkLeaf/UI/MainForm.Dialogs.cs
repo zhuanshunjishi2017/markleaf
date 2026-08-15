@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
@@ -48,6 +49,7 @@ internal sealed partial class MainForm
         var editor = _settings.Editor;
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47());
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
+        ApplyBlockHandleVisibility();
 
         SetMarkdownStyle(_settings.MarkdownStyle);
         SetColorTheme(_settings.ColorTheme);
@@ -100,7 +102,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        await OpenDocumentPathAsync(cachePath);
+        await OpenDocumentPathAsync(cachePath, readOnly: true);
     }
 
     private void OpenDocumentInNewWindow()
@@ -247,6 +249,23 @@ internal sealed partial class MainForm
 
         _editorHost.ExecuteCommand("setLink", dialog.LinkAddress);
         SetStatus(Loc.Get("status.linkInserted"));
+    }
+
+    private void InsertTable()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        using var dialog = new TableSizeDialog();
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("insertTable", $"{dialog.Rows},{dialog.Columns}");
+        SetStatus(CommandStatusFormatter.FormatExecuted(AppCommand.InsertTable));
     }
 
     private void InsertMath(bool isBlock)

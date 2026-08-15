@@ -18,7 +18,7 @@ public static class CommandStateResolver
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
             AppCommand.ViewTree or AppCommand.ViewList => new(true),
             AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
-            AppCommand.ToggleSourceMode => new(context.EditorReady, context.SourceMode),
+            AppCommand.ToggleSourceMode => new(context.EditorReady && !context.IsPlainText, context.SourceMode),
             AppCommand.SwitchToWorkspace => new(!context.FocusMode && context.SidebarVisible, !context.OutlineActive),
             AppCommand.SwitchToOutline => new(!context.FocusMode && context.SidebarVisible, context.OutlineActive),
 
@@ -59,6 +59,9 @@ public static class CommandStateResolver
             AppCommand.ToggleTaskList => new(context.EditorReady, context.TaskListActive),
             AppCommand.InsertTable => new(context.EditorReady),
             AppCommand.ClearFormat => new(context.EditorReady),
+            AppCommand.FormatPainter => new(
+                context.EditorReady && (context.CanStartFormatPainter || context.FormatPainterArmed),
+                context.FormatPainterArmed),
             AppCommand.AddTableRowBefore or AppCommand.AddTableRowAfter or AppCommand.DeleteTableRow
                 or AppCommand.AddTableColumnBefore or AppCommand.AddTableColumnAfter or AppCommand.DeleteTableColumn
                 or AppCommand.DeleteTable => new(context.EditorReady && context.InTable),
@@ -68,7 +71,7 @@ public static class CommandStateResolver
 
             AppCommand.ZoomIn or AppCommand.ZoomOut or AppCommand.ZoomReset => new(context.EditorReady),
 
-            AppCommand.NewDocument or AppCommand.OpenDocument => new(context.EditorReady),
+            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
             _ => new(context.EditorReady),
         };
     }

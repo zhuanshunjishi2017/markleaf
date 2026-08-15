@@ -46,6 +46,8 @@ const findInput = document.querySelector<HTMLInputElement>('#find-input')!
 const replaceInput = document.querySelector<HTMLInputElement>('#replace-input')!
 const caseInput = document.querySelector<HTMLInputElement>('#find-case')!
 const wholeInput = document.querySelector<HTMLInputElement>('#find-whole')!
+const caseText = document.querySelector<HTMLElement>('#find-case-text')!
+const wholeText = document.querySelector<HTMLElement>('#find-whole-text')!
 const findResult = document.querySelector<HTMLElement>('#find-result')!
 const findPrevious = document.querySelector<HTMLButtonElement>('#find-previous')!
 const findNext = document.querySelector<HTMLButtonElement>('#find-next')!
@@ -106,8 +108,8 @@ function applyFindBarLocalization(loc: Record<string, string>): void {
   findInput.ariaLabel = loc.findLabel ?? 'Find'
   replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
   replaceInput.ariaLabel = loc.replaceLabel ?? 'Replace with'
-  caseInput.nextSibling!.textContent = ' ' + (loc.caseSensitive ?? 'Case sensitive')
-  wholeInput.nextSibling!.textContent = ' ' + (loc.wholeWord ?? 'Whole word')
+  caseText.textContent = loc.caseSensitive ?? 'Case sensitive'
+  wholeText.textContent = loc.wholeWord ?? 'Whole word'
   findPrevious.textContent = loc.previous ?? 'Previous'
   findNext.textContent = loc.next ?? 'Next'
   replaceOne.textContent = loc.replace ?? 'Replace'
@@ -1093,14 +1095,14 @@ function applyFindBarLanguage(lang: string): void {
   setText('replace-one', table.replace ?? '')
   setText('replace-all', table.replaceAll ?? '')
   setText('find-close', table.close ?? '')
-  const setLabelText = (labelId: string, inputId: string, text: string) => {
-    const label = document.getElementById(labelId)
+  const setLabelText = (textId: string, inputId: string, text: string) => {
+    const textEl = document.getElementById(textId)
     const input = document.getElementById(inputId)
-    if (label) label.textContent = text
+    if (textEl) textEl.textContent = text
     if (input) input.setAttribute('aria-label', text)
   }
-  setLabelText('find-case-label', 'find-case', table.case ?? '')
-  setLabelText('find-whole-label', 'find-whole', table.whole ?? '')
+  setLabelText('find-case-text', 'find-case', table.case ?? '')
+  setLabelText('find-whole-text', 'find-whole', table.whole ?? '')
   const closeBtn = document.getElementById('find-close')
   if (closeBtn) closeBtn.setAttribute('aria-label', table.closeAria ?? '')
 }

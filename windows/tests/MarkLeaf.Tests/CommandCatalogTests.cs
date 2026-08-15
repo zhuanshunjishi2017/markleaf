@@ -10,6 +10,7 @@ public sealed class CommandCatalogTests
     [DataRow(Keys.Control | Keys.Shift | Keys.S, AppCommand.SaveDocumentAs)]
     [DataRow(Keys.Control | Keys.Z, AppCommand.Undo)]
     [DataRow(Keys.Control | Keys.B, AppCommand.ToggleBold)]
+    [DataRow(Keys.Control | Keys.Shift | Keys.C, AppCommand.FormatPainter)]
     [DataRow(Keys.Control | Keys.D6, AppCommand.SetHeading6)]
     public void TryGetByShortcut_MapsRequiredKeys(Keys keys, AppCommand expected)
     {

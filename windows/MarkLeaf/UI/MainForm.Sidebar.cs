@@ -186,7 +186,8 @@ internal sealed partial class MainForm
         strip.Items.Add(_positionLabel);
         strip.Items.Add(_encodingLabel);
         strip.Items.Add(_newLineLabel);
-        strip.Items.Add(_modeLabel);
+        _modeButton.Click += (_, _) => _editorHost?.ExecuteCommand("toggleSourceMode");
+        strip.Items.Add(_modeButton);
         _zoomLabel.Text = $"{_zoomPercent}%";
         strip.Items.Add(_zoomLabel);
         return strip;

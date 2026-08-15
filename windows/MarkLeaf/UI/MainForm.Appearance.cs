@@ -286,6 +286,14 @@ internal sealed partial class MainForm
         return closest;
     }
 
+    private void ApplyBlockHandleVisibility()
+    {
+        var visible = _settings.Editor.ShowParagraphBlockHandle
+            && _document?.IsReadOnly != true
+            && !_focusMode;
+        _editorHost?.ApplyBlockHandleVisibility(visible);
+    }
+
     private void ToggleFocusMode()
     {
         if (!_focusMode)
@@ -297,11 +305,13 @@ internal sealed partial class MainForm
             MainMenuStrip = null;
             if (_statusStrip is not null) _statusStrip.Visible = false;
             _focusMode = true;
+            ApplyBlockHandleVisibility();
             SetStatus(Loc.Get("status.focusModeOn"));
             return;
         }
 
         _focusMode = false;
+        ApplyBlockHandleVisibility();
         if (!IsDisposed)
         {
             _menuService.Attach(Handle);

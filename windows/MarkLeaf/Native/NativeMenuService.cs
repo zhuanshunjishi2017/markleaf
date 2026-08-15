@@ -300,6 +300,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.NewDocument, Loc.Get("menu.file.new"));
             AppendCommand(menu, AppCommand.NewWindow, Loc.Get("menu.file.newWindow"));
             AppendCommand(menu, AppCommand.OpenDocument, Loc.Get("menu.file.open"));
+            AppendCommand(menu, AppCommand.OpenDocumentReadOnly, Loc.Get("menu.file.openReadOnly"));
             AppendCommand(menu, AppCommand.OpenDocumentInNewWindow, Loc.Get("menu.file.openInNewWindow"));
             AppendCommand(menu, AppCommand.OpenFolder, Loc.Get("menu.file.openFolder"));
 
@@ -444,6 +445,9 @@ internal sealed class NativeMenuService : IDisposable
             }
             else
             {
+                AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("contextMenu.formatPainter"));
+                AppendSeparator(menu);
+
                 var paragraphMenu = BuildBlockHandleMenu();
                 AppendPopup(menu, Loc.Get("contextMenu.paragraphGroup"), paragraphMenu);
 
@@ -461,6 +465,7 @@ internal sealed class NativeMenuService : IDisposable
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
                 commands.AddRange(BlockHandleCommands);
                 commands.AddRange([
+                    AppCommand.FormatPainter,
                     AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
                     AppCommand.Paste, AppCommand.SelectAll]);
             }
@@ -548,6 +553,8 @@ internal sealed class NativeMenuService : IDisposable
         AppendSeparator(menu);
         AppendCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
         AppendCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("menu.format.formatPainter"));
         AppendSeparator(menu);
         AppendCommand(menu, AppCommand.InsertLink, Loc.Get("menu.format.insertLink"));
         AppendCommand(menu, AppCommand.InsertImage, Loc.Get("menu.format.insertImage"));

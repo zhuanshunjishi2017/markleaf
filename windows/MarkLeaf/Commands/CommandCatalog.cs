@@ -42,6 +42,7 @@ public static class CommandCatalog
             [Keys.Control | Keys.H] = AppCommand.Replace,
             [Keys.Control | Keys.B] = AppCommand.ToggleBold,
             [Keys.Control | Keys.I] = AppCommand.ToggleItalic,
+            [Keys.Control | Keys.Shift | Keys.C] = AppCommand.FormatPainter,
             [Keys.Control | Keys.K] = AppCommand.InsertLink,
             [Keys.Control | Keys.D1] = AppCommand.SetHeading1,
             [Keys.Control | Keys.D2] = AppCommand.SetHeading2,

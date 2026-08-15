@@ -49,6 +49,7 @@ internal sealed partial class MainForm
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47());
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
+            ApplyBlockHandleVisibility();
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
             _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
             ApplySidebarAutoHideScrollbar();
@@ -165,9 +166,10 @@ internal sealed partial class MainForm
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
-        _modeLabel.Text = _editorCommandStatus.SourceMode
+        _modeButton.Text = _editorCommandStatus.SourceMode
             ? Loc.Get("statusBar.mode.source")
             : Loc.Get("statusBar.mode.visual");
+        _modeButton.Enabled = !IsPlainTextDocument;
     }
 
     private void HandleSmokeCrashExit()

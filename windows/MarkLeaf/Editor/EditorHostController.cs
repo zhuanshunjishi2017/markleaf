@@ -188,13 +188,13 @@ internal sealed class EditorHostController : IDisposable
         LoadDocument(Guid.NewGuid(), 0, markdown);
     }
 
-    public void LoadDocument(Guid documentId, long revision, string markdown)
+    public void LoadDocument(Guid documentId, long revision, string markdown, bool readOnly = false, string? documentType = null)
     {
         EnqueueOrRun(() =>
         {
             _session.StartDocument(documentId, revision);
             _documentLoaded = false;
-            Post("loadDocument", new { markdown });
+            Post("loadDocument", new { markdown, readOnly, documentType });
         });
     }
 
@@ -290,6 +290,11 @@ internal sealed class EditorHostController : IDisposable
     public void ApplyAutoHideScrollbar(bool enabled)
     {
         EnqueueOrRun(() => Post("command", new { command = "setAutoHideScrollbar", text = enabled ? "1" : "0" }));
+    }
+
+    public void ApplyBlockHandleVisibility(bool enabled)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setBlockHandleVisible", text = enabled ? "1" : "0" }));
     }
 
     public void SetZoomPercent(int percent)
@@ -832,7 +837,11 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("menuHeight", out var menuHeight)
                             && menuHeight.ValueKind == System.Text.Json.JsonValueKind.Number
                             ? menuHeight.GetDouble()
-                            : 0));
+                            : 0,
+                        message.Payload.TryGetProperty("canStartFormatPainter", out var canStart)
+                            && canStart.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("formatPainterArmed", out var armed)
+                            && armed.ValueKind == System.Text.Json.JsonValueKind.True));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(

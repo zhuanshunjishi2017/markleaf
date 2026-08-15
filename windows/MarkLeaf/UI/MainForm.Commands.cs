@@ -77,6 +77,7 @@ internal sealed partial class MainForm
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
             SourceMode: _editorCommandStatus.SourceMode,
+            IsPlainText: IsPlainTextDocument,
             ParagraphActive: _editorCommandStatus.Paragraph,
             HeadingLevel: _editorCommandStatus.HeadingLevel,
             BoldActive: _editorCommandStatus.Bold,
@@ -93,6 +94,8 @@ internal sealed partial class MainForm
             InTable: _editorCommandStatus.InTable,
             TableAlign: _editorCommandStatus.TableAlign,
             ImageSelected: _editorCommandStatus.ImageSelected,
+            CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
+            FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
             DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
@@ -151,6 +154,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.OpenDocument:
                 _ = OpenDocumentAsync();
+                break;
+            case AppCommand.OpenDocumentReadOnly:
+                _ = OpenDocumentReadOnlyAsync();
                 break;
             case AppCommand.OpenDocumentInNewWindow:
                 OpenDocumentInNewWindow();
@@ -249,6 +255,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.InsertImageFromUrl:
                 _ = InsertImageFromUrlAsync();
+                break;
+            case AppCommand.InsertTable:
+                InsertTable();
                 break;
             case AppCommand.ChangeImage:
                 _ = ChangeImageAsync();
@@ -367,6 +376,7 @@ internal sealed partial class MainForm
             AppCommand.ConvertMath => "convertMath",
             AppCommand.DeleteMath => "deleteMath",
             AppCommand.ClearFormat => "clearFormat",
+            AppCommand.FormatPainter => "formatPainter",
             _ => string.Empty,
         };
         return editorCommand.Length > 0;
@@ -386,6 +396,7 @@ internal sealed partial class MainForm
                 or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
                 or AppCommand.ResizeImage75 or AppCommand.ResizeImage90
             || command is AppCommand.ClearFormat
+            || command is AppCommand.FormatPainter
             || command == AppCommand.ToggleSourceMode;
     }
 

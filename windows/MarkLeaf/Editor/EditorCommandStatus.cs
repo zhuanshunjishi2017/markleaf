@@ -25,11 +25,13 @@ internal sealed record EditorCommandStatus(
     bool MathInline,
     bool MathBlock,
     bool SourceMode,
-    string? MathLatex)
+    string? MathLatex,
+    bool CanStartFormatPainter,
+    bool FormatPainterArmed)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false, false, false, null);
+        false, false, null, false, false, false, false, null, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -62,6 +64,8 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("sourceMode").GetBoolean(),
             payload.GetProperty("mathLatex").ValueKind == JsonValueKind.Null
                 ? null
-                : payload.GetProperty("mathLatex").GetString());
+                : payload.GetProperty("mathLatex").GetString(),
+            payload.TryGetProperty("canStartFormatPainter", out var canStart) && canStart.ValueKind == JsonValueKind.True,
+            payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True);
     }
 }

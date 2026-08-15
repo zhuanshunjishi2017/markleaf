@@ -324,7 +324,7 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
 
 .format-menu.format-menu-visible {
   opacity: 1;
-  transition: opacity 240ms ease;
+  transition: opacity 300ms ease;
 }
 
 .format-menu.format-menu-dark {
@@ -394,7 +394,7 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
   padding: 0 7px;
   font-family: "Microsoft YaHei", sans-serif;
   font-size: 14px;
-  font-weight: regular;
+  font-weight: normal;
 }
 
 

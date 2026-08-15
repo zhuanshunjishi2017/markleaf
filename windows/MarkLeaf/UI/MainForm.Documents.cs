@@ -75,13 +75,41 @@ internal sealed partial class MainForm
         RecordRecentFile(dialog.FileName);
     }
 
-    private async Task OpenDocumentPathAsync(string path)
+    private async Task OpenDocumentReadOnlyAsync()
+    {
+        if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
+        {
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Filter = DocumentFilter,
+            CheckFileExists = true,
+            Multiselect = false,
+            RestoreDirectory = true,
+            Title = Loc.Get("dialog.openReadOnly"),
+        };
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        await OpenDocumentPathAsync(dialog.FileName, readOnly: true);
+        RecordRecentFile(dialog.FileName);
+    }
+
+    private async Task OpenDocumentPathAsync(string path, bool readOnly = false)
     {
         _documentOperationInProgress = true;
         try
         {
             SetStatus(Loc.Get("document.opening"));
             var opened = await _documentFileService.OpenAsync(path);
+            if (readOnly)
+            {
+                opened.IsReadOnly = true;
+            }
             var originalMarkdown = opened.Markdown;
             opened.Markdown = _imageAssetService.NormalizeLocalImagePaths(
                 opened.Markdown, opened.FilePath,
@@ -455,15 +483,34 @@ internal sealed partial class MainForm
     {
         _editorCommandStatus = EditorCommandStatus.Empty;
         _editorStatus = EditorStatus.Empty;
-        _editorHost?.LoadDocument(document.Id, document.Revision, document.Markdown);
+        _editorHost?.LoadDocument(
+            document.Id,
+            document.Revision,
+            document.Markdown,
+            document.IsReadOnly,
+            GetDocumentType(document.FilePath));
         RefreshPersistentStatusBar();
         UpdateDocumentChrome();
+        ApplyBlockHandleVisibility();
         _recoveryTimer.Start();
     }
+
+    private static string GetDocumentType(string? filePath)
+    {
+        return string.Equals(Path.GetExtension(filePath), ".txt", StringComparison.OrdinalIgnoreCase)
+            ? "plainText"
+            : "markdown";
+    }
+
+    private bool IsPlainTextDocument => _document is not null && GetDocumentType(_document.FilePath) == "plainText";
 
     private void UpdateDocumentChrome()
     {
         var name = _document?.DisplayName ?? "MarkLeaf";
+        if (_document?.IsReadOnly == true)
+        {
+            name += Loc.Get("document.readOnlySuffix");
+        }
         if (_document is null)
         {
             Text = "MarkLeaf";

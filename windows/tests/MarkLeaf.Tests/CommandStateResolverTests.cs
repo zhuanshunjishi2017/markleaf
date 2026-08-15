@@ -126,6 +126,19 @@ public sealed class CommandStateResolverTests
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSourceMode, context).IsEnabled);
     }
 
+    [TestMethod]
+    public void Resolve_FormatPainterReflectsArmState()
+    {
+        var unavailable = CreateContext();
+        var canStart = CreateContext(editorReady: true) with { CanStartFormatPainter = true };
+        var armed = CreateContext(editorReady: true) with { FormatPainterArmed = true };
+
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.FormatPainter, unavailable).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.FormatPainter, canStart).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.FormatPainter, canStart).IsChecked);
+        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.FormatPainter, armed));
+    }
+
     private static CommandContext CreateContext(
         bool editorReady = false,
         bool canUndo = false,

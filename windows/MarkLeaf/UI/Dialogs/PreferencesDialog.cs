@@ -56,6 +56,7 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualMaxWidth;
 
     private readonly NumericUpDown _sourceIndentWidth;
+    private readonly CheckBox _showParagraphBlockHandleCheck;
     private string _cjkFontFamily = "Microsoft YaHei";
     private string _westernFontFamily = "Cascadia Mono";
     private int _sourceFontSize = 14;
@@ -209,6 +210,9 @@ internal sealed class PreferencesDialog : Form
 
         _sourceIndentWidth = new NumericUpDown
         { Minimum = 2, Maximum = 8, Increment = 2 };
+
+        _showParagraphBlockHandleCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.showParagraphBlockHandle"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _editShortcutsButton = new Button
         { Text = Loc.Get("prefs.general.editShortcuts"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -563,6 +567,9 @@ internal sealed class PreferencesDialog : Form
                                         TextAlign = ContentAlignment.MiddleLeft,
                                         Padding = new Padding(0, 5, 0, 0), }, 0, 6);
         panel.Controls.Add(_cjkLanguageTagCombo, 1, 6);
+
+        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 7);
+        panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
 
         return panel;
     }
@@ -945,6 +952,7 @@ internal sealed class PreferencesDialog : Form
         _westernFontFamily = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
+        _showParagraphBlockHandleCheck.Checked = editor.ShowParagraphBlockHandle;
 
         var appearance = _settings.Appearance;
         _restoreZoomCheck.Checked = appearance.RestoreZoomOnOpen;
@@ -1045,6 +1053,7 @@ internal sealed class PreferencesDialog : Form
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
+        editor.ShowParagraphBlockHandle = _showParagraphBlockHandleCheck.Checked;
 
         if (_styleCombo.SelectedIndex >= 0 && _styleCombo.SelectedIndex < _styleOptions.Length)
         {

@@ -144,6 +144,8 @@ public sealed class EditorSettings
     public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
     public int SourceIndentWidth { get; set; } = 2;
+
+    public bool ShowParagraphBlockHandle { get; set; } = true;
 }
 
 public sealed class FileSettings

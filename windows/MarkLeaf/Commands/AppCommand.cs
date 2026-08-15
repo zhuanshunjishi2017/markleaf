@@ -5,6 +5,7 @@ public enum AppCommand
     NewDocument = 0x1001,
     NewWindow,
     OpenDocument,
+    OpenDocumentReadOnly,
     OpenDocumentInNewWindow,
     OpenFolder,
     CloseFolder,
@@ -100,6 +101,7 @@ public enum AppCommand
     ResizeImage90 = 0x1312,
     SaveImageAs = 0x1313,
     ClearFormat = 0x1314,
+    FormatPainter = 0x1315,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,
@@ -124,6 +126,7 @@ public readonly record struct CommandContext(
     bool SidebarVisible,
     bool FocusMode,
     bool SourceMode,
+    bool IsPlainText = false,
     bool OutlineActive = false,
     bool ParagraphActive = false,
     int? HeadingLevel = null,
@@ -141,6 +144,8 @@ public readonly record struct CommandContext(
     bool InTable = false,
     string? TableAlign = null,
     bool ImageSelected = false,
+    bool CanStartFormatPainter = false,
+    bool FormatPainterArmed = false,
     bool DocumentSaved = false,
     bool StatusBarVisible = true,
     bool FollowSystemColorMode = false);

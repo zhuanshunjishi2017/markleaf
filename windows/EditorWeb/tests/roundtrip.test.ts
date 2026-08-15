@@ -57,7 +57,7 @@ describe('selection export', () => {
 describe('Markdown semantic round trip', () => {
   it('preserves the Stage 5 golden document semantically', () => {
     const markdown = readFileSync(
-      resolve(process.cwd(), '../../tests/TestData/stage5-golden.md'),
+      resolve(process.cwd(), '../tests/TestData/stage5-golden.md'),
       'utf8',
     )
     const output = roundTrip(markdown)
@@ -528,7 +528,7 @@ describe('paragraph menu commands', () => {
     document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 80, clientY: 40 }))
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 80, clientY: 40 }))
 
-    expect(getMarkdown(editor)).toContain('markleaf:width=400;height=225;rotation=0')
+    expect(getMarkdown(editor)).toContain('markleaf:widthPct=49;ratio=0.5625;rotation=0')
     expect(editor.can().undo()).toBe(true)
   })
 

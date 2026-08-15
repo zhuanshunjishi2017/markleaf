@@ -41,6 +41,7 @@ internal static class CommandStatusFormatter
             AppCommand.AlignTableCenter => Loc.Get("cmd.alignCenter"),
             AppCommand.AlignTableRight => Loc.Get("cmd.alignRight"),
             AppCommand.DeleteTable => Loc.Get("cmd.deleteTable"),
+            AppCommand.FormatPainter => Loc.Get("cmd.formatPainter"),
             _ => Loc.Get("cmd.operation"),
         };
     }

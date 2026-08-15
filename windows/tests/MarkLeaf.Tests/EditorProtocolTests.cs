@@ -343,4 +343,59 @@ public sealed class EditorProtocolTests
         Assert.IsFalse(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error));
         Assert.AreEqual("Message payload is invalid.", error);
     }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsCommandStateWithFormatPainterFields()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "commandStateChanged",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 2,
+              "payload": {
+                "canUndo": true,
+                "canRedo": false,
+                "hasSelection": true,
+                "paragraph": false,
+                "headingLevel": null,
+                "bold": false,
+                "italic": false,
+                "link": false,
+                "blockquote": false,
+                "codeBlock": false,
+                "bulletList": false,
+                "orderedList": false,
+                "taskList": false,
+                "inTable": false,
+                "tableAlign": null,
+                "imageSelected": false,
+                "mathInline": false,
+                "mathBlock": false,
+                "mathLatex": null,
+                "sourceMode": false,
+                "canStartFormatPainter": true,
+                "formatPainterArmed": false
+              }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
+    }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsContextMenuRequestWithFormatPainterFields()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "contextMenuRequested",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 2,
+              "payload": { "clientX": 120.5, "clientY": 80, "canStartFormatPainter": true, "formatPainterArmed": true }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
+    }
 }

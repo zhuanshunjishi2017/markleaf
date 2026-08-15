@@ -159,7 +159,9 @@ public static class EditorProtocol
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
-                && HasOptionalNonNegativeNumber(payload, "menuHeight"),
+                && HasOptionalNonNegativeNumber(payload, "menuHeight")
+                && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
+                && HasOptionalBooleanProperty(payload, "formatPainterArmed"),
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
@@ -223,7 +225,9 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "mathInline")
             && HasBooleanProperty(payload, "mathBlock")
             && HasBooleanProperty(payload, "sourceMode")
-            && HasNullableString(payload, "mathLatex");
+            && HasNullableString(payload, "mathLatex")
+            && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
+            && HasOptionalBooleanProperty(payload, "formatPainterArmed");
     }
 
     private static bool HasFindResultPayload(JsonElement payload)
@@ -375,6 +379,16 @@ public static class EditorProtocol
     private static bool HasBooleanProperty(JsonElement payload, string name)
     {
         return HasProperty(payload, name, JsonValueKind.True, JsonValueKind.False);
+    }
+
+    private static bool HasOptionalBooleanProperty(JsonElement payload, string name)
+    {
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty(name, out var value))
+        {
+            return true;
+        }
+
+        return value.ValueKind is JsonValueKind.True or JsonValueKind.False;
     }
 
     private static bool HasNullableString(JsonElement payload, string name)
