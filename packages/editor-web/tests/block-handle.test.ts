@@ -34,4 +34,16 @@ describe('paragraph block handle visibility', () => {
 
     expect(editor.view.dom.querySelector('.ml-block-handle')).not.toBeNull()
   })
+
+  it('shows the handle inside a list item with the list-type label', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '- list item')
+    editors.push(editor)
+    editor.commands.setTextSelection(3)
+
+    const handle = editor.view.dom.querySelector<HTMLButtonElement>('.ml-block-handle')
+    expect(handle).not.toBeNull()
+    expect(handle?.textContent).toBe('•')
+  })
 })

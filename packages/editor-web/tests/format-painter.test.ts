@@ -131,12 +131,19 @@ it('captures a heading and uniform supported marks', () => {
   })
 })
 
-it('rejects cross-block, list, table, node, and mixed-mark sources', () => {
+it('rejects cross-block, table, node, and mixed-mark sources', () => {
   expect(captureFormat(editorWithCrossParagraphSelection())).toBeNull()
-  expect(captureFormat(editorWithListSelection())).toBeNull()
   expect(captureFormat(editorWithTableSelection())).toBeNull()
   expect(captureFormat(editorWithSelectedImage())).toBeNull()
   expect(captureFormat(editorWithPartiallyBoldSelection())).toBeNull()
+})
+
+it('captures a bullet list block and its marks', () => {
+  const snapshot = captureFormat(editorWithListSelection())
+  expect(snapshot).toEqual({
+    block: 'bulletList',
+    marks: { bold: false, italic: false, underline: false, strike: false, code: false },
+  })
 })
 
 it('captures the block and active marks at a caret', () => {
@@ -197,15 +204,46 @@ it('applies once without changing text or link href and one undo restores the ta
 })
 
 it('keeps armed on an invalid target and applies nothing', () => {
-  const editor = makeEditor('**source**\n\n- target')
+  const editor = makeEditor('**source**\n\n| a |\n| --- |\n| 1 |')
   const painter = new FormatPainterController()
   selectText(editor, 'source')
   expect(painter.arm(editor)).toBe(true)
-  selectText(editor, 'target')
+  selectText(editor, '1')
   expect(painter.applyOnSelection(editor)).toBe(false)
   expect(painter.isArmed).toBe(true)
   painter.cancel()
   expect(painter.isArmed).toBe(false)
+})
+
+it('paints a bullet list onto a paragraph target', () => {
+  const editor = makeEditor('- source\n\ntarget')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  selectText(editor, 'target')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('- target')
+})
+
+it('paints a paragraph format onto a list item (exits the list)', () => {
+  const editor = makeEditor('source\n\n- target')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  selectText(editor, 'target')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('target')
+  expect(editor.getMarkdown()).not.toContain('- target')
+})
+
+it('paints marks between list items', () => {
+  const editor = makeEditor('- **source**\n\n- target')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  selectText(editor, 'target')
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('- **target**')
 })
 
 it('returns false for the unchanged source range', () => {

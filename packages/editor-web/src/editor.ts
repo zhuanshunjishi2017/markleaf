@@ -146,10 +146,22 @@ const BlockHandle = Extension.create({
               break
             }
           }
-          if (empty && !insideList && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock')) {
-            const nodePos = $from.before($from.depth)
+          if (empty && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock')) {
+            // 普通块取自身位置；列表内把句柄挂到最近的列表项（listItem/taskItem）上。
+            let widgetPos = $from.start()
+            let nodePos = $from.before($from.depth)
+            if (insideList) {
+              for (let depth = $from.depth; depth >= 1; depth -= 1) {
+                const name = $from.node(depth).type.name
+                if (name === 'listItem' || name === 'taskItem') {
+                  nodePos = $from.before(depth)
+                  widgetPos = nodePos + 1
+                  break
+                }
+              }
+            }
             decorations.push(Decoration.widget(
-              $from.start(),
+              widgetPos,
               () => createBlockHandle(nodePos, getBlockTypeLabel(state, from), activeBlock === nodePos),
               { side: -1 },
             ))
