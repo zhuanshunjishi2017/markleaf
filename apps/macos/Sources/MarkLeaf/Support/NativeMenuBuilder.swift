@@ -600,6 +600,7 @@ extension EditorSession {
         case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
+        case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)
         case "insertHorizontalRule": execute("insertHorizontalRule")
         case "insertTable": execute("insertTable")
         case "insertLineBefore": execute("insertLineBefore")
