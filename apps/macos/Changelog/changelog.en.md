@@ -18,7 +18,10 @@
 - Fix the custom-table dialog flashing and closing from the Insert Table menu; align the row/column labels with their input fields.
 - Slightly increase the sidebar search field height.
 - Restore the recovery window’s Discard All / Discard Selected buttons to the default white button style.
-- Export PDF through the system print panel, so you can fully adjust paper size, orientation, and margins before saving as PDF.
+- Export PDF now saves directly to the chosen location without opening the system print panel.
+- Add a Print… command (⌘P) that prints the current document through the system print panel with a forced light background and dark text.
+- Focus Mode now uses ⌘⇧F instead of F11 to avoid conflicting with Show Desktop.
+- The Shortcuts window now supports custom shortcuts that apply immediately and persist.
 - Fix an app crash when clicking “Cancel” in the system print panel.
 - Fix the overly wide gap between line numbers and text in source mode when the sidebar is closed.
 
