@@ -445,6 +445,7 @@ internal sealed class EditorHostController : IDisposable
         float lineHeight,
         int maxWidth,
         string? colorSchemeCss = null,
+        string? title = null,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -461,6 +462,7 @@ internal sealed class EditorHostController : IDisposable
             lineHeight,
             maxWidth,
             colorSchemeCss,
+            title,
         });
         EnqueueOrRun(() =>
         {
@@ -505,10 +507,15 @@ internal sealed class EditorHostController : IDisposable
 
         try
         {
+            // 打印 WebView2 的视口必须与纸张内容区一致：否则前端脚本用
+            // clientWidth 量出的“可用宽度”是 1px 视口，导致段间公式被过度缩小。
+            var (widthIn, heightIn) = PaperSizeToInches(paperSize, landscape);
+            var contentWidthPx = Math.Max(1, (int)Math.Round(widthIn * 96.0 - (marginLeft + marginRight) / 25.4 * 96.0));
+            var contentHeightPx = Math.Max(1, (int)Math.Round(heightIn * 96.0 - (marginTop + marginBottom) / 25.4 * 96.0));
+
             using var printForm = new Form
             {
-                Width = 1,
-                Height = 1,
+                ClientSize = new Size(contentWidthPx, contentHeightPx),
                 ShowInTaskbar = false,
                 FormBorderStyle = FormBorderStyle.None,
                 StartPosition = FormStartPosition.Manual,
@@ -540,8 +547,19 @@ internal sealed class EditorHostController : IDisposable
             core.Navigate(new Uri(tempPath).AbsoluteUri);
             await loadComplete.Task.WaitAsync(cancellationToken);
 
+            // 等待 KaTeX 字体加载完成后按可用宽度缩放段间公式（幂等，可重复执行），
+            // 避免字体未就绪时以回退字体度量导致公式被过度缩小。
+            try
+            {
+                await core.ExecuteScriptAsync(
+                    "document.fonts.ready.then(function () { window.__markleafFitMath && window.__markleafFitMath(); })");
+            }
+            catch
+            {
+                // 非致命：公式缩放脚本执行失败时仍继续打印，不阻断导出。
+            }
+
             var settings = core.Environment.CreatePrintSettings();
-            var (widthIn, heightIn) = PaperSizeToInches(paperSize, landscape);
             settings.PageWidth = widthIn;
             settings.PageHeight = heightIn;
             settings.MarginTop = 0;
@@ -560,6 +578,14 @@ internal sealed class EditorHostController : IDisposable
         {
             try { File.Delete(tempPath); } catch { }
         }
+    }
+
+    /// <summary>
+    /// 直接打印编辑器当前内容，弹出系统打印对话框。
+    /// </summary>
+    public void PrintDocument()
+    {
+        _webView.CoreWebView2?.ShowPrintUI(CoreWebView2PrintDialogKind.System);
     }
 
     private static (double Width, double Height) PaperSizeToInches(string name, bool landscape)

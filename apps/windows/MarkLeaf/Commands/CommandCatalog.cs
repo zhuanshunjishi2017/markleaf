@@ -33,6 +33,7 @@ public static class CommandCatalog
             [Keys.Control | Keys.O] = AppCommand.OpenDocument,
             [Keys.Control | Keys.S] = AppCommand.SaveDocument,
             [Keys.Control | Keys.Shift | Keys.S] = AppCommand.SaveDocumentAs,
+            [Keys.Control | Keys.P] = AppCommand.Print,
             [Keys.Control | Keys.Z] = AppCommand.Undo,
             [Keys.Control | Keys.Y] = AppCommand.Redo,
             [Keys.Control | Keys.X] = AppCommand.Cut,

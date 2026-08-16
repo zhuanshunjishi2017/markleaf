@@ -311,7 +311,11 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.SaveDocument, Loc.Get("menu.file.save"));
             AppendCommand(menu, AppCommand.SaveDocumentAs, Loc.Get("menu.file.saveAs"));
-            AppendCommand(menu, AppCommand.ExportDocument, Loc.Get("menu.file.export"));
+            var exportMenu = CreateMenu(true);
+            AppendCommand(exportMenu, AppCommand.ExportPdf, Loc.Get("menu.file.exportPdf"));
+            AppendCommand(exportMenu, AppCommand.ExportHtml, Loc.Get("menu.file.exportHtml"));
+            AppendPopup(menu, Loc.Get("menu.file.export"), exportMenu);
+            AppendCommand(menu, AppCommand.Print, Loc.Get("menu.file.print"));
             AppendCommand(menu, AppCommand.RecoverUnsavedFiles, Loc.Get("menu.file.recoverUnsaved"));
 
 

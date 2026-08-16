@@ -85,8 +85,7 @@ body {
 .markleaf-math-block {
   margin: 1em 0;
   text-align: center;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
 }
 
 .find-bar {
@@ -256,8 +255,7 @@ body {
 .markleaf-math-block {
   margin: 1em 0;
   text-align: center;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
 }
 
 /* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */

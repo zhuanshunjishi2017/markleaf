@@ -93,7 +93,8 @@ public sealed class CommandStateResolverTests
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.AlignTableCenter, context));
         Assert.AreEqual(new CommandState(true, false), CommandStateResolver.Resolve(AppCommand.AlignTableLeft, context));
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.RotateImageClockwise, context).IsEnabled);
-        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExportDocument, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExportPdf, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExportHtml, context).IsEnabled);
     }
 
     [TestMethod]

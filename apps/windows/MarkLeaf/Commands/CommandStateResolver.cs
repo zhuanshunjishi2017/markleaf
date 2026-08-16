@@ -24,7 +24,7 @@ public static class CommandStateResolver
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
-            AppCommand.ExportDocument => new(context.DocumentAvailable && context.EditorReady),
+            AppCommand.ExportPdf or AppCommand.ExportHtml or AppCommand.Print => new(context.DocumentAvailable && context.EditorReady),
             AppCommand.Undo => new(context.EditorReady && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && context.CanRedo),
             AppCommand.Cut or AppCommand.Copy or AppCommand.CopyMarkdown or AppCommand.CopyPlainText =>

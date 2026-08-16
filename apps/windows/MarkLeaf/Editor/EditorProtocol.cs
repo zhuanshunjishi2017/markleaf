@@ -6,7 +6,10 @@ namespace MarkLeaf.Editor;
 public static class EditorProtocol
 {
     public const int Version = 1;
-    public const int MaximumMessageBytes = 1024 * 1024;
+
+    // 导出 HTML 含 KaTeX 渲染后的冗长标记与自包含字体 CSS，单条消息可达数 MB，
+    // 1 MB 上限会拒绝大文档的 exportContent/snapshot，导致导出超时无响应。
+    public const int MaximumMessageBytes = 32 * 1024 * 1024;
 
     private static readonly HashSet<string> AllowedEditorMessageTypes =
     [

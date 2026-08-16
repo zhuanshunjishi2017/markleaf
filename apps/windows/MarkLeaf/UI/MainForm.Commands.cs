@@ -173,8 +173,14 @@ internal sealed partial class MainForm
             case AppCommand.SaveDocumentAs:
                 _ = SaveDocumentAsync(saveAs: true);
                 break;
-            case AppCommand.ExportDocument:
-                _ = ExportDocumentAsync();
+            case AppCommand.ExportPdf:
+                _ = ExportPdfAsync();
+                break;
+            case AppCommand.ExportHtml:
+                _ = ExportHtmlAsync();
+                break;
+            case AppCommand.Print:
+                PrintDocument();
                 break;
             case AppCommand.Cut:
                 _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: true);

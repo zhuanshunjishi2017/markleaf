@@ -121,7 +121,7 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task ExportDocumentAsync()
+    private async Task ExportPdfAsync()
     {
         if (_editorHost?.IsDocumentLoaded != true || _document is null)
         {
@@ -134,7 +134,9 @@ internal sealed partial class MainForm
         var defaultName = _document.FilePath is not null
             ? Path.GetFileNameWithoutExtension(_document.FilePath)
             : Loc.Get("common.unnamed");
-        using var dialog = new ExportDialog(docName, defaultName, _markdownStyle, StyleService.GetAllStyles());
+        using var dialog = new ExportDialog(
+            docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
+            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -144,6 +146,56 @@ internal sealed partial class MainForm
         if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
         {
             SetStatus(Loc.Get("export.emptyPath"));
+            return;
+        }
+
+        if (dialog.ExportedPath is not null)
+        {
+            // 预览 PDF 已复制到目标路径，无需重新生成。
+            var exportedName = Path.GetFileName(dialog.ExportedPath);
+            var exportedDir = Path.GetDirectoryName(dialog.ExportedPath) ?? "";
+            SetStatus(Loc.Get("export.complete"));
+            _logger.Info($"Document exported: {options.Format}/{options.Style} → {dialog.ExportedPath}");
+            ShowExportCompleteDialog(exportedName, dialog.ExportedPath, exportedDir);
+            return;
+        }
+
+        await RunExportAsync(options, defaultName);
+    }
+
+    private async Task ExportHtmlAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document is null)
+        {
+            return;
+        }
+
+        var docName = _document.FilePath is not null
+            ? Path.GetFileName(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        var defaultName = _document.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        using var dialog = new HtmlExportDialog(docName, defaultName, _markdownStyle, StyleService.GetAllStyles());
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var options = dialog.Options;
+        if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
+        {
+            SetStatus(Loc.Get("export.emptyPath"));
+            return;
+        }
+
+        await RunExportAsync(options, defaultName);
+    }
+
+    private async Task RunExportAsync(ExportOptions options, string defaultName)
+    {
+        if (_editorHost is null)
+        {
             return;
         }
 
@@ -166,7 +218,8 @@ internal sealed partial class MainForm
                 editor.VisualFontSize,
                 editor.VisualLineHeight,
                 editor.VisualMaxContentWidth,
-                colorThemeCss);
+                colorThemeCss,
+                defaultName);
 
             if (string.IsNullOrEmpty(html))
             {
@@ -206,12 +259,83 @@ internal sealed partial class MainForm
             var exportedName = Path.GetFileName(outputPath);
             ShowExportCompleteDialog(exportedName, outputPath, exportDir!);
         }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning($"Export timed out or was cancelled: {options.OutputPath}.");
+            SetStatus(Loc.Get("export.failed"));
+        }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.Error($"Export failed: {options.OutputPath}.", exception);
             ShowMessage(this, Loc.Get("export.failed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        catch (Exception exception)
+        {
+            _logger.Error($"Export failed: {options.OutputPath}.", exception);
+            ShowMessage(this, Loc.Get("export.failed") + "\r\n\r\n" + exception.Message, "MarkLeaf",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void PrintDocument()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document is null)
+        {
+            return;
+        }
+
+        _editorHost.PrintDocument();
+    }
+
+    private async Task<byte[]> GeneratePreviewPdfAsync(ExportOptions options)
+    {
+        if (_editorHost is null || _document is null)
+        {
+            return [];
+        }
+
+        var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
+        var html = await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss);
+        if (string.IsNullOrEmpty(html)) return [];
+
+        return await _editorHost.PrintExportToPdfAsync(
+            html,
+            options.PaperSize,
+            options.Landscape,
+            options.MarginTop,
+            options.MarginBottom,
+            options.MarginLeft,
+            options.MarginRight);
+    }
+
+    private async Task<string> GeneratePrintHtmlAsync(string format, string style, string header, string footer, string colorSchemeCss)
+    {
+        if (_editorHost is null || _document is null)
+        {
+            return "";
+        }
+
+        SetStatus(Loc.Get("print.generating"));
+        var editor = _settings.Editor;
+        var title = _document.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        var html = await _editorHost.RequestExportAsync(
+            format,
+            style,
+            header,
+            footer,
+            editor.VisualFontSize,
+            editor.VisualLineHeight,
+            editor.VisualMaxContentWidth,
+            colorSchemeCss,
+            title);
+        if (string.IsNullOrEmpty(html))
+        {
+            SetStatus(Loc.Get("export.noContent"));
+        }
+        return html;
     }
 
     private void ShowExportCompleteDialog(string fileName, string filePath, string folderPath)

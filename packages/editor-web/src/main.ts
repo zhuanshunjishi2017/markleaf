@@ -951,6 +951,7 @@ function handleMessage(value: unknown): void {
               lineHeight?: unknown
               maxWidth?: unknown
               colorSchemeCss?: unknown
+              title?: unknown
             }
             try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
             const style = typeof options.style === 'string' ? options.style : 'serif'
@@ -961,7 +962,8 @@ function handleMessage(value: unknown): void {
             const lineHeight = typeof options.lineHeight === 'number' ? options.lineHeight : 1.6
             const maxWidth = typeof options.maxWidth === 'number' ? options.maxWidth : 820
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
-            const html = generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss)
+            const title = typeof options.title === 'string' ? options.title : ''
+            const html = generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss, title)
             send('exportContent', { html }, message.requestId)
           }
           break
@@ -1197,6 +1199,7 @@ function generateExportHtml(
   lineHeight = 1.6,
   maxWidth = 820,
   colorSchemeCss = '',
+  title = '',
 ): string {
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
@@ -1219,7 +1222,7 @@ function generateExportHtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MarkLeaf 导出文档</title>
+<title>${escapeHtml(title || 'MarkLeaf')}</title>
 <style>
 * { box-sizing: border-box; }
 ${katexCss}
@@ -1295,6 +1298,39 @@ ${header ? `<div class="export-header">${header}</div>` : ''}
 <div class="markleaf-document">${bodyHtml}</div>
 ${footer ? `<div class="export-footer">${footer}</div>` : ''}
 </div>
+<script>
+(function () {
+  function fitMath() {
+    var doc = document.querySelector('.markleaf-document');
+    if (!doc) return;
+    var items = doc.querySelectorAll('.katex-display');
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      el.style.fontSize = '';
+      var available = el.clientWidth;
+      if (available <= 0) continue;
+      // 让容器收缩包裹到内容宽度后再量，避免居中溢出与内联片段导致的测量失真。
+      var display = el.style.display;
+      var width = el.style.width;
+      el.style.display = 'inline-block';
+      el.style.width = 'max-content';
+      var content = el.getBoundingClientRect().width;
+      el.style.display = display;
+      el.style.width = width;
+      if (content <= available) continue;
+      var base = parseFloat(getComputedStyle(el).fontSize) || 16;
+      el.style.fontSize = (base * available / content).toFixed(2) + 'px';
+    }
+  }
+  window.__markleafFitMath = fitMath;
+  // 等待 KaTeX 字体加载完成后再测量，避免用回退字体度量导致公式被误缩放。
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(fitMath);
+  } else {
+    fitMath();
+  }
+})();
+</script>
 </body>
 </html>`
 }

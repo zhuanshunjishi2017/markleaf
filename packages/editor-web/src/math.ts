@@ -23,6 +23,34 @@ function renderKatex(element: HTMLElement, latex: string, displayMode: boolean):
   }
 }
 
+/// 测量 KaTeX 公式的自然宽度。display 模式公式居中且内容向两侧溢出，
+/// Range/scrollWidth 会受居中与大量内联片段影响而失真；让容器临时收缩
+/// 包裹（inline-block + max-content）后直接量宽度，得到唯一的自然宽度。
+function measureNaturalWidth(container: HTMLElement): number {
+  const display = container.style.display
+  const width = container.style.width
+  container.style.display = 'inline-block'
+  container.style.width = 'max-content'
+  const natural = container.getBoundingClientRect().width
+  container.style.display = display
+  container.style.width = width
+  return natural
+}
+
+/// 让块级公式缩放到正好放下：KaTeX 内部全部用 em 单位布局，
+/// 缩放容器 font-size 即可按比例缩放整段公式，避免长公式产生横向滚动条。
+function fitBlockMathToWidth(container: HTMLElement): void {
+  const available = container.clientWidth
+  if (available <= 0) return
+
+  container.style.fontSize = ''
+  const content = measureNaturalWidth(container)
+  if (content <= available) return
+
+  const base = parseFloat(getComputedStyle(container).fontSize) || 16
+  container.style.fontSize = `${((base * available) / content).toFixed(2)}px`
+}
+
 /// 行内数学公式：`$...$`
 export const MathInline = Node.create({
   name: 'mathInline',
@@ -151,7 +179,26 @@ export const MathBlock = Node.create({
       div.className = 'markleaf-math markleaf-math-block'
       div.contentEditable = 'false'
       renderKatex(div, node.textContent, true)
-      return { dom: div }
+
+      const fit = () => fitBlockMathToWidth(div)
+      let lastWidth = -1
+      const observer = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? 0
+        // 仅响应宽度变化，避免 font-size 调整引起的高度变化触发无限重排。
+        if (width === lastWidth) return
+        lastWidth = width
+        fit()
+      })
+      observer.observe(div)
+      const raf = requestAnimationFrame(fit)
+
+      return {
+        dom: div,
+        destroy: () => {
+          cancelAnimationFrame(raf)
+          observer.disconnect()
+        },
+      }
     }
   },
 })
