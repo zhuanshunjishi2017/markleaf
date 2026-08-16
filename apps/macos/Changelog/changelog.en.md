@@ -4,8 +4,7 @@
 
 ### New
 
-- Add a live preview dialog for PDF export: review the layout, adjust paper, orientation, margins (including custom margins), style, and color scheme before exporting.
-- Split the File menu into Export PDF… and Export HTML… for a clearer export flow.
+- The export dialog now supports both PDF and HTML with a live preview: review the layout and adjust paper, orientation, margins (including custom margins), style, and color scheme before exporting.
 
 ### Fixes & Improvements
 

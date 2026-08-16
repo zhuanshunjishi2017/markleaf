@@ -1,12 +1,13 @@
 import AppKit
 import WebKit
 
-/// “导出 PDF…”对话框：左侧导出选项，右侧 WKWebView 实时预览导出 HTML，
-/// 底部“导出… / 取消”（对齐 Windows ExportDialog 的 PDF 预览体验）。
-final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
+/// “导出…”对话框：格式（PDF / HTML）切换 + 左侧选项，右侧 WKWebView 实时预览，
+/// 底部“导出… / 取消”。PDF 显示纸张/方向/页边距选项，HTML 隐藏之；两种格式均带预览。
+final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private weak var session: EditorSession?
     var onClose: (() -> Void)?
 
+    private let formatPopup = NSPopUpButton()
     private let paperPopup = NSPopUpButton()
     private let landscapeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let marginPopup = NSPopUpButton()
@@ -18,6 +19,9 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
     private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let statusLabel = NSTextField(labelWithString: "")
 
+    private var paperRow: NSView?
+    private var landscapeRow: NSView?
+    private var marginRow: NSView?
     private var themeIDs: [String] = []
     private var styleIDs: [String] = []
     private var margins = ExportMargins()
@@ -39,7 +43,7 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false)
-        window.title = L10n.t("导出 PDF")
+        window.title = L10n.t("导出文档")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
@@ -57,6 +61,12 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
 
         previewView.underPageBackgroundColor = .white
         previewView.setValue(false, forKey: "drawsBackground")
+
+        formatPopup.addItems(withTitles: [L10n.t("PDF"), L10n.t("HTML")])
+        formatPopup.selectItem(at: 0)
+        formatPopup.target = self
+        formatPopup.action = #selector(formatChanged)
+        formatPopup.widthAnchor.constraint(equalToConstant: 120).isActive = true
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
@@ -83,6 +93,10 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         headerField.action = #selector(optionChanged)
         footerField.target = self
         footerField.action = #selector(optionChanged)
+        headerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        footerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        stylePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        colorThemePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
 
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
@@ -93,10 +107,15 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelClicked))
         cancelButton.bezelStyle = .rounded
 
+        paperRow = labeled(L10n.t("纸张"), paperPopup)
+        landscapeRow = labeled(L10n.t("方向"), landscapeCheck)
+        marginRow = labeled(L10n.t("页边距"), NSStackView(views: [marginPopup, customMarginButton]))
+
         let optionsStack = NSStackView(views: [
-            labeled(L10n.t("纸张"), paperPopup),
-            labeled(L10n.t("方向"), landscapeCheck),
-            labeled(L10n.t("页边距"), NSStackView(views: [marginPopup, customMarginButton])),
+            labeled(L10n.t("格式"), formatPopup),
+            paperRow!,
+            landscapeRow!,
+            marginRow!,
             labeled(L10n.t("排版样式"), stylePopup),
             labeled(L10n.t("配色方案"), colorThemePopup),
             labeled(L10n.t("页眉"), headerField),
@@ -119,10 +138,6 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
             previewView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
             previewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
         ])
-        headerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        footerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        stylePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        colorThemePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
 
         let buttonRow = NSStackView(views: [NSView(), statusLabel, exportButton, cancelButton])
         buttonRow.orientation = .horizontal
@@ -153,6 +168,7 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
             contentView.widthAnchor.constraint(equalToConstant: 920).isActive = true
             contentView.heightAnchor.constraint(equalToConstant: 680).isActive = true
         }
+        updatePDFVisibility()
     }
 
     private func labeled(_ title: String, _ control: NSView) -> NSView {
@@ -178,8 +194,6 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         colorThemePopup.addItems(withTitles: session.colorThemes.map { L10n.t($0.displayName) })
         if let idx = themeIDs.firstIndex(of: session.currentThemeId ?? "colors-white-only") {
             colorThemePopup.selectItem(at: idx)
-        } else if let idx = themeIDs.firstIndex(of: "colors-white-only") {
-            colorThemePopup.selectItem(at: idx)
         }
         margins = ExportMargins()
         marginPopup.addItem(withTitle: L10n.t("自定义"))
@@ -198,9 +212,13 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         return themeIDs[idx]
     }
 
+    private var selectedFormat: String {
+        formatPopup.indexOfSelectedItem == 1 ? "html" : "pdf"
+    }
+
     private func currentOptions() -> ExportOptions {
         var options = ExportOptions()
-        options.format = "pdf"
+        options.format = selectedFormat
         options.style = selectedStyleID
         options.colorScheme = selectedThemeID
         options.paperSize = PaperSize(rawValue: paperPopup.titleOfSelectedItem ?? "A4") ?? .a4
@@ -209,6 +227,20 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         options.header = headerField.stringValue
         options.footer = footerField.stringValue
         return options
+    }
+
+    // MARK: - 格式切换
+
+    @objc private func formatChanged() {
+        updatePDFVisibility()
+        refreshPreview()
+    }
+
+    private func updatePDFVisibility() {
+        let isPDF = selectedFormat == "pdf"
+        paperRow?.isHidden = !isPDF
+        landscapeRow?.isHidden = !isPDF
+        marginRow?.isHidden = !isPDF
     }
 
     // MARK: - 预览
@@ -333,12 +365,12 @@ final class ExportPDFWindowController: NSWindowController, NSWindowDelegate {
         guard let session, let window else { return }
         let options = currentOptions()
         let panel = NSSavePanel()
-        panel.title = L10n.t("导出 PDF")
+        panel.title = L10n.t("导出文档")
         let baseName = session.documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + ".pdf"
+        panel.nameFieldStringValue = baseName + "." + (options.format == "pdf" ? "pdf" : "html")
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            let targetURL = EditorSession.fixExportExtension(url, format: "pdf")
+            let targetURL = EditorSession.fixExportExtension(url, format: options.format)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
         }

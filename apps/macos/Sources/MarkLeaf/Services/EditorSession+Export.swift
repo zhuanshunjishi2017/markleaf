@@ -2,53 +2,25 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension EditorSession {
-    /// 文件 → 导出 HTML…：选择位置后直接导出（保留样式/配色/页眉页脚选项）。
-    func exportHTMLDocument() {
-        guard let window = webView?.window else { return }
-        let panel = NSSavePanel()
-        panel.title = L10n.t("导出 HTML")
-        let baseName = documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + ".html"
-
-        let accessory = ExportAccessory(styles: styles, themes: colorThemes, fixedFormat: "html")
-        if let idx = styles.firstIndex(where: { $0.id == currentStyleId }) {
-            accessory.stylePopup.selectItem(at: idx)
-        }
-        if let idx = colorThemes.firstIndex(where: { $0.id == currentThemeId }) {
-            accessory.colorThemePopup.selectItem(at: idx)
-        }
-        panel.accessoryView = accessory
-
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            var options = accessory.options
-            if options.style.isEmpty || !(self?.styles.contains(where: { $0.id == options.style }) ?? false) {
-                options.style = self?.currentStyleId ?? "serif"
-            }
-            let targetURL = Self.fixExportExtension(url, format: "html")
-            self?.runExport(options: options, saveURL: targetURL)
-        }
-    }
-
-    /// 文件 → 导出 PDF…：打开带实时预览的导出对话框（对齐 Windows ExportDialog）。
-    func exportPDFDocument() {
+    /// 文件 → 导出…：打开统一导出对话框（PDF / HTML 均带实时预览）。
+    func exportDocument() {
         guard webView?.window != nil else { return }
-        let controller = ExportPDFWindowController(session: self)
-        exportPDFController = controller
+        let controller = ExportWindowController(session: self)
+        exportController = controller
         controller.onClose = { [weak self] in
-            self?.exportPDFController = nil
+            self?.exportController = nil
         }
         controller.showWindow(nil)
     }
 
-    /// 请求导出 HTML（供“导出 PDF…”对话框实时预览）；结果经 handleExportedContent 回调。
+    /// 请求导出 HTML（供导出对话框实时预览）；结果经 handleExportedContent 回调。
     func requestExportHTML(options: ExportOptions, completion: @escaping (String) -> Void) {
         let settings = SettingsService.shared.settings
         let colorSchemeCss = options.colorScheme.flatMap { id in
             colorThemes.first(where: { $0.id == id })?.css
         } ?? ""
         var payload: [String: Any] = [
-            "format": "html",
+            "format": options.format,
             "style": options.style,
             "header": options.header,
             "footer": options.footer,
