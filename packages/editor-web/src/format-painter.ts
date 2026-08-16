@@ -2,7 +2,12 @@ import type { Editor } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
 import type { ResolvedPos } from '@tiptap/pm/model'
 
-export type PaintableBlock = 'paragraph' | `heading${1 | 2 | 3 | 4 | 5 | 6}`
+export type PaintableBlock =
+  | 'paragraph'
+  | `heading${1 | 2 | 3 | 4 | 5 | 6}`
+  | 'bulletList'
+  | 'orderedList'
+  | 'taskList'
 export type FormatPainterSnapshot = {
   block: PaintableBlock
   marks: { bold: boolean; italic: boolean; underline: boolean; strike: boolean; code: boolean }
@@ -10,16 +15,21 @@ export type FormatPainterSnapshot = {
 
 const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code'] as const
 const forbiddenAncestorNames = new Set([
-  'bulletList',
-  'orderedList',
-  'taskList',
-  'listItem',
-  'taskItem',
   'table',
   'tableRow',
   'tableCell',
   'tableHeader',
 ])
+
+const listTypes = new Set(['bulletList', 'orderedList', 'taskList'])
+
+function listTypeAt($from: ResolvedPos): PaintableBlock | null {
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name
+    if (listTypes.has(name)) return name as PaintableBlock
+  }
+  return null
+}
 
 function marksSnapshotFromNames(names: ReadonlySet<string>): FormatPainterSnapshot['marks'] {
   return {
@@ -71,8 +81,13 @@ export function normalizeContextMenuCaretPosition(editor: Editor, position: numb
   return candidate
 }
 
-/// 光标/选区所在块是否为可涂抹的段落或标题（且不在列表/表格等容器内）。
+/// 光标/选区所在块是否为可涂抹的块：段落、标题，或列表（列表项按所在列表类型计）。
 function blockAt($from: ResolvedPos): PaintableBlock | null {
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if (forbiddenAncestorNames.has($from.node(depth).type.name)) return null
+  }
+  const listType = listTypeAt($from)
+  if (listType) return listType
   const parent = $from.parent
   const name = parent.type.name
   let block: PaintableBlock
@@ -84,9 +99,6 @@ function blockAt($from: ResolvedPos): PaintableBlock | null {
     block = `heading${level}` as PaintableBlock
   } else {
     return null
-  }
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if (forbiddenAncestorNames.has($from.node(depth).type.name)) return null
   }
   return block
 }
@@ -176,13 +188,43 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
   // code 源不涂抹包含链接的范围，避免破坏链接。
   if (snapshot.marks.code && rangeContainsMark(editor, targetFrom, targetTo, 'link')) return false
 
+  const sourceIsList = listTypes.has(snapshot.block)
+  const targetList = listTypeAt($from)
   let chain = editor.chain().focus()
   if (!hasSelection) {
     chain = chain.setTextSelection({ from: targetFrom, to: targetTo })
   }
-  chain = snapshot.block === 'paragraph'
-    ? chain.setParagraph()
-    : chain.setHeading({ level: Number(snapshot.block.slice('heading'.length)) as 1 | 2 | 3 | 4 | 5 | 6 })
+  if (sourceIsList) {
+    // 目标已是同类型列表：仅改行内标记；否则先退出当前列表（如有），再进入目标列表。
+    if (targetList !== snapshot.block) {
+      if (targetList) {
+        chain = targetList === 'bulletList'
+          ? chain.toggleBulletList()
+          : targetList === 'orderedList'
+            ? chain.toggleOrderedList()
+            : chain.toggleTaskList()
+      }
+      chain = snapshot.block === 'bulletList'
+        ? chain.toggleBulletList()
+        : snapshot.block === 'orderedList'
+          ? chain.toggleOrderedList()
+          : chain.toggleTaskList()
+    }
+  } else if (targetList) {
+    // 源是段落/标题而目标在列表内：先退出列表，再设置块类型。
+    chain = targetList === 'bulletList'
+      ? chain.toggleBulletList()
+      : targetList === 'orderedList'
+        ? chain.toggleOrderedList()
+        : chain.toggleTaskList()
+    chain = snapshot.block === 'paragraph'
+      ? chain.setParagraph()
+      : chain.setHeading({ level: Number(snapshot.block.slice('heading'.length)) as 1 | 2 | 3 | 4 | 5 | 6 })
+  } else {
+    chain = snapshot.block === 'paragraph'
+      ? chain.setParagraph()
+      : chain.setHeading({ level: Number(snapshot.block.slice('heading'.length)) as 1 | 2 | 3 | 4 | 5 | 6 })
+  }
   for (const mark of supportedMarks) {
     chain = snapshot.marks[mark] ? chain.setMark(mark) : chain.unsetMark(mark)
   }
