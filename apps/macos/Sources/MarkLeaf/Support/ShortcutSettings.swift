@@ -15,7 +15,7 @@ enum ShortcutCatalog {
         ShortcutEntry(command: "open", titleKey: "打开…", defaultKey: "o", defaultMask: [.command]),
         ShortcutEntry(command: "save", titleKey: "保存", defaultKey: "s", defaultMask: [.command]),
         ShortcutEntry(command: "saveAs", titleKey: "另存为…", defaultKey: "S", defaultMask: [.command, .shift]),
-        ShortcutEntry(command: "export", titleKey: "导出…", defaultKey: "e", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "exportPdf", titleKey: "导出 PDF…", defaultKey: "e", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "print", titleKey: "打印…", defaultKey: "p", defaultMask: [.command]),
         ShortcutEntry(command: "undo", titleKey: "撤销", defaultKey: "z", defaultMask: [.command]),
         ShortcutEntry(command: "redo", titleKey: "重做", defaultKey: "Z", defaultMask: [.command, .shift]),
