@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import WebKit
 
 /// “导出…”对话框：格式（PDF / HTML）切换 + 左侧选项，右侧 WKWebView 实时预览，
@@ -17,7 +18,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let headerField = NSTextField(string: "")
     private let footerField = NSTextField(string: "")
     private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
-    private let statusLabel = NSTextField(labelWithString: "")
+    private let pageCountLabel = NSTextField(labelWithString: "")
 
     private var paperRow: NSView?
     private var landscapeRow: NSView?
@@ -27,6 +28,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private var margins = ExportMargins()
     private var previewTimer: DispatchWorkItem?
     private var previewGeneration = 0
+    private var previewFileCounter = 0
     private var customMarginItemIndex: Int?
 
     private static let marginPresets: [(String, ExportMargins)] = [
@@ -70,6 +72,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
+        paperPopup.target = self
+        paperPopup.action = #selector(optionChanged)
 
         landscapeCheck.title = L10n.t("横向")
         landscapeCheck.target = self
@@ -98,8 +102,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         stylePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
         colorThemePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
 
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
+        pageCountLabel.font = .systemFont(ofSize: 12)
+        pageCountLabel.textColor = .secondaryLabelColor
+        pageCountLabel.alignment = .right
 
         let exportButton = NSButton(title: L10n.t("导出…"), target: self, action: #selector(exportClicked))
         exportButton.keyEquivalent = "\r"
@@ -131,15 +136,20 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let previewContainer = NSView()
         previewContainer.translatesAutoresizingMaskIntoConstraints = false
         previewView.translatesAutoresizingMaskIntoConstraints = false
+        pageCountLabel.translatesAutoresizingMaskIntoConstraints = false
         previewContainer.addSubview(previewView)
+        previewContainer.addSubview(pageCountLabel)
         NSLayoutConstraint.activate([
             previewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             previewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
-            previewView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
+            previewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
             previewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+            pageCountLabel.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            pageCountLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor),
         ])
 
-        let buttonRow = NSStackView(views: [NSView(), statusLabel, exportButton, cancelButton])
+        let buttonRow = NSStackView(views: [NSView(), exportButton, cancelButton])
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
@@ -261,18 +271,68 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         previewTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in self?.refreshPreview() }
         previewTimer = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: item)
     }
 
     private func refreshPreview() {
         guard let session else { return }
         previewGeneration += 1
         let generation = previewGeneration
-        statusLabel.stringValue = L10n.t("正在生成预览…")
-        session.requestExportHTML(options: currentOptions()) { [weak self] html in
+        let options = currentOptions()
+        pageCountLabel.stringValue = ""
+        session.requestExportHTML(options: options) { [weak self] html in
             guard let self, generation == self.previewGeneration else { return }
-            self.previewView.loadHTMLString(html, baseURL: nil)
-            self.statusLabel.stringValue = L10n.t("预览")
+            if options.format == "pdf" {
+                self.renderPDFPreview(html: html, options: options, generation: generation)
+            } else {
+                self.previewView.loadHTMLString(html, baseURL: nil)
+            }
+        }
+    }
+
+    /// PDF 预览：用所选纸张/方向/边距生成真实 PDF 并显示，同时给出页数。
+    private func renderPDFPreview(html: String, options: ExportOptions, generation: Int) {
+        guard let window else { return }
+        previewFileCounter += 1
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("markleaf-preview-\(previewFileCounter).pdf")
+        PDFGenerator().printPDF(
+            html: html,
+            paperSize: options.paperSize,
+            landscape: options.landscape,
+            margins: options.margins,
+            window: window,
+            showsPanel: false,
+            saveURL: url
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, generation == self.previewGeneration else { return }
+                if case .success(true) = result {
+                    self.previewView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+                    if let document = PDFDocument(url: url) {
+                        self.pageCountLabel.stringValue = L10n.f("共 %d 页", document.pageCount)
+                    }
+                    self.cleanupOldPreviews(except: url)
+                }
+            }
+        }
+    }
+
+    private func cleanupOldPreviews(except current: URL) {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        let prefix = "markleaf-preview-"
+        // 用文件名比较（/var 与 /private/var 的路径表示可能不同，全路径比较会误删当前文件）。
+        for file in files where file.lastPathComponent.hasPrefix(prefix) && file.lastPathComponent != current.lastPathComponent {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    private func cleanupAllPreviews() {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for file in files where file.lastPathComponent.hasPrefix("markleaf-preview-") {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 
@@ -384,6 +444,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         previewTimer?.cancel()
+        cleanupAllPreviews()
         onClose?()
     }
 }
