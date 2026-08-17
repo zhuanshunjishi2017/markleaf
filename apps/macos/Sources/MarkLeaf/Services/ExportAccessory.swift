@@ -31,12 +31,17 @@ final class ExportAccessory: NSView {
         (L10n.t("无"), ExportMargins(top: 0, bottom: 0, left: 0, right: 0)),
     ]
 
-    init(styles: [StyleDefinition], themes: [ColorThemeInfo]) {
+    init(styles: [StyleDefinition], themes: [ColorThemeInfo], fixedFormat: String? = nil) {
         super.init(frame: NSRect(x: 0, y: 0, width: 380, height: 170))
         themeIDs = themes.map(\.id)
 
         formatPopup.addItems(withTitles: [L10n.t("PDF"), L10n.t("HTML")])
-        formatPopup.selectItem(at: 0)
+        if fixedFormat == "html" {
+            formatPopup.selectItem(at: 1)
+            formatPopup.isEnabled = false
+        } else {
+            formatPopup.selectItem(at: 0)
+        }
         formatPopup.target = self
         formatPopup.action = #selector(formatChanged)
 

@@ -1,5 +1,16 @@
 # MarkLeaf Changelog
 
+## 1.2.3 — 2026-08-16
+
+### New
+
+- The export dialog now supports both PDF and HTML with a live preview: review the layout and adjust paper, orientation, margins (including custom margins), style, and color scheme before exporting.
+
+### Fixes & Improvements
+
+- Fix long formulas overflowing or being clipped in PDF export.
+- Fix the app crashing when switching the interface language to English.
+
 ## 1.2.2 — 2026-08-15
 
 ### New

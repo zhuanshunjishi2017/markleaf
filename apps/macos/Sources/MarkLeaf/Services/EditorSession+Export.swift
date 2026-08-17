@@ -2,33 +2,38 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension EditorSession {
-    /// 打开导出面板（对应 C# ExportDocumentAsync + ExportDialog）。
+    /// 文件 → 导出…：打开统一导出对话框（PDF / HTML 均带实时预览）。
     func exportDocument() {
-        guard let window = webView?.window else { return }
-        let panel = NSSavePanel()
-        panel.title = L10n.t("导出文档")
-        let baseName = documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + ".pdf"
+        guard webView?.window != nil else { return }
+        let controller = ExportWindowController(session: self)
+        exportController = controller
+        controller.onClose = { [weak self] in
+            self?.exportController = nil
+        }
+        controller.showWindow(nil)
+    }
 
-        let accessory = ExportAccessory(styles: styles, themes: colorThemes)
-        if let idx = styles.firstIndex(where: { $0.id == currentStyleId }) {
-            accessory.stylePopup.selectItem(at: idx)
-        }
-        if let idx = colorThemes.firstIndex(where: { $0.id == currentThemeId }) {
-            accessory.colorThemePopup.selectItem(at: idx)
-        }
-        panel.accessoryView = accessory
-
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            var options = accessory.options
-            if options.style.isEmpty || !(self?.styles.contains(where: { $0.id == options.style }) ?? false) {
-                options.style = self?.currentStyleId ?? "serif"
-            }
-            // 根据格式修正扩展名
-            let targetURL = Self.fixExportExtension(url, format: options.format)
-            self?.runExport(options: options, saveURL: targetURL)
-        }
+    /// 请求导出 HTML（供导出对话框实时预览）；结果经 handleExportedContent 回调。
+    func requestExportHTML(options: ExportOptions, completion: @escaping (String) -> Void) {
+        let settings = SettingsService.shared.settings
+        let colorSchemeCss = options.colorScheme.flatMap { id in
+            colorThemes.first(where: { $0.id == id })?.css
+        } ?? ""
+        var payload: [String: Any] = [
+            "format": options.format,
+            "style": options.style,
+            "header": options.header,
+            "footer": options.footer,
+            "fontSize": settings.visualFontSize,
+            "lineHeight": settings.visualLineHeight,
+            "maxWidth": settings.visualMaxContentWidth,
+            "colorSchemeCss": colorSchemeCss,
+            "title": documentURL?.lastPathComponent ?? L10n.t("未命名"),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else { return }
+        pendingExportHTMLHandler = completion
+        execute("exportDocument", text: text)
     }
 
     /// 文件 → 打印…：生成打印 HTML 并弹出系统打印面板（纸张/方向跟随系统默认）。
@@ -42,7 +47,7 @@ extension EditorSession {
         runExport(options: options, saveURL: tempURL, forPrint: true)
     }
 
-    private static func fixExportExtension(_ url: URL, format: String) -> URL {
+    static func fixExportExtension(_ url: URL, format: String) -> URL {
         let ext = format == "pdf" ? "pdf" : "html"
         if url.pathExtension.lowercased() == ext {
             return url
@@ -82,6 +87,11 @@ extension EditorSession {
     }
 
     func handleExportedContent(_ html: String) {
+        if let handler = pendingExportHTMLHandler {
+            pendingExportHTMLHandler = nil
+            handler(html)
+            return
+        }
         guard let context = pendingExportContext else {
             AppLog.warning(L10n.t("收到无上下文的导出内容"))
             return
