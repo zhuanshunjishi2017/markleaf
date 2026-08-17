@@ -9,6 +9,7 @@
 ### Fixes & Improvements
 
 - Fix long formulas overflowing or being clipped in PDF export.
+- Fix the app crashing when switching the interface language to English.
 
 ## 1.2.2 — 2026-08-15
 
