@@ -1,5 +1,21 @@
 # MarkLeaf Changelog
 
+## 1.2.4 — 2026-08-17
+
+### New
+
+- Add table and image captions: table captions appear above the table and image captions below the image, both centered; right-click the table or image to edit the caption, with inline bold, italic, and strikethrough formatting.
+- Add numbering to block formulas (e.g., 1 or 1.1): set the number when editing a formula, and it renders right-aligned.
+
+### Changes
+
+- In the LaTeX layout style, `## *text*` (italic level-2 heading) is treated as an author/contact line and rendered as centered body text.
+
+### Fixes
+
+- Fix editor initialization failing and most menus being disabled when loading documents with multiple table captions.
+- Fix table/image captions rendering with inconsistent color and size between the editor and exports.
+
 ## 1.2.3 — 2026-08-16
 
 ### New
