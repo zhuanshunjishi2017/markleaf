@@ -377,6 +377,9 @@ internal sealed class NativeMenuService : IDisposable
             }
             else if (status.InTable)
             {
+                AppendCommand(menu, AppCommand.EditTableCaption, Loc.Get("contextMenu.table.caption"));
+                AppendSeparator(menu);
+
                 // 行操作
                 AppendCommand(menu, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
                 AppendCommand(menu, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
@@ -405,6 +408,7 @@ internal sealed class NativeMenuService : IDisposable
 
                 AppendCommand(menu, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
                 commands.AddRange([
+                    AppCommand.EditTableCaption,
                     AppCommand.AddTableRowBefore, AppCommand.AddTableRowAfter, AppCommand.DeleteTableRow,
                     AppCommand.AddTableColumnBefore, AppCommand.AddTableColumnAfter, AppCommand.DeleteTableColumn,
                     AppCommand.AlignTableLeft, AppCommand.AlignTableCenter, AppCommand.AlignTableRight,
@@ -423,6 +427,7 @@ internal sealed class NativeMenuService : IDisposable
             else if (status.ImageSelected)
             {
                 AppendCommand(menu, AppCommand.ChangeImage, Loc.Get("contextMenu.image.change"));
+                AppendCommand(menu, AppCommand.EditImageCaption, Loc.Get("contextMenu.image.caption"));
 
                 AppendPopup(menu, Loc.Get("contextMenu.image.resize"), BuildResizeImageSubmenu());
 
@@ -434,7 +439,7 @@ internal sealed class NativeMenuService : IDisposable
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
                 commands.AddRange([
-                    AppCommand.ChangeImage, AppCommand.ResizeImage100, AppCommand.ResizeImage50,
+                    AppCommand.ChangeImage, AppCommand.EditImageCaption, AppCommand.ResizeImage100, AppCommand.ResizeImage50,
                     AppCommand.ResizeImage75, AppCommand.ResizeImage90, AppCommand.RotateImageClockwise,
                     AppCommand.SaveImageAs, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
             }

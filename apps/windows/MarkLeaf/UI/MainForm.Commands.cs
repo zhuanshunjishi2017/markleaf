@@ -256,6 +256,12 @@ internal sealed partial class MainForm
             case AppCommand.EditMath:
                 EditMath();
                 break;
+            case AppCommand.EditImageCaption:
+                EditImageCaption();
+                break;
+            case AppCommand.EditTableCaption:
+                EditTableCaption();
+                break;
             case AppCommand.InsertImage:
                 _ = SelectAndInsertImagesAsync();
                 break;

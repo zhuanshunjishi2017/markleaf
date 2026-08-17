@@ -15,7 +15,13 @@ internal sealed class MathInputDialog : Form
         PlaceholderText = "x^2 + y^2",
     };
 
-    public MathInputDialog(bool isBlock, string initialLatex = "")
+    private readonly TextBox _number = new()
+    {
+        Dock = DockStyle.Top,
+        PlaceholderText = "1",
+    };
+
+    public MathInputDialog(bool isBlock, string initialLatex = "", string initialNumber = "", bool showNumber = false)
     {
         Text = isBlock ? Loc.Get("dialog.mathBlockTitle") : Loc.Get("dialog.mathInlineTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -26,14 +32,14 @@ internal sealed class MathInputDialog : Form
         ShowInTaskbar = false;
         ClientSize = new Size(this.ScaleForDpi(460), this.ScaleForDpi(320));
 
-        var label = new Label
+        var latexLabel = new Label
         {
             AutoSize = true,
             Dock = DockStyle.Top,
             Text = Loc.Get("dialog.mathLatexLabel"),
             Padding = new Padding(0, 0, 0, this.ScaleForDpi(3)),
         };
-        label.UseMnemonic = true;
+        latexLabel.UseMnemonic = true;
 
         var okButton = new Button
         {
@@ -50,6 +56,7 @@ internal sealed class MathInputDialog : Form
         };
         _latex.TextChanged += (_, _) => okButton.Enabled = !string.IsNullOrWhiteSpace(_latex.Text);
         _latex.Text = initialLatex;
+        _number.Text = initialNumber;
 
         var buttons = new FlowLayoutPanel
         {
@@ -65,15 +72,37 @@ internal sealed class MathInputDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
             Padding = new Padding(this.ScaleForDpi(8)),
         };
+        content.Controls.Add(latexLabel, 0, 0);
+        content.Controls.Add(_latex, 0, 1);
+
+        var nextRow = 2;
+        if (showNumber)
+        {
+            var numberLabel = new Label
+            {
+                AutoSize = true,
+                Dock = DockStyle.Top,
+                Text = Loc.Get("dialog.mathNumberLabel"),
+                Padding = new Padding(0, this.ScaleForDpi(7), 0, this.ScaleForDpi(3)),
+            };
+            numberLabel.UseMnemonic = true;
+            content.Controls.Add(numberLabel, 0, nextRow);
+            content.Controls.Add(_number, 0, nextRow + 1);
+            nextRow += 2;
+        }
+
+        content.Controls.Add(buttons, 0, nextRow);
+        content.RowCount = nextRow + 1;
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        if (showNumber)
+        {
+            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        content.Controls.Add(label, 0, 0);
-        content.Controls.Add(_latex, 0, 1);
-        content.Controls.Add(buttons, 0, 2);
         Controls.Add(content);
 
         AcceptButton = okButton;
@@ -81,4 +110,6 @@ internal sealed class MathInputDialog : Form
     }
 
     public string Latex => _latex.Text.Trim();
+
+    public string Number => _number.Text.Trim();
 }

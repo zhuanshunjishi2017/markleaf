@@ -104,6 +104,8 @@ public enum AppCommand
     SaveImageAs = 0x1313,
     ClearFormat = 0x1314,
     FormatPainter = 0x1315,
+    EditImageCaption = 0x1316,
+    EditTableCaption = 0x1317,
 
     ShowShortcuts = 0x1401,
     ShowPreferences,

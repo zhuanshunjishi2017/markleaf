@@ -16,6 +16,7 @@ import {
   setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
+  renderEscapedCaptionHtml,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
 import { SourceEditor } from './source-editor'
@@ -1138,6 +1139,13 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function renderCaptionsInHtml(html: string): string {
+  return html.replace(
+    /<figcaption class="markleaf-figcaption">([\s\S]*?)<\/figcaption>/g,
+    (_, text: string) => `<figcaption class="markleaf-figcaption">${renderEscapedCaptionHtml(text)}</figcaption>`,
+  )
+}
+
 type StyleEntry = { id: string; css: string; dependsOn?: string }
 
 function injectStyleSheet(id: string, css: string): void {
@@ -1204,7 +1212,7 @@ function generateExportHtml(
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = renderMathInHtml(rawBodyHtml).replace(
+  const bodyHtml = renderCaptionsInHtml(renderMathInHtml(rawBodyHtml)).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }

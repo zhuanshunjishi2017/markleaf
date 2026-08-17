@@ -126,22 +126,40 @@ export const MathBlock = Node.create({
   selectable: true,
   content: 'text*',
 
+  addAttributes() {
+    return {
+      number: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-math-number'),
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          'data-math-number': attributes.number ?? null,
+        }),
+      },
+    }
+  },
+
   parseHTML() {
     return [{ tag: 'div[data-math-block]' }]
   },
 
-  renderHTML({ node }) {
-    return ['div', { 'data-math-block': '1' }, node.textContent]
+  renderHTML({ node, HTMLAttributes }) {
+    return ['div', { 'data-math-block': '1', ...HTMLAttributes }, node.textContent]
   },
 
   parseMarkdown(token, helpers) {
-    return helpers.createNode('mathBlock', null, [
-      helpers.createTextNode((token.text ?? '').trim()),
+    const latex = (token.text ?? '').trim()
+    const tag = /\\tag\{([^}]*)\}\s*$/.exec(latex)
+    const number = tag ? tag[1] : null
+    const body = tag ? latex.slice(0, tag.index).trim() : latex
+    return helpers.createNode('mathBlock', { number }, [
+      helpers.createTextNode(body),
     ])
   },
 
   renderMarkdown(node) {
-    return `$$${nodeLatex(node)}$$`
+    const body = nodeLatex(node)
+    const number = typeof node.attrs?.number === 'string' && node.attrs.number.length > 0 ? node.attrs.number : null
+    return number ? `$$${body} \\tag{${number}}$$` : `$$${body}$$`
   },
 
   markdownTokenizer: {
@@ -178,7 +196,15 @@ export const MathBlock = Node.create({
       const div = document.createElement('div')
       div.className = 'markleaf-math markleaf-math-block'
       div.contentEditable = 'false'
-      renderKatex(div, node.textContent, true)
+
+      const render = (currentNode: { textContent: string; attrs?: Record<string, unknown> }) => {
+        const number = typeof currentNode.attrs?.number === 'string' && currentNode.attrs.number.length > 0
+          ? currentNode.attrs.number
+          : null
+        const latex = number ? `${currentNode.textContent} \\tag{${number}}` : currentNode.textContent
+        renderKatex(div, latex, true)
+      }
+      render(node)
 
       const fit = () => fitBlockMathToWidth(div)
       let lastWidth = -1
@@ -194,6 +220,12 @@ export const MathBlock = Node.create({
 
       return {
         dom: div,
+        update: (updatedNode: { type: { name: string }; textContent: string; attrs?: Record<string, unknown> }) => {
+          if (updatedNode.type.name !== 'mathBlock') return false
+          render(updatedNode)
+          fit()
+          return true
+        },
         destroy: () => {
           cancelAnimationFrame(raf)
           observer.disconnect()
@@ -219,7 +251,11 @@ export function renderMathInHtml(html: string): string {
     .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) =>
       katex.renderToString(decodeHtmlEntities(latex), { throwOnError: false }),
     )
-    .replace(/<div data-math-block="1">([\s\S]*?)<\/div>/g, (_, latex: string) =>
-      katex.renderToString(decodeHtmlEntities(latex), { displayMode: true, throwOnError: false }),
-    )
+    .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
+      const numberMatch = /data-math-number="([^"]*)"/.exec(attrs)
+      const number = numberMatch?.[1]
+      const body = decodeHtmlEntities(latex)
+      const full = number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
+      return katex.renderToString(full, { displayMode: true, throwOnError: false })
+    })
 }

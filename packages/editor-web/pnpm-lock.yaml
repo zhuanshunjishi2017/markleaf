@@ -56,6 +56,9 @@ importers:
       katex:
         specifier: 0.16.21
         version: 0.16.21
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
     devDependencies:
       '@types/node':
         specifier: 24.10.1

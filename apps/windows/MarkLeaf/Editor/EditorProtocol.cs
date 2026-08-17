@@ -229,6 +229,8 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "mathBlock")
             && HasBooleanProperty(payload, "sourceMode")
             && HasNullableString(payload, "mathLatex")
+            && HasNullableString(payload, "mathNumber")
+            && HasNullableString(payload, "caption")
             && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
             && HasOptionalBooleanProperty(payload, "formatPainterArmed");
     }

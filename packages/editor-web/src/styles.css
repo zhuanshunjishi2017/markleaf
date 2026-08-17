@@ -88,6 +88,15 @@ body {
   overflow: hidden;
 }
 
+/* 表格 / 图片标题（widget decoration，居中显示） */
+.markleaf-caption {
+  text-align: center;
+  color: var(--text-primary);
+  font-size: calc(var(--ml-font-size) * 15 / 16);
+  margin: 0.4em 0;
+  user-select: none;
+}
+
 .find-bar {
   position: sticky;
   z-index: 10;

@@ -23,6 +23,7 @@
   line-height: var(--ml-line-height);
 }
 
+
 .markleaf-style-print .markleaf-document h1,
 .markleaf-style-print .markleaf-document h2,
 .markleaf-style-print .markleaf-document h3,
@@ -265,6 +266,14 @@
   font-family: "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
   font-weight: normal;
 }
+
+/* 表格 / 图片标题：主文字色、略小于正文字号，居中显示。 */
+.markleaf-style-print .markleaf-document .markleaf-figcaption {
+  color: var(--text-primary);
+  font-size: calc(var(--ml-font-size) * 15 / 16);
+  text-align: center;
+}
+
 
 html[lang="ja"] .markleaf-style-print .markleaf-document,
 html[lang="ja"] .markleaf-style-print .markleaf-document p {

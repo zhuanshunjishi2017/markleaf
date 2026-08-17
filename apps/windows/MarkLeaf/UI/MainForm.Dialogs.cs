@@ -432,7 +432,7 @@ internal sealed partial class MainForm
         }
 
         var isBlock = _editorCommandStatus.MathBlock;
-        using var dialog = new MathInputDialog(isBlock, _editorCommandStatus.MathLatex ?? "");
+        using var dialog = new MathInputDialog(isBlock, _editorCommandStatus.MathLatex ?? "", _editorCommandStatus.MathNumber ?? "", showNumber: isBlock);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -444,7 +444,45 @@ internal sealed partial class MainForm
         }
 
         _editorHost.ExecuteCommand("updateMath", dialog.Latex);
+        if (isBlock)
+        {
+            _editorHost.ExecuteCommand("setMathNumber", dialog.Number);
+        }
         SetStatus(Loc.Get("status.mathUpdated"));
+    }
+
+    private void EditImageCaption()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        using var dialog = new CaptionInputDialog(_editorCommandStatus.Caption ?? "");
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("setImageCaption", dialog.Caption);
+        SetStatus(Loc.Get("status.captionUpdated"));
+    }
+
+    private void EditTableCaption()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        using var dialog = new CaptionInputDialog(_editorCommandStatus.Caption ?? "");
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("setTableCaption", dialog.Caption);
+        SetStatus(Loc.Get("status.captionUpdated"));
     }
 
     private void RecoverUnsavedFiles()

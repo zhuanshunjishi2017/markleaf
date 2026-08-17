@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\App\App.ico</ApplicationIcon>
     <RootNamespace>MarkLeaf</RootNamespace>
-    <Version>1.2.3</Version>
+    <Version>1.2.4</Version>
     <Company>MarkLeaf</Company>
     <Description>A lightweight native Markdown editor for Windows.</Description>
     <!-- The project guide requires matching PerMonitorV2 declarations in both locations. -->

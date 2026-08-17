@@ -57,6 +57,26 @@
   font-synthesis: none;
 }
 
+/* ---- 作者/联系信息：`## *文本*` 作为文字居中的方式，渲染为居中普通正文 ---- */
+.markleaf-style-latex .markleaf-document h2:has(> em),
+.markleaf-style-latex .markleaf-document h2:has(> i) {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "宋体-简", "宋体", serif;
+  font-weight: normal;
+  font-size: var(--ml-font-size);
+  font-style: normal;
+  font-synthesis: none;
+  text-align: center;
+  line-height: var(--ml-line-height, 1.6);
+  margin: 0.5em 0;
+}
+
+.markleaf-style-latex .markleaf-document h2 em,
+.markleaf-style-latex .markleaf-document h2 i {
+  font-family: inherit;
+  font-style: normal;
+  font-weight: inherit;
+}
+
 /* ---- 等宽字体 ---- */
 .markleaf-style-latex .markleaf-document code,
 .markleaf-style-latex .markleaf-document pre code {

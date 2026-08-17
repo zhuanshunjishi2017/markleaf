@@ -5,7 +5,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { DOMSerializer } from '@tiptap/pm/model'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
-import { TableKit } from '@tiptap/extension-table'
+import { Table, TableRow, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
@@ -14,8 +14,9 @@ import { MathBlock, MathInline } from './math'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
-const imageMetadataPattern = /(?:^| \|\| )markleaf:width=(\d+);height=(\d+);rotation=(0|90|180|270)$/
-const imagePercentPattern = /(?:^| \|\| )markleaf:widthPct=(\d+);ratio=([\d.]+);rotation=(0|90|180|270)$/
+const imageMetadataPattern = /(?:^| \|\| )markleaf:width=(\d+);height=(\d+);rotation=(0|90|180|270)(?:;caption=([^;]*))?$/
+const imagePercentPattern = /(?:^| \|\| )markleaf:widthPct=(\d+);ratio=([\d.]+);rotation=(0|90|180|270)(?:;caption=([^;]*))?$/
+const imageCaptionOnlyPattern = /(?:^| \|\| )markleaf:caption=([^;]*)$/
 
 type ImageMetadata = {
   title: string | null
@@ -24,6 +25,7 @@ type ImageMetadata = {
   widthPercent: number | null
   aspectRatio: number | null
   rotation: 0 | 90 | 180 | 270
+  caption: string | null
 }
 
 const findHighlightKey = new PluginKey<FindHighlightState>('markleaf-find-highlight')
@@ -228,9 +230,14 @@ export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, state))
 }
 
+function decodeImageCaption(value: string | undefined): string | null {
+  if (!value) return null
+  try { return decodeURIComponent(value) } catch { return value }
+}
+
 function parseImageMetadata(title: unknown): ImageMetadata {
   const empty: ImageMetadata = {
-    title: null, width: null, height: null, widthPercent: null, aspectRatio: null, rotation: 0,
+    title: null, width: null, height: null, widthPercent: null, aspectRatio: null, rotation: 0, caption: null,
   }
   if (typeof title !== 'string') {
     return empty
@@ -247,11 +254,22 @@ function parseImageMetadata(title: unknown): ImageMetadata {
       widthPercent: Number(percentMatch[1]),
       aspectRatio: Number(percentMatch[2]),
       rotation: Number(percentMatch[3]) as ImageMetadata['rotation'],
+      caption: decodeImageCaption(percentMatch[4]),
     }
   }
 
   const match = imageMetadataPattern.exec(title)
   if (!match) {
+    const captionMatch = imageCaptionOnlyPattern.exec(title)
+    if (captionMatch) {
+      const captionStart = captionMatch.index + (captionMatch[0].startsWith(imageMetadataSeparator) ? imageMetadataSeparator.length : 0)
+      const ordinaryCaptionTitle = title.slice(0, captionMatch.index).trimEnd()
+      return {
+        ...empty,
+        title: captionStart === 0 ? null : ordinaryCaptionTitle || null,
+        caption: decodeImageCaption(captionMatch[1]),
+      }
+    }
     return { ...empty, title }
   }
 
@@ -264,11 +282,14 @@ function parseImageMetadata(title: unknown): ImageMetadata {
     widthPercent: null,
     aspectRatio: null,
     rotation: Number(match[3]) as ImageMetadata['rotation'],
+    caption: decodeImageCaption(match[4]),
   }
 }
 
 function serializeImageTitle(attrs: Record<string, unknown>): string | null {
   const title = typeof attrs.title === 'string' && attrs.title.length > 0 ? attrs.title : null
+  const caption = typeof attrs.caption === 'string' && attrs.caption.length > 0 ? attrs.caption : null
+  const captionSuffix = caption ? `;caption=${encodeURIComponent(caption)}` : ''
   const widthPercent = typeof attrs.widthPercent === 'number' && Number.isFinite(attrs.widthPercent)
     ? Math.round(attrs.widthPercent)
     : null
@@ -278,19 +299,24 @@ function serializeImageTitle(attrs: Record<string, unknown>): string | null {
   const rotation = normalizeImageRotation(attrs.rotation)
 
   if (widthPercent !== null && aspectRatio !== null) {
-    const metadata = `${imageMetadataPrefix}widthPct=${widthPercent};ratio=${aspectRatio.toFixed(4)};rotation=${rotation}`
+    const metadata = `${imageMetadataPrefix}widthPct=${widthPercent};ratio=${aspectRatio.toFixed(4)};rotation=${rotation}${captionSuffix}`
     return title ? `${title}${imageMetadataSeparator}${metadata}` : metadata
   }
 
   const width = typeof attrs.width === 'number' && Number.isFinite(attrs.width) ? Math.round(attrs.width) : null
   const height = typeof attrs.height === 'number' && Number.isFinite(attrs.height) ? Math.round(attrs.height) : null
 
-  if (width === null || height === null) {
-    return title
+  if (width !== null && height !== null) {
+    const metadata = `${imageMetadataPrefix}width=${width};height=${height};rotation=${rotation}${captionSuffix}`
+    return title ? `${title}${imageMetadataSeparator}${metadata}` : metadata
   }
 
-  const metadata = `${imageMetadataPrefix}width=${width};height=${height};rotation=${rotation}`
-  return title ? `${title}${imageMetadataSeparator}${metadata}` : metadata
+  if (caption) {
+    const metadata = `${imageMetadataPrefix}caption=${encodeURIComponent(caption)}`
+    return title ? `${title}${imageMetadataSeparator}${metadata}` : metadata
+  }
+
+  return title
 }
 
 function normalizeImageRotation(value: unknown): ImageMetadata['rotation'] {
@@ -372,6 +398,13 @@ const MarkLeafImage = Image.extend({
           'data-markleaf-aspect-ratio': attributes.aspectRatio ?? null,
         }),
       },
+      caption: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-markleaf-caption'),
+        renderHTML: attributes => ({
+          'data-markleaf-caption': attributes.caption ?? null,
+        }),
+      },
     }
   },
 
@@ -403,12 +436,19 @@ const MarkLeafImage = Image.extend({
       styles.push(`transform:rotate(${rotation}deg)`)
     }
 
-    return ['img', {
+    const caption = typeof attrs.caption === 'string' && attrs.caption.length > 0 ? attrs.caption : null
+    const img = ['img', {
       ...HTMLAttributes,
       src: toVirtualImageUrl(markdownPath),
       'data-markleaf-path': markdownPath,
       style: styles.join(';'),
-    }]
+    }] as [string, Record<string, any>]
+
+    if (caption) {
+      return ['figure', { class: 'markleaf-figure' }, img, ['figcaption', { class: 'markleaf-figcaption' }, caption]]
+    }
+
+    return img
   },
 
   parseMarkdown(token, helpers) {
@@ -422,6 +462,7 @@ const MarkLeafImage = Image.extend({
       widthPercent: metadata.widthPercent,
       aspectRatio: metadata.aspectRatio,
       rotation: metadata.rotation,
+      caption: metadata.caption,
     })
   },
 
@@ -585,6 +626,8 @@ export type EditorCommandState = {
   mathInline: boolean
   mathBlock: boolean
   mathLatex: string | null
+  mathNumber: string | null
+  caption: string | null
   canStartFormatPainter: boolean
   formatPainterArmed: boolean
 }
@@ -598,6 +641,128 @@ export type EditorStatus = {
   column: number
 }
 
+const MarkLeafTable = Table.extend({
+  name: 'table',
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      caption: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-markleaf-caption'),
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          'data-markleaf-caption': attributes.caption ?? null,
+        }),
+      },
+    }
+  },
+  renderHTML(props: any) {
+    const table = (this as any).parent?.(props)
+    const caption = typeof props.node?.attrs?.caption === 'string' && props.node.attrs.caption.length > 0 ? props.node.attrs.caption : null
+    if (!caption) return table
+    return ['figure', { class: 'markleaf-figure' }, ['figcaption', { class: 'markleaf-figcaption' }, caption], table]
+  },
+  renderMarkdown(node: any, helpers: any) {
+    const markdown = renderTableToMarkdown(node, helpers)
+    const caption = typeof node.attrs?.caption === 'string' && node.attrs.caption.length > 0 ? node.attrs.caption : null
+    return caption ? `> tablecaption: ${caption}\n\n${markdown}` : markdown
+  },
+})
+
+// 加载文档后，把「> tablecaption: …」引用块合并为紧跟其后的表格的 caption 属性。
+// 用 addToHistory:false 避免污染撤销历史。
+function normalizeTableCaptions(editor: Editor): void {
+  const { doc } = editor.state
+  const tr = editor.state.tr
+  let changed = false
+  // 从后往前处理：删除引用块只会使其后方位置左移，倒序可保证后续（更靠前）标题的坐标不受影响。
+  for (let i = doc.childCount - 1; i >= 0; i--) {
+    const node = doc.child(i)
+    if (node.type.name !== 'blockquote' || !node.textContent.startsWith('tablecaption:')) {
+      continue
+    }
+    const next = doc.child(i + 1)
+    if (next?.type.name !== 'table') {
+      continue
+    }
+    let blockquotePos = 0
+    for (let j = 0; j < i; j++) {
+      blockquotePos += doc.child(j).nodeSize
+    }
+    // 把引用块段落序列化回 Markdown，再剥离前缀，保留粗体/斜体等行内格式。
+    const paragraph = node.firstChild
+    const markdown = paragraph
+      ? ((editor as any).markdown?.serialize?.(paragraph.content.toJSON()) ?? '')
+      : ''
+    const caption = markdown.slice('tablecaption: '.length).trim()
+    const tablePos = blockquotePos + node.nodeSize
+    tr.setNodeMarkup(tablePos, undefined, { ...next.attrs, caption: caption || null })
+    tr.delete(blockquotePos, tablePos)
+    changed = true
+  }
+  if (changed) {
+    editor.view.dispatch(tr.setMeta('addToHistory', false))
+  }
+}
+
+function escapeCaptionHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function applyCaptionMarks(escaped: string): string {
+  return escaped
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+    .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>')
+}
+
+function renderCaptionHtml(caption: string): string {
+  return applyCaptionMarks(escapeCaptionHtml(caption))
+}
+
+// 供导出后处理使用：getHTML() 已转义 HTML，这里只套用行内 Markdown。
+export function renderEscapedCaptionHtml(escapedCaption: string): string {
+  return applyCaptionMarks(escapedCaption)
+}
+
+function createCaptionElement(caption: string, kind: 'table' | 'image'): HTMLDivElement {
+  const el = document.createElement('div')
+  el.className = `markleaf-caption markleaf-caption-${kind}`
+  el.contentEditable = 'false'
+  el.innerHTML = renderCaptionHtml(caption)
+  return el
+}
+
+// 表格/图片标题：标题存在节点 caption 属性中，用 widget decoration 渲染。
+// 表格标题在表格之上（side:-1）、图片标题在图片之下（side:1），均不参与正文流。
+const Caption = Extension.create({
+  name: 'markleafCaption',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const decorations: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            const caption = typeof node.attrs.caption === 'string' && node.attrs.caption.length > 0 ? node.attrs.caption : null
+            if (!caption) return
+            if (node.type.name === 'table') {
+              decorations.push(Decoration.widget(pos, () => createCaptionElement(caption, 'table'), { side: -1 }))
+            } else if (node.type.name === 'image') {
+              decorations.push(Decoration.widget(pos + node.nodeSize, () => createCaptionElement(caption, 'image'), { side: 1 }))
+            }
+          })
+          return decorations.length > 0
+            ? DecorationSet.create(state.doc, decorations)
+            : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
 export const editorExtensions = [
   StarterKit.configure({
     link: false,
@@ -609,11 +774,13 @@ export const editorExtensions = [
   MarkLeafImage.configure({
     allowBase64: false,
   }),
-  TableKit.configure({
-    table: {
-      resizable: false,
-    },
+  MarkLeafTable.configure({
+    resizable: false,
   }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  Caption,
   TaskList,
   TaskItem.configure({ nested: true }),
   Markdown.configure({
@@ -630,7 +797,7 @@ export const editorExtensions = [
 ]
 
 export function createEditor(element: HTMLElement, content = '', readOnly = false): Editor {
-  return new Editor({
+  const editor = new Editor({
     element,
     extensions: editorExtensions,
     content,
@@ -645,6 +812,8 @@ export function createEditor(element: HTMLElement, content = '', readOnly = fals
       transformPastedHTML: sanitizePastedHtml,
     },
   })
+  normalizeTableCaptions(editor)
+  return editor
 }
 
 export function replaceEditorDocument(editor: Editor, element: HTMLElement, content: string, readOnly = false): Editor {
@@ -790,6 +959,17 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   const align = (currentCell.align ?? currentHeader.align) as unknown
   const tableAlign = align === 'left' || align === 'center' || align === 'right' ? align : null
   const mathMode = getSelectedMathMode(editor)
+  const selectedMath = getSelectedMath(editor)
+  const mathNumber = selectedMath && selectedMath.node.type.name === 'mathBlock'
+    ? (typeof selectedMath.node.attrs.number === 'string' && selectedMath.node.attrs.number.length > 0 ? selectedMath.node.attrs.number : null)
+    : null
+  const selectedImage = getSelectedImage(editor)
+  const caption = selectedImage
+    ? (typeof selectedImage.attrs.caption === 'string' && selectedImage.attrs.caption.length > 0 ? selectedImage.attrs.caption : null)
+    : (() => {
+        const table = getTableAtSelection(editor)
+        return table && typeof table.node.attrs.caption === 'string' && table.node.attrs.caption.length > 0 ? table.node.attrs.caption : null
+      })()
 
   return {
     canUndo: editor.can().undo(),
@@ -813,7 +993,9 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     imageSelected: getSelectedImage(editor) !== null,
     mathInline: mathMode === 'inline',
     mathBlock: mathMode === 'block',
-    mathLatex: getSelectedMath(editor)?.node.textContent ?? null,
+    mathLatex: selectedMath?.node.textContent ?? null,
+    mathNumber,
+    caption,
     canStartFormatPainter: false,
     formatPainterArmed: false,
   }
@@ -929,6 +1111,7 @@ export function executeEditorCommand(
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
     updateMath: () => updateMath(editor, text),
+    setMathNumber: () => changeMathNumber(editor, text),
     convertMath: () => convertMath(editor),
     deleteMath: () => deleteMath(editor),
     selectAll: () => editor.commands.selectAll(),
@@ -987,6 +1170,8 @@ export function executeEditorCommand(
     rotateImageClockwise: () => rotateSelectedImageClockwise(editor),
     resizeImage: () => resizeImageToPercent(editor, Number(text)),
     changeImage: () => changeImageSource(editor, text),
+    setImageCaption: () => changeImageCaption(editor, text),
+    setTableCaption: () => changeTableCaption(editor, text),
     appendText: () => {
       if (!text) {
         return false
@@ -1194,7 +1379,7 @@ function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): bo
   }).run()
 }
 
-type SelectedMathNode = { type: { name: string }; textContent: string }
+type SelectedMathNode = { type: { name: string }; textContent: string; attrs: Record<string, unknown> }
 
 function getSelectedMath(editor: Editor): { node: SelectedMathNode; from: number; to: number } | null {
   const selection = editor.state.selection
@@ -1202,6 +1387,17 @@ function getSelectedMath(editor: Editor): { node: SelectedMathNode; from: number
   const node = selection.node as unknown as SelectedMathNode
   if (node.type.name !== 'mathInline' && node.type.name !== 'mathBlock') return null
   return { node, from: selection.from, to: selection.to }
+}
+
+function changeMathNumber(editor: Editor, number?: string): boolean {
+  const selected = getSelectedMath(editor)
+  if (!selected || selected.node.type.name !== 'mathBlock') return false
+  const value = (number ?? '').trim()
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(selected.from, undefined, {
+    ...selected.node.attrs,
+    number: value.length > 0 ? value : null,
+  }))
+  return true
 }
 
 function updateMath(editor: Editor, text?: string): boolean {
@@ -1361,6 +1557,45 @@ function changeImageSource(editor: Editor, src?: string): boolean {
   editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
     ...selectedImage.attrs,
     src,
+  }))
+  return true
+}
+
+function changeImageCaption(editor: Editor, caption?: string): boolean {
+  const selection = editor.state.selection
+  const selectedImage = getSelectedImage(editor)
+  if (!selectedImage) {
+    return false
+  }
+  const value = (caption ?? '').trim()
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
+    ...selectedImage.attrs,
+    caption: value.length > 0 ? value : null,
+  }))
+  return true
+}
+
+type SelectedTableNode = { type: { name: string }; attrs: Record<string, unknown> }
+
+function getTableAtSelection(editor: Editor): { node: SelectedTableNode; pos: number } | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 1; depth--) {
+    if ($from.node(depth).type.name === 'table') {
+      return { node: $from.node(depth) as SelectedTableNode, pos: $from.before(depth) }
+    }
+  }
+  return null
+}
+
+function changeTableCaption(editor: Editor, caption?: string): boolean {
+  const table = getTableAtSelection(editor)
+  if (!table) {
+    return false
+  }
+  const value = (caption ?? '').trim()
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(table.pos, undefined, {
+    ...table.node.attrs,
+    caption: value.length > 0 ? value : null,
   }))
   return true
 }

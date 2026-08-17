@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createEditor, executeEditorCommand, getMarkdown } from '../src/editor'
+import { createEditor, executeEditorCommand, getEditorCommandState, getMarkdown } from '../src/editor'
 import { renderMathInHtml } from '../src/math'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -74,5 +74,33 @@ describe('math formulas', () => {
     expect(html).toContain('katex')
     expect(html).not.toContain('data-math-inline')
     expect(html).not.toContain('data-math-block')
+  })
+
+  it('round-trips a numbered block math equation', () => {
+    const editor = makeEditor('$$y^2 \\tag{1}$$')
+
+    expect(getMarkdown(editor)).toContain('\\tag{1}')
+  })
+
+  it('sets and clears a block math equation number via the command', () => {
+    const editor = makeEditor('$$y^2$$')
+    selectMathNode(editor, 'mathBlock')
+    expect(getEditorCommandState(editor).mathNumber).toBeNull()
+
+    expect(executeEditorCommand(editor, 'setMathNumber', '1.1')).toBe(true)
+    expect(getMarkdown(editor)).toContain('\\tag{1.1}')
+
+    selectMathNode(editor, 'mathBlock')
+    expect(getEditorCommandState(editor).mathNumber).toBe('1.1')
+    expect(executeEditorCommand(editor, 'setMathNumber', '')).toBe(true)
+    expect(getMarkdown(editor)).not.toContain('\\tag')
+  })
+
+  it('renders a numbered block math equation in exported html', () => {
+    const html = renderMathInHtml('<div data-math-block="1" data-math-number="1">y^2</div>')
+
+    expect(html).toContain('katex')
+    expect(html).not.toContain('data-math-number')
+    expect(html).toContain('(1)')
   })
 })

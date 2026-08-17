@@ -780,3 +780,81 @@ describe('paste safety', () => {
     expect(markdown).toContain('中文 😀')
   })
 })
+
+describe('captions', () => {
+  it('round-trips an image caption stored in the title metadata', () => {
+    const markdown = '![alt](image.png "markleaf:caption=figure%20caption")'
+    const out = roundTrip(markdown)
+    expect(out).toContain('markleaf:caption=figure%20caption')
+  })
+
+  it('round-trips a table caption from the blockquote prefix', () => {
+    const markdown = '> tablecaption: 表格标题\n\n| a | b |\n| - | - |\n| 1 | 2 |'
+    const out = roundTrip(markdown)
+    expect(out).toContain('> tablecaption: 表格标题')
+    expect(out).toContain('| a')
+    expect(out).toContain('| 1')
+  })
+
+  it('sets and persists an image caption via the command', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '![alt](image.png)')
+    editors.push(editor)
+    let imagePos = -1
+    editor.state.doc.descendants((node, p) => {
+      if (imagePos === -1 && node.type.name === 'image') imagePos = p
+    })
+    editor.commands.setNodeSelection(imagePos)
+    expect(executeEditorCommand(editor, 'setImageCaption', '图注 with 空格')).toBe(true)
+    expect(getEditorCommandState(editor).caption).toBe('图注 with 空格')
+    expect(roundTrip(getMarkdown(editor))).toContain('markleaf:caption=')
+  })
+
+  it('sets and persists a table caption via the command', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '| a | b |\n| - | - |\n| 1 | 2 |')
+    editors.push(editor)
+    let pos = -1
+    editor.state.doc.descendants((node, p) => {
+      if (pos === -1 && node.isText) pos = p
+    })
+    editor.commands.setTextSelection(pos)
+    expect(executeEditorCommand(editor, 'setTableCaption', '表格标题')).toBe(true)
+    expect(getMarkdown(editor)).toContain('> tablecaption: 表格标题')
+  })
+
+  it('preserves inline formatting in table captions', () => {
+    const markdown = '> tablecaption: **加粗** 与 *斜体*\n\n| a | b |\n| - | - |\n| 1 | 2 |'
+    const out = roundTrip(markdown)
+    expect(out).toContain('> tablecaption: **加粗** 与 *斜体*')
+  })
+
+  it('preserves inline formatting in image captions', () => {
+    const markdown = '![alt](image.png "markleaf:caption=**%E5%8A%A0%E7%B2%97**")'
+    const out = roundTrip(markdown)
+    expect(out).toContain('**%E5%8A%A0%E7%B2%97**')
+  })
+
+  it('normalizes multiple table captions without corrupting positions', () => {
+    const markdown = [
+      '> tablecaption: **表 1：** 第一个表格',
+      '',
+      '| a | b |',
+      '| - | - |',
+      '| 1 | 2 |',
+      '',
+      '> tablecaption: **表 2：** 第二个表格',
+      '',
+      '| c | d |',
+      '| - | - |',
+      '| 3 | 4 |',
+    ].join('\n')
+    const out = roundTrip(markdown)
+    expect(out).toContain('> tablecaption: **表 1：** 第一个表格')
+    expect(out).toContain('> tablecaption: **表 2：** 第二个表格')
+    expect(out).toContain('| a')
+    expect(out).toContain('| c')
+  })
+})
