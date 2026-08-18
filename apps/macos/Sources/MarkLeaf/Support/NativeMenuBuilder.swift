@@ -595,6 +595,8 @@ extension EditorSession {
         case "editMath": editMath()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")
+        case "editTableCaption": editTableCaption()
+        case "editImageCaption": editImageCaption()
         case "selectAll": execute("selectAll")
         case "exitCode": execute("exitCode")
         case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)

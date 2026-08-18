@@ -101,11 +101,16 @@ extension EditorSession {
             alignItem.submenu = align
             menu.addItem(alignItem)
             menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
+            menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("剪切"), "cut")
             addFormatCommand(menu, L10n.t("拷贝"), "copy")
             addFormatCommand(menu, L10n.t("粘贴"), "paste")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
+        } else if imageSelected {
+            // 图片：编辑标题
+            addFormatCommand(menu, L10n.t("编辑图片标题"), "editImageCaption")
         } else if mathInline || mathBlock {
             // 公式：编辑 / 行内块级互转 / 删除
             addFormatCommand(menu, L10n.t("编辑公式"), "editMath")

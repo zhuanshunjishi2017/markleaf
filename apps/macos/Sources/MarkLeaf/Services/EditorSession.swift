@@ -48,6 +48,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var hasSelection = false
     private(set) var mathInline = false
     private(set) var mathBlock = false
+    private(set) var mathLatex: String?
+    private(set) var mathNumber: String?
+    private(set) var caption: String?
     private(set) var codeBlock = false
     private(set) var imageSelected = false
     private(set) var inTable = false
@@ -74,6 +77,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "alignTableLeft", "alignTableCenter", "alignTableRight",
         "rotateImage", "formatPainter", "formatPainterArm", "formatPainterApply",
         "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
+        "editTableCaption", "editImageCaption",
     ]
 
     // 工作区 / 大纲
@@ -248,6 +252,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             inTable = payload?["inTable"] as? Bool ?? false
             mathInline = payload?["mathInline"] as? Bool ?? false
             mathBlock = payload?["mathBlock"] as? Bool ?? false
+            mathLatex = payload?["mathLatex"] as? String
+            mathNumber = payload?["mathNumber"] as? String
+            caption = payload?["caption"] as? String
             codeBlock = payload?["codeBlock"] as? Bool ?? false
             isReadOnly = payload?["readOnly"] as? Bool ?? false
             canUndo = (payload?["canUndo"] as? Bool ?? false) && !isReadOnly
@@ -1267,25 +1274,49 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
             return
         }
-        presentMathInputDialog(title: isBlock ? L10n.t("插入段间公式") : L10n.t("插入行内公式")) { [weak self] latex in
+        presentMathInputDialog(
+            title: isBlock ? L10n.t("插入段间公式") : L10n.t("插入行内公式"),
+            initialLatex: "",
+            initialNumber: "",
+            showNumber: isBlock
+        ) { [weak self] latex, number in
             guard let self, let latex else { return }
-            self.execute(command, text: latex)
+            self.execute(command, text: Self.mathPayload(latex: latex, number: number, isBlock: isBlock))
             self.statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
         }
     }
 
     /// 编辑选中的公式（对应 Windows EditMath）。
     func editMath() {
-        presentMathInputDialog(title: L10n.t("编辑公式")) { [weak self] latex in
+        let isBlock = mathBlock
+        presentMathInputDialog(
+            title: L10n.t("编辑公式"),
+            initialLatex: mathLatex ?? "",
+            initialNumber: mathNumber ?? "",
+            showNumber: isBlock
+        ) { [weak self] latex, number in
             guard let self, let latex else { return }
-            self.execute("updateMath", text: latex)
+            self.execute("updateMath", text: Self.mathPayload(latex: latex, number: number, isBlock: isBlock))
             self.statusText = L10n.t("公式已更新")
         }
     }
 
-    private func presentMathInputDialog(title: String, completion: @escaping (String?) -> Void) {
+    /// 段间公式编号以 `\tag{编号}` 追加到 LaTeX，前端渲染为右对齐编号并可随 Markdown 往返。
+    private static func mathPayload(latex: String, number: String?, isBlock: Bool) -> String {
+        let tag = (number ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isBlock, !tag.isEmpty else { return latex }
+        return "\(latex) \\tag{\(tag)}"
+    }
+
+    private func presentMathInputDialog(
+        title: String,
+        initialLatex: String,
+        initialNumber: String,
+        showNumber: Bool,
+        completion: @escaping (String?, String?) -> Void
+    ) {
         guard let window = webView?.window else {
-            completion(nil)
+            completion(nil, nil)
             return
         }
         let alert = NSAlert()
@@ -1294,14 +1325,29 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.alertStyle = .informational
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
-        field.placeholderString = "x^2 + y^2"
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
+
+        let latexField = NSTextField(string: initialLatex)
+        latexField.placeholderString = "x^2 + y^2"
+        let numberField = NSTextField(string: initialNumber)
+        numberField.placeholderString = "1 或 1.1"
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: showNumber ? 78 : 44))
+        latexField.frame = NSRect(x: 0, y: showNumber ? 42 : 8, width: 360, height: 24)
+        accessory.addSubview(latexField)
+        if showNumber {
+            let label = NSTextField(labelWithString: L10n.t("公式编号"))
+            label.frame = NSRect(x: 0, y: 14, width: 70, height: 18)
+            label.font = .systemFont(ofSize: 12)
+            numberField.frame = NSRect(x: 74, y: 8, width: 286, height: 24)
+            accessory.addSubview(label)
+            accessory.addSubview(numberField)
+        }
+        alert.accessoryView = accessory
+        alert.window.initialFirstResponder = latexField
         let okButton = alert.buttons.first
         okButton?.isEnabled = false
         var validationToken: NSObjectProtocol?
-        validationToken = bindAlertInputValidation(field: field, button: okButton) {
+        validationToken = bindAlertInputValidation(field: latexField, button: okButton) {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         alert.beginSheetModal(for: window) { response in
@@ -1309,11 +1355,42 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 NotificationCenter.default.removeObserver(token)
             }
             guard response == .alertFirstButtonReturn else {
-                completion(nil)
+                completion(nil, nil)
                 return
             }
-            let latex = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            completion(latex.isEmpty ? nil : latex)
+            let latex = latexField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            completion(latex.isEmpty ? nil : latex, showNumber ? numberField.stringValue : "")
+        }
+    }
+
+    /// 编辑表格标题（对应 Windows EditTableCaption）。
+    func editTableCaption() {
+        presentCaptionDialog(title: L10n.t("编辑表格标题"), command: "setTableCaption")
+    }
+
+    /// 编辑图片标题（对应 Windows EditImageCaption）。
+    func editImageCaption() {
+        presentCaptionDialog(title: L10n.t("编辑图片标题"), command: "setImageCaption")
+    }
+
+    private func presentCaptionDialog(title: String, command: String) {
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = L10n.t("输入标题：")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        let field = NSTextField(string: caption ?? "")
+        field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
+        field.placeholderString = L10n.t("标题")
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.execute(command, text: text)
+            self.statusText = L10n.t("标题已更新")
         }
     }
 
