@@ -8,7 +8,7 @@ internal sealed class ShortcutDialog : Form
     private static readonly string[] ShortcutKeys =
     [
         "Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S",
-        "Ctrl+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V",
+        "Ctrl+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+Shift+V",
         "Ctrl+F", "Ctrl+H", "Ctrl+B", "Ctrl+I", "Ctrl+K",
         "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6",
     ];
@@ -16,7 +16,7 @@ internal sealed class ShortcutDialog : Form
     private static readonly string[] ShortcutDescKeys =
     [
         "shortcut.new", "shortcut.open", "shortcut.save", "shortcut.saveAs",
-        "shortcut.undo", "shortcut.redo", "shortcut.cut", "shortcut.copy", "shortcut.paste",
+        "shortcut.undo", "shortcut.redo", "shortcut.cut", "shortcut.copy", "shortcut.paste", "shortcut.pastePlainText",
         "shortcut.find", "shortcut.replace", "shortcut.toggleBold", "shortcut.toggleItalic", "shortcut.insertLink",
         "shortcut.heading1", "shortcut.heading2", "shortcut.heading3",
         "shortcut.heading4", "shortcut.heading5", "shortcut.heading6",

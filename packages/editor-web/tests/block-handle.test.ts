@@ -46,4 +46,19 @@ describe('paragraph block handle visibility', () => {
     expect(handle).not.toBeNull()
     expect(handle?.textContent).toBe('•')
   })
+
+  it('hides the handle during IME composition and restores it afterwards', async () => {
+    const editor = makeEditor()
+
+    expect(editor.view.dom.querySelector('.ml-block-handle')).not.toBeNull()
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+
+    expect(editor.view.dom.querySelector('.ml-block-handle')).toBeNull()
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    await new Promise(resolve => window.setTimeout(resolve, 0))
+
+    expect(editor.view.dom.querySelector('.ml-block-handle')).not.toBeNull()
+  })
 })

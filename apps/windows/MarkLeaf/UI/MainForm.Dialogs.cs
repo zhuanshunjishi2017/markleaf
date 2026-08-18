@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
@@ -52,7 +53,7 @@ internal sealed partial class MainForm
         ApplyBlockHandleVisibility();
 
         SetMarkdownStyle(_settings.MarkdownStyle);
-        SetColorTheme(_settings.ColorTheme);
+        ApplyEffectiveColorTheme();
         SetZoomPercent(_settings.Appearance.ZoomPercent);
         TopMost = _settings.Appearance.TopMostWindow;
         _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
@@ -136,7 +137,8 @@ internal sealed partial class MainForm
             : Loc.Get("common.unnamed");
         using var dialog = new ExportDialog(
             docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
-            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync);
+            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
+            ExportDialogMode.Pdf, _settings.Export);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -151,6 +153,7 @@ internal sealed partial class MainForm
 
         if (dialog.ExportedPath is not null)
         {
+            SaveLastExportOptions(options);
             // 预览 PDF 已复制到目标路径，无需重新生成。
             var exportedName = Path.GetFileName(dialog.ExportedPath);
             var exportedDir = Path.GetDirectoryName(dialog.ExportedPath) ?? "";
@@ -160,6 +163,7 @@ internal sealed partial class MainForm
             return;
         }
 
+        SaveLastExportOptions(options);
         await RunExportAsync(options, defaultName);
     }
 
@@ -176,7 +180,10 @@ internal sealed partial class MainForm
         var defaultName = _document.FilePath is not null
             ? Path.GetFileNameWithoutExtension(_document.FilePath)
             : Loc.Get("common.unnamed");
-        using var dialog = new HtmlExportDialog(docName, defaultName, _markdownStyle, StyleService.GetAllStyles());
+        using var dialog = new ExportDialog(
+            docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
+            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
+            ExportDialogMode.Html, _settings.Export);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -189,6 +196,28 @@ internal sealed partial class MainForm
             return;
         }
 
+        SaveLastExportOptions(options);
+        await RunExportAsync(options, defaultName);
+    }
+
+    private async Task ExportWithLastSettingsAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document is null)
+        {
+            return;
+        }
+
+        var defaultName = _document.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        var format = NormalizeExportFormat(_settings.Export.Format);
+        var outputPath = PromptExportPath(format, defaultName);
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            return;
+        }
+
+        var options = BuildLastExportOptions(outputPath);
         await RunExportAsync(options, defaultName);
     }
 
@@ -245,7 +274,12 @@ internal sealed partial class MainForm
                     options.MarginTop,
                     options.MarginBottom,
                     options.MarginLeft,
-                    options.MarginRight);
+                    options.MarginRight,
+                    ResolvePdfHeaderFooterPlaceholders(options.PdfHeaderText, defaultName),
+                    options.PdfHeaderAlignment,
+                    ResolvePdfHeaderFooterPlaceholders(options.PdfFooterText, defaultName),
+                    options.PdfFooterAlignment,
+                    ResolveHeaderFooterFontFamily(options.Style));
                 await File.WriteAllBytesAsync(outputPath, pdfBytes);
             }
             else
@@ -306,7 +340,234 @@ internal sealed partial class MainForm
             options.MarginTop,
             options.MarginBottom,
             options.MarginLeft,
-            options.MarginRight);
+            options.MarginRight,
+            ResolvePdfHeaderFooterPlaceholders(options.PdfHeaderText, GetExportTitle()),
+            options.PdfHeaderAlignment,
+            ResolvePdfHeaderFooterPlaceholders(options.PdfFooterText, GetExportTitle()),
+            options.PdfFooterAlignment,
+            ResolveHeaderFooterFontFamily(options.Style));
+    }
+
+    private ExportOptions BuildLastExportOptions(string outputPath)
+    {
+        var export = _settings.Export;
+        return new ExportOptions(
+            Format: NormalizeExportFormat(export.Format),
+            PaperSize: NormalizePaperSize(export.PaperSize),
+            Landscape: export.Landscape,
+            MarginTop: NormalizeMargin(export.MarginTop, 25.4f),
+            MarginBottom: NormalizeMargin(export.MarginBottom, 25.4f),
+            MarginLeft: NormalizeMargin(export.MarginLeft, 31.7f),
+            MarginRight: NormalizeMargin(export.MarginRight, 31.7f),
+            HtmlHeader: export.HtmlHeader ?? "",
+            HtmlFooter: export.HtmlFooter ?? "",
+            PdfHeaderText: ResolvePdfHeaderFooterText(export.PdfHeaderPreset, export.PdfHeaderCustom),
+            PdfHeaderAlignment: ResolvePdfHeaderFooterAlignment(export.PdfHeaderPreset),
+            PdfFooterText: ResolvePdfHeaderFooterText(export.PdfFooterPreset, export.PdfFooterCustom),
+            PdfFooterAlignment: ResolvePdfHeaderFooterAlignment(export.PdfFooterPreset),
+            PdfHeaderPreset: NormalizeHeaderFooterPreset(export.PdfHeaderPreset),
+            PdfFooterPreset: NormalizeHeaderFooterPreset(export.PdfFooterPreset),
+            PdfHeaderCustom: export.PdfHeaderCustom ?? "",
+            PdfFooterCustom: export.PdfFooterCustom ?? "",
+            Style: ResolveExportStyle(export.Style),
+            ColorScheme: ResolveExportColorScheme(export.ColorScheme),
+            OutputPath: outputPath);
+    }
+
+    private void SaveLastExportOptions(ExportOptions options)
+    {
+        _settings.Export = new ExportSettings
+        {
+            Format = NormalizeExportFormat(options.Format),
+            PaperSize = NormalizePaperSize(options.PaperSize),
+            Landscape = options.Landscape,
+            MarginTop = NormalizeMargin(options.MarginTop, 25.4f),
+            MarginBottom = NormalizeMargin(options.MarginBottom, 25.4f),
+            MarginLeft = NormalizeMargin(options.MarginLeft, 31.7f),
+            MarginRight = NormalizeMargin(options.MarginRight, 31.7f),
+            HtmlHeader = options.HtmlHeader ?? "",
+            HtmlFooter = options.HtmlFooter ?? "",
+            PdfHeaderPreset = NormalizeHeaderFooterPreset(options.PdfHeaderPreset),
+            PdfFooterPreset = NormalizeHeaderFooterPreset(options.PdfFooterPreset),
+            PdfHeaderCustom = options.PdfHeaderCustom ?? "",
+            PdfFooterCustom = options.PdfFooterCustom ?? "",
+            PdfHeaderText = options.PdfHeaderText ?? "",
+            PdfHeaderAlignment = options.PdfHeaderAlignment ?? "",
+            PdfFooterText = options.PdfFooterText ?? "",
+            PdfFooterAlignment = options.PdfFooterAlignment ?? "",
+            Style = ResolveExportStyle(options.Style),
+            ColorScheme = ResolveExportColorScheme(options.ColorScheme),
+        };
+        SaveSettings();
+    }
+
+    private string? PromptExportPath(string format, string defaultName)
+    {
+        var isPdf = string.Equals(format, "pdf", StringComparison.Ordinal);
+        var extension = isPdf ? "pdf" : "html";
+        var filter = isPdf ? $"{Loc.Get("export.pdf")}|*.pdf" : $"{Loc.Get("export.html")}|*.html";
+        using var dialog = new SaveFileDialog
+        {
+            Filter = filter,
+            AddExtension = true,
+            DefaultExt = extension,
+            RestoreDirectory = true,
+            OverwritePrompt = true,
+            FileName = $"{defaultName}.{extension}",
+        };
+
+        return ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK ? dialog.FileName : null;
+    }
+
+    private static string NormalizeExportFormat(string? format) =>
+        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html" : "pdf";
+
+    private static string NormalizeHeaderFooterPreset(string? preset) =>
+        preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"
+            ? preset
+            : "none";
+
+    private static string ResolvePdfHeaderFooterText(string? preset, string? customText)
+    {
+        return NormalizeHeaderFooterPreset(preset) switch
+        {
+            "title-left" => "{document-title}",
+            "page-center" or "page-right" => "{page}",
+            "page-total-center" => Loc.Get("export.headerFooterPageTotalTemplate"),
+            "custom" => customText ?? "",
+            _ => "",
+        };
+    }
+
+    private static string ResolvePdfHeaderFooterAlignment(string? preset)
+    {
+        return NormalizeHeaderFooterPreset(preset) switch
+        {
+            "title-left" => "left",
+            "page-center" or "page-total-center" or "custom" => "center",
+            "page-right" => "right",
+            _ => "",
+        };
+    }
+
+    private static string ResolvePdfHeaderFooterPlaceholders(string text, string documentTitle)
+    {
+        return text.Replace("{document-title}", documentTitle, StringComparison.Ordinal);
+    }
+
+    private string GetExportTitle()
+    {
+        return _document?.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : Loc.Get("common.unnamed");
+    }
+
+    private static string NormalizePaperSize(string? paperSize)
+    {
+        string[] valid = ["A4", "A3", "A5", "Letter", "Legal", "B4", "B5"];
+        return valid.Contains(paperSize, StringComparer.Ordinal) ? paperSize! : "A4";
+    }
+
+    private static float NormalizeMargin(float margin, float fallback) =>
+        float.IsFinite(margin) && margin >= 0f && margin <= 1000f ? margin : fallback;
+
+    private string ResolveExportStyle(string? style)
+    {
+        if (!string.IsNullOrWhiteSpace(style)
+            && StyleService.GetAllStyles().Any(s => string.Equals(s.Id, style, StringComparison.Ordinal)))
+        {
+            return style;
+        }
+
+        return StyleService.GetAllStyles().Any(s => string.Equals(s.Id, _markdownStyle, StringComparison.Ordinal))
+            ? _markdownStyle
+            : "serif";
+    }
+
+    private static string ResolveHeaderFooterFontFamily(string styleId)
+    {
+        var declarations = new List<string>();
+        CollectFontFamilyDeclarations(StyleService.BaseCss, declarations);
+        foreach (var style in ResolveStyleCascade(styleId))
+        {
+            CollectFontFamilyDeclarations(style.Css, declarations);
+        }
+
+        return declarations.LastOrDefault()
+            ?? "serif, \"Source Han Serif CN\", \"Noto Serif CJK CN\"";
+    }
+
+    private static IEnumerable<StyleDefinition> ResolveStyleCascade(string styleId)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<StyleDefinition>();
+
+        void Visit(string id)
+        {
+            if (!seen.Add(id)) return;
+            var style = StyleService.TryGetStyle(id);
+            if (style is null) return;
+            if (!string.IsNullOrWhiteSpace(style.DependsOn))
+            {
+                Visit(style.DependsOn);
+            }
+            result.Add(style);
+        }
+
+        Visit(styleId);
+        return result;
+    }
+
+    private static void CollectFontFamilyDeclarations(string css, List<string> declarations)
+    {
+        foreach (Match block in Regex.Matches(css, @"(?<selector>[^{}]+)\{(?<body>[^{}]*)\}", RegexOptions.Multiline))
+        {
+            var selector = block.Groups["selector"].Value;
+            if (!IsBodyFontSelector(selector))
+            {
+                continue;
+            }
+
+            var body = block.Groups["body"].Value;
+            var match = Regex.Match(body, @"font-family\s*:\s*(?<value>[^;]+)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                declarations.Add(match.Groups["value"].Value.Trim());
+            }
+        }
+    }
+
+    private static bool IsBodyFontSelector(string selector)
+    {
+        var selectors = selector.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return selectors.Any(static part =>
+            Regex.IsMatch(part, @"(^|\s)\.markleaf-document\s*(>|$)", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(part, @"(^|\s)\.markleaf-document\s+p$", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(part, @"(^|\s)\.markleaf-document\s*>\s*p$", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(part, @"(^|\s)\.markleaf-document\s+li\s*>\s*p$", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(part, @"(^|\s)\.markleaf-document\s+(ul|ol|li|td|th|blockquote|pre)$", RegexOptions.IgnoreCase));
+    }
+
+    private static string ResolveExportColorScheme(string? colorScheme)
+    {
+        if (!string.IsNullOrWhiteSpace(colorScheme)
+            && ColorThemeService.All.Any(t => string.Equals(t.Id, colorScheme, StringComparison.Ordinal)))
+        {
+            return colorScheme;
+        }
+
+        return ColorThemeService.ActiveThemeId;
+    }
+
+    private async Task<string> GeneratePreviewHtmlAsync(ExportOptions options)
+    {
+        if (_editorHost is null || _document is null)
+        {
+            return "";
+        }
+
+        var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
+        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss);
     }
 
     private async Task<string> GeneratePrintHtmlAsync(string format, string style, string header, string footer, string colorSchemeCss)

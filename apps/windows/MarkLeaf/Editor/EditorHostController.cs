@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
@@ -65,6 +66,8 @@ internal sealed class EditorHostController : IDisposable
     public event EventHandler? PasteImageRequested;
 
     public event EventHandler<double>? ZoomWheelRequested;
+
+    public event EventHandler<UnsafeEmphasisRequest>? UnsafeEmphasisRequested;
 
     public EditorHostController(
         WebView2 webView,
@@ -373,6 +376,16 @@ internal sealed class EditorHostController : IDisposable
         ExecuteCommand("clearBlockHighlight");
     }
 
+    public void ResolveUnsafeEmphasis(string requestId, string action)
+    {
+        if (string.IsNullOrWhiteSpace(requestId))
+        {
+            return;
+        }
+
+        EnqueueOrRun(() => Post("unsafeEmphasisResponse", new { action }, requestId));
+    }
+
     public async Task<bool> ExecuteCommandAsync(
         string command,
         string? text = null,
@@ -494,12 +507,26 @@ internal sealed class EditorHostController : IDisposable
         float marginBottom,
         float marginLeft,
         float marginRight,
+        string headerText = "",
+        string headerAlignment = "",
+        string footerText = "",
+        string footerAlignment = "",
+        string headerFooterFontFamily = "",
         CancellationToken cancellationToken = default)
     {
         // Use CSS @page margins instead of print-setting margins so the html/body
         // background color fills the full page. @page margins apply per-page,
         // unlike body padding which only affects the first and last page.
-        var pageRule = $"@page {{ margin: {marginTop}mm {marginRight}mm {marginBottom}mm {marginLeft}mm; background-color: var(--bg-primary); }} html {{ background: var(--bg-primary); }}";
+        var pageRule = BuildPdfPageRule(
+            marginTop,
+            marginRight,
+            marginBottom,
+            marginLeft,
+            headerText,
+            headerAlignment,
+            footerText,
+            footerAlignment,
+            headerFooterFontFamily);
         html = html.Replace("</style>", $"{pageRule}\n</style>");
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.html");
@@ -579,6 +606,113 @@ internal sealed class EditorHostController : IDisposable
             try { File.Delete(tempPath); } catch { }
         }
     }
+
+    private static string BuildPdfPageRule(
+        float marginTop,
+        float marginRight,
+        float marginBottom,
+        float marginLeft,
+        string headerText,
+        string headerAlignment,
+        string footerText,
+        string footerAlignment,
+        string headerFooterFontFamily = "")
+    {
+        var builder = new StringBuilder();
+        builder.Append(CultureInvariant(
+            $"@page {{ margin: {marginTop}mm {marginRight}mm {marginBottom}mm {marginLeft}mm; background-color: var(--bg-primary);"));
+        AppendMarginBox(builder, "top", headerAlignment, headerText, headerFooterFontFamily);
+        AppendMarginBox(builder, "bottom", footerAlignment, footerText, headerFooterFontFamily);
+        builder.Append(" } html { background: var(--bg-primary); }");
+        return builder.ToString();
+    }
+
+    private static void AppendMarginBox(
+        StringBuilder builder,
+        string vertical,
+        string alignment,
+        string text,
+        string headerFooterFontFamily)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var horizontal = NormalizePdfHeaderFooterAlignment(alignment);
+        var content = ToCssGeneratedContent(text);
+        var fontFamily = string.IsNullOrWhiteSpace(headerFooterFontFamily)
+            ? "serif, \"Source Han Serif CN\", \"Noto Serif CJK CN\""
+            : headerFooterFontFamily;
+        var offset = vertical == "top" ? "padding-top: 6mm;" : "padding-bottom: 6mm;";
+        builder.Append(CultureInvariant(
+            $" @{vertical}-{horizontal} {{ content: {content}; font-family: {fontFamily}; font-size: calc(var(--ml-font-size) * 0.875); color: var(--text-primary); {offset} }}"));
+    }
+
+    private static string NormalizePdfHeaderFooterAlignment(string alignment) =>
+        alignment switch
+        {
+            "left" => "left",
+            "right" => "right",
+            _ => "center",
+        };
+
+    private static string ToCssGeneratedContent(string text)
+    {
+        var parts = new List<string>();
+        var index = 0;
+        while (index < text.Length)
+        {
+            var pageIndex = text.IndexOf("{page}", index, StringComparison.Ordinal);
+            var totalIndex = text.IndexOf("{total}", index, StringComparison.Ordinal);
+            var next = MinPositive(pageIndex, totalIndex);
+            if (next < 0)
+            {
+                AppendCssString(parts, text[index..]);
+                break;
+            }
+
+            AppendCssString(parts, text[index..next]);
+            if (next == pageIndex)
+            {
+                parts.Add("counter(page)");
+                index = pageIndex + "{page}".Length;
+            }
+            else
+            {
+                parts.Add("counter(pages)");
+                index = totalIndex + "{total}".Length;
+            }
+        }
+
+        return parts.Count == 0 ? "\"\"" : string.Join(" ", parts);
+    }
+
+    private static int MinPositive(int first, int second) =>
+        first < 0 ? second : second < 0 ? first : Math.Min(first, second);
+
+    private static void AppendCssString(List<string> parts, string value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        parts.Add($"\"{EscapeCssString(value)}\"");
+    }
+
+    private static string EscapeCssString(string value)
+    {
+        return value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r\n", "\\A ", StringComparison.Ordinal)
+            .Replace("\n", "\\A ", StringComparison.Ordinal)
+            .Replace("\r", "\\A ", StringComparison.Ordinal);
+    }
+
+    private static string CultureInvariant(FormattableString value) =>
+        value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// 直接打印编辑器当前内容，弹出系统打印对话框。
@@ -867,7 +1001,9 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("canStartFormatPainter", out var canStart)
                             && canStart.ValueKind == System.Text.Json.JsonValueKind.True,
                         message.Payload.TryGetProperty("formatPainterArmed", out var armed)
-                            && armed.ValueKind == System.Text.Json.JsonValueKind.True));
+                            && armed.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("readOnly", out var readOnly)
+                            && readOnly.ValueKind == System.Text.Json.JsonValueKind.True));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(
@@ -921,6 +1057,13 @@ internal sealed class EditorHostController : IDisposable
                 break;
             case "zoomWheel":
                 ZoomWheelRequested?.Invoke(this, message.Payload.GetProperty("deltaY").GetDouble());
+                break;
+            case "unsafeEmphasisRequested":
+                UnsafeEmphasisRequested?.Invoke(
+                    this,
+                    new UnsafeEmphasisRequest(
+                        message.RequestId ?? string.Empty,
+                        message.Payload.GetProperty("kind").GetString() ?? "bold"));
                 break;
             case "snapshot":
                 if (_session.CompleteRequest(message.RequestId, "snapshot"))

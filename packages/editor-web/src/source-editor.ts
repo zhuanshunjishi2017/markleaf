@@ -1,8 +1,19 @@
-import { defaultKeymap, history, historyKeymap, indentLess, indentMore, indentWithTab } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentLess,
+  indentMore,
+  indentWithTab,
+  redo,
+  redoDepth,
+  undo,
+  undoDepth,
+} from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
-import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
+import { EditorState, RangeSetBuilder, StateEffect, type Transaction } from '@codemirror/state'
 import {
   Decoration,
   DecorationSet,
@@ -40,6 +51,21 @@ const markleafHighlightStyle = HighlightStyle.define([
 
 const sourceSelectionMark = Decoration.mark({ class: 'ml-source-selection' })
 
+export type UnsafeEmphasisKind = 'bold' | 'italic'
+export type UnsafeEmphasisAction = 'literal' | 'html'
+export type UnsafeEmphasisRequest = {
+  id: string
+  kind: UnsafeEmphasisKind
+}
+
+type UnsafeEmphasisMatch = {
+  from: number
+  to: number
+  content: string
+  kind: UnsafeEmphasisKind
+  marker: '*' | '**'
+}
+
 /// 源码模式选区：用真实 DOM span 装饰绘制主题化背景。
 /// WKWebView 对 contenteditable 忽略 ::selection，而 drawSelection() 的绝对定位
 /// 图层在 WKWebView 中坐标测量不稳（反向拖选偏移、整行/折行选区缺失左侧），
@@ -75,6 +101,8 @@ export class SourceEditor {
   readonly view: EditorView
   private readonly onChange: (documentChanged: boolean) => void
   private readonly readOnly: boolean
+  private readonly onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void
+  private readonly pendingUnsafeEmphasis = new Map<string, UnsafeEmphasisMatch>()
 
   constructor(
     parent: HTMLElement,
@@ -82,9 +110,11 @@ export class SourceEditor {
     onChange: (documentChanged: boolean) => void,
     indentWidth = 2,
     readOnly = false,
+    onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void,
   ) {
     this.onChange = onChange
     this.readOnly = readOnly
+    this.onUnsafeEmphasis = onUnsafeEmphasis
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -106,11 +136,15 @@ export class SourceEditor {
       markdown(),
       syntaxHighlighting(markleafHighlightStyle),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      EditorView.domEventHandlers({
+        paste: (event, view) => this.handlePaste(event, view),
+      }),
       EditorView.lineWrapping,
       EditorState.tabSize.of(width),
       indentUnit.of(' '.repeat(width)),
       EditorView.updateListener.of(update => {
         if (update.docChanged || update.selectionSet) this.onChange(update.docChanged)
+        if (update.docChanged) this.detectUnsafeEmphasis(update)
       }),
       EditorView.theme({
         '&': { height: '100%' },
@@ -130,6 +164,26 @@ export class SourceEditor {
         '.cm-activeLine': { background: 'var(--bg-hover)' },
       }),
     ]
+  }
+
+  private handlePaste(event: ClipboardEvent, view: EditorView): boolean {
+    if (this.readOnly) return false
+    const clipboard = event.clipboardData
+    if (!clipboard) return false
+
+    const plain = clipboard.getData('text/plain')
+    const html = clipboard.getData('text/html')
+    const text = normalizeInsertedText(plain.length > 0 ? plain : htmlToPlainText(html))
+    if (text.length === 0) return false
+
+    event.preventDefault()
+    const selection = view.state.selection.main
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: text },
+      selection: { anchor: selection.from + text.length },
+    })
+    this.focus()
+    return true
   }
 
   /// 精确放置光标/选区（供宿主命令与大纲联动使用）。
@@ -155,16 +209,41 @@ export class SourceEditor {
   }
 
   replaceSelection(text: string): boolean {
+    if (this.readOnly) return false
     const selection = this.view.state.selection.main
+    const normalizedText = normalizeInsertedText(text)
     this.view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: text },
-      selection: { anchor: selection.from + text.length },
+      changes: { from: selection.from, to: selection.to, insert: normalizedText },
+      selection: { anchor: selection.from + normalizedText.length },
     })
     this.focus()
     return true
   }
 
+  canUndo(): boolean {
+    return undoDepth(this.view.state) > 0
+  }
+
+  canRedo(): boolean {
+    return redoDepth(this.view.state) > 0
+  }
+
+  undo(): boolean {
+    if (this.readOnly) return false
+    const success = undo(this.view)
+    if (success) this.focus()
+    return success
+  }
+
+  redo(): boolean {
+    if (this.readOnly) return false
+    const success = redo(this.view)
+    if (success) this.focus()
+    return success
+  }
+
   deleteSelection(): boolean {
+    if (this.readOnly) return false
     if (this.view.state.selection.main.empty) return false
     return this.replaceSelection('')
   }
@@ -176,10 +255,12 @@ export class SourceEditor {
   }
 
   insertTab(): void {
+    if (this.readOnly) return
     indentMore(this.view)
   }
 
   insertShiftTab(): void {
+    if (this.readOnly) return
     indentLess(this.view)
   }
 
@@ -189,6 +270,35 @@ export class SourceEditor {
 
   destroy(): void {
     this.view.destroy()
+  }
+
+  resolveUnsafeEmphasis(requestId: string, action: UnsafeEmphasisAction): void {
+    if (this.readOnly) return
+    const match = this.pendingUnsafeEmphasis.get(requestId)
+    if (!match) return
+    this.pendingUnsafeEmphasis.delete(requestId)
+    if (action !== 'html') return
+
+    const current = this.view.state.sliceDoc(match.from, match.to)
+    if (current !== `${match.marker}${match.content}${match.marker}`) return
+    const replacement = match.kind === 'bold'
+      ? `<strong>${markdownInlineToHtmlText(match.content)}</strong>`
+      : `<em>${markdownInlineToHtmlText(match.content)}</em>`
+    this.view.dispatch({
+      changes: { from: match.from, to: match.to, insert: replacement },
+      selection: { anchor: match.from + replacement.length },
+    })
+    this.focus()
+  }
+
+  private detectUnsafeEmphasis(update: ViewUpdate): void {
+    if (!this.onUnsafeEmphasis) return
+    const match = findUnsafeEmphasisInChangedLines(update)
+    if (!match) return
+    const requestId = `${match.kind}:${match.from}:${match.to}:${match.content}`
+    if (this.pendingUnsafeEmphasis.has(requestId)) return
+    this.pendingUnsafeEmphasis.set(requestId, match)
+    this.onUnsafeEmphasis({ id: requestId, kind: match.kind })
   }
 
   find(query: string, caseSensitive: boolean, wholeWord: boolean, backwards = false): SourceMatchResult {
@@ -235,4 +345,143 @@ function findMatches(text: string, query: string, caseSensitive: boolean, wholeW
 
 function isExactMatch(text: string, query: string, caseSensitive: boolean, wholeWord: boolean): boolean {
   return findMatches(text, query, caseSensitive, wholeWord).some(match => match.from === 0 && match.to === text.length)
+}
+
+function htmlToPlainText(html: string): string {
+  if (!html) return ''
+  const template = document.createElement('template')
+  template.innerHTML = html
+  return (template.content.textContent ?? '').trim()
+}
+
+function normalizeInsertedText(text: string): string {
+  return text.replace(/\r\n?/g, '\n')
+}
+
+function findUnsafeEmphasisInChangedLines(update: ViewUpdate): UnsafeEmphasisMatch | null {
+  const checkedLines = new Set<number>()
+  for (const transaction of update.transactions) {
+    transaction.changes.iterChanges((fromA, toA, fromB, toB) => {
+      const scanFrom = Math.min(fromB, update.state.doc.length)
+      const scanTo = Math.min(Math.max(fromB, toB), update.state.doc.length)
+      addChangedLines(update.state, checkedLines, scanFrom, scanTo)
+      if (fromA !== toA && fromB === toB) {
+        addChangedLines(update.state, checkedLines, scanFrom, scanFrom)
+      }
+    })
+  }
+
+  for (const lineNumber of Array.from(checkedLines).sort((a, b) => a - b)) {
+    const line = update.state.doc.line(lineNumber)
+    const match = findUnsafeEmphasisInLine(update.state, line.from, line.text)
+    if (match) return match
+  }
+
+  return null
+}
+
+function addChangedLines(state: EditorState, lines: Set<number>, from: number, to: number): void {
+  const startLine = state.doc.lineAt(Math.max(0, Math.min(from, state.doc.length)))
+  const endLine = state.doc.lineAt(Math.max(0, Math.min(to, state.doc.length)))
+  for (let lineNumber = startLine.number; lineNumber <= endLine.number; lineNumber += 1) {
+    lines.add(lineNumber)
+  }
+}
+
+function findUnsafeEmphasisInLine(state: EditorState, lineFrom: number, lineText: string): UnsafeEmphasisMatch | null {
+  return findUnsafeEmphasisInLineForMarker(state, lineFrom, lineText, '**', 'bold')
+    ?? findUnsafeEmphasisInLineForMarker(state, lineFrom, lineText, '*', 'italic')
+}
+
+function findUnsafeEmphasisInLineForMarker(
+  state: EditorState,
+  lineFrom: number,
+  lineText: string,
+  marker: '*' | '**',
+  kind: UnsafeEmphasisKind,
+): UnsafeEmphasisMatch | null {
+  const markerLength = marker.length
+  for (let openOffset = 0; openOffset <= lineText.length - markerLength; openOffset += 1) {
+    if (!isEmphasisMarkerAt(lineText, openOffset, marker)) continue
+    const contentStart = openOffset + markerLength
+    for (let closeOffset = contentStart; closeOffset <= lineText.length - markerLength; closeOffset += 1) {
+      if (!isEmphasisMarkerAt(lineText, closeOffset, marker)) continue
+      const content = lineText.slice(contentStart, closeOffset)
+      if (content.length === 0) continue
+      const from = lineFrom + openOffset
+      const to = lineFrom + closeOffset + markerLength
+      const opening = getDelimiterRun(state, from, markerLength)
+      const closing = getDelimiterRun(state, lineFrom + closeOffset, markerLength)
+      if (!canOpenEmphasis(opening) || !canCloseEmphasis(closing)) {
+        return { from, to, content, kind, marker }
+      }
+      openOffset = closeOffset + markerLength - 1
+      break
+    }
+  }
+  return null
+}
+
+function isEmphasisMarkerAt(lineText: string, offset: number, marker: '*' | '**'): boolean {
+  if (!lineText.startsWith(marker, offset) || isEscaped(lineText, offset)) return false
+  return marker === '**'
+    ? lineText[offset + 2] !== '*'
+    : lineText[offset - 1] !== '*' && lineText[offset + 1] !== '*'
+}
+
+type DelimiterRun = {
+  before: string | null
+  after: string | null
+  leftFlanking: boolean
+  rightFlanking: boolean
+}
+
+function getDelimiterRun(state: EditorState, markerStart: number, markerLength: number): DelimiterRun {
+  const before = previousCodePoint(state, markerStart)
+  const after = nextCodePoint(state, markerStart + markerLength)
+  const beforeWhitespace = before === null || /\s/u.test(before)
+  const afterWhitespace = after === null || /\s/u.test(after)
+  const beforePunctuation = before !== null && isUnicodePunctuation(before)
+  const afterPunctuation = after !== null && isUnicodePunctuation(after)
+  const leftFlanking = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
+  const rightFlanking = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
+  return { before, after, leftFlanking, rightFlanking }
+}
+
+function canOpenEmphasis(run: DelimiterRun): boolean {
+  return run.leftFlanking && (!run.rightFlanking || !isUnicodePunctuation(run.before))
+}
+
+function canCloseEmphasis(run: DelimiterRun): boolean {
+  return run.rightFlanking && (!run.leftFlanking || !isUnicodePunctuation(run.after))
+}
+
+function previousCodePoint(state: EditorState, index: number): string | null {
+  if (index <= 0) return null
+  return Array.from(state.sliceDoc(Math.max(0, index - 2), index)).at(-1) ?? null
+}
+
+function nextCodePoint(state: EditorState, index: number): string | null {
+  if (index >= state.doc.length) return null
+  return Array.from(state.sliceDoc(index, Math.min(state.doc.length, index + 2)))[0] ?? null
+}
+
+function isUnicodePunctuation(character: string | null): boolean {
+  return character !== null && /\p{P}/u.test(character)
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let slashCount = 0
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor -= 1) {
+    slashCount += 1
+  }
+  return slashCount % 2 === 1
+}
+
+function markdownInlineToHtmlText(markdown: string): string {
+  return markdown
+    .replace(/\\([\\`*_[\]{}()#+\-.!<>|])/g, '$1')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }

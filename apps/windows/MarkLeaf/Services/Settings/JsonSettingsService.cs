@@ -95,6 +95,8 @@ public sealed class JsonSettingsService : ISettingsService
         window.OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(window.OutlineWidth, window.Dpi);
         settings.MainWindow = window;
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Export ??= new ExportSettings();
+        NormalizeExport(settings.Export);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -102,6 +104,8 @@ public sealed class JsonSettingsService : ISettingsService
     private static AppSettings MigrateVersion2(AppSettings settings)
     {
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Export ??= new ExportSettings();
+        NormalizeExport(settings.Export);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -117,6 +121,34 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Appearance ??= new AppearanceSettings();
         settings.General ??= new GeneralSettings();
         settings.Image ??= new ImageSettings();
+        settings.Export ??= new ExportSettings();
+        NormalizeExport(settings.Export);
         return settings;
     }
+
+    private static void NormalizeExport(ExportSettings export)
+    {
+        export.Format = NormalizeExportFormat(export.Format);
+        export.PaperSize = string.IsNullOrWhiteSpace(export.PaperSize) ? "A4" : export.PaperSize;
+        export.HtmlHeader ??= "";
+        export.HtmlFooter ??= "";
+        export.PdfHeaderPreset = NormalizeHeaderFooterPreset(export.PdfHeaderPreset);
+        export.PdfFooterPreset = NormalizeHeaderFooterPreset(export.PdfFooterPreset);
+        export.PdfHeaderCustom ??= "";
+        export.PdfFooterCustom ??= "";
+        export.PdfHeaderText ??= "";
+        export.PdfHeaderAlignment ??= "";
+        export.PdfFooterText ??= "";
+        export.PdfFooterAlignment ??= "";
+        export.Style = string.IsNullOrWhiteSpace(export.Style) ? "serif" : export.Style;
+        export.ColorScheme ??= "";
+    }
+
+    private static string NormalizeExportFormat(string? format) =>
+        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html" : "pdf";
+
+    private static string NormalizeHeaderFooterPreset(string? preset) =>
+        preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"
+            ? preset
+            : "none";
 }

@@ -1,7 +1,7 @@
 import { Editor, Extension, ResizableNodeView } from '@tiptap/core'
 import { Selection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { Decoration, DecorationSet, type EditorView as ProseMirrorEditorView } from '@tiptap/pm/view'
 import { DOMSerializer } from '@tiptap/pm/model'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
@@ -90,7 +90,8 @@ const blockHandleKey = new PluginKey('markleaf-block-handle')
 
 export type BlockHandleRequest = { clientX: number; clientY: number; position: number }
 
-type BlockHandleState = { activeBlock: number | null }
+type BlockHandleState = { activeBlock: number | null; composing: boolean }
+type BlockHandleMeta = Partial<BlockHandleState>
 let blockHandleVisible = true
 
 let blockTypeLabels: Record<string, string> = {}
@@ -126,17 +127,30 @@ const BlockHandle = Extension.create({
     return [new Plugin({
       key: blockHandleKey,
       state: {
-        init: (): BlockHandleState => ({ activeBlock: null }),
+        init: (): BlockHandleState => ({ activeBlock: null, composing: false }),
         apply(transaction, previous): BlockHandleState {
-          const update = transaction.getMeta(blockHandleKey) as BlockHandleState | undefined
-          if (update) return update
+          const update = transaction.getMeta(blockHandleKey) as BlockHandleMeta | undefined
+          if (update) return { ...previous, ...update }
           return previous
         },
       },
       props: {
+        handleDOMEvents: {
+          compositionstart(view) {
+            setBlockHandleComposing(view, true)
+            return false
+          },
+          compositionend(view) {
+            window.setTimeout(() => {
+              if (!view.isDestroyed) setBlockHandleComposing(view, false)
+            }, 0)
+            return false
+          },
+        },
         decorations(state) {
           if (!blockHandleVisible) return DecorationSet.empty
-          const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
+          const { activeBlock, composing } = blockHandleKey.getState(state) ?? { activeBlock: null, composing: false }
+          if (composing) return DecorationSet.empty
           const decorations: Decoration[] = []
           const { from, empty } = state.selection
           const $from = state.doc.resolve(from)
@@ -165,7 +179,7 @@ const BlockHandle = Extension.create({
             decorations.push(Decoration.widget(
               widgetPos,
               () => createBlockHandle(nodePos, getBlockTypeLabel(state, from), activeBlock === nodePos),
-              { side: -1 },
+              { side: -1, ignoreSelection: true },
             ))
           }
           if (activeBlock !== null) {
@@ -221,13 +235,18 @@ function positionBlockHandle(handle: HTMLButtonElement): void {
 }
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position }))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta))
 }
 
 export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
   blockHandleVisible = visible
-  const state = blockHandleKey.getState(editor.state) ?? { activeBlock: null }
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, state))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
+}
+
+function setBlockHandleComposing(view: ProseMirrorEditorView, composing: boolean): void {
+  const state = blockHandleKey.getState(view.state)
+  if (state?.composing === composing) return
+  view.dispatch(view.state.tr.setMeta(blockHandleKey, { composing } satisfies BlockHandleMeta))
 }
 
 function decodeImageCaption(value: string | undefined): string | null {
@@ -329,6 +348,29 @@ function parseNullableNumber(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
+function getMarkLeafImagePath(element: Element): string | null {
+  const embeddedPath = element.getAttribute('data-markleaf-path')
+  if (embeddedPath) {
+    return embeddedPath
+  }
+
+  const src = element.getAttribute('src')?.trim()
+  if (!src) {
+    return null
+  }
+
+  try {
+    const url = new URL(src)
+    if (url.origin === 'https://assets.local' && url.pathname === '/image') {
+      return url.searchParams.get('path')
+    }
+  } catch {
+    // Relative and Windows paths are handled by data-markleaf-path, not URL parsing.
+  }
+
+  return null
+}
+
 function escapeMarkdownImageText(value: unknown): string {
   return typeof value === 'string' ? value.replace(/([\\\[\]])/g, '\\$1') : ''
 }
@@ -377,6 +419,13 @@ const MarkLeafImage = Image.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      src: {
+        default: null,
+        parseHTML: element => getMarkLeafImagePath(element) ?? element.getAttribute('src'),
+        renderHTML: attributes => ({
+          src: attributes.src,
+        }),
+      },
       rotation: {
         default: 0,
         parseHTML: element => normalizeImageRotation(Number(element.getAttribute('data-markleaf-rotation'))),
@@ -836,7 +885,199 @@ export function toVirtualImageUrl(markdownPath: string): string {
 }
 
 export function getMarkdown(editor: Editor): string {
-  return editor.getMarkdown()
+  return stabilizeUnsafeEmphasisMarkdown(editor.getMarkdown())
+}
+
+function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
+  return markdown
+    .split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g)
+    .map(part => isFencedCodeBlock(part) ? part : stabilizeUnsafeEmphasisInInlineMarkdown(part))
+    .join('')
+}
+
+function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
+  let result = ''
+  let index = 0
+  while (index < markdown.length) {
+    const codeSpan = readCodeSpan(markdown, index)
+    if (codeSpan) {
+      result += codeSpan
+      index += codeSpan.length
+      continue
+    }
+
+    const linkDestination = readLinkDestination(markdown, index)
+    if (linkDestination) {
+      result += linkDestination
+      index += linkDestination.length
+      continue
+    }
+
+    const strong = readPotentialEmphasis(markdown, index, '**', 'strong')
+    if (strong) {
+      result += strong.text
+      index = strong.end
+      continue
+    }
+
+    const italic = readPotentialEmphasis(markdown, index, '*', 'em')
+    if (italic) {
+      result += italic.text
+      index = italic.end
+      continue
+    }
+
+    result += markdown[index]
+    index += 1
+  }
+  return result
+}
+
+function readLinkDestination(markdown: string, start: number): string | null {
+  if (markdown[start] !== '(' || isEscaped(markdown, start)) return null
+  const previous = previousCodePoint(markdown, start)
+  if (previous !== ']') return null
+  const end = findClosingLinkDestination(markdown, start + 1)
+  return end >= 0 ? markdown.slice(start, end + 1) : null
+}
+
+function findClosingLinkDestination(markdown: string, start: number): number {
+  let quote: '"' | '\'' | null = null
+  let parenDepth = 0
+  for (let index = start; index < markdown.length; index += 1) {
+    const character = markdown[index]
+    if (isEscaped(markdown, index)) continue
+    if (quote) {
+      if (character === quote) quote = null
+      continue
+    }
+    if (character === '"' || character === '\'') {
+      quote = character
+      continue
+    }
+    if (character === '(') {
+      parenDepth += 1
+      continue
+    }
+    if (character === ')') {
+      if (parenDepth === 0) return index
+      parenDepth -= 1
+    }
+  }
+  return -1
+}
+
+function isFencedCodeBlock(markdown: string): boolean {
+  return /^(```|~~~)/.test(markdown)
+}
+
+function readCodeSpan(markdown: string, start: number): string | null {
+  if (markdown[start] !== '`' || isEscaped(markdown, start)) return null
+  let tickCount = 1
+  while (markdown[start + tickCount] === '`') tickCount += 1
+  const fence = '`'.repeat(tickCount)
+  const end = markdown.indexOf(fence, start + tickCount)
+  return end >= 0 ? markdown.slice(start, end + tickCount) : null
+}
+
+function readPotentialEmphasis(
+  markdown: string,
+  start: number,
+  marker: '*' | '**',
+  tag: 'em' | 'strong',
+): { text: string; end: number } | null {
+  if (!markdown.startsWith(marker, start) || isEscaped(markdown, start)) return null
+  if (marker === '*' && markdown.startsWith('**', start)) return null
+  const contentStart = start + marker.length
+  const close = findClosingEmphasisMarker(markdown, contentStart, marker)
+  if (close < 0) return null
+
+  const end = close + marker.length
+  const content = markdown.slice(contentStart, close)
+  const opening = getDelimiterRun(markdown, start, marker.length)
+  const closing = getDelimiterRun(markdown, close, marker.length)
+  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+    return { text: markdown.slice(start, end), end }
+  }
+
+  return { text: `<${tag}>${markdownInlineToHtmlText(content)}</${tag}>`, end }
+}
+
+function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' | '**'): number {
+  let index = start
+  while (index < markdown.length) {
+    const codeSpan = readCodeSpan(markdown, index)
+    if (codeSpan) {
+      index += codeSpan.length
+      continue
+    }
+    if (markdown.startsWith(marker, index) && !isEscaped(markdown, index)) {
+      if (marker === '*' && markdown.startsWith('**', index)) {
+        index += 2
+        continue
+      }
+      return index
+    }
+    index += 1
+  }
+  return -1
+}
+
+type DelimiterRun = {
+  before: string | null
+  after: string | null
+  leftFlanking: boolean
+  rightFlanking: boolean
+}
+
+function getDelimiterRun(markdown: string, markerStart: number, markerLength: number): DelimiterRun {
+  const before = previousCodePoint(markdown, markerStart)
+  const after = nextCodePoint(markdown, markerStart + markerLength)
+  const beforeWhitespace = before === null || /\s/u.test(before)
+  const afterWhitespace = after === null || /\s/u.test(after)
+  const beforePunctuation = before !== null && isUnicodePunctuation(before)
+  const afterPunctuation = after !== null && isUnicodePunctuation(after)
+  const leftFlanking = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
+  const rightFlanking = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
+  return { before, after, leftFlanking, rightFlanking }
+}
+
+function canOpenEmphasis(run: DelimiterRun): boolean {
+  return run.leftFlanking && (!run.rightFlanking || !isUnicodePunctuation(run.before))
+}
+
+function canCloseEmphasis(run: DelimiterRun): boolean {
+  return run.rightFlanking && (!run.leftFlanking || !isUnicodePunctuation(run.after))
+}
+
+function isUnicodePunctuation(character: string | null): boolean {
+  return character !== null && /\p{P}/u.test(character)
+}
+
+function previousCodePoint(text: string, index: number): string | null {
+  if (index <= 0) return null
+  return Array.from(text.slice(0, index)).at(-1) ?? null
+}
+
+function nextCodePoint(text: string, index: number): string | null {
+  if (index >= text.length) return null
+  return Array.from(text.slice(index))[0] ?? null
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let slashCount = 0
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor -= 1) {
+    slashCount += 1
+  }
+  return slashCount % 2 === 1
+}
+
+function markdownInlineToHtmlText(markdown: string): string {
+  return markdown
+    .replace(/\\([\\`*_[\]{}()#+\-.!<>|])/g, '$1')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 export type FindResult = { current: number; total: number }
@@ -1052,7 +1293,29 @@ function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
 
 export function sanitizePastedHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
-  parsed.querySelectorAll('script, style, iframe, object, embed, svg, math, img').forEach((node) => node.remove())
+  parsed.querySelectorAll('script, style, iframe, object, embed, svg, math').forEach((node) => node.remove())
+
+  for (const figure of Array.from(parsed.body.querySelectorAll('figure.markleaf-figure'))) {
+    const image = figure.querySelector('img')
+    if (!image) continue
+
+    const caption = figure.querySelector('figcaption')?.textContent?.trim()
+    if (caption && !image.getAttribute('data-markleaf-caption')) {
+      image.setAttribute('data-markleaf-caption', caption)
+    }
+    figure.replaceWith(image)
+  }
+
+  for (const image of Array.from(parsed.body.querySelectorAll('img'))) {
+    const markdownPath = getMarkLeafImagePath(image)
+    if (!markdownPath) {
+      image.remove()
+      continue
+    }
+
+    image.setAttribute('src', markdownPath)
+    image.setAttribute('data-markleaf-path', markdownPath)
+  }
 
   for (const element of Array.from(parsed.body.querySelectorAll('*'))) {
     for (const attribute of Array.from(element.attributes)) {
@@ -1064,6 +1327,9 @@ export function sanitizePastedHtml(html: string): string {
 
     for (const attributeName of ['href', 'src']) {
       const value = element.getAttribute(attributeName)
+      if (element.tagName.toLowerCase() === 'img' && attributeName === 'src' && getMarkLeafImagePath(element)) {
+        continue
+      }
       if (value && !/^(https?:|mailto:|#|\.\.?\/)/i.test(value.trim())) {
         element.removeAttribute(attributeName)
       }

@@ -74,6 +74,8 @@ public sealed class AppSettings
 
     public ImageSettings Image { get; set; } = new();
 
+    public ExportSettings Export { get; set; } = new();
+
     public string MarkdownStyle { get; set; } = "serif";
 
     public string ColorTheme { get; set; } = "white";
@@ -90,9 +92,51 @@ public sealed class AppSettings
             Appearance = new AppearanceSettings(),
             General = new GeneralSettings(),
             Image = new ImageSettings(),
+            Export = new ExportSettings(),
             MarkdownStyle = "serif",
         };
     }
+}
+
+public sealed class ExportSettings
+{
+    public string Format { get; set; } = "pdf";
+
+    public string PaperSize { get; set; } = "A4";
+
+    public bool Landscape { get; set; }
+
+    public float MarginTop { get; set; } = 25.4f;
+
+    public float MarginBottom { get; set; } = 25.4f;
+
+    public float MarginLeft { get; set; } = 31.7f;
+
+    public float MarginRight { get; set; } = 31.7f;
+
+    public string HtmlHeader { get; set; } = "";
+
+    public string HtmlFooter { get; set; } = "";
+
+    public string PdfHeaderPreset { get; set; } = "none";
+
+    public string PdfFooterPreset { get; set; } = "none";
+
+    public string PdfHeaderCustom { get; set; } = "";
+
+    public string PdfFooterCustom { get; set; } = "";
+
+    public string PdfHeaderText { get; set; } = "";
+
+    public string PdfHeaderAlignment { get; set; } = "";
+
+    public string PdfFooterText { get; set; } = "";
+
+    public string PdfFooterAlignment { get; set; } = "";
+
+    public string Style { get; set; } = "serif";
+
+    public string ColorScheme { get; set; } = "";
 }
 
 public sealed class GeneralSettings
@@ -146,6 +190,8 @@ public sealed class EditorSettings
     public int SourceIndentWidth { get; set; } = 2;
 
     public bool ShowParagraphBlockHandle { get; set; } = true;
+
+    public string? UnsafeEmphasisPreference { get; set; }
 }
 
 public sealed class FileSettings

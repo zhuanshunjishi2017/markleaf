@@ -28,6 +28,14 @@ public sealed class ClipboardHtmlFormatterTests
         Assert.AreEqual(html, ClipboardHtmlFormatter.ExtractFragment(html));
     }
 
+    [TestMethod]
+    public void ExtractPlainText_ConvertsMarkedHtmlToText()
+    {
+        var clipboardHtml = ClipboardHtmlFormatter.Create("<p><strong>Bold</strong> leaf</p><p>Next&nbsp;line</p>");
+
+        Assert.AreEqual("Bold leaf\nNext\u00a0line", ClipboardHtmlFormatter.ExtractPlainText(clipboardHtml));
+    }
+
     private static int ReadOffset(string value, string name)
     {
         var start = value.IndexOf(name, StringComparison.Ordinal) + name.Length;

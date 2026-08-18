@@ -23,27 +23,31 @@ internal sealed partial class MainForm
     {
         var follow = !_settings.Appearance.FollowSystemColorMode;
         _settings.Appearance.FollowSystemColorMode = follow;
-        if (follow)
-        {
-            _colorTheme = ColorThemeService.GetSystemDefaultThemeId();
-        }
-        else
-        {
-            _colorTheme = _settings.ColorTheme;
-        }
-        ColorThemeService.SetActiveTheme(_colorTheme);
-        ApplySidebarColors();
-        _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
-        _menuService.RefreshStates();
-        ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
+        ApplyEffectiveColorTheme();
     }
 
     private void SetColorTheme(string themeId)
     {
+        ApplyColorTheme(themeId, persistManualChoice: true);
+    }
+
+    private void ApplyEffectiveColorTheme()
+    {
+        var themeId = _settings.Appearance.FollowSystemColorMode
+            ? ColorThemeService.GetSystemDefaultThemeId()
+            : _settings.ColorTheme;
+        ApplyColorTheme(themeId, persistManualChoice: false);
+    }
+
+    private void ApplyColorTheme(string themeId, bool persistManualChoice)
+    {
         if (ColorThemeService.TryGetTheme(themeId) is null) return;
         _colorTheme = themeId;
         ColorThemeService.SetActiveTheme(themeId);
-        _settings.ColorTheme = themeId;
+        if (persistManualChoice)
+        {
+            _settings.ColorTheme = themeId;
+        }
         ApplySidebarColors();
         _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
         _menuService.RefreshStates();
@@ -77,7 +81,7 @@ internal sealed partial class MainForm
         if (string.Equals(_colorTheme, targetThemeId, StringComparison.Ordinal))
             return;
 
-        BeginInvoke(() => SetColorTheme(targetThemeId));
+        BeginInvoke(ApplyEffectiveColorTheme);
     }
 
     private void ApplySidebarColors()
@@ -208,9 +212,12 @@ internal sealed partial class MainForm
         var directory = StyleService.StylesDirectory;
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
         ColorThemeService.Initialize(directory);
-        _colorTheme = ColorThemeService.TryGetTheme(_colorTheme) is not null
-            ? _colorTheme
-            : ColorThemeService.All.Count > 0 ? ColorThemeService.All[0].Id : "white";
+        _colorTheme = _settings.Appearance.FollowSystemColorMode
+            ? ColorThemeService.GetSystemDefaultThemeId()
+            : ColorThemeService.TryGetTheme(_colorTheme) is not null
+                ? _colorTheme
+                : ColorThemeService.All.Count > 0 ? ColorThemeService.All[0].Id : "white";
+        ColorThemeService.SetActiveTheme(_colorTheme);
         _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
         ApplySidebarColors();
         _menuService.RefreshStates();

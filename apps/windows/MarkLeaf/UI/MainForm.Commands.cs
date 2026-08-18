@@ -63,9 +63,11 @@ internal sealed partial class MainForm
             return new CommandState(true);
         }
 
-        if (command == AppCommand.Paste)
+        if (command is AppCommand.Paste or AppCommand.PastePlainText)
         {
-            return new CommandState(_editorHost?.IsDocumentLoaded == true && HasClipboardContent());
+            return new CommandState(_editorHost?.IsDocumentLoaded == true
+                && _document?.IsReadOnly != true
+                && HasClipboardContent());
         }
 
         var context = new CommandContext(
@@ -77,6 +79,7 @@ internal sealed partial class MainForm
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
             SourceMode: _editorCommandStatus.SourceMode,
+            ReadOnly: _document?.IsReadOnly == true,
             IsPlainText: IsPlainTextDocument,
             ParagraphActive: _editorCommandStatus.Paragraph,
             HeadingLevel: _editorCommandStatus.HeadingLevel,
@@ -173,6 +176,9 @@ internal sealed partial class MainForm
             case AppCommand.SaveDocumentAs:
                 _ = SaveDocumentAsync(saveAs: true);
                 break;
+            case AppCommand.ExportWithLastSettings:
+                _ = ExportWithLastSettingsAsync();
+                break;
             case AppCommand.ExportPdf:
                 _ = ExportPdfAsync();
                 break;
@@ -196,6 +202,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.Paste:
                 _ = PasteClipboardContentAsync();
+                break;
+            case AppCommand.PastePlainText:
+                _ = PasteClipboardPlainTextAsync();
                 break;
             case AppCommand.Find:
                 _editorHost?.ExecuteCommand("find");
@@ -536,6 +545,11 @@ internal sealed partial class MainForm
             Clipboard.SetDataObject(data, true);
             if (cut)
             {
+                if (_document?.IsReadOnly == true)
+                {
+                    SetStatus(Loc.Get("status.copied"));
+                    return;
+                }
                 _editorHost.ExecuteCommand("deleteSelection");
             }
             SetStatus(cut ? Loc.Get("status.cut") : Loc.Get("status.copied"));
@@ -549,13 +563,22 @@ internal sealed partial class MainForm
 
     private async Task PasteClipboardContentAsync()
     {
-        if (_editorHost?.IsDocumentLoaded != true)
+        if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
         {
             return;
         }
 
         try
         {
+            var clipboardData = Clipboard.GetDataObject();
+            if (_editorCommandStatus.SourceMode
+                && TryGetClipboardPlainTextForSourceMode(clipboardData, out var sourcePlainText))
+            {
+                _editorHost.ExecuteCommand("pasteText", sourcePlainText);
+                SetStatus(Loc.Get("status.pastedPlainText"));
+                return;
+            }
+
             if (Clipboard.ContainsFileDropList())
             {
                 await ImportImageFilesAsync(Clipboard.GetFileDropList().Cast<string>());
@@ -592,6 +615,96 @@ internal sealed partial class MainForm
         {
             _logger.Error("Clipboard paste command failed.", exception);
             SetStatus(Loc.Get("status.clipboardFailed"));
+        }
+    }
+
+    private Task PasteClipboardPlainTextAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
+        {
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            if (!TryGetClipboardPlainTextForSourceMode(Clipboard.GetDataObject(), out var plainText))
+            {
+                SetStatus(Loc.Get("status.noTextToPaste"));
+                return Task.CompletedTask;
+            }
+
+            _editorHost.ExecuteCommand("pasteText", plainText);
+            SetStatus(Loc.Get("status.pastedPlainText"));
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Clipboard plain-text paste command failed.", exception);
+            SetStatus(Loc.Get("status.clipboardFailed"));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static bool TryGetClipboardPlainTextForSourceMode(IDataObject? clipboardData, out string text)
+    {
+        text = string.Empty;
+        if (clipboardData is null)
+        {
+            return false;
+        }
+
+        if (TryGetClipboardString(clipboardData, DataFormats.UnicodeText, out text)
+            || TryGetClipboardString(clipboardData, DataFormats.Text, out text)
+            || TryGetClipboardHtmlPlainText(clipboardData, out text)
+            || TryGetClipboardRtfPlainText(clipboardData, out text))
+        {
+            return text.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetClipboardString(IDataObject clipboardData, string format, out string text)
+    {
+        text = string.Empty;
+        if (!clipboardData.GetDataPresent(format, autoConvert: true))
+        {
+            return false;
+        }
+
+        text = clipboardData.GetData(format, autoConvert: true) as string ?? string.Empty;
+        return text.Length > 0;
+    }
+
+    private static bool TryGetClipboardHtmlPlainText(IDataObject clipboardData, out string text)
+    {
+        text = string.Empty;
+        if (!TryGetClipboardString(clipboardData, DataFormats.Html, out var html))
+        {
+            return false;
+        }
+
+        text = ClipboardHtmlFormatter.ExtractPlainText(html);
+        return text.Length > 0;
+    }
+
+    private static bool TryGetClipboardRtfPlainText(IDataObject clipboardData, out string text)
+    {
+        text = string.Empty;
+        if (!TryGetClipboardString(clipboardData, DataFormats.Rtf, out var rtf))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var box = new RichTextBox { Rtf = rtf };
+            text = box.Text;
+            return text.Length > 0;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 }

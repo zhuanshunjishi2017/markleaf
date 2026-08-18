@@ -11,6 +11,7 @@ public enum AppCommand
     CloseFolder,
     SaveDocument,
     SaveDocumentAs,
+    ExportWithLastSettings,
     ExportPdf,
     ExportHtml,
     Print,
@@ -42,6 +43,7 @@ public enum AppCommand
     Paste,
     Find,
     Replace,
+    PastePlainText,
 
     SetParagraph = 0x1201,
     SetHeading1,
@@ -130,6 +132,7 @@ public readonly record struct CommandContext(
     bool SidebarVisible,
     bool FocusMode,
     bool SourceMode,
+    bool ReadOnly = false,
     bool IsPlainText = false,
     bool OutlineActive = false,
     bool ParagraphActive = false,

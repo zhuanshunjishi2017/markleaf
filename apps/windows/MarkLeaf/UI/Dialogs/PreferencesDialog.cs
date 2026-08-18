@@ -567,8 +567,9 @@ internal sealed class PreferencesDialog : Form
                                         TextAlign = ContentAlignment.MiddleLeft,
                                         Padding = new Padding(0, 5, 0, 0), }, 0, 6);
         panel.Controls.Add(_cjkLanguageTagCombo, 1, 6);
+        panel.Controls.Add(Gap(), 0, 7);
 
-        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 7);
+        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 8);
         panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
 
         return panel;

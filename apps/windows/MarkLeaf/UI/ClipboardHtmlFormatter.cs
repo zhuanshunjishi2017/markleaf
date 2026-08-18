@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MarkLeaf.UI;
 
@@ -47,5 +49,16 @@ internal static class ClipboardHtmlFormatter
         }
 
         return clipboardHtml;
+    }
+
+    public static string ExtractPlainText(string clipboardHtml)
+    {
+        var fragment = ExtractFragment(clipboardHtml);
+        fragment = Regex.Replace(fragment, @"<(br|/p|/div|/li|/tr|/h[1-6])\b[^>]*>", "\n", RegexOptions.IgnoreCase);
+        fragment = Regex.Replace(fragment, @"<[^>]+>", string.Empty);
+        fragment = WebUtility.HtmlDecode(fragment);
+        fragment = Regex.Replace(fragment, @"[ \t]+\n", "\n");
+        fragment = Regex.Replace(fragment, @"\n{3,}", "\n\n");
+        return fragment.Trim();
     }
 }

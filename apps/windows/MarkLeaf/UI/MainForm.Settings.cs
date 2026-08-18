@@ -89,7 +89,10 @@ internal sealed partial class MainForm
     {
         CollectWindowState();
         _settings.MarkdownStyle = _markdownStyle;
-        _settings.ColorTheme = _colorTheme;
+        if (!_settings.Appearance.FollowSystemColorMode)
+        {
+            _settings.ColorTheme = _colorTheme;
+        }
         _settings.Appearance.ZoomPercent = _zoomPercent;
         PersistSettings("Settings saved.", "Settings could not be saved.");
     }

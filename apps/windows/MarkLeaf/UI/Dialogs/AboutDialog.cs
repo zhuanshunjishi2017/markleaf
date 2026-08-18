@@ -9,7 +9,7 @@ internal sealed class AboutDialog : Form
 {
     private const string RepoOwner = "zhuanshunjishi2017";
     private const string RepoName = "markleaf";
-    private const string AuthorName = "zhuanshunjishi2017";
+    private const string AuthorName = "fcz";
 
     private static string AppVersion =>
         typeof(AboutDialog).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
@@ -39,7 +39,7 @@ internal sealed class AboutDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(this.ScaleForDpi(469), this.ScaleForDpi(286));
+        Size = new Size(this.ScaleForDpi(469), this.ScaleForDpi(290));
         MinimumSize = new Size(this.ScaleForDpi(326), this.ScaleForDpi(274));
         AutoScaleMode = AutoScaleMode.Dpi;
         Padding = new Padding(this.ScaleForDpi(14), this.ScaleForDpi(14), this.ScaleForDpi(14), this.ScaleForDpi(9));
@@ -77,7 +77,7 @@ internal sealed class AboutDialog : Form
         };
 
         infoPanel.Controls.Add(NewLabel("MarkLeaf", new Font("Times New Roman", 18F, FontStyle.Bold)), 0, 0);
-        infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription"), new Font("Times New Roman", 9F)), 0, 1);
+        infoPanel.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription"), new Font("Times New Roman", 12F)), 0, 1);
         infoPanel.Controls.Add(NewSeparator(), 0, 2);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutVersion", AppVersion)), 0, 3);
         infoPanel.Controls.Add(NewLabel(Loc.Format("dialog.aboutDate", BuildDate)), 0, 4);
@@ -143,7 +143,7 @@ internal sealed class AboutDialog : Form
         {
             Text = text,
             AutoSize = true,
-            Margin = new Padding(0, this.ScaleForDpi(2), 0, this.ScaleForDpi(2)),
+            Margin = new Padding(0, this.ScaleForDpi(4), 0, this.ScaleForDpi(4)),
             UseMnemonic = false,
         };
         if (font is not null)

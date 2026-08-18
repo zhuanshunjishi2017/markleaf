@@ -52,6 +52,41 @@ describe('selection export', () => {
     expect(selection.markdown).toContain('**bold**')
     expect(selection.html).toContain('<strong>bold</strong>')
   })
+
+  it('pastes an exported visual image back as an image', () => {
+    const sourceElement = document.createElement('div')
+    const targetElement = document.createElement('div')
+    document.body.append(sourceElement, targetElement)
+    const source = createEditor(sourceElement, '![diagram](C:/Pictures/image.png)')
+    const target = createEditor(targetElement, '')
+    editors.push(source, target)
+    source.commands.setNodeSelection(0)
+
+    const selection = exportEditorSelection(source)
+
+    expect(selection.html).toContain('data-markleaf-path')
+    expect(executeEditorCommand(target, 'pasteHtml', selection.html)).toBe(true)
+    expect(targetElement.querySelector('img')?.getAttribute('data-markleaf-path')).toBe('C:/Pictures/image.png')
+    expect(getMarkdown(target)).toContain('![diagram](C:/Pictures/image.png)')
+  })
+
+  it('pastes an exported visual image caption as image metadata instead of caption-only text', () => {
+    const sourceElement = document.createElement('div')
+    const targetElement = document.createElement('div')
+    document.body.append(sourceElement, targetElement)
+    const source = createEditor(sourceElement, '![diagram](C:/Pictures/image.png "markleaf:caption=Figure%201")')
+    const target = createEditor(targetElement, '')
+    editors.push(source, target)
+    source.commands.setNodeSelection(0)
+
+    const selection = exportEditorSelection(source)
+
+    expect(selection.html).toContain('markleaf-figure')
+    expect(executeEditorCommand(target, 'pasteHtml', selection.html)).toBe(true)
+    expect(targetElement.querySelectorAll('img')).toHaveLength(1)
+    expect(getMarkdown(target)).toContain('![diagram](C:/Pictures/image.png "markleaf:caption=Figure%201")')
+    expect(getMarkdown(target)).not.toBe('Figure 1')
+  })
 })
 
 describe('Markdown semantic round trip', () => {
@@ -228,6 +263,52 @@ describe('editing history', () => {
 
     expect(editor.getHTML()).toContain('<em>中文斜体</em>')
     expect(getMarkdown(editor)).toMatch(/[*_]中文斜体[*_]/)
+  })
+
+  it('serializes unsafe bold closing boundaries as HTML', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '文本"a')
+    editors.push(editor)
+
+    editor.commands.setTextSelection({ from: 1, to: 4 })
+    editor.commands.toggleBold()
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toBe('<strong>文本"</strong>a')
+
+    const reloaded = createEditor(document.createElement('div'), markdown)
+    editors.push(reloaded)
+    expect(reloaded.getHTML()).toContain('<strong>文本"</strong>a')
+  })
+
+  it('serializes unsafe italic opening boundaries as HTML', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'a"文本')
+    editors.push(editor)
+
+    editor.commands.setTextSelection({ from: 2, to: 5 })
+    editor.commands.toggleItalic()
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toBe('a<em>"文本</em>')
+
+    const reloaded = createEditor(document.createElement('div'), markdown)
+    editors.push(reloaded)
+    expect(reloaded.getHTML()).toContain('a<em>"文本</em>')
+  })
+
+  it('keeps safe emphasis boundaries as Markdown', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '文本" 后文')
+    editors.push(editor)
+
+    editor.commands.setTextSelection({ from: 1, to: 4 })
+    editor.commands.toggleBold()
+
+    expect(getMarkdown(editor)).toBe('**文本"** 后文')
   })
 })
 
