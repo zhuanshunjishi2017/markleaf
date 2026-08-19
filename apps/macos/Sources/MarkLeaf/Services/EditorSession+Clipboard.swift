@@ -8,6 +8,15 @@ extension EditorSession {
         case plainText
     }
 
+    /// 剪贴板中是否有可粘贴内容（文本/富文本/图片/Finder 文件），用于菜单置灰。
+    var clipboardHasContent: Bool {
+        guard let types = NSPasteboard.general.types else { return false }
+        let supported: Set<NSPasteboard.PasteboardType> = [
+            .string, .html, .rtf, .png, .tiff, .pdf, .fileURL,
+        ]
+        return types.contains { supported.contains($0) }
+    }
+
     // MARK: - 复制（对应 C# ExecuteClipboardCopyAsync）
 
     func copySelectionAs(_ mode: ClipboardCopyMode) {

@@ -19,12 +19,21 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let footerPresetPopup = NSPopUpButton()
     private let headerField = NSTextField(string: "")
     private let footerField = NSTextField(string: "")
+    private let headerFieldLabel = NSTextField(labelWithString: "")
+    private let footerFieldLabel = NSTextField(labelWithString: "")
+    private let headerFieldRow = NSView()
+    private let footerFieldRow = NSView()
+    private let lastSettingsButton = NSButton(title: "", target: nil, action: nil)
     private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
 
     private var paperRow: NSView?
     private var landscapeRow: NSView?
     private var marginRow: NSView?
+    private var headerPresetRow: NSView?
+    private var footerPresetRow: NSView?
+    private var headerFieldRowHeight: NSLayoutConstraint?
+    private var footerFieldRowHeight: NSLayoutConstraint?
     private var themeIDs: [String] = []
     private var styleIDs: [String] = []
     private var margins = ExportMargins()
@@ -48,6 +57,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         (L10n.t("宽"), ExportMargins(top: 25, bottom: 25, left: 20, right: 20)),
         (L10n.t("无"), ExportMargins(top: 0, bottom: 0, left: 0, right: 0)),
     ]
+
+    private static let fieldRowHeight: CGFloat = 28
 
     init(session: EditorSession) {
         self.session = session
@@ -114,6 +125,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         headerField.action = #selector(optionChanged)
         footerField.target = self
         footerField.action = #selector(optionChanged)
+        headerField.bezelStyle = .roundedBezel
+        footerField.bezelStyle = .roundedBezel
         headerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
         footerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
         stylePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
@@ -122,6 +135,17 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         footerPresetPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
         headerField.placeholderString = L10n.t("支持 {title}、{page}、{pages}")
         footerField.placeholderString = L10n.t("支持 {title}、{page}、{pages}")
+        headerFieldLabel.font = .systemFont(ofSize: 12)
+        headerFieldLabel.alignment = .right
+        headerFieldLabel.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        footerFieldLabel.font = .systemFont(ofSize: 12)
+        footerFieldLabel.alignment = .right
+        footerFieldLabel.widthAnchor.constraint(equalToConstant: 72).isActive = true
+
+        lastSettingsButton.title = L10n.t("按上次设置导出")
+        lastSettingsButton.bezelStyle = .rounded
+        lastSettingsButton.target = self
+        lastSettingsButton.action = #selector(exportWithLastSettingsClicked)
 
         pageCountLabel.font = .systemFont(ofSize: 12)
         pageCountLabel.textColor = .secondaryLabelColor
@@ -136,6 +160,15 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         paperRow = labeled(L10n.t("纸张"), paperPopup)
         landscapeRow = labeled(L10n.t("方向"), landscapeCheck)
         marginRow = labeled(L10n.t("页边距"), NSStackView(views: [marginPopup, customMarginButton]))
+        headerPresetRow = labeled(L10n.t("页眉"), headerPresetPopup)
+        footerPresetRow = labeled(L10n.t("页脚"), footerPresetPopup)
+
+        configureFieldRow(headerFieldRow, label: headerFieldLabel, field: headerField)
+        configureFieldRow(footerFieldRow, label: footerFieldLabel, field: footerField)
+        headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
+        footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
+        headerFieldRowHeight?.isActive = true
+        footerFieldRowHeight?.isActive = true
 
         let optionsStack = NSStackView(views: [
             labeled(L10n.t("格式"), formatPopup),
@@ -144,8 +177,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             marginRow!,
             labeled(L10n.t("排版样式"), stylePopup),
             labeled(L10n.t("配色方案"), colorThemePopup),
-            labeled(L10n.t("页眉"), NSStackView(views: [headerPresetPopup, headerField])),
-            labeled(L10n.t("页脚"), NSStackView(views: [footerPresetPopup, footerField])),
+            headerPresetRow!,
+            headerFieldRow,
+            footerPresetRow!,
+            footerFieldRow,
         ])
         optionsStack.orientation = .vertical
         optionsStack.alignment = .leading
@@ -170,7 +205,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             pageCountLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor),
         ])
 
-        let buttonRow = NSStackView(views: [NSView(), exportButton, cancelButton])
+        let buttonRow = NSStackView(views: [lastSettingsButton, NSView(), exportButton, cancelButton])
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
@@ -212,6 +247,24 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         row.orientation = .horizontal
         row.spacing = 8
         return row
+    }
+
+    private func configureFieldRow(_ row: NSView, label: NSTextField, field: NSTextField) {
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.wantsLayer = true
+        row.layer?.masksToBounds = true
+        row.alphaValue = 0
+        row.isHidden = true
+        let stack = NSStackView(views: [label, field])
+        stack.orientation = .horizontal
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: row.topAnchor),
+        ])
     }
 
     private func populateOptions() {
@@ -316,8 +369,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         paperRow?.isHidden = !isPDF
         landscapeRow?.isHidden = !isPDF
         marginRow?.isHidden = !isPDF
-        headerPresetPopup.isHidden = !isPDF
-        footerPresetPopup.isHidden = !isPDF
+        headerPresetRow?.isHidden = !isPDF
+        footerPresetRow?.isHidden = !isPDF
+        headerFieldLabel.stringValue = isPDF ? "" : L10n.t("页眉")
+        footerFieldLabel.stringValue = isPDF ? "" : L10n.t("页脚")
         updateHeaderFooterFieldState()
     }
 
@@ -327,12 +382,32 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateHeaderFooterFieldState() {
-        if selectedFormat == "html" {
-            headerField.isEnabled = true
-            footerField.isEnabled = true
+        let isPDF = selectedFormat == "pdf"
+        let headerVisible = !isPDF || selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
+        let footerVisible = !isPDF || selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
+        setFieldRowVisible(headerFieldRow, height: headerFieldRowHeight, visible: headerVisible)
+        setFieldRowVisible(footerFieldRow, height: footerFieldRowHeight, visible: footerVisible)
+    }
+
+    private func setFieldRowVisible(_ row: NSView, height: NSLayoutConstraint?, visible: Bool, animated: Bool = true) {
+        guard let height else { return }
+        guard visible != (height.constant > 0) else { return }
+        if visible, row.isHidden {
+            row.isHidden = false
+            row.alphaValue = 0
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                height.animator().constant = visible ? Self.fieldRowHeight : 0
+                row.animator().alphaValue = visible ? 1 : 0
+            } completionHandler: {
+                if !visible { row.isHidden = true }
+            }
         } else {
-            headerField.isEnabled = selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
-            footerField.isEnabled = selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
+            height.constant = visible ? Self.fieldRowHeight : 0
+            row.alphaValue = visible ? 1 : 0
+            if !visible { row.isHidden = true }
         }
     }
 
@@ -511,18 +586,37 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - 导出/取消
 
     @objc private func exportClicked() {
-        guard let session, let window else { return }
+        guard let session else { return }
         let options = currentOptions()
-        let panel = NSSavePanel()
-        panel.title = L10n.t("导出文档")
-        let baseName = session.documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + "." + (options.format == "pdf" ? "pdf" : "html")
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
+        presentSavePanel(options: options, title: L10n.t("导出文档")) { [weak self] url in
+            guard let self else { return }
             let targetURL = EditorSession.fixExportExtension(url, format: options.format)
             self.persist(options: options)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
+        }
+    }
+
+    @objc private func exportWithLastSettingsClicked() {
+        guard let session else { return }
+        let options = session.exportOptions(from: SettingsService.shared.settings.exportSettings)
+        presentSavePanel(options: options, title: L10n.t("按上次设置导出")) { [weak self] url in
+            guard let self else { return }
+            let targetURL = EditorSession.fixExportExtension(url, format: options.format)
+            session.runExport(options: options, saveURL: targetURL)
+            self.close()
+        }
+    }
+
+    private func presentSavePanel(options: ExportOptions, title: String, onSave: @escaping (URL) -> Void) {
+        guard let session, let window else { return }
+        let panel = NSSavePanel()
+        panel.title = title
+        let baseName = session.documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
+        panel.nameFieldStringValue = baseName + "." + (options.format == "pdf" ? "pdf" : "html")
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            onSave(url)
         }
     }
 
