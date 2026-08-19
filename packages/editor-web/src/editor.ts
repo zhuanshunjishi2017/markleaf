@@ -173,8 +173,9 @@ const BlockHandle = Extension.create({
       },
       props: {
         handleDOMEvents: {
-          compositionstart() {
+          compositionstart(view) {
             blockHandleComposing = true
+            view.dispatch(view.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
             return false
           },
           compositionend(view) {
