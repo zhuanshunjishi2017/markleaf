@@ -437,7 +437,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         previewGeneration += 1
         let generation = previewGeneration
         let options = currentOptions()
-        pageCountLabel.stringValue = ""
+        // 保留上一份预览与页码，新预览生成完成后再替换，避免闪烁与页码消失。
         session.requestExportHTML(options: options) { [weak self] html in
             guard let self, generation == self.previewGeneration else { return }
             if options.format == "pdf" {

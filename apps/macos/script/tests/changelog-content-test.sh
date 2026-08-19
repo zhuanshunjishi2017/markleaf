@@ -14,6 +14,7 @@ assert_contains() {
 
 for file in "$ROOT_DIR"/Changelog/changelog.{zh-Hans,zh-Hant,en,ja}.md; do
   assert_contains "$file" "1.2.5"
+  assert_contains "$file" "1.2.6"
 done
 
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "源码模式支持撤销、重做"

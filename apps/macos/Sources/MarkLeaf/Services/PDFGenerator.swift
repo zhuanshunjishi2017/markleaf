@@ -38,8 +38,22 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var targetWindow: NSWindow?
     private var showsPrintPanel = true
     private var watchdog: DispatchWorkItem?
+    private var pendingStamp: StampContext?
     // 自持有：直到生成完成才释放（调用方为临时对象，无强引用会提前释放导致 delegate 失效）
     private var strongSelf: PDFGenerator?
+
+    private struct StampContext {
+        let saveURL: URL
+        let margins: ExportMargins
+        let headerText: String
+        let headerAlignment: String
+        let footerText: String
+        let footerAlignment: String
+        let fontFamily: String
+        let documentTitle: String
+        let bgHex: String
+        let textHex: String
+    }
 
     enum PrintError: LocalizedError {
         case timeout
@@ -105,7 +119,6 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         }
         self.watchdog = watchdog
         DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: watchdog)
-
         // 注入 CSS @page 规则：边距交给 CSS（createPDF 忽略 NSPrintInfo 边距），
         // 并让主题背景（--bg-primary）铺满整页（对齐 Windows fccc7ad 的 PDF 修复）。
         let pageRule = Self.injectPageMargins(
@@ -135,7 +148,9 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         headerFooterFontFamily: String = "",
         documentTitle: String = ""
     ) -> String {
-        var page = "@page { margin: \(margins.top)mm \(margins.right)mm \(margins.bottom)mm \(margins.left)mm; background-color: var(--bg-primary);"
+        // 用字面颜色替代 var(--bg-primary)，避免 WebKit 在 @page/根元素上解析自定义属性失败。
+        let background = Self.pageBackgroundHex(from: html) ?? "var(--bg-primary)"
+        var page = "@page { margin: \(margins.top)mm \(margins.right)mm \(margins.bottom)mm \(margins.left)mm; background-color: \(background);"
         page += marginBox(
             vertical: "top", alignment: headerAlignment, text: headerText,
             fontFamily: headerFooterFontFamily, documentTitle: documentTitle
@@ -145,7 +160,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             fontFamily: headerFooterFontFamily, documentTitle: documentTitle
         )
         page += " }"
-        let rule = page + "\nhtml { background: var(--bg-primary); }"
+        let rule = page + "\nhtml { background: \(background); }"
         if let range = html.range(of: "</style>") {
             return html.replacingCharacters(in: range, with: rule + "\n</style>")
         }
@@ -155,6 +170,42 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             return html.replacingCharacters(in: headRange, with: style + "</head>")
         }
         return "<style>\n" + rule + "\n</style>\n" + html
+    }
+
+    /// 从导出 HTML 的主题 CSS 中提取 `--bg-primary`（如 `#1E1E1E`），供 @page 与 WebView 背景使用。
+    private static func pageBackgroundHex(from html: String) -> String? {
+        let pattern = "--bg-primary\\s*:\\s*(#[0-9a-fA-F]{3,8})"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let valueRange = Range(match.range(at: 1), in: html) else { return nil }
+        return String(html[valueRange])
+    }
+
+    private static func color(fromHex hex: String) -> NSColor? {
+        var value = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard !value.isEmpty else { return nil }
+        if value.count == 3 || value.count == 4 {
+            value = value.map { "\($0)\($0)" }.joined()
+        }
+        guard value.count == 6 || value.count == 8,
+              let parsed = UInt64(value, radix: 16) else { return nil }
+        let shiftRed: UInt64 = value.count == 8 ? 24 : 16
+        let shiftGreen: UInt64 = value.count == 8 ? 16 : 8
+        let shiftBlue: UInt64 = value.count == 8 ? 8 : 0
+        let red = CGFloat((parsed >> shiftRed) & 0xFF) / 255
+        let green = CGFloat((parsed >> shiftGreen) & 0xFF) / 255
+        let blue = CGFloat((parsed >> shiftBlue) & 0xFF) / 255
+        let alpha = value.count == 8 ? CGFloat(parsed & 0xFF) / 255 : 1
+        return NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+    }
+
+    /// 从导出 HTML 的主题 CSS 中提取 `--text-primary`，供页眉/页脚文字颜色使用。
+    private static func pageTextHex(from html: String) -> String? {
+        let pattern = "--text-primary\\s*:\\s*(#[0-9a-fA-F]{3,8})"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let valueRange = Range(match.range(at: 1), in: html) else { return nil }
+        return String(html[valueRange])
     }
 
     private static func marginBox(
@@ -317,17 +368,31 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         let pageHTML = showsPanel ? html : Self.injectPageMargins(
             into: html,
             margins: margins,
-            headerText: headerText,
-            headerAlignment: headerAlignment,
-            footerText: footerText,
-            footerAlignment: footerAlignment,
-            headerFooterFontFamily: headerFooterFontFamily,
-            documentTitle: documentTitle
+            headerText: "",
+            headerAlignment: "",
+            footerText: "",
+            footerAlignment: "",
+            headerFooterFontFamily: "",
+            documentTitle: ""
         )
         let printHTML = Self.forcePrintBackgrounds(in: pageHTML)
         var adjustedHTML = Self.fixLocalImagePaths(in: printHTML)
         if printFriendly {
             adjustedHTML = Self.forcePrintFriendly(in: adjustedHTML)
+        }
+        if !showsPanel, let saveURL {
+            pendingStamp = StampContext(
+                saveURL: saveURL,
+                margins: margins,
+                headerText: headerText,
+                headerAlignment: headerAlignment,
+                footerText: footerText,
+                footerAlignment: footerAlignment,
+                fontFamily: headerFooterFontFamily,
+                documentTitle: documentTitle,
+                bgHex: Self.pageBackgroundHex(from: html) ?? "#FFFFFF",
+                textHex: Self.pageTextHex(from: html) ?? "#000000"
+            )
         }
         webView.loadHTMLString(adjustedHTML, baseURL: nil)
         AppLog.info("PDFGenerator: 打印 HTML 已加载 (\(html.count) 字符)")
@@ -403,7 +468,136 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
 
     @objc private func printDidRun(_ printOperation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
         AppLog.info("PDFGenerator: 打印面板结束 success=\(success)")
+        if success, !showsPrintPanel, let stamp = pendingStamp {
+            do {
+                var data = try Data(contentsOf: stamp.saveURL)
+                data = try Self.stampPageBackground(data: data, context: stamp)
+                try data.write(to: stamp.saveURL, options: .atomic)
+                AppLog.info("PDFGenerator: 已补漆页面边距并写入 \(stamp.saveURL.path)")
+            } catch {
+                AppLog.error("PDFGenerator: 补漆页面边距失败 \(error.localizedDescription)")
+            }
+        }
+        pendingStamp = nil
         finishPrint(.success(success))
+    }
+
+    /// WebKit 打印会把 @page/NSPrintInfo 边距区域渲染成不透明背景，CSS 无法覆盖。
+    /// 生成后对 PDF 补漆：整页填主题背景，再仅绘制原内容区（保留矢量文本），
+    /// 并按预设把页眉/页脚（含 {page}/{pages}）画到上下边距区。
+    private static func stampPageBackground(data: Data, context: StampContext) throws -> Data {
+        let bg = context.bgHex.lowercased()
+        let hasHeaderFooter = !context.headerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !context.footerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !hasHeaderFooter, bg == "#ffffff" || bg == "#fff" {
+            return data
+        }
+        guard let provider = CGDataProvider(data: data as CFData),
+              let source = CGPDFDocument(provider),
+              let firstPage = source.page(at: 1) else {
+            return data
+        }
+        var mediaBox = firstPage.getBoxRect(.mediaBox)
+        let mmToPt: CGFloat = 72.0 / 25.4
+        let top = CGFloat(context.margins.top) * mmToPt
+        let bottom = CGFloat(context.margins.bottom) * mmToPt
+        let left = CGFloat(context.margins.left) * mmToPt
+        let right = CGFloat(context.margins.right) * mmToPt
+        guard mediaBox.width > left + right, mediaBox.height > top + bottom,
+              let bgColor = color(fromHex: context.bgHex),
+              let textColor = color(fromHex: context.textHex) else {
+            return data
+        }
+        let contentRect = CGRect(
+            x: left,
+            y: bottom,
+            width: mediaBox.width - left - right,
+            height: mediaBox.height - top - bottom)
+
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("markleaf-stamp-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        guard let consumer = CGDataConsumer(url: tempURL as CFURL),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            return data
+        }
+        let pageCount = source.numberOfPages
+        for pageIndex in 1...pageCount {
+            guard let page = source.page(at: pageIndex) else { continue }
+            ctx.beginPDFPage(nil)
+            ctx.setFillColor(bgColor.cgColor)
+            ctx.fill(mediaBox)
+
+            ctx.saveGState()
+            ctx.clip(to: contentRect)
+            ctx.drawPDFPage(page)
+            ctx.restoreGState()
+
+            let nsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsContext
+            let font = Self.headerFooterFont(from: context.fontFamily)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: textColor,
+            ]
+            let header = Self.resolvePlaceholders(
+                context.headerText,
+                page: pageIndex,
+                pages: pageCount,
+                title: context.documentTitle)
+            let footer = Self.resolvePlaceholders(
+                context.footerText,
+                page: pageIndex,
+                pages: pageCount,
+                title: context.documentTitle)
+            if !header.isEmpty {
+                let string = NSAttributedString(string: header, attributes: attributes)
+                let size = string.size()
+                let x = Self.alignedX(size.width, alignment: context.headerAlignment, left: left, right: mediaBox.width - right)
+                string.draw(at: NSPoint(x: x, y: mediaBox.height - top + 4))
+            }
+            if !footer.isEmpty {
+                let string = NSAttributedString(string: footer, attributes: attributes)
+                let size = string.size()
+                let x = Self.alignedX(size.width, alignment: context.footerAlignment, left: left, right: mediaBox.width - right)
+                string.draw(at: NSPoint(x: x, y: bottom - 4 - size.height))
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            ctx.endPDFPage()
+        }
+        ctx.closePDF()
+        return try Data(contentsOf: tempURL)
+    }
+
+    private static func headerFooterFont(from family: String) -> NSFont {
+        let candidates = family
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \"'")) }
+            .filter { !$0.isEmpty }
+        for candidate in candidates {
+            if let font = NSFont(name: candidate, size: 10) {
+                return font
+            }
+        }
+        return NSFont.systemFont(ofSize: 10)
+    }
+
+    private static func resolvePlaceholders(_ text: String, page: Int, pages: Int, title: String) -> String {
+        text
+            .replacingOccurrences(of: "{document-title}", with: title)
+            .replacingOccurrences(of: "{title}", with: title)
+            .replacingOccurrences(of: "{page}", with: "\(page)")
+            .replacingOccurrences(of: "{pages}", with: "\(pages)")
+            .replacingOccurrences(of: "{total}", with: "\(pages)")
+    }
+
+    private static func alignedX(_ width: CGFloat, alignment: String, left: CGFloat, right: CGFloat) -> CGFloat {
+        switch alignment {
+        case "left": return left
+        case "right": return right - width
+        default: return (left + right - width) / 2
+        }
     }
 
     private func finishPrint(_ result: Result<Bool, Error>) {

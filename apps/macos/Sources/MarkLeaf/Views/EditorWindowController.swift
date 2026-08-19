@@ -287,19 +287,31 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func applyViewState() {
         guard let splitView, let sidebarView else { return }
         let sidebar = splitView.arrangedSubviews.first
+        let currentWidth = sidebar?.frame.width ?? 0
 
         // 侧边栏：平滑展开/收起（手动插值分隔线位置）
         if session.sidebarVisible {
-            sidebar?.isHidden = false
             let saved = SidebarLayout.clampedWorkspaceWidth(
                 SettingsService.shared.settings.workspaceWidth
             )
-            animateSidebar(to: saved) {}
-        } else {
             sidebar?.isHidden = false
-            animateSidebar(to: 0) { [weak self] in
+            if abs(currentWidth - saved) > 1 {
+                animateSidebar(to: saved) {}
+            } else {
+                // 已在目标宽度：直接对齐，避免打开文件时重复播放展开动画。
+                splitView.setPosition(saved, ofDividerAt: 0)
+            }
+        } else {
+            if abs(currentWidth) > 1 {
+                sidebar?.isHidden = false
+                animateSidebar(to: 0) { [weak self] in
+                    sidebar?.isHidden = true
+                    self?.isAnimatingSidebar = false
+                }
+            } else {
+                // 已在收起状态：不再播放收起动画。
                 sidebar?.isHidden = true
-                self?.isAnimatingSidebar = false
+                splitView.setPosition(0, ofDividerAt: 0)
             }
         }
 

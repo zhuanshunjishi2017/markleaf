@@ -12,10 +12,24 @@
 - Combine the HTML and PDF export windows, and add Export with Last Settings.
 - Persist export settings; PDF export supports headers and footers with title, page, total-page, and custom placeholders.
 - Add the light Saltlemon (`saltlemon`) color theme.
+
+## 1.2.6 — 2026-08-19
+
+### New
+
+- Add Export with Last Settings to the bottom of the export window, reusing the previous export settings directly.
+- Header and footer custom text fields now use a rounded style and appear below the preset popup only when Custom is selected, with other options shifting down smoothly.
+- Unify the clipboard commands in the Edit menu and context menus as Cut, Copy, Paste, Paste as Plain Text, and Copy As, automatically disabled based on selection, clipboard content, and read-only state.
 - Add footnote support: `[^x]` renders as a superscript reference and `[^x]:` paragraphs as footnote definitions, exported with dedicated structure in HTML/PDF.
 - Add Insert Footnote to the Paragraph menu: enter a number and text to insert a reference at the cursor and a definition at the end of the document.
 - ⌃-click a footnote reference to jump to its definition, with a clear warning when the definition is missing.
 - Add Reset Footnote Number to the footnote definition context menu to rename the label across references and definitions.
+
+### Fixes
+
+- Fix the sidebar collapse animation replaying when opening a new file while the sidebar is hidden.
+- Fix dark-theme PDF export leaving the page margin area white while only the content area is dark.
+- Fix the export preview flickering and the page-count label disappearing and reappearing on regeneration.
 
 ### Changes
 
