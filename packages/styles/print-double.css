@@ -30,6 +30,10 @@
   color: var(--theme-dark);
 }
 
+.markleaf-style-print-double .markleaf-document .markleaf-footnote-ref {
+  color: var(--theme-light);
+}
+
 .markleaf-style-print-double .markleaf-document table {
   border: 1.5px solid var(--theme-dark);
 }

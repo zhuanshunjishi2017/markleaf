@@ -26,6 +26,7 @@ internal sealed class NativeMenuService : IDisposable
         AppCommand.ToggleOrderedList,
         AppCommand.ToggleTaskList,
         AppCommand.InsertHorizontalRule,
+        AppCommand.InsertFootnote,
         AppCommand.InsertTable,
         AppCommand.ClearFormat,
     ];
@@ -256,6 +257,7 @@ internal sealed class NativeMenuService : IDisposable
 
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
+            AppendCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.paragraph.insertFootnote"));
             AppendCommand(menu, AppCommand.InsertTable, Loc.Get("menu.paragraph.insertTable"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
@@ -388,6 +390,28 @@ internal sealed class NativeMenuService : IDisposable
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
                 commands.AddRange([AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
+            }
+            else if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
+            {
+                AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+
+                var copyPasteAs = CreateMenu(true);
+                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
+                AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendSeparator(copyPasteAs);
+                AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
+                AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
+
+                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
+                commands.AddRange([
+                    AppCommand.ResetFootnoteLabel,
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
+                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
             else if (status.InTable)
             {
@@ -572,6 +596,9 @@ internal sealed class NativeMenuService : IDisposable
             AppendPopup(menu, Loc.Get("menu.paragraph.table"), table);
 
             AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.paragraph.insertFootnote"));
+            AppendSeparator(menu);
+
             AppendCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
             AppendCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.paragraph.insertLineAfter"));
             AppendSeparator(menu);

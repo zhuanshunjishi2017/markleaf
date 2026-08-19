@@ -1,7 +1,7 @@
-import { Editor, Extension, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, Node, ResizableNodeView } from '@tiptap/core'
 import { Selection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { Decoration, DecorationSet, type EditorView as ProseMirrorEditorView } from '@tiptap/pm/view'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { DOMSerializer } from '@tiptap/pm/model'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
@@ -31,6 +31,10 @@ type ImageMetadata = {
 const findHighlightKey = new PluginKey<FindHighlightState>('markleaf-find-highlight')
 type TextMatch = { from: number; to: number }
 type FindHighlightState = { matches: TextMatch[]; current: number }
+type FootnoteDefinition = { label: string; body: string }
+const EMPTY_PARAGRAPH_MARKDOWN = '&nbsp;'
+const NBSP_CHAR = '\u00A0'
+const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
 
 const FindHighlight = Extension.create({
   name: 'markleafFindHighlight',
@@ -90,9 +94,10 @@ const blockHandleKey = new PluginKey('markleaf-block-handle')
 
 export type BlockHandleRequest = { clientX: number; clientY: number; position: number }
 
-type BlockHandleState = { activeBlock: number | null; composing: boolean }
+type BlockHandleState = { activeBlock: number | null }
 type BlockHandleMeta = Partial<BlockHandleState>
 let blockHandleVisible = true
+let blockHandleComposing = false
 
 let blockTypeLabels: Record<string, string> = {}
 
@@ -111,6 +116,7 @@ function getBlockTypeLabel(state: Editor['state'], from: number): string {
   for (let depth = $from.depth; depth >= 1; depth -= 1) {
     const node = $from.node(depth)
     const name = node.type.name
+    if (isFootnoteDefinitionBlock(node)) return blockTypeLabels.blockFootnote ?? '注'
     if (name === 'heading') return blockTypeLabels[`blockHeading${node.attrs.level}`] ?? 'H'
     if (name === 'bulletList') return blockTypeLabels.blockBulletList ?? '•'
     if (name === 'orderedList') return blockTypeLabels.blockOrderedList ?? '1.'
@@ -121,13 +127,44 @@ function getBlockTypeLabel(state: Editor['state'], from: number): string {
   return blockTypeLabels.blockParagraph ?? '¶'
 }
 
+function isFootnoteDefinitionBlock(node: { type: { name: string }; textContent: string }): boolean {
+  return node.type.name === 'paragraph' && parseFootnoteDefinitionText(node.textContent) !== null
+}
+
+function parseFootnoteDefinitionText(text: string): FootnoteDefinition | null {
+  const match = new RegExp(`^\\s*${FOOTNOTE_DEFINITION_SENTINEL}?\\[\\^([^\\]\\n]+)\\]:[ \\t]*(.*)$`, 's').exec(text)
+  if (!match) return null
+  return {
+    label: match[1]!.trim(),
+    body: match[2] ?? '',
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function protectFootnoteDefinitionsForVisualMarkdown(markdown: string): string {
+  return markdown.replace(
+    /(^|\n)( {0,3})(\[\^[^\]\n]+\]:)/g,
+    (_match, lineStart: string, indent: string, marker: string) => `${lineStart}${indent}${FOOTNOTE_DEFINITION_SENTINEL}${marker}`,
+  )
+}
+
+function getNodeText(node: any): string {
+  if (typeof node?.textContent === 'string') return node.textContent
+  if (typeof node?.text === 'string') return node.text
+  const content = Array.isArray(node?.content) ? node.content : []
+  return content.map(getNodeText).join('')
+}
+
 const BlockHandle = Extension.create({
   name: 'markleafBlockHandle',
   addProseMirrorPlugins() {
     return [new Plugin({
       key: blockHandleKey,
       state: {
-        init: (): BlockHandleState => ({ activeBlock: null, composing: false }),
+        init: (): BlockHandleState => ({ activeBlock: null }),
         apply(transaction, previous): BlockHandleState {
           const update = transaction.getMeta(blockHandleKey) as BlockHandleMeta | undefined
           if (update) return { ...previous, ...update }
@@ -136,21 +173,24 @@ const BlockHandle = Extension.create({
       },
       props: {
         handleDOMEvents: {
-          compositionstart(view) {
-            setBlockHandleComposing(view, true)
+          compositionstart() {
+            blockHandleComposing = true
             return false
           },
           compositionend(view) {
             window.setTimeout(() => {
-              if (!view.isDestroyed) setBlockHandleComposing(view, false)
+              blockHandleComposing = false
+              if (!view.isDestroyed) {
+                view.dispatch(view.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
+              }
             }, 0)
             return false
           },
         },
         decorations(state) {
           if (!blockHandleVisible) return DecorationSet.empty
-          const { activeBlock, composing } = blockHandleKey.getState(state) ?? { activeBlock: null, composing: false }
-          if (composing) return DecorationSet.empty
+          const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
+          if (blockHandleComposing) return DecorationSet.empty
           const decorations: Decoration[] = []
           const { from, empty } = state.selection
           const $from = state.doc.resolve(from)
@@ -241,12 +281,6 @@ export function setBlockHighlight(editor: Editor, position: number | null): void
 export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
   blockHandleVisible = visible
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
-}
-
-function setBlockHandleComposing(view: ProseMirrorEditorView, composing: boolean): void {
-  const state = blockHandleKey.getState(view.state)
-  if (state?.composing === composing) return
-  view.dispatch(view.state.tr.setMeta(blockHandleKey, { composing } satisfies BlockHandleMeta))
 }
 
 function decodeImageCaption(value: string | undefined): string | null {
@@ -677,6 +711,7 @@ export type EditorCommandState = {
   mathLatex: string | null
   mathNumber: string | null
   caption: string | null
+  footnoteDefinitionLabel: string | null
   canStartFormatPainter: boolean
   formatPainterArmed: boolean
 }
@@ -692,7 +727,7 @@ export type EditorStatus = {
   codeLineCount: number
   paragraphCount: number
   blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
-    | 'blockquote' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image'
+    | 'blockquote' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image' | 'footnoteDefinition'
   line: number
   column: number
 }
@@ -792,6 +827,139 @@ function createCaptionElement(caption: string, kind: 'table' | 'image'): HTMLDiv
   return el
 }
 
+const FootnoteReference = Node.create({
+  name: 'footnoteReference',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: false,
+
+  addAttributes() {
+    return {
+      label: {
+        default: '',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-footnote-ref') ?? '',
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          'data-footnote-ref': attributes.label ?? '',
+        }),
+      },
+    }
+  },
+
+  parseHTML() {
+    return [{ tag: 'sup[data-footnote-ref]' }]
+  },
+
+  renderHTML({ node }) {
+    const label = typeof node.attrs.label === 'string' ? node.attrs.label : ''
+    return ['sup', { 'data-footnote-ref': label, class: 'markleaf-footnote-ref' }, `[${label}]`]
+  },
+
+  renderMarkdown(node) {
+    const label = typeof node.attrs?.label === 'string' ? node.attrs.label : ''
+    return `[^${label}]`
+  },
+
+  parseMarkdown(token, helpers) {
+    return helpers.createNode('footnoteReference', { label: token.text ?? '' })
+  },
+
+  markdownTokenizer: {
+    name: 'footnoteReference',
+    level: 'inline',
+    start: (src: string) => src.indexOf('[^'),
+    tokenize: (src: string) => {
+      const match = /^\[\^([^\]\n]+)\](?!:)/.exec(src)
+      if (!match) return undefined
+      return { type: 'footnoteReference', raw: match[0], text: match[1] }
+    },
+  },
+})
+
+const MarkLeafParagraph = Node.create({
+  name: 'paragraph',
+  priority: 1000,
+  group: 'block',
+  content: 'inline*',
+
+  parseHTML() {
+    return [{ tag: 'p' }]
+  },
+
+  renderHTML({ HTMLAttributes }: any) {
+    return ['p', HTMLAttributes, 0]
+  },
+
+  parseMarkdown(token: any, helpers: any) {
+    const tokens = token.tokens || []
+    if (tokens.length === 1 && tokens[0].type === 'image') {
+      return helpers.parseChildren([tokens[0]])
+    }
+    const content = helpers.parseInline(tokens)
+    const explicitEmpty = tokens.length === 1
+      && tokens[0].type === 'text'
+      && (tokens[0].raw === EMPTY_PARAGRAPH_MARKDOWN
+        || tokens[0].text === EMPTY_PARAGRAPH_MARKDOWN
+        || tokens[0].raw === NBSP_CHAR
+        || tokens[0].text === NBSP_CHAR)
+    if (explicitEmpty && content.length === 1 && content[0].type === 'text'
+      && (content[0].text === EMPTY_PARAGRAPH_MARKDOWN || content[0].text === NBSP_CHAR)) {
+      return helpers.createNode('paragraph', undefined, [])
+    }
+    return helpers.createNode('paragraph', undefined, content)
+  },
+
+  renderMarkdown(node: any, helpers: any, context: any) {
+    const text = getNodeText(node)
+    const footnote = parseFootnoteDefinitionText(text)
+    if (!footnote) {
+      const content = Array.isArray(node.content) ? node.content : []
+      if (content.length === 0) {
+        const previousContent = Array.isArray(context?.previousNode?.content) ? context.previousNode.content : []
+        const previousNodeIsEmptyParagraph = context?.previousNode?.type === 'paragraph' && previousContent.length === 0
+        return previousNodeIsEmptyParagraph ? EMPTY_PARAGRAPH_MARKDOWN : ''
+      }
+      return helpers.renderChildren(content)
+    }
+    return `[^${footnote.label}]: ${footnote.body.trim()}`
+  },
+
+  addCommands(): any {
+    return {
+      setParagraph: () => ({ commands }: any) => commands.setNode(this.name),
+    }
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Alt-0': () => this.editor.commands.setParagraph(),
+    }
+  },
+})
+
+const FootnoteDefinitionDecorations = Extension.create({
+  name: 'markleafFootnoteDefinitionDecorations',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const decorations: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            const footnote = parseFootnoteDefinitionText(node.textContent)
+            if (node.type.name !== 'paragraph' || !footnote) return
+            const match = new RegExp(`^\\s*${FOOTNOTE_DEFINITION_SENTINEL}?\\[\\^[^\\]\\n]+\\]:[ \\t]*`).exec(node.textContent)
+            decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'markleaf-footnote-def', 'data-footnote-label': footnote.label }))
+            if (match) {
+              decorations.push(Decoration.inline(pos + 1, pos + 1 + match[0].length, { class: 'markleaf-footnote-def-prefix' }))
+            }
+          })
+          return decorations.length > 0 ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
 // 表格/图片标题：标题存在节点 caption 属性中，用 widget decoration 渲染。
 // 表格标题在表格之上（side:-1）、图片标题在图片之下（side:1），均不参与正文流。
 const Caption = Extension.create({
@@ -822,7 +990,9 @@ const Caption = Extension.create({
 export const editorExtensions = [
   StarterKit.configure({
     link: false,
+    paragraph: false,
   }),
+  MarkLeafParagraph,
   Link.configure({
     openOnClick: false,
     autolink: false,
@@ -833,9 +1003,11 @@ export const editorExtensions = [
   MarkLeafTable.configure({
     resizable: false,
   }),
+  FootnoteReference,
   TableRow,
   TableHeader,
   TableCell,
+  FootnoteDefinitionDecorations,
   Caption,
   TaskList,
   TaskItem.configure({ nested: true }),
@@ -856,7 +1028,7 @@ export function createEditor(element: HTMLElement, content = '', readOnly = fals
   const editor = new Editor({
     element,
     extensions: editorExtensions,
-    content,
+    content: protectFootnoteDefinitionsForVisualMarkdown(content),
     contentType: 'markdown',
     autofocus: false,
     editable: !readOnly,
@@ -929,6 +1101,31 @@ export function restoreVisualSelection(editor: Editor, selection: VisualSelectio
   }
 }
 
+export function scrollToFootnoteDefinition(editor: Editor, label: string): boolean {
+  const normalized = label.trim()
+  if (!normalized) return false
+
+  let targetPosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    const footnote = parseFootnoteDefinitionText(node.textContent)
+    if (node.type.name === 'paragraph'
+      && footnote
+      && footnote.label.trim() === normalized) {
+      targetPosition = position
+      return false
+    }
+    return true
+  })
+
+  if (targetPosition === null) return false
+  const textPosition = Math.min(targetPosition + 1, editor.state.doc.content.size)
+  editor.commands.setTextSelection(textPosition)
+  editor.commands.focus()
+  scrollBlockPositionIntoCenter(editor, targetPosition)
+  setBlockHighlight(editor, targetPosition)
+  return true
+}
+
 export function getSourceModeJumpTarget(editor: Editor): SourceModeJumpTarget {
   const tableIndex = getSelectedTableIndex(editor)
   if (tableIndex !== null) return { type: 'tableEnd', tableIndex }
@@ -944,6 +1141,40 @@ function scrollEditorPositionIntoCenter(editor: Editor, position: number): void 
   const viewportCenter = window.innerHeight / 2
   const positionCenter = (coords.top + coords.bottom) / 2
   scrollPageTo(Math.max(0, currentTop + positionCenter - viewportCenter))
+}
+
+function scrollBlockPositionIntoCenter(editor: Editor, position: number): void {
+  const scroll = () => {
+    const node = editor.view.nodeDOM(position)
+    if (node instanceof HTMLElement) {
+      node.scrollIntoView({ block: 'center', inline: 'nearest' })
+      centerElementInAvailableScrollContainers(node)
+      return
+    }
+    scrollEditorPositionIntoCenter(editor, position + 1)
+  }
+  scroll()
+  window.requestAnimationFrame(scroll)
+}
+
+function centerElementInAvailableScrollContainers(element: HTMLElement): void {
+  const rect = element.getBoundingClientRect()
+  const elementCenter = (rect.top + rect.bottom) / 2
+  const viewportDelta = elementCenter - window.innerHeight / 2
+  if (Math.abs(viewportDelta) > 1) {
+    const scrollingElement = document.scrollingElement ?? document.documentElement
+    const currentTop = scrollingElement.scrollTop || document.body.scrollTop || document.documentElement.scrollTop
+    scrollPageTo(Math.max(0, currentTop + viewportDelta))
+  }
+
+  const editorRoot = document.getElementById('editor')
+  if (!editorRoot || editorRoot.scrollHeight <= editorRoot.clientHeight) return
+
+  const rootRect = editorRoot.getBoundingClientRect()
+  const rootDelta = elementCenter - (rootRect.top + rootRect.height / 2)
+  if (Math.abs(rootDelta) > 1) {
+    editorRoot.scrollTop = Math.max(0, editorRoot.scrollTop + rootDelta)
+  }
 }
 
 function getSelectedTableIndex(editor: Editor): number | null {
@@ -1345,6 +1576,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     ? (typeof selectedMath.node.attrs.number === 'string' && selectedMath.node.attrs.number.length > 0 ? selectedMath.node.attrs.number : null)
     : null
   const selectedImage = getSelectedImage(editor)
+  const footnoteDefinition = parseFootnoteDefinitionText(editor.state.selection.$from.parent.textContent)
   const caption = selectedImage
     ? (typeof selectedImage.attrs.caption === 'string' && selectedImage.attrs.caption.length > 0 ? selectedImage.attrs.caption : null)
     : (() => {
@@ -1377,6 +1609,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     mathLatex: selectedMath?.node.textContent ?? null,
     mathNumber,
     caption,
+    footnoteDefinitionLabel: footnoteDefinition?.label ?? null,
     canStartFormatPainter: false,
     formatPainterArmed: false,
   }
@@ -1454,6 +1687,7 @@ function parseTableSize(text?: string): { rows: number; cols: number } {
 
 function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
   if (getSelectedImage(editor)) return 'image'
+  if (isFootnoteDefinitionBlock(editor.state.selection.$from.parent)) return 'footnoteDefinition'
   if (editor.isActive('table')) return 'table'
   if (editor.isActive('taskList')) return 'taskList'
   if (editor.isActive('bulletList')) return 'bulletList'
@@ -1553,6 +1787,8 @@ export function executeEditorCommand(
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
+    insertFootnote: () => insertFootnote(editor, text),
+    resetFootnoteLabel: () => resetFootnoteLabel(editor, text),
     updateMath: () => updateMath(editor, text),
     setMathNumber: () => changeMathNumber(editor, text),
     convertMath: () => convertMath(editor),
@@ -1820,6 +2056,88 @@ function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): bo
     type: nodeType,
     content: [{ type: 'text', text: latex }],
   }).run()
+}
+
+function insertFootnote(editor: Editor, text?: string): boolean {
+  let label = ''
+  let note = ''
+  try {
+    const payload = JSON.parse(text ?? '{}') as { label?: unknown; note?: unknown }
+    label = typeof payload.label === 'string' ? payload.label.trim() : ''
+    note = typeof payload.note === 'string' ? payload.note.trim() : ''
+  } catch {
+    return false
+  }
+  if (!label || !note) return false
+
+  const insertReference = editor.chain().focus().insertContent({
+    type: 'footnoteReference',
+    attrs: { label },
+  }).run()
+  if (!insertReference) return false
+
+  const docEnd = editor.state.doc.content.size
+  return editor.commands.insertContentAt(docEnd, [
+    {
+      type: 'paragraph',
+      content: [{ type: 'text', text: `${FOOTNOTE_DEFINITION_SENTINEL}[^${label}]: ${note}` }],
+    },
+  ])
+}
+
+function resetFootnoteLabel(editor: Editor, text?: string): boolean {
+  let oldLabel = ''
+  let newLabel = ''
+  try {
+    const payload = JSON.parse(text ?? '{}') as { oldLabel?: unknown; newLabel?: unknown }
+    oldLabel = typeof payload.oldLabel === 'string' ? payload.oldLabel.trim() : ''
+    newLabel = typeof payload.newLabel === 'string' ? payload.newLabel.trim() : ''
+  } catch {
+    return false
+  }
+  if (!oldLabel || !newLabel || oldLabel === newLabel) return false
+
+  const escaped = escapeRegExp(oldLabel)
+  const marker = new RegExp(`\\[\\^${escaped}\\](?=:)`, 'g')
+  const reference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
+  const transactions: Array<{ from: number; to: number; text: string }> = []
+
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name === 'footnoteReference') {
+      if (node.attrs.label === oldLabel) {
+        transactions.push({ from: position, to: position + node.nodeSize, text: '' })
+      }
+      return false
+    }
+    if (!node.isText || !node.text) return
+
+    for (const match of node.text.matchAll(marker)) {
+      transactions.push({
+        from: position + (match.index ?? 0),
+        to: position + (match.index ?? 0) + match[0].length,
+        text: `[^${newLabel}]`,
+      })
+    }
+    for (const match of node.text.matchAll(reference)) {
+      transactions.push({
+        from: position + (match.index ?? 0),
+        to: position + (match.index ?? 0) + match[0].length,
+        text: `[^${newLabel}]`,
+      })
+    }
+  })
+
+  let tr = editor.state.tr
+  for (const change of transactions.sort((a, b) => b.from - a.from)) {
+    if (change.text) {
+      tr = tr.insertText(change.text, change.from, change.to)
+    } else {
+      tr = tr.setNodeMarkup(change.from, undefined, { label: newLabel })
+    }
+  }
+  if (!tr.docChanged) return false
+  editor.view.dispatch(tr.scrollIntoView())
+  return true
 }
 
 type SelectedMathNode = { type: { name: string }; textContent: string; attrs: Record<string, unknown> }

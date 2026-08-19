@@ -20,8 +20,8 @@ internal sealed class TextInputDialog : Form
 
         _input.Text = initialValue;
         _input.SelectAll();
-        var okButton = new Button { AutoSize = true, Text = "确定", DialogResult = DialogResult.OK };
-        var cancelButton = new Button { AutoSize = true, Text = "取消", DialogResult = DialogResult.Cancel };
+        var okButton = new Button { AutoSize = true, Text = MarkLeaf.Services.Loc.Get("common.ok"), DialogResult = DialogResult.OK };
+        var cancelButton = new Button { AutoSize = true, Text = MarkLeaf.Services.Loc.Get("common.cancel"), DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel
         {
             AutoSize = true,

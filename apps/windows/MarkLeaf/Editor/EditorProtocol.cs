@@ -35,6 +35,7 @@ public static class EditorProtocol
         "exportContent",
         "zoomWheel",
         "unsafeEmphasisRequested",
+        "footnoteDefinitionMissing",
         "error",
     ];
 
@@ -179,6 +180,7 @@ public static class EditorProtocol
             "exportContent" => HasProperty(payload, "html", JsonValueKind.String),
             "zoomWheel" => HasNonZeroNumber(payload, "deltaY"),
             "unsafeEmphasisRequested" => HasUnsafeEmphasisPayload(payload),
+            "footnoteDefinitionMissing" => HasProperty(payload, "label", JsonValueKind.String),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
@@ -235,6 +237,7 @@ public static class EditorProtocol
             && HasNullableString(payload, "mathLatex")
             && HasNullableString(payload, "mathNumber")
             && HasNullableString(payload, "caption")
+            && HasNullableString(payload, "footnoteDefinitionLabel")
             && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
             && HasOptionalBooleanProperty(payload, "formatPainterArmed")
             && HasOptionalBooleanProperty(payload, "readOnly");
@@ -305,7 +308,8 @@ public static class EditorProtocol
 
         return payload.GetProperty("blockType").GetString() is
             "paragraph" or "heading1" or "heading2" or "heading3" or "heading4" or "heading5" or "heading6"
-            or "blockquote" or "codeBlock" or "bulletList" or "orderedList" or "taskList" or "table" or "image";
+            or "blockquote" or "codeBlock" or "bulletList" or "orderedList" or "taskList" or "table" or "image"
+            or "footnoteDefinition";
     }
 
     private static bool HasNonNegativeInteger(JsonElement payload, string name)

@@ -102,7 +102,8 @@ internal sealed partial class MainForm
             DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
-            FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode);
+            FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
+            FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
             && context.EditorReady
@@ -262,6 +263,12 @@ internal sealed partial class MainForm
             case AppCommand.InsertMathBlock:
                 InsertMath(isBlock: true);
                 break;
+            case AppCommand.InsertFootnote:
+                InsertFootnote();
+                break;
+            case AppCommand.ResetFootnoteLabel:
+                ResetFootnoteLabel();
+                break;
             case AppCommand.EditMath:
                 EditMath();
                 break;
@@ -392,6 +399,8 @@ internal sealed partial class MainForm
             AppCommand.InsertLineAfter => "insertLineAfter",
             AppCommand.InsertMathInline => "insertMathInline",
             AppCommand.InsertMathBlock => "insertMathBlock",
+            AppCommand.InsertFootnote => "insertFootnote",
+            AppCommand.ResetFootnoteLabel => "resetFootnoteLabel",
             AppCommand.SelectAll => "selectAll",
             AppCommand.ExitCode => "exitCode",
             AppCommand.ConvertMath => "convertMath",
@@ -410,7 +419,8 @@ internal sealed partial class MainForm
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
-            || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock
+            || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertFootnote
+                or AppCommand.ResetFootnoteLabel
             || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
                 or AppCommand.DeleteMath or AppCommand.EditMath
             || command is AppCommand.ChangeImage or AppCommand.SaveImageAs
@@ -509,6 +519,16 @@ internal sealed partial class MainForm
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
+    }
+
+    private void OnFootnoteDefinitionMissing(object? sender, EventArgs e)
+    {
+        ShowMessage(
+            this,
+            Loc.Get("dialog.footnoteDefinitionMissing"),
+            "MarkLeaf",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private async Task ExecuteClipboardCopyAsync(ClipboardCopyMode mode, bool cut)

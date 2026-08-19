@@ -275,6 +275,16 @@
   text-align: center;
 }
 
+.markleaf-style-print .markleaf-document .markleaf-footnote-def {
+  color: var(--text-primary);
+  font-size: calc(var(--ml-font-size) * 15 / 16);
+  text-indent: 0;
+  padding-left: 0;
+}
+
+.markleaf-style-print .markleaf-document .markleaf-footnote-ref {
+  color: var(--text-primary);
+}
 
 html[lang="ja"] .markleaf-style-print .markleaf-document,
 html[lang="ja"] .markleaf-style-print .markleaf-document p {

@@ -29,6 +29,7 @@ internal static class StatusBarFormatter
             "taskList" => Loc.Get("statusBar.blockType.taskList"),
             "table" => Loc.Get("statusBar.blockType.table"),
             "image" => Loc.Get("statusBar.blockType.image"),
+            "footnoteDefinition" => Loc.Get("statusBar.blockType.footnote"),
             _ => Loc.Get("statusBar.blockType.paragraph"),
         };
     }

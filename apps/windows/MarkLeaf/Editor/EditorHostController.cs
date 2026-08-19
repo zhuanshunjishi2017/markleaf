@@ -69,6 +69,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<UnsafeEmphasisRequest>? UnsafeEmphasisRequested;
 
+    public event EventHandler? FootnoteDefinitionMissing;
+
     public EditorHostController(
         WebView2 webView,
         EditorLoadingView loadingView,
@@ -357,6 +359,7 @@ internal sealed class EditorHostController : IDisposable
             blockBlockquote = Loc.Get("blockHandle.blockquote"),
             blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
             blockTable = Loc.Get("blockHandle.table"),
+            blockFootnote = Loc.Get("blockHandle.footnote"),
             formatPromoteHeading = Loc.Get("formatMenu.promoteHeading"),
             formatDemoteHeading = Loc.Get("formatMenu.demoteHeading"),
         };
@@ -1064,6 +1067,9 @@ internal sealed class EditorHostController : IDisposable
                     new UnsafeEmphasisRequest(
                         message.RequestId ?? string.Empty,
                         message.Payload.GetProperty("kind").GetString() ?? "bold"));
+                break;
+            case "footnoteDefinitionMissing":
+                FootnoteDefinitionMissing?.Invoke(this, EventArgs.Empty);
                 break;
             case "snapshot":
                 if (_session.CompleteRequest(message.RequestId, "snapshot"))

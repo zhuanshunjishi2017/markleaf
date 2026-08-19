@@ -37,6 +37,7 @@ export type EditorMessage = {
     | 'exportContent'
     | 'zoomWheel'
     | 'unsafeEmphasisRequested'
+    | 'footnoteDefinitionMissing'
     | 'error'
   requestId?: string
   documentId: string

@@ -62,6 +62,8 @@ public static class CommandStateResolver
             AppCommand.ToggleOrderedList => new(context.EditorReady && !context.ReadOnly, context.OrderedListActive),
             AppCommand.ToggleTaskList => new(context.EditorReady && !context.ReadOnly, context.TaskListActive),
             AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.InsertFootnote => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.ResetFootnoteLabel => new(context.EditorReady && !context.ReadOnly && !string.IsNullOrWhiteSpace(context.FootnoteDefinitionLabel)),
             AppCommand.ClearFormat => new(context.EditorReady && !context.ReadOnly),
             AppCommand.FormatPainter => new(
                 context.EditorReady && !context.ReadOnly && (context.CanStartFormatPainter || context.FormatPainterArmed),

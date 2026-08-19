@@ -31,6 +31,8 @@ internal static class CommandStatusFormatter
             AppCommand.ToggleTaskList => Loc.Get("cmd.taskList"),
             AppCommand.InsertHorizontalRule => Loc.Get("cmd.horizontalRule"),
             AppCommand.InsertTable => Loc.Get("cmd.insertTable"),
+            AppCommand.InsertFootnote => Loc.Get("cmd.insertFootnote"),
+            AppCommand.ResetFootnoteLabel => Loc.Get("cmd.resetFootnoteLabel"),
             AppCommand.AddTableRowBefore => Loc.Get("cmd.addRowAbove"),
             AppCommand.AddTableRowAfter => Loc.Get("cmd.addRowBelow"),
             AppCommand.DeleteTableRow => Loc.Get("cmd.deleteRow"),

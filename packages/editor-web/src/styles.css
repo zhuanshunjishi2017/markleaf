@@ -97,6 +97,46 @@ body {
   user-select: none;
 }
 
+.markleaf-footnote-ref {
+  color: var(--theme-dark, currentColor);
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.markleaf-footnote-def {
+  color: var(--text-secondary, #555555);
+  font-size: calc(var(--ml-font-size) * 0.875);
+  padding-top: 0.15em;
+}
+
+.markleaf-footnote-def::before {
+  content: '[' attr(data-footnote-label) '] ';
+  color: currentColor;
+  font-weight: 600;
+  user-select: none;
+}
+
+.markleaf-footnote-def-export::before {
+  content: none;
+}
+
+.markleaf-footnote-def > span {
+  color: var(--text-tertiary, #777777);
+  font-weight: 600;
+  user-select: none;
+}
+
+.markleaf-footnote-def > .markleaf-footnote-def-label {
+  color: currentColor;
+  font-weight: 600;
+  user-select: none;
+}
+
+.markleaf-footnote-def-prefix {
+  display: none;
+}
+
 .find-bar {
   position: sticky;
   z-index: 10;

@@ -84,6 +84,8 @@ public enum AppCommand
     InsertLineAfter,
     InsertMathInline,
     InsertMathBlock,
+    InsertFootnote = 0x1318,
+    ResetFootnoteLabel,
 
     ToggleSidebar = 0x1301,
     ViewTree = 0x1302,
@@ -155,4 +157,5 @@ public readonly record struct CommandContext(
     bool FormatPainterArmed = false,
     bool DocumentSaved = false,
     bool StatusBarVisible = true,
-    bool FollowSystemColorMode = false);
+    bool FollowSystemColorMode = false,
+    string? FootnoteDefinitionLabel = null);

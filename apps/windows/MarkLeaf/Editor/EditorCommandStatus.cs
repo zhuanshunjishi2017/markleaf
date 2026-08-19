@@ -28,13 +28,14 @@ internal sealed record EditorCommandStatus(
     string? MathLatex,
     string? MathNumber,
     string? Caption,
+    string? FootnoteDefinitionLabel,
     bool CanStartFormatPainter,
     bool FormatPainterArmed,
     bool ReadOnly)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false, false, false, null, null, null, false, false, false);
+        false, false, null, false, false, false, false, null, null, null, null, false, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -73,6 +74,9 @@ internal sealed record EditorCommandStatus(
                 : null,
             payload.TryGetProperty("caption", out var captionProp) && captionProp.ValueKind == JsonValueKind.String
                 ? captionProp.GetString()
+                : null,
+            payload.TryGetProperty("footnoteDefinitionLabel", out var footnoteProp) && footnoteProp.ValueKind == JsonValueKind.String
+                ? footnoteProp.GetString()
                 : null,
             payload.TryGetProperty("canStartFormatPainter", out var canStart) && canStart.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True,

@@ -78,6 +78,7 @@ internal sealed partial class MainForm
         _editorHost.FilesDropped += OnEditorFilesDropped;
         _editorHost.PasteImageRequested += OnEditorPasteImageRequested;
         _editorHost.UnsafeEmphasisRequested += OnUnsafeEmphasisRequested;
+        _editorHost.FootnoteDefinitionMissing += OnFootnoteDefinitionMissing;
         _editorHost.ZoomWheelRequested += (_, deltaY) =>
         {
             if (!_settings.Appearance.CtrlWheelZoom)
