@@ -54,6 +54,9 @@ describe('paragraph block handle visibility', () => {
 
     editor.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
 
+    // compositionstart 不直接 dispatch；手柄在后续正常输入事务刷新 decoration 时自然隐藏。
+    editor.view.dispatch(editor.state.tr.insertText('a', 1))
+
     expect(editor.view.dom.querySelector('.ml-block-handle')).toBeNull()
 
     editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))

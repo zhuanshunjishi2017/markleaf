@@ -185,9 +185,10 @@ const BlockHandle = Extension.create({
       },
       props: {
         handleDOMEvents: {
-          compositionstart(view) {
+          compositionstart() {
+            // 仅记录标志，不在此处 dispatch：立即 dispatch 会干扰 IME 组合输入的 DOM 同步，
+            // 导致首个拼音字符被额外保留。手柄会在后续正常输入事务刷新 decoration 时自然隐藏。
             blockHandleComposing = true
-            view.dispatch(view.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
             return false
           },
           compositionend(view) {
