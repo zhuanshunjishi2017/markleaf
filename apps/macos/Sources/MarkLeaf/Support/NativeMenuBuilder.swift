@@ -67,6 +67,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
+        menu.addItem(commandItem(L10n.t("按上次设置导出"), "exportWithLastSettings"))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
         menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
         menu.addItem(.separator())
@@ -85,8 +86,12 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))
         menu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))
-        menu.addItem(commandItem(L10n.t("复制为 Markdown 源码"), "copyMarkdown"))
-        menu.addItem(commandItem(L10n.t("复制为纯文本"), "copyPlain"))
+        let copyPasteAs = NSMenu(title: L10n.t("复制/粘贴为"))
+        copyPasteAs.addItem(commandItem(L10n.t("复制为 Markdown 源码"), "copyMarkdown"))
+        copyPasteAs.addItem(commandItem(L10n.t("复制为纯文本"), "copyPlain"))
+        copyPasteAs.addItem(.separator())
+        copyPasteAs.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))
+        menu.addItem(popup(L10n.t("复制/粘贴为"), copyPasteAs))
         menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))
@@ -334,7 +339,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             return false
         }
         switch command {
-        case "print": return session != nil
+        case "print", "exportWithLastSettings": return session != nil
         case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
         case "workspaceTab": menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
         case "outlineTab": menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
@@ -555,6 +560,7 @@ extension EditorSession {
         case "save": saveDocument()
         case "saveAs": saveDocumentAs()
         case "export": exportDocument()
+        case "exportWithLastSettings": exportWithLastSettings()
         case "print": printDocument()
         case "closeFolder": closeWorkspace()
         case "undo": execute("undo")
@@ -566,6 +572,7 @@ extension EditorSession {
         case "copyMarkdown": copySelectionAs(.markdown)
         case "copyPlain": copySelectionAs(.plainText)
         case "paste": pasteFromClipboard()
+        case "pastePlainText": pastePlainTextFromClipboard()
         case "toggleBold", "toggleItalic", "toggleStrike": executeInlineFormat(command)
         case "find": showFind(showReplace: false)
         case "replace": showFind(showReplace: true)

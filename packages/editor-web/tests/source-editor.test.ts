@@ -93,6 +93,82 @@ describe('source editor', () => {
     expect(source.getText()).toBe('plain')
   })
 
+  it('normalizes CRLF when replacing source selection and keeps the cursor after inserted text', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const source = new SourceEditor(parent, 'tail', () => {})
+    sources.push(source)
+
+    expect(source.replaceSelection('a\r\nb\r\nc\r\n')).toBe(true)
+    expect(source.getText()).toBe('a\nb\nc\ntail')
+    expect(source.view.state.selection.main.from).toBe('a\nb\nc\n'.length)
+  })
+
+  it('supports undo and redo in source mode', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const source = new SourceEditor(parent, 'leaf', () => {})
+    sources.push(source)
+
+    expect(source.canUndo()).toBe(false)
+    expect(source.replaceSelection(' branch')).toBe(true)
+    expect(source.getText()).toBe(' branchleaf')
+    expect(source.canUndo()).toBe(true)
+    expect(source.undo()).toBe(true)
+    expect(source.getText()).toBe('leaf')
+    expect(source.canRedo()).toBe(true)
+    expect(source.redo()).toBe(true)
+    expect(source.getText()).toBe(' branchleaf')
+  })
+
+  it('requests a resolution when source mode closes unsafe bold markup', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(parent, '**文本"a', () => {}, 2, false, request => requests.push(request))
+    sources.push(source)
+
+    source.setSelection(5)
+    source.replaceSelection('**')
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.kind).toBe('bold')
+
+    source.resolveUnsafeEmphasis(requests[0]!.id, 'html')
+    expect(source.getText()).toBe('<strong>文本"</strong>a')
+  })
+
+  it('does not prompt for safe source emphasis markup', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(parent, '**文本" 后文', () => {}, 2, false, request => requests.push(request))
+    sources.push(source)
+
+    source.setSelection(5)
+    source.replaceSelection('**')
+
+    expect(requests).toHaveLength(0)
+    expect(source.getText()).toBe('**文本"** 后文')
+  })
+
+  it('checks a changed source line when surrounding text makes existing emphasis unsafe', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(parent, '**文本"**', () => {}, 2, false, request => requests.push(request))
+    sources.push(source)
+
+    source.setSelection(source.getText().length)
+    source.replaceSelection('a')
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.kind).toBe('bold')
+
+    source.resolveUnsafeEmphasis(requests[0]!.id, 'html')
+    expect(source.getText()).toBe('<strong>文本"</strong>a')
+  })
+
   it('deletes only a non-empty source selection', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

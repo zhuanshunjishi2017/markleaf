@@ -36,6 +36,7 @@
   padding: 0;
   margin: 0;
   line-height: 2;
+  margin-top: 1.3em;
 }
 
 .markleaf-style-print .markleaf-document h1 {
@@ -51,7 +52,7 @@
 }
 
 .markleaf-style-print .markleaf-document h3 {
-  font-size: var(--ml-font-size);
+  font-size: calc(var(--ml-font-size)*1.1);
   text-align: left;
   line-height: 2;
 }
@@ -59,7 +60,7 @@
 .markleaf-style-print .markleaf-document h4,
 .markleaf-style-print .markleaf-document h5,
 .markleaf-style-print .markleaf-document h6 {
-  font-size: calc(var(--ml-font-size) * 0.875);
+  font-size: var(--ml-font-size);
   text-align: left;
   line-height: 1.75;
 }

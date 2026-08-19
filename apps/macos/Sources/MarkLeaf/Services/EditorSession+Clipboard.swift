@@ -76,6 +76,16 @@ extension EditorSession {
         statusText = L10n.t("剪贴板中没有可粘贴的内容")
     }
 
+    /// 仅粘贴剪贴板的纯文本，忽略 HTML、图片和 Finder 文件。
+    func pastePlainTextFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+            statusText = L10n.t("剪贴板中没有可粘贴的内容")
+            return
+        }
+        execute("pasteText", text: text)
+        statusText = L10n.t("已粘贴纯文本")
+    }
+
     /// 剪贴板图片 → 保存到图片目录 → insertImage（对应 C# ImportClipboardBitmapAsync）。
     private func importClipboardImage(_ image: NSImage) {
         guard let tiff = image.tiffRepresentation,

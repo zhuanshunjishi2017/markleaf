@@ -32,14 +32,19 @@ if [[ "${1:-}" == "--" ]]; then
   EXTRA_ARGS=("$@")
 fi
 
+SWIFT_BUILD_FLAGS=()
+if [[ "${MARKLEAF_DISABLE_SWIFT_SANDBOX:-0}" == "1" ]]; then
+  SWIFT_BUILD_FLAGS+=(--disable-sandbox)
+fi
+
 # ---- 1. 停止旧实例 ----
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 # ---- 2. 准备资源 + 构建 ----
 "$ROOT_DIR/script/prepare_resources.sh"
-swift build --package-path "$ROOT_DIR"
+swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$ROOT_DIR"
 
-BUILD_BINARY="$(swift build --package-path "$ROOT_DIR" --show-bin-path)/$APP_NAME"
+BUILD_BINARY="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$ROOT_DIR" --show-bin-path)/$APP_NAME"
 
 # ---- 3. 打包 .app（SwiftPM GUI 应用必须走 bundle，直接跑裸二进制会丢 Dock 图标/激活） ----
 rm -rf "$APP_BUNDLE"

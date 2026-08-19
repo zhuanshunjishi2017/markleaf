@@ -212,7 +212,7 @@ body {
 .tok-quote     { color: var(--text-tertiary); }
 
 #editor {
-  padding: 44px 56px 96px;
+  padding: 44px 48px 96px;
 }
 
 /* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
@@ -269,8 +269,8 @@ body {
 
 /* 默认滚动条宽度，颜色由各主题 colors-*.css 的 ::-webkit-scrollbar-thumb 控制。 */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 /* 自动隐藏滚动条：收窄至 8px，空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
@@ -293,12 +293,6 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
   background: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
-}
-
-@media (max-width: 720px) {
-  #editor {
-    padding: 28px 24px 64px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

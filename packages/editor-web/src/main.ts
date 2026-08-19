@@ -19,7 +19,7 @@ import {
   renderEscapedCaptionHtml,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
-import { SourceEditor } from './source-editor'
+import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -94,6 +94,7 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
   'setBlockHandleVisible',
   'exportSelection',
   'exportDocument',
+  'selectAll',
 ])
 
 let baseCss = ''
@@ -197,9 +198,12 @@ function sendOutlineSelectionFromScroll(): void {
 
 function sendCommandState(): void {
   const sourceSelection = sourceEditor?.view.state.selection.main
+  const visualState = getEditorCommandState(editor)
   send('commandStateChanged', {
-    ...getEditorCommandState(editor),
-    hasSelection: sourceSelection ? !sourceSelection.empty : getEditorCommandState(editor).hasSelection,
+    ...visualState,
+    canUndo: sourceEditor?.canUndo() ?? visualState.canUndo,
+    canRedo: sourceEditor?.canRedo() ?? visualState.canRedo,
+    hasSelection: sourceSelection ? !sourceSelection.empty : visualState.hasSelection,
     sourceMode,
     readOnly,
     canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
@@ -299,6 +303,10 @@ function markSourceChanged(documentChanged: boolean): void {
   sendEditorState()
 }
 
+function requestUnsafeEmphasisResolution(request: UnsafeEmphasisRequest): void {
+  send('unsafeEmphasisRequested', request, request.id)
+}
+
 function getSelectionExport(): { text: string; markdown: string; html: string } {
   if (sourceEditor) {
     const text = sourceEditor.getSelectedText()
@@ -317,7 +325,7 @@ function setSourceMode(enabled: boolean): void {
   formatPainter.cancel()
   updateFormatPainterCursor()
   if (enabled) {
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly)
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -599,6 +607,9 @@ function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): 
   if (!frontendFormatMenuEnabled) {
     return false
   }
+  if (readOnly) {
+    return false
+  }
   if (sourceMode) {
     return false
   }
@@ -643,6 +654,7 @@ editorMount.addEventListener('contextmenu', (event) => {
     menuHeight: showFormat ? formatMenu.offsetHeight : 0,
     canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
     formatPainterArmed: !sourceMode && formatPainter.isArmed,
+    readOnly,
   })
 })
 
@@ -672,6 +684,7 @@ sourceMount.addEventListener('contextmenu', (event) => {
     clientY: event.clientY,
     canStartFormatPainter: false,
     formatPainterArmed: false,
+    readOnly,
   })
 })
 
@@ -788,7 +801,7 @@ function handleMessage(value: unknown): void {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
       } else {
         sourceMode = false
         sourceMount.hidden = true
@@ -807,6 +820,13 @@ function handleMessage(value: unknown): void {
     case 'requestSnapshot':
       send('snapshot', { markdown: getActiveMarkdown() }, message.requestId)
       break
+    case 'unsafeEmphasisResponse': {
+      const payload = message.payload as { action?: unknown }
+      if (message.requestId && (payload?.action === 'literal' || payload?.action === 'html')) {
+        sourceEditor?.resolveUnsafeEmphasis(message.requestId, payload.action)
+      }
+      break
+    }
     case 'command': {
       const payload = message.payload as {
         command?: unknown
@@ -974,7 +994,11 @@ function handleMessage(value: unknown): void {
           : undefined
         const commandText = typeof payload.text === 'string' ? payload.text : undefined
         const success = sourceMode
-          ? payload.command === 'deleteSelection'
+          ? payload.command === 'undo'
+            ? sourceEditor?.undo() ?? false
+            : payload.command === 'redo'
+              ? sourceEditor?.redo() ?? false
+              : payload.command === 'deleteSelection'
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
@@ -1252,11 +1276,18 @@ body { margin: 0; background: var(--bg-primary); }
 .markleaf-export-pdf .markleaf-document {
   padding-left: 5px;
   padding-right: 5px;
+  max-width: none;
   width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
 .markleaf-export-pdf.markleaf-style-print .markleaf-document {
   padding-left: 5px;
   padding-right: 5px;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
 .markleaf-export-pdf .export-header,
 .markleaf-export-pdf .export-footer {
