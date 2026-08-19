@@ -67,7 +67,6 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
-        menu.addItem(commandItem(L10n.t("按上次设置导出"), "exportWithLastSettings"))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
         menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
         menu.addItem(.separator())
@@ -86,13 +85,12 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))
         menu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))
-        let copyPasteAs = NSMenu(title: L10n.t("复制/粘贴为"))
-        copyPasteAs.addItem(commandItem(L10n.t("复制为 Markdown 源码"), "copyMarkdown"))
-        copyPasteAs.addItem(commandItem(L10n.t("复制为纯文本"), "copyPlain"))
-        copyPasteAs.addItem(.separator())
-        copyPasteAs.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))
-        menu.addItem(popup(L10n.t("复制/粘贴为"), copyPasteAs))
         menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
+        menu.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))
+        let copyAs = NSMenu(title: L10n.t("复制为"))
+        copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
+        copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
+        menu.addItem(popup(L10n.t("复制为"), copyAs))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))
         menu.addItem(commandItem(L10n.t("替换"), "replace", key: "f", mask: [.command, .option]))
@@ -119,6 +117,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
+        menu.addItem(commandItem(L10n.t("插入注释"), "insertFootnote"))
         menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
         menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
 
@@ -339,7 +338,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             return false
         }
         switch command {
-        case "print", "exportWithLastSettings": return session != nil
+        case "print": return session != nil
         case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
         case "workspaceTab": menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
         case "outlineTab": menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
@@ -375,6 +374,19 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
+        case "cut", "copy", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
+            return EditorMenuPolicy.isEnabled(
+                command: command,
+                hasSelection: s?.hasSelection ?? false,
+                clipboardHasContent: s?.clipboardHasContent ?? false,
+                isReadOnly: s?.isReadOnly == true
+            )
+        case "insertFootnote", "resetFootnoteLabel":
+            return EditorMenuPolicy.isFootnoteCommandEnabled(
+                command: command,
+                hasFootnoteLabel: !(s?.footnoteDefinitionLabel ?? "").isEmpty,
+                isReadOnly: s?.isReadOnly == true
+            )
         default: break
         }
         return true
@@ -599,6 +611,8 @@ extension EditorSession {
         case "toggleCode": executeInlineFormat("toggleCode")
         case "insertMathInline": insertMath(isBlock: false)
         case "insertMathBlock": insertMath(isBlock: true)
+        case "insertFootnote": insertFootnote()
+        case "resetFootnoteLabel": resetFootnoteLabel()
         case "editMath": editMath()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")

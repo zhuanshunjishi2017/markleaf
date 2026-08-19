@@ -12,6 +12,10 @@
 - Combine the HTML and PDF export windows, and add Export with Last Settings.
 - Persist export settings; PDF export supports headers and footers with title, page, total-page, and custom placeholders.
 - Add the light Saltlemon (`saltlemon`) color theme.
+- Add footnote support: `[^x]` renders as a superscript reference and `[^x]:` paragraphs as footnote definitions, exported with dedicated structure in HTML/PDF.
+- Add Insert Footnote to the Paragraph menu: enter a number and text to insert a reference at the cursor and a definition at the end of the document.
+- ⌃-click a footnote reference to jump to its definition, with a clear warning when the definition is missing.
+- Add Reset Footnote Number to the footnote definition context menu to rename the label across references and definitions.
 
 ### Changes
 

@@ -37,6 +37,7 @@ extension EditorSession {
         listItem.submenu = lists
         menu.addItem(listItem)
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+        addFormatCommand(menu, L10n.t("插入注释"), "insertFootnote")
         menu.addItem(tableSizePickerSubmenu { [weak self] size in
             self?.insertTable(rows: size.rows, columns: size.columns)
         })
@@ -78,14 +79,18 @@ extension EditorSession {
 
         let menu = NSMenu()
         if isReadOnly {
-            addFormatCommand(menu, L10n.t("拷贝"), "copy")
+            addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if isSourceMode {
             // 源码模式：剪贴板 + 全选
-            addFormatCommand(menu, L10n.t("剪切"), "cut")
-            addFormatCommand(menu, L10n.t("拷贝"), "copy")
-            addFormatCommand(menu, L10n.t("粘贴"), "paste")
-            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
+            addClipboardCommands(menu)
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("全选"), "selectAll")
+        } else if let footnoteLabel = footnoteDefinitionLabel, !footnoteLabel.isEmpty {
+            // 脚注定义：重设编号 + 基础剪贴板操作
+            addFormatCommand(menu, L10n.t("重设注释编号"), "resetFootnoteLabel")
+            menu.addItem(.separator())
+            addClipboardCommands(menu)
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if inTable {
@@ -108,10 +113,7 @@ extension EditorSession {
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
             menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("剪切"), "cut")
-            addFormatCommand(menu, L10n.t("拷贝"), "copy")
-            addFormatCommand(menu, L10n.t("粘贴"), "paste")
-            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
+            addClipboardCommands(menu)
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
         } else if imageSelected {
@@ -127,10 +129,7 @@ extension EditorSession {
             // 代码块：退出代码 + 剪贴板
             addFormatCommand(menu, L10n.t("退出代码"), "exitCode")
             menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("剪切"), "cut")
-            addFormatCommand(menu, L10n.t("拷贝"), "copy")
-            addFormatCommand(menu, L10n.t("粘贴"), "paste")
-            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
+            addClipboardCommands(menu)
         } else {
             // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
             if headingLevel != nil {
@@ -182,15 +181,7 @@ extension EditorSession {
                 self?.insertTable(rows: size.rows, columns: size.columns)
             })
             menu.addItem(.separator())
-            let copyAs = NSMenuItem(title: L10n.t("复制/粘贴为"), action: nil, keyEquivalent: "")
-            let copyAsMenu = NSMenu()
-            copyAsMenu.addItem(menuItem(L10n.t("格式化"), #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
-            copyAsMenu.addItem(menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
-            copyAsMenu.addItem(menuItem("Markdown", #selector(copyMarkdown(_:))))
-            copyAs.submenu = copyAsMenu
-            menu.addItem(copyAs)
-            menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
-            menu.addItem(menuItem(L10n.t("粘贴为纯文本"), #selector(pastePlainTextFromClipboardAction(_:)), key: "V", mask: [.command, .shift]))
+            addClipboardCommands(menu)
         }
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
@@ -237,6 +228,33 @@ extension EditorSession {
         item.target = self
         item.keyEquivalentModifierMask = mask
         return item
+    }
+
+    /// 统一的剪贴板区块：剪切/拷贝/粘贴/粘贴为纯文本 + “复制为 ▸ 纯文本 / Markdown”。
+    private func addClipboardCommands(_ menu: NSMenu) {
+        let canCopy = hasSelection && !isReadOnly
+        let canPaste = clipboardHasContent && !isReadOnly
+        addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCopy)
+        addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
+        addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
+        addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
+        let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
+        let copyAsMenu = NSMenu()
+        let plain = menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)))
+        plain.isEnabled = hasSelection
+        copyAsMenu.addItem(plain)
+        let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
+        markdown.isEnabled = hasSelection
+        copyAsMenu.addItem(markdown)
+        copyAs.submenu = copyAsMenu
+        menu.addItem(copyAs)
+    }
+
+    private func addEnabledCommand(_ menu: NSMenu, _ title: String, _ command: String, enabled: Bool) {
+        let item = menuItem(title, #selector(handleCommand(_:)))
+        item.representedObject = command
+        item.isEnabled = enabled
+        menu.addItem(item)
     }
 
     @objc func copyFormatted(_ sender: Any?) { copySelectionAs(.formatted) }

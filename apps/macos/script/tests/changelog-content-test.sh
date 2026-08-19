@@ -21,11 +21,15 @@ assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "检测不符合 Comm
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "导出设置持久化"
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "PDF 页眉页脚"
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "柠檬海盐"
+assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "插入注释"
+assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "重设注释编号"
 
 assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Source mode supports undo and redo"
 assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "unsafe CommonMark emphasis boundaries"
 assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Persist export settings"
 assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "PDF headers and footers"
 assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Saltlemon"
+assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Insert Footnote"
+assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Reset Footnote Number"
 
 echo "changelog content policy passed"
