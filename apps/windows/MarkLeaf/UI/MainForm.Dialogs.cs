@@ -82,7 +82,7 @@ internal sealed partial class MainForm
 
     private void ShowShortcutHelp()
     {
-        using var dialog = new ShortcutDialog();
+        using var dialog = new ShortcutDialog(_shortcutManager);
         ShowModal(() => dialog.ShowDialog(this));
     }
 

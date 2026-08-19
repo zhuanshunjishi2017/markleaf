@@ -171,10 +171,23 @@ const BlockHandle = Extension.create({
           return previous
         },
       },
+      appendTransaction(transactions, _oldState, newState) {
+        // 光标移出高亮段落时，自动清除段落背景高亮。
+        if (!transactions.some((tr) => tr.selectionSet)) return null
+        const { activeBlock } = blockHandleKey.getState(newState) ?? { activeBlock: null }
+        if (activeBlock === null) return null
+        const node = newState.doc.nodeAt(activeBlock)
+        if (!node) return null
+        const blockEnd = activeBlock + node.nodeSize
+        const { from, to } = newState.selection
+        if (from >= activeBlock && to <= blockEnd) return null
+        return newState.tr.setMeta(blockHandleKey, { activeBlock: null } satisfies BlockHandleMeta)
+      },
       props: {
         handleDOMEvents: {
-          compositionstart() {
+          compositionstart(view) {
             blockHandleComposing = true
+            view.dispatch(view.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
             return false
           },
           compositionend(view) {
@@ -1124,6 +1137,24 @@ export function scrollToFootnoteDefinition(editor: Editor, label: string): boole
   scrollBlockPositionIntoCenter(editor, targetPosition)
   setBlockHighlight(editor, targetPosition)
   return true
+}
+
+/// 查找脚注定义正文（用于悬停提示）；找不到返回 null。
+export function findFootnoteDefinitionBody(editor: Editor, label: string): string | null {
+  const normalized = label.trim()
+  if (!normalized) return null
+
+  let body: string | null = null
+  editor.state.doc.descendants((node) => {
+    if (node.type.name !== 'paragraph') return true
+    const footnote = parseFootnoteDefinitionText(node.textContent)
+    if (footnote && footnote.label.trim() === normalized) {
+      body = footnote.body
+      return false
+    }
+    return true
+  })
+  return body
 }
 
 export function getSourceModeJumpTarget(editor: Editor): SourceModeJumpTarget {

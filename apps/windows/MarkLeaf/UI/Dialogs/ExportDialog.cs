@@ -806,8 +806,7 @@ internal sealed class ExportDialog : Form
         _contentPanel.Padding = new Padding(
             this.ScaleForDpi(23), this.ScaleForDpi(15), this.ScaleForDpi(23), this.ScaleForDpi(6));
 
-        _pageSize.Width = this.ScaleForDpi(109);
-        _marginPreset.Width = this.ScaleForDpi(86);
+        _marginPreset.Width = this.ScaleForDpi(135);
 
         _customMarginButton.Width = this.ScaleForDpi(120);
         _customMarginButton.Height = this.ScaleForDpi(24);
@@ -823,13 +822,15 @@ internal sealed class ExportDialog : Form
         _htmlFooter.Width = htmlW;
         _htmlFooter.Height = htmlH;
 
-        var comboW = this.ScaleForDpi(120);
+        var comboW = this.ScaleForDpi(135);
         _pdfStyle.Width = comboW;
         _htmlStyle.Width = comboW;
         _pdfColorScheme.Width = comboW;
         _htmlColorScheme.Width = comboW;
         _pdfHeaderPreset.Width = comboW;
         _pdfFooterPreset.Width = comboW;
+        _pageSize.Width = comboW;
+
 
         var btnW = this.ScaleForDpi(64);
         var btnH = this.ScaleForDpi(26);
@@ -837,7 +838,7 @@ internal sealed class ExportDialog : Form
         _exportButton.Height = btnH;
         _cancelButton.Width = btnW;
         _cancelButton.Height = btnH;
-        _previewButton.Width = this.ScaleForDpi(96);
+        _previewButton.Width = this.ScaleForDpi(108);
         _previewButton.Height = btnH;
     }
 

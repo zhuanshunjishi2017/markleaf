@@ -55,6 +55,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler? MathEditRequested;
 
+    public event EventHandler<EditorFindResult>? FindResultReceived;
+
     public event EventHandler<EditorOutline>? OutlineChanged;
 
     public event EventHandler<int?>? OutlineSelectionChanged;
@@ -1019,6 +1021,18 @@ internal sealed class EditorHostController : IDisposable
             case "mathEditRequested":
                 MathEditRequested?.Invoke(this, EventArgs.Empty);
                 break;
+            case "findResult":
+                var replaced = message.Payload.TryGetProperty("replaced", out var replacedElement)
+                    && replacedElement.ValueKind == System.Text.Json.JsonValueKind.Number
+                    ? replacedElement.GetInt32()
+                    : (int?)null;
+                FindResultReceived?.Invoke(
+                    this,
+                    new EditorFindResult(
+                        message.Payload.GetProperty("current").GetInt32(),
+                        message.Payload.GetProperty("total").GetInt32(),
+                        replaced));
+                break;
             case "outlineChanged":
                 OutlineChanged?.Invoke(this, EditorOutline.FromPayload(message.Payload));
                 break;
@@ -1245,3 +1259,5 @@ internal sealed class EditorHostController : IDisposable
 }
 
 internal sealed record DroppedFiles(IReadOnlyList<string> Paths, double ClientX, double ClientY);
+
+internal sealed record EditorFindResult(int Current, int Total, int? Replaced);

@@ -277,17 +277,33 @@ internal sealed class MarkLeafScrollbar : Control
         var trackBounds = TrackBounds();
         if (trackBounds.Contains(e.Location))
         {
-            if (e.Y < thumbBounds.Top)
-            {
-                Value = _value - _largeChange;
-                RaiseScroll(ScrollEventType.LargeDecrement);
-            }
-            else
-            {
-                Value = _value + _largeChange;
-                RaiseScroll(ScrollEventType.LargeIncrement);
-            }
+            PositionThumbToClick(e.Y);
         }
+    }
+
+    /// <summary>
+    /// 点击轨道（不在滑块上）时，把滑块中心移动到点击处并将内容滚动到该位置，
+    /// 随后进入拖动状态，便于继续拖拽。
+    /// </summary>
+    private void PositionThumbToClick(int y)
+    {
+        var thumbH = ThumbHeight();
+        var available = TrackHeight() - thumbH;
+        if (available <= 0)
+        {
+            return;
+        }
+
+        var targetThumbTop = y - thumbH / 2;
+        var ratio = Math.Clamp((targetThumbTop - TrackTop()) / (double)available, 0.0, 1.0);
+        var maxScroll = GetMaximumScrollValue();
+        Value = _minimum + (int)(ratio * maxScroll);
+        RaiseScroll(ScrollEventType.ThumbTrack);
+
+        _dragging = true;
+        _dragThumbOffset = thumbH / 2;
+        Capture = true;
+        Invalidate();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)

@@ -83,6 +83,8 @@ public sealed class AppSettings
 
     public ExportSettings Export { get; set; } = new();
 
+    public ShortcutSettings Shortcut { get; set; } = new();
+
     public string MarkdownStyle { get; set; } = "serif";
 
     public string ColorTheme { get; set; } = "white";
@@ -100,9 +102,22 @@ public sealed class AppSettings
             General = new GeneralSettings(),
             Image = new ImageSettings(),
             Export = new ExportSettings(),
+            Shortcut = new ShortcutSettings(),
             MarkdownStyle = "serif",
         };
     }
+}
+
+/// <summary>
+/// 自定义快捷键（对应 macOS ShortcutSettings）：
+/// Overrides 键为 AppCommand 名，值为 ShortcutTextFormatter 的规范字符串；
+/// Cleared 表示“已清除（无快捷键）”的命令。
+/// </summary>
+public sealed class ShortcutSettings
+{
+    public Dictionary<string, string> Overrides { get; set; } = [];
+
+    public List<string> Cleared { get; set; } = [];
 }
 
 public sealed class ExportSettings
@@ -275,6 +290,8 @@ public sealed class WorkspaceSettings
     public string? LastFolder { get; set; }
 
     public string? LastFile { get; set; }
+
+    public bool LastFileReadOnly { get; set; }
 
     public List<string> RecentFolders { get; set; } = [];
 

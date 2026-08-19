@@ -2,13 +2,16 @@ namespace MarkLeaf.Commands;
 
 public sealed class CommandRouter
 {
+    private readonly ShortcutManager _shortcutManager;
     private readonly Func<AppCommand, CommandState> _getState;
     private readonly Action<AppCommand> _execute;
 
     public CommandRouter(
+        ShortcutManager shortcutManager,
         Func<AppCommand, CommandState> getState,
         Action<AppCommand> execute)
     {
+        _shortcutManager = shortcutManager;
         _getState = getState;
         _execute = execute;
     }
@@ -22,7 +25,7 @@ public sealed class CommandRouter
 
     public bool TryExecuteShortcut(Keys keyData)
     {
-        if (!CommandCatalog.TryGetByShortcut(keyData, out var command))
+        if (!_shortcutManager.TryGetCommand(keyData, out var command))
         {
             return false;
         }

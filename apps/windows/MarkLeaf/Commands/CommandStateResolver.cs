@@ -16,7 +16,8 @@ public static class CommandStateResolver
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
-            AppCommand.ViewTree or AppCommand.ViewList => new(true),
+            AppCommand.ViewTree => new(true, !context.ListViewActive),
+            AppCommand.ViewList => new(true, context.ListViewActive),
             AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
             AppCommand.ToggleSourceMode => new(context.EditorReady && !context.IsPlainText, context.SourceMode),
             AppCommand.SwitchToWorkspace => new(!context.FocusMode && context.SidebarVisible, !context.OutlineActive),

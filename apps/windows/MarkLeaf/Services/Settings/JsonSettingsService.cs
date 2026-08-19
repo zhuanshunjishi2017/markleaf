@@ -97,6 +97,7 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Workspace ??= new WorkspaceSettings();
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
+        settings.Shortcut ??= new ShortcutSettings();
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -106,6 +107,7 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Workspace ??= new WorkspaceSettings();
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
+        settings.Shortcut ??= new ShortcutSettings();
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -125,6 +127,9 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Image ??= new ImageSettings();
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
+        settings.Shortcut ??= new ShortcutSettings();
+        settings.Shortcut.Overrides ??= [];
+        settings.Shortcut.Cleared ??= [];
         return settings;
     }
 

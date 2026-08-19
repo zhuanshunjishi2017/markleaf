@@ -60,8 +60,10 @@ internal sealed partial class MainForm
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceMenu.newFile"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceMenu.newFolder"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, Loc.Get("workspaceMenu.showInExplorer"));
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewTree, Loc.Get("workspaceMenu.treeView"));
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.ViewList, Loc.Get("workspaceMenu.documentList"));
+            AppendNativeMenuSeparator(menu);
+            
+            AppendNativeViewCommand(menu, WorkspacePopupCommand.ViewTree, Loc.Get("workspaceMenu.treeView"), listView: false);
+            AppendNativeViewCommand(menu, WorkspacePopupCommand.ViewList, Loc.Get("workspaceMenu.documentList"), listView: true);
             AppendNativeMenuSeparator(menu);
 
             var sortMenu = CreateNativePopupMenu();
@@ -81,6 +83,13 @@ internal sealed partial class MainForm
             NativeMethods.DestroyMenu(menu);
             throw;
         }
+    }
+
+    private void AppendNativeViewCommand(nint menu, WorkspacePopupCommand command, string text, bool listView)
+    {
+        var isActive = _workspaceListViewActive == listView;
+        var flags = NativeMethods.MfString | (isActive ? NativeMethods.MfChecked : NativeMethods.MfUnchecked);
+        AppendNativeMenu(menu, flags, (nuint)command, text);
     }
 
     private void AppendNativeSortFieldCommand(nint menu, WorkspacePopupCommand command, string text, bool modifiedTime)

@@ -92,12 +92,15 @@ internal sealed partial class MainForm
         if (colors.TryGetValue("bg-primary", out var bg))
         {
             _sidebarPanel.BackColor = bg;
+            _sidebarLayout.BackColor = bg;
+            _sidebarContentHost.BackColor = bg;
             _workspacePanelHost.BackColor = bg;
             _outlinePanelHost.BackColor = bg;
             _sidebarSplit.Panel2.BackColor = bg;
             _editorPanel.BackColor = bg;
             _workspaceContentPanel.BackColor = bg;
             _editorLoadingView.BackColor = bg;
+            _sidebarSearchBar.BackColor = bg;
             if (_searchResultsHost is not null)
             {
                 _searchResultsHost.BackColor = bg;
@@ -122,6 +125,7 @@ internal sealed partial class MainForm
         }
 
         _sidebarTabBar.ApplyThemeColors(colors);
+        _sidebarSearchBar.ApplyThemeColors(colors);
         _openFolderPrompt.ApplyThemeColors(colors);
         _workspaceTree.ApplyThemeColors(colors);
         _workspaceDocumentList.ApplyThemeColors(colors);

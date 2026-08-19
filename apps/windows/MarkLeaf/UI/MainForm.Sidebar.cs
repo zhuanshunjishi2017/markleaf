@@ -46,10 +46,8 @@ internal sealed partial class MainForm
         {
             if (index == 0) ToggleWorkspaceView();
         };
-        _sidebarTabBar.CollapseClicked += OnSidebarCollapseClicked;
-        _sidebarTabBar.SearchTextChanged += OnSidebarSearchTextChanged;
-        _sidebarTabBar.SearchModeChanged += OnSidebarSearchModeChanged;
-        panel.Controls.Add(_sidebarTabBar);
+        _sidebarTabBar.OpenFolderClicked += OnSidebarOpenFolderClicked;
+        _sidebarSearchBar.SearchTextChanged += OnSidebarSearchTextChanged;
 
         _searchResultsView = new SearchResultsView();
         _searchResultsView.ResultActivated += OnSearchResultActivated;
@@ -60,7 +58,6 @@ internal sealed partial class MainForm
             Visible = false,
         };
         _searchResultsHost.Controls.Add(_searchResultsView);
-        panel.Controls.Add(_searchResultsHost);
 
         _workspacePanelHost = CreateWorkspacePanel();
         _workspacePanelHost.Dock = DockStyle.Fill;
@@ -70,8 +67,37 @@ internal sealed partial class MainForm
             BackColor = Color.White,
         };
         _outlinePanelHost.Controls.Add(CreateOutlineTree());
-        panel.Controls.Add(_outlinePanelHost);
-        panel.Controls.Add(_workspacePanelHost);
+
+        var contentHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.White,
+        };
+        _sidebarContentHost = contentHost;
+        contentHost.Controls.Add(_searchResultsHost);
+        contentHost.Controls.Add(_outlinePanelHost);
+        contentHost.Controls.Add(_workspacePanelHost);
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = Color.White,
+        };
+        _sidebarLayout = layout;
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, _sidebarTabBar.Height));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, _sidebarSearchBar.Height));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        layout.Controls.Add(_sidebarTabBar, 0, 0);
+        layout.Controls.Add(_sidebarSearchBar, 0, 1);
+        layout.Controls.Add(contentHost, 0, 2);
+        panel.Controls.Add(layout);
 
         ShowSidebarView(outline: _settings.MainWindow.SidebarActiveOutline);
         return panel;
@@ -241,14 +267,14 @@ internal sealed partial class MainForm
         _searchResultsView.AutoHideScrollbar = enabled;
     }
 
-    private void OnSidebarCollapseClicked(object? sender, EventArgs e)
+    private void OnSidebarOpenFolderClicked(object? sender, EventArgs e)
     {
-        ToggleSidebarWithWindowResize();
+        _ = SelectWorkspaceFolderAsync();
     }
 
     private async void OnSearchResultActivated(object? sender, string path)
     {
-        _sidebarTabBar.ExitSearchMode();
+        _sidebarSearchBar.ClearSearch();
         _searchCancellation?.Cancel();
         _searchResultsHost.Visible = false;
         await ActivateWorkspaceDocumentAsync(path);
@@ -296,24 +322,6 @@ internal sealed partial class MainForm
         }
     }
 
-    private void OnSidebarSearchModeChanged(object? sender, bool active)
-    {
-        if (active)
-        {
-            return;
-        }
-
-        if (_sidebarActiveOutline)
-        {
-            ExitOutlineSearch();
-        }
-        else
-        {
-            _searchCancellation?.Cancel();
-            _searchResultsHost.Visible = false;
-        }
-    }
-
     /// <summary>
     /// 切换侧边栏显隐并同步调整窗口宽度，保持左上角固定、编辑器区宽度不变。
     /// </summary>
@@ -332,7 +340,7 @@ internal sealed partial class MainForm
     private void CollapseSidebar()
     {
         if (_sidebarSplit.Panel1Collapsed) return;
-        _sidebarTabBar.ExitSearchMode();
+        _sidebarSearchBar.ClearSearch();
         _sidebarSplit.Panel1Collapsed = true;
         _settings.MainWindow.SidebarCollapsed = true;
         UpdateViewToggleIcon();
@@ -355,6 +363,7 @@ internal sealed partial class MainForm
     {
         _sidebarActiveOutline = outline;
         _sidebarTabBar.SetSelectedIndexSilently(outline ? 1 : 0);
+        _sidebarSearchBar.OutlineMode = outline;
         _workspacePanelHost.Visible = !outline;
         _outlinePanelHost.Visible = outline;
         if (outline)
@@ -366,16 +375,37 @@ internal sealed partial class MainForm
             _workspacePanelHost.BringToFront();
         }
 
-        // 切换到大纲时退出搜索并隐藏结果容器
+        // 切换到大纲时隐藏全文搜索结果；常驻搜索框会按当前标签重新过滤。
         if (outline)
         {
             _searchCancellation?.Cancel();
             _searchResultsHost.Visible = false;
         }
+        if (!string.IsNullOrWhiteSpace(_sidebarSearchBar.SearchText))
+        {
+            OnSidebarSearchTextChanged(_sidebarSearchBar, _sidebarSearchBar.SearchText);
+        }
 
         if (_workspaceRoot is null)
             _openFolderPrompt.BringToFront();
 
+        UpdateSidebarSearchEnabled();
         _menuService.RefreshStates();
+    }
+
+    /// <summary>
+    /// 与 macOS 一致：无工作区且在工作区标签时禁用搜索框（大纲搜索不依赖工作区）。
+    /// </summary>
+    private void UpdateSidebarSearchEnabled()
+    {
+        _sidebarSearchBar.Enabled = _sidebarActiveOutline || _workspaceRoot is not null;
+    }
+
+    private void UpdateSidebarHeaderRowHeights()
+    {
+        if (_sidebarLayout.RowStyles.Count < 2) return;
+        _sidebarLayout.RowStyles[0].Height = _sidebarTabBar.Height;
+        _sidebarLayout.RowStyles[1].Height = _sidebarSearchBar.Height;
+        _sidebarLayout.PerformLayout();
     }
 }

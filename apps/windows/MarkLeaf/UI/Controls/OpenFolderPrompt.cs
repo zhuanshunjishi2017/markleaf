@@ -9,12 +9,15 @@ internal sealed class OpenFolderPrompt : Control
     private Color _bgPrimary = Color.White;
     private Color _accent = SystemColors.Highlight;
     private Color _textHover = SystemColors.ControlText;
+    private Color _textSecondary = Color.FromArgb(0x55, 0x55, 0x55);
 
     private bool _hovered;
     private Font _iconFont = new("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _textFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _labelFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
     private const string FolderIcon = "";
+    private static string LabelText => Loc.Get("sidebar.noWorkspace");
     private static string ButtonText => Loc.Get("sidebar.openFolder");
 
     private Rectangle _buttonBounds;
@@ -38,6 +41,7 @@ internal sealed class OpenFolderPrompt : Control
         if (colors.TryGetValue("theme-dark", out c)) _bgHover = c;
         if (colors.TryGetValue("theme-light", out c)) _accent = c;
         if (colors.TryGetValue("text-selected", out c)) _textHover = c;
+        if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
         BackColor = _bgPrimary;
         Invalidate();
     }
@@ -51,25 +55,35 @@ internal sealed class OpenFolderPrompt : Control
         var hPad = this.ScaleForDpi(16);
         var radius = this.ScaleForDpi(8);
         var gap = this.ScaleForDpi(1);
-        var topMargin = this.ScaleForDpi(16);
+        var labelGap = this.ScaleForDpi(10);
 
         // 测量文字
         var textSize = TextRenderer.MeasureText(e.Graphics, ButtonText, _textFont,
             Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         var iconSize = TextRenderer.MeasureText(e.Graphics, FolderIcon, _iconFont,
             Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        var labelSize = TextRenderer.MeasureText(e.Graphics, LabelText, _labelFont,
+            Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
 
-        var totalW = iconSize.Width + gap + textSize.Width + hPad * 2;
-        var totalH = Math.Max(iconSize.Height, textSize.Height) + this.ScaleForDpi(8);
+        var buttonW = iconSize.Width + gap + textSize.Width + hPad * 2;
+        var buttonH = Math.Max(iconSize.Height, textSize.Height) + this.ScaleForDpi(8);
 
+        // 标签在上、按钮在下，整体垂直居中（与 macOS 空状态一致）
+        var groupH = labelSize.Height + labelGap + buttonH;
+        var groupTop = Math.Max(this.ScaleForDpi(16), (ClientSize.Height - groupH) / 2);
+        var labelBounds = new Rectangle(0, groupTop, ClientSize.Width, labelSize.Height);
         var bgBounds = new Rectangle(
-            (ClientSize.Width - totalW) / 2,
-            topMargin,
-            totalW,
-            totalH);
+            (ClientSize.Width - buttonW) / 2,
+            labelBounds.Bottom + labelGap,
+            buttonW,
+            buttonH);
         _buttonBounds = bgBounds;
 
-        // 背景
+        TextRenderer.DrawText(e.Graphics, LabelText, _labelFont, labelBounds, _textSecondary,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+
+        // 按钮背景
         if (_hovered)
         {
             using var brush = new SolidBrush(_bgHover);
@@ -139,6 +153,7 @@ internal sealed class OpenFolderPrompt : Control
         {
             _iconFont.Dispose();
             _textFont.Dispose();
+            _labelFont.Dispose();
         }
         base.Dispose(disposing);
     }
