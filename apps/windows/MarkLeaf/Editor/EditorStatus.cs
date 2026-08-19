@@ -27,6 +27,9 @@ internal sealed record EditorContextMenuRequest(
     double ClientY,
     double MenuHeight,
     bool CanStartFormatPainter,
-    bool FormatPainterArmed);
+    bool FormatPainterArmed,
+    bool ReadOnly);
 
 internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);
+
+internal sealed record UnsafeEmphasisRequest(string RequestId, string Kind);

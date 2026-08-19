@@ -39,6 +39,7 @@ public static class CommandCatalog
             [Keys.Control | Keys.X] = AppCommand.Cut,
             [Keys.Control | Keys.C] = AppCommand.Copy,
             [Keys.Control | Keys.V] = AppCommand.Paste,
+            [Keys.Control | Keys.Shift | Keys.V] = AppCommand.PastePlainText,
             [Keys.Control | Keys.F] = AppCommand.Find,
             [Keys.Control | Keys.H] = AppCommand.Replace,
             [Keys.Control | Keys.B] = AppCommand.ToggleBold,

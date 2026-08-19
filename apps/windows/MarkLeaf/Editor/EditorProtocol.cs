@@ -34,6 +34,7 @@ public static class EditorProtocol
         "selectionExport",
         "exportContent",
         "zoomWheel",
+        "unsafeEmphasisRequested",
         "error",
     ];
 
@@ -44,6 +45,7 @@ public static class EditorProtocol
         "command",
         "applyStyles",
         "localizeFindBar",
+        "unsafeEmphasisResponse",
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -164,7 +166,8 @@ public static class EditorProtocol
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasOptionalNonNegativeNumber(payload, "menuHeight")
                 && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
-                && HasOptionalBooleanProperty(payload, "formatPainterArmed"),
+                && HasOptionalBooleanProperty(payload, "formatPainterArmed")
+                && HasOptionalBooleanProperty(payload, "readOnly"),
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
@@ -175,6 +178,7 @@ public static class EditorProtocol
             "selectionExport" => HasSelectionExportPayload(payload),
             "exportContent" => HasProperty(payload, "html", JsonValueKind.String),
             "zoomWheel" => HasNonZeroNumber(payload, "deltaY"),
+            "unsafeEmphasisRequested" => HasUnsafeEmphasisPayload(payload),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
@@ -232,7 +236,8 @@ public static class EditorProtocol
             && HasNullableString(payload, "mathNumber")
             && HasNullableString(payload, "caption")
             && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
-            && HasOptionalBooleanProperty(payload, "formatPainterArmed");
+            && HasOptionalBooleanProperty(payload, "formatPainterArmed")
+            && HasOptionalBooleanProperty(payload, "readOnly");
     }
 
     private static bool HasFindResultPayload(JsonElement payload)
@@ -248,6 +253,12 @@ public static class EditorProtocol
         return HasProperty(payload, "text", JsonValueKind.String)
             && HasProperty(payload, "markdown", JsonValueKind.String)
             && HasProperty(payload, "html", JsonValueKind.String);
+    }
+
+    private static bool HasUnsafeEmphasisPayload(JsonElement payload)
+    {
+        return HasProperty(payload, "id", JsonValueKind.String)
+            && HasNullableEnum(payload, "kind", "bold", "italic");
     }
 
     private static bool HasEditorStatusPayload(JsonElement payload)

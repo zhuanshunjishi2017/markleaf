@@ -312,8 +312,11 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.SaveDocument, Loc.Get("menu.file.save"));
             AppendCommand(menu, AppCommand.SaveDocumentAs, Loc.Get("menu.file.saveAs"));
             var exportMenu = CreateMenu(true);
+            
             AppendCommand(exportMenu, AppCommand.ExportPdf, Loc.Get("menu.file.exportPdf"));
             AppendCommand(exportMenu, AppCommand.ExportHtml, Loc.Get("menu.file.exportHtml"));
+            AppendSeparator(exportMenu);
+            AppendCommand(exportMenu, AppCommand.ExportWithLastSettings, Loc.Get("menu.file.exportLast"));
             AppendPopup(menu, Loc.Get("menu.file.export"), exportMenu);
             AppendCommand(menu, AppCommand.Print, Loc.Get("menu.file.print"));
             AppendCommand(menu, AppCommand.RecoverUnsavedFiles, Loc.Get("menu.file.recoverUnsaved"));
@@ -342,10 +345,12 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.Cut, Loc.Get("menu.edit.cut"));
             AppendCommand(menu, AppCommand.Copy, Loc.Get("menu.edit.copy"));
 
-            var copyAs = CreateMenu(true);
-            AppendCommand(copyAs, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
-            AppendCommand(copyAs, AppCommand.CopyPlainText, Loc.Get("menu.edit.copyPlainText"));
-            AppendPopup(menu, Loc.Get("menu.edit.copyAs"), copyAs);
+            var copyPasteAs = CreateMenu(true);
+            AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
+            AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("menu.edit.copyPlainText"));
+            AppendSeparator(copyPasteAs);
+            AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("menu.edit.pastePlainText"));
+            AppendPopup(menu, Loc.Get("menu.edit.copyPasteAs"), copyPasteAs);
 
             AppendCommand(menu, AppCommand.Paste, Loc.Get("menu.edit.paste"));
             AppendSeparator(menu);
@@ -366,6 +371,15 @@ internal sealed class NativeMenuService : IDisposable
         var commands = new List<AppCommand>();
         try
         {
+            if (status.ReadOnly)
+            {
+                AppendReadOnlyContextMenu(menu);
+                commands.AddRange([
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
+                    AppCommand.PastePlainText, AppCommand.Paste, AppCommand.SelectAll]);
+                return (menu, commands.ToArray());
+            }
+
             if (status.SourceMode)
             {
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
@@ -464,10 +478,12 @@ internal sealed class NativeMenuService : IDisposable
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
 
-                var copyAs = CreateMenu(true);
-                AppendCommand(copyAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
-                AppendCommand(copyAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
-                AppendPopup(menu, Loc.Get("contextMenu.copyAs"), copyAs);
+                var copyPasteAs = CreateMenu(true);
+                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
+                AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendSeparator(copyPasteAs);
+                AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
+                AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
 
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
                 AppendSeparator(menu);
@@ -476,7 +492,7 @@ internal sealed class NativeMenuService : IDisposable
                 commands.AddRange([
                     AppCommand.FormatPainter,
                     AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
-                    AppCommand.Paste, AppCommand.SelectAll]);
+                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
 
             return (menu, commands.ToArray());
@@ -486,6 +502,23 @@ internal sealed class NativeMenuService : IDisposable
             NativeMethods.DestroyMenu(menu);
             throw;
         }
+    }
+
+    private static void AppendReadOnlyContextMenu(nint menu)
+    {
+        AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+        AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+
+        var copyPasteAs = CreateMenu(true);
+        AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
+        AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+        AppendSeparator(copyPasteAs);
+        AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
+        AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
+
+        AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
     }
 
     private static nint BuildParagraphMenu()

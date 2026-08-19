@@ -4,6 +4,7 @@ using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
+using MarkLeaf.UI.Dialogs;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace MarkLeaf.UI;
@@ -76,6 +77,7 @@ internal sealed partial class MainForm
         _editorHost.OpenLinkRequested += OnOpenLinkRequested;
         _editorHost.FilesDropped += OnEditorFilesDropped;
         _editorHost.PasteImageRequested += OnEditorPasteImageRequested;
+        _editorHost.UnsafeEmphasisRequested += OnUnsafeEmphasisRequested;
         _editorHost.ZoomWheelRequested += (_, deltaY) =>
         {
             if (!_settings.Appearance.CtrlWheelZoom)
@@ -153,6 +155,32 @@ internal sealed partial class MainForm
 
         _editorStatus = status;
         RefreshPersistentStatusBar();
+    }
+
+    private void OnUnsafeEmphasisRequested(object? sender, UnsafeEmphasisRequest request)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnUnsafeEmphasisRequested(sender, request));
+            return;
+        }
+
+        var preference = _settings.Editor.UnsafeEmphasisPreference;
+        if (preference is "literal" or "html")
+        {
+            _editorHost?.ResolveUnsafeEmphasis(request.RequestId, preference);
+            return;
+        }
+
+        using var dialog = new UnsafeEmphasisDialog(request.Kind);
+        var result = ShowModal(() => dialog.ShowDialog(this));
+        var action = result == DialogResult.OK ? dialog.Action : "literal";
+        if (dialog.RememberChoice)
+        {
+            _settings.Editor.UnsafeEmphasisPreference = action;
+            SaveSettings();
+        }
+        _editorHost?.ResolveUnsafeEmphasis(request.RequestId, action);
     }
 
     private void RefreshPersistentStatusBar()

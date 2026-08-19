@@ -26,11 +26,23 @@ public sealed class EditorCommandStatusTests
 
         Assert.IsFalse(status.CanStartFormatPainter);
         Assert.IsFalse(status.FormatPainterArmed);
+        Assert.IsFalse(status.ReadOnly);
+    }
+
+    [TestMethod]
+    public void FromPayload_ParsesReadOnlyField()
+    {
+        var payload = CommandStatePayload(readOnly: true);
+
+        var status = EditorCommandStatus.FromPayload(payload);
+
+        Assert.IsTrue(status.ReadOnly);
     }
 
     private static JsonElement CommandStatePayload(
         bool? canStartFormatPainter = null,
-        bool? formatPainterArmed = null)
+        bool? formatPainterArmed = null,
+        bool? readOnly = null)
     {
         var tail = canStartFormatPainter is bool canStart
             ? $",\n      \"canStartFormatPainter\": {canStart.ToString().ToLowerInvariant()}"
@@ -38,6 +50,10 @@ public sealed class EditorCommandStatusTests
         if (formatPainterArmed is bool armed)
         {
             tail += $",\n      \"formatPainterArmed\": {armed.ToString().ToLowerInvariant()}";
+        }
+        if (readOnly is bool ro)
+        {
+            tail += $",\n      \"readOnly\": {ro.ToString().ToLowerInvariant()}";
         }
 
         var json = """

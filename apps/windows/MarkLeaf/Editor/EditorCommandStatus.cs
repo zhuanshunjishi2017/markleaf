@@ -29,11 +29,12 @@ internal sealed record EditorCommandStatus(
     string? MathNumber,
     string? Caption,
     bool CanStartFormatPainter,
-    bool FormatPainterArmed)
+    bool FormatPainterArmed,
+    bool ReadOnly)
 {
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false, false, false, null, null, null, false, false);
+        false, false, null, false, false, false, false, null, null, null, false, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -74,6 +75,7 @@ internal sealed record EditorCommandStatus(
                 ? captionProp.GetString()
                 : null,
             payload.TryGetProperty("canStartFormatPainter", out var canStart) && canStart.ValueKind == JsonValueKind.True,
-            payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True);
+            payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True,
+            payload.TryGetProperty("readOnly", out var readOnly) && readOnly.ValueKind == JsonValueKind.True);
     }
 }

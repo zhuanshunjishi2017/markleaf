@@ -398,4 +398,21 @@ public sealed class EditorProtocolTests
 
         Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
     }
+
+    [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsUnsafeEmphasisRequest()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "unsafeEmphasisRequested",
+              "requestId": "unsafe-1",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 2,
+              "payload": { "id": "unsafe-1", "kind": "bold" }
+            }
+            """;
+
+        Assert.IsTrue(EditorProtocol.TryDeserializeEditorMessage(json, out _, out var error), error);
+    }
 }

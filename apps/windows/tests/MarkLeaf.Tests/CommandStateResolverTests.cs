@@ -41,6 +41,7 @@ public sealed class CommandStateResolverTests
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Copy, available).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyMarkdown, available).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyPlainText, available).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.PastePlainText, available).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleBold, available).IsEnabled);
     }
 
@@ -125,6 +126,25 @@ public sealed class CommandStateResolverTests
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Find, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Replace, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSourceMode, context).IsEnabled);
+    }
+
+    [TestMethod]
+    public void Resolve_ReadOnlyDisablesEditingButAllowsCopyFindAndSourceToggle()
+    {
+        var context = CreateContext(editorReady: true, hasSelection: true) with { ReadOnly = true };
+
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.Cut, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.Paste, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.PastePlainText, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ToggleBold, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.Replace, context).IsEnabled);
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Copy, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyMarkdown, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyPlainText, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Find, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSourceMode, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SelectAll, context).IsEnabled);
     }
 
     [TestMethod]
