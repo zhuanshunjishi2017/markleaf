@@ -10,6 +10,11 @@ struct ExportOptions {
     var margins = ExportMargins()
     var header = ""
     var footer = ""
+    var pdfHeader = ""
+    var pdfHeaderAlignment = ""
+    var pdfFooter = ""
+    var pdfFooterAlignment = ""
+    var headerFooterFontFamily = ""
 }
 
 /// 保存面板附属视图：格式/纸张/方向/边距/样式/页眉页脚（对应 Windows ExportDialog）。

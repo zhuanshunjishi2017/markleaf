@@ -15,6 +15,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let customMarginButton = NSButton(title: "", target: nil, action: nil)
     private let stylePopup = NSPopUpButton()
     private let colorThemePopup = NSPopUpButton()
+    private let headerPresetPopup = NSPopUpButton()
+    private let footerPresetPopup = NSPopUpButton()
     private let headerField = NSTextField(string: "")
     private let footerField = NSTextField(string: "")
     private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
@@ -30,6 +32,15 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private var previewGeneration = 0
     private var previewFileCounter = 0
     private var customMarginItemIndex: Int?
+
+    private static let headerFooterPresets: [(id: String, title: String)] = [
+        ("none", L10n.t("无")),
+        ("title-left", L10n.t("标题（左对齐）")),
+        ("page-center", L10n.t("页码（居中）")),
+        ("page-right", L10n.t("页码（右对齐）")),
+        ("page-total-center", L10n.t("页码/总页数（居中）")),
+        ("custom", L10n.t("自定义")),
+    ]
 
     private static let marginPresets: [(String, ExportMargins)] = [
         (L10n.t("标准"), ExportMargins(top: 18, bottom: 18, left: 15, right: 15)),
@@ -93,6 +104,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         stylePopup.action = #selector(optionChanged)
         colorThemePopup.target = self
         colorThemePopup.action = #selector(optionChanged)
+        headerPresetPopup.addItems(withTitles: Self.headerFooterPresets.map(\.title))
+        footerPresetPopup.addItems(withTitles: Self.headerFooterPresets.map(\.title))
+        headerPresetPopup.target = self
+        footerPresetPopup.target = self
+        headerPresetPopup.action = #selector(headerFooterPresetChanged)
+        footerPresetPopup.action = #selector(headerFooterPresetChanged)
         headerField.target = self
         headerField.action = #selector(optionChanged)
         footerField.target = self
@@ -101,6 +118,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         footerField.widthAnchor.constraint(equalToConstant: 180).isActive = true
         stylePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
         colorThemePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        headerPresetPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
+        footerPresetPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
+        headerField.placeholderString = L10n.t("支持 {title}、{page}、{pages}")
+        footerField.placeholderString = L10n.t("支持 {title}、{page}、{pages}")
 
         pageCountLabel.font = .systemFont(ofSize: 12)
         pageCountLabel.textColor = .secondaryLabelColor
@@ -123,8 +144,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             marginRow!,
             labeled(L10n.t("排版样式"), stylePopup),
             labeled(L10n.t("配色方案"), colorThemePopup),
-            labeled(L10n.t("页眉"), headerField),
-            labeled(L10n.t("页脚"), footerField),
+            labeled(L10n.t("页眉"), NSStackView(views: [headerPresetPopup, headerField])),
+            labeled(L10n.t("页脚"), NSStackView(views: [footerPresetPopup, footerField])),
         ])
         optionsStack.orientation = .vertical
         optionsStack.alignment = .leading
@@ -198,16 +219,30 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         styleIDs = session.styles.map(\.id)
         themeIDs = session.colorThemes.map(\.id)
         stylePopup.addItems(withTitles: session.styles.map { L10n.t($0.displayName) })
-        if let idx = styleIDs.firstIndex(of: session.currentStyleId) {
+        let saved = SettingsService.shared.settings.exportSettings
+        if let idx = styleIDs.firstIndex(of: saved.style) ?? styleIDs.firstIndex(of: session.currentStyleId) {
             stylePopup.selectItem(at: idx)
         }
         colorThemePopup.addItems(withTitles: session.colorThemes.map { L10n.t($0.displayName) })
-        if let idx = themeIDs.firstIndex(of: session.currentThemeId ?? "colors-white-only") {
+        if let idx = themeIDs.firstIndex(of: saved.colorTheme) ?? themeIDs.firstIndex(of: session.currentThemeId ?? "colors-white-only") {
             colorThemePopup.selectItem(at: idx)
         }
-        margins = ExportMargins()
+        formatPopup.selectItem(at: saved.format == "html" ? 1 : 0)
+        paperPopup.selectItem(withTitle: saved.paperSize)
+        landscapeCheck.state = saved.landscape ? .on : .off
+        margins = ExportMargins(
+            top: saved.marginTop, bottom: saved.marginBottom,
+            left: saved.marginLeft, right: saved.marginRight
+        )
+        headerField.stringValue = saved.format == "html" ? saved.htmlHeader : saved.headerCustom
+        footerField.stringValue = saved.format == "html" ? saved.htmlFooter : saved.footerCustom
+        selectHeaderFooterPreset(saved.headerPreset, in: headerPresetPopup)
+        selectHeaderFooterPreset(saved.footerPreset, in: footerPresetPopup)
         marginPopup.addItem(withTitle: L10n.t("自定义"))
         customMarginItemIndex = marginPopup.numberOfItems - 1
+        marginPopup.selectItem(at: customMarginItemIndex ?? 0)
+        updatePDFVisibility()
+        updateHeaderFooterFieldState()
         refreshPreview()
     }
 
@@ -234,9 +269,39 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         options.paperSize = PaperSize(rawValue: paperPopup.titleOfSelectedItem ?? "A4") ?? .a4
         options.landscape = landscapeCheck.state == .on
         options.margins = margins
-        options.header = headerField.stringValue
-        options.footer = footerField.stringValue
+        if selectedFormat == "html" {
+            options.header = headerField.stringValue
+            options.footer = footerField.stringValue
+        } else {
+            let headerPreset = selectedHeaderFooterPreset(in: headerPresetPopup)
+            let footerPreset = selectedHeaderFooterPreset(in: footerPresetPopup)
+            options.pdfHeader = PDFHeaderFooterPolicy.text(for: headerPreset, custom: headerField.stringValue)
+            options.pdfHeaderAlignment = PDFHeaderFooterPolicy.alignment(for: headerPreset)
+            options.pdfFooter = PDFHeaderFooterPolicy.text(for: footerPreset, custom: footerField.stringValue)
+            options.pdfFooterAlignment = PDFHeaderFooterPolicy.alignment(for: footerPreset)
+            options.headerFooterFontFamily = selectedHeaderFooterFontFamily
+        }
         return options
+    }
+
+    private var selectedHeaderFooterFontFamily: String {
+        guard let style = session?.styles.first(where: { $0.id == selectedStyleID }) else { return "serif" }
+        let pattern = "font-family\\s*:\\s*([^;]+);"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return "serif" }
+        let range = NSRange(style.css.startIndex..., in: style.css)
+        guard let match = regex.matches(in: style.css, range: range).last,
+              let valueRange = Range(match.range(at: 1), in: style.css) else { return "serif" }
+        return String(style.css[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func selectedHeaderFooterPreset(in popup: NSPopUpButton) -> String {
+        let index = popup.indexOfSelectedItem
+        return Self.headerFooterPresets.indices.contains(index) ? Self.headerFooterPresets[index].id : "none"
+    }
+
+    private func selectHeaderFooterPreset(_ preset: String, in popup: NSPopUpButton) {
+        let normalized = PDFHeaderFooterPolicy.normalizePreset(preset)
+        popup.selectItem(at: Self.headerFooterPresets.firstIndex(where: { $0.id == normalized }) ?? 0)
     }
 
     // MARK: - 格式切换
@@ -251,6 +316,24 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         paperRow?.isHidden = !isPDF
         landscapeRow?.isHidden = !isPDF
         marginRow?.isHidden = !isPDF
+        headerPresetPopup.isHidden = !isPDF
+        footerPresetPopup.isHidden = !isPDF
+        updateHeaderFooterFieldState()
+    }
+
+    @objc private func headerFooterPresetChanged() {
+        updateHeaderFooterFieldState()
+        schedulePreview()
+    }
+
+    private func updateHeaderFooterFieldState() {
+        if selectedFormat == "html" {
+            headerField.isEnabled = true
+            footerField.isEnabled = true
+        } else {
+            headerField.isEnabled = selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
+            footerField.isEnabled = selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
+        }
     }
 
     // MARK: - 预览
@@ -303,7 +386,13 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             margins: options.margins,
             window: window,
             showsPanel: false,
-            saveURL: url
+            saveURL: url,
+            headerText: options.pdfHeader,
+            headerAlignment: options.pdfHeaderAlignment,
+            footerText: options.pdfFooter,
+            footerAlignment: options.pdfFooterAlignment,
+            headerFooterFontFamily: options.headerFooterFontFamily,
+            documentTitle: session?.exportTitle ?? L10n.t("未命名")
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, generation == self.previewGeneration else { return }
@@ -431,8 +520,37 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             let targetURL = EditorSession.fixExportExtension(url, format: options.format)
+            self.persist(options: options)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
+        }
+    }
+
+    private func persist(options: ExportOptions) {
+        let headerPreset = selectedHeaderFooterPreset(in: headerPresetPopup)
+        let footerPreset = selectedHeaderFooterPreset(in: footerPresetPopup)
+        SettingsService.shared.update { settings in
+            settings.exportSettings = PersistedExportSettings(
+                format: options.format,
+                paperSize: options.paperSize.rawValue,
+                landscape: options.landscape,
+                marginTop: options.margins.top,
+                marginBottom: options.margins.bottom,
+                marginLeft: options.margins.left,
+                marginRight: options.margins.right,
+                style: options.style,
+                colorTheme: options.colorScheme ?? "",
+                htmlHeader: options.format == "html" ? headerField.stringValue : settings.exportSettings.htmlHeader,
+                htmlFooter: options.format == "html" ? footerField.stringValue : settings.exportSettings.htmlFooter,
+                headerPreset: headerPreset,
+                headerCustom: headerField.stringValue,
+                headerAlignment: options.pdfHeaderAlignment,
+                footerPreset: footerPreset,
+                footerCustom: footerField.stringValue,
+                footerAlignment: options.pdfFooterAlignment,
+                headerFontFamily: options.headerFooterFontFamily,
+                footerFontFamily: options.headerFooterFontFamily
+            )
         }
     }
 

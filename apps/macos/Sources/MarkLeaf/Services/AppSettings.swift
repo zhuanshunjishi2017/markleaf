@@ -63,6 +63,10 @@ struct AppSettings: Codable {
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
+        suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false
+        unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
+        exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
+        exportSettings.normalize()
         startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? true
         associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? true
@@ -132,6 +136,9 @@ struct AppSettings: Codable {
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var sourceIndentWidth = 2
     var showParagraphBlockHandle = true
+    var suppressUnsafeEmphasisPrompt = false
+    var unsafeEmphasisAction = UnsafeEmphasisAction.literal.rawValue
+    var exportSettings = PersistedExportSettings()
 
     static let defaultSourceFontFamily = "Menlo"
     static let defaultSourceCjkFontFamily = "PingFang SC"

@@ -58,6 +58,12 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         paperSize: PaperSize,
         landscape: Bool,
         margins: ExportMargins,
+        headerText: String = "",
+        headerAlignment: String = "",
+        footerText: String = "",
+        footerAlignment: String = "",
+        headerFooterFontFamily: String = "",
+        documentTitle: String = "",
         completion: @escaping (Result<Data, Error>) -> Void
     ) {
         self.completion = completion
@@ -102,7 +108,16 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
 
         // 注入 CSS @page 规则：边距交给 CSS（createPDF 忽略 NSPrintInfo 边距），
         // 并让主题背景（--bg-primary）铺满整页（对齐 Windows fccc7ad 的 PDF 修复）。
-        let pageRule = Self.injectPageMargins(into: html, margins: margins)
+        let pageRule = Self.injectPageMargins(
+            into: html,
+            margins: margins,
+            headerText: headerText,
+            headerAlignment: headerAlignment,
+            footerText: footerText,
+            footerAlignment: footerAlignment,
+            headerFooterFontFamily: headerFooterFontFamily,
+            documentTitle: documentTitle
+        )
         let adjustedHTML = Self.fixLocalImagePaths(in: pageRule)
         webView.loadHTMLString(adjustedHTML, baseURL: nil)
         AppLog.info("PDFGenerator: HTML 已加载 (\(html.count) 字符)")
@@ -110,8 +125,27 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
 
     /// 注入 @page 边距 + 背景色（对齐 Windows EditorHostController.PrintExportToPdfAsync）。
     /// createPDF 会忽略 NSPrintInfo 的边距设置，因此边距必须通过 CSS @page 生效。
-    private static func injectPageMargins(into html: String, margins: ExportMargins) -> String {
-        let rule = "@page { margin: \(margins.top)mm \(margins.right)mm \(margins.bottom)mm \(margins.left)mm; background-color: var(--bg-primary); }\nhtml { background: var(--bg-primary); }"
+    private static func injectPageMargins(
+        into html: String,
+        margins: ExportMargins,
+        headerText: String = "",
+        headerAlignment: String = "",
+        footerText: String = "",
+        footerAlignment: String = "",
+        headerFooterFontFamily: String = "",
+        documentTitle: String = ""
+    ) -> String {
+        var page = "@page { margin: \(margins.top)mm \(margins.right)mm \(margins.bottom)mm \(margins.left)mm; background-color: var(--bg-primary);"
+        page += marginBox(
+            vertical: "top", alignment: headerAlignment, text: headerText,
+            fontFamily: headerFooterFontFamily, documentTitle: documentTitle
+        )
+        page += marginBox(
+            vertical: "bottom", alignment: footerAlignment, text: footerText,
+            fontFamily: headerFooterFontFamily, documentTitle: documentTitle
+        )
+        page += " }"
+        let rule = page + "\nhtml { background: var(--bg-primary); }"
         if let range = html.range(of: "</style>") {
             return html.replacingCharacters(in: range, with: rule + "\n</style>")
         }
@@ -121,6 +155,51 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             return html.replacingCharacters(in: headRange, with: style + "</head>")
         }
         return "<style>\n" + rule + "\n</style>\n" + html
+    }
+
+    private static func marginBox(
+        vertical: String,
+        alignment: String,
+        text: String,
+        fontFamily: String,
+        documentTitle: String
+    ) -> String {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        let horizontal = ["left", "right"].contains(alignment) ? alignment : "center"
+        let family = fontFamily.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "serif, \"Source Han Serif CN\", \"Noto Serif CJK CN\"" : fontFamily
+        let offset = vertical == "top" ? "padding-top: 6mm;" : "padding-bottom: 6mm;"
+        let content = cssGeneratedContent(text, documentTitle: documentTitle)
+        return " @\(vertical)-\(horizontal) { content: \(content); font-family: \(family); font-size: calc(var(--ml-font-size) * 0.875); color: var(--text-primary); \(offset) }"
+    }
+
+    private static func cssGeneratedContent(_ text: String, documentTitle: String) -> String {
+        let resolvedTitle = text
+            .replacingOccurrences(of: "{document-title}", with: documentTitle)
+            .replacingOccurrences(of: "{title}", with: documentTitle)
+        var parts: [String] = []
+        var remaining = resolvedTitle[...]
+        while !remaining.isEmpty {
+            let page = remaining.range(of: "{page}")
+            let pages = remaining.range(of: "{pages}") ?? remaining.range(of: "{total}")
+            let next = [page, pages].compactMap { $0 }.min { $0.lowerBound < $1.lowerBound }
+            guard let next else {
+                parts.append(cssString(String(remaining)))
+                break
+            }
+            parts.append(cssString(String(remaining[..<next.lowerBound])))
+            parts.append(next.lowerBound == page?.lowerBound ? "counter(page)" : "counter(pages)")
+            remaining = remaining[next.upperBound...]
+        }
+        return parts.filter { $0 != "\"\"" }.joined(separator: " ")
+    }
+
+    private static func cssString(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\A ")
+        return "\"\(escaped)\""
     }
 
     private static func fixLocalImagePaths(in html: String) -> String {
@@ -175,6 +254,12 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         saveURL: URL? = nil,
         useSystemPaperDefaults: Bool = false,
         printFriendly: Bool = false,
+        headerText: String = "",
+        headerAlignment: String = "",
+        footerText: String = "",
+        footerAlignment: String = "",
+        headerFooterFontFamily: String = "",
+        documentTitle: String = "",
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         self.printCompletion = completion
@@ -229,7 +314,17 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         // 系统打印面板负责纸张与边距，不注入 @page 边距；
         // 强制输出 CSS 背景色（WebKit 打印默认不渲染背景）、固定本地图片路径；
         // 打印场景再叠加“打印友好”浅色覆盖（白底深字）。
-        let printHTML = Self.forcePrintBackgrounds(in: html)
+        let pageHTML = showsPanel ? html : Self.injectPageMargins(
+            into: html,
+            margins: margins,
+            headerText: headerText,
+            headerAlignment: headerAlignment,
+            footerText: footerText,
+            footerAlignment: footerAlignment,
+            headerFooterFontFamily: headerFooterFontFamily,
+            documentTitle: documentTitle
+        )
+        let printHTML = Self.forcePrintBackgrounds(in: pageHTML)
         var adjustedHTML = Self.fixLocalImagePaths(in: printHTML)
         if printFriendly {
             adjustedHTML = Self.forcePrintFriendly(in: adjustedHTML)

@@ -63,7 +63,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
     static let readOnlyBlockedCommands: Set<String> = [
-        "save", "saveAs", "undo", "redo", "cut", "paste", "replace",
+        "save", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
         "replaceOne", "replaceAll", "pasteText", "deleteSelection",
         "setParagraph", "setHeading1", "setHeading2", "setHeading3",
         "setHeading4", "setHeading5", "setHeading6",
@@ -353,6 +353,33 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 applyZoomPercent(continuousZoom, persist: false)
                 schedulePinchPersist(now: false)
             }
+
+        case "unsafeEmphasisRequested":
+            guard let requestID = message["requestId"] as? String, !requestID.isEmpty else { break }
+            let prompt = UnsafeEmphasisPolicy.prompt(for: payload?["kind"] as? String ?? "bold")
+            let settings = SettingsService.shared.settings
+            let action: UnsafeEmphasisAction
+            if let saved = UnsafeEmphasisPolicy.savedAction(
+                value: settings.unsafeEmphasisAction,
+                suppressPrompt: settings.suppressUnsafeEmphasisPrompt
+            ) {
+                action = saved
+            } else {
+                let result = UnsafeEmphasisDialog.resolve(prompt: prompt)
+                action = result.action
+                if result.suppressPrompt {
+                    SettingsService.shared.update {
+                        $0.suppressUnsafeEmphasisPrompt = true
+                        $0.unsafeEmphasisAction = result.action.rawValue
+                    }
+                }
+            }
+            let response = UnsafeEmphasisPolicy.response(requestID: requestID, action: action)
+            send(
+                "unsafeEmphasisResponse",
+                payload: ["action": response.action.rawValue],
+                requestId: response.requestID
+            )
 
         case "findResult":
             if let payload, let current = payload["current"] as? Int, let total = payload["total"] as? Int {
