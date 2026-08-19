@@ -48,6 +48,7 @@ internal sealed partial class MainForm : Form
     private readonly RecoveryService _recoveryService;
     private readonly System.Windows.Forms.Timer _recoveryTimer = new() { Interval = 30_000 };
     private readonly System.Windows.Forms.Timer _autoSaveTimer = new() { Interval = 500 };
+    private readonly System.Windows.Forms.Timer _statusMessageTimer = new() { Interval = 5_000 };
     private readonly WorkspaceChangeDebouncer _workspaceChangeDebouncer;
     private CancellationTokenSource? _workspaceLoadCancellation;
     private string? _workspaceRoot;
@@ -63,7 +64,10 @@ internal sealed partial class MainForm : Form
         AutoSize = false,
     };
     private readonly ToolStripStatusLabel _statusLabel = new(Services.Loc.Get("statusBar.preparing"));
-    private readonly ToolStripStatusLabel _characterCountLabel = new(Loc.Format("statusBar.wordCount", 0));
+    private readonly ToolStripButton _characterCountButton = new(Loc.Format("statusBar.wordCount", 0))
+    {
+        DisplayStyle = ToolStripItemDisplayStyle.Text,
+    };
     private readonly ToolStripStatusLabel _blockTypeLabel = new(Loc.Get("statusBar.blockType.paragraph"));
     private readonly ToolStripStatusLabel _positionLabel = new(Loc.Format("statusBar.position", 1, 1));
     private readonly ToolStripStatusLabel _encodingLabel = new("UTF-8");
@@ -77,6 +81,11 @@ internal sealed partial class MainForm : Form
     private SolidBrush _menuHighlightBrush = new(Color.FromArgb(0xF0, 0xF0, 0xF0));
     private SolidBrush _menuTextBrush = new(Color.Black);
     private SolidBrush _menuDisabledBrush = new(Color.FromArgb(0x6D, 0x6D, 0x6D));
+    private readonly Font _statusBarTextFont = new(
+        SystemFonts.MessageBoxFont?.FontFamily ?? FontFamily.GenericSansSerif,
+        8F,
+        FontStyle.Bold,
+        GraphicsUnit.Point);
     private bool _menuDarkMode;
     private bool _focusMode;
     private bool _sidebarVisibleBeforeFocus = true;
@@ -123,6 +132,7 @@ internal sealed partial class MainForm : Form
         }
         _imageAssetService = new ImageAssetService(_paths.DefaultImageDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
+        _statusMessageTimer.Tick += (_, _) => ClearTemporaryStatusMessage();
         _viewToggleButton.Width = this.ScaleForDpi(18);
         _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
         _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
@@ -300,6 +310,7 @@ internal sealed partial class MainForm : Form
             _menuHighlightBrush.Dispose();
             _menuTextBrush.Dispose();
             _menuDisabledBrush.Dispose();
+            _statusBarTextFont.Dispose();
         }
 
         base.Dispose(disposing);
@@ -402,7 +413,27 @@ internal sealed partial class MainForm : Form
 
     private void SetStatus(string text)
     {
+        _statusMessageTimer.Stop();
+        if (_settings.Appearance.StatusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Hidden)
+        {
+            _statusLabel.Text = string.Empty;
+            return;
+        }
+
         _statusLabel.Text = text;
+        if (_settings.Appearance.StatusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Temporary)
+        {
+            _statusMessageTimer.Start();
+        }
+    }
+
+    private void ClearTemporaryStatusMessage()
+    {
+        _statusMessageTimer.Stop();
+        if (_settings.Appearance.StatusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Temporary)
+        {
+            _statusLabel.Text = string.Empty;
+        }
     }
 
     private void WriteWindowReport()

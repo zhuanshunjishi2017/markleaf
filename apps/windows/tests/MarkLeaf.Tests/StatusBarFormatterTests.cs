@@ -15,10 +15,10 @@ public sealed class StatusBarFormatterTests
     {
         Assert.AreEqual(
             "字数 12",
-            StatusBarFormatter.FormatCharacterCount(new EditorStatus(12, 0, "paragraph", 1, 1)));
+            StatusBarFormatter.FormatCharacterCount(CreateStatus(12, 0)));
         Assert.AreEqual(
             "字数 12（已选 3）",
-            StatusBarFormatter.FormatCharacterCount(new EditorStatus(12, 3, "paragraph", 1, 1)));
+            StatusBarFormatter.FormatCharacterCount(CreateStatus(12, 3)));
     }
 
     [TestMethod]
@@ -47,4 +47,19 @@ public sealed class StatusBarFormatterTests
         Assert.AreEqual("已执行：三级标题", CommandStatusFormatter.FormatExecuted(Commands.AppCommand.SetHeading3));
         Assert.AreEqual("已执行：任务列表", CommandStatusFormatter.FormatExecuted(Commands.AppCommand.ToggleTaskList));
     }
+
+    private static EditorStatus CreateStatus(int characterCount, int selectionCharacterCount) =>
+        new(
+            characterCount,
+            selectionCharacterCount,
+            characterCount,
+            characterCount,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "paragraph",
+            1,
+            1);
 }

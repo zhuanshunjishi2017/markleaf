@@ -16,7 +16,7 @@ internal enum ExportDialogMode
 
 internal sealed class ExportDialog : Form
 {
-    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML"], ["\uE8A5", "\uE943"]);
+    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML"], ["\uEA90", "\uE943"]);
 
     private readonly Panel _contentPanel = new()
     {

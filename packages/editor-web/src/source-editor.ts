@@ -58,6 +58,21 @@ export type UnsafeEmphasisRequest = {
   kind: UnsafeEmphasisKind
 }
 
+export type SourceEditorStatus = {
+  characterCount: number
+  selectedCharacterCount: number
+  totalCharacterCount: number
+  nonWhitespaceCharacterCount: number
+  cjkCharacterCount: number
+  westernWordCount: number
+  formulaCount: number
+  codeLineCount: number
+  paragraphCount: number
+  blockType: 'paragraph'
+  line: number
+  column: number
+}
+
 type UnsafeEmphasisMatch = {
   from: number
   to: number
@@ -151,7 +166,7 @@ export class SourceEditor {
         '.cm-scroller': { fontFamily: 'Cascadia Mono, Consolas, monospace', lineHeight: '1.65' },
         // 正文不居中：行号栏固定在左侧，若把正文居中，侧边栏关闭（窗口变宽）时
         // 行号与正文之间会出现一大段空白。
-        '.cm-content': { padding: '44px 24px 96px', maxWidth: '920px' },
+        '.cm-content': { padding: '44px 24px 96px' },
         '.cm-gutters': {
           background: 'var(--bg-hover)',
           borderRight: '1px solid var(--bg-selected)',
@@ -192,6 +207,107 @@ export class SourceEditor {
     this.focus()
   }
 
+  setSelectionToRenderedLineEnd(lineNumber: number, center = false): void {
+    const line = this.lineForRenderedLine(lineNumber)
+    this.setSelectionToLine(line, center)
+  }
+
+  setSelectionToTableEnd(tableIndex: number, center = false): void {
+    const line = this.lineForTableEnd(tableIndex)
+    this.setSelectionToLine(line, center)
+  }
+
+  setSelectionAfterTableRenderedLines(tableIndex: number, lineOffset: number, center = false): void {
+    const tableEnd = this.lineForTableEnd(tableIndex)
+    const line = this.lineForRenderedLineAfter(tableEnd.number, lineOffset)
+    this.setSelectionToLine(line, center)
+  }
+
+  private setSelectionToLine(line: { to: number }, center: boolean): void {
+    const effects = center ? [EditorView.scrollIntoView(line.to, { y: 'center' })] : undefined
+    this.view.dispatch({
+      selection: { anchor: line.to },
+      effects,
+      scrollIntoView: !center,
+    })
+    this.focus()
+  }
+
+  private lineForRenderedLine(lineNumber: number) {
+    const targetLine = Math.max(1, Math.floor(lineNumber) || 1)
+    let renderedLine = 0
+    let fallback = this.view.state.doc.line(1)
+    let inFencedCode = false
+
+    for (let rawLine = 1; rawLine <= this.view.state.doc.lines; rawLine += 1) {
+      const line = this.view.state.doc.line(rawLine)
+      const isFence = isFenceLine(line.text)
+      if (isFence) {
+        inFencedCode = !inFencedCode
+        continue
+      }
+
+      const countsAsRenderedLine = shouldCountRenderedSourceLine(line.text, inFencedCode)
+      if (countsAsRenderedLine) {
+        renderedLine += 1
+        fallback = line
+        if (renderedLine === targetLine) return line
+      }
+    }
+
+    return fallback
+  }
+
+  private lineForRenderedLineAfter(startLineNumber: number, lineOffset: number) {
+    const targetOffset = Math.max(0, Math.floor(lineOffset) || 0)
+    if (targetOffset === 0) return this.view.state.doc.line(Math.max(1, Math.min(startLineNumber, this.view.state.doc.lines)))
+
+    let renderedLine = 0
+    let fallback = this.view.state.doc.line(Math.max(1, Math.min(startLineNumber, this.view.state.doc.lines)))
+    let inFencedCode = false
+
+    for (let rawLine = startLineNumber + 1; rawLine <= this.view.state.doc.lines; rawLine += 1) {
+      const line = this.view.state.doc.line(rawLine)
+      const isFence = isFenceLine(line.text)
+      if (isFence) {
+        inFencedCode = !inFencedCode
+        continue
+      }
+
+      const countsAsRenderedLine = shouldCountRenderedSourceLine(line.text, inFencedCode)
+      if (countsAsRenderedLine) {
+        renderedLine += 1
+        fallback = line
+        if (renderedLine === targetOffset) return line
+      }
+    }
+
+    return fallback
+  }
+
+  private lineForTableEnd(tableIndex: number) {
+    const targetIndex = Math.max(0, Math.floor(tableIndex) || 0)
+    let currentIndex = -1
+    let tableEnd = this.view.state.doc.line(1)
+
+    for (let lineNumber = 1; lineNumber <= this.view.state.doc.lines; lineNumber += 1) {
+      const line = this.view.state.doc.line(lineNumber)
+      if (!isTableRowLine(line.text)) continue
+
+      const previous = lineNumber > 1 ? this.view.state.doc.line(lineNumber - 1).text : ''
+      if (!isTableRowLine(previous)) {
+        currentIndex += 1
+      }
+      if (currentIndex === targetIndex) {
+        tableEnd = line
+      } else if (currentIndex > targetIndex) {
+        break
+      }
+    }
+
+    return tableEnd
+  }
+
   /// 偏好设置变更时更新缩进宽度（对应首选项「源码模式 > 默认缩进宽度」）。
   setIndentWidth(indentWidth: number): void {
     this.view.dispatch({
@@ -206,6 +322,20 @@ export class SourceEditor {
   getSelectedText(): string {
     const selection = this.view.state.selection.main
     return this.view.state.sliceDoc(selection.from, selection.to)
+  }
+
+  getStatus(): SourceEditorStatus {
+    const text = this.getText()
+    const selection = this.view.state.selection.main
+    const line = this.view.state.doc.lineAt(selection.from)
+    return {
+      characterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
+      selectedCharacterCount: Array.from(this.getSelectedText()).filter(character => !/\s/u.test(character)).length,
+      ...getSourceDocumentStatistics(text),
+      blockType: 'paragraph',
+      line: line.number,
+      column: Array.from(line.text.slice(0, selection.from - line.from)).length + 1,
+    }
   }
 
   replaceSelection(text: string): boolean {
@@ -356,6 +486,87 @@ function htmlToPlainText(html: string): string {
 
 function normalizeInsertedText(text: string): string {
   return text.replace(/\r\n?/g, '\n')
+}
+
+function getSourceDocumentStatistics(text: string) {
+  return {
+    totalCharacterCount: Array.from(text).length,
+    nonWhitespaceCharacterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
+    cjkCharacterCount: Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length,
+    westernWordCount: Array.from(text.matchAll(/[\p{Script=Latin}][\p{Script=Latin}\p{Mark}'’-]*/gu)).length,
+    formulaCount: countMarkdownFormulas(text),
+    codeLineCount: countFencedCodeLines(text),
+    paragraphCount: countMarkdownParagraphs(text),
+  }
+}
+
+function countMarkdownFormulas(text: string): number {
+  let count = 0
+  const withoutCode = text.replace(/^ {0,3}(```+|~~~+)[\s\S]*?^ {0,3}\1.*$/gm, '')
+  for (const _ of withoutCode.matchAll(/\$\$[\s\S]*?\$\$/g)) count += 1
+  const inline = withoutCode.replace(/\$\$[\s\S]*?\$\$/g, '')
+  for (const _ of inline.matchAll(/(?<!\\)\$(?!\s)(?:\\.|[^\n$])+(?<!\s)(?<!\\)\$/g)) count += 1
+  return count
+}
+
+function countFencedCodeLines(text: string): number {
+  let count = 0
+  const lines = text.split('\n')
+  let inFence = false
+  for (const line of lines) {
+    if (isFenceLine(line)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) count += 1
+  }
+  return count
+}
+
+function countMarkdownParagraphs(text: string): number {
+  let count = 0
+  let inFence = false
+  let inParagraph = false
+  for (const line of text.split('\n')) {
+    if (isFenceLine(line)) {
+      if (inParagraph) {
+        count += 1
+        inParagraph = false
+      }
+      inFence = !inFence
+      continue
+    }
+    if (inFence || line.trim().length === 0 || isBlankBlockquoteLine(line)) {
+      if (inParagraph) {
+        count += 1
+        inParagraph = false
+      }
+      continue
+    }
+    inParagraph = true
+  }
+  if (inParagraph) count += 1
+  return count
+}
+
+function isFenceLine(text: string): boolean {
+  return /^ {0,3}(```+|~~~+)/.test(text)
+}
+
+function isTableRowLine(text: string): boolean {
+  const trimmed = text.trim()
+  return trimmed.includes('|') && trimmed.startsWith('|') && trimmed.endsWith('|')
+}
+
+function isBlankBlockquoteLine(text: string): boolean {
+  return /^ {0,3}(?:> ?)+$/.test(text.trimEnd())
+}
+
+function shouldCountRenderedSourceLine(text: string, inFencedCode: boolean): boolean {
+  if (inFencedCode) return true
+  if (text.trim().length === 0) return false
+  if (isBlankBlockquoteLine(text)) return false
+  return true
 }
 
 function findUnsafeEmphasisInChangedLines(update: ViewUpdate): UnsafeEmphasisMatch | null {

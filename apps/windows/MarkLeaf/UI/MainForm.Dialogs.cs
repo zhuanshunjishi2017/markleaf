@@ -8,6 +8,7 @@ using MarkLeaf.Services.ExternalLinks;
 using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
+using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
 
 namespace MarkLeaf.UI;
@@ -30,7 +31,8 @@ internal sealed partial class MainForm
             ClearLogs,
             OpenSettingsJson,
             ClearHistory,
-            ResetAllSettingsToDefaults);
+            ResetAllSettingsToDefaults,
+            ApplyStatusBarSettingsFromPreferences);
         var previousLanguage = _settings.General.UiLanguage ?? "";
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
 
@@ -58,6 +60,7 @@ internal sealed partial class MainForm
         TopMost = _settings.Appearance.TopMostWindow;
         _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
         ApplySidebarAutoHideScrollbar();
+        RefreshPersistentStatusBar();
 
         // 仅在文件关联设置实际变化时才修改注册表。
         if (_settings.General.AssociateMarkdownFiles != previousAssociateMarkdown
@@ -398,6 +401,13 @@ internal sealed partial class MainForm
             Style = ResolveExportStyle(options.Style),
             ColorScheme = ResolveExportColorScheme(options.ColorScheme),
         };
+        SaveSettings();
+    }
+
+    private void ApplyStatusBarSettingsFromPreferences(StatusBarSettings settings)
+    {
+        _settings.Appearance.StatusBar = settings.Clone();
+        RefreshPersistentStatusBar();
         SaveSettings();
     }
 
@@ -830,6 +840,81 @@ internal sealed partial class MainForm
         {
             _documentOperationInProgress = false;
         }
+    }
+
+    private void ShowDocumentStatisticsDialog()
+    {
+        if (_editorCommandStatus.SourceMode)
+        {
+            return;
+        }
+
+        using var dialog = new Form
+        {
+            Text = Loc.Get("dialog.documentStatisticsTitle"),
+            AutoScaleMode = AutoScaleMode.Dpi,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(this.ScaleForDpi(320), this.ScaleForDpi(280)),
+        };
+
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(this.ScaleForDpi(18), this.ScaleForDpi(14), this.ScaleForDpi(18), this.ScaleForDpi(12)),
+            ColumnCount = 2,
+            RowCount = 9,
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+
+        AddStatisticRow(grid, 0, Loc.Get("dialog.statistics.words"), _editorStatus.TotalCharacterCount);
+        AddStatisticRow(grid, 1, Loc.Get("dialog.statistics.nonWhitespace"), _editorStatus.NonWhitespaceCharacterCount);
+        AddStatisticRow(grid, 2, Loc.Get("dialog.statistics.cjk"), _editorStatus.CjkCharacterCount);
+        AddStatisticRow(grid, 3, Loc.Get("dialog.statistics.westernWords"), _editorStatus.WesternWordCount);
+        AddStatisticRow(grid, 4, Loc.Get("dialog.statistics.formulas"), _editorStatus.FormulaCount);
+        AddStatisticRow(grid, 5, Loc.Get("dialog.statistics.codeLines"), _editorStatus.CodeLineCount);
+        AddStatisticRow(grid, 6, Loc.Get("dialog.statistics.paragraphs"), _editorStatus.ParagraphCount);
+
+        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var closeButton = new Button
+        {
+            Text = Loc.Get("common.close"),
+            DialogResult = DialogResult.OK,
+            Anchor = AnchorStyles.Right,
+            Width = this.ScaleForDpi(82),
+            Height = this.ScaleForDpi(28),
+            FlatStyle = FlatStyle.System,
+        };
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, this.ScaleForDpi(36)));
+        grid.Controls.Add(closeButton, 1, 8);
+
+        dialog.Controls.Add(grid);
+        dialog.AcceptButton = closeButton;
+        dialog.CancelButton = closeButton;
+        ShowModal(() => dialog.ShowDialog(this));
+    }
+
+    private static void AddStatisticRow(TableLayoutPanel grid, int row, string label, int value)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        grid.Controls.Add(new Label
+        {
+            Text = label,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            TextAlign = ContentAlignment.MiddleLeft,
+        }, 0, row);
+        grid.Controls.Add(new Label
+        {
+            Text = value.ToString(System.Globalization.CultureInfo.CurrentCulture),
+            AutoSize = true,
+            Anchor = AnchorStyles.Right,
+            TextAlign = ContentAlignment.MiddleRight,
+        }, 1, row);
     }
 
     /// <summary>

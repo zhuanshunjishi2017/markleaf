@@ -119,6 +119,8 @@ public sealed class JsonSettingsService : ISettingsService
         settings.File ??= new FileSettings();
         settings.Editor ??= new EditorSettings();
         settings.Appearance ??= new AppearanceSettings();
+        settings.Appearance.StatusBar ??= new StatusBarSettings();
+        NormalizeStatusBar(settings.Appearance.StatusBar);
         settings.General ??= new GeneralSettings();
         settings.Image ??= new ImageSettings();
         settings.Export ??= new ExportSettings();
@@ -151,4 +153,13 @@ public sealed class JsonSettingsService : ISettingsService
         preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"
             ? preset
             : "none";
+
+    private static void NormalizeStatusBar(StatusBarSettings statusBar)
+    {
+        if (!statusBar.CommandStatusVisible)
+        {
+            statusBar.CommandDisplayMode = StatusBarCommandDisplayMode.Hidden;
+            statusBar.CommandStatusVisible = true;
+        }
+    }
 }

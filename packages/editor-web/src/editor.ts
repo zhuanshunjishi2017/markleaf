@@ -684,6 +684,13 @@ export type EditorCommandState = {
 export type EditorStatus = {
   characterCount: number
   selectedCharacterCount: number
+  totalCharacterCount: number
+  nonWhitespaceCharacterCount: number
+  cjkCharacterCount: number
+  westernWordCount: number
+  formulaCount: number
+  codeLineCount: number
+  paragraphCount: number
   blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
     | 'blockquote' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image'
   line: number
@@ -886,6 +893,139 @@ export function toVirtualImageUrl(markdownPath: string): string {
 
 export function getMarkdown(editor: Editor): string {
   return stabilizeUnsafeEmphasisMarkdown(editor.getMarkdown())
+}
+
+export function getVisualCursorLineNumber(editor: Editor): number {
+  const textBeforeCursor = editor.state.doc.textBetween(0, editor.state.selection.from, '\n', '\n')
+  return textBeforeCursor.split('\n').length
+}
+
+export type VisualSelectionSnapshot = { from: number; to: number }
+
+export type SourceModeJumpTarget =
+  | { type: 'line'; line: number }
+  | { type: 'tableEnd'; tableIndex: number }
+  | { type: 'afterTable'; tableIndex: number; lineOffset: number }
+
+export function captureVisualSelection(editor: Editor): VisualSelectionSnapshot {
+  const { from, to } = editor.state.selection
+  return { from, to }
+}
+
+export function restoreVisualSelection(editor: Editor, selection: VisualSelectionSnapshot | null, center = false): void {
+  if (!selection) {
+    editor.commands.focus()
+    return
+  }
+
+  const from = Math.max(0, Math.min(selection.from, editor.state.doc.content.size))
+  const to = Math.max(0, Math.min(selection.to, editor.state.doc.content.size))
+  editor.commands.setTextSelection({ from, to })
+  editor.commands.focus()
+  if (center) {
+    scrollEditorPositionIntoCenter(editor, from)
+  } else {
+    editor.view.dispatch(editor.state.tr.scrollIntoView())
+  }
+}
+
+export function getSourceModeJumpTarget(editor: Editor): SourceModeJumpTarget {
+  const tableIndex = getSelectedTableIndex(editor)
+  if (tableIndex !== null) return { type: 'tableEnd', tableIndex }
+  const tableAnchor = getLastTableAnchorBeforeSelection(editor)
+  if (tableAnchor) return tableAnchor
+  return { type: 'line', line: getVisualCursorLineNumber(editor) }
+}
+
+function scrollEditorPositionIntoCenter(editor: Editor, position: number): void {
+  const coords = editor.view.coordsAtPos(Math.max(0, Math.min(position, editor.state.doc.content.size)))
+  const scrollingElement = document.scrollingElement ?? document.documentElement
+  const currentTop = scrollingElement.scrollTop
+  const viewportCenter = window.innerHeight / 2
+  const positionCenter = (coords.top + coords.bottom) / 2
+  scrollPageTo(Math.max(0, currentTop + positionCenter - viewportCenter))
+}
+
+function getSelectedTableIndex(editor: Editor): number | null {
+  const $from = editor.state.doc.resolve(editor.state.selection.from)
+  let tablePosition: number | null = null
+  for (let depth = $from.depth; depth >= 1; depth -= 1) {
+    if ($from.node(depth).type.name === 'table') {
+      tablePosition = $from.before(depth)
+      break
+    }
+  }
+  if (tablePosition === null) return null
+
+  let index = 0
+  let selectedIndex: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'table') return
+    if (position === tablePosition) {
+      selectedIndex = index
+      return false
+    }
+    index += 1
+  })
+  return selectedIndex
+}
+
+function getLastTableAnchorBeforeSelection(editor: Editor): SourceModeJumpTarget | null {
+  const cursor = editor.state.selection.from
+  let tableIndex = 0
+  let lastTableIndex = -1
+  let lastTableEndPosition = 0
+
+  editor.state.doc.forEach((node, offset) => {
+    const position = offset
+    const end = position + node.nodeSize
+    if (cursor <= end) {
+      return false
+    }
+
+    if (node.type.name === 'table') {
+      lastTableIndex = tableIndex
+      lastTableEndPosition = end
+      tableIndex += 1
+    }
+    return true
+  })
+
+  if (lastTableIndex < 0) return null
+  return {
+    type: 'afterTable',
+    tableIndex: lastTableIndex,
+    lineOffset: countVisualLinesBetweenPositions(editor, lastTableEndPosition, cursor),
+  }
+}
+
+function countVisualLinesBetweenPositions(editor: Editor, from: number, to: number): number {
+  const start = Math.max(0, Math.min(from, editor.state.doc.content.size))
+  const end = Math.max(start, Math.min(to, editor.state.doc.content.size))
+  let count = 0
+
+  editor.state.doc.nodesBetween(start, end, (node, position) => {
+    if (node.type.name === 'table') return false
+    if (node.type.name === 'horizontalRule') {
+      count += 1
+      return false
+    }
+    if (!node.isTextblock) return
+
+    const fromInNode = Math.max(0, start - position - 1)
+    const toInNode = Math.min(node.content.size, end - position - 1)
+    if (toInNode < fromInNode) return false
+
+    const text = node.textBetween(fromInNode, toInNode, '\n', '\n')
+    if (node.type.name === 'codeBlock') {
+      count += text.split('\n').length
+    } else {
+      count += text.split('\n').filter(line => line.trim().length > 0).length
+    }
+    return false
+  })
+
+  return count
 }
 
 function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
@@ -1254,6 +1394,7 @@ export function getEditorStatus(editor: Editor): EditorStatus {
   return {
     characterCount: countVisibleCharacters(documentText),
     selectedCharacterCount: countVisibleCharacters(selectedText),
+    ...getDocumentStatistics(editor, documentText),
     blockType: getCurrentBlockType(editor),
     line: lines.length,
     column: Array.from(lines.at(-1) ?? '').length + 1,
@@ -1262,6 +1403,42 @@ export function getEditorStatus(editor: Editor): EditorStatus {
 
 function countVisibleCharacters(text: string): number {
   return Array.from(text).filter(character => !/\s/u.test(character)).length
+}
+
+function getDocumentStatistics(editor: Editor, documentText: string) {
+  let formulaCount = 0
+  let codeLineCount = 0
+  let paragraphCount = 0
+
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
+      formulaCount += 1
+    }
+    if (node.type.name === 'codeBlock') {
+      codeLineCount += Math.max(1, node.textContent.split('\n').length)
+    }
+    if (node.type.name === 'paragraph') {
+      paragraphCount += 1
+    }
+  })
+
+  return {
+    totalCharacterCount: Array.from(documentText).length,
+    nonWhitespaceCharacterCount: countVisibleCharacters(documentText),
+    cjkCharacterCount: countCjkCharacters(documentText),
+    westernWordCount: countWesternWords(documentText),
+    formulaCount,
+    codeLineCount,
+    paragraphCount,
+  }
+}
+
+function countCjkCharacters(text: string): number {
+  return Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length
+}
+
+function countWesternWords(text: string): number {
+  return Array.from(text.matchAll(/[\p{Script=Latin}][\p{Script=Latin}\p{Mark}'’-]*/gu)).length
 }
 
 function parseTableSize(text?: string): { rows: number; cols: number } {

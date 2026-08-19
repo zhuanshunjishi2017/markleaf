@@ -110,11 +110,14 @@ internal sealed partial class MainForm
         {
             if (colors.TryGetValue("bg-hover", out var statusBg))
                 _statusStrip.BackColor = statusBg;
-            if (colors.TryGetValue("text-primary", out var statusText))
+            if (colors.TryGetValue("text-secondary", out var statusText))
             {
                 _statusStrip.ForeColor = statusText;
                 foreach (ToolStripItem item in _statusStrip.Items)
+                {
+                    if (item == _viewToggleButton) continue;
                     item.ForeColor = statusText;
+                }
             }
         }
 

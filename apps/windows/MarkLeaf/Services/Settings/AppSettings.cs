@@ -42,6 +42,13 @@ public enum CjkLanguageTag
     Korean,
 }
 
+public enum StatusBarCommandDisplayMode
+{
+    Always,
+    Temporary,
+    Hidden,
+}
+
 public static class CjkLanguageTagExtensions
 {
     public static string ToBcp47(this CjkLanguageTag tag) => tag switch
@@ -169,6 +176,45 @@ public sealed class AppearanceSettings
     public string DefaultDarkThemeId { get; set; } = "dark";
 
     public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.DarkThemeOnly;
+
+    public StatusBarSettings StatusBar { get; set; } = new();
+}
+
+public sealed class StatusBarSettings
+{
+    public bool SidebarToggleVisible { get; set; } = true;
+
+    public bool CommandStatusVisible { get; set; } = true;
+
+    public StatusBarCommandDisplayMode CommandDisplayMode { get; set; } = StatusBarCommandDisplayMode.Always;
+
+    public bool WordCountVisible { get; set; } = true;
+
+    public bool BlockTypeVisible { get; set; } = true;
+
+    public bool PositionVisible { get; set; } = true;
+
+    public bool EncodingVisible { get; set; } = true;
+
+    public bool NewLineVisible { get; set; } = true;
+
+    public bool ModeToggleVisible { get; set; } = true;
+
+    public bool ZoomVisible { get; set; } = true;
+
+    public StatusBarSettings Clone() => new()
+    {
+        SidebarToggleVisible = SidebarToggleVisible,
+        CommandStatusVisible = CommandStatusVisible,
+        CommandDisplayMode = CommandDisplayMode,
+        WordCountVisible = WordCountVisible,
+        BlockTypeVisible = BlockTypeVisible,
+        PositionVisible = PositionVisible,
+        EncodingVisible = EncodingVisible,
+        NewLineVisible = NewLineVisible,
+        ModeToggleVisible = ModeToggleVisible,
+        ZoomVisible = ZoomVisible,
+    };
 }
 
 public sealed class EditorSettings

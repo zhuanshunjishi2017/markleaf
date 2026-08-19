@@ -265,6 +265,13 @@ public static class EditorProtocol
     {
         return HasNonNegativeInteger(payload, "characterCount")
             && HasNonNegativeInteger(payload, "selectedCharacterCount")
+            && HasOptionalNonNegativeInteger(payload, "totalCharacterCount")
+            && HasOptionalNonNegativeInteger(payload, "nonWhitespaceCharacterCount")
+            && HasOptionalNonNegativeInteger(payload, "cjkCharacterCount")
+            && HasOptionalNonNegativeInteger(payload, "westernWordCount")
+            && HasOptionalNonNegativeInteger(payload, "formulaCount")
+            && HasOptionalNonNegativeInteger(payload, "codeLineCount")
+            && HasOptionalNonNegativeInteger(payload, "paragraphCount")
             && HasAllowedBlockType(payload)
             && HasPositiveInteger(payload, "line")
             && HasPositiveInteger(payload, "column");
@@ -308,6 +315,15 @@ public static class EditorProtocol
             && value.ValueKind == JsonValueKind.Number
             && value.TryGetInt32(out var number)
             && number >= 0;
+    }
+
+    private static bool HasOptionalNonNegativeInteger(JsonElement payload, string name)
+    {
+        return payload.ValueKind == JsonValueKind.Object
+            && (!payload.TryGetProperty(name, out var value)
+                || value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt32(out var number)
+                && number >= 0);
     }
 
     private static bool HasNullableNonNegativeInteger(JsonElement payload, string name)

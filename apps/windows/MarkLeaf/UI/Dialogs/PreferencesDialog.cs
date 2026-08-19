@@ -20,6 +20,7 @@ internal sealed class PreferencesDialog : Form
     private readonly Action? _onClearHistory;
     private readonly Action? _onAddTheme;
     private readonly Action? _onResetAll;
+    private readonly Action<StatusBarSettings>? _onStatusBarSettingsChanged;
 
     private readonly Button _resetAllButton = new()
     { Text = Loc.Get("prefs.resetAll"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -83,6 +84,9 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _autoHideScrollbarsCheck;
     private readonly ComboBox _menuStyleCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Button _customizeStatusBarButton = new()
+    { Text = Loc.Get("prefs.appearance.statusBar.customize"), AutoSize = true, FlatStyle = FlatStyle.System };
+    private StatusBarSettings _statusBarSettings = new();
 
     private readonly ComboBox _languageCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -133,7 +137,8 @@ internal sealed class PreferencesDialog : Form
         Action? onClearLogs = null,
         Action? onOpenSettingsJson = null,
         Action? onClearHistory = null,
-        Action? onResetAll = null)
+        Action? onResetAll = null,
+        Action<StatusBarSettings>? onStatusBarSettingsChanged = null)
     {
         _settings = settings;
         _onRecover = onRecover;
@@ -146,6 +151,7 @@ internal sealed class PreferencesDialog : Form
         _onOpenSettingsJson = onOpenSettingsJson;
         _onClearHistory = onClearHistory;
         _onResetAll = onResetAll;
+        _onStatusBarSettingsChanged = onStatusBarSettingsChanged;
 
         _languageCombo.Items.Add(Loc.Get("language.zh-CN"));
         _languageCombo.Items.Add(Loc.Get("language.zh-TW"));
@@ -272,6 +278,7 @@ internal sealed class PreferencesDialog : Form
         _recoverButton.Click += (_, _) => _onRecover?.Invoke();
         _editShortcutsButton.Click += (_, _) => _onShowShortcuts?.Invoke();
         _fontSettingsButton.Click += (_, _) => OpenFontSettings();
+        _customizeStatusBarButton.Click += (_, _) => OpenStatusBarSettings();
         _addThemeButton.Click += (_, _) => _onAddTheme?.Invoke();
         _openThemeFolderButton.Click += (_, _) => _onOpenThemeFolder?.Invoke();
         _openCacheFolderButton.Click += (_, _) => _onOpenCacheFolder?.Invoke();
@@ -657,8 +664,14 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.menuStyle.label")), 0, 12);
         panel.Controls.Add(BuildMenuStylePanel(), 1, 12);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 13);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 13);
+        panel.Controls.Add(Gap(), 0, 13);
+        panel.Controls.Add(Gap(), 1, 13);
+
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.appearance.statusBar.label")), 0, 14);
+        panel.Controls.Add(_customizeStatusBarButton, 1, 14);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 15);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 15);
 
         return panel;
     }
@@ -705,6 +718,16 @@ internal sealed class PreferencesDialog : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         panel.Controls.Add(_menuStyleCombo, 0, 0);
         return panel;
+    }
+
+    private void OpenStatusBarSettings()
+    {
+        using var dialog = new StatusBarSettingsDialog(_statusBarSettings);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _statusBarSettings = dialog.Settings;
+        _settings.Appearance.StatusBar = _statusBarSettings.Clone();
+        _onStatusBarSettingsChanged?.Invoke(_statusBarSettings.Clone());
     }
 
     private Control BuildGeneralTab()
@@ -963,6 +986,7 @@ internal sealed class PreferencesDialog : Form
         _followSystemCheck.Checked = appearance.FollowSystemColorMode;
         _themeCombo.Enabled = !appearance.FollowSystemColorMode;
         _menuStyleCombo.SelectedIndex = (int)appearance.MenuBarStyle;
+        _statusBarSettings = appearance.StatusBar.Clone();
 
         _associateMarkdownCheck.Checked = _settings.General.AssociateMarkdownFiles;
         _associateTextCheck.Checked = _settings.General.AssociateTextFiles;
@@ -1074,6 +1098,7 @@ internal sealed class PreferencesDialog : Form
         appearance.FollowSystemColorMode = _followSystemCheck.Checked;
         if (_menuStyleCombo.SelectedIndex >= 0)
             appearance.MenuBarStyle = (MenuBarStyle)_menuStyleCombo.SelectedIndex;
+        appearance.StatusBar = _statusBarSettings.Clone();
 
         _settings.General.AssociateMarkdownFiles = _associateMarkdownCheck.Checked;
         _settings.General.AssociateTextFiles = _associateTextCheck.Checked;

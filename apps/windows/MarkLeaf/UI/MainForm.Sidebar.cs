@@ -1,5 +1,6 @@
 using MarkLeaf.Native;
 using MarkLeaf.Services;
+using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
 using MarkLeaf.Workspace;
@@ -149,10 +150,8 @@ internal sealed partial class MainForm
         }
         else
         {
-            _viewToggleButton.Text = _workspaceListViewActive
-                ? SystemIconProvider.ListViewIcon
-                : SystemIconProvider.TreeViewIcon;
-            _viewToggleButton.ToolTipText = Loc.Get("tooltip.switchView");
+            _viewToggleButton.Text = SystemIconProvider.CollapseSidebarIcon;
+            _viewToggleButton.ToolTipText = Loc.Get("tooltip.collapseSidebar");
         }
     }
 
@@ -165,23 +164,14 @@ internal sealed partial class MainForm
             MinimumSize = new Size(0, this.ScaleForDpi(26)),
             Renderer = new SolidStatusBarRenderer(),
         };
-        _viewToggleButton.Click += (_, _) =>
-        {
-            if (_sidebarSplit.Panel1Collapsed)
-            {
-                ExpandSidebar();
-            }
-            else
-            {
-                ToggleWorkspaceView();
-            }
-        };
+        _viewToggleButton.Click += (_, _) => ToggleSidebarWithWindowResize();
         UpdateViewToggleIcon();
         strip.Items.Add(_viewToggleButton);
         _statusLabel.Spring = true;
         _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
         strip.Items.Add(_statusLabel);
-        strip.Items.Add(_characterCountLabel);
+        _characterCountButton.Click += (_, _) => ShowDocumentStatisticsDialog();
+        strip.Items.Add(_characterCountButton);
         strip.Items.Add(_blockTypeLabel);
         strip.Items.Add(_positionLabel);
         strip.Items.Add(_encodingLabel);
@@ -190,7 +180,56 @@ internal sealed partial class MainForm
         strip.Items.Add(_modeButton);
         _zoomLabel.Text = $"{_zoomPercent}%";
         strip.Items.Add(_zoomLabel);
+        ApplyStatusBarTextStyle();
+        ApplyStatusBarItemVisibility();
         return strip;
+    }
+
+    private void ApplyStatusBarTextStyle()
+    {
+        foreach (ToolStripItem item in new ToolStripItem[]
+        {
+            _statusLabel,
+            _characterCountButton,
+            _blockTypeLabel,
+            _positionLabel,
+            _encodingLabel,
+            _newLineLabel,
+            _modeButton,
+            _zoomLabel,
+        })
+        {
+            item.Font = _statusBarTextFont;
+        }
+    }
+
+    private void ApplyStatusBarItemVisibility()
+    {
+        var statusBar = _settings.Appearance.StatusBar;
+        _viewToggleButton.Visible = statusBar.SidebarToggleVisible;
+        _statusLabel.Visible = true;
+        if (statusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Hidden)
+        {
+            _statusMessageTimer.Stop();
+            _statusLabel.Text = string.Empty;
+        }
+        else if (statusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Temporary
+            && !string.IsNullOrEmpty(_statusLabel.Text))
+        {
+            _statusMessageTimer.Stop();
+            _statusMessageTimer.Start();
+        }
+        else
+        {
+            _statusMessageTimer.Stop();
+        }
+        _characterCountButton.Visible = statusBar.WordCountVisible;
+        _blockTypeLabel.Visible = statusBar.BlockTypeVisible;
+        _positionLabel.Visible = statusBar.PositionVisible;
+        _encodingLabel.Visible = statusBar.EncodingVisible;
+        _newLineLabel.Visible = statusBar.NewLineVisible;
+        _modeButton.Visible = statusBar.ModeToggleVisible;
+        _zoomLabel.Visible = statusBar.ZoomVisible;
     }
 
     private void ApplySidebarAutoHideScrollbar()

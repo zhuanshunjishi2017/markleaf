@@ -185,7 +185,9 @@ internal sealed partial class MainForm
 
     private void RefreshPersistentStatusBar()
     {
-        _characterCountLabel.Text = StatusBarFormatter.FormatCharacterCount(_editorStatus);
+        ApplyStatusBarItemVisibility();
+        _characterCountButton.Text = StatusBarFormatter.FormatCharacterCount(_editorStatus);
+        _characterCountButton.Enabled = !_editorCommandStatus.SourceMode;
         _blockTypeLabel.Text = StatusBarFormatter.FormatBlockType(_editorStatus.BlockType);
         _positionLabel.Text = StatusBarFormatter.FormatPosition(_editorStatus);
         _encodingLabel.Text = _document is null

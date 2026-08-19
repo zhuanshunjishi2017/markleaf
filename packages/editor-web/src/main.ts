@@ -8,6 +8,8 @@ import {
   getEditorCommandState,
   getEditorStatus,
   getMarkdown,
+  captureVisualSelection,
+  getSourceModeJumpTarget,
   isAllowedLink,
   replaceAllInEditor,
   replaceCurrentInEditor,
@@ -16,7 +18,9 @@ import {
   setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
+  restoreVisualSelection,
   renderEscapedCaptionHtml,
+  type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
@@ -68,6 +72,7 @@ let outlineTimer = 0
 let sourceEditor: SourceEditor | null = null
 let sourceMode = false
 let sourceIndentWidth = 2
+let visualSelectionBeforeSourceMode: VisualSelectionSnapshot | null = null
 let replaceMode = false
 // 混合前端右键菜单（粗体/斜体/下划线工具栏）是否启用：由宿主下发，仅 Windows 端为 true。
 let frontendFormatMenuEnabled = false
@@ -213,14 +218,7 @@ function sendCommandState(): void {
 
 function sendEditorStatus(): void {
   if (sourceEditor) {
-    const text = sourceEditor.getText()
-    send('editorStatusChanged', {
-      characterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
-      selectedCharacterCount: 0,
-      blockType: 'paragraph',
-      line: 1,
-      column: 1,
-    })
+    send('editorStatusChanged', sourceEditor.getStatus())
     return
   }
   send('editorStatusChanged', getEditorStatus(editor))
@@ -325,15 +323,25 @@ function setSourceMode(enabled: boolean): void {
   formatPainter.cancel()
   updateFormatPainterCursor()
   if (enabled) {
+    visualSelectionBeforeSourceMode = captureVisualSelection(editor)
+    const jumpTarget = getSourceModeJumpTarget(editor)
     sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
-    sourceEditor.focus()
+    if (jumpTarget.type === 'tableEnd') {
+      sourceEditor.setSelectionToTableEnd(jumpTarget.tableIndex, true)
+    } else if (jumpTarget.type === 'afterTable') {
+      sourceEditor.setSelectionAfterTableRenderedLines(jumpTarget.tableIndex, jumpTarget.lineOffset, true)
+    } else {
+      sourceEditor.setSelectionToRenderedLineEnd(jumpTarget.line, true)
+    }
   } else {
     const markdown = sourceEditor?.getText() ?? getMarkdown(editor)
+    const visualSelection = visualSelectionBeforeSourceMode
     sourceEditor?.destroy()
     sourceEditor = null
+    visualSelectionBeforeSourceMode = null
     suppressUpdate = true
     editor = replaceEditorDocument(editor, editorMount, markdown)
     bindEditorEvents(editor)
@@ -341,9 +349,9 @@ function setSourceMode(enabled: boolean): void {
     sourceMount.hidden = true
     editorMount.hidden = false
     sourceMode = false
+    restoreVisualSelection(editor, visualSelection, true)
     scheduleOutline()
     sendOutlineSelectionFromCursor()
-    editor.commands.focus()
   }
   sendEditorState()
 }
