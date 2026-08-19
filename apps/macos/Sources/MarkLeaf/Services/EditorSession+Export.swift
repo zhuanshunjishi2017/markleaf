@@ -13,6 +13,48 @@ extension EditorSession {
         controller.showWindow(nil)
     }
 
+    /// 文件 → 按上次设置导出：跳过设置窗口，仅选择目标路径。
+    func exportWithLastSettings() {
+        guard let window = webView?.window else { return }
+        let options = exportOptions(from: SettingsService.shared.settings.exportSettings)
+        let panel = NSSavePanel()
+        panel.title = L10n.t("按上次设置导出")
+        panel.nameFieldStringValue = exportTitle + "." + (options.format == "pdf" ? "pdf" : "html")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            self.runExport(options: options, saveURL: Self.fixExportExtension(url, format: options.format))
+        }
+    }
+
+    var exportTitle: String {
+        documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
+    }
+
+    func exportOptions(from persisted: PersistedExportSettings) -> ExportOptions {
+        var saved = persisted
+        saved.normalize()
+        var options = ExportOptions()
+        options.format = saved.format
+        options.paperSize = PaperSize(rawValue: saved.paperSize) ?? .a4
+        options.landscape = saved.landscape
+        options.margins = ExportMargins(
+            top: saved.marginTop, bottom: saved.marginBottom,
+            left: saved.marginLeft, right: saved.marginRight
+        )
+        options.style = styles.contains(where: { $0.id == saved.style }) ? saved.style : currentStyleId
+        options.colorScheme = colorThemes.contains(where: { $0.id == saved.colorTheme }) ? saved.colorTheme : currentThemeId
+        options.header = saved.htmlHeader
+        options.footer = saved.htmlFooter
+        options.pdfHeader = PDFHeaderFooterPolicy.text(for: saved.headerPreset, custom: saved.headerCustom)
+        options.pdfHeaderAlignment = saved.headerAlignment.isEmpty
+            ? PDFHeaderFooterPolicy.alignment(for: saved.headerPreset) : saved.headerAlignment
+        options.pdfFooter = PDFHeaderFooterPolicy.text(for: saved.footerPreset, custom: saved.footerCustom)
+        options.pdfFooterAlignment = saved.footerAlignment.isEmpty
+            ? PDFHeaderFooterPolicy.alignment(for: saved.footerPreset) : saved.footerAlignment
+        options.headerFooterFontFamily = saved.headerFontFamily.isEmpty ? "serif" : saved.headerFontFamily
+        return options
+    }
+
     /// 请求导出 HTML（供导出对话框实时预览）；结果经 handleExportedContent 回调。
     func requestExportHTML(options: ExportOptions, completion: @escaping (String) -> Void) {
         let settings = SettingsService.shared.settings
@@ -22,13 +64,13 @@ extension EditorSession {
         var payload: [String: Any] = [
             "format": options.format,
             "style": options.style,
-            "header": options.header,
-            "footer": options.footer,
+            "header": options.format == "html" ? options.header : "",
+            "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
             "maxWidth": settings.visualMaxContentWidth,
             "colorSchemeCss": colorSchemeCss,
-            "title": documentURL?.lastPathComponent ?? L10n.t("未命名"),
+            "title": exportTitle,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
@@ -71,8 +113,8 @@ extension EditorSession {
         let payload: [String: Any] = [
             "format": options.format,
             "style": options.style,
-            "header": options.header,
-            "footer": options.footer,
+            "header": options.format == "html" ? options.header : "",
+            "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
             "maxWidth": settings.visualMaxContentWidth,
@@ -152,7 +194,13 @@ extension EditorSession {
                 margins: context.options.margins,
                 window: window,
                 showsPanel: false,
-                saveURL: context.saveURL
+                saveURL: context.saveURL,
+                headerText: context.options.pdfHeader,
+                headerAlignment: context.options.pdfHeaderAlignment,
+                footerText: context.options.pdfFooter,
+                footerAlignment: context.options.pdfFooterAlignment,
+                headerFooterFontFamily: context.options.headerFooterFontFamily,
+                documentTitle: exportTitle
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     self?.isExportingOrPrinting = false

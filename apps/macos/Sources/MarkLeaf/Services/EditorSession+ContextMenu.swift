@@ -4,6 +4,7 @@ extension EditorSession {
     /// 段落左侧句柄菜单（对应 Windows ParagraphBlockHandleMenu）。
     /// 菜单弹出期间由前端高亮当前块，菜单关闭后清除高亮。
     func showBlockMenu(clientX: Double, clientY: Double, position: Int) {
+        guard !isReadOnly else { return }
         guard let webView, let window = webView.window else { return }
         let pointInView = Self.editorContextMenuPoint(
             clientX: clientX,
@@ -76,11 +77,15 @@ extension EditorSession {
         )
 
         let menu = NSMenu()
-        if isSourceMode {
+        if isReadOnly {
+            addFormatCommand(menu, L10n.t("拷贝"), "copy")
+            addFormatCommand(menu, L10n.t("全选"), "selectAll")
+        } else if isSourceMode {
             // 源码模式：剪贴板 + 全选
             addFormatCommand(menu, L10n.t("剪切"), "cut")
             addFormatCommand(menu, L10n.t("拷贝"), "copy")
             addFormatCommand(menu, L10n.t("粘贴"), "paste")
+            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if inTable {
@@ -106,6 +111,7 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("剪切"), "cut")
             addFormatCommand(menu, L10n.t("拷贝"), "copy")
             addFormatCommand(menu, L10n.t("粘贴"), "paste")
+            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
         } else if imageSelected {
@@ -124,6 +130,7 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("剪切"), "cut")
             addFormatCommand(menu, L10n.t("拷贝"), "copy")
             addFormatCommand(menu, L10n.t("粘贴"), "paste")
+            addFormatCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText")
         } else {
             // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
             if headingLevel != nil {
@@ -175,7 +182,7 @@ extension EditorSession {
                 self?.insertTable(rows: size.rows, columns: size.columns)
             })
             menu.addItem(.separator())
-            let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
+            let copyAs = NSMenuItem(title: L10n.t("复制/粘贴为"), action: nil, keyEquivalent: "")
             let copyAsMenu = NSMenu()
             copyAsMenu.addItem(menuItem(L10n.t("格式化"), #selector(copyFormatted(_:)), key: "c", mask: [.command, .option]))
             copyAsMenu.addItem(menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)), key: "c", mask: [.command, .control]))
@@ -183,6 +190,7 @@ extension EditorSession {
             copyAs.submenu = copyAsMenu
             menu.addItem(copyAs)
             menu.addItem(menuItem(L10n.t("粘贴"), #selector(pasteFromClipboardAction(_:)), key: "v"))
+            menu.addItem(menuItem(L10n.t("粘贴为纯文本"), #selector(pastePlainTextFromClipboardAction(_:)), key: "V", mask: [.command, .shift]))
         }
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
@@ -235,4 +243,5 @@ extension EditorSession {
     @objc func copyPlain(_ sender: Any?) { copySelectionAs(.plainText) }
     @objc func copyMarkdown(_ sender: Any?) { copySelectionAs(.markdown) }
     @objc func pasteFromClipboardAction(_ sender: Any?) { pasteFromClipboard() }
+    @objc func pastePlainTextFromClipboardAction(_ sender: Any?) { pastePlainTextFromClipboard() }
 }
