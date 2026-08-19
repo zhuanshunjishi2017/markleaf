@@ -43,4 +43,14 @@ expect(!EditorMenuPolicy.isEnabled(command: "paste", hasSelection: true, clipboa
 expect(EditorMenuPolicy.isEnabled(command: "selectAll", hasSelection: false, clipboardHasContent: false, isReadOnly: true),
        "select all should stay available in read-only documents")
 
+// 脚注命令：插入在可编辑文档可用；重设编号仅在光标位于脚注定义段落时可用。
+expect(EditorMenuPolicy.isFootnoteCommandEnabled(command: "insertFootnote", hasFootnoteLabel: false, isReadOnly: false),
+       "insert footnote should be enabled in editable documents")
+expect(!EditorMenuPolicy.isFootnoteCommandEnabled(command: "insertFootnote", hasFootnoteLabel: true, isReadOnly: true),
+       "insert footnote should be disabled in read-only documents")
+expect(!EditorMenuPolicy.isFootnoteCommandEnabled(command: "resetFootnoteLabel", hasFootnoteLabel: false, isReadOnly: false),
+       "reset footnote label should require a footnote definition")
+expect(EditorMenuPolicy.isFootnoteCommandEnabled(command: "resetFootnoteLabel", hasFootnoteLabel: true, isReadOnly: false),
+       "reset footnote label should be enabled on a footnote definition")
+
 print("PASS")

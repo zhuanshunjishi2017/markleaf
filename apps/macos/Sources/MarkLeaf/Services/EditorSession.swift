@@ -51,6 +51,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var mathLatex: String?
     private(set) var mathNumber: String?
     private(set) var caption: String?
+    private(set) var footnoteDefinitionLabel: String?
     private(set) var codeBlock = false
     private(set) var imageSelected = false
     private(set) var inTable = false
@@ -77,7 +78,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "alignTableLeft", "alignTableCenter", "alignTableRight",
         "rotateImage", "formatPainter", "formatPainterArm", "formatPainterApply",
         "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
-        "editTableCaption", "editImageCaption",
+        "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
     ]
 
     // 工作区 / 大纲
@@ -255,6 +256,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             mathLatex = payload?["mathLatex"] as? String
             mathNumber = payload?["mathNumber"] as? String
             caption = payload?["caption"] as? String
+            footnoteDefinitionLabel = payload?["footnoteDefinitionLabel"] as? String
             codeBlock = payload?["codeBlock"] as? Bool ?? false
             isReadOnly = payload?["readOnly"] as? Bool ?? false
             canUndo = (payload?["canUndo"] as? Bool ?? false) && !isReadOnly
@@ -381,6 +383,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 requestId: response.requestID
             )
 
+        case "footnoteDefinitionMissing":
+            presentFootnoteDefinitionMissingAlert()
+
         case "findResult":
             if let payload, let current = payload["current"] as? Int, let total = payload["total"] as? Int {
                 AppLog.info("findResult: current=\(current) total=\(total)")
@@ -435,6 +440,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "taskList": return L10n.t("任务列表")
         case "table": return L10n.t("表格")
         case "image": return L10n.t("图片")
+        case "footnoteDefinition": return L10n.t("脚注")
         default: return blockType
         }
     }

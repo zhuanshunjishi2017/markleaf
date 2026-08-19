@@ -31,4 +31,16 @@ enum EditorMenuPolicy {
             return true
         }
     }
+
+    /// 脚注命令启用规则：插入注释在可编辑文档可用；重设注释编号仅在光标位于脚注定义段落时可用。
+    static func isFootnoteCommandEnabled(command: String, hasFootnoteLabel: Bool, isReadOnly: Bool) -> Bool {
+        switch command {
+        case "insertFootnote":
+            return !isReadOnly
+        case "resetFootnoteLabel":
+            return !isReadOnly && hasFootnoteLabel
+        default:
+            return true
+        }
+    }
 }

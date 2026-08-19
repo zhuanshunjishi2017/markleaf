@@ -117,6 +117,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
+        menu.addItem(commandItem(L10n.t("插入注释"), "insertFootnote"))
         menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
         menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
 
@@ -380,6 +381,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
                 clipboardHasContent: s?.clipboardHasContent ?? false,
                 isReadOnly: s?.isReadOnly == true
             )
+        case "insertFootnote", "resetFootnoteLabel":
+            return EditorMenuPolicy.isFootnoteCommandEnabled(
+                command: command,
+                hasFootnoteLabel: !(s?.footnoteDefinitionLabel ?? "").isEmpty,
+                isReadOnly: s?.isReadOnly == true
+            )
         default: break
         }
         return true
@@ -604,6 +611,8 @@ extension EditorSession {
         case "toggleCode": executeInlineFormat("toggleCode")
         case "insertMathInline": insertMath(isBlock: false)
         case "insertMathBlock": insertMath(isBlock: true)
+        case "insertFootnote": insertFootnote()
+        case "resetFootnoteLabel": resetFootnoteLabel()
         case "editMath": editMath()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")

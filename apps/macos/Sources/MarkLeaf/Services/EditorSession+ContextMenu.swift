@@ -37,6 +37,7 @@ extension EditorSession {
         listItem.submenu = lists
         menu.addItem(listItem)
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+        addFormatCommand(menu, L10n.t("插入注释"), "insertFootnote")
         menu.addItem(tableSizePickerSubmenu { [weak self] size in
             self?.insertTable(rows: size.rows, columns: size.columns)
         })
@@ -82,6 +83,13 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if isSourceMode {
             // 源码模式：剪贴板 + 全选
+            addClipboardCommands(menu)
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("全选"), "selectAll")
+        } else if let footnoteLabel = footnoteDefinitionLabel, !footnoteLabel.isEmpty {
+            // 脚注定义：重设编号 + 基础剪贴板操作
+            addFormatCommand(menu, L10n.t("重设注释编号"), "resetFootnoteLabel")
+            menu.addItem(.separator())
             addClipboardCommands(menu)
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
