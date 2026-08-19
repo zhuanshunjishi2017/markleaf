@@ -14,6 +14,7 @@ final class FindPanelController: NSWindowController {
     private let nextButton = NSButton(title: "", target: nil, action: nil)
     private let replaceButton = NSButton(title: "", target: nil, action: nil)
     private let replaceAllButton = NSButton(title: "", target: nil, action: nil)
+    private let closeButton = NSButton(title: "", target: nil, action: nil)
     private let resultLabel = NSTextField(labelWithString: "0/0")
     private var closeObserver: NSObjectProtocol?
 
@@ -89,10 +90,10 @@ final class FindPanelController: NSWindowController {
         resultLabel.textColor = .secondaryLabelColor
         resultLabel.alignment = .right
 
-        let closeButton = NSButton(title: "✕", target: self, action: #selector(closeClicked))
-        closeButton.bezelStyle = .inline
-        closeButton.isBordered = false
-        closeButton.font = .systemFont(ofSize: 12)
+        closeButton.bezelStyle = .rounded
+        closeButton.controlSize = .regular
+        closeButton.target = self
+        closeButton.action = #selector(closeClicked)
 
         // 布局：查找行（查找框 + 上一个/下一个 + 关闭），替换行（替换框 + 替换/全部替换），选项行
         let findRow = NSStackView(views: [searchField, prevButton, nextButton, closeButton])
@@ -142,6 +143,7 @@ final class FindPanelController: NSWindowController {
         nextButton.title = L10n.t("下一个")
         replaceButton.title = L10n.t("替换")
         replaceAllButton.title = L10n.t("全部替换")
+        closeButton.title = L10n.t("关闭")
         caseCheck.title = L10n.t("区分大小写")
         wholeCheck.title = L10n.t("全词")
     }
