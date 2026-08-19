@@ -2,12 +2,32 @@
 
 ## 1.2.5 — 2026-08-19
 
+### New
+
+- Source mode supports undo and redo, with paste consistently handled as plain text.
+- Add Paste as Plain Text (`⌘⇧V`) and unify the copy menu as Copy/Paste As.
+- Detect unsafe CommonMark emphasis boundaries in source mode, with options to keep literal markers or convert them to HTML tags; the prompt supports “Don’t show again” and “Learn more”.
+- Detect unsafe bold and italic boundaries when generating Markdown and convert them to HTML tags when necessary, preventing exposed asterisk source after reload.
+- Restrict the native context menu in read-only documents and disable source-mode editing commands.
+- Combine the HTML and PDF export windows, and add Export with Last Settings.
+- Persist export settings; PDF export supports headers and footers with title, page, total-page, and custom placeholders.
+- Add the light Saltlemon (`saltlemon`) color theme.
+
 ### Changes
 
+- Remove the smallest adaptive margin preset and slightly reduce the left/right margins; export dialogs now default to the active style and color theme.
+- Render PDF headers and footers with the selected layout style font at 0.875× body size, with 6 mm vertical spacing.
+- Remove the body container max-width limit from PDF export so tables can expand to the printable margin width; manual margin edits switch to the custom preset.
 - Keep MarkLeaf running in the Dock after the last editor window closes, and reopen an existing window or create a blank one when the Dock icon is clicked.
 
 ### Fixes
 
+- Fix empty HTML/rich-text pastes and incorrect caret movement after plain-text pastes in source mode.
+- Fix caret jumps when typing full-width symbols, letters, or digits in visual mode.
+- Fix images becoming blank or losing their image data when copied and pasted again.
+- Fix the theme not applying immediately after confirming the follow-system-color-mode preference.
+- Fix front-end editing menus and editing commands remaining available in read-only mode.
+- Fix PDF headers/footers ignoring the selected layout font and tables failing to fill the available printable width.
 - Reduce the macOS Dock icon artwork safe area so MarkLeaf matches the visual size of neighboring applications.
 
 ## 1.2.4 — 2026-08-17
