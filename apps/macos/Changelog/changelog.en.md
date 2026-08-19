@@ -1,5 +1,15 @@
 # MarkLeaf Changelog
 
+## 1.2.5 — 2026-08-19
+
+### Changes
+
+- Keep MarkLeaf running in the Dock after the last editor window closes, and reopen an existing window or create a blank one when the Dock icon is clicked.
+
+### Fixes
+
+- Reduce the macOS Dock icon artwork safe area so MarkLeaf matches the visual size of neighboring applications.
+
 ## 1.2.4 — 2026-08-17
 
 ### New

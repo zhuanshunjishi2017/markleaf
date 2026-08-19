@@ -118,6 +118,27 @@ final class AppWindowManager {
             ?? windowControllers.first
     }
 
+    /// 响应 Dock 图标重开：前置已有编辑窗口，否则创建一个新的空白编辑窗口。
+    func handleApplicationReopen(hasVisibleWindows: Bool) {
+        let action = ApplicationLifecyclePolicy.reopenAction(
+            hasVisibleWindows: hasVisibleWindows,
+            hasEditorWindow: !windowControllers.isEmpty
+        )
+
+        switch action {
+        case .none:
+            return
+        case .showExistingWindow:
+            guard let controller = activeWindowController ?? windowControllers.first else { return }
+            controller.showWindow(nil)
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        case .createNewWindow:
+            _ = newWindow()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
     /// 文件 > 在新窗口中打开…（对应 Windows AppCommand.OpenDocumentInNewWindow）。
     func openDocumentInNewWindow() {
         guard let session = activeSession, let window = session.webView?.window else { return }

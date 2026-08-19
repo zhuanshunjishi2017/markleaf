@@ -1051,7 +1051,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        ApplicationLifecyclePolicy.terminateAfterLastWindowClosed
+    }
+
+    /// Dock 图标被点击时：恢复已有编辑窗口，或在所有编辑窗口都已关闭时新建空白窗口。
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        AppWindowManager.shared.handleApplicationReopen(hasVisibleWindows: flag)
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
