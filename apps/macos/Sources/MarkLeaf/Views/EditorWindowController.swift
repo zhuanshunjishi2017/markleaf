@@ -307,7 +307,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 splitView.setPosition(0, ofDividerAt: 0)
             }
             sidebar.isHidden = false
-            if shouldAnimate || abs(currentWidth - saved) > 1 {
+            if shouldAnimate && abs(currentWidth - saved) > 1 {
                 animateSidebar(to: saved) {}
             } else {
                 splitView.setPosition(saved, ofDividerAt: 0)
