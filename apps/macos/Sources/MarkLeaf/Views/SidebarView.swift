@@ -135,8 +135,11 @@ final class SidebarView: NSView {
         outlineScroll.translatesAutoresizingMaskIntoConstraints = false
         searchResults.configure()
         searchResults.onActivate = { [weak self] result in
-            self?.session.openWorkspaceEntry(result.entry)
-            self?.endSearch()
+            guard let self else { return }
+            // 对齐 Windows：先退出搜索模式，再打开文件，并在工作区树中定位到该文件。
+            self.endSearch()
+            self.session.openWorkspaceEntry(result.entry)
+            self.workspaceTree.revealPath(result.entry.path)
         }
         searchScroll.documentView = searchResults
         searchScroll.hasVerticalScroller = true
@@ -322,6 +325,8 @@ final class SidebarView: NSView {
     private func endSearch() {
         searchService.cancel()
         isSearching = false
+        // 对齐 Windows：退出搜索模式时清空搜索框文字。
+        searchField.stringValue = ""
         searchResults.setResults([])
         outlineTree.setFilter("")
         searchScroll.isHidden = true
@@ -459,6 +464,78 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func activateWorkspaceEntry(_ entry: WorkspaceEntry) {
         session?.openWorkspaceEntry(entry)
+    }
+
+    /// 在工作区树中定位文件：逐级展开祖先目录（懒加载完成后继续），最后选中文件行。
+    /// 对齐 Windows RevealPathInTreeAsync。
+    func revealPath(_ filePath: String) {
+        guard let root = session?.workspaceRoot else { return }
+        let rootPath = URL(fileURLWithPath: root).standardizedFileURL.path
+        let fullPath = URL(fileURLWithPath: filePath).standardizedFileURL.path
+        guard fullPath.hasPrefix(rootPath + "/") else { return }
+
+        var ancestors: [String] = []
+        var directory = URL(fileURLWithPath: fullPath).deletingLastPathComponent().path
+        while directory != rootPath && directory.hasPrefix(rootPath + "/") {
+            ancestors.insert(directory, at: 0)
+            directory = (directory as NSString).deletingLastPathComponent
+        }
+        if ancestors.isEmpty {
+            if let entry = (session?.workspaceTree ?? []).first(where: { $0.path == fullPath }) {
+                selectEntry(entry)
+            }
+            return
+        }
+        revealAncestors(ancestors, index: 0, rootPath: rootPath, targetPath: fullPath, attempts: 0)
+    }
+
+    private func revealAncestors(_ ancestors: [String], index: Int, rootPath: String, targetPath: String, attempts: Int) {
+        guard attempts < 120 else { return }
+        let directoryPath = ancestors[index]
+        let candidates: [WorkspaceEntry]
+        if index == 0 {
+            candidates = session?.workspaceTree ?? []
+        } else {
+            candidates = childrenCache[ancestors[index - 1]] ?? []
+        }
+        guard let directoryEntry = candidates.first(where: { $0.path == directoryPath }) else {
+            // 父级尚未加载完成：先触发扫描，稍后重试。
+            if index > 0, let parent = candidates.first(where: { $0.path == ancestors[index - 1] }) {
+                _ = children(for: parent)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.revealAncestors(ancestors, index: index, rootPath: rootPath, targetPath: targetPath, attempts: attempts + 1)
+            }
+            return
+        }
+        expandItem(directoryEntry)
+        if index == ancestors.count - 1 {
+            selectChildFileIfLoaded(directoryPath: directoryPath, targetPath: targetPath, attempts: 0)
+            return
+        }
+        _ = children(for: directoryEntry)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.revealAncestors(ancestors, index: index + 1, rootPath: rootPath, targetPath: targetPath, attempts: 0)
+        }
+    }
+
+    private func selectChildFileIfLoaded(directoryPath: String, targetPath: String, attempts: Int) {
+        guard attempts < 120 else { return }
+        let children = childrenCache[directoryPath] ?? []
+        if let file = children.first(where: { $0.path == targetPath }) {
+            selectEntry(file)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.selectChildFileIfLoaded(directoryPath: directoryPath, targetPath: targetPath, attempts: attempts + 1)
+        }
+    }
+
+    private func selectEntry(_ entry: WorkspaceEntry) {
+        let row = row(forItem: entry)
+        guard row >= 0 else { return }
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        scrollRowToVisible(row)
     }
 
     /// 将目录名称点击转发到系统 disclosure control，复用三角按钮原生展开/收起动画。
@@ -666,6 +743,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     private func children(for entry: WorkspaceEntry) -> [WorkspaceEntry] {
         if let cached = childrenCache[entry.path] {
             return cached
+        }
+        if activeScanners[entry.path] != nil {
+            return []
         }
         let scanner = WorkspaceScanner(root: entry.path) { [weak self] entries in
             DispatchQueue.main.async {

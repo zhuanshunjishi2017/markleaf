@@ -7,6 +7,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private let statusLabel = NSTextField(labelWithString: L10n.t("就绪"))
     private let zoomLabel = NSTextField(labelWithString: "100%")
     private var sidebarView: SidebarView?
+    private var sidebarContainerView: NSView?
     private var editorView: EditorWebContainerView?
     private var splitView: NSSplitView?
     private var statusBar: NSStackView?
@@ -18,6 +19,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarVisibleBeforeFocus = true
     private var presentationOptionsBeforeFocus: NSApplication.PresentationOptions = []
     private var keyEventMonitor: Any?
+    private var lastAppliedSidebarVisible: Bool?
 
     private(set) var isFocusMode = false
     private var allowsNextClose = false
@@ -43,11 +45,6 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         buildContent()
-        // 侧边栏默认隐藏时，在窗口出现前就收起，避免每次打开新窗口先闪出再播放收起动画。
-        if !session.sidebarVisible, let splitView {
-            splitView.arrangedSubviews.first?.isHidden = true
-            splitView.setPosition(0, ofDividerAt: 0)
-        }
         bindState()
         installFocusModeKeyMonitor()
     }
@@ -76,13 +73,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         super.showWindow(sender)
         // 应用保存的侧边栏宽度与视图状态（NSSplitView 不会自动给宽度；applyViewState 启动时不会自动跑）
         DispatchQueue.main.async { [weak self] in
-            guard let self, let splitView = self.splitView else { return }
-            let saved = SidebarLayout.clampedWorkspaceWidth(
-                SettingsService.shared.settings.workspaceWidth
-            )
-            if self.session.sidebarVisible {
-                splitView.setPosition(saved, ofDividerAt: 0)
-            }
+            guard let self else { return }
             self.applyViewState()
         }
     }
@@ -110,6 +101,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         sidebarView.translatesAutoresizingMaskIntoConstraints = false
         sidebarContainer.translatesAutoresizingMaskIntoConstraints = false
         sidebarContainer.addSubview(sidebarView)
+        self.sidebarContainerView = sidebarContainer
         NSLayoutConstraint.activate([
             sidebarView.leadingAnchor.constraint(equalTo: sidebarContainer.leadingAnchor),
             sidebarView.trailingAnchor.constraint(equalTo: sidebarContainer.trailingAnchor),
@@ -143,7 +135,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBar.addView(statusLabel, in: .leading)
         statusBar.addView(zoomLabel, in: .trailing)
 
-        splitView.addArrangedSubview(sidebarContainer)
+        // 侧边栏默认隐藏时不让它参与 splitView 布局，避免窗口出现时先显示再播放收起动画。
+        if session.sidebarVisible {
+            splitView.addArrangedSubview(sidebarContainer)
+        } else {
+            sidebarContainer.isHidden = true
+        }
         splitView.addArrangedSubview(rightColumn)
 
         self.splitView = splitView
@@ -292,36 +289,38 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyViewState() {
-        guard let splitView, let sidebarView else { return }
-        let sidebar = splitView.arrangedSubviews.first
-        let currentWidth = sidebar?.frame.width ?? 0
+        guard let splitView, let sidebarView, let sidebar = sidebarContainerView else { return }
 
-        // 侧边栏：平滑展开/收起（手动插值分隔线位置）
+        // 动画只在“侧边栏状态发生变化”时播放（启动/打开文件时状态未变，直接对齐，避免闪烁和重复收起动画）。
+        let shouldAnimate = lastAppliedSidebarVisible != nil && lastAppliedSidebarVisible != session.sidebarVisible
+        lastAppliedSidebarVisible = session.sidebarVisible
+
+        let saved = SidebarLayout.clampedWorkspaceWidth(
+            SettingsService.shared.settings.workspaceWidth
+        )
+        let isArranged = splitView.arrangedSubviews.contains(sidebar)
+        let currentWidth = sidebar.frame.width
+
         if session.sidebarVisible {
-            let saved = SidebarLayout.clampedWorkspaceWidth(
-                SettingsService.shared.settings.workspaceWidth
-            )
-            let wasHidden = sidebar?.isHidden == true
-            sidebar?.isHidden = false
-            if wasHidden || abs(currentWidth - saved) > 1 {
+            if !isArranged {
+                splitView.insertArrangedSubview(sidebar, at: 0)
+                splitView.setPosition(0, ofDividerAt: 0)
+            }
+            sidebar.isHidden = false
+            if shouldAnimate || abs(currentWidth - saved) > 1 {
                 animateSidebar(to: saved) {}
             } else {
-                // 已在目标宽度：直接对齐，避免打开文件时重复播放展开动画。
                 splitView.setPosition(saved, ofDividerAt: 0)
             }
         } else {
-            if sidebar?.isHidden == true {
-                // 已处于收起状态（隐藏后 frame 宽度可能仍是旧值），直接对齐，不播放动画。
-                splitView.setPosition(0, ofDividerAt: 0)
-            } else if abs(currentWidth) > 1 {
-                sidebar?.isHidden = false
+            if isArranged && shouldAnimate && abs(currentWidth) > 1 {
+                sidebar.isHidden = false
                 animateSidebar(to: 0) { [weak self] in
-                    sidebar?.isHidden = true
+                    sidebar.isHidden = true
                     self?.isAnimatingSidebar = false
                 }
             } else {
-                // 已在收起状态：不再播放收起动画。
-                sidebar?.isHidden = true
+                sidebar.isHidden = true
                 splitView.setPosition(0, ofDividerAt: 0)
             }
         }
