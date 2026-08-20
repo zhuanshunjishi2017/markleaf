@@ -1,18 +1,5 @@
 # MarkLeaf Changelog
 
-## 1.2.5 — 2026-08-19
-
-### New
-
-- Source mode supports undo and redo, with paste consistently handled as plain text.
-- Add Paste as Plain Text (`⌘⇧V`) and unify the copy menu as Copy/Paste As.
-- Detect unsafe CommonMark emphasis boundaries in source mode, with options to keep literal markers or convert them to HTML tags; the prompt supports “Don’t show again” and “Learn more”.
-- Detect unsafe bold and italic boundaries when generating Markdown and convert them to HTML tags when necessary, preventing exposed asterisk source after reload.
-- Restrict the native context menu in read-only documents and disable source-mode editing commands.
-- Combine the HTML and PDF export windows, and add Export with Last Settings.
-- Persist export settings; PDF export supports headers and footers with title, page, total-page, and custom placeholders.
-- Add the light Saltlemon (`saltlemon`) color theme.
-
 ## 1.2.6 — 2026-08-19
 
 ### New
@@ -30,6 +17,19 @@
 - Fix the sidebar collapse animation replaying when opening a new file while the sidebar is hidden.
 - Fix dark-theme PDF export leaving the page margin area white while only the content area is dark.
 - Fix the export preview flickering and the page-count label disappearing and reappearing on regeneration.
+
+## 1.2.5 — 2026-08-19
+
+### New
+
+- Source mode supports undo and redo, with paste consistently handled as plain text.
+- Add Paste as Plain Text (`⌘⇧V`) and unify the copy menu as Copy/Paste As.
+- Detect unsafe CommonMark emphasis boundaries in source mode, with options to keep literal markers or convert them to HTML tags; the prompt supports “Don’t show again” and “Learn more”.
+- Detect unsafe bold and italic boundaries when generating Markdown and convert them to HTML tags when necessary, preventing exposed asterisk source after reload.
+- Restrict the native context menu in read-only documents and disable source-mode editing commands.
+- Combine the HTML and PDF export windows, and add Export with Last Settings.
+- Persist export settings; PDF export supports headers and footers with title, page, total-page, and custom placeholders.
+- Add the light Saltlemon (`saltlemon`) color theme.
 
 ### Changes
 

@@ -296,6 +296,8 @@ final class SidebarView: NSView {
             return
         }
         isSearching = true
+        // 搜索进行中先显示“搜索中…”，搜索完成后再按结果数量显示列表或“无搜索结果”。
+        searchResults.setSearching()
         if session.sidebarTabIndex == 1 {
             workspaceScroll.isHidden = true
             outlineScroll.isHidden = false

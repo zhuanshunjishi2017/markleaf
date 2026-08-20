@@ -43,6 +43,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         buildContent()
+        // 侧边栏默认隐藏时，在窗口出现前就收起，避免每次打开新窗口先闪出再播放收起动画。
+        if !session.sidebarVisible, let splitView {
+            splitView.arrangedSubviews.first?.isHidden = true
+            splitView.setPosition(0, ofDividerAt: 0)
+        }
         bindState()
         installFocusModeKeyMonitor()
     }
@@ -75,7 +80,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             let saved = SidebarLayout.clampedWorkspaceWidth(
                 SettingsService.shared.settings.workspaceWidth
             )
-            splitView.setPosition(saved, ofDividerAt: 0)
+            if self.session.sidebarVisible {
+                splitView.setPosition(saved, ofDividerAt: 0)
+            }
             self.applyViewState()
         }
     }
@@ -294,15 +301,19 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             let saved = SidebarLayout.clampedWorkspaceWidth(
                 SettingsService.shared.settings.workspaceWidth
             )
+            let wasHidden = sidebar?.isHidden == true
             sidebar?.isHidden = false
-            if abs(currentWidth - saved) > 1 {
+            if wasHidden || abs(currentWidth - saved) > 1 {
                 animateSidebar(to: saved) {}
             } else {
                 // 已在目标宽度：直接对齐，避免打开文件时重复播放展开动画。
                 splitView.setPosition(saved, ofDividerAt: 0)
             }
         } else {
-            if abs(currentWidth) > 1 {
+            if sidebar?.isHidden == true {
+                // 已处于收起状态（隐藏后 frame 宽度可能仍是旧值），直接对齐，不播放动画。
+                splitView.setPosition(0, ofDividerAt: 0)
+            } else if abs(currentWidth) > 1 {
                 sidebar?.isHidden = false
                 animateSidebar(to: 0) { [weak self] in
                     sidebar?.isHidden = true

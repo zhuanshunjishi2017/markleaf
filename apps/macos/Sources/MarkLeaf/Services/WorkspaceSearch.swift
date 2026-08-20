@@ -2,7 +2,9 @@ import AppKit
 
 struct WorkspaceSearchResult {
     let entry: WorkspaceEntry
-    let match: String
+    let folderName: String
+    let lastWriteTime: Date
+    let snippet: String
 }
 
 /// 工作区搜索：文件名或 Markdown/TXT 内容匹配，异步执行并可取消。
@@ -16,6 +18,7 @@ final class WorkspaceSearchService {
             completion([])
             return
         }
+        let rootName = (root as NSString).lastPathComponent
         let work = DispatchWorkItem {
             let fm = FileManager.default
             var stack = [root]
@@ -34,10 +37,32 @@ final class WorkspaceSearchService {
                     }
                     let ext = (name as NSString).pathExtension.lowercased()
                     guard ["md", "txt"].contains(ext) else { continue }
+                    let lowerName = name.lowercased()
                     let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-                    guard name.lowercased().contains(normalized) || content.lowercased().contains(normalized) else { continue }
-                    let snippet = content.split(whereSeparator: { $0 == "\n" }).first(where: { $0.lowercased().contains(normalized) }).map(String.init) ?? ""
-                    results.append(WorkspaceSearchResult(entry: WorkspaceEntry(name: name, path: path, isDirectory: false), match: snippet))
+                    let nameMatch = lowerName.contains(normalized)
+                    guard nameMatch || content.lowercased().contains(normalized) else { continue }
+                    // 与 Windows 一致：文件名命中显示首行，内容命中显示包含关键词的行。
+                    let snippet: String
+                    if nameMatch {
+                        snippet = content.split(whereSeparator: { $0 == "\n" }).first.map(String.init) ?? ""
+                    } else {
+                        snippet = content.split(whereSeparator: { $0 == "\n" })
+                            .first(where: { $0.lowercased().contains(normalized) })
+                            .map(String.init) ?? ""
+                    }
+                    let parent = (path as NSString).deletingLastPathComponent
+                    let folderName: String
+                    if parent == root {
+                        folderName = rootName
+                    } else {
+                        folderName = String(parent.dropFirst(root.count + 1))
+                    }
+                    let lastWriteTime = (try? fm.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? Date.distantPast
+                    results.append(WorkspaceSearchResult(
+                        entry: WorkspaceEntry(name: name, path: path, isDirectory: false),
+                        folderName: folderName,
+                        lastWriteTime: lastWriteTime,
+                        snippet: snippet))
                 }
             }
             results.sort { $0.entry.path.localizedCaseInsensitiveCompare($1.entry.path) == .orderedAscending }
@@ -55,13 +80,75 @@ final class WorkspaceSearchService {
     }
 }
 
+/// 修改时间文案（对齐 Windows WorkspaceDocumentTimeFormatter）：
+/// 今天显示时间，昨天/前天带前缀，同年显示月日，更早显示年/月/日。
+enum WorkspaceDocumentTimeFormatter {
+    static func format(_ date: Date, now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        let time = timeFormatter.string(from: date)
+        if calendar.isDateInToday(date) {
+            return time
+        }
+        if calendar.isDateInYesterday(date) {
+            return L10n.f("昨天 %@", time)
+        }
+        if let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: calendar.startOfDay(for: now)),
+           date >= twoDaysAgo {
+            return L10n.f("前天 %@", time)
+        }
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            return monthDayFormatter.string(from: date)
+        }
+        return yearFormatter.string(from: date)
+    }
+
+    private static var locale: Locale {
+        let code = SettingsService.shared.settings.displayLanguage
+        let identifier: String
+        switch code {
+        case "zh-Hant": identifier = "zh_TW"
+        case "ja": identifier = "ja_JP"
+        case "en": identifier = "en_US"
+        default: identifier = "zh_CN"
+        }
+        return Locale(identifier: identifier)
+    }
+
+    private static var timeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }
+
+    private static var monthDayFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter
+    }
+
+    private static var yearFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "yyyy/M/d"
+        return formatter
+    }
+}
+
 final class WorkspaceSearchResultsView: NSTableView, NSTableViewDataSource, NSTableViewDelegate {
-    var results: [WorkspaceSearchResult] = []
+    enum State {
+        case results([WorkspaceSearchResult])
+        case searching
+        case empty
+    }
+
+    private(set) var state: State = .empty
     var onActivate: ((WorkspaceSearchResult) -> Void)?
 
     func configure() {
         headerView = nil
-        rowHeight = 42
+        rowHeight = 66
         style = .sourceList
         backgroundColor = .clear
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("result"))
@@ -71,51 +158,124 @@ final class WorkspaceSearchResultsView: NSTableView, NSTableViewDataSource, NSTa
         dataSource = self
     }
 
-    func setResults(_ results: [WorkspaceSearchResult]) {
-        self.results = results
+    func setSearching() {
+        state = .searching
         reloadData()
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { max(results.count, 1) }
+    func setResults(_ results: [WorkspaceSearchResult]) {
+        state = results.isEmpty ? .empty : .results(results)
+        reloadData()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        switch state {
+        case .searching, .empty: return 1
+        case .results(let results): return results.count
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        if case .results = state { return true }
+        return false
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        if results.isEmpty {
-            return NSTextField(labelWithString: L10n.t("无搜索结果"))
+        switch state {
+        case .searching:
+            return placeholder(L10n.t("搜索中…"))
+        case .empty:
+            return placeholder(L10n.t("无搜索结果"))
+        case .results(let results):
+            return resultCell(results[row])
         }
+    }
+
+    private func placeholder(_ text: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.textColor = .secondaryLabelColor
+        label.font = .systemFont(ofSize: 12)
+        label.isSelectable = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView()
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        return container
+    }
+
+    private func resultCell(_ result: WorkspaceSearchResult) -> NSView {
         let id = NSUserInterfaceItemIdentifier("resultCell")
-        let cell = (makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? {
-            let cell = NSTableCellView()
+        let cell = (makeView(withIdentifier: id, owner: self) as? SearchResultCellView) ?? {
+            let cell = SearchResultCellView()
             cell.identifier = id
-            let title = NSTextField(labelWithString: "")
-            let path = NSTextField(labelWithString: "")
-            title.translatesAutoresizingMaskIntoConstraints = false
-            path.translatesAutoresizingMaskIntoConstraints = false
-            path.textColor = .secondaryLabelColor
-            path.font = .systemFont(ofSize: 11)
-            path.lineBreakMode = .byTruncatingTail
-            cell.addSubview(title)
-            cell.addSubview(path)
-            cell.textField = title
-            NSLayoutConstraint.activate([
-                title.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                title.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
-                title.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
-                path.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-                path.trailingAnchor.constraint(equalTo: title.trailingAnchor),
-                path.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
-            ])
             return cell
         }()
-        let result = results[row]
+        cell.folderLabel.stringValue = result.folderName
+        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(result.lastWriteTime)
         cell.textField?.stringValue = result.entry.name
-        let pathLabel = cell.subviews.compactMap { $0 as? NSTextField }.dropFirst().first
-        let detail = result.match.isEmpty ? result.entry.path : "\(result.entry.path) · \(result.match)"
-        pathLabel?.stringValue = detail
+        cell.snippetLabel.stringValue = result.snippet
+        cell.snippetLabel.isHidden = result.snippet.isEmpty
         return cell
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard selectedRow >= 0, selectedRow < results.count else { return }
+        guard case .results(let results) = state,
+              selectedRow >= 0, selectedRow < results.count else { return }
         onActivate?(results[selectedRow])
+    }
+}
+
+/// 搜索结果行：文件夹 + 修改时间 / 文件名 / 内容片段，对齐 Windows SearchResultsView。
+private final class SearchResultCellView: NSTableCellView {
+    let folderLabel = NSTextField(labelWithString: "")
+    let timeLabel = NSTextField(labelWithString: "")
+    let snippetLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        build()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func build() {
+        let title = NSTextField(labelWithString: "")
+        for label in [folderLabel, timeLabel, title, snippetLabel] {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.lineBreakMode = .byTruncatingTail
+        }
+        folderLabel.font = .systemFont(ofSize: 11)
+        folderLabel.textColor = .tertiaryLabelColor
+        timeLabel.font = .systemFont(ofSize: 11)
+        timeLabel.textColor = .tertiaryLabelColor
+        timeLabel.alignment = .right
+        title.font = .systemFont(ofSize: 13, weight: .medium)
+        snippetLabel.font = .systemFont(ofSize: 11)
+        snippetLabel.textColor = .secondaryLabelColor
+
+        let metaRow = NSStackView(views: [folderLabel, NSView(), timeLabel])
+        metaRow.orientation = .horizontal
+        metaRow.spacing = 6
+        metaRow.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(metaRow)
+        addSubview(title)
+        addSubview(snippetLabel)
+        textField = title
+        NSLayoutConstraint.activate([
+            metaRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            metaRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            metaRow.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            title.leadingAnchor.constraint(equalTo: metaRow.leadingAnchor),
+            title.trailingAnchor.constraint(equalTo: metaRow.trailingAnchor),
+            title.topAnchor.constraint(equalTo: metaRow.bottomAnchor, constant: 3),
+            snippetLabel.leadingAnchor.constraint(equalTo: metaRow.leadingAnchor),
+            snippetLabel.trailingAnchor.constraint(equalTo: metaRow.trailingAnchor),
+            snippetLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 3),
+        ])
     }
 }
