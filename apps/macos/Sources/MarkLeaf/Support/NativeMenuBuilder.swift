@@ -53,6 +53,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("新建"), "new", key: "n"))
         menu.addItem(commandItem(L10n.t("新建窗口"), "newWindow"))
         menu.addItem(commandItem(L10n.t("打开…"), "open", key: "o"))
+        menu.addItem(commandItem(L10n.t("以只读方式打开…"), "openReadOnly"))
         menu.addItem(commandItem(L10n.t("在新窗口中打开…"), "openInNewWindow"))
         menu.addItem(commandItem(L10n.t("打开文件夹…"), "openFolder"))
 
@@ -80,6 +81,8 @@ final class NativeMenuBuilder {
 
     private func editMenu() -> NSMenu {
         let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
+        menu.delegate = MenuRouter.shared
         menu.addItem(commandItem(L10n.t("撤销"), "undo", key: "z"))
         menu.addItem(commandItem(L10n.t("重做"), "redo", key: "Z"))
         menu.addItem(.separator())
@@ -90,7 +93,11 @@ final class NativeMenuBuilder {
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
-        menu.addItem(popup(L10n.t("复制为"), copyAs))
+        let copyAsItem = popup(L10n.t("复制为"), copyAs)
+        copyAsItem.representedObject = "copyAs"
+        menu.addItem(copyAsItem)
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("全选"), "selectAll", key: "a"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))
         menu.addItem(commandItem(L10n.t("替换"), "replace", key: "f", mask: [.command, .option]))
@@ -128,6 +135,8 @@ final class NativeMenuBuilder {
         menu.addItem(popup(L10n.t("列表"), lists))
 
         menu.addItem(popup(L10n.t("表格"), tableMenu()))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("清除段落格式"), "clearFormat"))
         return menu
     }
 
@@ -172,6 +181,21 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         menu.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
         menu.addItem(commandItem(L10n.t("顺时针旋转图片"), "rotateImage"))
+        menu.addItem(popup(L10n.t("调整图片大小"), resizeImageMenu()))
+        menu.addItem(commandItem(L10n.t("图片另存为…"), "saveImageAs"))
+        return menu
+    }
+
+    private func resizeImageMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("调整图片大小"))
+        for (title, command) in [
+            (L10n.t("100%"), "resizeImage100"),
+            (L10n.t("75%"), "resizeImage75"),
+            (L10n.t("90%"), "resizeImage90"),
+            (L10n.t("50%"), "resizeImage50"),
+        ] {
+            menu.addItem(commandItem(title, command))
+        }
         return menu
     }
 
@@ -321,10 +345,43 @@ final class NativeMenuBuilder {
 }
 
 /// 菜单动作路由：把菜单项转发到当前活跃窗口的会话。
-final class MenuRouter: NSObject, NSMenuItemValidation {
+final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     static let shared = MenuRouter()
 
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
+
+    /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
+    /// WKWebView 编辑器不会使用 NSTextView，因此仍走 EditorSession 命令。
+    private var nativeTextFieldEditor: NSTextView? {
+        guard let responder = NSApp.keyWindow?.firstResponder,
+              let editor = responder as? NSTextView else { return nil }
+        guard editor.delegate is NSTextField else { return nil }
+        return editor
+    }
+
+    private func routeNativeTextCommand(_ command: String) -> Bool {
+        guard let editor = nativeTextFieldEditor,
+              NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) else {
+            return false
+        }
+        switch command {
+        case "undo": editor.undoManager?.undo()
+        case "redo": editor.undoManager?.redo()
+        case "cut": editor.cut(nil)
+        case "copy": editor.copy(nil)
+        case "paste": editor.paste(nil)
+        case "pastePlainText": editor.pasteAsPlainText(nil)
+        case "selectAll": editor.selectAll(nil)
+        default: return false
+        }
+        return true
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        for item in menu.items where !item.isSeparatorItem {
+            item.isEnabled = validateMenuItem(item)
+        }
+    }
 
     /// 视图菜单勾选状态（对应 Windows RefreshStates）。
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -333,6 +390,15 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             return !SettingsService.shared.settings.followSystemTheme
         }
         guard let command = menuItem.representedObject as? String else { return true }
+        if let editor = nativeTextFieldEditor,
+           NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) {
+            return NativeTextEditingPolicy.isEnabled(
+                command: command,
+                editable: editor.isEditable,
+                hasSelection: editor.selectedRange.length > 0,
+                hasClipboard: NSPasteboard.general.string(forType: .string)?.isEmpty == false
+            )
+        }
         let s = session
         if s?.isReadOnly == true, EditorSession.readOnlyBlockedCommands.contains(command) {
             return false
@@ -355,7 +421,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
             menuItem.state = s?.isSourceMode == true ? .on : .off
 
         // 无选中图片时置灰（对应 Windows 命令状态）
-        case "rotateImage": return s?.imageSelected == true
+        case "rotateImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
+             "changeImage", "saveImageAs":
+            return s?.imageSelected == true
         // 降低标题级别：仅当光标在标题内可用（非标题保持原样 → 置灰）
         case "demoteHeading": return s?.headingLevel != nil
         // 表格命令：仅当光标在表格内可用
@@ -374,7 +442,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
-        case "cut", "copy", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
+        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
             return EditorMenuPolicy.isEnabled(
                 command: command,
                 hasSelection: s?.hasSelection ?? false,
@@ -394,6 +462,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation {
 
     @objc func performCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
+        if routeNativeTextCommand(command) { return }
         switch command {
         case "showPreferences":
             AppWindowManager.shared.showPreferences()
@@ -569,6 +638,7 @@ extension EditorSession {
         switch command {
         case "new": newDocument()
         case "open": openDocument()
+        case "openReadOnly": openDocumentReadOnly()
         case "save": saveDocument()
         case "saveAs": saveDocumentAs()
         case "export": exportDocument()
@@ -602,6 +672,13 @@ extension EditorSession {
         case "insertImage": insertImageFromPicker()
         case "insertImageFromUrl": insertImageFromUrl()
         case "rotateImage": execute("rotateImageClockwise")
+        case "resizeImage100": execute("resizeImage", text: "100")
+        case "resizeImage75": execute("resizeImage", text: "75")
+        case "resizeImage90": execute("resizeImage", text: "90")
+        case "resizeImage50": execute("resizeImage", text: "50")
+        case "changeImage": changeImage()
+        case "saveImageAs": saveImageAs()
+        case "clearFormat": execute("clearFormat")
         case "showShortcuts": showShortcuts()
         case "revealThemeFolder": revealThemeFolder()
         case "importTheme": importTheme()

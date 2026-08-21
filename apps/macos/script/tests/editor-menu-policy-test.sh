@@ -7,6 +7,8 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 SDK_PATH="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
 cp "$ROOT_DIR/script/tests/EditorMenuPolicyTest.swift" "$BUILD_DIR/main.swift"
 swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
-  "$ROOT_DIR/Sources/MarkLeaf/Services/EditorMenuPolicy.swift" "$BUILD_DIR/main.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/EditorMenuPolicy.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/EditorContextMenuState.swift" \
+  "$BUILD_DIR/main.swift" \
   -o "$BUILD_DIR/policy-test"
 "$BUILD_DIR/policy-test"

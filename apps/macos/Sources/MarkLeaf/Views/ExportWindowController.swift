@@ -277,7 +277,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             stylePopup.selectItem(at: idx)
         }
         colorThemePopup.addItems(withTitles: session.colorThemes.map { L10n.t($0.displayName) })
-        if let idx = themeIDs.firstIndex(of: saved.colorTheme) ?? themeIDs.firstIndex(of: session.currentThemeId ?? "colors-white-only") {
+        let preferredThemeID = ExportThemeSelectionPolicy.preferredThemeID(
+            currentThemeID: session.currentThemeId,
+            persistedThemeID: saved.colorTheme,
+            availableThemeIDs: themeIDs
+        )
+        if let idx = preferredThemeID.flatMap(themeIDs.firstIndex(of:)) {
             colorThemePopup.selectItem(at: idx)
         }
         formatPopup.selectItem(at: saved.format == "html" ? 1 : 0)
@@ -293,7 +298,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         selectHeaderFooterPreset(saved.footerPreset, in: footerPresetPopup)
         marginPopup.addItem(withTitle: L10n.t("自定义"))
         customMarginItemIndex = marginPopup.numberOfItems - 1
-        marginPopup.selectItem(at: customMarginItemIndex ?? 0)
+        if let presetIndex = Self.marginPresets.firstIndex(where: { preset in
+            preset.1.top == margins.top && preset.1.bottom == margins.bottom
+                && preset.1.left == margins.left && preset.1.right == margins.right
+        }) {
+            marginPopup.selectItem(at: presetIndex)
+        } else {
+            marginPopup.selectItem(at: customMarginItemIndex ?? 0)
+        }
         updatePDFVisibility()
         updateHeaderFooterFieldState()
         refreshPreview()

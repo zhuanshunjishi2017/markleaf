@@ -2,7 +2,7 @@ import AppKit
 
 /// 查找与替换面板：原生弹出式窗口（NSPanel），控件美观、出现带淡入动画，文案随语言切换。
 /// 通过命令驱动前端查找逻辑：findText / replaceOne / replaceAll / findClose，结果经 onFindResult 回显。
-final class FindPanelController: NSWindowController {
+final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSearchFieldDelegate {
     private weak var session: EditorSession?
     private var replaceMode: Bool
 
@@ -17,6 +17,8 @@ final class FindPanelController: NSWindowController {
     private let closeButton = NSButton(title: "", target: nil, action: nil)
     private let resultLabel = NSTextField(labelWithString: "0/0")
     private var closeObserver: NSObjectProtocol?
+    private var keyEventMonitor: Any?
+    private var mouseEventMonitor: Any?
 
     init(session: EditorSession?, replaceMode: Bool) {
         self.session = session
@@ -50,6 +52,12 @@ final class FindPanelController: NSWindowController {
         if let closeObserver {
             NotificationCenter.default.removeObserver(closeObserver)
         }
+        if let keyEventMonitor {
+            NSEvent.removeMonitor(keyEventMonitor)
+        }
+        if let mouseEventMonitor {
+            NSEvent.removeMonitor(mouseEventMonitor)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -64,12 +72,15 @@ final class FindPanelController: NSWindowController {
         searchField.target = self
         searchField.action = #selector(searchChanged)
         searchField.sendsSearchStringImmediately = true
+        searchField.delegate = self
 
         replaceField.placeholderString = L10n.t("替换为")
         replaceField.controlSize = .regular
         replaceField.bezelStyle = .roundedBezel
         replaceField.target = self
         replaceField.action = #selector(replaceClicked)
+        replaceField.delegate = self
+        installTextEditingSupport()
 
         for button in [prevButton, nextButton, replaceButton, replaceAllButton] {
             button.bezelStyle = .rounded
@@ -135,6 +146,86 @@ final class FindPanelController: NSWindowController {
         replaceRow.isHidden = !replaceMode
     }
 
+    /// 查找面板不是 WKWebView，必须把编辑快捷键明确交给当前字段编辑器。
+    /// 同时提供完整、足够宽的上下文菜单，避免系统紧凑菜单把粘贴等操作折叠掉。
+    private func installTextEditingSupport() {
+        let menu = makeTextEditingMenu()
+        searchField.menu = menu
+        replaceField.menu = makeTextEditingMenu()
+
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            guard let editor = self.focusedFieldEditor else { return event }
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard modifiers.contains(.command),
+                  let key = event.charactersIgnoringModifiers?.lowercased() else { return event }
+            let usesShift = modifiers.contains(.shift)
+            switch key {
+            case "x" where !usesShift:
+                editor.cut(nil)
+            case "c" where !usesShift:
+                editor.copy(nil)
+            case "v" where !usesShift:
+                editor.paste(nil)
+            case "v" where usesShift:
+                editor.pasteAsPlainText(nil)
+            case "a" where !usesShift:
+                editor.selectAll(nil)
+            case "z" where usesShift:
+                editor.undoManager?.redo()
+            case "z" where !usesShift:
+                editor.undoManager?.undo()
+            default:
+                return event
+            }
+            return nil
+        }
+
+        // AppKit 的字段编辑器可能在第一次右键后重建上下文菜单；每次右键按下前
+        // 重新绑定完整菜单，避免后续右键退回系统的紧凑“更多”菜单。
+        mouseEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            self.focusedFieldEditor?.menu = self.makeTextEditingMenu()
+            return event
+        }
+    }
+
+    private var focusedFieldEditor: NSTextView? {
+        if let editor = window?.firstResponder as? NSTextView {
+            editor.menu = makeTextEditingMenu()
+            return editor
+        }
+        guard let field = window?.firstResponder as? NSTextField,
+              let editor = window?.fieldEditor(true, for: field) as? NSTextView else { return nil }
+        editor.menu = makeTextEditingMenu()
+        return editor
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              let editor = window?.fieldEditor(false, for: field) as? NSTextView else { return }
+        editor.menu = makeTextEditingMenu()
+    }
+
+    private func makeTextEditingMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = true
+        menu.minimumWidth = 220
+        for (title, selector, key, modifiers) in [
+            (L10n.t("剪切"), #selector(NSText.cut(_:)), "x", NSEvent.ModifierFlags.command),
+            (L10n.t("拷贝"), #selector(NSText.copy(_:)), "c", NSEvent.ModifierFlags.command),
+            (L10n.t("粘贴"), #selector(NSText.paste(_:)), "v", NSEvent.ModifierFlags.command),
+            (L10n.t("粘贴为纯文本"), #selector(NSTextView.pasteAsPlainText(_:)), "V", NSEvent.ModifierFlags([.command, .shift])),
+            (L10n.t("全选"), #selector(NSText.selectAll(_:)), "a", NSEvent.ModifierFlags.command),
+        ] as [(String, Selector, String, NSEvent.ModifierFlags)] {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            item.target = nil
+            item.keyEquivalentModifierMask = modifiers
+            menu.addItem(item)
+        }
+        return menu
+    }
+
     func applyLanguage() {
         window?.title = L10n.t("查找与替换")
         searchField.placeholderString = L10n.t("查找")
@@ -165,6 +256,11 @@ final class FindPanelController: NSWindowController {
             window.animator().alphaValue = 1
         }
         searchField.becomeFirstResponder()
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let editor = self.window?.fieldEditor(false, for: self.searchField) as? NSTextView else { return }
+            editor.menu = self.makeTextEditingMenu()
+        }
         if !searchField.stringValue.isEmpty {
             runFind(backwards: false)
         }

@@ -1,5 +1,5 @@
 import { Editor, Extension, Node, ResizableNodeView } from '@tiptap/core'
-import { Selection } from '@tiptap/pm/state'
+import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { DOMSerializer } from '@tiptap/pm/model'
@@ -83,10 +83,32 @@ const ThemedSelection = Extension.create({
             Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
           ])
         },
+        // 失焦时折叠选区：让主题化选中装饰随选区清空而消失（WKWebView 不依赖 ::selection）。
+        handleDOMEvents: {
+          blur(view) {
+            const selection = view.state.selection
+            if (!selection.empty) {
+              view.dispatch(
+                view.state.tr.setSelection(TextSelection.create(view.state.doc, selection.anchor)),
+              )
+            }
+            return false
+          },
+        },
       },
     })]
   },
 })
+
+/// Esc 折叠可视化编辑器选区（供 main.ts 的全局 keydown 调用）。
+export function collapseVisualSelection(editor: Editor): boolean {
+  const selection = editor.state.selection
+  if (selection.empty) {
+    return false
+  }
+  editor.commands.setTextSelection(selection.from)
+  return true
+}
 
 /// 段落左侧浮动操作按钮：光标进入文本块时在块首渲染一个 "+" 按钮，
 /// 点击后通过 DOM 自定义事件把坐标与块位置上报给宿主，由宿主弹出原生菜单。

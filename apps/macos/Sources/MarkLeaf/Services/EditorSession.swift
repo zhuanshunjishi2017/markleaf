@@ -5,15 +5,45 @@ import WebKit
 struct PreparedDocument: Equatable {
     let url: URL
     let markdown: String
+    let encoding: String
     var isReadOnly: Bool = false
+
+    init(url: URL, markdown: String, encoding: String = DocumentEncodingPolicy.utf8.rawValue, isReadOnly: Bool = false) {
+        self.url = url
+        self.markdown = markdown
+        self.encoding = encoding
+        self.isReadOnly = isReadOnly
+    }
 
     static func read(from url: URL) throws -> PreparedDocument {
         let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
+        let data = try Data(contentsOf: standardized)
+        let encoding = DocumentEncodingPolicy.detect(data: data)
+        guard let markdown = DocumentEncodingPolicy.decode(data, using: encoding) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
         return PreparedDocument(
             url: standardized,
-            markdown: try String(contentsOf: standardized, encoding: .utf8)
+            markdown: markdown,
+            encoding: encoding.rawValue
         )
     }
+}
+
+/// 文档统计（对齐 Windows EditorStatus / DocumentStatisticsDialog 展示的字段）。
+struct DocumentStatistics {
+    var characterCount = 0
+    var selectedCharacterCount = 0
+    var totalCharacterCount = 0
+    var nonWhitespaceCharacterCount = 0
+    var cjkCharacterCount = 0
+    var westernWordCount = 0
+    var formulaCount = 0
+    var codeLineCount = 0
+    var paragraphCount = 0
+    var blockType = "paragraph"
+    var line = 1
+    var column = 1
 }
 
 /// 编辑器宿主会话：对应 C# EditorHostController + 文档管理。
@@ -27,6 +57,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: 可观察状态（AppKit 通过 onStateChanged 刷新 UI）
 
     var statusText = L10n.t("就绪") {
+        didSet { notify() }
+    }
+    private(set) var documentStatistics = DocumentStatistics() {
+        didSet { notify() }
+    }
+    /// 当前文档的换行风格（新文档使用设置中的 newLineStyle）。
+    var documentNewLine = "LF" {
+        didSet { notify() }
+    }
+    var documentEncoding = DocumentEncodingPolicy.utf8.rawValue {
         didSet { notify() }
     }
     private(set) var isDirty = false {
@@ -76,7 +116,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "addRowBefore", "addRowAfter", "deleteRow",
         "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
         "alignTableLeft", "alignTableCenter", "alignTableRight",
-        "rotateImage", "formatPainter", "formatPainterArm", "formatPainterApply",
+        "rotateImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
+        "changeImage", "clearFormat",
+        "formatPainter", "formatPainterArm", "formatPainterApply",
         "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
     ]
@@ -99,7 +141,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // 视图状态（对应 Windows 视图菜单）
     var sidebarVisible = true
     var sidebarTabIndex = 0
-    private(set) var workspaceListMode = false
+    var workspaceListMode = false
+    var workspaceSortOrder = AppSettings.WorkspaceSortOrder.modifiedTimeDescending
     var statusBarVisible = true
     private(set) var workspaceDocuments: [WorkspaceEntry] = []
 
@@ -149,7 +192,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isReady = false
 
     var windowTitle: String {
-        documentURL?.lastPathComponent ?? L10n.t("未命名")
+        DocumentWindowTitle.format(
+            fileName: documentURL?.lastPathComponent,
+            isDirty: isDirty,
+            untitledLabel: L10n.t("未命名"),
+            modifiedLabel: L10n.t("已修改")
+        )
     }
 
     var currentDocumentIdentifier: String { documentId }
@@ -402,11 +450,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private func updateStatus(from payload: [String: Any]?) {
         guard let payload else { return }
-        let blockType = payload["blockType"] as? String ?? ""
-        let line = payload["line"] as? Int ?? 1
-        let column = payload["column"] as? Int ?? 1
-        let characterCount = payload["characterCount"] as? Int ?? 0
-        statusText = L10n.f("%@ · 行 %d 列 %d · %d 字符", Self.blockTypeDisplayName(blockType), line, column, characterCount)
+        documentStatistics = DocumentStatistics(
+            characterCount: payload["characterCount"] as? Int ?? 0,
+            selectedCharacterCount: payload["selectedCharacterCount"] as? Int ?? 0,
+            totalCharacterCount: payload["totalCharacterCount"] as? Int ?? 0,
+            nonWhitespaceCharacterCount: payload["nonWhitespaceCharacterCount"] as? Int ?? 0,
+            cjkCharacterCount: payload["cjkCharacterCount"] as? Int ?? 0,
+            westernWordCount: payload["westernWordCount"] as? Int ?? 0,
+            formulaCount: payload["formulaCount"] as? Int ?? 0,
+            codeLineCount: payload["codeLineCount"] as? Int ?? 0,
+            paragraphCount: payload["paragraphCount"] as? Int ?? 0,
+            blockType: payload["blockType"] as? String ?? "paragraph",
+            line: payload["line"] as? Int ?? 1,
+            column: payload["column"] as? Int ?? 1
+        )
     }
 
     func preserveStartupRecoveryNoticeForCurrentDocumentLoad(_ text: String) {
@@ -424,7 +481,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         startupRecoveryNotice = nil
     }
 
-    private static func blockTypeDisplayName(_ blockType: String) -> String {
+    static func blockTypeDisplayName(_ blockType: String) -> String {
         switch blockType {
         case "paragraph": return L10n.t("正文")
         case "heading1": return L10n.t("标题 1")
@@ -541,9 +598,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         if settings.restoreZoomOnOpen {
             applyZoom(settings.zoomPercent)
         }
-        if settings.autoHideScrollbars {
-            setAutoHideScrollbar(true)
-        }
+        setAutoHideScrollbar(settings.autoHideScrollbars)
         applyScrollbarAppearance(dark: currentThemeIsDark)
     }
 
@@ -561,7 +616,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         return NSColor(hexString: hex)
     }
 
-    func loadDocument(markdown: String, fileURL: URL?, readOnly: Bool = false) {
+    func loadDocument(
+        markdown: String,
+        fileURL: URL?,
+        readOnly: Bool = false,
+        encoding: String? = nil
+    ) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
         startupRecoveryNotice = nil
@@ -570,6 +630,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         isDirty = false
         documentURL = fileURL
         isReadOnly = readOnly
+        documentNewLine = fileURL == nil
+            ? DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
+            : DocumentNewLinePolicy.detect(markdown).rawValue
+        documentEncoding = DocumentEncodingPolicy.defaultEncoding(
+            rawValue: encoding ?? (fileURL == nil
+                ? SettingsService.shared.settings.defaultEncoding
+                : DocumentEncodingPolicy.utf8.rawValue)
+        ).rawValue
+        documentStatistics = DocumentStatistics()
         statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
         if readOnly {
             stopExternalChangeWatch()
@@ -585,6 +654,73 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let type = extensionName == "txt" ? "plainText" : "markdown"
         isPlainText = type == "plainText"
         send("loadDocument", payload: ["markdown": markdown, "documentType": type, "readOnly": readOnly])
+    }
+
+    /// 从状态栏切换当前文档的换行风格；只读文档只允许查看，不允许转换。
+    func setDocumentNewLine(_ style: DocumentNewLineStyle) {
+        guard !isReadOnly, style.rawValue != documentNewLine else { return }
+        documentNewLine = style.rawValue
+        isDirty = true
+        statusText = L10n.t("已修改")
+    }
+
+    /// 状态栏切换当前文档编码。已打开文件会先尝试按目标编码重载原始字节。
+    func requestDocumentEncodingChange(_ rawValue: String) {
+        guard !isReadOnly else { return }
+        let target = DocumentEncodingPolicy.defaultEncoding(rawValue: rawValue)
+        guard target.rawValue != documentEncoding else { return }
+        guard let url = documentURL else {
+            documentEncoding = target.rawValue
+            isDirty = true
+            statusText = L10n.t("已修改")
+            return
+        }
+        guard let data = try? Data(contentsOf: url),
+              let markdown = DocumentEncodingPolicy.decode(data, using: target) else {
+            presentEncodingWarning(for: target, message: L10n.t("无法使用此编码读取文件。"), markdown: nil)
+            return
+        }
+        let risky = DocumentEncodingPolicy.reloadWouldRiskGarbling(data: data, using: target)
+        if risky || isDirty {
+            let message = isDirty
+                ? L10n.t("切换编码将重新加载文件，当前未保存的修改可能丢失。")
+                : L10n.f("使用 %@ 重新加载当前文件可能导致乱码。", target.rawValue)
+            presentEncodingWarning(for: target, message: message, markdown: markdown)
+            return
+        }
+        loadDocument(markdown: markdown, fileURL: url, readOnly: false, encoding: target.rawValue)
+        statusText = L10n.t("已重新加载")
+    }
+
+    private func presentEncodingWarning(
+        for target: DocumentEncodingPolicy,
+        message: String,
+        markdown: String?
+    ) {
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.t("编码可能导致乱码")
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("继续重新加载"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn,
+                  let url = self.documentURL,
+                  let data = try? Data(contentsOf: url),
+                  let markdown = markdown ?? DocumentEncodingPolicy.decode(data, using: target) else { return }
+            self.loadDocument(markdown: markdown, fileURL: url, readOnly: false, encoding: target.rawValue)
+            self.statusText = L10n.t("已重新加载")
+        }
+    }
+
+    // MARK: - 状态栏 / 文档统计
+
+    /// 点击状态栏字符数按钮：展示详细文档统计（对齐 Windows ShowDocumentStatisticsDialog）。
+    func showDocumentStatistics() {
+        guard webView?.window != nil else { return }
+        let controller = DocumentStatisticsWindowController(session: self)
+        controller.runModal()
     }
 
     // MARK: - 崩溃恢复 / 自动保存（对应 C# RecoveryService + OnRecoveryTimerTick + OnAutoSaveTimerTick）
@@ -684,8 +820,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             self.isPresentingExternalChange = false
             if response == .alertFirstButtonReturn {
                 do {
-                    let markdown = try String(contentsOf: url, encoding: .utf8)
-                    self.loadDocument(markdown: markdown, fileURL: url)
+                    let prepared = try PreparedDocument.read(from: url)
+                    self.loadDocument(
+                        markdown: prepared.markdown,
+                        fileURL: url,
+                        encoding: prepared.encoding
+                    )
                     self.statusText = L10n.t("已重新加载外部更改")
                 } catch {
                     self.statusText = L10n.t("外部文件读取失败")
@@ -853,9 +993,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         if settings.restoreZoomOnOpen {
             setZoom(settings.zoomPercent)
         }
-        if settings.autoHideScrollbars {
-            setAutoHideScrollbar(true)
-        }
+        setAutoHideScrollbar(settings.autoHideScrollbars)
         applySourceIndent()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
     }
@@ -997,6 +1135,31 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 以只读方式打开文档（对应 Windows 文件 → 以只读方式打开）。
+    func openDocumentReadOnly() {
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("以只读方式打开")
+        panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard let window = webView?.window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                let prepared = try PreparedDocument.read(from: url)
+                self.requestDisposition(for: .replaceDocument) { result in
+                    guard result == .proceed else { return }
+                    var readOnly = prepared
+                    readOnly.isReadOnly = true
+                    self.loadPreparedDocument(readOnly)
+                }
+            } catch {
+                AppLog.error("打开只读文档失败: \(url.path) \(error.localizedDescription)")
+                self.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+            }
+        }
+    }
+
     func openDocument(at url: URL) {
         do {
             let prepared = try PreparedDocument.read(from: url)
@@ -1011,7 +1174,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     private func loadPreparedDocument(_ prepared: PreparedDocument) {
-        loadDocument(markdown: prepared.markdown, fileURL: prepared.url, readOnly: prepared.isReadOnly)
+        loadDocument(
+            markdown: prepared.markdown,
+            fileURL: prepared.url,
+            readOnly: prepared.isReadOnly,
+            encoding: prepared.encoding
+        )
         guard !prepared.isReadOnly else { return }
         SettingsService.shared.addRecentFile(prepared.url.path)
         SettingsService.shared.update { $0.lastFile = prepared.url.path }
@@ -1108,15 +1276,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     switch result {
                     case .success(let snapshot):
                         do {
-                            // 新建文件按设置写入换行风格；已打开文件保留原样
-                            var markdown = snapshot.markdown
-                            if self.documentURL == nil,
-                               SettingsService.shared.settings.newLineStyle == "crlf" {
-                                markdown = snapshot.markdown.replacingOccurrences(of: "\\r?\\n", with: "\\r\\n", options: .regularExpression)
-                            }
+                            // 保存时统一按当前文档的换行风格写入；状态栏切换对新建和已打开文件均生效。
+                            let markdown = DocumentNewLinePolicy.normalize(
+                                snapshot.markdown,
+                                to: DocumentNewLinePolicy.style(from: self.documentNewLine)
+                            )
                             self.stopExternalChangeWatch()
                             self.externalChangeTracker.beginSelfWrite()
-                            try markdown.write(to: url, atomically: true, encoding: .utf8)
+                            guard let data = DocumentEncodingPolicy.encode(
+                                markdown,
+                                using: DocumentEncodingPolicy.defaultEncoding(rawValue: self.documentEncoding)
+                            ) else {
+                                throw CocoaError(.fileWriteInapplicableStringEncoding)
+                            }
+                            try data.write(to: url, options: .atomic)
                             try self.externalChangeTracker.finishSelfWrite(at: url)
                             self.documentURL = url
                             self.startExternalChangeWatch(for: url, acceptingCurrentVersion: false)
@@ -1198,6 +1371,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         workspaceScanner = scanner
         scanner.scan()
+        if workspaceListMode {
+            scanWorkspaceDocuments()
+        }
     }
 
     func closeWorkspace() {
@@ -1273,6 +1449,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func setWorkspaceListMode(_ listMode: Bool) {
         guard workspaceListMode != listMode else { return }
         workspaceListMode = listMode
+        SettingsService.shared.update { $0.workspaceListMode = listMode }
         onViewStateChanged?()
         if listMode, workspaceRoot != nil, workspaceDocuments.isEmpty {
             scanWorkspaceDocuments()
@@ -1292,8 +1469,225 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let scanner = WorkspaceScanner(root: root) { _ in }
         workspaceScanner = scanner
         scanner.scanDocuments { [weak self] documents in
-            self?.workspaceDocuments = documents
-            self?.onWorkspaceChanged?()
+            guard let self else { return }
+            self.workspaceDocuments = self.sortedDocuments(documents)
+            self.onWorkspaceChanged?()
+        }
+    }
+
+    /// 按用户选择的字段/方向对文档列表排序（对齐 Windows MainForm.Workspace.Sort）。
+    private func sortedDocuments(_ documents: [WorkspaceEntry]) -> [WorkspaceEntry] {
+        let fm = FileManager.default
+        func modificationDate(_ path: String) -> Date {
+            (try? fm.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? .distantPast
+        }
+        switch workspaceSortOrder {
+        case .fileNameAscending:
+            return documents.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .fileNameDescending:
+            return documents.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedDescending }
+        case .modifiedTimeAscending:
+            return documents.sorted { modificationDate($0.path) < modificationDate($1.path) }
+        case .modifiedTimeDescending:
+            return documents.sorted { modificationDate($0.path) > modificationDate($1.path) }
+        }
+    }
+
+    func setWorkspaceSortOrder(_ order: AppSettings.WorkspaceSortOrder) {
+        guard workspaceSortOrder != order else { return }
+        workspaceSortOrder = order
+        SettingsService.shared.update { $0.workspaceSortOrder = order }
+        if workspaceListMode {
+            workspaceDocuments = sortedDocuments(workspaceDocuments)
+        }
+        onWorkspaceChanged?()
+    }
+
+    // MARK: - 工作区条目操作（对应 C# MainForm.Workspace.Entries / Menus）
+
+    func createWorkspaceFile(at directory: URL) {
+        presentWorkspaceNameDialog(
+            title: L10n.t("新建文件"),
+            message: L10n.t("输入新文件名："),
+            initialValue: L10n.t("未命名.md")
+        ) { [weak self] name in
+            guard let self, let name, let window = self.webView?.window else { return }
+            let fileName = Self.availableWorkspaceName(base: name, directory: directory)
+            let url = directory.appendingPathComponent(fileName)
+            do {
+                try Data().write(to: url)
+                self.rescanWorkspace()
+                self.statusText = L10n.f("已创建文件 %@", fileName)
+            } catch {
+                self.presentError(L10n.f("创建文件失败：%@", error.localizedDescription))
+            }
+            _ = window
+        }
+    }
+
+    func createWorkspaceFolder(at directory: URL) {
+        presentWorkspaceNameDialog(
+            title: L10n.t("新建文件夹"),
+            message: L10n.t("输入新文件夹名称："),
+            initialValue: L10n.t("新建文件夹")
+        ) { [weak self] name in
+            guard let self, let name else { return }
+            let folderName = Self.availableWorkspaceName(base: name, directory: directory)
+            let url = directory.appendingPathComponent(folderName)
+            do {
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+                self.rescanWorkspace()
+                self.statusText = L10n.f("已创建文件夹 %@", folderName)
+            } catch {
+                self.presentError(L10n.f("创建文件夹失败：%@", error.localizedDescription))
+            }
+        }
+    }
+
+    func renameWorkspaceEntry(_ entry: WorkspaceEntry) {
+        presentWorkspaceNameDialog(
+            title: L10n.t("重命名"),
+            message: L10n.t("输入新名称："),
+            initialValue: entry.name
+        ) { [weak self] name in
+            guard let self, let name, !name.isEmpty, name != entry.name else { return }
+            let source = URL(fileURLWithPath: entry.path)
+            let destination = source.deletingLastPathComponent().appendingPathComponent(name)
+            do {
+                try FileManager.default.moveItem(at: source, to: destination)
+                if self.documentURL?.standardizedFileURL == source.standardizedFileURL {
+                    self.documentURL = destination
+                    self.statusText = destination.lastPathComponent
+                    SettingsService.shared.update { $0.lastFile = destination.path }
+                }
+                self.rescanWorkspace()
+                self.statusText = L10n.f("已重命名为 %@", name)
+            } catch {
+                self.presentError(L10n.f("重命名失败：%@", error.localizedDescription))
+            }
+        }
+    }
+
+    func deleteWorkspaceEntry(_ entry: WorkspaceEntry) {
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.f("确定要删除“%@”吗？", entry.name)
+        alert.informativeText = L10n.t("删除后可在废纸篓中恢复。")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("删除"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let url = URL(fileURLWithPath: entry.path)
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                if self.documentURL?.standardizedFileURL == url.standardizedFileURL {
+                    self.documentURL = nil
+                }
+                self.rescanWorkspace()
+                self.statusText = L10n.f("已删除 %@", entry.name)
+            } catch {
+                self.presentError(L10n.f("删除失败：%@", error.localizedDescription))
+            }
+        }
+    }
+
+    func copyWorkspaceEntryPath(_ entry: WorkspaceEntry) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(entry.path, forType: .string)
+        statusText = L10n.t("路径已复制")
+    }
+
+    func openWorkspaceEntryInNewWindow(_ entry: WorkspaceEntry) {
+        guard !entry.isDirectory else { return }
+        _ = AppWindowManager.shared.newWindow(documentPath: entry.path)
+    }
+
+    func openWorkspaceEntryInFinder(_ entry: WorkspaceEntry) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.path)])
+    }
+
+    /// 从 Finder 拖入文件：把支持的文件复制到目标目录（对齐 Windows Workspace DropFiles）。
+    func importFiles(from urls: [URL], to directory: URL) {
+        guard let root = workspaceRoot else { return }
+        let rootURL = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL
+        let target = directory.standardizedFileURL
+        guard target == rootURL || target.path.hasPrefix(rootURL.path + "/") else {
+            presentError(L10n.t("无法导入到工作区之外"))
+            return
+        }
+        var importedCount = 0
+        for url in urls {
+            let ext = url.pathExtension.lowercased()
+            guard ["md", "txt", "markdown"].contains(ext) else { continue }
+            let fileName = Self.availableWorkspaceName(base: url.lastPathComponent, directory: target)
+            do {
+                try FileManager.default.copyItem(at: url, to: target.appendingPathComponent(fileName))
+                importedCount += 1
+            } catch {
+                presentError(L10n.f("导入失败：%@", error.localizedDescription))
+            }
+        }
+        if importedCount > 0 {
+            rescanWorkspace()
+            statusText = L10n.f("已导入 %d 个文件", importedCount)
+        }
+    }
+
+    private func presentWorkspaceNameDialog(
+        title: String,
+        message: String,
+        initialValue: String,
+        completion: @escaping (String?) -> Void
+    ) {
+        guard let window = webView?.window else {
+            completion(nil)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        let field = NSTextField(string: initialValue)
+        field.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        var validationToken: NSObjectProtocol?
+        validationToken = bindAlertInputValidation(field: field, button: okButton) {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        alert.beginSheetModal(for: window) { response in
+            if let token = validationToken {
+                NotificationCenter.default.removeObserver(token)
+            }
+            guard response == .alertFirstButtonReturn else {
+                completion(nil)
+                return
+            }
+            completion(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
+    private static func availableWorkspaceName(base: String, directory: URL) -> String {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: directory.appendingPathComponent(base).path) {
+            return base
+        }
+        let ext = (base as NSString).pathExtension
+        let stem = (base as NSString).deletingPathExtension
+        var index = 2
+        while true {
+            let candidate = ext.isEmpty ? "\(stem) \(index)" : "\(stem) \(index).\(ext)"
+            if !fm.fileExists(atPath: directory.appendingPathComponent(candidate).path) {
+                return candidate
+            }
+            index += 1
         }
     }
 

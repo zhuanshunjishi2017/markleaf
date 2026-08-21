@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
-import { createEditor, replaceEditorDocument } from '../src/editor'
+import { collapseVisualSelection, createEditor, executeEditorCommand, replaceEditorDocument } from '../src/editor'
 import { SourceEditor } from '../src/source-editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -39,5 +39,52 @@ describe('read-only documents', () => {
     editors.push(replacement)
 
     expect(replacement.isEditable).toBe(false)
+  })
+
+  it('selects the whole document through the host selectAll command in read-only mode', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const editor = createEditor(el, 'hello world', true)
+    editors.push(editor)
+
+    expect(executeEditorCommand(editor, 'selectAll')).toBe(true)
+    expect(editor.state.selection.empty).toBe(false)
+    expect(editor.state.selection.from).toBe(0)
+  })
+
+  it('collapses the visual selection with Escape', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const editor = createEditor(el, 'hello world', true)
+    editors.push(editor)
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+
+    expect(editor.state.selection.empty).toBe(false)
+    expect(collapseVisualSelection(editor)).toBe(true)
+    expect(editor.state.selection.empty).toBe(true)
+  })
+
+  it('clears themed selection decorations when the visual editor loses focus', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const editor = createEditor(el, 'hello world', true)
+    editors.push(editor)
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+
+    expect(editor.view.dom.querySelector('.markleaf-themed-selection')).not.toBeNull()
+    editor.view.dom.dispatchEvent(new FocusEvent('blur'))
+    expect(editor.view.dom.querySelector('.markleaf-themed-selection')).toBeNull()
+  })
+
+  it('clears source selection decorations when the source editor loses focus', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const source = new SourceEditor(el, 'leaf', () => {}, 2, true)
+    sources.push(source)
+    source.setSelection(1, 4)
+
+    expect(source.view.dom.querySelector('.ml-source-selection')).not.toBeNull()
+    source.view.contentDOM.dispatchEvent(new FocusEvent('blur'))
+    expect(source.view.dom.querySelector('.ml-source-selection')).toBeNull()
   })
 })

@@ -14,6 +14,27 @@ enum ExternalFileOpenMode: String, Codable, CaseIterable {
     case currentWindow
 }
 
+/// 状态栏命令反馈显示模式（对应 Windows StatusBarCommandDisplayMode）。
+enum StatusBarCommandDisplayMode: String, Codable, CaseIterable {
+    case always
+    case temporary
+    case hidden
+}
+
+/// 状态栏自定义设置（对应 Windows StatusBarSettings）。
+struct StatusBarSettings: Codable, Equatable {
+    var sidebarToggleVisible = true
+    var commandStatusVisible = true
+    var commandDisplayMode = StatusBarCommandDisplayMode.always
+    var wordCountVisible = true
+    var blockTypeVisible = true
+    var positionVisible = true
+    var encodingVisible = true
+    var newLineVisible = true
+    var modeToggleVisible = true
+    var zoomVisible = true
+}
+
 enum ExternalFileOpenPreferenceModel {
     static let orderedModes = ExternalFileOpenMode.allCases
 
@@ -68,8 +89,8 @@ struct AppSettings: Codable {
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
         exportSettings.normalize()
         startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
-        associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? true
-        associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? true
+        associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? false
+        associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? false
         recordRecentFiles = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFiles) ?? true
         recordRecentFolders = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFolders) ?? true
         autoSaveEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoSaveEnabled) ?? false
@@ -80,6 +101,7 @@ struct AppSettings: Codable {
         ) ?? .newWindow
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
+        defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
         topMostWindow = try container.decodeIfPresent(Bool.self, forKey: .topMostWindow) ?? false
         clipboardImageHandling = try container.decodeIfPresent(String.self, forKey: .clipboardImageHandling) ?? "saveToDefault"
         fileImageHandling = try container.decodeIfPresent(String.self, forKey: .fileImageHandling) ?? "referenceOriginal"
@@ -94,6 +116,12 @@ struct AppSettings: Codable {
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         statusBarVisible = try container.decodeIfPresent(Bool.self, forKey: .statusBarVisible) ?? true
+        statusBar = try container.decodeIfPresent(StatusBarSettings.self, forKey: .statusBar) ?? StatusBarSettings()
+        workspaceListMode = try container.decodeIfPresent(Bool.self, forKey: .workspaceListMode) ?? false
+        workspaceSortOrder = try container.decodeIfPresent(
+            WorkspaceSortOrder.self,
+            forKey: .workspaceSortOrder
+        ) ?? .modifiedTimeDescending
         sidebarTab = try container.decodeIfPresent(String.self, forKey: .sidebarTab) ?? "workspace"
     }
 
@@ -145,8 +173,9 @@ struct AppSettings: Codable {
 
     // 文件
     var startupAction = StartupAction.newDocument
-    var associateMarkdownFiles = true
-    var associateTextFiles = true
+    // 默认不接管文件关联：只有用户主动勾选后才把 MarkLeaf 设为对应类型默认编辑器（对齐 Windows 默认 false）。
+    var associateMarkdownFiles = false
+    var associateTextFiles = false
     var recordRecentFiles = true
     var recordRecentFolders = true
     var autoSaveEnabled = false
@@ -155,6 +184,7 @@ struct AppSettings: Codable {
     var externalFileOpenMode = ExternalFileOpenMode.newWindow
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
+    var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue
     var topMostWindow = false
     var clipboardImageHandling = "saveToDefault"
     var fileImageHandling = "referenceOriginal"
@@ -173,7 +203,17 @@ struct AppSettings: Codable {
     var outlineWidth = 230
     var sidebarVisible = true
     var statusBarVisible = true
+    var statusBar = StatusBarSettings()
     var sidebarTab = "workspace"
+    var workspaceListMode = false
+    var workspaceSortOrder = WorkspaceSortOrder.modifiedTimeDescending
+
+    enum WorkspaceSortOrder: String, Codable, CaseIterable {
+        case fileNameAscending
+        case fileNameDescending
+        case modifiedTimeAscending
+        case modifiedTimeDescending
+    }
 
     enum StartupAction: String, Codable {
         case newDocument

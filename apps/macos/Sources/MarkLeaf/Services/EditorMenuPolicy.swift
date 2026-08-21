@@ -21,7 +21,7 @@ enum EditorMenuPolicy {
         switch command {
         case "cut":
             return !isReadOnly && hasSelection
-        case "copy", "copyMarkdown", "copyPlain":
+        case "copy", "copyAs", "copyMarkdown", "copyPlain":
             return hasSelection
         case "paste", "pastePlainText":
             return !isReadOnly && clipboardHasContent

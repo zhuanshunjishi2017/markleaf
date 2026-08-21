@@ -153,6 +153,14 @@ export class SourceEditor {
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.domEventHandlers({
         paste: (event, view) => this.handlePaste(event, view),
+        // 失焦时折叠选区：让主题化选中装饰随选区清空而消失。
+        blur: (_event, view) => {
+          const selection = view.state.selection.main
+          if (!selection.empty) {
+            view.dispatch({ selection: { anchor: selection.from } })
+          }
+          return false
+        },
       }),
       EditorView.lineWrapping,
       EditorState.tabSize.of(width),
@@ -381,6 +389,16 @@ export class SourceEditor {
   selectAll(): boolean {
     this.view.dispatch({ selection: { anchor: 0, head: this.view.state.doc.length } })
     this.focus()
+    return true
+  }
+
+  /// Esc 折叠源码选区（供 main.ts 的全局 keydown 调用）。
+  collapseSelection(): boolean {
+    const selection = this.view.state.selection.main
+    if (selection.empty) {
+      return false
+    }
+    this.setSelection(selection.from)
     return true
   }
 

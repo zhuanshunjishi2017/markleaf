@@ -10,6 +10,9 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 let defaults = PersistedExportSettings()
 expect(defaults.format == "pdf", "default export format should be PDF")
 expect(defaults.paperSize == "A4", "default paper size should be A4")
+expect(defaults.marginTop == 18 && defaults.marginBottom == 18
+       && defaults.marginLeft == 15 && defaults.marginRight == 15,
+       "default export margins should use the standard preset")
 expect(defaults.headerPreset == "none", "default header should be empty")
 
 let custom = PersistedExportSettings(
@@ -32,7 +35,9 @@ var invalid = PersistedExportSettings(format: "doc", paperSize: "B0", landscape:
                                       headerFontFamily: "", footerFontFamily: "")
 invalid.normalize()
 expect(invalid.format == "pdf" && invalid.paperSize == "A4", "invalid enum-like values should normalize")
-expect(invalid.marginTop == 25.4 && invalid.marginBottom == 25.4, "invalid margins should use safe defaults")
+expect(invalid.marginTop == 18 && invalid.marginBottom == 18
+       && invalid.marginLeft == 15 && invalid.marginRight == 15,
+       "invalid margins should use standard defaults")
 expect(invalid.headerPreset == "none" && invalid.footerPreset == "none", "invalid presets should normalize")
 
 let resolved = PDFHeaderFooterPolicy.resolve("{title} · {page}/{pages}", title: "Notes", page: 2, pages: 5)

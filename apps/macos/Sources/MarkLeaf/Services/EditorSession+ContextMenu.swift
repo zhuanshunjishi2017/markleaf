@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 extension EditorSession {
     /// 段落左侧句柄菜单（对应 Windows ParagraphBlockHandleMenu）。
@@ -78,6 +79,7 @@ extension EditorSession {
         )
 
         let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
         if isReadOnly {
             addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
@@ -117,8 +119,26 @@ extension EditorSession {
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
         } else if imageSelected {
-            // 图片：编辑标题
+            // 图片：更换 / 旋转 / 缩放 / 另存为 + 标题 + 剪贴板（对应 Windows ImageContextMenu）
+            addFormatCommand(menu, L10n.t("更换图片…"), "changeImage")
+            addFormatCommand(menu, L10n.t("顺时针旋转图片"), "rotateImage")
+            let resize = NSMenu(title: L10n.t("调整图片大小"))
+            for (title, command) in [
+                (L10n.t("100%"), "resizeImage100"),
+                (L10n.t("75%"), "resizeImage75"),
+                (L10n.t("90%"), "resizeImage90"),
+                (L10n.t("50%"), "resizeImage50"),
+            ] {
+                addFormatCommand(resize, title, command)
+            }
+            let resizeItem = NSMenuItem(title: L10n.t("调整图片大小"), action: nil, keyEquivalent: "")
+            resizeItem.submenu = resize
+            menu.addItem(resizeItem)
+            addFormatCommand(menu, L10n.t("图片另存为…"), "saveImageAs")
+            menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("编辑图片标题"), "editImageCaption")
+            menu.addItem(.separator())
+            addClipboardCommands(menu)
         } else if mathInline || mathBlock {
             // 公式：编辑 / 行内块级互转 / 删除
             addFormatCommand(menu, L10n.t("编辑公式"), "editMath")
@@ -197,8 +217,18 @@ extension EditorSession {
     // MARK: - 拖放图片导入（对应 C# ImportFileAsync + InsertImportedImageAsync）
 
     func insertImageFile(at url: URL) {
+        guard let markdownPath = importedImageMarkdownPath(for: url) else { return }
+        execute("insertImage", text: markdownPath + "\n图片")
+        let settings = SettingsService.shared.settings
+        if settings.fileImageHandling != "copyToAssets" || documentURL != nil {
+            statusText = L10n.t("图片已插入文档")
+        }
+    }
+
+    @discardableResult
+    private func importedImageMarkdownPath(for url: URL) -> String? {
         let ext = url.pathExtension.lowercased()
-        guard ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(ext) else { return }
+        guard ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(ext) else { return nil }
         let settings = SettingsService.shared.settings
         let physicalPath: String
         if settings.fileImageHandling == "copyToAssets", let docDir = documentURL?.deletingLastPathComponent() {
@@ -210,11 +240,70 @@ extension EditorSession {
             }
             physicalPath = url.path
         }
-        let markdownPath = markdownReferencePath(for: physicalPath)
-        execute("insertImage", text: markdownPath + "\n图片")
-        if settings.fileImageHandling != "copyToAssets" || documentURL != nil {
-            statusText = L10n.t("图片已插入文档")
+        return markdownReferencePath(for: physicalPath)
+    }
+
+    /// 更换选中图片（对应 Windows ChangeImageAsync）。
+    func changeImage() {
+        guard let window = webView?.window else { return }
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("更换图片")
+        panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, (UTType(filenameExtension: "webp") ?? .png)]
+        panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self,
+                  let markdownPath = self.importedImageMarkdownPath(for: url) else { return }
+            self.execute("changeImage", text: markdownPath)
+            self.statusText = L10n.t("图片已更换")
         }
+    }
+
+    /// 图片另存为（对应 Windows SaveImageAsAsync）。
+    func saveImageAs() {
+        requestSelectionExport { [weak self] result in
+            guard let self, case .success(let export) = result else { return }
+            guard let src = Self.extractImageSrc(from: export.markdown),
+                  let sourceURL = self.resolveImagePath(src),
+                  FileManager.default.fileExists(atPath: sourceURL.path) else {
+                self.statusText = L10n.t("未选中图片")
+                return
+            }
+            guard let window = self.webView?.window else { return }
+            let panel = NSSavePanel()
+            panel.title = L10n.t("图片另存为")
+            panel.nameFieldStringValue = sourceURL.lastPathComponent
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                do {
+                    try FileManager.default.copyItem(at: sourceURL, to: url)
+                    self.statusText = L10n.t("图片已另存为")
+                } catch {
+                    self.presentError(L10n.f("图片另存为失败：%@", error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    /// 从选区导出的 Markdown 中提取第一张图片的 src。
+    static func extractImageSrc(from markdown: String) -> String? {
+        guard let range = markdown.range(of: #"!\[[^\]]*\]\(([^)]+)\)"#, options: .regularExpression) else { return nil }
+        let match = markdown[range]
+        guard let srcRange = match.range(of: #"\(([^)]+)\)"#, options: .regularExpression) else { return nil }
+        let inner = match[srcRange].dropFirst().dropLast()
+        return String(inner).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 解析图片 src 为本地绝对路径；网络图片/无法解析时返回 nil。
+    func resolveImagePath(_ src: String) -> URL? {
+        let decoded = src.removingPercentEncoding ?? src
+        if decoded.hasPrefix("http://") || decoded.hasPrefix("https://") {
+            return nil
+        }
+        if decoded.hasPrefix("/") {
+            return URL(fileURLWithPath: decoded)
+        }
+        guard let docDir = documentURL?.deletingLastPathComponent() else { return nil }
+        return docDir.appendingPathComponent(decoded)
     }
 
     private func addFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
@@ -232,19 +321,34 @@ extension EditorSession {
 
     /// 统一的剪贴板区块：剪切/拷贝/粘贴/粘贴为纯文本 + “复制为 ▸ 纯文本 / Markdown”。
     private func addClipboardCommands(_ menu: NSMenu) {
-        let canCopy = hasSelection && !isReadOnly
-        let canPaste = clipboardHasContent && !isReadOnly
-        addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCopy)
-        addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
+        let canCut = EditorMenuPolicy.isEnabled(
+            command: "cut", hasSelection: hasSelection,
+            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
+        )
+        let canCopy = EditorMenuPolicy.isEnabled(
+            command: "copy", hasSelection: hasSelection,
+            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
+        )
+        let canPaste = EditorMenuPolicy.isEnabled(
+            command: "paste", hasSelection: hasSelection,
+            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
+        )
+        let canCopyAs = EditorMenuPolicy.isEnabled(
+            command: "copyAs", hasSelection: hasSelection,
+            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
+        )
+        addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCut)
+        addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: canCopy)
         addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
         addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
         let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
+        copyAs.isEnabled = canCopyAs
         let copyAsMenu = NSMenu()
         let plain = menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)))
-        plain.isEnabled = hasSelection
+        plain.isEnabled = canCopyAs
         copyAsMenu.addItem(plain)
         let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
-        markdown.isEnabled = hasSelection
+        markdown.isEnabled = canCopyAs
         copyAsMenu.addItem(markdown)
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)

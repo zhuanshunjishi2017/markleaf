@@ -225,10 +225,11 @@ final class SidebarView: NSView {
     /// 外部（视图菜单）切换树/列表模式。
     func setWorkspaceMode(listMode: Bool) {
         workspaceTree.setListMode(listMode)
-        if listMode {
-            session.setWorkspaceListMode(true)
-        } else {
-            session.setWorkspaceListMode(false)
+        if session.workspaceListMode != listMode {
+            session.setWorkspaceListMode(listMode)
+        } else if listMode, session.workspaceRoot != nil, session.workspaceDocuments.isEmpty {
+            // 启动时列表模式已持久化：确保文档列表完成首次扫描。
+            session.scanWorkspaceDocuments()
         }
         showTab(tabControl.selectedSegment)
     }
@@ -273,7 +274,7 @@ final class SidebarView: NSView {
 
     private func workspaceChanged() {
         updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
-        workspaceTree.reloadData()
+        workspaceTree.reloadData(activePath: session.documentURL?.path)
     }
 
     func updateEmptyStateVisibility(hasWorkspace: Bool) {
@@ -376,11 +377,15 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
     /// 进行中的子目录扫描（强引用，避免扫描器在异步任务执行前被释放导致子目录永远不加载）。
     private var activeScanners: [String: WorkspaceScanner] = [:]
+    private var activeScannerTokens: [String: UUID] = [:]
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
+    private var pendingRevealPath: String?
+    private var revealContinuationScheduled = false
     private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
     private var beganDraggingEntryDuringMouseDown = false
+    private lazy var staleRowPlaceholder = WorkspaceEntry(name: "", path: "", isDirectory: false)
     func configure(session: EditorSession) {
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
@@ -398,6 +403,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func setListMode(_ listMode: Bool) {
         self.listMode = listMode
+        rowHeight = listMode ? 54 : 26
         reloadData()
     }
 
@@ -462,6 +468,26 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         return super.beginDraggingSession(with: items, event: event, source: source)
     }
 
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
+            guard selectedRow >= 0, let entry = item(atRow: selectedRow) as? WorkspaceEntry else {
+                super.keyDown(with: event)
+                return
+            }
+            if entry.isDirectory {
+                if isItemExpanded(entry) {
+                    collapseItem(entry)
+                } else {
+                    expandItem(entry)
+                }
+            } else {
+                activateWorkspaceEntry(entry)
+            }
+            return
+        }
+        super.keyDown(with: event)
+    }
+
     func activateWorkspaceEntry(_ entry: WorkspaceEntry) {
         session?.openWorkspaceEntry(entry)
     }
@@ -469,73 +495,117 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     /// 在工作区树中定位文件：逐级展开祖先目录（懒加载完成后继续），最后选中文件行。
     /// 对齐 Windows RevealPathInTreeAsync。
     func revealPath(_ filePath: String) {
-        guard let root = session?.workspaceRoot else { return }
-        let rootPath = URL(fileURLWithPath: root).standardizedFileURL.path
-        let fullPath = URL(fileURLWithPath: filePath).standardizedFileURL.path
-        guard fullPath.hasPrefix(rootPath + "/") else { return }
-
-        var ancestors: [String] = []
-        var directory = URL(fileURLWithPath: fullPath).deletingLastPathComponent().path
-        while directory != rootPath && directory.hasPrefix(rootPath + "/") {
-            ancestors.insert(directory, at: 0)
-            directory = (directory as NSString).deletingLastPathComponent
-        }
-        if ancestors.isEmpty {
-            if let entry = (session?.workspaceTree ?? []).first(where: { $0.path == fullPath }) {
-                selectEntry(entry)
-            }
-            return
-        }
-        revealAncestors(ancestors, index: 0, rootPath: rootPath, targetPath: fullPath, attempts: 0)
+        pendingRevealPath = filePath
+        continuePendingReveal()
     }
 
-    private func revealAncestors(_ ancestors: [String], index: Int, rootPath: String, targetPath: String, attempts: Int) {
-        guard attempts < 120 else { return }
-        let directoryPath = ancestors[index]
-        let candidates: [WorkspaceEntry]
-        if index == 0 {
-            candidates = session?.workspaceTree ?? []
-        } else {
-            candidates = childrenCache[ancestors[index - 1]] ?? []
-        }
-        guard let directoryEntry = candidates.first(where: { $0.path == directoryPath }) else {
-            // 父级尚未加载完成：先触发扫描，稍后重试。
-            if index > 0, let parent = candidates.first(where: { $0.path == ancestors[index - 1] }) {
-                _ = children(for: parent)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.revealAncestors(ancestors, index: index, rootPath: rootPath, targetPath: targetPath, attempts: attempts + 1)
-            }
-            return
-        }
-        expandItem(directoryEntry)
-        if index == ancestors.count - 1 {
-            selectChildFileIfLoaded(directoryPath: directoryPath, targetPath: targetPath, attempts: 0)
-            return
-        }
-        _ = children(for: directoryEntry)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.revealAncestors(ancestors, index: index + 1, rootPath: rootPath, targetPath: targetPath, attempts: 0)
-        }
-    }
+    private func continuePendingReveal() {
+        guard let targetPath = pendingRevealPath,
+              let root = session?.workspaceRoot
+        else { return }
 
-    private func selectChildFileIfLoaded(directoryPath: String, targetPath: String, attempts: Int) {
-        guard attempts < 120 else { return }
-        let children = childrenCache[directoryPath] ?? []
-        if let file = children.first(where: { $0.path == targetPath }) {
-            selectEntry(file)
+        if listMode {
+            guard let entry = session?.workspaceDocuments.first(where: {
+                normalizedPath($0.path) == normalizedPath(targetPath)
+            }) else { return }
+            pendingRevealPath = nil
+            selectEntry(entry)
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.selectChildFileIfLoaded(directoryPath: directoryPath, targetPath: targetPath, attempts: attempts + 1)
+
+        let rootEntries = (session?.workspaceTree ?? []).map {
+            WorkspaceRevealEntry(path: $0.path, isDirectory: $0.isDirectory)
+        }
+        let cachedChildren = childrenCache.mapValues { entries in
+            entries.map { WorkspaceRevealEntry(path: $0.path, isDirectory: $0.isDirectory) }
+        }
+        switch WorkspaceSearchPolicy.nextRevealStep(
+            root: root,
+            target: targetPath,
+            rootEntries: rootEntries,
+            childrenByDirectory: cachedChildren
+        ) {
+        case .waitingForRoot:
+            return
+        case .loadDirectory(let path, let expandedDirectories):
+            guard prepareExpandedDirectories(expandedDirectories) else { return }
+            guard let directoryEntry = cachedEntry(at: path) else { return }
+            _ = children(for: directoryEntry)
+        case .selectFile(let path, let expandedDirectories):
+            guard prepareExpandedDirectories(expandedDirectories) else { return }
+            guard let file = cachedEntry(at: path) else { return }
+            if selectEntry(file) {
+                pendingRevealPath = nil
+            } else {
+                scheduleRevealContinuation()
+            }
+        case .invalid:
+            pendingRevealPath = nil
         }
     }
 
-    private func selectEntry(_ entry: WorkspaceEntry) {
+    private func prepareExpandedDirectories(_ paths: [String]) -> Bool {
+        let entries = Dictionary(uniqueKeysWithValues: paths.compactMap { path in
+            cachedEntry(at: path).map { (normalizedPath(path), $0) }
+        })
+        let visible = Set(entries.compactMap { path, entry in
+            row(forItem: entry) >= 0 ? path : nil
+        })
+        let expanded = Set(entries.compactMap { path, entry in
+            isItemExpanded(entry) ? path : nil
+        })
+        switch WorkspaceSearchPolicy.nextExpansionStep(
+            directories: paths,
+            visibleDirectories: visible,
+            expandedDirectories: expanded
+        ) {
+        case .waitingForVisibleDirectory:
+            scheduleRevealContinuation()
+            return false
+        case .expandDirectory(let path):
+            guard let entry = entries[path] else {
+                scheduleRevealContinuation()
+                return false
+            }
+            expandItem(entry)
+            scheduleRevealContinuation()
+            return false
+        case .ready:
+            return true
+        }
+    }
+
+    private func scheduleRevealContinuation() {
+        guard !revealContinuationScheduled else { return }
+        revealContinuationScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.revealContinuationScheduled = false
+            self.continuePendingReveal()
+        }
+    }
+
+    private func cachedEntry(at path: String) -> WorkspaceEntry? {
+        let entries = (session?.workspaceTree ?? []) + childrenCache.values.flatMap { $0 }
+        return entries.first(where: {
+            WorkspaceTreeDataSourcePolicy.shouldRestoreSelection(
+                activePath: path,
+                entryPath: $0.path
+            )
+        })
+    }
+
+    private func normalizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
+    }
+
+    @discardableResult
+    private func selectEntry(_ entry: WorkspaceEntry) -> Bool {
         let row = row(forItem: entry)
-        guard row >= 0 else { return }
+        guard row >= 0 else { return false }
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         scrollRowToVisible(row)
+        return true
     }
 
     /// 将目录名称点击转发到系统 disclosure control，复用三角按钮原生展开/收起动画。
@@ -562,10 +632,20 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     }
 
     override func reloadData() {
+        reloadData(activePath: nil)
+    }
+
+    /// 重载树时保留当前打开文档的选中状态；AppKit 可能在异步扫描期间继续请求旧行。
+    func reloadData(activePath: String?) {
         activeScanners.values.forEach { $0.cancel() }
         activeScanners.removeAll()
+        activeScannerTokens.removeAll()
         childrenCache.removeAll()
         super.reloadData()
+        if let activePath {
+            pendingRevealPath = activePath
+        }
+        scheduleRevealContinuation()
     }
 
     private func rootEntries() -> [WorkspaceEntry] {
@@ -586,9 +666,17 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         if let entry = item as? WorkspaceEntry {
-            return children(for: entry)[index]
+            let entries = children(for: entry)
+            guard let safeIndex = WorkspaceTreeDataSourcePolicy.safeIndex(index, count: entries.count) else {
+                return staleRowPlaceholder
+            }
+            return entries[safeIndex]
         }
-        return rootEntries()[index]
+        let entries = rootEntries()
+        guard let safeIndex = WorkspaceTreeDataSourcePolicy.safeIndex(index, count: entries.count) else {
+            return staleRowPlaceholder
+        }
+        return entries[safeIndex]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -625,11 +713,14 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         proposedItem item: Any?,
         proposedChildIndex index: Int
     ) -> NSDragOperation {
-        guard info.draggingPasteboard.string(forType: Self.localDragPasteboardType) != nil,
+        let pasteboard = info.draggingPasteboard
+        let isInternal = pasteboard.string(forType: Self.localDragPasteboardType) != nil
+        let isExternalFile = pasteboard.availableType(from: [.fileURL]) != nil
+        guard (isInternal || isExternalFile),
               dropTargetDirectory(for: item, workspaceRoot: session?.workspaceRoot) != nil
         else { return [] }
         setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
-        return .move
+        return isInternal ? .move : .copy
     }
 
     func outlineView(
@@ -638,16 +729,23 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         item: Any?,
         childIndex index: Int
     ) -> Bool {
-        guard let sourcePath = info.draggingPasteboard.string(forType: Self.localDragPasteboardType),
-              let target = dropTargetDirectory(for: item, workspaceRoot: session?.workspaceRoot)
-        else { return false }
-        do {
-            try session?.moveWorkspaceEntry(from: URL(fileURLWithPath: sourcePath), toDirectory: target)
-            return true
-        } catch {
-            session?.presentError(L10n.f("无法移动工作区项目：%@", error.localizedDescription))
-            return false
+        let pasteboard = info.draggingPasteboard
+        guard let target = dropTargetDirectory(for: item, workspaceRoot: session?.workspaceRoot) else { return false }
+        if let sourcePath = pasteboard.string(forType: Self.localDragPasteboardType) {
+            do {
+                try session?.moveWorkspaceEntry(from: URL(fileURLWithPath: sourcePath), toDirectory: target)
+                return true
+            } catch {
+                session?.presentError(L10n.f("无法移动工作区项目：%@", error.localizedDescription))
+                return false
+            }
         }
+        if pasteboard.availableType(from: [.fileURL]) != nil,
+           let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] {
+            session?.importFiles(from: urls, to: target)
+            return true
+        }
+        return false
     }
 
     // MARK: - Delegate
@@ -658,6 +756,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let entry = item as? WorkspaceEntry else { return nil }
+        if listMode {
+            return listCell(outlineView, entry: entry)
+        }
         let id = NSUserInterfaceItemIdentifier("cell")
         let cell = (outlineView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? {
             let cell = NSTableCellView()
@@ -688,6 +789,37 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         return cell
     }
 
+    private func listCell(_ outlineView: NSOutlineView, entry: WorkspaceEntry) -> NSView? {
+        let id = NSUserInterfaceItemIdentifier("listCell")
+        let cell = (outlineView.makeView(withIdentifier: id, owner: self) as? WorkspaceListCellView) ?? {
+            let cell = WorkspaceListCellView()
+            cell.identifier = id
+            return cell
+        }()
+        cell.nameLabel.stringValue = entry.name
+        cell.folderLabel.stringValue = Self.folderName(for: entry, root: session?.workspaceRoot)
+        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(
+            Self.modificationDate(of: entry.path)
+        )
+        cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)
+        return cell
+    }
+
+    private static func folderName(for entry: WorkspaceEntry, root: String?) -> String {
+        guard let root else { return "" }
+        let rootPath = URL(fileURLWithPath: root).standardizedFileURL.path
+        let parent = URL(fileURLWithPath: entry.path).deletingLastPathComponent().path
+        if parent == rootPath {
+            return URL(fileURLWithPath: root).lastPathComponent
+        }
+        guard parent.hasPrefix(rootPath + "/") else { return parent }
+        return String(parent.dropFirst(rootPath.count + 1))
+    }
+
+    private static func modificationDate(of path: String) -> Date {
+        (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? .distantPast
+    }
+
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         return item is WorkspaceEntry
     }
@@ -695,18 +827,79 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     func outlineView(_ outlineView: NSOutlineView, menuFor event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
-        guard row >= 0, let entry = item(atRow: row) as? WorkspaceEntry else { return nil }
+        guard let root = session?.workspaceRoot else { return nil }
+        let menu = NSMenu()
+        guard row >= 0, let entry = item(atRow: row) as? WorkspaceEntry else {
+            return backgroundMenu(in: URL(fileURLWithPath: root, isDirectory: true))
+        }
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
 
-        let menu = NSMenu()
         if !entry.isDirectory {
             menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))
+            menu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))
             menu.addItem(.separator())
         }
-        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(revealInFinder(_:)), entry))
+        let targetDirectory = entry.isDirectory
+            ? URL(fileURLWithPath: entry.path, isDirectory: true)
+            : URL(fileURLWithPath: entry.path).deletingLastPathComponent()
+        menu.addItem(item(L10n.t("新建文件"), #selector(newFile(_:)), targetDirectory.path))
+        menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), targetDirectory.path))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("复制路径"), #selector(copyPath(_:)), entry))
+        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
+        let isRoot = session?.workspaceRoot == entry.path
+        if !isRoot {
+            menu.addItem(.separator())
+            menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
+            menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
+        }
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("树状视图"), #selector(switchTreeView(_:)), nil))
+        menu.addItem(item(L10n.t("列表视图"), #selector(switchListView(_:)), nil))
+        menu.addItem(popupItem(L10n.t("排序"), sortMenu()))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
+        menu.addItem(item(L10n.t("关闭工作区"), #selector(closeWorkspace(_:)), nil))
         return menu
+    }
+
+    private func backgroundMenu(in directory: URL) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(item(L10n.t("新建文件"), #selector(newFile(_:)), directory.path))
+        menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), directory.path))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("树状视图"), #selector(switchTreeView(_:)), nil))
+        menu.addItem(item(L10n.t("列表视图"), #selector(switchListView(_:)), nil))
+        menu.addItem(popupItem(L10n.t("排序"), sortMenu()))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
+        menu.addItem(item(L10n.t("关闭工作区"), #selector(closeWorkspace(_:)), nil))
+        return menu
+    }
+
+    private func sortMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("排序"))
+        let order = session?.workspaceSortOrder ?? .modifiedTimeDescending
+        let byName = item(L10n.t("按文件名"), #selector(sortByName(_:)), nil)
+        byName.state = order == .fileNameAscending || order == .fileNameDescending ? .on : .off
+        let byTime = item(L10n.t("按修改时间"), #selector(sortByModifiedTime(_:)), nil)
+        byTime.state = order == .modifiedTimeAscending || order == .modifiedTimeDescending ? .on : .off
+        let ascending = item(L10n.t("升序"), #selector(sortAscending(_:)), nil)
+        ascending.state = order == .fileNameAscending || order == .modifiedTimeAscending ? .on : .off
+        let descending = item(L10n.t("降序"), #selector(sortDescending(_:)), nil)
+        descending.state = order == .fileNameDescending || order == .modifiedTimeDescending ? .on : .off
+        menu.addItem(byName)
+        menu.addItem(byTime)
+        menu.addItem(.separator())
+        menu.addItem(ascending)
+        menu.addItem(descending)
+        return menu
+    }
+
+    private func popupItem(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
+        let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        menuItem.submenu = submenu
+        return menuItem
     }
 
     @objc private func openEntry(_ sender: NSMenuItem) {
@@ -715,9 +908,83 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
     }
 
-    @objc private func revealInFinder(_ sender: NSMenuItem) {
+    @objc private func openInNewWindowEntry(_ sender: NSMenuItem) {
         if let entry = sender.representedObject as? WorkspaceEntry {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: entry.path)])
+            session?.openWorkspaceEntryInNewWindow(entry)
+        }
+    }
+
+    @objc private func newFile(_ sender: NSMenuItem) {
+        if let path = sender.representedObject as? String {
+            session?.createWorkspaceFile(at: URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    @objc private func newFolder(_ sender: NSMenuItem) {
+        if let path = sender.representedObject as? String {
+            session?.createWorkspaceFolder(at: URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    @objc private func copyPath(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            session?.copyWorkspaceEntryPath(entry)
+        }
+    }
+
+    @objc private func openLocation(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            session?.openWorkspaceEntryInFinder(entry)
+        }
+    }
+
+    @objc private func renameEntry(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            session?.renameWorkspaceEntry(entry)
+        }
+    }
+
+    @objc private func deleteEntry(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            session?.deleteWorkspaceEntry(entry)
+        }
+    }
+
+    @objc private func switchTreeView(_ sender: NSMenuItem) {
+        session?.setWorkspaceListMode(false)
+    }
+
+    @objc private func switchListView(_ sender: NSMenuItem) {
+        session?.setWorkspaceListMode(true)
+    }
+
+    @objc private func sortByName(_ sender: NSMenuItem) {
+        let descending = session?.workspaceSortOrder == .fileNameDescending
+        session?.setWorkspaceSortOrder(descending ? .fileNameAscending : .fileNameDescending)
+    }
+
+    @objc private func sortByModifiedTime(_ sender: NSMenuItem) {
+        let descending = session?.workspaceSortOrder == .modifiedTimeDescending
+        session?.setWorkspaceSortOrder(descending ? .modifiedTimeAscending : .modifiedTimeDescending)
+    }
+
+    @objc private func sortAscending(_ sender: NSMenuItem) {
+        let order = session?.workspaceSortOrder ?? .modifiedTimeDescending
+        switch order {
+        case .fileNameAscending, .fileNameDescending:
+            session?.setWorkspaceSortOrder(.fileNameAscending)
+        case .modifiedTimeAscending, .modifiedTimeDescending:
+            session?.setWorkspaceSortOrder(.modifiedTimeAscending)
+        }
+    }
+
+    @objc private func sortDescending(_ sender: NSMenuItem) {
+        let order = session?.workspaceSortOrder ?? .modifiedTimeDescending
+        switch order {
+        case .fileNameAscending, .fileNameDescending:
+            session?.setWorkspaceSortOrder(.fileNameDescending)
+        case .modifiedTimeAscending, .modifiedTimeDescending:
+            session?.setWorkspaceSortOrder(.modifiedTimeDescending)
         }
     }
 
@@ -725,6 +992,10 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         if let root = session?.workspaceRoot {
             session?.loadWorkspace(root)
         }
+    }
+
+    @objc private func closeWorkspace(_ sender: NSMenuItem) {
+        session?.closeWorkspace()
     }
 
     private func item(_ title: String, _ action: Selector, _ object: Any?) -> NSMenuItem {
@@ -747,17 +1018,76 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         if activeScanners[entry.path] != nil {
             return []
         }
+        let token = UUID()
         let scanner = WorkspaceScanner(root: entry.path) { [weak self] entries in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.activeScannerTokens[entry.path] == token else { return }
                 self.childrenCache[entry.path] = entries
                 self.activeScanners[entry.path] = nil
+                self.activeScannerTokens[entry.path] = nil
                 self.reloadDirectoryChildren(entry)
+                self.scheduleRevealContinuation()
             }
         }
         activeScanners[entry.path] = scanner
+        activeScannerTokens[entry.path] = token
         scanner.scan()
         return []
+    }
+}
+
+/// 文档列表模式单元格：图标 + 文件名 / 所在文件夹 / 修改时间（对齐 Windows WorkspaceDocumentListView）。
+final class WorkspaceListCellView: NSTableCellView {
+    let nameLabel = NSTextField(labelWithString: "")
+    let folderLabel = NSTextField(labelWithString: "")
+    let timeLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        build()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func build() {
+        let imageView = NSImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.imageScaling = .scaleProportionallyDown
+        for label in [nameLabel, folderLabel, timeLabel] {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.lineBreakMode = .byTruncatingTail
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        folderLabel.font = .systemFont(ofSize: 11)
+        folderLabel.textColor = .secondaryLabelColor
+        timeLabel.font = .systemFont(ofSize: 11)
+        timeLabel.textColor = .secondaryLabelColor
+        timeLabel.alignment = .right
+        timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(imageView)
+        addSubview(nameLabel)
+        addSubview(folderLabel)
+        addSubview(timeLabel)
+        self.imageView = imageView
+        textField = nameLabel
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 18),
+            imageView.heightAnchor.constraint(equalToConstant: 18),
+            nameLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
+            nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
+            folderLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
+            folderLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 1),
+            folderLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            folderLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
+            timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
 }
 

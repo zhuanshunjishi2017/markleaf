@@ -4,7 +4,14 @@ import AppKit
 /// 对应 Windows 端 MainForm（含 SidebarTabBar + WorkspaceTreeView + OutlineTreeView）。
 final class EditorWindowController: NSWindowController, NSWindowDelegate {
     let session: EditorSession
+    private let viewToggleButton = NSButton()
     private let statusLabel = NSTextField(labelWithString: L10n.t("就绪"))
+    private let characterCountButton = NSButton()
+    private let blockTypeLabel = NSTextField(labelWithString: "")
+    private let positionLabel = NSTextField(labelWithString: "")
+    private let encodingButton = NSButton()
+    private let newLineButton = NSButton()
+    private let modeButton = NSButton()
     private let zoomLabel = NSTextField(labelWithString: "100%")
     private var sidebarView: SidebarView?
     private var sidebarContainerView: NSView?
@@ -19,7 +26,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarVisibleBeforeFocus = true
     private var presentationOptionsBeforeFocus: NSApplication.PresentationOptions = []
     private var keyEventMonitor: Any?
+    private var sidebarAnimationTimer: Timer?
     private var lastAppliedSidebarVisible: Bool?
+    private var statusClearTimer: Timer?
 
     private(set) var isFocusMode = false
     private var allowsNextClose = false
@@ -40,6 +49,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.sidebarVisible = SettingsService.shared.settings.sidebarVisible
         session.statusBarVisible = SettingsService.shared.settings.statusBarVisible
         session.sidebarTabIndex = SettingsService.shared.settings.sidebarTab == "outline" ? 1 : 0
+        session.workspaceListMode = SettingsService.shared.settings.workspaceListMode
+        session.workspaceSortOrder = SettingsService.shared.settings.workspaceSortOrder
         window.setFrameAutosaveName("MarkLeafMainWindow")
         window.center()
         super.init(window: window)
@@ -54,6 +65,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     deinit {
+        statusClearTimer?.invalidate()
+        sidebarAnimationTimer?.invalidate()
         if let keyEventMonitor {
             NSEvent.removeMonitor(keyEventMonitor)
         }
@@ -120,19 +133,61 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBar.spacing = 8
         statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
 
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
+        configureStatusLabel(statusLabel)
+        configureStatusLabel(blockTypeLabel)
+        configureStatusLabel(positionLabel)
+        configureStatusButton(encodingButton, title: "")
+        encodingButton.target = self
+        encodingButton.action = #selector(showEncodingMenu)
+        encodingButton.setContentHuggingPriority(.required, for: .horizontal)
+        encodingButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        configureStatusButton(newLineButton, title: "")
+        newLineButton.target = self
+        newLineButton.action = #selector(showNewLineMenu)
+        newLineButton.setContentHuggingPriority(.required, for: .horizontal)
+        newLineButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         zoomLabel.textColor = .secondaryLabelColor
         zoomLabel.alignment = .right
+        zoomLabel.lineBreakMode = .byTruncatingTail
+        zoomLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        configureStatusButton(viewToggleButton, title: "")
+        viewToggleButton.image = NSImage(
+            systemSymbolName: "sidebar.left",
+            accessibilityDescription: L10n.t("显示侧栏")
+        )
+        viewToggleButton.imagePosition = .imageOnly
+        viewToggleButton.toolTip = L10n.t("显示侧栏")
+        viewToggleButton.target = self
+        viewToggleButton.action = #selector(toggleSidebarFromStatusBar)
+        viewToggleButton.setContentHuggingPriority(.required, for: .horizontal)
+        viewToggleButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        viewToggleButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+
+        configureStatusButton(characterCountButton, title: "")
+        characterCountButton.target = self
+        characterCountButton.action = #selector(showStatistics)
+        characterCountButton.setContentHuggingPriority(.required, for: .horizontal)
+        characterCountButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        configureStatusButton(modeButton, title: "")
+        modeButton.target = self
+        modeButton.action = #selector(showEditorModeMenu)
+        modeButton.setContentHuggingPriority(.required, for: .horizontal)
+        modeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let divider = NSBox()
         divider.boxType = .separator
 
+        statusBar.addView(viewToggleButton, in: .leading)
         statusBar.addView(statusLabel, in: .leading)
+        statusBar.addView(characterCountButton, in: .trailing)
+        statusBar.addView(blockTypeLabel, in: .trailing)
+        statusBar.addView(positionLabel, in: .trailing)
+        statusBar.addView(encodingButton, in: .trailing)
+        statusBar.addView(newLineButton, in: .trailing)
+        statusBar.addView(modeButton, in: .trailing)
         statusBar.addView(zoomLabel, in: .trailing)
 
         // 侧边栏默认隐藏时不让它参与 splitView 布局，避免窗口出现时先显示再播放收起动画。
@@ -188,8 +243,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// 界面语言切换：刷新状态栏与侧边栏文案。
     func applyLanguage() {
         session.applyLanguage()
-        statusLabel.stringValue = session.statusText
+        applyStatusBarContents()
         sidebarView?.applyLanguage()
+    }
+
+    private func configureStatusLabel(_ label: NSTextField) {
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+    }
+
+    private func configureStatusButton(_ button: NSButton, title: String) {
+        button.title = title
+        button.bezelStyle = .inline
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        button.setButtonType(.momentaryPushIn)
     }
 
     private func bindState() {
@@ -197,13 +266,139 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let window = self.window else { return }
             window.title = self.session.windowTitle
             window.isDocumentEdited = self.session.isDirty
-            self.statusLabel.stringValue = self.session.statusText
-            self.zoomLabel.stringValue = "\(self.session.zoomPercent)%"
+            self.applyStatusBarContents()
         }
         session.onStateChanged?()
         session.onViewStateChanged = { [weak self] in
             DispatchQueue.main.async { self?.applyViewState() }
         }
+    }
+
+    private func applyStatusBarContents() {
+        let settings = SettingsService.shared.settings
+        let status = settings.statusBar
+        let stats = session.documentStatistics
+        statusLabel.stringValue = session.statusText
+        let zoomStatus = L10n.f("缩放 %d%%", session.zoomPercent)
+        let showCommandStatus = StatusBarDisplayPolicy.shouldShowCommandStatus(
+            commandStatus: session.statusText,
+            zoomVisible: status.zoomVisible,
+            zoomStatus: zoomStatus
+        )
+        switch status.commandDisplayMode {
+        case .always:
+            statusLabel.isHidden = !status.commandStatusVisible || !showCommandStatus
+        case .temporary:
+            statusLabel.isHidden = !status.commandStatusVisible || !showCommandStatus
+            scheduleStatusClearIfNeeded()
+        case .hidden:
+            statusLabel.isHidden = true
+            statusClearTimer?.invalidate()
+        }
+        characterCountButton.title = L10n.f("%d 字符", stats.characterCount)
+        characterCountButton.isHidden = !status.wordCountVisible
+        blockTypeLabel.stringValue = EditorSession.blockTypeDisplayName(stats.blockType)
+        blockTypeLabel.isHidden = !status.blockTypeVisible
+        positionLabel.stringValue = L10n.f("行 %d 列 %d", stats.line, stats.column)
+        positionLabel.isHidden = !status.positionVisible
+        encodingButton.title = session.documentEncoding
+        encodingButton.toolTip = L10n.t("切换编码")
+        encodingButton.isHidden = !status.encodingVisible
+        newLineButton.title = session.documentNewLine == DocumentNewLineStyle.mixed.rawValue
+            ? L10n.t("混合")
+            : session.documentNewLine
+        newLineButton.toolTip = L10n.t("切换换行符")
+        newLineButton.isHidden = !status.newLineVisible
+        modeButton.title = session.isSourceMode ? L10n.t("源码") : L10n.t("可视化")
+        modeButton.toolTip = L10n.t("切换编辑模式")
+        modeButton.isHidden = !status.modeToggleVisible
+        zoomLabel.stringValue = "\(session.zoomPercent)%"
+        zoomLabel.isHidden = !status.zoomVisible
+        viewToggleButton.isHidden = !status.sidebarToggleVisible
+    }
+
+    private func scheduleStatusClearIfNeeded() {
+        guard SettingsService.shared.settings.statusBar.commandDisplayMode == .temporary,
+              !session.statusText.isEmpty else { return }
+        statusClearTimer?.invalidate()
+        statusClearTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            guard let self,
+                  SettingsService.shared.settings.statusBar.commandDisplayMode == .temporary else { return }
+            self.statusLabel.stringValue = ""
+        }
+    }
+
+    @objc private func toggleSidebarFromStatusBar() {
+        session.toggleSidebar()
+    }
+
+    @objc private func showStatistics() {
+        session.showDocumentStatistics()
+    }
+
+    @objc private func showEditorModeMenu() {
+        let menu = NSMenu(title: L10n.t("编辑模式"))
+        let visualItem = NSMenuItem(title: L10n.t("可视化"), action: #selector(selectEditorMode(_:)), keyEquivalent: "")
+        visualItem.target = self
+        visualItem.representedObject = "visual"
+        visualItem.state = session.isSourceMode ? .off : .on
+        menu.addItem(visualItem)
+
+        let sourceItem = NSMenuItem(title: L10n.t("源码"), action: #selector(selectEditorMode(_:)), keyEquivalent: "")
+        sourceItem.target = self
+        sourceItem.representedObject = "source"
+        sourceItem.state = session.isSourceMode ? .on : .off
+        sourceItem.isEnabled = !session.isPlainText
+        menu.addItem(sourceItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: modeButton.bounds.height), in: modeButton)
+    }
+
+    @objc private func selectEditorMode(_ sender: NSMenuItem) {
+        guard let mode = sender.representedObject as? String else { return }
+        let wantsSource = mode == "source"
+        guard wantsSource != session.isSourceMode, !(wantsSource && session.isPlainText) else { return }
+        session.toggleSourceMode()
+    }
+
+    @objc private func showNewLineMenu() {
+        let menu = NSMenu(title: L10n.t("换行符"))
+        for style in [DocumentNewLineStyle.lf, .crlf] {
+            let item = NSMenuItem(title: style.rawValue, action: #selector(selectNewLineStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = style.rawValue
+            item.state = session.documentNewLine == style.rawValue ? .on : .off
+            item.isEnabled = !session.isReadOnly
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: newLineButton.bounds.height), in: newLineButton)
+    }
+
+    @objc private func showEncodingMenu() {
+        let menu = NSMenu(title: L10n.t("编码"))
+        for encoding in DocumentEncodingPolicy.allCases {
+            let item = NSMenuItem(
+                title: encoding.rawValue,
+                action: #selector(selectEncoding(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = encoding.rawValue
+            item.state = session.documentEncoding == encoding.rawValue ? .on : .off
+            item.isEnabled = !session.isReadOnly
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: encodingButton.bounds.height), in: encodingButton)
+    }
+
+    @objc private func selectEncoding(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String else { return }
+        session.requestDocumentEncodingChange(rawValue)
+    }
+
+    @objc private func selectNewLineStyle(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let style = DocumentNewLineStyle(rawValue: rawValue) else { return }
+        session.setDocumentNewLine(style)
     }
 
     /// F11 进入/退出专注模式；仅临时隐藏界面元素，不覆盖用户保存的视图偏好。
@@ -257,9 +452,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// 手动插值动画侧边栏分隔线位置（NSSplitView 的 animator().setPosition 不生效）。
-    private func animateSidebar(to target: CGFloat, completion: @escaping () -> Void) {
+    private func animateSidebar(
+        from explicitStart: CGFloat? = nil,
+        to target: CGFloat,
+        completion: @escaping () -> Void
+    ) {
         guard let splitView else { completion(); return }
-        let start = splitView.arrangedSubviews.first?.frame.width ?? 0
+        sidebarAnimationTimer?.invalidate()
+        // 统一以侧栏当前 frame 宽度作为动画起点；首次插入侧栏时该宽度
+        // 已在调用方归一化为 0，因此与普通切换共用同一条动画路径。
+        let start = explicitStart ?? splitView.arrangedSubviews.first?.frame.width ?? 0
         guard abs(start - target) > 1 else {
             splitView.setPosition(target, ofDividerAt: 0)
             completion()
@@ -282,13 +484,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             if progress >= 1 {
                 timer.invalidate()
                 self.isAnimatingSidebar = false
+                self.sidebarAnimationTimer = nil
                 completion()
             }
         }
+        sidebarAnimationTimer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    private func applyViewState() {
+    func applyViewState() {
         guard let splitView, let sidebarView, let sidebar = sidebarContainerView else { return }
 
         // 动画只在“侧边栏状态发生变化”时播放（启动/打开文件时状态未变，直接对齐，避免闪烁和重复收起动画）。
@@ -304,24 +508,50 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         if session.sidebarVisible {
             if !isArranged {
                 splitView.insertArrangedSubview(sidebar, at: 0)
+                // 保持隐藏直到分栏已经完成 0 宽布局，避免插入瞬间以默认宽度闪现。
+                // 启动时侧栏未加入 arrangedSubviews：先完成布局并归一化到 0 宽，
+                // 再从有效的 0 宽起点展开，避免内容错位同时保留显示动画。
+                splitView.layoutSubtreeIfNeeded()
                 splitView.setPosition(0, ofDividerAt: 0)
-            }
-            sidebar.isHidden = false
-            if shouldAnimate && abs(currentWidth - saved) > 1 {
-                animateSidebar(to: saved) {}
+                splitView.layoutSubtreeIfNeeded()
+                sidebar.isHidden = false
+                // 解除隐藏可能让 NSSplitView 恢复旧 frame；再次归零并显式传入
+                // 起点，确保首帧一定从 0 宽开始。
+                splitView.setPosition(0, ofDividerAt: 0)
+                splitView.layoutSubtreeIfNeeded()
+                if SidebarPresentationPolicy.shouldAnimateReveal(
+                    wasArranged: false,
+                    visibilityChanged: shouldAnimate
+                ) {
+                    animateSidebar(from: 0, to: saved) {}
+                } else {
+                    splitView.setPosition(saved, ofDividerAt: 0)
+                }
             } else {
-                splitView.setPosition(saved, ofDividerAt: 0)
+                sidebar.isHidden = false
+                if SidebarPresentationPolicy.shouldAnimateReveal(
+                    wasArranged: true,
+                    visibilityChanged: shouldAnimate
+                ) && abs(currentWidth - saved) > 1 {
+                    animateSidebar(to: saved) {}
+                } else {
+                    splitView.setPosition(saved, ofDividerAt: 0)
+                }
             }
         } else {
-            if isArranged && shouldAnimate && abs(currentWidth) > 1 {
+            switch SidebarPresentationPolicy.hiddenLayoutAction(
+                isArranged: isArranged,
+                visibilityChanged: shouldAnimate,
+                currentWidth: currentWidth
+            ) {
+            case .animateCollapse:
                 sidebar.isHidden = false
                 animateSidebar(to: 0) { [weak self] in
                     sidebar.isHidden = true
                     self?.isAnimatingSidebar = false
                 }
-            } else {
+            case .keepHiddenWithoutDividerMutation:
                 sidebar.isHidden = true
-                splitView.setPosition(0, ofDividerAt: 0)
             }
         }
 
@@ -333,6 +563,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         if showStatusBar {
             statusBar?.isHidden = false
             statusDivider?.isHidden = false
+            applyStatusBarContents()
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.2
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)

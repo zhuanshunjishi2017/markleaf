@@ -1,5 +1,70 @@
 # MarkLeaf Changelog
 
+## 1.3.1 — 2026-08-21
+
+### New
+
+- Turn the status-bar newline indicator into a checked menu that can convert the current open file between LF and CRLF and preserve the choice on save; set the default for new files under Text Format preferences.
+- Turn the Visual status-bar control into a checked mode menu for explicitly choosing Visual or Source mode.
+- Add status-bar and preference choices for UTF-8, UTF-8 with BOM, US-ASCII, UTF-16, UTF-16 with BOM, GB2312, GBK, GB18030, Big5, and Shift_JIS.
+- Detect UTF-8/UTF-16 BOMs when opening files; warn before an encoding switch that may garble text, and reject unrepresentable characters instead of silently losing them on save.
+- Score reversible, plausible UTF-8, UTF-16, Chinese, and Japanese candidates when opening files without a BOM, choosing the most suitable encoding automatically.
+
+### Changed
+
+- Make Preferences more compact and centered, refining bottom-action spacing, explanatory-text indentation, and the visual center of the File page.
+- Match the first sidebar reveal after a hidden-sidebar launch to subsequent reveal/hide animations, starting from the true zero-width state.
+- Remove the duplicate “UTF-8 without BOM” and “UTF-16 without BOM” entries; the no-BOM variants are now named “UTF-8” and “UTF-16”.
+
+### Fixes
+
+- Disable Copy and Copy As when no text is selected in both editable and read-only documents.
+- Fix Find and Replace fields ignoring system clipboard shortcuts such as ⌘V, and their context menu becoming narrow and collapsing items after the first use.
+- Fix a workspace file’s single-click selection highlight flashing briefly and disappearing unless the file was double-clicked.
+- Fix a crash when choosing another folder from the sidebar after a workspace was already open.
+- Fix the first sidebar reveal after a hidden-sidebar launch misplacing the empty-workspace message, hiding the Open Folder button, and using the wrong width.
+- Fix the initial sidebar reveal animation using a different starting width and timing from normal sidebar animations.
+- Fix opening or saving a document unexpectedly revealing a sidebar that was hidden.
+- Migrate legacy UTF-8/UTF-16 no-BOM settings to the simplified option names.
+
+## 1.3.0 — 2026-08-20
+
+### New
+
+- Show folder icons and nearby keyword context in search results; opening a result now exits search and expands and selects the target file in the workspace tree.
+- Make the status bar customizable: independently show or hide the sidebar toggle, command status, character count, block type, cursor position, encoding, newline style, source/visual mode toggle, and zoom percentage.
+- Make the character count clickable to open detailed document statistics (characters, selected characters, total characters, non-whitespace characters, CJK characters, western words, formulas, code lines, paragraphs, line and column).
+- Expand the workspace context menu with New File, New Folder, Copy Path, Show in Finder, Open in New Window, Rename, Delete, Tree/List view switch, sorting, refresh, and close workspace.
+- Show the containing folder and modification time in document list mode, with sorting by file name or modification time in ascending or descending order.
+- Support dragging .md/.txt/.markdown files from Finder into the workspace, copying them to the target directory.
+- Support pressing Return in the workspace tree to open a file or expand/collapse a folder.
+- Complete image commands in the context menu and Format menu: Change Image, Resize (100%/75%/90%/50%), Rotate Clockwise, and Save Image As.
+- Add Open Read-Only to the File menu.
+- Add Clear Paragraph Formatting to the Paragraph menu.
+- Add an Auto-Hide Scrollbars option to the Appearance preferences.
+
+### Changed
+
+- MarkLeaf no longer takes over Markdown/plain-text file associations on first launch; it becomes the default editor only after the user explicitly enables the option.
+- Separate command feedback from document metrics in the status bar so they no longer overwrite each other; Temporary mode clears after 5 seconds.
+- Rework the Custom Status Bar window into a compact layout with consistent alignment and spacing for headings, options, and the command-status display setting.
+- Use one Export window for PDF and HTML; the File menu now has a single Export entry while Export with Last Settings remains available.
+- Default exports to the active layout style and color theme, with Standard margins. A different theme can still be selected for one export, while Export with Last Settings retains the previously saved theme.
+- Search cancellation now stops directory traversal and file reads.
+
+### Fixes
+
+- Fix search results occasionally failing to reveal the target file in the workspace tree.
+- Fix the workspace context menu missing new/rename/delete/sort operations.
+- Fix Finder drag-and-drop into the workspace being rejected.
+- Fix document list mode missing folder/time information and sorting.
+- Fix canceled searches continuing to read files and consuming disk and CPU.
+- Fix the status bar missing encoding, newline, mode toggle, zoom, and customization.
+- Fix excessive empty space, misaligned headings, and an overly wide label-to-popup gap in the Custom Status Bar window.
+- Remove the duplicate legacy Export As submenu from the File menu.
+- Fix the Export window ignoring the active theme, defaulting to a previously used dark theme, and showing Custom instead of Standard for default margins.
+- Fix ⌘A Select All and ⌘C Copy shortcuts not working in read-only mode, and selection not clearing with Esc or on blur, leaving residual highlights.
+
 ## 1.2.6 — 2026-08-19
 
 ### New

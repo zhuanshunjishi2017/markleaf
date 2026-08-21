@@ -213,6 +213,10 @@ final class AppWindowManager {
         controller.onSettingsChanged = { [weak self] in
             self?.applyPreferencesToAll()
         }
+        // 窗口关闭（取消/应用/重设）后丢弃实例，下次打开重建，避免残留未提交的控件值。
+        controller.onClose = { [weak self] in
+            self?.preferencesController = nil
+        }
         return controller
     }
 
@@ -221,6 +225,7 @@ final class AppWindowManager {
         for controller in windowControllers {
             controller.session.applyPreferences()
             controller.window?.level = topMost ? .floating : .normal
+            controller.applyViewState()
         }
     }
 

@@ -9,6 +9,7 @@ import {
   getEditorStatus,
   getMarkdown,
   captureVisualSelection,
+  collapseVisualSelection,
   getSourceModeJumpTarget,
   isAllowedLink,
   replaceAllInEditor,
@@ -434,6 +435,17 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !findBar.hidden) {
     event.preventDefault()
     closeFindBar()
+    return
+  }
+  if (event.key === 'Escape') {
+    // Esc 折叠当前选区：视觉/源码编辑器的高亮装饰随选区清空而消失。
+    const collapsed = sourceMode
+      ? sourceEditor?.collapseSelection() ?? false
+      : collapseVisualSelection(editor)
+    if (collapsed) {
+      event.preventDefault()
+      sendEditorState()
+    }
   }
 })
 

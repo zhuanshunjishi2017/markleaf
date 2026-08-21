@@ -19,13 +19,16 @@ final class WorkspaceSearchService {
             return
         }
         let rootName = (root as NSString).lastPathComponent
-        let work = DispatchWorkItem {
+        var work: DispatchWorkItem!
+        work = DispatchWorkItem {
             let fm = FileManager.default
             var stack = [root]
             var results: [WorkspaceSearchResult] = []
             while let directory = stack.popLast() {
+                if work.isCancelled { return }
                 guard let items = try? fm.contentsOfDirectory(atPath: directory) else { continue }
                 for name in items where !name.hasPrefix(".") {
+                    if work.isCancelled { return }
                     let path = (directory as NSString).appendingPathComponent(name)
                     var isDirectory: ObjCBool = false
                     guard fm.fileExists(atPath: path, isDirectory: &isDirectory) else { continue }
@@ -37,19 +40,17 @@ final class WorkspaceSearchService {
                     }
                     let ext = (name as NSString).pathExtension.lowercased()
                     guard ["md", "txt"].contains(ext) else { continue }
+                    if work.isCancelled { return }
                     let lowerName = name.lowercased()
                     let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
                     let nameMatch = lowerName.contains(normalized)
                     guard nameMatch || content.lowercased().contains(normalized) else { continue }
-                    // 与 Windows 一致：文件名命中显示首行，内容命中显示包含关键词的行。
-                    let snippet: String
-                    if nameMatch {
-                        snippet = content.split(whereSeparator: { $0 == "\n" }).first.map(String.init) ?? ""
-                    } else {
-                        snippet = content.split(whereSeparator: { $0 == "\n" })
-                            .first(where: { $0.lowercased().contains(normalized) })
-                            .map(String.init) ?? ""
-                    }
+                    // 与 Windows 一致：文件名命中显示首行，内容命中显示关键词附近的上下文。
+                    let snippet = WorkspaceSearchPolicy.snippet(
+                        content: content,
+                        query: normalized,
+                        nameMatches: nameMatch
+                    )
                     let parent = (path as NSString).deletingLastPathComponent
                     let folderName: String
                     if parent == root {
@@ -66,6 +67,7 @@ final class WorkspaceSearchService {
                 }
             }
             results.sort { $0.entry.path.localizedCaseInsensitiveCompare($1.entry.path) == .orderedAscending }
+            guard !work.isCancelled else { return }
             DispatchQueue.main.async {
                 completion(results)
             }
@@ -230,6 +232,7 @@ final class WorkspaceSearchResultsView: NSTableView, NSTableViewDataSource, NSTa
 
 /// 搜索结果行：文件夹 + 修改时间 / 文件名 / 内容片段，对齐 Windows SearchResultsView。
 private final class SearchResultCellView: NSTableCellView {
+    let folderIconView = NSImageView()
     let folderLabel = NSTextField(labelWithString: "")
     let timeLabel = NSTextField(labelWithString: "")
     let snippetLabel = NSTextField(labelWithString: "")
@@ -245,9 +248,19 @@ private final class SearchResultCellView: NSTableCellView {
 
     private func build() {
         let title = NSTextField(labelWithString: "")
+        folderIconView.translatesAutoresizingMaskIntoConstraints = false
+        folderIconView.image = NSImage(
+            systemSymbolName: "folder.fill",
+            accessibilityDescription: nil
+        )
+        folderIconView.contentTintColor = .tertiaryLabelColor
+        folderIconView.widthAnchor.constraint(equalToConstant: 14).isActive = true
+        folderIconView.heightAnchor.constraint(equalToConstant: 14).isActive = true
         for label in [folderLabel, timeLabel, title, snippetLabel] {
             label.translatesAutoresizingMaskIntoConstraints = false
             label.lineBreakMode = .byTruncatingTail
+            label.maximumNumberOfLines = 1
+            label.usesSingleLineMode = true
         }
         folderLabel.font = .systemFont(ofSize: 11)
         folderLabel.textColor = .tertiaryLabelColor
@@ -258,7 +271,7 @@ private final class SearchResultCellView: NSTableCellView {
         snippetLabel.font = .systemFont(ofSize: 11)
         snippetLabel.textColor = .secondaryLabelColor
 
-        let metaRow = NSStackView(views: [folderLabel, NSView(), timeLabel])
+        let metaRow = NSStackView(views: [folderIconView, folderLabel, NSView(), timeLabel])
         metaRow.orientation = .horizontal
         metaRow.spacing = 6
         metaRow.translatesAutoresizingMaskIntoConstraints = false
@@ -276,6 +289,7 @@ private final class SearchResultCellView: NSTableCellView {
             snippetLabel.leadingAnchor.constraint(equalTo: metaRow.leadingAnchor),
             snippetLabel.trailingAnchor.constraint(equalTo: metaRow.trailingAnchor),
             snippetLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 3),
+            snippetLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -6),
         ])
     }
 }
