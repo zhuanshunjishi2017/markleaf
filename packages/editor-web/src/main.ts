@@ -5,6 +5,7 @@ import {
   executeEditorCommand,
   exportEditorSelection,
   findInEditor,
+  findFootnoteDefinitionBody,
   getEditorCommandState,
   getEditorStatus,
   getMarkdown,
@@ -75,7 +76,6 @@ let sourceEditor: SourceEditor | null = null
 let sourceMode = false
 let sourceIndentWidth = 2
 let visualSelectionBeforeSourceMode: VisualSelectionSnapshot | null = null
-let replaceMode = false
 // 混合前端右键菜单（粗体/斜体/下划线工具栏）是否启用：由宿主下发，仅 Windows 端为 true。
 let frontendFormatMenuEnabled = false
 let documentType: DocumentType = 'markdown'
@@ -358,15 +358,11 @@ function setSourceMode(enabled: boolean): void {
   sendEditorState()
 }
 
-function showFindBar(showReplace: boolean): void {
-  replaceMode = showReplace
-  findBar.hidden = false
-  replaceInput.hidden = !showReplace
-  replaceOne.hidden = !showReplace
-  replaceAll.hidden = !showReplace
-  findInput.focus()
-  findInput.select()
-  updateFindResult(false)
+function syncFindStateFromDom(): void {
+  findQuery = findInput.value
+  findReplace = replaceInput.value
+  findCaseSensitive = caseInput.checked
+  findWholeWord = wholeInput.checked
 }
 
 function closeFindBar(): void {
@@ -403,11 +399,24 @@ function replaceEveryMatch(): void {
 
 findBar.addEventListener('submit', event => {
   event.preventDefault()
+  syncFindStateFromDom()
   updateFindResult(false)
 })
-findInput.addEventListener('input', () => updateFindResult(false))
-caseInput.addEventListener('change', () => updateFindResult(false))
-wholeInput.addEventListener('change', () => updateFindResult(false))
+findInput.addEventListener('input', () => {
+  findQuery = findInput.value
+  updateFindResult(false)
+})
+caseInput.addEventListener('change', () => {
+  findCaseSensitive = caseInput.checked
+  updateFindResult(false)
+})
+wholeInput.addEventListener('change', () => {
+  findWholeWord = wholeInput.checked
+  updateFindResult(false)
+})
+replaceInput.addEventListener('input', () => {
+  findReplace = replaceInput.value
+})
 findPrevious.addEventListener('click', () => updateFindResult(true))
 findNext.addEventListener('click', () => updateFindResult(false))
 replaceOne.addEventListener('click', replaceCurrent)
@@ -415,16 +424,6 @@ replaceAll.addEventListener('click', replaceEveryMatch)
 findClose.addEventListener('click', closeFindBar)
 sourceToggle.addEventListener('click', () => setSourceMode(!sourceMode))
 window.addEventListener('keydown', event => {
-  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
-    event.preventDefault()
-    showFindBar(false)
-    return
-  }
-  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'h') {
-    event.preventDefault()
-    showFindBar(true)
-    return
-  }
   if (event.key === 'Escape' && formatPainter.isArmed) {
     event.preventDefault()
     formatPainter.cancel()
@@ -487,6 +486,103 @@ editorMount.addEventListener('click', (event) => {
 
   event.preventDefault()
   send('openLink', { url })
+})
+
+// ---- 链接 / 注释角标悬停提示（手形光标 + 提示文本） ----
+const editorTooltip = document.createElement('div')
+editorTooltip.className = 'editor-tooltip'
+editorTooltip.hidden = true
+document.body.appendChild(editorTooltip)
+
+const EDITOR_TOOLTIP_TEXT: Record<string, { link: string; footnote: string; footnoteNotFound: string }> = {
+  'zh-Hans': { link: '按住Ctrl并单击以打开链接', footnote: '按住Ctrl并单击以转到注释定义', footnoteNotFound: '找不到定义' },
+  'zh-Hant': { link: '按住Ctrl並按一下以開啟連結', footnote: '按住Ctrl並按一下以前往註解定義', footnoteNotFound: '找不到定義' },
+  en: { link: 'Hold Ctrl and click to open link', footnote: 'Hold Ctrl and click to go to the footnote definition', footnoteNotFound: 'Definition not found' },
+  ja: { link: 'Ctrlを押しながらクリックでリンクを開きます', footnote: 'Ctrlを押しながらクリックで脚注の定義に移動します', footnoteNotFound: '定義が見つかりません' },
+}
+
+let tooltipKind: 'link' | 'footnote' | null = null
+let tooltipHideTimer = 0
+
+function editorTooltipTexts(): { link: string; footnote: string; footnoteNotFound: string } {
+  return EDITOR_TOOLTIP_TEXT[markleafLanguage] ?? EDITOR_TOOLTIP_TEXT['zh-Hans']!
+}
+
+function hideEditorTooltip(delay = 0): void {
+  window.clearTimeout(tooltipHideTimer)
+  if (delay > 0) {
+    tooltipHideTimer = window.setTimeout(() => { editorTooltip.hidden = true }, delay)
+  } else {
+    editorTooltip.hidden = true
+  }
+}
+
+function positionEditorTooltip(event: MouseEvent): void {
+  window.clearTimeout(tooltipHideTimer)
+  editorTooltip.hidden = false
+  const rect = editorTooltip.getBoundingClientRect()
+  const offset = 14
+  let left = event.clientX + offset
+  let top = event.clientY + offset
+  if (left + rect.width > window.innerWidth - 8) left = Math.max(8, event.clientX - rect.width - offset)
+  if (top + rect.height > window.innerHeight - 8) top = Math.max(8, event.clientY - rect.height - offset)
+  editorTooltip.style.left = `${left}px`
+  editorTooltip.style.top = `${top}px`
+}
+
+function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null): void {
+  const texts = editorTooltipTexts()
+  editorTooltip.textContent = ''
+
+  const detailEl = document.createElement('div')
+  detailEl.className = 'editor-tooltip-definition'
+  if (kind === 'link') {
+    detailEl.textContent = detail ?? ''
+  } else {
+    const body = detail?.trim() ?? ''
+    detailEl.textContent = body.length > 0 ? detail! : texts.footnoteNotFound
+  }
+  editorTooltip.appendChild(detailEl)
+
+  const hint = document.createElement('div')
+  hint.className = 'editor-tooltip-hint'
+  hint.textContent = kind === 'link' ? texts.link : texts.footnote
+  editorTooltip.appendChild(hint)
+}
+
+function updateEditorTooltip(event: MouseEvent): void {
+  const target = event.target
+  if (!(target instanceof Element)) {
+    tooltipKind = null
+    hideEditorTooltip()
+    return
+  }
+  const footnoteEl = target.closest<HTMLElement>('sup[data-footnote-ref]')
+  const anchorEl = target.closest<HTMLAnchorElement>('a[href]')
+  const kind = footnoteEl ? 'footnote' : anchorEl ? 'link' : null
+  if (kind) {
+    const detail = kind === 'footnote'
+      ? findFootnoteDefinitionBody(editor, footnoteEl!.getAttribute('data-footnote-ref') ?? '')
+      : (anchorEl?.getAttribute('href') ?? '')
+    if (tooltipKind !== kind) {
+      tooltipKind = kind
+      buildEditorTooltip(kind, detail)
+    }
+    positionEditorTooltip(event)
+  } else {
+    tooltipKind = null
+    hideEditorTooltip()
+  }
+}
+
+editorMount.addEventListener('mousemove', updateEditorTooltip)
+editorMount.addEventListener('mouseleave', () => {
+  tooltipKind = null
+  hideEditorTooltip()
+})
+editorMount.addEventListener('mousedown', () => {
+  tooltipKind = null
+  hideEditorTooltip()
 })
 
 function findMathNodeAt(pos: number): number | null {
@@ -878,11 +974,6 @@ function handleMessage(value: unknown): void {
           if (message.requestId) send('commandResult', { success: false }, message.requestId)
           break
         }
-        if (payload.command === 'find' || payload.command === 'replace') {
-          showFindBar(payload.command === 'replace')
-          if (message.requestId) send('commandResult', { success: true }, message.requestId)
-          break
-        }
         if (payload.command === 'toggleSourceMode') {
           setSourceMode(!sourceMode)
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -915,6 +1006,9 @@ function handleMessage(value: unknown): void {
             findQuery = parts[0] ?? ''
             findCaseSensitive = parts[1] === '1'
             findWholeWord = parts[2] === '1'
+            findInput.value = findQuery
+            caseInput.checked = findCaseSensitive
+            wholeInput.checked = findWholeWord
           }
           updateFindResult(payload.command === 'findPrev')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -926,6 +1020,10 @@ function handleMessage(value: unknown): void {
           findReplace = parts[1] ?? ''
           findCaseSensitive = parts[2] === '1'
           findWholeWord = parts[3] === '1'
+          findInput.value = findQuery
+          replaceInput.value = findReplace
+          caseInput.checked = findCaseSensitive
+          wholeInput.checked = findWholeWord
           if (payload.command === 'replaceOne') replaceCurrent()
           else replaceEveryMatch()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1201,7 +1299,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function renderEditorHtmlForExport(html: string): string {
+function renderEditorHtmlForExport(html: string, preserveEmptyParagraphs = false): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
   for (const caption of Array.from(parsed.body.querySelectorAll<HTMLElement>('figcaption.markleaf-figcaption'))) {
@@ -1209,6 +1307,11 @@ function renderEditorHtmlForExport(html: string): string {
   }
 
   for (const paragraph of Array.from(parsed.body.querySelectorAll<HTMLParagraphElement>('p'))) {
+    if (preserveEmptyParagraphs && isEmptyExportParagraph(paragraph)) {
+      paragraph.innerHTML = '&nbsp;'
+      continue
+    }
+
     const match = new RegExp(`^\\s*\\u2060?\\[\\^([^\\]\\n]+)\\]:[ \\t]*(.*)$`, 's').exec(paragraph.textContent ?? '')
     if (!match) continue
 
@@ -1226,6 +1329,21 @@ function renderEditorHtmlForExport(html: string): string {
   }
 
   return parsed.body.innerHTML.replace(/\u2060/g, '')
+}
+
+function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
+  if ((paragraph.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0) {
+    return false
+  }
+  return !Array.from(paragraph.childNodes).some((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return ((node.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0)
+    }
+    if (!(node instanceof HTMLElement)) {
+      return false
+    }
+    return node.tagName.toLowerCase() !== 'br'
+  })
 }
 
 function removeTextPrefix(element: HTMLElement, length: number): void {
@@ -1315,16 +1433,16 @@ function generateExportHtml(
   colorSchemeCss = '',
   title = '',
 ): string {
+  const isPdf = format === 'pdf'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml)).replace(
+  const bodyHtml = renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml), isPdf).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
     },
   )
-  const isPdf = format === 'pdf'
   const resolved = resolveStyle(style)
   const rootClass = [
     resolved.rootClass,

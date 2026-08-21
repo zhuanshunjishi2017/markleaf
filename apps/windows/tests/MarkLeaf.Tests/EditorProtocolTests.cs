@@ -107,7 +107,10 @@ public sealed class EditorProtocolTests
                 "mathInline": false,
                 "mathBlock": false,
                 "mathLatex": null,
-                "sourceMode": false
+                "sourceMode": false,
+                "mathNumber": null,
+                "caption": null,
+                "footnoteDefinitionLabel": null
               }
             }
             """;
@@ -374,6 +377,9 @@ public sealed class EditorProtocolTests
                 "mathBlock": false,
                 "mathLatex": null,
                 "sourceMode": false,
+                "mathNumber": null,
+                "caption": null,
+                "footnoteDefinitionLabel": null,
                 "canStartFormatPainter": true,
                 "formatPainterArmed": false
               }

@@ -18,6 +18,7 @@ internal sealed partial class MainForm
         RefreshPersistentStatusBar();
         UpdateDocumentChrome();
         _sidebarTabBar.ReloadTexts();
+        _sidebarSearchBar.ReloadTexts();
         _editorHost?.SendFindBarLocalization();
         _openFolderPrompt.Invalidate();
     }

@@ -4,6 +4,7 @@ using MarkLeaf.Commands;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
 using MarkLeaf.Services.ExternalLinks;
+using MarkLeaf.UI.Dialogs;
 
 namespace MarkLeaf.UI;
 
@@ -103,6 +104,7 @@ internal sealed partial class MainForm
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
             FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
+            ListViewActive: _workspaceListViewActive,
             FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
@@ -208,10 +210,10 @@ internal sealed partial class MainForm
                 _ = PasteClipboardPlainTextAsync();
                 break;
             case AppCommand.Find:
-                _editorHost?.ExecuteCommand("find");
+                OpenFindReplaceDialog(replace: false);
                 break;
             case AppCommand.Replace:
-                _editorHost?.ExecuteCommand("replace");
+                OpenFindReplaceDialog(replace: true);
                 break;
             case AppCommand.ToggleSourceMode:
                 _editorHost?.ExecuteCommand("toggleSourceMode");
@@ -354,6 +356,17 @@ internal sealed partial class MainForm
 
         _logger.Info($"Command executed: {command}.");
         _menuService.RefreshStates();
+    }
+
+    private void OpenFindReplaceDialog(bool replace)
+    {
+        if (_editorHost is null)
+        {
+            return;
+        }
+
+        _findReplaceDialog ??= new FindReplaceDialog((command, text) => _editorHost?.ExecuteCommand(command, text));
+        _findReplaceDialog.Open(this, replace);
     }
 
     private static bool TryMapEditorCommand(AppCommand command, out string editorCommand)

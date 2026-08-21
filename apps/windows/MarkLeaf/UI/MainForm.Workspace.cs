@@ -35,6 +35,7 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation = new CancellationTokenSource();
         _workspaceRoot = fullPath;
         AddRecentWorkspace(fullPath);
+        UpdateSidebarSearchEnabled();
         _openFolderPrompt.Visible = false;
         if (!_focusMode && _sidebarSplit.Panel1Collapsed)
         {
@@ -46,7 +47,7 @@ internal sealed partial class MainForm
         {
             rootName = fullPath;
         }
-        _sidebarTabBar.WorkspaceName = rootName;
+        _sidebarSearchBar.WorkspaceName = rootName;
         _workspaceTree.SetRoot(new WorkspaceEntry(rootName, fullPath, true));
         await LoadWorkspaceDirectoryAsync(fullPath, _workspaceLoadCancellation.Token);
         await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation.Token);
@@ -68,8 +69,9 @@ internal sealed partial class MainForm
         StopWatchingWorkspace();
         _workspaceRoot = null;
         _settings.Workspace.LastFolder = null;
-        _sidebarTabBar.WorkspaceName = string.Empty;
-        _sidebarTabBar.ExitSearchMode();
+        _sidebarSearchBar.WorkspaceName = string.Empty;
+        _sidebarSearchBar.ClearSearch();
+        UpdateSidebarSearchEnabled();
         _sidebarVisibleBeforeFocus = false;
         ClearWorkspacePlaceholder();
         _openFolderPrompt.Visible = true;
@@ -92,6 +94,7 @@ internal sealed partial class MainForm
         ClearWorkspacePlaceholder();
         _openFolderPrompt.Visible = true;
         _openFolderPrompt.BringToFront();
+        UpdateSidebarSearchEnabled();
     }
 
     private void ToggleWorkspaceView()
@@ -113,6 +116,7 @@ internal sealed partial class MainForm
         if (_workspaceRoot is null && _openFolderPrompt.Visible)
             _openFolderPrompt.BringToFront();
         SetStatus(_workspaceListViewActive ? Loc.Get("status.switchedToList") : Loc.Get("status.switchedToTree"));
+        _menuService.RefreshStates();
     }
 
     private void ShowWorkspaceInExplorer(string workspacePath)

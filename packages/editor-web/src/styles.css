@@ -121,16 +121,14 @@ body {
   content: none;
 }
 
-.markleaf-footnote-def > span {
-  color: var(--text-tertiary, #777777);
-  font-weight: 600;
-  user-select: none;
-}
-
 .markleaf-footnote-def > .markleaf-footnote-def-label {
   color: currentColor;
   font-weight: 600;
   user-select: none;
+}
+
+.markleaf-footnote-def .markleaf-themed-selection {
+  font-weight: inherit;
 }
 
 .markleaf-footnote-def-prefix {
@@ -443,4 +441,38 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
 #editor.format-painter-armed,
 #editor.format-painter-armed * {
   cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%20%3Cg%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%20%3Cg%20stroke%3D%22%23ffffff%22%20stroke-width%3D%224.6%22%3E%20%3Cline%20x1%3D%2211%22%20y1%3D%229%22%20x2%3D%2211%22%20y2%3D%2228%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%229%22%20x2%3D%2215%22%20y2%3D%229%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%2228%22%20x2%3D%2215%22%20y2%3D%2228%22/%3E%20%3C/g%3E%20%3Cg%20stroke%3D%22%231f1f1f%22%20stroke-width%3D%222.2%22%3E%20%3Cline%20x1%3D%2211%22%20y1%3D%229%22%20x2%3D%2211%22%20y2%3D%2228%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%229%22%20x2%3D%2215%22%20y2%3D%229%22/%3E%20%3Cline%20x1%3D%227%22%20y1%3D%2228%22%20x2%3D%2215%22%20y2%3D%2228%22/%3E%20%3C/g%3E%20%3C/g%3E%20%3Cg%20transform%3D%22translate%2817%2027%29%20rotate%28-45%29%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.2%22%3E%20%3Cpath%20d%3D%22M0%200%20L6%20-3.5%20L6%203.5%20Z%22%20fill%3D%22%237a4b3a%22/%3E%20%3Crect%20x%3D%225%22%20y%3D%22-3.5%22%20width%3D%223%22%20height%3D%227%22%20rx%3D%221%22%20fill%3D%22%23b7bcc4%22/%3E%20%3Crect%20x%3D%228%22%20y%3D%22-3.5%22%20width%3D%229%22%20height%3D%227%22%20rx%3D%222.5%22%20fill%3D%22%232b579a%22/%3E%20%3C/g%3E%20%3C/svg%3E") 11 9, copy !important;
+}
+
+/* 链接 / 注释角标：可点击提示（手形光标 + 悬停提示文本） */
+#editor a[href],
+#editor sup[data-footnote-ref] {
+  cursor: pointer;
+}
+
+.editor-tooltip {
+  position: fixed;
+  z-index: 2147483000;
+  max-width: 340px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--bg-selected);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.editor-tooltip-definition {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.editor-tooltip-hint {
+  white-space: nowrap;
+  margin-top: 2px;
+  opacity: 0.75;
 }

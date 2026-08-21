@@ -56,6 +56,7 @@ internal sealed class SearchResultsView : Control
         if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
         BackColor = _bgPrimary;
         ForeColor = _textPrimary;
+        _scrollBar.ApplyThemeColors(colors);
         Invalidate();
     }
 

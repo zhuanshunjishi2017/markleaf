@@ -69,6 +69,7 @@ internal sealed partial class MainForm
         };
         _settings.Workspace.LastFolder = _workspaceRoot;
         _settings.Workspace.LastFile = _document?.FilePath;
+        _settings.Workspace.LastFileReadOnly = _document?.IsReadOnly == true;
         _settings.Workspace.RecentFolders = _settings.Workspace.RecentFolders
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)

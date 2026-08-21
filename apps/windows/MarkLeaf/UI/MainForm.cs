@@ -9,6 +9,7 @@ using MarkLeaf.Services.Logging;
 using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.UI.Controls;
+using MarkLeaf.UI.Dialogs;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.Workspace;
 using Microsoft.Web.WebView2.WinForms;
@@ -23,6 +24,7 @@ internal sealed partial class MainForm : Form
     private readonly ISettingsService _settingsService;
     private readonly IAppLogger _logger;
     private readonly CommandRouter _commandRouter;
+    private readonly ShortcutManager _shortcutManager;
     private readonly NativeMenuService _menuService;
     private readonly EditorSession _editorSession = new();
     private readonly DocumentFileService _documentFileService = new();
@@ -33,14 +35,18 @@ internal sealed partial class MainForm : Form
     private Control _workspacePanelHost = default!;
     private Control _outlinePanelHost = default!;
     private Panel _sidebarPanel = default!;
+    private TableLayoutPanel _sidebarLayout = default!;
+    private Panel _sidebarContentHost = default!;
     private Panel _editorPanel = default!;
     private Panel _workspaceContentPanel = default!;
     private EditorLoadingView _editorLoadingView = default!;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
     private readonly SidebarTabBar _sidebarTabBar = new();
+    private readonly SidebarSearchBar _sidebarSearchBar = new();
     private readonly OpenFolderPrompt _openFolderPrompt = new();
     private EditorHostController? _editorHost;
+    private FindReplaceDialog? _findReplaceDialog;
     private WebView2? _webView;
     private MarkdownDocument? _document;
     private FileSystemWatcher? _documentWatcher;
@@ -135,8 +141,14 @@ internal sealed partial class MainForm : Form
         _statusMessageTimer.Tick += (_, _) => ClearTemporaryStatusMessage();
         _viewToggleButton.Width = this.ScaleForDpi(18);
         _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
-        _commandRouter = new CommandRouter(GetCommandState, ExecuteCommand);
-        _menuService = new NativeMenuService(_commandRouter, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme, () => _settings.Appearance.FollowSystemColorMode);
+        _shortcutManager = new ShortcutManager(_settings.Shortcut);
+        _commandRouter = new CommandRouter(_shortcutManager, GetCommandState, ExecuteCommand);
+        _menuService = new NativeMenuService(_commandRouter, _shortcutManager, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme, () => _settings.Appearance.FollowSystemColorMode);
+        _shortcutManager.Changed += () =>
+        {
+            _menuService.RebuildMenu();
+            SaveSettings();
+        };
         _workspaceChangeDebouncer = new WorkspaceChangeDebouncer(
             TimeSpan.FromMilliseconds(500),
             QueueWorkspaceRefresh);
@@ -209,6 +221,8 @@ internal sealed partial class MainForm : Form
 
             _logger.Info($"Main window DPI changed: {args.DeviceDpiOld} -> {args.DeviceDpiNew}.");
             _sidebarTabBar.ConfigureTypography(_effectiveDpi);
+            _sidebarSearchBar.ConfigureTypography(_effectiveDpi);
+            UpdateSidebarHeaderRowHeights();
             _workspaceTree.ConfigureTypography(_effectiveDpi);
             _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
             _outlineTree.ConfigureTypography(_effectiveDpi);
@@ -305,6 +319,11 @@ internal sealed partial class MainForm : Form
             _recoveryService.Dispose();
             _workspaceLoadCancellation?.Dispose();
             _editorHost?.Dispose();
+            if (_findReplaceDialog is { IsDisposed: false })
+            {
+                _findReplaceDialog.Dispose();
+            }
+            _findReplaceDialog = null;
             _menuService.Dispose();
             _menuBgBrush.Dispose();
             _menuHighlightBrush.Dispose();
@@ -351,7 +370,7 @@ internal sealed partial class MainForm : Form
                 && File.Exists(_settings.Workspace.LastFile)
                 && !_initialDocumentOpened)
             {
-                await OpenDocumentPathAsync(_settings.Workspace.LastFile);
+                await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
             }
         }
 

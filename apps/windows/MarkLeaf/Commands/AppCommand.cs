@@ -158,4 +158,5 @@ public readonly record struct CommandContext(
     bool DocumentSaved = false,
     bool StatusBarVisible = true,
     bool FollowSystemColorMode = false,
+    bool ListViewActive = false,
     string? FootnoteDefinitionLabel = null);

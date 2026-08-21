@@ -67,6 +67,7 @@ internal sealed partial class MainForm
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorSmoke(message);
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorCommandSmoke(message);
         _editorHost.DirtyChanged += OnEditorDirtyChanged;
+        _editorHost.FindResultReceived += (_, result) => _findReplaceDialog?.ApplyResult(result);
         _editorHost.CommandStateChanged += OnEditorCommandStateChanged;
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;

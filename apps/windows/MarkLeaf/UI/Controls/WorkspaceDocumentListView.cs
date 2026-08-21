@@ -29,6 +29,7 @@ internal sealed class WorkspaceDocumentListView : Control
     private string? _hoveredPath;
     private string? _contextMenuPath;
     private int _rowHeight;
+    private int TopInset => this.ScaleForDpi(5);
 
     public WorkspaceDocumentListView()
     {
@@ -89,6 +90,7 @@ internal sealed class WorkspaceDocumentListView : Control
         if (colors.TryGetValue("text-tertiary-selected", out c)) _textTertiarySelected = c;
         BackColor = _bgPrimary;
         ForeColor = _textPrimary;
+        _scrollBar.ApplyThemeColors(colors);
         Invalidate();
     }
 
@@ -152,8 +154,8 @@ internal sealed class WorkspaceDocumentListView : Control
             var isSelected = PathEquals(document.FullPath, _selectedPath);
             var isHovered = PathEquals(document.FullPath, _hoveredPath);
             var bgBounds = new Rectangle(
-                bounds.X + this.ScaleForDpi(4), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
+                this.ScaleForDpi(8), bounds.Y,
+                Math.Max(0, bounds.Width - this.ScaleForDpi(16)), bounds.Height);
             if (isSelected && isHovered)
             {
                 using var brush = new SolidBrush(_themeDark);
@@ -322,7 +324,7 @@ internal sealed class WorkspaceDocumentListView : Control
     private void DrawDocument(Graphics graphics, WorkspaceDocumentEntry document, Rectangle bounds, bool isSelected)
     {
         var metaColor = isSelected ? _textTertiarySelected : _textTertiary;
-        var horizontalPadding = this.ScaleForDpi(10);
+        var horizontalPadding = this.ScaleForDpi(15);
         var topPadding = this.ScaleForDpi(3);
         var availableWidth = Math.Max(0, bounds.Width - horizontalPadding * 2);
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
@@ -398,11 +400,11 @@ internal sealed class WorkspaceDocumentListView : Control
     private void BuildVisibleRows()
     {
         _visibleRows.Clear();
-        var top = 0 - _scrollBar.Value;
-        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0) - this.ScaleForDpi(4);
+        var top = TopInset - _scrollBar.Value;
+        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
         foreach (var document in _documents)
         {
-            _visibleRows.Add((document, new Rectangle(this.ScaleForDpi(4), top, width, _rowHeight)));
+            _visibleRows.Add((document, new Rectangle(0, top, width, _rowHeight)));
             top += _rowHeight + this.ScaleForDpi(2);
         }
     }
@@ -422,7 +424,7 @@ internal sealed class WorkspaceDocumentListView : Control
 
     private void UpdateScrollBar()
     {
-        var contentHeight = _documents.Count * (_rowHeight + this.ScaleForDpi(2)) - this.ScaleForDpi(2);
+        var contentHeight = TopInset + _documents.Count * (_rowHeight + this.ScaleForDpi(2)) - this.ScaleForDpi(2);
         _scrollBar.Visible = contentHeight > ClientSize.Height;
         _scrollBar.Minimum = 0;
         _scrollBar.LargeChange = Math.Max(1, ClientSize.Height);

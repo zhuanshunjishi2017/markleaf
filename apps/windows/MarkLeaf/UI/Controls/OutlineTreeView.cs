@@ -94,6 +94,7 @@ internal sealed class OutlineTreeView : Control
         if (colors.TryGetValue("icon-secondary", out c)) _iconSecondary = c;
         BackColor = _bgPrimary;
         ForeColor = _textPrimary;
+        _scrollBar.ApplyThemeColors(colors);
         Invalidate();
     }
 
