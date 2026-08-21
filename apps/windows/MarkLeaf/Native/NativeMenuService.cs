@@ -313,7 +313,10 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendMainMenuCommand(menu, AppCommand.NewDocument, Loc.Get("menu.file.new"));
+            var newMenu = CreateMenu(true);
+            AppendMainMenuCommand(newMenu, AppCommand.NewDocument, Loc.Get("menu.file.newMarkdown"));
+            AppendMainMenuCommand(newMenu, AppCommand.NewPlainTextDocument, Loc.Get("menu.file.newText"));
+            AppendPopup(menu, Loc.Get("menu.file.new"), newMenu);
             AppendMainMenuCommand(menu, AppCommand.NewWindow, Loc.Get("menu.file.newWindow"));
             AppendMainMenuCommand(menu, AppCommand.OpenDocument, Loc.Get("menu.file.open"));
             AppendMainMenuCommand(menu, AppCommand.OpenDocumentReadOnly, Loc.Get("menu.file.openReadOnly"));

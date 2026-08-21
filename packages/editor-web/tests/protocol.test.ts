@@ -47,4 +47,14 @@ describe('editor protocol validation', () => {
       payload: { markdown: 'x'.repeat(2 * 1024 * 1024), documentType: 'plainText' },
     })).toBe(true)
   })
+
+  it('accepts a document type change after Save As', () => {
+    expect(isHostMessage({
+      protocolVersion,
+      type: 'setDocumentType',
+      documentId: 'document-id',
+      revision: 4,
+      payload: { documentType: 'plainText' },
+    })).toBe(true)
+  })
 })

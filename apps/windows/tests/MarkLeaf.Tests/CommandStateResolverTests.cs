@@ -148,6 +148,19 @@ public sealed class CommandStateResolverTests
     }
 
     [TestMethod]
+    public void Resolve_HeadingBoundaryCommandsAreDisabledAtLevelOneAndSix()
+    {
+        var levelOne = CreateContext(editorReady: true) with { HeadingLevel = 1 };
+        var levelSix = CreateContext(editorReady: true) with { HeadingLevel = 6 };
+        var levelThree = CreateContext(editorReady: true) with { HeadingLevel = 3 };
+
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.PromoteHeading, levelOne).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.DemoteHeading, levelSix).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.PromoteHeading, levelThree).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.DemoteHeading, levelThree).IsEnabled);
+    }
+
+    [TestMethod]
     public void Resolve_FormatPainterReflectsArmState()
     {
         var unavailable = CreateContext();

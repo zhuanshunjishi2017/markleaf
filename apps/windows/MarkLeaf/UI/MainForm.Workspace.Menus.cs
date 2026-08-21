@@ -1,4 +1,5 @@
 using MarkLeaf.Native;
+using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
@@ -8,7 +9,8 @@ internal sealed partial class MainForm
 {
     private enum WorkspacePopupCommand : uint
     {
-        NewFile = 0x7001,
+        NewMarkdownFile = 0x7001,
+        NewTextFile,
         NewFolder,
         ShowInExplorer,
         Refresh,
@@ -35,7 +37,8 @@ internal sealed partial class MainForm
         {
             switch (ShowNativeWorkspaceMenu(menu, screenPoint))
             {
-                case WorkspacePopupCommand.NewFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false); break;
+                case WorkspacePopupCommand.NewMarkdownFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false, NewDocumentKind.Markdown); break;
+                case WorkspacePopupCommand.NewTextFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false, NewDocumentKind.PlainText); break;
                 case WorkspacePopupCommand.NewFolder: await CreateWorkspaceEntryAsync(_workspaceRoot, true); break;
                 case WorkspacePopupCommand.ShowInExplorer: ShowWorkspaceInExplorer(_workspaceRoot); break;
                 case WorkspacePopupCommand.ViewList: if (!_workspaceListViewActive) ToggleWorkspaceView(); break;
@@ -57,7 +60,7 @@ internal sealed partial class MainForm
         var menu = CreateNativePopupMenu();
         try
         {
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceMenu.newFile"));
+            AppendNativePopup(menu, Loc.Get("workspaceMenu.newFile"), BuildWorkspaceNewFileMenu());
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceMenu.newFolder"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, Loc.Get("workspaceMenu.showInExplorer"));
             AppendNativeMenuSeparator(menu);
@@ -120,7 +123,7 @@ internal sealed partial class MainForm
                 AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenInNewWindow, Loc.Get("workspaceEntry.openInNewWindow"));
             }
             AppendNativeMenuSeparator(menu);
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceEntry.newFile"));
+            AppendNativePopup(menu, Loc.Get("workspaceEntry.newFile"), BuildWorkspaceNewFileMenu());
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceEntry.newFolder"));
             AppendNativeMenuSeparator(menu);
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.CopyPath, Loc.Get("workspaceEntry.copyPath"));
@@ -138,8 +141,11 @@ internal sealed partial class MainForm
                 case WorkspacePopupCommand.OpenInNewWindow:
                     StartNewWindow(entry.FullPath);
                     break;
-                case WorkspacePopupCommand.NewFile:
-                    await CreateWorkspaceEntryAsync(targetDirectory, false);
+                case WorkspacePopupCommand.NewMarkdownFile:
+                    await CreateWorkspaceEntryAsync(targetDirectory, false, NewDocumentKind.Markdown);
+                    break;
+                case WorkspacePopupCommand.NewTextFile:
+                    await CreateWorkspaceEntryAsync(targetDirectory, false, NewDocumentKind.PlainText);
                     break;
                 case WorkspacePopupCommand.NewFolder:
                     await CreateWorkspaceEntryAsync(targetDirectory, true);
@@ -162,6 +168,22 @@ internal sealed partial class MainForm
         finally
         {
             NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    private nint BuildWorkspaceNewFileMenu()
+    {
+        var menu = CreateNativePopupMenu();
+        try
+        {
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewMarkdownFile, Loc.Get("workspaceMenu.newMarkdownFile"));
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewTextFile, Loc.Get("workspaceMenu.newTextFile"));
+            return menu;
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
         }
     }
 

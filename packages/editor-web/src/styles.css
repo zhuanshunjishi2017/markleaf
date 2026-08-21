@@ -407,6 +407,15 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
   background: #95CDFB;
 }
 
+.format-menu-button:disabled {
+  opacity: 0.38;
+}
+
+.format-menu-button:disabled:hover,
+.format-menu-button:disabled:focus-visible {
+  background: transparent;
+}
+
 .format-menu-dark .format-menu-button.format-menu-button-active {
   background: #1165AA;
 }

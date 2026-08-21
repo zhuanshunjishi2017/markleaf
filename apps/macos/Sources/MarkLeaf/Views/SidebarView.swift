@@ -842,7 +842,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         let targetDirectory = entry.isDirectory
             ? URL(fileURLWithPath: entry.path, isDirectory: true)
             : URL(fileURLWithPath: entry.path).deletingLastPathComponent()
-        menu.addItem(item(L10n.t("新建文件"), #selector(newFile(_:)), targetDirectory.path))
+        menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: targetDirectory)))
         menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), targetDirectory.path))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("复制路径"), #selector(copyPath(_:)), entry))
@@ -865,7 +865,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     private func backgroundMenu(in directory: URL) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(item(L10n.t("新建文件"), #selector(newFile(_:)), directory.path))
+        menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: directory)))
         menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), directory.path))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("树状视图"), #selector(switchTreeView(_:)), nil))
@@ -902,6 +902,13 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         return menuItem
     }
 
+    private func newFileMenu(in directory: URL) -> NSMenu {
+        let menu = NSMenu(title: L10n.t("新建文件"))
+        menu.addItem(item(L10n.t("Markdown 文件"), #selector(newMarkdownFile(_:)), directory.path))
+        menu.addItem(item(L10n.t("文本文件"), #selector(newPlainTextFile(_:)), directory.path))
+        return menu
+    }
+
     @objc private func openEntry(_ sender: NSMenuItem) {
         if let entry = sender.representedObject as? WorkspaceEntry {
             session?.openWorkspaceEntry(entry)
@@ -914,9 +921,15 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
     }
 
-    @objc private func newFile(_ sender: NSMenuItem) {
+    @objc private func newMarkdownFile(_ sender: NSMenuItem) {
         if let path = sender.representedObject as? String {
-            session?.createWorkspaceFile(at: URL(fileURLWithPath: path, isDirectory: true))
+            session?.createWorkspaceFile(at: URL(fileURLWithPath: path, isDirectory: true), kind: .markdown)
+        }
+    }
+
+    @objc private func newPlainTextFile(_ sender: NSMenuItem) {
+        if let path = sender.representedObject as? String {
+            session?.createWorkspaceFile(at: URL(fileURLWithPath: path, isDirectory: true), kind: .plainText)
         }
     }
 

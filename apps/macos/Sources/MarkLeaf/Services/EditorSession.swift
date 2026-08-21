@@ -95,6 +95,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var codeBlock = false
     private(set) var imageSelected = false
     private(set) var inTable = false
+    private var newDocumentKind: NewDocumentKind = .markdown
     private(set) var canUndo = false
     private(set) var canRedo = false
     private(set) var canStartFormatPainter = false
@@ -620,7 +621,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         markdown: String,
         fileURL: URL?,
         readOnly: Bool = false,
-        encoding: String? = nil
+        encoding: String? = nil,
+        documentKind: NewDocumentKind? = nil
     ) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
@@ -630,6 +632,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         isDirty = false
         documentURL = fileURL
         isReadOnly = readOnly
+        newDocumentKind = fileURL.map { NewDocumentKind.from(fileExtension: $0.pathExtension) }
+            ?? documentKind
+            ?? .markdown
         documentNewLine = fileURL == nil
             ? DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
             : DocumentNewLinePolicy.detect(markdown).rawValue
@@ -650,10 +655,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         if !readOnly {
             startRecoveryTimer()
         }
-        let extensionName = fileURL?.pathExtension.lowercased()
-        let type = extensionName == "txt" ? "plainText" : "markdown"
-        isPlainText = type == "plainText"
-        send("loadDocument", payload: ["markdown": markdown, "documentType": type, "readOnly": readOnly])
+        isPlainText = newDocumentKind == .plainText
+        send("loadDocument", payload: [
+            "markdown": markdown,
+            "documentType": newDocumentKind.editorDocumentType,
+            "readOnly": readOnly,
+        ])
     }
 
     /// 从状态栏切换当前文档的换行风格；只读文档只允许查看，不允许转换。
@@ -1118,8 +1125,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 文档（新建/打开/保存/导出）
 
-    func newDocument() {
-        loadDocument(markdown: "", fileURL: nil)
+    func newDocument(kind: NewDocumentKind = .markdown) {
+        loadDocument(markdown: "", fileURL: nil, documentKind: kind)
     }
 
     func openDocument() {
@@ -1248,9 +1255,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func saveDocumentAs(completion: ((Bool) -> Void)? = nil) {
         guard !isReadOnly else { completion?(false); return }
         let panel = NSSavePanel()
-        panel.title = L10n.t("保存 Markdown 文档")
+        panel.title = L10n.t("保存")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
-        panel.nameFieldStringValue = documentURL?.lastPathComponent ?? L10n.t("未命名.md")
+        panel.nameFieldStringValue = documentURL?.lastPathComponent ?? L10n.t(newDocumentKind.defaultFileName)
         guard let window = webView?.window else { completion?(false); return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { completion?(false); return }
@@ -1292,6 +1299,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             try data.write(to: url, options: .atomic)
                             try self.externalChangeTracker.finishSelfWrite(at: url)
                             self.documentURL = url
+                            self.newDocumentKind = NewDocumentKind.from(fileExtension: url.pathExtension)
+                            self.isPlainText = self.newDocumentKind == .plainText
+                            self.send("setDocumentType", payload: ["documentType": self.newDocumentKind.editorDocumentType])
                             self.startExternalChangeWatch(for: url, acceptingCurrentVersion: false)
                             SettingsService.shared.update { $0.lastFile = url.path }
                             self.isDirty = DocumentSaveRevisionPolicy.isDirty(
@@ -1505,14 +1515,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 工作区条目操作（对应 C# MainForm.Workspace.Entries / Menus）
 
-    func createWorkspaceFile(at directory: URL) {
+    func createWorkspaceFile(at directory: URL, kind: NewDocumentKind = .markdown) {
         presentWorkspaceNameDialog(
             title: L10n.t("新建文件"),
             message: L10n.t("输入新文件名："),
-            initialValue: L10n.t("未命名.md")
+            initialValue: L10n.t(kind.defaultFileName)
         ) { [weak self] name in
             guard let self, let name, let window = self.webView?.window else { return }
-            let fileName = Self.availableWorkspaceName(base: name, directory: directory)
+            let fileName = Self.availableWorkspaceName(
+                base: Self.workspaceFileName(name, kind: kind),
+                directory: directory)
             let url = directory.appendingPathComponent(fileName)
             do {
                 try Data().write(to: url)
@@ -1523,6 +1535,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
             _ = window
         }
+    }
+
+    private static func workspaceFileName(_ name: String, kind: NewDocumentKind) -> String {
+        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
+        guard ext == "md" || ext == "markdown" || ext == "txt" else {
+            return name + ".\(kind.fileExtension)"
+        }
+        return name
     }
 
     func createWorkspaceFolder(at directory: URL) {

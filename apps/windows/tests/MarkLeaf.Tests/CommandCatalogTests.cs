@@ -1,4 +1,5 @@
 using MarkLeaf.Commands;
+using MarkLeaf.Documents;
 using MarkLeaf.Services.Settings;
 
 namespace MarkLeaf.Tests;
@@ -27,6 +28,20 @@ public sealed class CommandCatalogTests
         Assert.AreEqual(AppCommand.FormatPainter, painter);
         Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.D6, out var heading6));
         Assert.AreEqual(AppCommand.SetHeading6, heading6);
+
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Alt | Keys.N, out var newText));
+        Assert.AreEqual(AppCommand.NewPlainTextDocument, newText);
+    }
+
+    [TestMethod]
+    public void NewDocumentKind_UsesExpectedExtensionsAndEditorTypes()
+    {
+        Assert.AreEqual("md", NewDocumentKind.Markdown.FileExtension);
+        Assert.AreEqual("markdown", NewDocumentKind.Markdown.EditorDocumentType);
+        Assert.AreEqual("txt", NewDocumentKind.PlainText.FileExtension);
+        Assert.AreEqual("plainText", NewDocumentKind.PlainText.EditorDocumentType);
+        Assert.AreEqual(NewDocumentKind.PlainText, NewDocumentKind.FromExtension("TXT"));
+        Assert.AreEqual(NewDocumentKind.Markdown, NewDocumentKind.FromExtension("markdown"));
     }
 
     [TestMethod]

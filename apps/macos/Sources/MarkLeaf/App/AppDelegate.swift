@@ -444,11 +444,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let cases: [(String, String, String)] = [
-                    ("# A", "promoteHeading", "A"),            // H1 → 段落
+                    ("# A", "promoteHeading", "# A"),          // H1 不可继续提升
                     ("para", "promoteHeading", "# para"),      // 段落 → H1
                     ("- item", "promoteHeading", "# item"),    // 列表项 → H1（移出列表）
                     ("> quote", "promoteHeading", "# quote"),  // 引用 → H1（移出引用）
                     ("para", "demoteHeading", "para"),         // 段落降级 → 保持
+                    ("###### A", "demoteHeading", "###### A"), // H6 不可继续降低
                 ]
                 var index = 0
                 func runNext() {
@@ -741,11 +742,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let cases: [(String, String, String)] = [
-                    ("# A", "promoteHeading", "A"),            // H1 → 段落
+                    ("# A", "promoteHeading", "# A"),          // H1 不可继续提升
                     ("para", "promoteHeading", "# para"),      // 段落 → H1
                     ("- item", "promoteHeading", "# item"),    // 列表项 → H1（移出列表）
                     ("> quote", "promoteHeading", "# quote"),  // 引用 → H1（移出引用）
                     ("para", "demoteHeading", "para"),         // 段落降级 → 保持
+                    ("###### A", "demoteHeading", "###### A"), // H6 不可继续降低
                 ]
                 var index = 0
                 func runNext() {

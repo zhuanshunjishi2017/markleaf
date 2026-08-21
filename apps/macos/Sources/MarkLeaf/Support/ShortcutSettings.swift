@@ -12,6 +12,7 @@ struct ShortcutEntry {
 enum ShortcutCatalog {
     static let entries: [ShortcutEntry] = [
         ShortcutEntry(command: "new", titleKey: "新建文档", defaultKey: "n", defaultMask: [.command]),
+        ShortcutEntry(command: "newPlainText", titleKey: "新建文本文件", defaultKey: "n", defaultMask: [.command, .option]),
         ShortcutEntry(command: "open", titleKey: "打开…", defaultKey: "o", defaultMask: [.command]),
         ShortcutEntry(command: "save", titleKey: "保存", defaultKey: "s", defaultMask: [.command]),
         ShortcutEntry(command: "saveAs", titleKey: "另存为…", defaultKey: "S", defaultMask: [.command, .shift]),

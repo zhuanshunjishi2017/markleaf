@@ -12,6 +12,7 @@ public static class ShortcutCatalog
     public static readonly Entry[] Entries =
     [
         new(AppCommand.NewDocument, "shortcut.new", Keys.Control | Keys.N),
+        new(AppCommand.NewPlainTextDocument, "shortcut.newText", Keys.Control | Keys.Alt | Keys.N),
         new(AppCommand.OpenDocument, "shortcut.open", Keys.Control | Keys.O),
         new(AppCommand.SaveDocument, "shortcut.save", Keys.Control | Keys.S),
         new(AppCommand.SaveDocumentAs, "shortcut.saveAs", Keys.Control | Keys.Shift | Keys.S),

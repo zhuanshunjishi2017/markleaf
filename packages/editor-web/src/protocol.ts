@@ -5,7 +5,7 @@ export const maximumMessageBytes = 16 * 1024 * 1024
 
 export type HostMessage = {
   protocolVersion: number
-  type: 'loadDocument' | 'requestSnapshot' | 'command' | 'applyStyles' | 'localizeFindBar' | 'unsafeEmphasisResponse'
+  type: 'loadDocument' | 'setDocumentType' | 'requestSnapshot' | 'command' | 'applyStyles' | 'localizeFindBar' | 'unsafeEmphasisResponse'
   requestId?: string
   documentId: string
   revision: number
@@ -86,6 +86,7 @@ export function isHostMessage(value: unknown): value is HostMessage {
   const message = value as Partial<HostMessage>
   return message.protocolVersion === protocolVersion
     && (message.type === 'loadDocument'
+      || message.type === 'setDocumentType'
       || message.type === 'requestSnapshot'
       || message.type === 'command'
       || message.type === 'applyStyles'

@@ -35,6 +35,63 @@ type FootnoteDefinition = { label: string; body: string }
 const EMPTY_PARAGRAPH_MARKDOWN = '&nbsp;'
 const NBSP_CHAR = '\u00A0'
 const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
+const VISUAL_INDENT = '  '
+
+/// 可视化编辑器中的 Tab：普通文本块使用与源码模式默认值一致的两个空格缩进。
+/// 列表/表格等结构化内容仍交给各自的编辑器行为处理，避免 Tab 改变结构语义。
+const VisualIndent = Extension.create({
+  name: 'markleafVisualIndent',
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        if (!this.editor.isEditable) return false
+        const { $from } = this.editor.state.selection
+        // Lists and tables have their own Tab semantics (nest/move cells).
+        // Only ordinary text blocks should receive the visual two-space indent.
+        for (let depth = $from.depth; depth > 0; depth -= 1) {
+          const nodeName = $from.node(depth).type.name
+          if (nodeName === 'bulletList' || nodeName === 'orderedList' || nodeName === 'taskList'
+            || nodeName === 'table' || nodeName === 'tableRow'
+            || nodeName === 'tableCell' || nodeName === 'tableHeader') {
+            return false
+          }
+        }
+        if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') {
+          return false
+        }
+        const blockStart = $from.start($from.depth)
+        return this.editor.chain()
+          .focus()
+          .insertContentAt({ from: blockStart, to: blockStart }, VISUAL_INDENT)
+          .run()
+      },
+      'Shift-Tab': () => {
+        if (!this.editor.isEditable) return false
+        const { $from } = this.editor.state.selection
+        for (let depth = $from.depth; depth > 0; depth -= 1) {
+          const nodeName = $from.node(depth).type.name
+          if (nodeName === 'bulletList' || nodeName === 'orderedList' || nodeName === 'taskList'
+            || nodeName === 'table' || nodeName === 'tableRow'
+            || nodeName === 'tableCell' || nodeName === 'tableHeader') {
+            return false
+          }
+        }
+        if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') {
+          return false
+        }
+        const blockStart = $from.start($from.depth)
+        if (!this.editor.state.doc.textBetween(blockStart, blockStart + VISUAL_INDENT.length, '')
+          .startsWith(VISUAL_INDENT)) {
+          return false
+        }
+        return this.editor.chain()
+          .focus()
+          .deleteRange({ from: blockStart, to: blockStart + VISUAL_INDENT.length })
+          .run()
+      },
+    }
+  },
+})
 
 const FindHighlight = Extension.create({
   name: 'markleafFindHighlight',
@@ -1055,6 +1112,7 @@ export const editorExtensions = [
   }),
   FindHighlight,
   ThemedSelection,
+  VisualIndent,
   BlockHandle,
   MathInline,
   MathBlock,
@@ -2042,7 +2100,7 @@ function promoteHeadingLevel(editor: Editor): boolean {
   // 标题：提升一级（保留行内加粗/斜体等格式）
   const levels = [1, 2, 3, 4, 5, 6] as const
   if (editor.isActive('heading', { level: 1 })) {
-    return chain.setParagraph().run()
+    return false
   }
   for (let i = 1; i < levels.length; i++) {
     if (editor.isActive('heading', { level: levels[i] })) {
@@ -2073,7 +2131,7 @@ function demoteHeadingLevel(editor: Editor): boolean {
     }
   }
   if (editor.isActive('heading', { level: 6 })) {
-    return chain.setParagraph().run()
+    return false
   }
   // 非标题（段落/列表/引用等）：“降低标题级别”不适用，保持原样
   return false

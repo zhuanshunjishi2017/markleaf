@@ -9,6 +9,8 @@ public sealed class MarkdownDocument
 
     public string? FilePath { get; set; }
 
+    public NewDocumentKind Kind { get; set; } = NewDocumentKind.Markdown;
+
     public string Markdown { get; set; } = string.Empty;
 
     public Encoding Encoding { get; set; } = new UTF8Encoding(false, true);

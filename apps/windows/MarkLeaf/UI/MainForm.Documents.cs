@@ -36,7 +36,7 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task NewDocumentAsync()
+    private async Task NewDocumentAsync(NewDocumentKind kind = NewDocumentKind.Markdown)
     {
         if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
         {
@@ -44,7 +44,7 @@ internal sealed partial class MainForm
         }
 
         StopWatchingDocument();
-        _document = _documentFileService.CreateNew(DefaultNewLine);
+        _document = _documentFileService.CreateNew(DefaultNewLine, kind);
         _workspaceTree.SelectedPath = null;
         _workspaceDocumentList.SelectedPath = null;
         LoadDocumentIntoEditor(_document);
@@ -281,11 +281,13 @@ internal sealed partial class MainForm
             {
                 Filter = DocumentFilter,
                 AddExtension = true,
-                DefaultExt = "md",
+                DefaultExt = _document.Kind.FileExtension(),
                 RestoreDirectory = true,
                 OverwritePrompt = true,
                 Title = Loc.Get("dialog.saveDocument"),
-                FileName = targetPath is null ? Loc.Get("document.untitledMd") : Path.GetFileName(targetPath),
+                FileName = targetPath is null
+                    ? Loc.Get(_document.Kind == NewDocumentKind.PlainText ? "document.untitledTxt" : "document.untitledMd")
+                    : Path.GetFileName(targetPath),
             };
             if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
             {
@@ -304,6 +306,7 @@ internal sealed partial class MainForm
 
         _documentOperationInProgress = true;
         EditorSnapshot? snapshot = null;
+        var previousDocumentType = _document.Kind.EditorDocumentType();
         try
         {
             SetStatus(Loc.Get("document.saving"));
@@ -320,6 +323,11 @@ internal sealed partial class MainForm
                 snapshot.Revision,
                 targetPath,
                 forceOverwrite);
+
+            if (!string.Equals(previousDocumentType, _document.Kind.EditorDocumentType(), StringComparison.Ordinal))
+            {
+                _editorHost?.SetDocumentType(_document.Kind.EditorDocumentType());
+            }
 
             _document.Revision = Math.Max(snapshot.Revision, _editorSession.ConfirmedRevision);
             _document.IsDirty = _document.Revision > snapshot.Revision;
@@ -488,7 +496,7 @@ internal sealed partial class MainForm
             document.Revision,
             document.Markdown,
             document.IsReadOnly,
-            GetDocumentType(document.FilePath));
+            document.FilePath is null ? document.Kind.EditorDocumentType() : GetDocumentType(document.FilePath));
         RefreshPersistentStatusBar();
         UpdateDocumentChrome();
         ApplyBlockHandleVisibility();
@@ -502,7 +510,7 @@ internal sealed partial class MainForm
             : "markdown";
     }
 
-    private bool IsPlainTextDocument => _document is not null && GetDocumentType(_document.FilePath) == "plainText";
+    private bool IsPlainTextDocument => _document?.Kind == NewDocumentKind.PlainText;
 
     private void UpdateDocumentChrome()
     {

@@ -152,9 +152,17 @@ extension EditorSession {
             addClipboardCommands(menu)
         } else {
             // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
-            if headingLevel != nil {
-                addFormatCommand(menu, L10n.t("提升标题级别"), "promoteHeading")
-                addFormatCommand(menu, L10n.t("降低标题级别"), "demoteHeading")
+            if let headingLevel {
+                addEnabledCommand(
+                    menu,
+                    L10n.t("提升标题级别"),
+                    "promoteHeading",
+                    enabled: headingLevel > 1)
+                addEnabledCommand(
+                    menu,
+                    L10n.t("降低标题级别"),
+                    "demoteHeading",
+                    enabled: headingLevel < 6)
                 menu.addItem(.separator())
             }
             addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")

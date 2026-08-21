@@ -42,6 +42,7 @@ public static class EditorProtocol
     private static readonly HashSet<string> AllowedHostMessageTypes =
     [
         "loadDocument",
+        "setDocumentType",
         "requestSnapshot",
         "command",
         "applyStyles",

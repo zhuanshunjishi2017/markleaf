@@ -721,6 +721,8 @@ function showFormatMenu(
   for (const button of headingButtonElements) {
     button.hidden = !isHeading
   }
+  promoteHeadingButton.disabled = state.headingLevel === 1
+  demoteHeadingButton.disabled = state.headingLevel === 6
 }
 
 function hideFormatMenu(): void {
@@ -874,7 +876,7 @@ function handleMessage(value: unknown): void {
 
   // 文档尚未加载时，宿主的会话 documentId 还是随机占位值，与前端不一致；
   // 此时 applyStyles/setAutoHideScrollbar 等文档无关的偏好推送必须放行。
-  if (message.type !== 'loadDocument' && message.type !== 'applyStyles' && message.type !== 'localizeFindBar'
+  if (message.type !== 'loadDocument' && message.type !== 'setDocumentType' && message.type !== 'applyStyles' && message.type !== 'localizeFindBar'
       && documentLoaded && message.documentId !== documentId) {
     return
   }
@@ -948,6 +950,36 @@ function handleMessage(value: unknown): void {
       send('documentLoaded', undefined, message.requestId)
       sendOutline()
       sendEditorState()
+      sendOutlineSelectionFromCursor()
+      break
+    }
+    case 'setDocumentType': {
+      const payload = message.payload as { documentType?: unknown }
+      const nextType = isPlainTextDocumentType(payload?.documentType) ? 'plainText' : 'markdown'
+      if (nextType === documentType) break
+      const markdown = getActiveMarkdown()
+      formatPainter.cancel()
+      updateFormatPainterCursor()
+      suppressUpdate = true
+      sourceEditor?.destroy()
+      sourceEditor = null
+      documentType = nextType
+      if (nextType === 'plainText') {
+        sourceMode = true
+        sourceMount.hidden = false
+        editorMount.hidden = true
+        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
+      } else {
+        sourceMode = false
+        sourceMount.hidden = true
+        editorMount.hidden = false
+        editor = replaceEditorDocument(editor, editorMount, markdown, readOnly)
+        bindEditorEvents(editor)
+        resetEditorViewport(editor, editorMount)
+      }
+      suppressUpdate = false
+      sendEditorState()
+      sendOutline()
       sendOutlineSelectionFromCursor()
       break
     }

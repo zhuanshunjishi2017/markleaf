@@ -103,6 +103,39 @@ function blockAt($from: ResolvedPos): PaintableBlock | null {
   return block
 }
 
+/**
+ * Returns every text block that contributes content to a non-empty selection.
+ * Selection endpoints may resolve to the document (for example when dragging a
+ * complete line from right to left), so validating only `$from.parent/$to.parent`
+ * incorrectly rejects otherwise paintable ranges.
+ */
+type PaintableRangeBlock = {
+  block: PaintableBlock
+  contentFrom: number
+  contentTo: number
+}
+
+function paintableBlocksInRange(editor: Editor, from: number, to: number): PaintableRangeBlock[] | null {
+  const blocks: PaintableRangeBlock[] = []
+  let invalid = false
+  editor.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true
+    const contentFrom = pos + 1
+    const contentTo = contentFrom + node.content.size
+    const overlapsContent = Math.max(from, contentFrom) < Math.min(to, contentTo)
+    const spansEmptyBlock = node.content.size === 0 && from <= contentFrom && to >= contentTo
+    if (!overlapsContent && !spansEmptyBlock) return false
+    const block = blockAt(editor.state.doc.resolve(contentFrom))
+    if (block === null) {
+      invalid = true
+      return false
+    }
+    blocks.push({ block, contentFrom, contentTo })
+    return false
+  })
+  return invalid || blocks.length === 0 ? null : blocks
+}
+
 function uniformMarksInRange(editor: Editor, from: number, to: number): FormatPainterSnapshot['marks'] | null {
   const marks: FormatPainterSnapshot['marks'] = {
     bold: false,
@@ -149,23 +182,21 @@ export function captureFormat(editor: Editor): FormatPainterSnapshot | null {
   const selection = editor.state.selection
   if (!(selection instanceof TextSelection)) return null
   const { from, to } = selection
-  const $from = editor.state.doc.resolve(from)
-  const block = blockAt($from)
-  if (block === null) return null
-
   if (selection.empty) {
+    const block = blockAt(editor.state.doc.resolve(from))
+    if (block === null) return null
     return {
       block,
       marks: marksAtCaret(editor, from),
     }
   }
 
-  // 有选区：必须在同一个块内，且行内标记统一。
-  const $to = editor.state.doc.resolve(to)
-  if ($from.parent !== $to.parent) return null
+  // 有选区：必须只覆盖一个可涂抹块，且行内标记统一。
+  const blocks = paintableBlocksInRange(editor, from, to)
+  if (blocks?.length !== 1) return null
   const marks = uniformMarksInRange(editor, from, to)
   if (marks === null) return null
-  return { block, marks }
+  return { block: blocks[0]!.block, marks }
 }
 
 /// 套用格式：有选区时涂抹选区；无选区（光标）时涂抹光标所在的整个文本块。
@@ -174,24 +205,36 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
   if (!(selection instanceof TextSelection)) return false
   const { from, to } = selection
   const $from = editor.state.doc.resolve(from)
-  if (blockAt($from) === null) return false
 
   const hasSelection = !selection.empty
-  if (hasSelection) {
-    const $to = editor.state.doc.resolve(to)
-    if ($from.parent !== $to.parent) return false
+  const targetBlocks = hasSelection ? paintableBlocksInRange(editor, from, to) : null
+  if (hasSelection ? targetBlocks === null : blockAt($from) === null) return false
+
+  // A selection may cover several ordinary paragraphs/headings. Mixed list
+  // structures remain unsupported because toggling only part of a list can
+  // otherwise change its nesting unexpectedly.
+  if (targetBlocks && targetBlocks.length > 1) {
+    const listBlocks = targetBlocks
+      .map((entry) => entry.block)
+      .filter((block) => listTypes.has(block))
+    if (listBlocks.length > 0 && listBlocks.length !== targetBlocks.length) return false
+    if (new Set(listBlocks).size > 1) return false
   }
 
-  const targetFrom = hasSelection ? from : $from.start()
-  const targetTo = hasSelection ? to : $from.end()
+  const targetFrom = hasSelection ? Math.max(from, targetBlocks![0]!.contentFrom) : $from.start()
+  const targetTo = hasSelection
+    ? Math.min(to, targetBlocks![targetBlocks!.length - 1]!.contentTo)
+    : $from.end()
 
   // code 源不涂抹包含链接的范围，避免破坏链接。
   if (snapshot.marks.code && rangeContainsMark(editor, targetFrom, targetTo, 'link')) return false
 
   const sourceIsList = listTypes.has(snapshot.block)
-  const targetList = listTypeAt($from)
+  const targetList = targetBlocks
+    ?.map((entry) => entry.block)
+    .find((block) => listTypes.has(block)) ?? listTypeAt($from)
   let chain = editor.chain().focus()
-  if (!hasSelection) {
+  if (!hasSelection || targetFrom !== from || targetTo !== to) {
     chain = chain.setTextSelection({ from: targetFrom, to: targetTo })
   }
   if (sourceIsList) {
@@ -249,10 +292,8 @@ function isPaintableTarget(editor: Editor): boolean {
   if (!(selection instanceof TextSelection)) return false
   const { from, to } = selection
   const $from = editor.state.doc.resolve(from)
-  if (blockAt($from) === null) return false
-  if (selection.empty) return true
-  const $to = editor.state.doc.resolve(to)
-  return $from.parent === $to.parent
+  if (selection.empty) return blockAt($from) !== null
+  return paintableBlocksInRange(editor, from, to) !== null
 }
 
 export class FormatPainterController {

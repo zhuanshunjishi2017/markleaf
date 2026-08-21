@@ -12,7 +12,9 @@
   "language.ja-JP": "日本語",
 
   "menu.file.label": "ファイル(&F)",
-  "menu.file.new": "新規作成(&N)\tCtrl+N",
+  "menu.file.new": "新規作成(&N)",
+  "menu.file.newMarkdown": "Markdown ファイル\tCtrl+N",
+  "menu.file.newText": "テキストファイル\tCtrl+Alt+N",
   "menu.file.newWindow": "新しいウィンドウ(&W)",
   "menu.file.open": "開く(&O)...\tCtrl+O",
   "menu.file.openInNewWindow": "新しいウィンドウで開く...",
@@ -167,6 +169,8 @@
   "contextMenu.footnote.resetLabel": "注釈番号をリセット(&R)",
 
   "workspaceMenu.newFile": "新しいファイル(&N)",
+  "workspaceMenu.newMarkdownFile": "Markdown ファイル",
+  "workspaceMenu.newTextFile": "テキストファイル",
   "workspaceMenu.newFolder": "新しいフォルダー(&F)",
   "workspaceMenu.showInExplorer": "エクスプローラーで表示...(&O)",
   "workspaceMenu.treeView": "ツリー表示(&T)",
@@ -300,6 +304,7 @@
   "editor.readyTimeout": "エディターページが時間内に準備できませんでした。",
 
   "document.untitledMd": "無題.md",
+  "document.untitledTxt": "無題.txt",
   "document.untitledMdWithIndex": "無題 ({0}).md",
   "document.newDocument": "新しいドキュメントを作成",
   "document.saving": "最新の内容を取得中...",
@@ -468,6 +473,7 @@
   "dialog.imageUploadNotAvailable": "画像アップロード設定は今後のバージョンで提供予定です。",
 
   "shortcut.new": "新規作成",
+  "shortcut.newText": "新しいテキストファイル",
   "shortcut.open": "開く",
   "shortcut.save": "保存",
   "shortcut.saveAs": "名前を付けて保存",
@@ -547,7 +553,9 @@
   "fileFilter.pdfHtml": "PDFファイル|*.pdf|HTMLファイル|*.html",
 
   "workspace.newFolder": "新しいフォルダー",
+  "workspace.newFile": "新しいファイル",
   "workspace.newMarkdownFile": "新しいMarkdownファイル",
+  "workspace.newTextFile": "新しいテキストファイル",
   "workspace.name": "名前：",
   "workspace.newName": "新しい名前：",
   "workspace.rename": "名前の変更",

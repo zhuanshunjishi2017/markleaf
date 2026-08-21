@@ -12,7 +12,9 @@
   "language.ja-JP": "日本語",
 
   "menu.file.label": "&File",
-  "menu.file.new": "&New\tCtrl+N",
+  "menu.file.new": "&New",
+  "menu.file.newMarkdown": "Markdown File\tCtrl+N",
+  "menu.file.newText": "Text File\tCtrl+Alt+N",
   "menu.file.newWindow": "New &Window",
   "menu.file.open": "&Open...\tCtrl+O",
   "menu.file.openInNewWindow": "Open in New Window...",
@@ -167,6 +169,8 @@
   "contextMenu.footnote.resetLabel": "Reset Footnote &Number",
 
   "workspaceMenu.newFile": "&New File",
+  "workspaceMenu.newMarkdownFile": "Markdown File",
+  "workspaceMenu.newTextFile": "Text File",
   "workspaceMenu.newFolder": "New &Folder",
   "workspaceMenu.showInExplorer": "Show in File Explorer...(&O)",
   "workspaceMenu.treeView": "&Tree View",
@@ -300,6 +304,7 @@
   "editor.readyTimeout": "Editor page did not become ready in time.",
 
   "document.untitledMd": "Untitled.md",
+  "document.untitledTxt": "Untitled.txt",
   "document.untitledMdWithIndex": "Untitled ({0}).md",
   "document.newDocument": "New document created",
   "document.saving": "Fetching latest content...",
@@ -468,6 +473,7 @@
   "dialog.imageUploadNotAvailable": "Image upload configuration will be available in a future version.",
 
   "shortcut.new": "New Document",
+  "shortcut.newText": "New Text File",
   "shortcut.open": "Open Document",
   "shortcut.save": "Save Document",
   "shortcut.saveAs": "Save As",
@@ -547,7 +553,9 @@
   "fileFilter.pdfHtml": "PDF Files|*.pdf|HTML Files|*.html",
 
   "workspace.newFolder": "New Folder",
+  "workspace.newFile": "New File",
   "workspace.newMarkdownFile": "New Markdown File",
+  "workspace.newTextFile": "New Text File",
   "workspace.name": "Name:",
   "workspace.newName": "New name:",
   "workspace.rename": "Rename",

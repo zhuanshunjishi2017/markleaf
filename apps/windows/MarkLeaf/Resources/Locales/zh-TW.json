@@ -12,7 +12,9 @@
   "language.ja-JP": "日本語",
 
   "menu.file.label": "檔案(&F)",
-  "menu.file.new": "新增(&N)\tCtrl+N",
+  "menu.file.new": "新增(&N)",
+  "menu.file.newMarkdown": "Markdown 檔案\tCtrl+N",
+  "menu.file.newText": "文字檔\tCtrl+Alt+N",
   "menu.file.newWindow": "新增視窗(&W)",
   "menu.file.open": "開啟(&O)...\tCtrl+O",
   "menu.file.openInNewWindow": "在新視窗中開啟...",
@@ -167,6 +169,8 @@
   "contextMenu.footnote.resetLabel": "重設註釋編號(&R)",
 
   "workspaceMenu.newFile": "新增檔案(&N)",
+  "workspaceMenu.newMarkdownFile": "Markdown 檔案",
+  "workspaceMenu.newTextFile": "文字檔",
   "workspaceMenu.newFolder": "新增資料夾(&F)",
   "workspaceMenu.showInExplorer": "在檔案總管中顯示...(&O)",
   "workspaceMenu.treeView": "樹狀結構(&T)",
@@ -300,6 +304,7 @@
   "editor.readyTimeout": "編輯器頁面未在規定時間內就緒。",
 
   "document.untitledMd": "未命名.md",
+  "document.untitledTxt": "未命名.txt",
   "document.untitledMdWithIndex": "未命名 ({0}).md",
   "document.newDocument": "已新增文件",
   "document.saving": "正在取得最新編輯內容...",
@@ -468,6 +473,7 @@
   "dialog.imageUploadNotAvailable": "圖片上傳設定功能將在後續版本中提供。",
 
   "shortcut.new": "新增文件",
+  "shortcut.newText": "新增文字檔",
   "shortcut.open": "開啟文件",
   "shortcut.save": "儲存文件",
   "shortcut.saveAs": "另存新檔",
@@ -547,7 +553,9 @@
   "fileFilter.pdfHtml": "PDF 檔案|*.pdf|HTML 檔案|*.html",
 
   "workspace.newFolder": "新增資料夾",
+  "workspace.newFile": "新增檔案",
   "workspace.newMarkdownFile": "新增 Markdown 檔案",
+  "workspace.newTextFile": "新增文字檔",
   "workspace.name": "名稱：",
   "workspace.newName": "新名稱：",
   "workspace.rename": "重新命名",

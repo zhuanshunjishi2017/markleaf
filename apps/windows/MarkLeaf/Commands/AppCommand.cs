@@ -33,6 +33,7 @@ public enum AppCommand
     OpenRecentFile7,
     OpenRecentFile8,
     RecoverUnsavedFiles,
+    NewPlainTextDocument = 0x1020,
 
     Undo = 0x1101,
     Redo,

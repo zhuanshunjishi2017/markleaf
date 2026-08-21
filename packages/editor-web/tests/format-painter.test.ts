@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest'
 import type { Editor } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import { createEditor } from '../src/editor'
 import {
   applyCapturedFormat,
@@ -44,6 +45,44 @@ function selectText(editor: Editor, text: string): void {
   })
   expect(from).toBeGreaterThanOrEqual(0)
   editor.commands.setTextSelection({ from, to })
+}
+
+function textRange(editor: Editor, text: string): { from: number; to: number } {
+  let from = -1
+  let to = -1
+  editor.state.doc.descendants((node, pos) => {
+    if (from >= 0) return false
+    if (node.isText) {
+      const index = node.text!.indexOf(text)
+      if (index >= 0) {
+        from = pos + index
+        to = from + text.length
+        return false
+      }
+    }
+    return true
+  })
+  expect(from).toBeGreaterThanOrEqual(0)
+  return { from, to }
+}
+
+function selectWholeBlockBackwards(editor: Editor, text: string): void {
+  let anchor = -1
+  let head = -1
+  editor.state.doc.descendants((node, pos) => {
+    if (head >= 0) return false
+    if (node.isTextblock && node.textContent === text) {
+      head = pos + 1
+      anchor = pos + node.nodeSize
+      return false
+    }
+    return true
+  })
+  expect(head).toBeGreaterThanOrEqual(0)
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+    editor.state.doc.resolve(anchor),
+    editor.state.doc.resolve(head),
+  )))
 }
 
 function placeCaret(editor: Editor, text: string, offset = 1): void {
@@ -201,6 +240,32 @@ it('applies once without changing text or link href and one undo restores the ta
   expect(editor.getMarkdown()).toContain('## [**target**](https://example.com)')
   editor.commands.undo()
   expect(editor.getMarkdown()).toContain('[target](https://example.com)')
+})
+
+it('applies to a whole line selected from right to left', () => {
+  const editor = makeEditor('**source**\n\ntarget line\n\nafter')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+
+  selectWholeBlockBackwards(editor, 'target line')
+
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('**target line**')
+})
+
+it('applies to every paintable block in a multi-paragraph selection', () => {
+  const editor = makeEditor('**source**\n\ntarget one\n\ntarget two')
+  selectText(editor, 'source')
+  const painter = new FormatPainterController()
+  expect(painter.arm(editor)).toBe(true)
+  const first = textRange(editor, 'target one')
+  const second = textRange(editor, 'target two')
+  editor.commands.setTextSelection({ from: first.from, to: second.to })
+
+  expect(painter.applyOnSelection(editor)).toBe(true)
+  expect(editor.getMarkdown()).toContain('**target one**')
+  expect(editor.getMarkdown()).toContain('**target two**')
 })
 
 it('keeps armed on an invalid target and applies nothing', () => {

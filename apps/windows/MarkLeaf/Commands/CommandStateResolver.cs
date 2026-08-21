@@ -43,7 +43,10 @@ public static class CommandStateResolver
             AppCommand.SetHeading4 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 4),
             AppCommand.SetHeading5 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 5),
             AppCommand.SetHeading6 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 6),
-            AppCommand.PromoteHeading or AppCommand.DemoteHeading => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.PromoteHeading => new(context.EditorReady && !context.ReadOnly && context.HeadingLevel != 1),
+            AppCommand.DemoteHeading => new(
+                context.EditorReady && !context.ReadOnly
+                && context.HeadingLevel is >= 1 and < 6),
             AppCommand.ToggleBold => new(context.EditorReady && !context.ReadOnly, context.BoldActive),
             AppCommand.ToggleItalic => new(context.EditorReady && !context.ReadOnly, context.ItalicActive),
             AppCommand.ToggleUnderline => new(context.EditorReady && !context.ReadOnly, context.UnderlineActive),
@@ -78,7 +81,7 @@ public static class CommandStateResolver
 
             AppCommand.ZoomIn or AppCommand.ZoomOut or AppCommand.ZoomReset => new(context.EditorReady),
 
-            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
+            AppCommand.NewDocument or AppCommand.NewPlainTextDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
             _ => new(context.EditorReady),
         };
     }

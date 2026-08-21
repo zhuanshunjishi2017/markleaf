@@ -50,7 +50,10 @@ final class NativeMenuBuilder {
 
     private func fileMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem(L10n.t("新建"), "new", key: "n"))
+        let newMenu = NSMenu(title: L10n.t("新建"))
+        newMenu.addItem(commandItem(L10n.t("Markdown 文件"), "new", key: "n"))
+        newMenu.addItem(commandItem(L10n.t("文本文件"), "newPlainText", key: "n", mask: [.command, .option]))
+        menu.addItem(popup(L10n.t("新建"), newMenu))
         menu.addItem(commandItem(L10n.t("新建窗口"), "newWindow"))
         menu.addItem(commandItem(L10n.t("打开…"), "open", key: "o"))
         menu.addItem(commandItem(L10n.t("以只读方式打开…"), "openReadOnly"))
@@ -425,7 +428,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
              "changeImage", "saveImageAs":
             return s?.imageSelected == true
         // 降低标题级别：仅当光标在标题内可用（非标题保持原样 → 置灰）
-        case "demoteHeading": return s?.headingLevel != nil
+        case "promoteHeading": return s?.headingLevel != 1
+        case "demoteHeading":
+            guard let level = s?.headingLevel else { return false }
+            return level < 6
         // 表格命令：仅当光标在表格内可用
         case "addRowBefore", "addRowAfter", "deleteRow",
              "addColumnBefore", "addColumnAfter", "deleteColumn",
@@ -637,6 +643,7 @@ extension EditorSession {
         }
         switch command {
         case "new": newDocument()
+        case "newPlainText": newDocument(kind: .plainText)
         case "open": openDocument()
         case "openReadOnly": openDocumentReadOnly()
         case "save": saveDocument()

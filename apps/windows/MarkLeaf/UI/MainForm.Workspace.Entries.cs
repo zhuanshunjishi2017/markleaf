@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.VisualBasic.FileIO;
+using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.UI.Dialogs;
 using MarkLeaf.Workspace;
@@ -210,12 +211,17 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task CreateWorkspaceEntryAsync(string directory, bool isDirectory)
+    private async Task CreateWorkspaceEntryAsync(
+        string directory,
+        bool isDirectory,
+        NewDocumentKind kind = NewDocumentKind.Markdown)
     {
         using var dialog = new TextInputDialog(
-            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("workspace.newMarkdownFile"),
+            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("workspace.newFile"),
             Loc.Get("workspace.name"),
-            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("document.untitledMd"));
+            isDirectory
+                ? Loc.Get("workspace.newFolder")
+                : Loc.Get(kind == NewDocumentKind.PlainText ? "document.untitledTxt" : "document.untitledMd"));
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.InputText))
         {
             return;
@@ -224,7 +230,7 @@ internal sealed partial class MainForm
         try
         {
             var name = !isDirectory && string.IsNullOrEmpty(Path.GetExtension(dialog.InputText))
-                ? dialog.InputText + ".md"
+                ? dialog.InputText + "." + kind.FileExtension()
                 : dialog.InputText;
             var path = GetSafeChildPath(directory, name);
             if (isDirectory)

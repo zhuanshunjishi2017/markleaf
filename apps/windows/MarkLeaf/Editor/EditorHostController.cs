@@ -205,6 +205,11 @@ internal sealed class EditorHostController : IDisposable
         });
     }
 
+    public void SetDocumentType(string documentType)
+    {
+        EnqueueOrRun(() => Post("setDocumentType", new { documentType }));
+    }
+
     public string RequestSnapshot()
     {
         var requestId = Guid.NewGuid().ToString("N");

@@ -153,7 +153,10 @@ internal sealed partial class MainForm
         switch (command)
         {
             case AppCommand.NewDocument:
-                _ = NewDocumentAsync();
+                _ = NewDocumentAsync(NewDocumentKind.Markdown);
+                break;
+            case AppCommand.NewPlainTextDocument:
+                _ = NewDocumentAsync(NewDocumentKind.PlainText);
                 break;
             case AppCommand.NewWindow:
                 StartNewWindow();

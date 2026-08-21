@@ -10,10 +10,13 @@ public sealed class DocumentFileService
     private static readonly UnicodeEncoding StrictUtf16LittleEndian = new(false, false, true);
     private static readonly UnicodeEncoding StrictUtf16BigEndian = new(true, false, true);
 
-    public MarkdownDocument CreateNew(string? newLine = null)
+    public MarkdownDocument CreateNew(
+        string? newLine = null,
+        NewDocumentKind kind = NewDocumentKind.Markdown)
     {
         return new MarkdownDocument
         {
+            Kind = kind,
             Encoding = StrictUtf8,
             NewLine = newLine ?? Environment.NewLine,
         };
@@ -30,6 +33,7 @@ public sealed class DocumentFileService
         return new MarkdownDocument
         {
             FilePath = fullPath,
+            Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath)),
             Markdown = markdown,
             Encoding = detected.Encoding,
             HasBom = detected.PreambleLength > 0,
@@ -153,6 +157,7 @@ public sealed class DocumentFileService
             temporaryPath = null;
             var savedFingerprint = await CreateFingerprintAsync(fullPath, cancellationToken);
             document.FilePath = fullPath;
+            document.Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath));
             document.Markdown = normalizedMarkdown;
             document.Revision = revision;
             document.IsDirty = false;
