@@ -290,43 +290,29 @@ final class AppWindowManager {
         return true
     }
 
-    /// 关于 MarkLeaf：macOS 原生关于面板（同 LyricsX，orderFrontStandardAboutPanel）。
-    /// credits 排版：居中、行距、仓库链接可点击。
+    /// 关于 MarkLeaf：所有语言统一使用英文版本格式。
     func showAbout() {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? AppVersion.fallback
-        let linkURL = URL(string: "https://github.com/zhuanshunjishi2017/markleaf")!
-
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.lineSpacing = 5
-        paragraph.paragraphSpacing = 2
-
-        let text = L10n.t("macOS 原生轻量化 Markdown 编辑器") + "\n\n" + L10n.t("作者：") + " zhuanshunjishi2017\n" + linkURL.absoluteString
-        let credits = NSMutableAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-            .foregroundColor: NSColor.secondaryLabelColor,
-            .paragraphStyle: paragraph,
-        ])
-        let linkRange = (text as NSString).range(of: linkURL.absoluteString)
-        credits.addAttribute(.link, value: linkURL, range: linkRange)
-        credits.addAttribute(.foregroundColor, value: NSColor.linkColor, range: linkRange)
-        credits.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: linkRange)
-
-        NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "MarkLeaf",
-            .applicationVersion: version,
-            .credits: credits,
-        ])
+        let options = AboutPanel.standardOptions(
+            infoDictionary: Bundle.main.infoDictionary,
+            descriptionText: L10n.t("macOS 原生轻量化 Markdown 编辑器")
+        )
+        NSApp.orderFrontStandardAboutPanel(options: options)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     /// 查找与替换面板（原生弹出窗口）。
-    func showFindPanel(for session: EditorSession, replaceMode: Bool) {
-        let controller = FindPanelController(session: session, replaceMode: replaceMode)
+    func showFindPanel(for session: EditorSession) {
+        let controller: FindPanelController
+        if let existing = findPanelController {
+            existing.updateSession(session)
+            controller = existing
+        } else {
+            controller = FindPanelController(session: session)
+            findPanelController = controller
+        }
         session.onFindResult = { [weak controller] current, total in
             DispatchQueue.main.async { controller?.updateResult(current: current, total: total) }
         }
-        findPanelController = controller
         controller.showPanel()
     }
 

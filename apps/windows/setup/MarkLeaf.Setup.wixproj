@@ -9,6 +9,7 @@
     <ProgramFilesRef Condition="'$(Runtime)' != 'win-x86'">ProgramFiles64Folder</ProgramFilesRef>
     <Cultures>zh-CN</Cultures>
     <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">42</BuildNumber>
     <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
     <!-- self-contained → with-runtime, framework-dependent → no suffix -->
     <Suffix Condition="'$(SelfContained)' == 'true'">-with-runtime</Suffix>
@@ -32,7 +33,7 @@
   <Target Name="PublishApp" BeforeTargets="BeforeBuild">
     <RemoveDir Directories="$(PublishDir)" Condition="Exists('$(PublishDir)')" />
     <Message Importance="high" Text="Publishing MarkLeaf ($(Runtime), self-contained=$(SelfContained))..." />
-    <Exec Command="dotnet publish &quot;$(RepoRoot)\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -o &quot;$(PublishDir)&quot;"
+    <Exec Command="dotnet publish &quot;$(RepoRoot)\MarkLeaf\MarkLeaf.csproj&quot; -c Release -r $(Runtime) --self-contained $(SelfContained) -p:Version=$(Version) -p:BuildNumber=$(BuildNumber) -o &quot;$(PublishDir)&quot;"
           WorkingDirectory="$(RepoRoot)" />
   </Target>
 

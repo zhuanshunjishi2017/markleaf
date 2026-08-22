@@ -3,27 +3,32 @@
 #   MarkLeaf-X.Y.Z-arch.msi               framework-dependent (slim, needs .NET 10)
 #   MarkLeaf-X.Y.Z-arch-with-runtime.msi   self-contained (bundles .NET runtime)
 #
-# Usage: powershell -File apps/windows/setup/release.ps1 [-Version X.Y.Z] [-Runtime win-x64] [-SelfContained]
+# Usage: powershell -File apps/windows/setup/release.ps1 [-Version X.Y.Z] [-BuildNumber N] [-Runtime win-x64] [-SelfContained]
 
-param([string]$Version, [string]$Runtime, [bool]$SelfContained)
+param([string]$Version, [string]$BuildNumber, [string]$Runtime, [bool]$SelfContained)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
 $setupProj = Join-Path $root "setup\MarkLeaf.Setup.wixproj"
 $releaseDir = Join-Path $root "release"
+$csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
 
 if (-not $Version) {
-    $csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
     $xml = [xml](Get-Content $csproj)
     $Version = $xml.Project.PropertyGroup.Version
     if (-not $Version) { Write-Error "Version not found in $csproj"; exit 1 }
+}
+if (-not $BuildNumber) {
+    $xml = [xml](Get-Content $csproj)
+    $BuildNumber = $xml.Project.PropertyGroup.BuildNumber
+    if (-not $BuildNumber) { $BuildNumber = "42" }
 }
 
 $runtimes = if ($Runtime) { @($Runtime) } else { @("win-x64", "win-x86", "win-arm64") }
 $scFlags  = if ($PSBoundParameters.ContainsKey('SelfContained')) { @($SelfContained) } else { @($true, $false) }
 
-Write-Host "=== MarkLeaf v$Version Release ===" -ForegroundColor Cyan
+Write-Host "=== MarkLeaf v$Version (Build $BuildNumber) Release ===" -ForegroundColor Cyan
 Write-Host ""
 
 # Clean
@@ -38,7 +43,7 @@ foreach ($rt in $runtimes) {
         $i++
         $label = if ($sc) { "with-runtime" } else { "slim" }
         Write-Host "[$i/$total] $rt $label" -ForegroundColor Yellow
-        dotnet build $setupProj -c Release -p:Runtime=$rt -p:SelfContained=$sc -p:Version=$Version
+        dotnet build $setupProj -c Release -p:Runtime=$rt -p:SelfContained=$sc -p:Version=$Version -p:BuildNumber=$BuildNumber
         # Copy to release
         $arch = $rt.Substring(4)
         $prefix = "MarkLeaf-$Version-$arch"

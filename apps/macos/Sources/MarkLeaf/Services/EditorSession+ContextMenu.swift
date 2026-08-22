@@ -134,7 +134,7 @@ extension EditorSession {
             let resizeItem = NSMenuItem(title: L10n.t("调整图片大小"), action: nil, keyEquivalent: "")
             resizeItem.submenu = resize
             menu.addItem(resizeItem)
-            addFormatCommand(menu, L10n.t("图片另存为…"), "saveImageAs")
+            addFormatCommand(menu, L10n.t("将图片另存为…"), "saveImageAs")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("编辑图片标题"), "editImageCaption")
             menu.addItem(.separator())
@@ -165,10 +165,11 @@ extension EditorSession {
                     enabled: headingLevel < 6)
                 menu.addItem(.separator())
             }
-            addFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
-            addFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
-            addFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
-            addFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
+            addInlineFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
+            addInlineFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
+            addInlineFormatCommand(menu, L10n.t("下划线"), "toggleUnderline", "u")
+            addInlineFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
+            addInlineFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
             let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
             painterItem.representedObject = "formatPainterArm"
             let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
@@ -278,7 +279,7 @@ extension EditorSession {
             }
             guard let window = self.webView?.window else { return }
             let panel = NSSavePanel()
-            panel.title = L10n.t("图片另存为")
+            panel.title = L10n.t("将图片另存为")
             panel.nameFieldStringValue = sourceURL.lastPathComponent
             panel.beginSheetModal(for: window) { response in
                 guard response == .OK, let url = panel.url else { return }
@@ -317,6 +318,18 @@ extension EditorSession {
     private func addFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
         let item = menuItem(title, #selector(handleCommand(_:)), key: key)
         item.representedObject = command
+        menu.addItem(item)
+    }
+
+    private func addInlineFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
+        let item = menuItem(title, #selector(handleCommand(_:)), key: key)
+        item.representedObject = command
+        item.isEnabled = EditorMenuPolicy.isInlineFormatCommandEnabled(
+            command: command,
+            hasSelection: hasSelection,
+            isSourceMode: isSourceMode,
+            isReadOnly: isReadOnly
+        )
         menu.addItem(item)
     }
 

@@ -21,8 +21,8 @@ expect(compact.height <= PreferencesWindowLayout.maximumWindowHeight,
 let wide = PreferencesWindowLayout.windowContentSize(
     for: NSSize(width: 720, height: 700)
 )
-expect(wide.width == PreferencesWindowLayout.maximumWindowWidth,
-       "preference window should cap unusually wide tab content")
+expect(wide.width == PreferencesWindowLayout.minimumWindowWidth,
+       "simplified Chinese width must stay compact instead of feeding stretched tab width back into sizing")
 expect(wide.height == PreferencesWindowLayout.maximumWindowHeight,
        "preference window should cap unusually tall tab content")
 
@@ -40,8 +40,70 @@ expect(PreferencesWindowLayout.bottomBarTopInset >= 10,
        "bottom action bar should keep enough top breathing room")
 expect(PreferencesWindowLayout.bottomBarBottomInset == 12,
        "bottom action bar should use a balanced bottom inset")
-expect(PreferencesWindowLayout.filePageContentHorizontalOffset < 0,
-       "file page content should be nudged left to correct its visual center")
+expect(PreferencesWindowLayout.fieldLabelColumnWidth > 0,
+       "field label column should reserve a readable width for right-aligned labels")
+expect(PreferencesWindowLayout.fieldLabelColumnWidth >= 120,
+       "field label column should stay wide enough for common Chinese labels")
+
+let zh = PreferencesWindowLayout.metrics(for: "zh-Hans")
+let zhHant = PreferencesWindowLayout.metrics(for: "zh-Hant")
+let en = PreferencesWindowLayout.metrics(for: "en")
+let ja = PreferencesWindowLayout.metrics(for: "ja")
+expect(zh.formContentColumnWidth == 400,
+       "simplified Chinese should preserve the current content column width")
+expect(zh.fieldLabelColumnWidth == 120,
+       "simplified Chinese should preserve the current label column width")
+expect(en.fieldLabelColumnWidth > zh.fieldLabelColumnWidth,
+       "English should reserve extra width for translated field labels")
+expect(ja.fieldLabelColumnWidth > zh.fieldLabelColumnWidth,
+       "Japanese should reserve extra width for translated field labels")
+expect(en.formContentColumnWidth > zh.formContentColumnWidth,
+       "English should use an independent wider content column")
+expect(ja.formContentColumnWidth > zh.formContentColumnWidth,
+       "Japanese should use an independent wider content column")
+expect(en.minimumWindowWidth > zh.minimumWindowWidth,
+       "English should use an independent wider preference window")
+expect(ja.minimumWindowWidth > zh.minimumWindowWidth,
+       "Japanese should use an independent wider preference window")
+expect(zh.minimumWindowWidth == 500 && zh.maximumWindowWidth == 500,
+       "simplified Chinese should keep the previously approved compact 500-point width")
+expect(zhHant.minimumWindowWidth == 520 && zhHant.maximumWindowWidth == 520,
+       "traditional Chinese should use its own stable 520-point width")
+expect(en.minimumWindowWidth == 560 && en.maximumWindowWidth == 560,
+       "English should use its own stable 560-point width")
+expect(ja.minimumWindowWidth == 620 && ja.maximumWindowWidth == 620,
+       "Japanese should use its own stable 620-point width")
+expect(zhHant != zh,
+       "traditional Chinese must not silently reuse simplified Chinese layout metrics")
+expect(PreferencesWindowLayout.metrics(for: "unknown") == zh,
+       "unknown languages should fall back to the simplified Chinese layout")
+let englishColumn = PreferencesWindowLayout.centeredColumnFrame(
+    containerWidth: en.maximumWindowWidth,
+    fittingWidth: en.maximumContentColumnWidth + 100,
+    metrics: en
+)
+expect(englishColumn.width == en.maximumContentColumnWidth,
+       "language-specific centered columns should use that language's width cap")
+
+let englishLongLabel = ("Default Encoding for New Files" as NSString).size(
+    withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
+).width
+let japaneseLongLabel = ("新規ファイルの既定のエンコーディング" as NSString).size(
+    withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
+).width
+expect(en.fieldLabelColumnWidth >= ceil(englishLongLabel),
+       "English label column should fit the longest current field label")
+expect(ja.fieldLabelColumnWidth >= ceil(japaneseLongLabel),
+       "Japanese label column should fit the longest current field label")
+
+let enNarrowPage = PreferencesWindowLayout.windowContentSize(
+    for: NSSize(width: 320, height: 430), metrics: en
+)
+let enWidePage = PreferencesWindowLayout.windowContentSize(
+    for: NSSize(width: 900, height: 580), metrics: en
+)
+expect(enNarrowPage.width == enWidePage.width,
+       "switching English preference tabs may change height but must preserve width")
 
 if failures > 0 {
     exit(1)

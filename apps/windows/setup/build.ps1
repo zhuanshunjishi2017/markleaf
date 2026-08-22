@@ -1,7 +1,7 @@
 # Quick dev build — all architectures, self-contained + framework-dependent
 # Self-contained → MarkLeaf-X.Y.Z-arch-with-runtime.msi
 # Framework-dep  → MarkLeaf-X.Y.Z-arch.msi
-param([string]$Runtime, [bool]$SelfContained)
+param([string]$Runtime, [string]$BuildNumber, [bool]$SelfContained)
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
@@ -11,17 +11,19 @@ $csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
 $xml = [xml](Get-Content $csproj)
 $v = $xml.Project.PropertyGroup.Version
 if (-not $v) { Write-Error "Version not found"; exit 1 }
+$build = $xml.Project.PropertyGroup.BuildNumber
+if (-not $BuildNumber) { $BuildNumber = if ($build) { $build } else { "42" } }
 
 $runtimes = if ($Runtime) { @($Runtime) } else { @("win-x64", "win-x86", "win-arm64") }
 $scFlags = if ($PSBoundParameters.ContainsKey('SelfContained')) { @($SelfContained) } else { @($true, $false) }
 
-Write-Host "=== MarkLeaf v$v ===" -ForegroundColor Cyan
+Write-Host "=== MarkLeaf v$v (Build $BuildNumber) ===" -ForegroundColor Cyan
 
 foreach ($rt in $runtimes) {
     foreach ($sc in $scFlags) {
         $label = if ($sc) { "with-runtime" } else { "slim" }
         Write-Host "  Building $rt $label..." -ForegroundColor Yellow
-        dotnet build $setupProj -c Release -p:Runtime=$rt -p:SelfContained=$sc -p:Version=$v
+        dotnet build $setupProj -c Release -p:Runtime=$rt -p:SelfContained=$sc -p:Version=$v -p:BuildNumber=$BuildNumber
     }
 }
 

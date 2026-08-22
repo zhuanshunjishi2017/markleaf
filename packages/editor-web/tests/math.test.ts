@@ -66,6 +66,14 @@ describe('math formulas', () => {
     expect(getMarkdown(editor)).not.toContain('$')
   })
 
+  it('uses node selection for a formula without decorating adjacent text', () => {
+    const editor = makeEditor('before $x^2$ after')
+    selectMathNode(editor, 'mathInline')
+
+    expect(document.querySelector('.markleaf-math.ProseMirror-selectednode')).not.toBeNull()
+    expect(document.querySelector('.markleaf-themed-selection')).toBeNull()
+  })
+
   it('renders math in exported html', () => {
     const html = renderMathInHtml(
       '<span data-math-inline="1">x^2</span><div data-math-block="1">y^2</div>',

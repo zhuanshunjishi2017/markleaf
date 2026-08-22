@@ -1,31 +1,33 @@
 # MarkLeaf Changelog
 
-## 1.3.1 — 2026-08-21
+## 1.3.1 — 2026-08-22
 
-### New
+- Add encoding settings: Preferences can set the default encoding for new files, while the status bar can change the current document encoding immediately and open files using the most suitable encoding.
 
-- Turn the status-bar newline indicator into a checked menu that can convert the current open file between LF and CRLF and preserve the choice on save; set the default for new files under Text Format preferences.
-- Turn the Visual status-bar control into a checked mode menu for explicitly choosing Visual or Source mode.
-- Add status-bar and preference choices for UTF-8, UTF-8 with BOM, US-ASCII, UTF-16, UTF-16 with BOM, GB2312, GBK, GB18030, Big5, and Shift_JIS.
-- Detect UTF-8/UTF-16 BOMs when opening files; warn before an encoding switch that may garble text, and reject unrepresentable characters instead of silently losing them on save.
-- Score reversible, plausible UTF-8, UTF-16, Chinese, and Japanese candidates when opening files without a BOM, choosing the most suitable encoding automatically.
+- Fine-tune the Preferences window layout.
+- Turn the Visual control in the status bar into a mode menu.
 
-### Changed
+- Show the version in About using the version number plus build number format.
+- Fix the About build number being fixed at 42: it now reads the running app bundle's real version metadata, while the build script uses the Git commit count by default.
+- Keep the current document position in view while zooming.
+- Position the About window above the center of the current screen, use a more compact layout, show the full GitHub link and copyright details, and refine the copyright color and spacing.
 
-- Make Preferences more compact and centered, refining bottom-action spacing, explanatory-text indentation, and the visual center of the File page.
-- Match the first sidebar reveal after a hidden-sidebar launch to subsequent reveal/hide animations, starting from the true zero-width state.
-- Remove the duplicate “UTF-8 without BOM” and “UTF-16 without BOM” entries; the no-BOM variants are now named “UTF-8” and “UTF-16”.
+- Move Preferred Han Glyphs into Font Settings.
+- Give Simplified Chinese, Traditional Chinese, English, and Japanese Preferences their own stable window widths; switching pages now changes height only, and long English and Japanese labels no longer get clipped.
+- Fade auto-hidden scrollbars in and out smoothly, while automatically disabling the animation when the system Reduce Motion setting is enabled.
+- Unify Format and Paragraph menu availability: disable Bold, Italic, Underline, and Strikethrough without a selection; allow inline code to be inserted from an input dialog; and apply paragraph commands consistently to the current paragraph or all paragraphs covered by the selection.
+- Merge Find and Replace into one Find & Replace entry in both the menu bar and Keyboard Shortcuts, retaining Command-F as the default; replacement controls expand and collapse smoothly in the same window.
 
-### Fixes
+- Match the text fields in the block-math, inline-code, and footnote dialogs to the subtly rounded rectangular style used in Preferences, and tighten the gap between the block-math number label and its field; the footnote number supports Esc to revert the current edit and validates immediately when focus leaves the field.
+- Fix selecting a rendered LaTeX formula also selecting the text before it.
 
-- Disable Copy and Copy As when no text is selected in both editable and read-only documents.
-- Fix Find and Replace fields ignoring system clipboard shortcuts such as ⌘V, and their context menu becoming narrow and collapsing items after the first use.
-- Fix a workspace file’s single-click selection highlight flashing briefly and disappearing unless the file was double-clicked.
+- Fix Copy and Copy As remaining available when no text is selected.
+- Fix text fields in the Find & Replace window not accepting system shortcuts.
+
 - Fix a crash when choosing another folder from the sidebar after a workspace was already open.
 - Fix the first sidebar reveal after a hidden-sidebar launch misplacing the empty-workspace message, hiding the Open Folder button, and using the wrong width.
-- Fix the initial sidebar reveal animation using a different starting width and timing from normal sidebar animations.
-- Fix opening or saving a document unexpectedly revealing a sidebar that was hidden.
-- Migrate legacy UTF-8/UTF-16 no-BOM settings to the simplified option names.
+
+- Fix opening or saving a document unexpectedly revealing a hidden sidebar.
 
 ## 1.3.0 — 2026-08-20
 

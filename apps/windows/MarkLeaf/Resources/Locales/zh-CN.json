@@ -98,7 +98,7 @@
   "menu.format.insertImageFromUrl": "插入网络图片(&W)...",
   "menu.format.rotateImageClockwise": "顺时针旋转90度(&R)",
   "menu.format.resizeImage": "重设图片大小(&Z)",
-  "menu.format.saveImageAs": "图片另存为(&A)",
+  "menu.format.saveImageAs": "将图片另存为(&A)",
 
   "menu.view.label": "视图(&V)",
   "menu.view.toggleSidebar": "显示侧栏(&B)",
@@ -164,7 +164,7 @@
   "contextMenu.image.resize75": "页面宽度的75%",
   "contextMenu.image.resize90": "页面宽度的90%",
   "contextMenu.image.rotate": "顺时针旋转90度(&R)",
-  "contextMenu.image.saveAs": "图片另存为(&S)",
+  "contextMenu.image.saveAs": "将图片另存为(&S)",
   "contextMenu.formatPainter": "格式刷(&F)",
   "contextMenu.footnote.resetLabel": "重设注释编号(&R)",
 

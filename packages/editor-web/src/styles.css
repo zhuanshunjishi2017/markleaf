@@ -88,6 +88,12 @@ body {
   overflow: hidden;
 }
 
+.markleaf-math.ProseMirror-selectednode {
+  border-radius: 4px;
+  background: var(--theme-light);
+  box-shadow: 0 0 0 2px var(--theme-dark);
+}
+
 /* 表格 / 图片标题（widget decoration，居中显示） */
 .markleaf-caption {
   text-align: center;
@@ -323,21 +329,22 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar {
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
-  background: transparent;
+  /* 不透明度由 JS 逐帧驱动的 --ml-scrollbar-alpha 控制，WKWebView 让滚动条实时重绘。
+     color-mix 把主题色与透明按 alpha 混合，从而产生真正的淡入/淡出。 */
+  background: color-mix(
+    in srgb,
+    var(--scrollbar-active, rgba(0, 0, 0, 0.35))
+    calc(var(--ml-scrollbar-alpha, 0) * 100%),
+    transparent
+  );
   border-radius: 4px;
 }
 
-html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
-body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
-html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
-}
-
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
+  html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+  body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+  html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
+    /* 系统开启“减少动态效果”时，JS 会直接把 alpha 设为终值，这里保留跳变结果。 */
   }
 }
 

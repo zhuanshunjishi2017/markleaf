@@ -135,7 +135,11 @@ const ThemedSelection = Extension.create({
       props: {
         decorations(state) {
           const { from, to, empty } = state.selection
-          if (empty || from === to) return DecorationSet.empty
+          // Atom 节点（公式、图片等）由 ProseMirror 的 NodeSelection 单独绘制。
+          // 对 NodeSelection 再套 inline decoration 会把节点边界前的文字一并染色。
+          if (!(state.selection instanceof TextSelection) || empty || from === to) {
+            return DecorationSet.empty
+          }
           return DecorationSet.create(state.doc, [
             Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
           ])
@@ -1915,7 +1919,9 @@ export function executeEditorCommand(
     setHeading6: () => chain.setHeading({ level: 6 }).run(),
     toggleUnderline: () => toggleInlineMark(editor, 'underline', applyToCurrentTextBlockWhenEmpty),
     toggleStrike: () => toggleInlineMark(editor, 'strike', applyToCurrentTextBlockWhenEmpty),
-    toggleCode: () => chain.toggleCode().run(),
+    toggleCode: () => typeof text === 'string'
+      ? chain.insertContent({ type: 'text', text, marks: [{ type: 'code' }] }).run()
+      : chain.toggleCode().run(),
     promoteHeading: () => promoteHeadingLevel(editor),
     demoteHeading: () => demoteHeadingLevel(editor),
     toggleBulletList: () => chain.toggleBulletList().run(),

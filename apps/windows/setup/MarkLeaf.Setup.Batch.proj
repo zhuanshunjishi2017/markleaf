@@ -13,27 +13,31 @@
              Query="/Project/PropertyGroup/Version/text()">
       <Output TaskParameter="Result" PropertyName="Version" />
     </XmlPeek>
-    <Message Importance="high" Text="MarkLeaf v$(Version)" />
+    <XmlPeek XmlInputPath="$(RepoRoot)\MarkLeaf\MarkLeaf.csproj"
+             Query="/Project/PropertyGroup/BuildNumber/text()">
+      <Output TaskParameter="Result" PropertyName="BuildNumber" />
+    </XmlPeek>
+    <Message Importance="high" Text="MarkLeaf v$(Version) (Build $(BuildNumber))" />
   </Target>
 
   <Target Name="BuildAll" DependsOnTargets="ReadVersion">
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-x64;SelfContained=true;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-x64;SelfContained=true;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-x64;SelfContained=false;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-x64;SelfContained=false;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-x86;SelfContained=true;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-x86;SelfContained=true;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-x86;SelfContained=false;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-x86;SelfContained=false;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-arm64;SelfContained=true;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-arm64;SelfContained=true;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)MarkLeaf.Setup.wixproj"
              Targets="Restore;Build" BuildInParallel="false"
-             Properties="Runtime=win-arm64;SelfContained=false;Version=$(Version);Configuration=Release" />
+             Properties="Runtime=win-arm64;SelfContained=false;Version=$(Version);BuildNumber=$(BuildNumber);Configuration=Release" />
   </Target>
 </Project>

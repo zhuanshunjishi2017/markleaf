@@ -95,7 +95,12 @@ cat > "$DIST_DIR/native-shim.js" <<'SHIM_EOF'
         type: 'zoomWheel',
         documentId: 'shim',
         revision: 0,
-        payload: { deltaY: event.deltaY, source: event.metaKey ? 'wheel' : 'pinch' }
+        payload: {
+          deltaY: event.deltaY,
+          source: event.metaKey ? 'wheel' : 'pinch',
+          clientX: event.clientX,
+          clientY: event.clientY
+        }
       });
     }
   }, { passive: false });

@@ -75,5 +75,54 @@ expect(!EditorMenuPolicy.isFootnoteCommandEnabled(command: "resetFootnoteLabel",
        "reset footnote label should require a footnote definition")
 expect(EditorMenuPolicy.isFootnoteCommandEnabled(command: "resetFootnoteLabel", hasFootnoteLabel: true, isReadOnly: false),
        "reset footnote label should be enabled on a footnote definition")
+expect(!EditorMenuPolicy.isFootnoteCommandEnabled(
+    command: "insertFootnote", hasFootnoteLabel: false, isReadOnly: false, isSourceMode: true),
+    "insert footnote should be disabled in source mode like other paragraph commands")
+
+// 行内格式：粗体/斜体/下划线/删除线必须有真实选区；行内代码在空选时通过输入框插入。
+for command in ["toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike"] {
+    expect(!EditorMenuPolicy.isInlineFormatCommandEnabled(
+        command: command, hasSelection: false, isSourceMode: false, isReadOnly: false),
+        "\(command) should be disabled without a selection")
+    expect(EditorMenuPolicy.isInlineFormatCommandEnabled(
+        command: command, hasSelection: true, isSourceMode: false, isReadOnly: false),
+        "\(command) should be enabled with a selection")
+}
+expect(EditorMenuPolicy.isInlineFormatCommandEnabled(
+    command: "toggleCode", hasSelection: false, isSourceMode: false, isReadOnly: false),
+    "inline code should remain available without a selection because it opens an insertion dialog")
+expect(!EditorMenuPolicy.isInlineFormatCommandEnabled(
+    command: "toggleCode", hasSelection: true, isSourceMode: true, isReadOnly: false),
+    "inline formatting should be disabled in source mode")
+expect(!EditorMenuPolicy.isInlineFormatCommandEnabled(
+    command: "toggleCode", hasSelection: true, isSourceMode: false, isReadOnly: true),
+    "inline formatting should be disabled in read-only documents")
+
+// 段落命令不依赖文本选区：空选时作用于当前段落；源码/只读模式不可用。
+expect(EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "setParagraph", isSourceMode: false, isReadOnly: false),
+    "paragraph commands should apply to the current block without a text selection")
+expect(EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "toggleBlockquote", isSourceMode: false, isReadOnly: false),
+    "paragraph transforms should share one editable visual-mode policy")
+expect(!EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "setHeading1", isSourceMode: true, isReadOnly: false),
+    "paragraph commands should be disabled in source mode")
+expect(!EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "toggleCodeBlock", isSourceMode: false, isReadOnly: true),
+    "paragraph commands should be disabled in read-only documents")
+
+expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "promoteHeading", headingLevel: nil),
+       "promote heading should be disabled outside a heading")
+expect(EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "promoteHeading", headingLevel: 2),
+       "promote heading should be enabled for levels 2 through 6")
+expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "promoteHeading", headingLevel: 1),
+       "promote heading should be disabled at level 1")
+expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", headingLevel: nil),
+       "demote heading should be disabled outside a heading")
+expect(EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", headingLevel: 5),
+       "demote heading should be enabled for levels 1 through 5")
+expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", headingLevel: 6),
+       "demote heading should be disabled at level 6")
 
 print("PASS")

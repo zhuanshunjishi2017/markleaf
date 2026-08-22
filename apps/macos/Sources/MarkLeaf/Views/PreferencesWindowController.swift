@@ -17,8 +17,11 @@ struct ThemeDefaultsSelectionModel {
 /// 偏好设置窗口：LyricsX 式顶部标签页（NSTabViewController + 工具栏样式）。
 /// 完整对应 Windows PreferencesDialog 的 5 个分类（文件/编辑器/外观/通用/图片），即时生效。
 final class PreferencesWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+    /// KVO 上下文：用于区分标签页索引变化与其它 KVO 通知。
+    private static var tabIndexContext = 0
     var onSettingsChanged: (() -> Void)?
     var onClose: (() -> Void)?
+    private let layoutMetrics: PreferencesWindowLayout.Metrics
     private let tabViewController = NSTabViewController()
     private var preferencesKeyMonitor: Any?
     private var textFieldEditingOriginals: [NSTextField: String] = [:]
@@ -50,9 +53,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var sourceFontField: FontField!
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
-    private let cjkLanguagePopup = NSPopUpButton()
-    private let fontSettingsButton = NSButton(title: L10n.t("字体设置…"), target: nil, action: nil)
-    private let fontSettingsSummary = NSTextField(labelWithString: "")
+    private var cjkLanguageTag: CJKLanguageTag
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
 
     // 外观
@@ -66,13 +67,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let followSystemCheck = NSButton(checkboxWithTitle: L10n.t("与操作系统同步"), target: nil, action: nil)
     private let defaultLightThemePopup = NSPopUpButton()
     private let defaultDarkThemePopup = NSPopUpButton()
-    private let themeRow: NSStackView = {
-        let stack = NSStackView()
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 8
-        return stack
-    }()
 
     // 通用
     private let languagePopup = NSPopUpButton()
@@ -90,12 +84,15 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var themeIDs: [String] = []
     private var defaultLightThemeIDs: [String] = []
     private var defaultDarkThemeIDs: [String] = []
+    /// 所有使用勾选样式的按钮，用于布局时识别并统一宽度，让勾选框方块垂直对齐。
+    private var checkboxButtons: Set<NSButton> = []
 
 
     /// 表单网格行：组标题 / 提示 / 标签+控件
     private enum FormRow {
         case header(String)
         case hint(String, CGFloat)
+        case centeredHint(String)
         case field(String, NSView)
     }
 
@@ -104,6 +101,9 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         themes: [ColorThemeInfo],
         initialSelectedPageIndex: Int = 0
     ) {
+        let settings = SettingsService.shared.settings
+        layoutMetrics = PreferencesWindowLayout.metrics(for: settings.displayLanguage)
+        cjkLanguageTag = settings.cjkLanguageTag
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 590),
             styleMask: [.titled, .closable],
@@ -114,7 +114,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         window.center()
         super.init(window: window)
 
-        let settings = SettingsService.shared.settings
         styleIDs = styles.map(\.id)
         themeIDs = themes.map(\.id)
 
@@ -148,14 +147,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
-        cjkLanguagePopup.addItems(withTitles: [
-            L10n.t("简体中文"), L10n.t("繁体中文"), L10n.t("日文字形"), L10n.t("韩文字形"),
-        ])
-        cjkLanguagePopup.selectItem(at: CJKLanguageTag.allCases.firstIndex(of: settings.cjkLanguageTag) ?? 0)
-        updateFontSettingsSummary()
-        fontSettingsButton.target = self
-        fontSettingsButton.action = #selector(openFontSettings)
-
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
             stylePopup.selectItem(at: idx)
@@ -164,8 +155,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         if let idx = themes.firstIndex(where: { $0.id == settings.colorTheme }) {
             themePopup.selectItem(at: idx)
         }
-        themeRow.addView(themePopup, in: .leading)
-        themeRow.addView(followSystemCheck, in: .trailing)
         restoreZoomCheck.state = settings.restoreZoomOnOpen ? .on : .off
         ctrlWheelZoomCheck.state = settings.ctrlWheelZoom ? .on : .off
         topMostCheck.state = settings.topMostWindow ? .on : .off
@@ -217,6 +206,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             field.widthAnchor.constraint(equalToConstant: 70).isActive = true
         }
         imageDirectoryField.bezelStyle = .roundedBezel
+        imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        checkboxButtons = [
+            autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
+            blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
+            autoHideScrollbarsCheck, followSystemCheck, associateMDCheck, associateTextCheck,
+            useRelativePathsCheck, prefixDotSlashCheck,
+        ]
 
         // ---- 标签页（LyricsX 式：NSTabViewController + 工具栏样式） ----
         tabViewController.tabStyle = .toolbar
@@ -237,12 +233,18 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         }
         selectedPageIndex = initialSelectedPageIndex
         buildBottomBar(in: window)
+        // 切换标签页时按新页内容自适应窗口高度（首次尺寸已在 buildBottomBar 里确定）。
+        tabViewController.addObserver(
+            self,
+            forKeyPath: "selectedTabViewItemIndex",
+            options: [.new],
+            context: &Self.tabIndexContext
+        )
 
         // 绑定
         let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
-                                     cjkLanguagePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, topMostCheck, autoHideScrollbarsCheck,
                                      followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
@@ -264,6 +266,48 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         if let preferencesKeyMonitor {
             NSEvent.removeMonitor(preferencesKeyMonitor)
         }
+        tabViewController.removeObserver(self, forKeyPath: "selectedTabViewItemIndex", context: &Self.tabIndexContext)
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        if context == &Self.tabIndexContext {
+            resizeWindowForCurrentTab(animated: true)
+        } else {
+            super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
+        }
+    }
+
+    /// 按当前标签页内容调整高度；宽度由当前语言固定，切换页面时不会横向跳动。
+    private func resizeWindowForCurrentTab(animated: Bool) {
+        guard let window else { return }
+        // 等标签页切换后的布局就绪再计算，避免拿到旧页尺寸导致动画不触发。
+        DispatchQueue.main.async {
+            self.tabViewController.view.layoutSubtreeIfNeeded()
+            let tabSize = self.tabViewController.view.fittingSize
+            let contentSize = PreferencesWindowLayout.windowContentSize(for: tabSize, metrics: self.layoutMetrics)
+            let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
+            // frame.origin 是左下角（屏幕坐标系 y 向上）；固定顶边，让标题栏不动、只动下边。
+            let current = window.frame
+            let topY = current.origin.y + current.size.height
+            var target = current
+            target.origin.x = current.origin.x
+            target.size = frameSize
+            target.origin.y = topY - frameSize.height
+            if animated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.25
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    window.animator().setFrame(target, display: true)
+                }
+            } else {
+                window.setFrame(target, display: true)
+            }
+        }
     }
 
     /// 底部操作栏：恢复默认设置 / 取消 / 应用更改。Esc 等于取消。
@@ -281,10 +325,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let bottom = NSStackView(views: [resetButton, NSView(), cancelButton, applyButton])
         bottom.orientation = .horizontal
         bottom.spacing = 10
-        bottom.edgeInsets = NSEdgeInsets(top: PreferencesWindowLayout.bottomBarTopInset,
-                                         left: PreferencesWindowLayout.contentColumnMinimumMargin,
+        bottom.edgeInsets = NSEdgeInsets(top: layoutMetrics.bottomBarTopInset,
+                                         left: layoutMetrics.contentColumnMinimumMargin,
                                          bottom: 0,
-                                         right: PreferencesWindowLayout.contentColumnMinimumMargin)
+                                         right: layoutMetrics.contentColumnMinimumMargin)
         bottom.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(bottom)
         NSLayoutConstraint.activate([
@@ -295,13 +339,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             bottom.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bottom.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: root.bottomAnchor,
-                                           constant: -PreferencesWindowLayout.bottomBarBottomInset),
+                                           constant: -layoutMetrics.bottomBarBottomInset),
         ])
         window.contentView = root
-        // 按当前标签页内容自适应窗口尺寸（保留合理下限，避免大窗口留白）。
+        // 高度按当前标签页内容自适应；宽度由语言布局策略固定。
         root.layoutSubtreeIfNeeded()
         let tabSize = tabViewController.view.fittingSize
-        window.setContentSize(PreferencesWindowLayout.windowContentSize(for: tabSize))
+        window.setContentSize(PreferencesWindowLayout.windowContentSize(for: tabSize, metrics: layoutMetrics))
         window.center()
 
         preferencesKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -377,14 +421,12 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", linkButton(L10n.t("恢复未保存的文档…"), #selector(recoverUnsavedFiles))),
             .header(L10n.t("文本格式")),
             .field(L10n.t("新建文件默认编码"), defaultEncodingPopup),
-            .hint(L10n.t("新建文件创建时使用此编码。"), PreferencesWindowLayout.fieldHintLeadingInset),
             .field(L10n.t("新建文件默认换行符"), newLinePopup),
-            .hint(L10n.t("新建文件创建时使用此换行符。"), PreferencesWindowLayout.fieldHintLeadingInset),
             .header(L10n.t("历史记录")),
             .field("", recordRecentFilesCheck),
             .field("", recordRecentFoldersCheck),
             .field("", linkButton(L10n.t("清除历史记录…"), #selector(clearHistory))),
-        ], horizontalOffset: PreferencesWindowLayout.filePageContentHorizontalOffset)
+        ])
     }
 
     private func editorPage() -> NSView {
@@ -395,23 +437,29 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
             .field("", blockHandleCheck),
             .header(L10n.t("源码模式")),
-            .field(L10n.t("字体设置"), NSStackView(views: [fontSettingsSummary, fontSettingsButton])),
-            .field(L10n.t("汉字优先字型"), cjkLanguagePopup),
+            .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
-            .hint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。"), PreferencesWindowLayout.sectionHintLeadingInset),
+            .centeredHint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。")),
         ])
     }
 
     private func appearancePage() -> NSView {
-        formPage(rows: [
+        // 主题相关下拉框统一为最大宽度，让它们的左右两端都与其它下拉框对齐。
+        let themePopups = [stylePopup, themePopup, defaultLightThemePopup, defaultDarkThemePopup]
+        let themePopupWidth = themePopups.map { $0.fittingSize.width }.max() ?? 0
+        for popup in themePopups {
+            popup.widthAnchor.constraint(equalToConstant: themePopupWidth).isActive = true
+        }
+        return formPage(rows: [
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
-            .field(L10n.t("颜色主题"), themeRow),
+            .field(L10n.t("颜色主题"), themePopup),
             .field(L10n.t("默认浅色主题"), defaultLightThemePopup),
             .field(L10n.t("默认深色主题"), defaultDarkThemePopup),
+            .field("", followSystemCheck),
             .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
             .header(L10n.t("窗口设置")),
@@ -446,11 +494,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .header(L10n.t("文件图片")),
             .field(L10n.t("处理方式"), fileImagePopup),
             .header(L10n.t("默认目录")),
-            .field("", imageDirectoryField),
-            .field("", linkButton(L10n.t("浏览…"), #selector(browseImageDirectory))),
+            .field("", NSStackView(views: [imageDirectoryField, linkButton(L10n.t("浏览…"), #selector(browseImageDirectory))])),
             .field("", useRelativePathsCheck),
             .field("", prefixDotSlashCheck),
-            .hint(L10n.t("相对路径仅在文档已保存到本地时生效；文档未保存时“复制到文档资源”会回退到默认目录。"), PreferencesWindowLayout.sectionHintLeadingInset),
+            .centeredHint(L10n.t("相对路径仅在文档已保存到本地时生效。")),
         ])
     }
 
@@ -499,10 +546,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.sourceFontSize = Int(sourceFontSizeField.stringValue) ?? 14
         settings.sourceFontFamily = sourceFontField.fontName
         settings.sourceCjkFontFamily = sourceCjkFontField.fontName
-        if cjkLanguagePopup.indexOfSelectedItem >= 0,
-           cjkLanguagePopup.indexOfSelectedItem < CJKLanguageTag.allCases.count {
-            settings.cjkLanguageTag = CJKLanguageTag.allCases[cjkLanguagePopup.indexOfSelectedItem]
-        }
+        settings.cjkLanguageTag = cjkLanguageTag
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 
@@ -627,13 +671,14 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let dialog = FontSettingsWindowController(
             cjkFontFamily: sourceCjkFontField.fontName,
             westernFontFamily: sourceFontField.fontName,
-            fontSize: Int(sourceFontSizeField.stringValue) ?? 14
+            fontSize: Int(sourceFontSizeField.stringValue) ?? 14,
+            cjkLanguageTag: cjkLanguageTag
         )
         guard dialog.runModal() else { return }
         sourceCjkFontField = FontField(fontName: dialog.cjkFontFamily) { _ in }
         sourceFontField = FontField(fontName: dialog.westernFontFamily) { _ in }
         sourceFontSizeField.stringValue = "\(dialog.fontSize)"
-        updateFontSettingsSummary()
+        cjkLanguageTag = dialog.cjkLanguageTag
         controlChanged()
     }
 
@@ -642,11 +687,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let controller = StatusBarSettingsWindowController()
         guard controller.runModal() else { return }
         onSettingsChanged?()
-    }
-
-    private func updateFontSettingsSummary() {
-        fontSettingsSummary.stringValue = "\(sourceCjkFontField.fontName) / \(sourceFontField.fontName) / \(sourceFontSizeField.stringValue)px"
-        fontSettingsSummary.textColor = .secondaryLabelColor
     }
 
     @objc private func recoverUnsavedFiles() {
@@ -688,8 +728,19 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     @objc private func clearLogs() {
-        try? FileManager.default.removeItem(atPath: "/tmp/markleaf-app.log")
-        infoAlert(L10n.t("日志已清除"))
+        let alert = NSAlert()
+        alert.messageText = L10n.t("确定要清除日志吗？")
+        alert.informativeText = L10n.t("此操作会删除日志文件。")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("清除"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        // 清除日志为破坏性操作：确认按钮标红（macOS 11+）
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.beginSheetModal(for: window!) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            try? FileManager.default.removeItem(atPath: "/tmp/markleaf-app.log")
+            self?.infoAlert(L10n.t("日志已清除"))
+        }
     }
 
     @objc private func revealSettingsJSON() {
@@ -740,52 +791,106 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         alert.beginSheetModal(for: window!)
     }
 
-    private func formPage(rows: [FormRow], horizontalOffset: CGFloat = 0) -> NSView {
+    private func formPage(rows: [FormRow], horizontalOffset: CGFloat? = nil) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
+        // 标签行保持左对齐，标签列与控件起始位置才能跨行一致。
         stack.alignment = .leading
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 28, bottom: 20, right: 28)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
+        // 取本页所有勾选框按钮的固有宽度最大值，让各行的勾选框方块垂直对齐。
+        let checkboxWidth: CGFloat? = rows.compactMap { row -> CGFloat? in
+            guard case .field(let title, let control) = row,
+                  title.isEmpty,
+                  let button = control as? NSButton,
+                  checkboxButtons.contains(button) else { return nil }
+            return button.fittingSize.width
+        }.max()
         for row in rows {
             switch row {
             case .header(let title):
                 stack.addArrangedSubview(paddedHeader(title))
             case .hint(let text, let indentation):
-                stack.addArrangedSubview(indentedHintLabel(text, indentation: indentation))
+                let hint = indentedHintLabel(text, indentation: indentation)
+                stack.addArrangedSubview(hint)
+                hint.widthAnchor.constraint(
+                    equalTo: stack.widthAnchor,
+                    constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+                ).isActive = true
+            case .centeredHint(let text):
+                let hint = centeredHintLabel(text)
+                stack.addArrangedSubview(hint)
+                hint.widthAnchor.constraint(
+                    equalTo: stack.widthAnchor,
+                    constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+                ).isActive = true
             case .field(let title, let control):
-                stack.addArrangedSubview(fieldRow(title, control))
+                let row = fieldRow(title, control, checkboxWidth: checkboxWidth)
+                stack.addArrangedSubview(row)
+                if title.isEmpty {
+                    // 无标签行铺满内容列，其内部用等宽占位把控件水平居中。
+                    row.widthAnchor.constraint(
+                        equalTo: stack.widthAnchor,
+                        constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+                    ).isActive = true
+                }
             }
         }
 
         let container = NSView()
         container.addSubview(stack)
+        let resolvedHorizontalOffset = horizontalOffset ?? layoutMetrics.contentHorizontalOffset
+        let bottomConstraint = stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor)
+        // 低优先级：窗口动画过渡时若内容暂高于容器，不强制压缩内容，避免内容抖动。
+        bottomConstraint.priority = NSLayoutConstraint.Priority(250)
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor, constant: horizontalOffset),
-            stack.widthAnchor.constraint(lessThanOrEqualToConstant: PreferencesWindowLayout.maximumContentColumnWidth),
+            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor, constant: resolvedHorizontalOffset),
+            stack.widthAnchor.constraint(equalToConstant: layoutMetrics.formContentColumnWidth),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor,
-                                           constant: PreferencesWindowLayout.contentColumnMinimumMargin),
+                                           constant: layoutMetrics.contentColumnMinimumMargin),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor,
-                                            constant: -PreferencesWindowLayout.contentColumnMinimumMargin),
+                                            constant: -layoutMetrics.contentColumnMinimumMargin),
             stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
+            bottomConstraint,
         ])
         return container
     }
 
-    private func fieldRow(_ title: String, _ control: NSView) -> NSView {
+    private func fieldRow(_ title: String, _ control: NSView, checkboxWidth: CGFloat? = nil) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
+
+        if title.isEmpty {
+            // 无标签的行（复选框 / 按钮）：在内容列中水平居中。
+            let leading = NSView()
+            let trailing = NSView()
+            for spacer in [leading, trailing] {
+                spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            }
+            // 勾选框统一为最大宽度，保证各行的勾选框方块垂直对齐；按钮保持自适应大小。
+            if let checkboxWidth,
+               let button = control as? NSButton,
+               checkboxButtons.contains(button) {
+                button.widthAnchor.constraint(equalToConstant: checkboxWidth).isActive = true
+            }
+            row.addArrangedSubview(leading)
+            row.addArrangedSubview(control)
+            row.addArrangedSubview(trailing)
+            leading.widthAnchor.constraint(equalTo: trailing.widthAnchor).isActive = true
+            return row
+        }
 
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 13)
         label.alignment = .right
         label.textColor = .labelColor
         label.focusRingType = .none
-        label.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        label.widthAnchor.constraint(equalToConstant: layoutMetrics.fieldLabelColumnWidth).isActive = true
         row.addArrangedSubview(label)
 
         row.addArrangedSubview(control)
@@ -819,7 +924,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         label.font = .systemFont(ofSize: 11)
         label.textColor = .tertiaryLabelColor
         label.maximumNumberOfLines = 2
-        label.preferredMaxLayoutWidth = 420
+        label.preferredMaxLayoutWidth = layoutMetrics.formContentColumnWidth - 96
         return label
     }
 
@@ -832,6 +937,21 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             label.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: indentation),
             label.topAnchor.constraint(equalTo: wrapper.topAnchor),
             label.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: wrapper.trailingAnchor),
+        ])
+        return wrapper
+    }
+
+    private func centeredHintLabel(_ text: String) -> NSView {
+        let wrapper = NSView()
+        let label = hintLabel(text)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: wrapper.centerXAnchor),
+            label.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            label.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: wrapper.leadingAnchor),
             label.trailingAnchor.constraint(lessThanOrEqualTo: wrapper.trailingAnchor),
         ])
         return wrapper

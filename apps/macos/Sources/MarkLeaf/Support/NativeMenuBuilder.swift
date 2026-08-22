@@ -102,8 +102,7 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("全选"), "selectAll", key: "a"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("查找"), "find", key: "f"))
-        menu.addItem(commandItem(L10n.t("替换"), "replace", key: "f", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("查找与替换"), "find", key: "f"))
         return menu
     }
 
@@ -111,6 +110,8 @@ final class NativeMenuBuilder {
 
     private func paragraphMenu() -> NSMenu {
         let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
+        menu.delegate = MenuRouter.shared
         menu.addItem(commandItem(L10n.t("正文"), "setParagraph"))
 
         let headings = NSMenu(title: L10n.t("标题"))
@@ -169,6 +170,8 @@ final class NativeMenuBuilder {
 
     private func formatMenu() -> NSMenu {
         let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
+        menu.delegate = MenuRouter.shared
         menu.addItem(commandItem(L10n.t("加粗"), "toggleBold", key: "b"))
         menu.addItem(commandItem(L10n.t("斜体"), "toggleItalic", key: "i"))
         menu.addItem(commandItem(L10n.t("下划线"), "toggleUnderline", key: "u"))
@@ -184,8 +187,14 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         menu.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
         menu.addItem(commandItem(L10n.t("顺时针旋转图片"), "rotateImage"))
-        menu.addItem(popup(L10n.t("调整图片大小"), resizeImageMenu()))
-        menu.addItem(commandItem(L10n.t("图片另存为…"), "saveImageAs"))
+        let resizeImageItem = popup(L10n.t("调整图片大小"), resizeImageMenu())
+        resizeImageItem.representedObject = "resizeImage"
+        // 父级菜单项没有实际动作；为其设置 target+action 以便 AppKit 走自动校验，
+        // 在未选中图片时整体置灰（子菜单项已由各自的 command 校验置灰）。
+        resizeImageItem.target = MenuRouter.shared
+        resizeImageItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
+        menu.addItem(resizeImageItem)
+        menu.addItem(commandItem(L10n.t("将图片另存为…"), "saveImageAs"))
         return menu
     }
 
@@ -424,21 +433,28 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             menuItem.state = s?.isSourceMode == true ? .on : .off
 
         // 无选中图片时置灰（对应 Windows 命令状态）
-        case "rotateImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
+        case "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
              "changeImage", "saveImageAs":
             return s?.imageSelected == true
         // 降低标题级别：仅当光标在标题内可用（非标题保持原样 → 置灰）
-        case "promoteHeading": return s?.headingLevel != 1
-        case "demoteHeading":
-            guard let level = s?.headingLevel else { return false }
-            return level < 6
+        case "promoteHeading", "demoteHeading":
+            guard s?.isSourceMode == false else { return false }
+            return EditorMenuPolicy.isHeadingLevelCommandEnabled(
+                command: command,
+                headingLevel: s?.headingLevel
+            )
         // 表格命令：仅当光标在表格内可用
         case "addRowBefore", "addRowAfter", "deleteRow",
              "addColumnBefore", "addColumnAfter", "deleteColumn",
              "alignTableLeft", "alignTableCenter", "alignTableRight", "deleteTable":
             return s?.inTable == true
         // 插入表格：仅在表格外可用
-        case "insertTable": return s?.inTable == false
+        case "insertTable":
+            return s?.inTable == false && EditorMenuPolicy.isParagraphCommandEnabled(
+                command: "setParagraph",
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
         // 格式刷：可视化模式下，可吸附来源或已激活时均可点（再次点击取消，对齐 Word 按钮切换）
         case "formatPainter":
             menuItem.state = s?.isFormatPainterArmed == true ? .on : .off
@@ -455,11 +471,29 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 clipboardHasContent: s?.clipboardHasContent ?? false,
                 isReadOnly: s?.isReadOnly == true
             )
+        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode", "insertMathInline":
+            return EditorMenuPolicy.isInlineFormatCommandEnabled(
+                command: command,
+                hasSelection: s?.hasSelection ?? false,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
+        case "setParagraph", "setHeading1", "setHeading2", "setHeading3",
+             "setHeading4", "setHeading5", "setHeading6",
+             "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
+             "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
+             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "clearFormat":
+            return EditorMenuPolicy.isParagraphCommandEnabled(
+                command: command,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
         case "insertFootnote", "resetFootnoteLabel":
             return EditorMenuPolicy.isFootnoteCommandEnabled(
                 command: command,
                 hasFootnoteLabel: !(s?.footnoteDefinitionLabel ?? "").isEmpty,
-                isReadOnly: s?.isReadOnly == true
+                isReadOnly: s?.isReadOnly == true,
+                isSourceMode: s?.isSourceMode ?? true
             )
         default: break
         }
@@ -514,6 +548,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             session?.performMenuCommand(command)
         }
     }
+
+    /// 为仅用于展示子菜单的父级菜单项提供 target+action，使 AppKit 自动校验得以触发。
+    /// 点击父级只会展开子菜单，不会执行这里的动作。
+    @objc func validateSubmenuParent(_ sender: NSMenuItem) {}
 
     @objc func chooseStyle(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
@@ -662,9 +700,10 @@ extension EditorSession {
         case "copyPlain": copySelectionAs(.plainText)
         case "paste": pasteFromClipboard()
         case "pastePlainText": pastePlainTextFromClipboard()
-        case "toggleBold", "toggleItalic", "toggleStrike": executeInlineFormat(command)
-        case "find": showFind(showReplace: false)
-        case "replace": showFind(showReplace: true)
+        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike":
+            guard hasSelection else { return }
+            executeInlineFormat(command)
+        case "find": showFind()
         case "toggleSidebar": toggleSidebar()
         case "workspaceTab": showWorkspaceTab()
         case "outlineTab": showOutlineTab()
@@ -691,8 +730,12 @@ extension EditorSession {
         case "importTheme": importTheme()
         case "promoteHeading": execute("promoteHeading")
         case "demoteHeading": execute("demoteHeading")
-        case "toggleUnderline": executeInlineFormat("toggleUnderline")
-        case "toggleCode": executeInlineFormat("toggleCode")
+        case "toggleCode":
+            if hasSelection {
+                executeInlineFormat("toggleCode")
+            } else {
+                insertInlineCode()
+            }
         case "insertMathInline": insertMath(isBlock: false)
         case "insertMathBlock": insertMath(isBlock: true)
         case "insertFootnote": insertFootnote()

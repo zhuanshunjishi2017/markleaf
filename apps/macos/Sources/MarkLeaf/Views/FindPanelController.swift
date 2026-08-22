@@ -4,8 +4,9 @@ import AppKit
 /// 通过命令驱动前端查找逻辑：findText / replaceOne / replaceAll / findClose，结果经 onFindResult 回显。
 final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSearchFieldDelegate {
     private weak var session: EditorSession?
-    private var replaceMode: Bool
+    private var isReplaceExpanded = false
 
+    private let disclosureButton = NSButton()
     private let searchField = NSSearchField()
     private let replaceField = NSTextField()
     private let caseCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
@@ -16,15 +17,22 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
     private let replaceAllButton = NSButton(title: "", target: nil, action: nil)
     private let closeButton = NSButton(title: "", target: nil, action: nil)
     private let resultLabel = NSTextField(labelWithString: "0/0")
+    private lazy var replaceRow = NSStackView(views: [replaceField, replaceButton, replaceAllButton])
+    private var replaceRowHeightConstraint: NSLayoutConstraint?
+    private var replaceTopSpacingConstraint: NSLayoutConstraint?
     private var closeObserver: NSObjectProtocol?
     private var keyEventMonitor: Any?
     private var mouseEventMonitor: Any?
 
-    init(session: EditorSession?, replaceMode: Bool) {
+    init(session: EditorSession?) {
         self.session = session
-        self.replaceMode = replaceMode
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 96),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: 444,
+                height: FindPanelLayout.contentHeight(isReplaceExpanded: false)
+            ),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false)
@@ -67,6 +75,14 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
     private func buildContent() {
         guard let window else { return }
 
+        disclosureButton.isBordered = false
+        disclosureButton.imagePosition = .imageOnly
+        disclosureButton.controlSize = .small
+        disclosureButton.target = self
+        disclosureButton.action = #selector(toggleReplaceExpanded)
+        disclosureButton.setButtonType(.momentaryChange)
+        updateDisclosureAppearance()
+
         searchField.placeholderString = L10n.t("查找")
         searchField.controlSize = .regular
         searchField.target = self
@@ -106,13 +122,12 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
 
-        // 布局：查找行（查找框 + 上一个/下一个 + 关闭），替换行（替换框 + 替换/全部替换），选项行
-        let findRow = NSStackView(views: [searchField, prevButton, nextButton, closeButton])
+        // 布局：折叠按钮 + 查找行；展开后以动画显示替换行；底部为查找选项。
+        let findRow = NSStackView(views: [disclosureButton, searchField, prevButton, nextButton, closeButton])
         findRow.orientation = .horizontal
         findRow.spacing = 6
         findRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let replaceRow = NSStackView(views: [replaceField, replaceButton, replaceAllButton])
         replaceRow.orientation = .horizontal
         replaceRow.spacing = 6
         replaceRow.translatesAutoresizingMaskIntoConstraints = false
@@ -122,28 +137,40 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
         optionsRow.spacing = 12
         optionsRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let root = NSStackView(views: [findRow, replaceRow, optionsRow])
-        root.orientation = .vertical
-        root.alignment = .leading
-        root.spacing = 8
-        root.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        root.translatesAutoresizingMaskIntoConstraints = false
+        let contentView = NSView()
+        contentView.addSubview(findRow)
+        contentView.addSubview(replaceRow)
+        contentView.addSubview(optionsRow)
+        window.contentView = contentView
 
-        window.contentView = root
+        let replaceTop = replaceRow.topAnchor.constraint(
+            equalTo: findRow.bottomAnchor,
+            constant: FindPanelLayout.replaceTopSpacing(isExpanded: false)
+        )
+        let replaceHeight = replaceRow.heightAnchor.constraint(
+            equalToConstant: FindPanelLayout.replaceRowHeight(isExpanded: false)
+        )
         NSLayoutConstraint.activate([
-            searchField.widthAnchor.constraint(equalToConstant: 200),
-            replaceField.widthAnchor.constraint(equalToConstant: 200),
-            root.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor),
-            root.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
-            root.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
-            root.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
+            disclosureButton.widthAnchor.constraint(equalToConstant: 18),
+            searchField.widthAnchor.constraint(equalToConstant: 190),
+            replaceField.widthAnchor.constraint(equalToConstant: 214),
+            findRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            findRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            findRow.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            replaceRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 38),
+            replaceRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            replaceTop,
+            replaceHeight,
+            optionsRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            optionsRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            optionsRow.topAnchor.constraint(equalTo: replaceRow.bottomAnchor, constant: 8),
+            optionsRow.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
         ])
 
-        if let contentView = window.contentView {
-            contentView.widthAnchor.constraint(equalToConstant: 420).isActive = true
-            contentView.heightAnchor.constraint(equalToConstant: replaceMode ? 104 : 74).isActive = true
-        }
-        replaceRow.isHidden = !replaceMode
+        replaceRowHeightConstraint = replaceHeight
+        replaceTopSpacingConstraint = replaceTop
+        replaceRow.alphaValue = 0
+        replaceRow.isHidden = true
     }
 
     /// 查找面板不是 WKWebView，必须把编辑快捷键明确交给当前字段编辑器。
@@ -237,6 +264,15 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
         closeButton.title = L10n.t("关闭")
         caseCheck.title = L10n.t("区分大小写")
         wholeCheck.title = L10n.t("全词")
+        updateDisclosureAppearance()
+    }
+
+    func updateSession(_ session: EditorSession) {
+        if self.session !== session {
+            self.session?.onFindResult = nil
+            self.session = session
+            updateResult(current: 0, total: 0)
+        }
     }
 
     func showPanel() {
@@ -285,6 +321,72 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
     @objc private func nextClicked() { runFind(backwards: false) }
     @objc private func prevClicked() { runFind(backwards: true) }
     @objc private func optionChanged() { runFind(backwards: false) }
+
+    @objc private func toggleReplaceExpanded() {
+        setReplaceExpanded(!isReplaceExpanded, animated: true)
+    }
+
+    private func setReplaceExpanded(_ expanded: Bool, animated: Bool) {
+        guard expanded != isReplaceExpanded,
+              let window,
+              let contentView = window.contentView,
+              let replaceRowHeightConstraint,
+              let replaceTopSpacingConstraint else { return }
+
+        isReplaceExpanded = expanded
+        updateDisclosureAppearance()
+        if expanded {
+            replaceRow.isHidden = false
+        }
+
+        let targetContentHeight = FindPanelLayout.contentHeight(isReplaceExpanded: expanded)
+        let targetWindowHeight = window.frameRect(forContentRect: NSRect(
+            x: 0,
+            y: 0,
+            width: contentView.bounds.width,
+            height: targetContentHeight
+        )).height
+        let targetFrame = FindPanelLayout.frameKeepingTop(
+            currentFrame: window.frame,
+            targetHeight: targetWindowHeight
+        )
+        replaceRowHeightConstraint.constant = FindPanelLayout.replaceRowHeight(isExpanded: expanded)
+        replaceTopSpacingConstraint.constant = FindPanelLayout.replaceTopSpacing(isExpanded: expanded)
+
+        let changes = {
+            window.animator().setFrame(targetFrame, display: true)
+            self.replaceRow.animator().alphaValue = expanded ? 1 : 0
+            contentView.animator().layoutSubtreeIfNeeded()
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                changes()
+            } completionHandler: { [weak self] in
+                if !expanded {
+                    self?.replaceRow.isHidden = true
+                }
+            }
+        } else {
+            window.setFrame(targetFrame, display: true)
+            replaceRow.alphaValue = expanded ? 1 : 0
+            contentView.layoutSubtreeIfNeeded()
+            if !expanded {
+                replaceRow.isHidden = true
+            }
+        }
+    }
+
+    private func updateDisclosureAppearance() {
+        let title = isReplaceExpanded ? L10n.t("隐藏替换") : L10n.t("显示替换")
+        disclosureButton.image = NSImage(
+            systemSymbolName: isReplaceExpanded ? "chevron.down" : "chevron.right",
+            accessibilityDescription: title
+        )
+        disclosureButton.toolTip = title
+        disclosureButton.setAccessibilityLabel(title)
+    }
 
     @objc private func replaceClicked() {
         guard let session else { return }

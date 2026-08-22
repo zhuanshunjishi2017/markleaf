@@ -117,7 +117,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "addRowBefore", "addRowAfter", "deleteRow",
         "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
         "alignTableLeft", "alignTableCenter", "alignTableRight",
-        "rotateImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
+        "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
         "changeImage", "clearFormat",
         "formatPainter", "formatPainterArm", "formatPainterApply",
         "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
@@ -169,6 +169,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var pinchPersistTimer: Timer?
     /// ⌘+滚轮：小 delta 事件累积到阈值（12）跳一档（一次滚轮格 ≈ 一档）。
     private var wheelZoomAccumulator: Double = 0
+    /// 最近一次缩放手势中的屏幕指针位置；由 WebView 的 wheel 事件提供。
+    private var pendingZoomAnchorPoint: (x: Double, y: Double)?
+    /// 下次视觉变量更新是否应使用鼠标指针作为锚点（菜单/快捷键也使用前端记录的最近位置）。
+    private var preservePointerAnchorForNextVisualUpdate = false
     private var recoveryTimer: Timer?
 
     private let snapshotRequests = SnapshotRequestQueue()
@@ -383,6 +387,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             if source == "wheel" {
                 // ⌘+滚轮：由「使用 ⌘ + 滚轮进行缩放」设置单独控制；未开启则忽略
                 guard SettingsService.shared.settings.ctrlWheelZoom else { break }
+                if let x = payload?["clientX"] as? Double, let y = payload?["clientY"] as? Double {
+                    pendingZoomAnchorPoint = (x: x, y: y)
+                }
                 // 累积小 delta 到阈值才跳档（一次滚轮格 ≈ 一档）
                 if (wheelZoomAccumulator < 0 && deltaY > 0) || (wheelZoomAccumulator > 0 && deltaY < 0) {
                     wheelZoomAccumulator = 0
@@ -400,8 +407,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 }
             } else {
                 // 触控板捏合（Ctrl+滚轮）：始终可用，连续平滑缩放
+                if let x = payload?["clientX"] as? Double, let y = payload?["clientY"] as? Double {
+                    pendingZoomAnchorPoint = (x: x, y: y)
+                }
                 continuousZoom = min(200, max(50, continuousZoom - deltaY * 0.25))
-                applyZoomPercent(continuousZoom, persist: false)
+                applyZoomPercent(continuousZoom, persist: false, preservePointerAnchor: true)
                 schedulePinchPersist(now: false)
             }
 
@@ -984,8 +994,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func toggleSourceMode() { execute("toggleSourceMode") }
     var onFindResult: ((Int, Int) -> Void)?
 
-    func showFind(showReplace: Bool) {
-        AppWindowManager.shared.showFindPanel(for: self, replaceMode: showReplace)
+    func showFind() {
+        AppWindowManager.shared.showFindPanel(for: self)
     }
 
     /// 行内格式命令：空选时应用到整个文本块。
@@ -1039,20 +1049,25 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func setZoom(_ percent: Int) {
         let target = Self.nearestZoom(percent)
-        applyZoomPercent(Double(target), persist: true)
+        applyZoomPercent(Double(target), persist: true, preservePointerAnchor: true)
         continuousZoom = Double(target)
     }
 
     /// 仅应用缩放，不持久化（供偏好设置批量应用）。
     func applyZoom(_ percent: Int) {
-        applyZoomPercent(Double(percent), persist: false)
+        applyZoomPercent(Double(percent), persist: false, preservePointerAnchor: false)
         continuousZoom = Double(zoomPercent)
     }
 
     /// 应用缩放（支持连续值），可选持久化。
-    private func applyZoomPercent(_ percent: Double, persist: Bool) {
+    private func applyZoomPercent(
+        _ percent: Double,
+        persist: Bool,
+        preservePointerAnchor: Bool = true
+    ) {
         let clamped = min(200, max(50, percent))
         zoomPercent = Int(clamped.rounded())
+        preservePointerAnchorForNextVisualUpdate = preservePointerAnchor
         applyVisualVariables(fontSize: nil, maxWidth: nil)
         statusText = L10n.f("缩放 %d%%", zoomPercent)
         if persist {
@@ -1087,13 +1102,41 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let sourceFont = Double(settings.sourceFontSize) * factor
         // 源码字体：西文 + 中文独立选择（对齐 Windows fccc7ad）
         let sourceFontFamily = Self.quoteFont(settings.sourceFontFamily) + ", " + Self.quoteFont(settings.sourceCjkFontFamily) + ", monospace"
+        let lineHeight = String(format: "%.2f", settings.visualLineHeight)
+        let fontSize = String(format: "%.2f", targetFont)
+        let maxWidth = String(format: "%.2f", targetWidth)
+        let sourceFontSize = String(format: "%.2f", sourceFont)
+        let cjkLanguage = settings.cjkLanguageTag.rawValue
+        let usePointerAnchor = preservePointerAnchorForNextVisualUpdate
+        let anchorX = pendingZoomAnchorPoint.map { String(format: "%.2f", $0.x) } ?? "null"
+        let anchorY = pendingZoomAnchorPoint.map { String(format: "%.2f", $0.y) } ?? "null"
+        pendingZoomAnchorPoint = nil
+        preservePointerAnchorForNextVisualUpdate = false
         let script = """
-        document.documentElement.style.setProperty('--ml-line-height','\(String(format: "%.2f", settings.visualLineHeight))');
-        document.documentElement.style.setProperty('--ml-font-size','\(String(format: "%.2f", targetFont))px');
-        document.documentElement.style.setProperty('--ml-max-width','\(String(format: "%.2f", targetWidth))px');
-        document.documentElement.style.setProperty('--ml-source-font-size','\(String(format: "%.2f", sourceFont))px');
-        document.documentElement.style.setProperty('--ml-source-font-family','\(sourceFontFamily)');
-        \(Self.cjkLanguageScript(for: settings.cjkLanguageTag))
+        (() => {
+          const payload = {
+            lineHeight: '\(lineHeight)',
+            fontSize: '\(fontSize)px',
+            maxWidth: '\(maxWidth)px',
+            sourceFontSize: '\(sourceFontSize)px',
+            sourceFontFamily: '\(sourceFontFamily)',
+            cjkLanguage: '\(cjkLanguage)',
+            usePointerAnchor: \(usePointerAnchor ? "true" : "false"),
+            anchorX: \(anchorX),
+            anchorY: \(anchorY)
+          };
+          if (typeof window.__markleafApplyVisualVariables === 'function') {
+            window.__markleafApplyVisualVariables(payload);
+          } else {
+            document.documentElement.style.setProperty('--ml-line-height', payload.lineHeight);
+            document.documentElement.style.setProperty('--ml-font-size', payload.fontSize);
+            document.documentElement.style.setProperty('--ml-max-width', payload.maxWidth);
+            document.documentElement.style.setProperty('--ml-source-font-size', payload.sourceFontSize);
+            document.documentElement.style.setProperty('--ml-source-font-family', payload.sourceFontFamily);
+            document.documentElement.setAttribute('lang', payload.cjkLanguage);
+            document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage);
+          }
+        })();
         """
         webView?.evaluateJavaScript(script)
     }
@@ -1713,6 +1756,45 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 数学公式（对应 Windows InsertMath / EditMath）
 
+    /// 行内代码与行内公式保持一致：有选区时套用格式，空选时通过输入框插入内容。
+    func insertInlineCode() {
+        if hasSelection {
+            executeInlineFormat("toggleCode")
+            return
+        }
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.t("插入行内代码")
+        alert.informativeText = L10n.t("输入代码：")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        field.bezelStyle = .roundedBezel
+        DialogTextFieldStyle.apply(to: field)
+        field.placeholderString = "const leaf = 1"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        var validationToken: NSObjectProtocol?
+        validationToken = bindAlertInputValidation(field: field, button: okButton) {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if let token = validationToken {
+                NotificationCenter.default.removeObserver(token)
+            }
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let code = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { return }
+            self.execute("toggleCode", text: code)
+            self.statusText = L10n.t("已插入行内代码")
+        }
+    }
+
     /// 插入数学公式：有选区时直接套 $...$ / $$...$$，否则弹框输入 LaTeX。
     func insertMath(isBlock: Bool) {
         let command = isBlock ? "insertMathBlock" : "insertMathInline"
@@ -1775,19 +1857,30 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         let latexField = NSTextField(string: initialLatex)
         latexField.placeholderString = "x^2 + y^2"
+        latexField.bezelStyle = .roundedBezel
+        DialogTextFieldStyle.apply(to: latexField)
         let numberField = NSTextField(string: initialNumber)
         numberField.placeholderString = "1 或 1.1"
+        numberField.bezelStyle = .roundedBezel
+        DialogTextFieldStyle.apply(to: numberField)
 
         let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: showNumber ? 78 : 44))
-        latexField.frame = NSRect(x: 0, y: showNumber ? 42 : 8, width: 360, height: 24)
+        latexField.frame = NSRect(
+            x: 0,
+            y: showNumber ? 43 : 9,
+            width: 360,
+            height: latexField.frame.height
+        )
         accessory.addSubview(latexField)
         if showNumber {
             let label = NSTextField(labelWithString: L10n.t("公式编号"))
-            label.frame = NSRect(x: 0, y: 14, width: 70, height: 18)
             label.font = .systemFont(ofSize: 12)
-            numberField.frame = NSRect(x: 74, y: 8, width: 286, height: 24)
-            accessory.addSubview(label)
-            accessory.addSubview(numberField)
+            let numberGrid = NSGridView(views: [[label, numberField]])
+            numberGrid.columnSpacing = MathInputDialogLayout.numberColumnSpacing
+            numberGrid.row(at: 0).yPlacement = .center
+            numberGrid.column(at: 0).width = MathInputDialogLayout.numberLabelColumnWidth(for: label)
+            numberGrid.frame = NSRect(x: 0, y: 6, width: 360, height: 28)
+            accessory.addSubview(numberGrid)
         }
         alert.accessoryView = accessory
         alert.window.initialFirstResponder = latexField

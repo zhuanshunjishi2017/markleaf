@@ -5,14 +5,14 @@ import CoreFoundation
 enum DocumentEncodingPolicy: String, CaseIterable, Equatable {
     case utf8 = "UTF-8"
     case utf8BOM = "UTF-8 with BOM"
-    case usASCII = "US-ASCII"
-    case utf16 = "UTF-16 with BOM"
     case utf16NoBOM = "UTF-16"
-    case gb2312 = "GB2312"
-    case gbk = "GBK"
+    case utf16 = "UTF-16 with BOM"
     case gb18030 = "GB18030"
+    case gbk = "GBK"
+    case gb2312 = "GB2312"
     case big5 = "Big5"
     case shiftJIS = "Shift_JIS"
+    case usASCII = "US-ASCII"
 
     static var orderedRawValues: [String] { allCases.map(\.rawValue) }
 

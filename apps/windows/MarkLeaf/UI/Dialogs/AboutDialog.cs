@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using MarkLeaf.Services;
 using MarkLeaf.UI.Controls;
 
@@ -11,7 +12,9 @@ internal sealed class AboutDialog : Form
     private const string AuthorName = "fcz";
 
     private static string AppVersion =>
-        typeof(AboutDialog).Assembly.GetName().Version?.ToString(3) ?? "1.1.0";
+        typeof(AboutDialog).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? AppVersionDisplay.Format("1.3.1", "42");
 
     private static string BuildDate
     {
@@ -79,7 +82,7 @@ internal sealed class AboutDialog : Form
         layout.Controls.Add(NewLabel("MarkLeaf", new Font("Times New Roman", 16F, FontStyle.Bold)), 0, 1);
         layout.Controls.Add(NewLabel(Loc.Get("dialog.aboutDescription"), new Font("Times New Roman", 11F, FontStyle.Regular)), 0, 2);
         layout.Controls.Add(NewSeparator(), 0, 3);
-        layout.Controls.Add(NewLabel($"{Loc.Format("dialog.aboutVersion", AppVersion)}    {Loc.Format("dialog.aboutDate", BuildDate)}"), 0, 4);
+        layout.Controls.Add(NewLabel($"{AppVersion}    {Loc.Format("dialog.aboutDate", BuildDate)}"), 0, 4);
         layout.Controls.Add(NewLabel(Loc.Format("dialog.aboutAuthor", AuthorName)), 0, 5);
 
         var repoLink = new LinkLabel

@@ -1,5 +1,43 @@
 import AppKit
 
+private final class FootnoteLabelEditingController: NSObject, NSTextFieldDelegate {
+    private var editingOriginal = ""
+    private var cancelingCurrentEdit = false
+    private let onInvalid: (NSTextField) -> Void
+
+    init(onInvalid: @escaping (NSTextField) -> Void) {
+        self.onInvalid = onInvalid
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        editingOriginal = field.stringValue
+        field.textColor = .labelColor
+        field.toolTip = nil
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        if cancelingCurrentEdit {
+            cancelingCurrentEdit = false
+            return
+        }
+        guard let normalized = FootnoteLabelPolicy.normalized(field.stringValue) else {
+            field.stringValue = editingOriginal
+            onInvalid(field)
+            return
+        }
+        field.stringValue = normalized
+    }
+
+    func cancelCurrentEdit(in field: NSTextField) {
+        cancelingCurrentEdit = true
+        field.stringValue = editingOriginal
+        field.textColor = .labelColor
+        field.toolTip = nil
+    }
+}
+
 extension EditorSession {
     // MARK: - 插入脚注（对应 Windows InsertFootnote）
 
@@ -81,6 +119,8 @@ extension EditorSession {
 
         let labelField = NSTextField(string: "")
         labelField.placeholderString = "1"
+        labelField.bezelStyle = .roundedBezel
+        DialogTextFieldStyle.apply(to: labelField)
         let noteView = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 70))
         noteView.isEditable = true
         noteView.isRichText = false
@@ -92,7 +132,7 @@ extension EditorSession {
         let labelCaption = NSTextField(labelWithString: L10n.t("注释编号"))
         labelCaption.font = .systemFont(ofSize: 12)
         labelCaption.frame = NSRect(x: 0, y: 100, width: 70, height: 18)
-        labelField.frame = NSRect(x: 76, y: 96, width: 304, height: 24)
+        labelField.frame = NSRect(x: 76, y: 97, width: 304, height: labelField.frame.height)
         let noteCaption = NSTextField(labelWithString: L10n.t("注释文本"))
         noteCaption.font = .systemFont(ofSize: 12)
         noteCaption.frame = NSRect(x: 0, y: 66, width: 70, height: 18)
@@ -100,7 +140,12 @@ extension EditorSession {
         scroll.documentView = noteView
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.borderType = .bezelBorder
+        scroll.borderType = .noBorder
+        scroll.wantsLayer = true
+        scroll.layer?.cornerRadius = 6
+        scroll.layer?.borderWidth = 1
+        scroll.layer?.borderColor = NSColor.separatorColor.cgColor
+        scroll.layer?.masksToBounds = true
         accessory.addSubview(labelCaption)
         accessory.addSubview(labelField)
         accessory.addSubview(noteCaption)
@@ -108,9 +153,25 @@ extension EditorSession {
         alert.accessoryView = accessory
         alert.window.initialFirstResponder = labelField
 
+        let labelDelegate = FootnoteLabelEditingController { field in
+            NSSound.beep()
+            field.textColor = .systemRed
+            field.toolTip = L10n.t("注释编号不能为空，且不能包含 ] 或换行符")
+        }
+        labelField.delegate = labelDelegate
+        let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window === alert.window, event.keyCode == 53 else { return event }
+            if let editor = alert.window.firstResponder as? NSTextView,
+               editor.delegate as? NSTextField === labelField {
+                labelDelegate.cancelCurrentEdit(in: labelField)
+                alert.window.makeFirstResponder(nil)
+                return nil
+            }
+            return event
+        }
+
         func refreshOK() {
-            okButton?.isEnabled = !labelField.stringValue
-                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            okButton?.isEnabled = FootnoteLabelPolicy.normalized(labelField.stringValue) != nil
                 && !noteView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         refreshOK()
@@ -127,14 +188,21 @@ extension EditorSession {
         ) { _ in refreshOK() })
 
         alert.beginSheetModal(for: window) { response in
+            if let keyMonitor {
+                NSEvent.removeMonitor(keyMonitor)
+            }
             tokens.forEach { NotificationCenter.default.removeObserver($0) }
             guard response == .alertFirstButtonReturn else {
                 completion(nil, nil)
                 return
             }
-            let label = labelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = FootnoteLabelPolicy.normalized(labelField.stringValue)
             let note = noteView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            completion(label.isEmpty || note.isEmpty ? nil : label, note)
+            guard let label, !note.isEmpty else {
+                completion(nil, nil)
+                return
+            }
+            completion(label, note)
         }
     }
 

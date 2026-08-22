@@ -8,10 +8,9 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 }
 
 expect(DocumentEncodingPolicy.orderedRawValues == [
-    "UTF-8", "UTF-8 with BOM", "US-ASCII",
-    "UTF-16 with BOM", "UTF-16", "GB2312", "GBK", "GB18030",
-    "Big5", "Shift_JIS"
-], "encoding menu should avoid duplicate UTF-8 entries and expose GB2312/GBK")
+    "UTF-8", "UTF-8 with BOM", "UTF-16", "UTF-16 with BOM",
+    "GB18030", "GBK", "GB2312", "Big5", "Shift_JIS", "US-ASCII"
+], "encoding menu should group Unicode, then Chinese (GB18030/GBK/GB2312), and keep US-ASCII last")
 
 let samples: [DocumentEncodingPolicy: String] = [
     .utf8: "中文、日本語、繁體",

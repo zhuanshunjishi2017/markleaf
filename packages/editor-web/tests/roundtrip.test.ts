@@ -403,6 +403,17 @@ describe('paragraph menu commands', () => {
     expect(getMarkdown(editor)).toMatch(/\*\*[*_]中文格式[*_]\*\*/)
   })
 
+  it('inserts provided inline-code text at an empty selection', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'before after')
+    editors.push(editor)
+    editor.commands.setTextSelection(8)
+
+    expect(executeEditorCommand(editor, 'toggleCode', 'const leaf = 1')).toBe(true)
+    expect(getMarkdown(editor)).toContain('before `const leaf = 1`after')
+  })
+
   it('applies context-menu inline formatting to the current text block without a selection', () => {
     const element = document.createElement('div')
     document.body.append(element)

@@ -41,6 +41,8 @@ import {
   protocolVersion,
   type HostMessage,
 } from './protocol'
+import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
+import { bindReducedMotionPreference, scrollbarAlphaAnimation } from './scrollbar-motion'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
@@ -63,6 +65,12 @@ const replaceOne = document.querySelector<HTMLButtonElement>('#replace-one')!
 const replaceAll = document.querySelector<HTMLButtonElement>('#replace-all')!
 const findClose = document.querySelector<HTMLButtonElement>('#find-close')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
+
+bindReducedMotionPreference(
+  window.matchMedia('(prefers-reduced-motion: reduce)'),
+  document.documentElement,
+  document.body,
+)
 
 let documentId: string = crypto.randomUUID()
 let documentLoaded = false
@@ -107,6 +115,137 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
 let scrollbarHideTimer = 0
+// 滚动条显示/隐藏由 alpha 动画驱动，而不是 CSS transition（WKWebView 不响应）。
+let scrollbarAlpha = 0
+let scrollbarAlphaAnimationCleanup: (() => void) | null = null
+
+type VisualVariablePayload = {
+  lineHeight: string
+  fontSize: string
+  maxWidth: string
+  sourceFontSize: string
+  sourceFontFamily: string
+  cjkLanguage: string
+  usePointerAnchor?: boolean
+  anchorX?: number | null
+  anchorY?: number | null
+}
+
+declare global {
+  interface Window {
+    __markleafApplyVisualVariables?: (payload: VisualVariablePayload) => void
+  }
+}
+
+const currentCaretViewportAnchor: ViewportAnchorReader = () => {
+  try {
+    if (sourceMode && sourceEditor) {
+      const head = sourceEditor.view.state.selection.main.head
+      const coords = sourceEditor.view.coordsAtPos(head)
+      if (coords && coords.bottom >= 0 && coords.top <= window.innerHeight) {
+        return {
+          top: (coords.top + coords.bottom) / 2,
+          container: sourceEditor.view.scrollDOM,
+        }
+      }
+    }
+
+    const coords = editor.view.coordsAtPos(editor.state.selection.head)
+    if (coords.bottom < 0 || coords.top > window.innerHeight) {
+      return null
+    }
+    return { top: (coords.top + coords.bottom) / 2 }
+  } catch {
+    // The editor can be between document replacement and its first layout pass.
+    // preserveViewportDuringLayoutChange will fall back to a visible block anchor.
+    return null
+  }
+}
+
+type PointerPoint = { x: number; y: number }
+
+// Keep the actual mouse/pointer location independent from the text selection. Menu and
+// keyboard zoom commands do not carry an event coordinate, so they use the latest point seen
+// by the editor. Wheel/pinch events may provide an explicit point from the native shim.
+let lastPointerPoint: PointerPoint | null = null
+const rememberPointerPoint = (event: MouseEvent | PointerEvent) => {
+  if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    lastPointerPoint = { x: event.clientX, y: event.clientY }
+  }
+}
+window.addEventListener('mousemove', rememberPointerPoint, { passive: true })
+window.addEventListener('pointermove', rememberPointerPoint, { passive: true })
+
+function pointerViewportAnchor(explicitPoint?: PointerPoint): ViewportAnchorReader {
+  const point = explicitPoint ?? lastPointerPoint
+  if (!point) {
+    return () => null
+  }
+
+  try {
+    if (sourceMode && sourceEditor) {
+      const position = sourceEditor.view.posAtCoords({ x: point.x, y: point.y })
+      if (position === null) {
+        return () => null
+      }
+      const readTop = () => {
+        try {
+          const coords = sourceEditor?.view.coordsAtPos(position)
+          return coords ? (coords.top + coords.bottom) / 2 : Number.NaN
+        } catch {
+          return Number.NaN
+        }
+      }
+      const top = readTop()
+      if (!Number.isFinite(top)) {
+        return () => null
+      }
+      return () => ({ top, container: sourceEditor?.view.scrollDOM, readTop })
+    }
+
+    const resolved = editor.view.posAtCoords({ left: point.x, top: point.y })
+    if (!resolved) {
+      return () => null
+    }
+    const position = resolved.pos
+    const readTop = () => {
+      try {
+        const coords = editor.view.coordsAtPos(position)
+        return (coords.top + coords.bottom) / 2
+      } catch {
+        return Number.NaN
+      }
+    }
+    const top = readTop()
+    if (!Number.isFinite(top)) {
+      return () => null
+    }
+    return () => ({ top, readTop })
+  } catch {
+    // The editor can be between document replacement and its first layout pass.
+    return () => null
+  }
+}
+
+// The native host changes these variables for zoom and typography settings. Zoom uses the
+// actual mouse pointer as its anchor; other visual changes retain the active caret position.
+window.__markleafApplyVisualVariables = (payload) => {
+  const explicitPoint = Number.isFinite(payload.anchorX) && Number.isFinite(payload.anchorY)
+    ? { x: payload.anchorX as number, y: payload.anchorY as number }
+    : undefined
+  const anchorReader = payload.usePointerAnchor === true
+    ? pointerViewportAnchor(explicitPoint)
+    : currentCaretViewportAnchor
+  preserveViewportDuringLayoutChange(() => {
+    document.documentElement.style.setProperty('--ml-line-height', payload.lineHeight)
+    document.documentElement.style.setProperty('--ml-font-size', payload.fontSize)
+    document.documentElement.style.setProperty('--ml-max-width', payload.maxWidth)
+    document.documentElement.style.setProperty('--ml-source-font-size', payload.sourceFontSize)
+    document.documentElement.style.setProperty('--ml-source-font-family', payload.sourceFontFamily)
+    document.documentElement.setAttribute('lang', payload.cjkLanguage)
+    document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage)
+  }, anchorReader)
+}
 
 let findBarLoc: Record<string, string> = {}
 
@@ -1209,7 +1348,12 @@ window.addEventListener(
       return
     }
     event.preventDefault()
-    send('zoomWheel', { deltaY: event.deltaY })
+    send('zoomWheel', {
+      deltaY: event.deltaY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      source: 'pinch',
+    })
   },
   { passive: false },
 )
@@ -1242,21 +1386,48 @@ window.addEventListener(
 )
 
 function showScrollbar(): void {
-  document.documentElement.classList.add('markleaf-scrolling')
-  document.body.classList.add('markleaf-scrolling')
+  animateScrollbarAlphaTo(1)
   window.clearTimeout(scrollbarHideTimer)
   scrollbarHideTimer = window.setTimeout(() => {
-    document.documentElement.classList.remove('markleaf-scrolling')
-    document.body.classList.remove('markleaf-scrolling')
+    animateScrollbarAlphaTo(0)
   }, 800)
+}
+
+const alphaFrameScheduler = {
+  now: () => performance.now(),
+  requestFrame: (cb: (time: number) => void) => requestAnimationFrame(cb),
+  cancelFrame: (id: number) => cancelAnimationFrame(id),
+}
+
+function reducedMotionActive(): boolean {
+  return document.documentElement.classList.contains('markleaf-reduced-motion')
+}
+
+function animateScrollbarAlphaTo(target: number): void {
+  scrollbarAlphaAnimationCleanup?.()
+  const from = scrollbarAlpha
+  scrollbarAlphaAnimationCleanup = scrollbarAlphaAnimation(
+    from,
+    target,
+    200,
+    reducedMotionActive(),
+    (alpha) => {
+      scrollbarAlpha = alpha
+      document.documentElement.style.setProperty('--ml-scrollbar-alpha', String(alpha))
+    },
+    alphaFrameScheduler,
+  )
 }
 
 function applyAutoHideScrollbar(enabled: boolean): void {
   document.documentElement.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
   document.body.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
   if (!enabled) {
-    document.documentElement.classList.remove('markleaf-scrolling')
-    document.body.classList.remove('markleaf-scrolling')
+    scrollbarAlphaAnimationCleanup?.()
+    scrollbarAlphaAnimationCleanup = null
+    scrollbarAlpha = 0
+    window.clearTimeout(scrollbarHideTimer)
+    document.documentElement.style.setProperty('--ml-scrollbar-alpha', '0')
   }
 }
 

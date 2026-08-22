@@ -12,11 +12,14 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="MarkLeaf"
-APP_VERSION="1.3.1"
 BUNDLE_ID="com.markleaf.app"
 MIN_SYSTEM_VERSION="13.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
+source "$ROOT_DIR/script/build_metadata.sh"
+APP_VERSION="${MARKLEAF_VERSION:-1.3.1}"
+APP_BUILD="$(resolve_markleaf_build_number "$REPO_DIR")"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -84,7 +87,9 @@ cat > "$INFO_PLIST" <<PLIST
   <key>CFBundleShortVersionString</key>
   <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>$APP_VERSION</string>
+  <string>$APP_BUILD</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 zhuanshunjishi2017 &amp; Na_Bian</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
