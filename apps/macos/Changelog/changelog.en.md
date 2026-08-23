@@ -3,8 +3,8 @@
 ## 1.3.2 — 2026-08-23
 
 - Fix resizing the window from its left edge unexpectedly revealing a hidden sidebar.
-- Fix the first sidebar reveal after launching with the sidebar hidden flashing at full width before restarting its animation, and prevent status-bar buttons from unexpectedly taking keyboard focus.
-- Fix Format Painter remaining armed without applying when selecting a complete line from right to left or selecting multiple consecutive paragraphs.
+- Fix the sidebar unexpectedly flashing on its first reveal after launching with the sidebar hidden.
+- Fix Format Painter occasionally failing to apply.
 
 ## 1.3.1 — 2026-08-22
 
