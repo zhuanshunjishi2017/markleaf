@@ -12,33 +12,55 @@ assert_contains() {
   fi
 }
 
+release_section() {
+  local file="$1"
+  local version="$2"
+  awk -v version="$version" '
+    $0 ~ "^## " version "([[:space:]]|$)" { in_release = 1; next }
+    in_release && /^## / { exit }
+    in_release { print }
+  ' "$file"
+}
+
+assert_release_contains() {
+  local file="$1"
+  local version="$2"
+  local needle="$3"
+  if ! release_section "$file" "$version" | grep -Fq -- "$needle"; then
+    echo "missing changelog entry in $version: $file: $needle" >&2
+    exit 1
+  fi
+}
+
+assert_release_not_contains() {
+  local file="$1"
+  local version="$2"
+  local needle="$3"
+  if release_section "$file" "$version" | grep -Fq -- "$needle"; then
+    echo "unexpected changelog entry in $version: $file: $needle" >&2
+    exit 1
+  fi
+}
+
 for file in "$ROOT_DIR"/Changelog/changelog.{zh-Hans,zh-Hant,en,ja}.md; do
   assert_contains "$file" "1.2.5"
   assert_contains "$file" "1.2.6"
   assert_contains "$file" "1.3.0"
+  assert_contains "$file" "1.3.1"
   assert_contains "$file" "1.3.2"
 done
 
-# 1.3.2 由简体中文人工定稿后同步到其他语言；只校验当前版本的核心语义，
-# 避免旧版本的人工精简或重写让发布检查产生误报。
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "新建文件默认编码"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "汉字优先字型"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "合并为「查找与替换」"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "LaTeX 公式"
+# 1.3.2 只包含本次发布新增的修复；1.3.1 的内容必须保留在独立版本段落。
+assert_release_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "1.3.2" "格式刷从右向左"
+assert_release_not_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "1.3.2" "新建文件默认编码"
 
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "新檔案預設編碼"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "漢字優先字型"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "合併為「尋找與取代」"
-assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "LaTeX 公式"
+assert_release_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "1.3.2" "格式刷從右向左"
+assert_release_not_contains "$ROOT_DIR/Changelog/changelog.zh-Hant.md" "1.3.2" "新檔案預設編碼"
 
-assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "default encoding for new files"
-assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Preferred Han Glyphs"
-assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "Merge Find and Replace into one Find & Replace entry"
-assert_contains "$ROOT_DIR/Changelog/changelog.en.md" "rendered LaTeX formula"
+assert_release_contains "$ROOT_DIR/Changelog/changelog.en.md" "1.3.2" "Format Painter remaining armed"
+assert_release_not_contains "$ROOT_DIR/Changelog/changelog.en.md" "1.3.2" "default encoding for new files"
 
-assert_contains "$ROOT_DIR/Changelog/changelog.ja.md" "新規ファイルの既定エンコーディング"
-assert_contains "$ROOT_DIR/Changelog/changelog.ja.md" "漢字優先字形"
-assert_contains "$ROOT_DIR/Changelog/changelog.ja.md" "「検索」と「置換」を「検索と置換」に統合"
-assert_contains "$ROOT_DIR/Changelog/changelog.ja.md" "レンダリング済みの LaTeX 数式"
+assert_release_contains "$ROOT_DIR/Changelog/changelog.ja.md" "1.3.2" "書式のコピーで"
+assert_release_not_contains "$ROOT_DIR/Changelog/changelog.ja.md" "1.3.2" "新規ファイルの既定エンコーディング"
 
 echo "changelog content policy passed"
