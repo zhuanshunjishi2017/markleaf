@@ -26,6 +26,7 @@ import {
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
+import { renderMermaidInHtml } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -1011,7 +1012,7 @@ editorMount.addEventListener('paste', (event) => {
   }
 })
 
-function handleMessage(value: unknown): void {
+async function handleMessage(value: unknown): Promise<void> {
   if (!isHostMessage(value)) {
     send('error', { message: 'Invalid host message.' })
     return
@@ -1297,7 +1298,7 @@ function handleMessage(value: unknown): void {
             const maxWidth = typeof options.maxWidth === 'number' ? options.maxWidth : 820
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const html = generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss, title)
+            const html = await generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss, title)
             send('exportContent', { html }, message.requestId)
           }
           break
@@ -1439,10 +1440,10 @@ function applyAutoHideScrollbar(enabled: boolean): void {
 
 // ---- i18n：查找栏文案（跟随宿主语言，zh-Hans 为默认） ----
 const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
-  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockTable: '表', blockFootnote: '注' },
-  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockTable: '表', blockFootnote: '註' },
-  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockTable: '▦', blockFootnote: 'Fn' },
-  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockHeading6: '見出し 6', blockBulletList: '箇条書き', blockOrderedList: '番号付きリスト', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockTable: '表', blockFootnote: '注' },
+  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockMermaid: '图表', blockTable: '表', blockFootnote: '注' },
+  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockMermaid: '圖表', blockTable: '表', blockFootnote: '註' },
+  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockMermaid: 'Diagram', blockTable: '▦', blockFootnote: 'Fn' },
+  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockHeading6: '見出し 6', blockBulletList: '箇条書き', blockOrderedList: '番号付きリスト', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockMermaid: '図表', blockTable: '表', blockFootnote: '注' },
 }
 
 function applyFindBarLanguage(lang: string): void {
@@ -1631,7 +1632,7 @@ function applyMarkleafStyle(styleId: string): void {
   }
 }
 
-function generateExportHtml(
+async function generateExportHtml(
   style: string,
   format: string,
   header: string,
@@ -1641,17 +1642,17 @@ function generateExportHtml(
   maxWidth = 820,
   colorSchemeCss = '',
   title = '',
-): string {
+): Promise<string> {
   const isPdf = format === 'pdf'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml), isPdf).replace(
+  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml), isPdf).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
     },
-  )
+  ))
   const resolved = resolveStyle(style)
   const rootClass = [
     resolved.rootClass,

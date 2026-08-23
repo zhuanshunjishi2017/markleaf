@@ -169,6 +169,21 @@ describe('source editor', () => {
     expect(source.getText()).toBe('<strong>文本"</strong>a')
   })
 
+  it('does not prompt for emphasis-like text inside a fenced code block', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(parent, '```js\nconst s = "**text"**a\n```', () => {}, 2, false, request => requests.push(request))
+    sources.push(source)
+
+    const position = source.getText().indexOf('text')
+    source.setSelection(position)
+    source.replaceSelection('x')
+
+    expect(requests).toHaveLength(0)
+    expect(source.getText()).toContain('"**xtext"**a')
+  })
+
   it('deletes only a non-empty source selection', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

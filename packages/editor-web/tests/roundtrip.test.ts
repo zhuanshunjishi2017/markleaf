@@ -310,6 +310,34 @@ describe('editing history', () => {
 
     expect(getMarkdown(editor)).toBe('**文本"** 后文')
   })
+
+  it('keeps bold-italic asterisk runs intact even when adjacent to CJK text', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '前文***粗斜体***后文')
+    editors.push(editor)
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toBe('前文***粗斜体***后文')
+
+    const reloaded = createEditor(document.createElement('div'), markdown)
+    editors.push(reloaded)
+    expect(reloaded.getHTML()).toContain('<strong><em>粗斜体</em></strong>')
+  })
+
+  it('keeps bold-italic asterisk runs intact inside punctuation boundaries', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '"***粗斜体***"')
+    editors.push(editor)
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toBe('"***粗斜体***"')
+
+    const reloaded = createEditor(document.createElement('div'), markdown)
+    editors.push(reloaded)
+    expect(reloaded.getHTML()).toContain('<strong><em>粗斜体</em></strong>')
+  })
 })
 
 describe('find and replace', () => {

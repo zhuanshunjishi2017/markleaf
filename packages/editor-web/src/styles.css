@@ -94,6 +94,38 @@ body {
   box-shadow: 0 0 0 2px var(--theme-dark);
 }
 
+/* Mermaid 图表 */
+.markleaf-mermaid {
+  margin: 1em 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  background: var(--bg-secondary, #fafafa);
+  border: 1px solid var(--border-color, #d8dee4);
+  border-radius: 6px;
+  padding: 12px;
+  user-select: none;
+}
+
+.markleaf-mermaid-view {
+  width: 100%;
+}
+
+.markleaf-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markleaf-mermaid-fallback {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.markleaf-mermaid-error {
+  border-color: var(--theme-dark, #b3541e);
+}
+
 /* 表格 / 图片标题（widget decoration，居中显示） */
 .markleaf-caption {
   text-align: center;

@@ -600,13 +600,36 @@ function findUnsafeEmphasisInChangedLines(update: ViewUpdate): UnsafeEmphasisMat
     })
   }
 
-  for (const lineNumber of Array.from(checkedLines).sort((a, b) => a - b)) {
+  const changedLineNumbers = Array.from(checkedLines).sort((a, b) => a - b)
+  if (changedLineNumbers.length === 0) return null
+
+  const lastChangedLine = changedLineNumbers[changedLineNumbers.length - 1]!
+  const fencedCodeLines = collectFencedCodeLines(update.state, lastChangedLine)
+  for (const lineNumber of changedLineNumbers) {
+    // 围栏代码块（含 ` ```mermaid ` 图表）内的内容是代码而非 Markdown 强调，
+    // 若逐行检查会把 `**` 等符号误判为未闭合/不安全的粗斜体。
+    if (fencedCodeLines.has(lineNumber)) continue
     const line = update.state.doc.line(lineNumber)
     const match = findUnsafeEmphasisInLine(update.state, line.from, line.text)
     if (match) return match
   }
 
   return null
+}
+
+function collectFencedCodeLines(state: EditorState, maxLine: number): Set<number> {
+  const fenced = new Set<number>()
+  let inFence = false
+  for (let lineNumber = 1; lineNumber <= maxLine; lineNumber += 1) {
+    const line = state.doc.line(lineNumber)
+    if (inFence) {
+      fenced.add(lineNumber)
+      if (isFenceLine(line.text)) inFence = false
+    } else if (isFenceLine(line.text)) {
+      inFence = true
+    }
+  }
+  return fenced
 }
 
 function addChangedLines(state: EditorState, lines: Set<number>, from: number, to: number): void {

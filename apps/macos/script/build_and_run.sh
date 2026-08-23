@@ -89,7 +89,7 @@ cat > "$INFO_PLIST" <<PLIST
   <key>CFBundleVersion</key>
   <string>$APP_BUILD</string>
   <key>NSHumanReadableCopyright</key>
-  <string>Copyright © 2026 zhuanshunjishi2017 &amp; Na_Bian</string>
+  <string>Copyright © 2026 zhuanshunjishi2017 &amp; NaBian</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>

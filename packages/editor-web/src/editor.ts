@@ -11,6 +11,7 @@ import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import { MathBlock, MathInline } from './math'
+import { Mermaid } from './mermaid'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -206,6 +207,7 @@ function getBlockTypeLabel(state: Editor['state'], from: number): string {
     if (name === 'taskList') return blockTypeLabels.blockTaskList ?? '☑'
     if (name === 'blockquote') return blockTypeLabels.blockBlockquote ?? '❝'
     if (name === 'codeBlock') return blockTypeLabels.blockCodeBlock ?? '</>'
+    if (name === 'mermaid') return blockTypeLabels.blockMermaid ?? '⧉'
   }
   return blockTypeLabels.blockParagraph ?? '¶'
 }
@@ -299,7 +301,7 @@ const BlockHandle = Extension.create({
               break
             }
           }
-          if (empty && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock')) {
+          if (empty && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock' || parentName === 'mermaid')) {
             // 普通块取自身位置；列表内把句柄挂到最近的列表项（listItem/taskItem）上。
             let widgetPos = $from.start()
             let nodePos = $from.before($from.depth)
@@ -797,6 +799,7 @@ export type EditorCommandState = {
   link: boolean
   blockquote: boolean
   codeBlock: boolean
+  mermaid: boolean
   bulletList: boolean
   orderedList: boolean
   taskList: boolean
@@ -1120,6 +1123,7 @@ export const editorExtensions = [
   BlockHandle,
   MathInline,
   MathBlock,
+  Mermaid,
 ]
 
 export function createEditor(element: HTMLElement, content = '', readOnly = false): Editor {
@@ -1376,10 +1380,52 @@ function countVisualLinesBetweenPositions(editor: Editor, from: number, to: numb
 }
 
 function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
-  return markdown
-    .split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g)
+  // 按行识别围栏，只有行首（可带 0–3 空格）的 ``` / ~~~ 才是真正的代码围栏。
+  // 旧的正则分割会被行内文本里的 ``` 干扰（例如 “` ```mermaid `” 说明文字），
+  // 导致围栏内容被当成内联 Markdown 处理，把 mermaid 源码里的 `[*]` 误判为斜体、
+  // `-->` 误转义成 `--&gt;`，最终 mermaid 渲染语法错误。
+  const lines = markdown.split('\n')
+  const parts: string[] = []
+  let inline: string[] = []
+  let fence: string[] = []
+  let fenceMarker: string | null = null
+
+  const flushInline = (): void => {
+    if (inline.length > 0) {
+      parts.push(inline.join('\n'))
+      inline = []
+    }
+  }
+  const flushFence = (): void => {
+    if (fence.length > 0) {
+      parts.push(fence.join('\n'))
+      fence = []
+    }
+  }
+
+  for (const line of lines) {
+    const open = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (fenceMarker) {
+      fence.push(line)
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line)
+      if (close && (close[1]?.length ?? 0) >= fenceMarker.length) {
+        fenceMarker = null
+        flushFence()
+      }
+    } else if (open) {
+      flushInline()
+      fenceMarker = open[1] ?? null
+      fence.push(line)
+    } else {
+      inline.push(line)
+    }
+  }
+  flushInline()
+  flushFence()
+
+  return parts
     .map(part => isFencedCodeBlock(part) ? part : stabilizeUnsafeEmphasisInInlineMarkdown(part))
-    .join('')
+    .join('\n')
 }
 
 function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
@@ -1397,6 +1443,13 @@ function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
     if (linkDestination) {
       result += linkDestination
       index += linkDestination.length
+      continue
+    }
+
+    const boldItalic = readPotentialBoldItalicEmphasis(markdown, index)
+    if (boldItalic) {
+      result += boldItalic.text
+      index = boldItalic.end
       continue
     }
 
@@ -1455,7 +1508,7 @@ function findClosingLinkDestination(markdown: string, start: number): number {
 }
 
 function isFencedCodeBlock(markdown: string): boolean {
-  return /^(```|~~~)/.test(markdown)
+  return /^ {0,3}(```|~~~)/.test(markdown)
 }
 
 function readCodeSpan(markdown: string, start: number): string | null {
@@ -1475,6 +1528,7 @@ function readPotentialEmphasis(
 ): { text: string; end: number } | null {
   if (!markdown.startsWith(marker, start) || isEscaped(markdown, start)) return null
   if (marker === '*' && markdown.startsWith('**', start)) return null
+  if (marker === '**' && markdown.startsWith('***', start)) return null
   const contentStart = start + marker.length
   const close = findClosingEmphasisMarker(markdown, contentStart, marker)
   if (close < 0) return null
@@ -1488,6 +1542,60 @@ function readPotentialEmphasis(
   }
 
   return { text: `<${tag}>${markdownInlineToHtmlText(content)}</${tag}>`, end }
+}
+
+/// 识别 `<delimiter>***…***</delimiter>` 的粗斜体（既有加粗又有斜体）。
+/// 若不按整体处理，`**** **` 里的 `**` 会先被当作加粗开口，紧邻的 `*`
+/// 会被判定为标点，导致前文 `前文***粗斜体***后文` 被错误地改写成
+/// `前文<strong>*粗斜体</strong>*后文`，破坏往返一致性。
+function readPotentialBoldItalicEmphasis(
+  markdown: string,
+  start: number,
+): { text: string; end: number } | null {
+  if (!markdown.startsWith('***', start) || isEscaped(markdown, start)) return null
+  // 4 个及以上星号交给普通加粗/斜体逻辑处理，避免抢占边界（如 `****a****`）。
+  if (countDelimiterRun(markdown, start, '*') !== 3) return null
+
+  const contentStart = start + 3
+  const close = findClosingBoldItalicMarker(markdown, contentStart)
+  if (close < 0) return null
+
+  const end = close + 3
+  const content = markdown.slice(contentStart, close)
+  if (content.length === 0) return null
+
+  const opening = getDelimiterRun(markdown, start, 3)
+  const closing = getDelimiterRun(markdown, close, 3)
+  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+    return { text: markdown.slice(start, end), end }
+  }
+
+  return { text: `<strong><em>${markdownInlineToHtmlText(content)}</em></strong>`, end }
+}
+
+function findClosingBoldItalicMarker(markdown: string, start: number): number {
+  let index = start
+  while (index < markdown.length) {
+    const codeSpan = readCodeSpan(markdown, index)
+    if (codeSpan) {
+      index += codeSpan.length
+      continue
+    }
+    if (markdown.startsWith('***', index) && !isEscaped(markdown, index)) {
+      const run = countDelimiterRun(markdown, index, '*')
+      if (run === 3) return index
+      index += run
+      continue
+    }
+    index += 1
+  }
+  return -1
+}
+
+function countDelimiterRun(markdown: string, start: number, delimiter: string): number {
+  let count = 0
+  while (markdown[start + count] === delimiter) count += 1
+  return count
 }
 
 function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' | '**'): number {
@@ -1714,6 +1822,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     link: editor.isActive('link'),
     blockquote: editor.isActive('blockquote'),
     codeBlock: editor.isActive('codeBlock'),
+    mermaid: editor.isActive('mermaid'),
     bulletList: editor.isActive('bulletList'),
     orderedList: editor.isActive('orderedList'),
     taskList: editor.isActive('taskList'),
@@ -1763,7 +1872,7 @@ function getDocumentStatistics(editor: Editor, documentText: string) {
     if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
       formulaCount += 1
     }
-    if (node.type.name === 'codeBlock') {
+    if (node.type.name === 'codeBlock' || node.type.name === 'mermaid') {
       codeLineCount += Math.max(1, node.textContent.split('\n').length)
     }
     if (node.type.name === 'paragraph') {
@@ -1808,6 +1917,8 @@ function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
   if (editor.isActive('taskList')) return 'taskList'
   if (editor.isActive('bulletList')) return 'bulletList'
   if (editor.isActive('orderedList')) return 'orderedList'
+  // Mermaid 图表在协议层仍按代码块上报，避免原生侧出现未知枚举值。
+  if (editor.isActive('mermaid')) return 'codeBlock'
   if (editor.isActive('codeBlock')) return 'codeBlock'
   if (editor.isActive('blockquote')) return 'blockquote'
   for (let level = 1; level <= 6; level += 1) {
