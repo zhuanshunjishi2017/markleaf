@@ -407,12 +407,18 @@ function bindEditorEvents(targetEditor: typeof editor): void {
   // 格式刷在「鼠标抬起」时应用，而不是在选区开始变化的瞬间（对齐 Word 的涂抹交互）。
   targetEditor.view.dom.addEventListener('mouseup', () => {
     if (compositionActive) return
-    const wasArmed = formatPainter.isArmed
-    formatPainter.applyOnSelection(targetEditor)
-    if (wasArmed !== formatPainter.isArmed) {
-      updateFormatPainterCursor()
-      sendEditorState()
-    }
+    // WebKit may dispatch mouseup before selectionchange has synchronized the
+    // visible DOM selection into ProseMirror state. Defer one task so complete
+    // backward-line and multi-block drags use the settled target selection.
+    window.setTimeout(() => {
+      if (compositionActive) return
+      const wasArmed = formatPainter.isArmed
+      formatPainter.applyOnSelection(targetEditor)
+      if (wasArmed !== formatPainter.isArmed) {
+        updateFormatPainterCursor()
+        sendEditorState()
+      }
+    }, 0)
   })
 
   targetEditor.view.dom.addEventListener('compositionstart', () => {

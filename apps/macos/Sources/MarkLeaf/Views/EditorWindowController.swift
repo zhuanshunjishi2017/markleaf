@@ -88,6 +88,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.applyViewState()
+            // 窗口首次出现时把焦点交给编辑器，避免状态栏按钮成为 first responder 并显示蓝色 focus ring。
+            if let editorView = self.editorView {
+                self.window?.makeFirstResponder(editorView.webView)
+            }
         }
     }
 
@@ -236,7 +240,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let sidebarWidth = SidebarLayout.clampedWorkspaceWidth(
             SettingsService.shared.settings.workspaceWidth
         )
-        window.setContentSize(NSSize(width: 1100 + sidebarWidth - 240, height: 760))
+        // 侧边栏隐藏时不要用含侧边栏的初始宽度布局，避免启动瞬间先出现“展开一帧”。
+        let initialWidth = session.sidebarVisible
+            ? 1100 + sidebarWidth - 240
+            : 1100
+        window.setContentSize(NSSize(width: initialWidth, height: 760))
         workspaceDividerPosition = sidebarWidth
     }
 
@@ -259,6 +267,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         button.controlSize = .small
         button.font = .systemFont(ofSize: 11)
         button.setButtonType(.momentaryPushIn)
+        // 状态栏按钮不应在窗口首次出现时抢走键盘焦点（否则会出现蓝色 focus ring）。
+        button.refusesFirstResponder = true
     }
 
     private func bindState() {
@@ -507,6 +517,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         if session.sidebarVisible {
             if !isArranged {
+                // 插入前就把动画标记置位：NSSplitView 的 constrainMinCoordinate 在
+                // “可见 + 非动画”时会强制最小宽度 200，把后面的 setPosition(0) 夹成 200，
+                // 导致展开动画开始前先闪出完整宽度。置为动画中即可让整个 reveal
+                // 准备阶段允许 0 宽，动画结束后恢复。
+                isAnimatingSidebar = true
                 splitView.insertArrangedSubview(sidebar, at: 0)
                 // 保持隐藏直到分栏已经完成 0 宽布局，避免插入瞬间以默认宽度闪现。
                 // 启动时侧栏未加入 arrangedSubviews：先完成布局并归一化到 0 宽，
@@ -526,6 +541,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                     animateSidebar(from: 0, to: saved) {}
                 } else {
                     splitView.setPosition(saved, ofDividerAt: 0)
+                    isAnimatingSidebar = false
                 }
             } else {
                 sidebar.isHidden = false
@@ -635,9 +651,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
 extension EditorWindowController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        // 折叠动画期间允许收起到 0；平时保持可用最小宽度
-        if isAnimatingSidebar { return 0 }
-        return max(proposedMinimumPosition, SidebarLayout.minimumWidth)
+        // 折叠动画期间或侧边栏隐藏时允许收起到 0，避免窗口 resize 把隐藏侧边栏撑开；
+        // 否则保持可用最小宽度。
+        let minimum = SidebarPresentationPolicy.minimumDividerCoordinate(
+            isSidebarVisible: session.sidebarVisible,
+            isAnimating: isAnimatingSidebar,
+            minimumWidth: SidebarLayout.minimumWidth
+        )
+        return max(proposedMinimumPosition, minimum)
     }
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {

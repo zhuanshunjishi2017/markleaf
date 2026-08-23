@@ -39,4 +39,29 @@ expect(
     "a sidebar detached at startup should remain detached on state refresh"
 )
 
+expect(
+    SidebarPresentationPolicy.minimumDividerCoordinate(
+        isSidebarVisible: false,
+        isAnimating: false,
+        minimumWidth: 200
+    ) == 0,
+    "a hidden sidebar must be allowed to collapse to zero so resizing the window does not reopen it"
+)
+expect(
+    SidebarPresentationPolicy.minimumDividerCoordinate(
+        isSidebarVisible: true,
+        isAnimating: false,
+        minimumWidth: 200
+    ) == 200,
+    "a visible sidebar should keep its normal minimum width"
+)
+expect(
+    SidebarPresentationPolicy.minimumDividerCoordinate(
+        isSidebarVisible: true,
+        isAnimating: true,
+        minimumWidth: 200
+    ) == 0,
+    "an animating sidebar should be allowed to collapse to zero"
+)
+
 print("PASS")

@@ -24,4 +24,18 @@ enum SidebarPresentationPolicy {
         }
         return .keepHiddenWithoutDividerMutation
     }
+
+    /// 分隔线允许的最小位置（即侧边栏可折叠到的宽度）。
+    /// 侧边栏隐藏或正处于收起/展开动画时需要允许收到 0，
+    /// 否则窗口 resize 会触发 NSSplitView 重排，用最小宽度约束把隐藏的侧边栏重新撑开。
+    static func minimumDividerCoordinate(
+        isSidebarVisible: Bool,
+        isAnimating: Bool,
+        minimumWidth: CGFloat
+    ) -> CGFloat {
+        if isAnimating || !isSidebarVisible {
+            return 0
+        }
+        return minimumWidth
+    }
 }

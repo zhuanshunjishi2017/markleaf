@@ -1,6 +1,6 @@
 # MarkLeaf Changelog
 
-## 1.3.1 — 2026-08-22
+## 1.3.2 — 2026-08-23
 
 - Add encoding settings: Preferences can set the default encoding for new files, while the status bar can change the current document encoding immediately and open files using the most suitable encoding.
 
@@ -28,6 +28,9 @@
 - Fix the first sidebar reveal after a hidden-sidebar launch misplacing the empty-workspace message, hiding the Open Folder button, and using the wrong width.
 
 - Fix opening or saving a document unexpectedly revealing a hidden sidebar.
+- Fix resizing the window from its left edge unexpectedly revealing a hidden sidebar.
+- Fix the first sidebar reveal after launching with the sidebar hidden flashing at full width before restarting its animation, and prevent status-bar buttons from unexpectedly taking keyboard focus.
+- Fix Format Painter remaining armed without applying when selecting a complete line from right to left or selecting multiple consecutive paragraphs.
 
 ## 1.3.0 — 2026-08-20
 

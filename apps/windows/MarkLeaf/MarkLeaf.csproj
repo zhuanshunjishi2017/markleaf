@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\App\App.ico</ApplicationIcon>
     <RootNamespace>MarkLeaf</RootNamespace>
-    <Version>1.3.1</Version>
+    <Version>1.3.2</Version>
     <BuildNumber Condition="'$(BuildNumber)' == ''">42</BuildNumber>
     <InformationalVersion>$(Version) (Build $(BuildNumber))</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

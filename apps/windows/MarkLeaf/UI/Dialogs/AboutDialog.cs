@@ -14,7 +14,7 @@ internal sealed class AboutDialog : Form
     private static string AppVersion =>
         typeof(AboutDialog).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-        ?? AppVersionDisplay.Format("1.3.1", "42");
+        ?? AppVersionDisplay.Format("1.3.2", "42");
 
     private static string BuildDate
     {

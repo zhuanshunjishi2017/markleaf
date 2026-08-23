@@ -16,10 +16,10 @@ for file in "$ROOT_DIR"/Changelog/changelog.{zh-Hans,zh-Hant,en,ja}.md; do
   assert_contains "$file" "1.2.5"
   assert_contains "$file" "1.2.6"
   assert_contains "$file" "1.3.0"
-  assert_contains "$file" "1.3.1"
+  assert_contains "$file" "1.3.2"
 done
 
-# 1.3.1 由简体中文人工定稿后同步到其他语言；只校验当前版本的核心语义，
+# 1.3.2 由简体中文人工定稿后同步到其他语言；只校验当前版本的核心语义，
 # 避免旧版本的人工精简或重写让发布检查产生误报。
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "新建文件默认编码"
 assert_contains "$ROOT_DIR/Changelog/changelog.zh-Hans.md" "汉字优先字型"
