@@ -133,6 +133,31 @@ const ThemedSelection = Extension.create({
   addProseMirrorPlugins() {
     return [new Plugin({
       key: themedSelectionKey,
+      view(view) {
+        const mount = view.dom.parentElement
+        if (!mount) return {}
+
+        const handleBackgroundMouseDown = (event: MouseEvent) => {
+          if (event.button !== 0 || event.target !== mount || view.state.selection.empty) {
+            return
+          }
+
+          // The editor padding belongs to the mount rather than contenteditable.
+          // WebKit therefore leaves both its native selection and ProseMirror's
+          // selection intact unless the background click is forwarded explicitly.
+          event.preventDefault()
+          const collapsed = Selection.near(view.state.doc.resolve(view.state.selection.from), 1)
+          view.dispatch(view.state.tr.setSelection(collapsed))
+          view.focus()
+        }
+
+        mount.addEventListener('mousedown', handleBackgroundMouseDown)
+        return {
+          destroy() {
+            mount.removeEventListener('mousedown', handleBackgroundMouseDown)
+          },
+        }
+      },
       props: {
         decorations(state) {
           const { from, to, empty } = state.selection
