@@ -3,7 +3,6 @@
 ## 1.3.2 — 2026-08-23
 
 - Add Mermaid diagram support: render flowcharts, sequence diagrams, and more from ```` ```mermaid ```` fenced code blocks, inlined as SVG when exporting.
-
 - Fix resizing the window from its left edge unexpectedly revealing a hidden sidebar.
 - Fix the sidebar unexpectedly flashing on its first reveal after launching with the sidebar hidden.
 - Fix Format Painter occasionally failing to apply.
