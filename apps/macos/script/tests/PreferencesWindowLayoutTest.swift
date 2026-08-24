@@ -77,6 +77,59 @@ expect(zhHant != zh,
        "traditional Chinese must not silently reuse simplified Chinese layout metrics")
 expect(PreferencesWindowLayout.metrics(for: "unknown") == zh,
        "unknown languages should fall back to the simplified Chinese layout")
+let simplifiedChineseEditorPrimaryLabelWidth = ceil(("基础行高" as NSString).size(
+    withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
+).width)
+let simplifiedChineseEditorLeadingInset = PreferencesWindowLayout.editorLabeledFieldLeadingInset(
+    for: "zh-Hans",
+    primaryLabelWidth: simplifiedChineseEditorPrimaryLabelWidth,
+    metrics: zh
+)
+let simplifiedChineseEditorAvailableWidth = zh.formContentColumnWidth
+    - 2 * PreferencesWindowLayout.formHorizontalInset
+let simplifiedChineseEditorVisibleMinX = simplifiedChineseEditorLeadingInset
+    + zh.fieldLabelColumnWidth - simplifiedChineseEditorPrimaryLabelWidth
+let simplifiedChineseEditorVisibleMaxX = simplifiedChineseEditorLeadingInset
+    + zh.fieldLabelColumnWidth
+    + PreferencesWindowLayout.fieldRowSpacing
+    + PreferencesWindowLayout.numericFieldWidth
+expect(abs(
+    (simplifiedChineseEditorVisibleMinX + simplifiedChineseEditorVisibleMaxX) / 2
+        - simplifiedChineseEditorAvailableWidth / 2
+) < 0.5,
+       "simplified Chinese Editor should center the visible Base Line Height label and text field as one group")
+expect(PreferencesWindowLayout.editorLabeledFieldLeadingInset(
+    for: "en",
+    primaryLabelWidth: 100,
+    metrics: en
+) == 0,
+       "English Editor labeled fields should retain their existing position")
+expect(PreferencesWindowLayout.editorLabeledFieldLeadingInset(
+    for: "ja",
+    primaryLabelWidth: 100,
+    metrics: ja
+) == 0,
+       "Japanese Editor labeled fields should retain their existing position")
+expect(PreferencesWindowLayout.centeredCheckboxControlWidth(
+    intrinsicWidth: 118,
+    alignedWidth: 220,
+    usesIntrinsicWidth: true
+) == 118,
+       "an explicitly centered checkbox should use its visible intrinsic width")
+expect(PreferencesWindowLayout.centeredCheckboxControlWidth(
+    intrinsicWidth: 118,
+    alignedWidth: 220,
+    usesIntrinsicWidth: false
+) == 220,
+       "other checkboxes should retain the page-wide alignment width")
+expect(PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "en"),
+       "English Appearance should center Follow Operating System by its visible width")
+expect(PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "ja"),
+       "Japanese Appearance should center Follow Operating System by its visible width")
+expect(!PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "zh-Hans"),
+       "simplified Chinese Appearance should retain its existing checkbox alignment")
+expect(!PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "zh-Hant"),
+       "traditional Chinese Appearance should retain its existing checkbox alignment")
 let englishColumn = PreferencesWindowLayout.centeredColumnFrame(
     containerWidth: en.maximumWindowWidth,
     fittingWidth: en.maximumContentColumnWidth + 100,
