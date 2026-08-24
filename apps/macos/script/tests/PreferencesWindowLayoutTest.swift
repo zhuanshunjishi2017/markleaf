@@ -96,6 +96,62 @@ expect(en.fieldLabelColumnWidth >= ceil(englishLongLabel),
 expect(ja.fieldLabelColumnWidth >= ceil(japaneseLongLabel),
        "Japanese label column should fit the longest current field label")
 
+let englishGeneralLabelWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [59],
+    metrics: en,
+    mode: .pageContent
+)
+let englishImagesLabelWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [53, 53],
+    metrics: en,
+    mode: .pageContent
+)
+let japaneseImagesLabelWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [52, 52],
+    metrics: ja,
+    mode: .pageContent
+)
+expect(englishGeneralLabelWidth == 59,
+       "English General should size its centered field group from the actual short label")
+expect(englishImagesLabelWidth == 53,
+       "English Images should size its centered field group from the actual short labels")
+expect(japaneseImagesLabelWidth == 52,
+       "Japanese Images should size its centered field group from the actual short labels")
+let japaneseImagesRowWidth = PreferencesWindowLayout.centeredFieldRowWidth(
+    labelColumnWidth: japaneseImagesLabelWidth,
+    maximumControlWidth: 218,
+    availableWidth: ja.formContentColumnWidth - 56
+)
+expect(japaneseImagesRowWidth == 282,
+       "Japanese Images field rows should contain only the label, spacing, and widest popup before centering")
+
+let englishLongPageLabelWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [74, 188, 123],
+    metrics: en,
+    mode: .languageMaximum
+)
+let japaneseLongPageLabelWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [96, 226, 140],
+    metrics: ja,
+    mode: .languageMaximum
+)
+expect(englishLongPageLabelWidth == en.fieldLabelColumnWidth,
+       "English File, Editor, and Appearance pages must retain their original centered label column")
+expect(japaneseLongPageLabelWidth == ja.fieldLabelColumnWidth,
+       "Japanese File, Editor, and Appearance pages must retain their original centered label column")
+expect(PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [400],
+    metrics: en,
+    mode: .pageContent
+) == en.fieldLabelColumnWidth,
+       "unexpectedly long English labels must stay capped by the language layout width")
+expect(PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+    fittingWidths: [],
+    metrics: zh,
+    mode: .pageContent
+) == 0,
+       "pages without labeled fields should not add an invisible label column")
+
 let enNarrowPage = PreferencesWindowLayout.windowContentSize(
     for: NSSize(width: 320, height: 430), metrics: en
 )
