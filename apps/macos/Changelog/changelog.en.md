@@ -7,6 +7,7 @@
 - Fix the sidebar unexpectedly flashing on its first reveal after launching with the sidebar hidden.
 - Fix Format Painter occasionally failing to apply.
 - Fix bold-italic (`***…***`) being misread when adjacent to CJK text or punctuation, corrupting the document after saving or toggling modes.
+- Fix unordered-list bullets or occasionally the entire document remaining highlighted after selecting text in Visual mode and clicking a blank area to clear the selection.
 
 ## 1.3.1 — 2026-08-22
 
