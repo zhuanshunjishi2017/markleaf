@@ -83,3 +83,7 @@ apps/windows/setup/bin/
 
 # Release output
 release/
+
+# Keep the macOS release tooling versioned; only generated release output is ignored.
+!apps/macos/script/release/
+!apps/macos/script/release/**
