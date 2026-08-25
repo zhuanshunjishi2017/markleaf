@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   bindReducedMotionPreference,
+  createScrollbarAlphaController,
   scrollbarAlphaAnimation,
   type MotionPreferenceSource,
 } from '../src/scrollbar-motion'
@@ -92,6 +93,48 @@ describe('scrollbar alpha animation', () => {
     }
     return state
   }
+
+  it('keeps the current fade running when repeated scroll events request the same target', () => {
+    const s = scheduler()
+    const samples: number[] = []
+    const controller = createScrollbarAlphaController(
+      0,
+      200,
+      (alpha) => samples.push(alpha),
+      s,
+    )
+
+    controller.animateTo(1, false)
+    expect(s.frameCount()).toBe(1)
+
+    controller.animateTo(1, false)
+    expect(s.frameCount()).toBe(1)
+
+    s.advance(100)
+    s.runFrame()
+    const midAnimationSample = samples[samples.length - 1]
+
+    controller.animateTo(1, false)
+    expect(s.frameCount()).toBe(1)
+    expect(samples[samples.length - 1]).toBe(midAnimationSample)
+  })
+
+  it('starts from the current alpha instead of flashing the target before the first frame', () => {
+    const s = scheduler()
+    const samples: number[] = []
+
+    scrollbarAlphaAnimation(
+      0,
+      1,
+      200,
+      false,
+      (alpha) => samples.push(alpha),
+      s,
+    )
+
+    expect(samples).toEqual([0])
+    expect(s.frameCount()).toBe(1)
+  })
 
   it('increases alpha toward the target frame by frame and lands on the target', () => {
     const s = scheduler()
