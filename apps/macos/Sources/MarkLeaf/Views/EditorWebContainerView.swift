@@ -1,6 +1,34 @@
 import AppKit
 import WebKit
 
+/// 只拦截需要缩放的修饰键滚轮。普通滚轮立即交还 WKWebView，让 WebKit 可以
+/// 使用异步滚动路径，而不必等待页面中的阻塞式 JavaScript wheel 监听器。
+final class EditorWebView: WKWebView {
+    weak var editorSession: EditorSession?
+
+    override func scrollWheel(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let route = EditorScrollWheelRoutingPolicy.route(
+            command: modifiers.contains(.command),
+            control: modifiers.contains(.control)
+        )
+
+        guard route != .scroll else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        editorSession?.handleZoomWheel(
+            // AppKit 向上滚动为正；DOM WheelEvent 向上滚动为负，维持原缩放方向。
+            deltaY: -Double(event.scrollingDeltaY),
+            source: route == .commandZoom ? "wheel" : "pinch",
+            clientX: Double(point.x),
+            clientY: Double(point.y)
+        )
+    }
+}
+
 /// 编辑器宿主视图：创建并持有 WKWebView，通过 markleaf:// 自定义 scheme 加载本地编辑器资源
 /// （对应 Windows 端 WebView2 + editor.local 虚拟主机映射）。
 final class EditorWebContainerView: NSView, WKNavigationDelegate {
@@ -26,7 +54,9 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
         configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
         #endif
 
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        let editorWebView = EditorWebView(frame: .zero, configuration: configuration)
+        editorWebView.editorSession = session
+        webView = editorWebView
         super.init(frame: .zero)
 
         webView.translatesAutoresizingMaskIntoConstraints = false

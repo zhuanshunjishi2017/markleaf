@@ -16,6 +16,52 @@ export interface AlphaScheduler {
   cancelFrame(requestId: number): void
 }
 
+export interface ScrollbarAlphaController {
+  animateTo(target: number, reducedMotion: boolean): void
+  reset(value: number): void
+}
+
+export function createScrollbarAlphaController(
+  initialValue: number,
+  durationMs: number,
+  setAlpha: (alpha: number) => void,
+  scheduler: AlphaScheduler,
+): ScrollbarAlphaController {
+  let value = initialValue
+  let target = initialValue
+  let cleanup: (() => void) | null = null
+
+  const applyAlpha = (alpha: number) => {
+    value = alpha
+    setAlpha(alpha)
+  }
+
+  return {
+    animateTo(nextTarget, reducedMotion) {
+      if (nextTarget === target) {
+        return
+      }
+      target = nextTarget
+      cleanup?.()
+      cleanup = scrollbarAlphaAnimation(
+        value,
+        nextTarget,
+        durationMs,
+        reducedMotion,
+        applyAlpha,
+        scheduler,
+      )
+    },
+    reset(nextValue) {
+      cleanup?.()
+      cleanup = null
+      value = nextValue
+      target = nextValue
+      setAlpha(nextValue)
+    },
+  }
+}
+
 /**
  * 驱动滚动条不透明度从 from 平滑过渡到 to。
  *
@@ -31,10 +77,12 @@ export function scrollbarAlphaAnimation(
   setAlpha: (alpha: number) => void,
   scheduler: AlphaScheduler,
 ): () => void {
-  setAlpha(to)
   if (reducedMotion || durationMs <= 0) {
+    setAlpha(to)
     return () => scheduler.cancelFrame(-1)
   }
+
+  setAlpha(from)
 
   const start = scheduler.now()
   let cancelled = false

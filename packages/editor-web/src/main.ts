@@ -44,7 +44,8 @@ import {
   type HostMessage,
 } from './protocol'
 import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
-import { bindReducedMotionPreference, scrollbarAlphaAnimation } from './scrollbar-motion'
+import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
+import { shouldInstallFrontendWheelHandler } from './wheel-routing'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
@@ -168,9 +169,6 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
 let scrollbarHideTimer = 0
-// 滚动条显示/隐藏由 alpha 动画驱动，而不是 CSS transition（WKWebView 不响应）。
-let scrollbarAlpha = 0
-let scrollbarAlphaAnimationCleanup: (() => void) | null = null
 
 type VisualVariablePayload = {
   lineHeight: string
@@ -1445,24 +1443,26 @@ window.addEventListener('unhandledrejection', () => {
   send('error', { message: 'Unhandled frontend promise rejection.' })
 })
 
-// Ctrl+滚轮由宿主接管缩放（WebView2 内置缩放已禁用），这里阻止页面滚动并把
-// 滚动方向上报给宿主，避免浏览器在合成器层面吞掉该输入。
-window.addEventListener(
-  'wheel',
-  (event) => {
-    if (!event.ctrlKey) {
-      return
-    }
-    event.preventDefault()
-    send('zoomWheel', {
-      deltaY: event.deltaY,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      source: 'pinch',
-    })
-  },
-  { passive: false },
-)
+// Windows WebView2 仍从前端接管 Ctrl+滚轮；macOS 在 WKWebView 子类中原生处理
+// 修饰键滚轮，避免全局非 passive 监听器让普通滚动退出 WebKit 异步滚动快路径。
+if (shouldInstallFrontendWheelHandler(window.chrome?.webview?.hostPlatform)) {
+  window.addEventListener(
+    'wheel',
+    (event) => {
+      if (!event.ctrlKey) {
+        return
+      }
+      event.preventDefault()
+      send('zoomWheel', {
+        deltaY: event.deltaY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        source: 'pinch',
+      })
+    },
+    { passive: false },
+  )
+}
 
 // 自动隐藏滚动条：滚动时或鼠标移至右边缘时显示滑块，停止后约 800ms 隐藏。
 // 同时操作 html 和 body，覆盖不同 overflow 归属场景下的滚动条。
@@ -1505,35 +1505,29 @@ const alphaFrameScheduler = {
   cancelFrame: (id: number) => cancelAnimationFrame(id),
 }
 
+// WKWebView 不支持滚动条透明度的 CSS transition。控制器记录当前动画目标，
+// 连续滚动期间重复请求显示时不会取消并重启同一段逐帧动画。
+const scrollbarAlphaController = createScrollbarAlphaController(
+  0,
+  200,
+  (alpha) => document.documentElement.style.setProperty('--ml-scrollbar-alpha', String(alpha)),
+  alphaFrameScheduler,
+)
+
 function reducedMotionActive(): boolean {
   return document.documentElement.classList.contains('markleaf-reduced-motion')
 }
 
 function animateScrollbarAlphaTo(target: number): void {
-  scrollbarAlphaAnimationCleanup?.()
-  const from = scrollbarAlpha
-  scrollbarAlphaAnimationCleanup = scrollbarAlphaAnimation(
-    from,
-    target,
-    200,
-    reducedMotionActive(),
-    (alpha) => {
-      scrollbarAlpha = alpha
-      document.documentElement.style.setProperty('--ml-scrollbar-alpha', String(alpha))
-    },
-    alphaFrameScheduler,
-  )
+  scrollbarAlphaController.animateTo(target, reducedMotionActive())
 }
 
 function applyAutoHideScrollbar(enabled: boolean): void {
   document.documentElement.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
   document.body.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
   if (!enabled) {
-    scrollbarAlphaAnimationCleanup?.()
-    scrollbarAlphaAnimationCleanup = null
-    scrollbarAlpha = 0
     window.clearTimeout(scrollbarHideTimer)
-    document.documentElement.style.setProperty('--ml-scrollbar-alpha', '0')
+    scrollbarAlphaController.reset(0)
   }
 }
 

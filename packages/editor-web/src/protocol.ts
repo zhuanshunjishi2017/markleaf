@@ -51,6 +51,7 @@ declare global {
   interface Window {
     chrome?: {
       webview?: {
+        hostPlatform?: 'macOS'
         postMessage(message: EditorMessage): void
         postMessageWithAdditionalObjects?(message: EditorMessage, additionalObjects: object[]): void
         addEventListener(

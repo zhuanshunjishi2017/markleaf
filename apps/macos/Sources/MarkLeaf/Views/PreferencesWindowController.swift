@@ -21,6 +21,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private static var tabIndexContext = 0
     var onSettingsChanged: (() -> Void)?
     var onClose: (() -> Void)?
+    private let displayLanguage: String
     private let layoutMetrics: PreferencesWindowLayout.Metrics
     private let tabViewController = NSTabViewController()
     private var preferencesKeyMonitor: Any?
@@ -102,6 +103,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         initialSelectedPageIndex: Int = 0
     ) {
         let settings = SettingsService.shared.settings
+        displayLanguage = settings.displayLanguage
         layoutMetrics = PreferencesWindowLayout.metrics(for: settings.displayLanguage)
         cjkLanguageTag = settings.cjkLanguageTag
         let window = NSWindow(
@@ -203,7 +205,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
                       sourceFontSizeField, sourceIndentField] {
             field.bezelStyle = .roundedBezel
             field.alignment = .center
-            field.widthAnchor.constraint(equalToConstant: 70).isActive = true
+            field.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.numericFieldWidth).isActive = true
         }
         imageDirectoryField.bezelStyle = .roundedBezel
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
@@ -430,7 +432,17 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     private func editorPage() -> NSView {
-        formPage(rows: [
+        let primaryLabelWidth = ceil((L10n.t("基础行高") as NSString).size(
+            withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
+        ).width)
+        let labeledFieldLeadingInset = displayLanguage == "zh-Hans"
+            ? PreferencesWindowLayout.editorLabeledFieldLeadingInset(
+                for: displayLanguage,
+                primaryLabelWidth: primaryLabelWidth,
+                metrics: layoutMetrics
+            )
+            : nil
+        return formPage(rows: [
             .header(L10n.t("可视化")),
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
@@ -443,7 +455,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
             .centeredHint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。")),
-        ])
+        ], labeledFieldLeadingInset: labeledFieldLeadingInset,
+           intrinsicallyCenteredCheckboxes: displayLanguage == "zh-Hans" ? [blockHandleCheck] : [])
     }
 
     private func appearancePage() -> NSView {
@@ -467,7 +480,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", autoHideScrollbarsCheck),
             .header(L10n.t("状态栏")),
             .field("", linkButton(L10n.t("自定义状态栏…"), #selector(customizeStatusBar))),
-        ])
+        ], intrinsicallyCenteredCheckboxes: PreferencesWindowLayout
+            .appearanceCentersFollowSystemCheckbox(for: displayLanguage)
+            ? [followSystemCheck]
+            : [])
     }
 
     private func generalPage() -> NSView {
@@ -484,7 +500,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", linkButton(L10n.t("清除日志"), #selector(clearLogs))),
             .header(L10n.t("高级")),
             .field("", linkButton(L10n.t("配置 JSON 文件…"), #selector(revealSettingsJSON))),
-        ])
+        ], labelColumnMode: .pageContent)
     }
 
     private func imagePage() -> NSView {
@@ -498,7 +514,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", useRelativePathsCheck),
             .field("", prefixDotSlashCheck),
             .centeredHint(L10n.t("相对路径仅在文档已保存到本地时生效。")),
-        ])
+        ], labelColumnMode: .pageContent)
     }
 
     // MARK: - Actions
@@ -791,13 +807,24 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         alert.beginSheetModal(for: window!)
     }
 
-    private func formPage(rows: [FormRow], horizontalOffset: CGFloat? = nil) -> NSView {
+    private func formPage(
+        rows: [FormRow],
+        horizontalOffset: CGFloat? = nil,
+        labelColumnMode: PreferencesWindowLayout.FieldLabelColumnMode = .languageMaximum,
+        labeledFieldLeadingInset: CGFloat? = nil,
+        intrinsicallyCenteredCheckboxes: Set<NSButton> = []
+    ) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
         // 标签行保持左对齐，标签列与控件起始位置才能跨行一致。
         stack.alignment = .leading
         stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 28, bottom: 20, right: 28)
+        stack.edgeInsets = NSEdgeInsets(
+            top: 20,
+            left: PreferencesWindowLayout.formHorizontalInset,
+            bottom: 20,
+            right: PreferencesWindowLayout.formHorizontalInset
+        )
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         // 取本页所有勾选框按钮的固有宽度最大值，让各行的勾选框方块垂直对齐。
@@ -807,6 +834,19 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
                   let button = control as? NSButton,
                   checkboxButtons.contains(button) else { return nil }
             return button.fittingSize.width
+        }.max()
+        let fieldLabelFont = NSFont.systemFont(ofSize: 13)
+        let fieldLabelColumnWidth = PreferencesWindowLayout.resolvedFieldLabelColumnWidth(
+            fittingWidths: rows.compactMap { row -> CGFloat? in
+                guard case .field(let title, _) = row, !title.isEmpty else { return nil }
+                return (title as NSString).size(withAttributes: [.font: fieldLabelFont]).width
+            },
+            metrics: layoutMetrics,
+            mode: labelColumnMode
+        )
+        let maximumLabeledControlWidth: CGFloat? = rows.compactMap { row -> CGFloat? in
+            guard case .field(let title, let control) = row, !title.isEmpty else { return nil }
+            return ceil(control.fittingSize.width)
         }.max()
         for row in rows {
             switch row {
@@ -827,14 +867,48 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
                     constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
                 ).isActive = true
             case .field(let title, let control):
-                let row = fieldRow(title, control, checkboxWidth: checkboxWidth)
-                stack.addArrangedSubview(row)
+                let row = fieldRow(
+                    title,
+                    control,
+                    checkboxWidth: checkboxWidth,
+                    labelColumnWidth: fieldLabelColumnWidth,
+                    usesIntrinsicCheckboxWidth: (control as? NSButton).map {
+                        intrinsicallyCenteredCheckboxes.contains($0)
+                    } ?? false
+                )
                 if title.isEmpty {
+                    stack.addArrangedSubview(row)
                     // 无标签行铺满内容列，其内部用等宽占位把控件水平居中。
                     row.widthAnchor.constraint(
                         equalTo: stack.widthAnchor,
                         constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
                     ).isActive = true
+                } else if let labeledFieldLeadingInset {
+                    let wrapper = leadingFieldRow(row, inset: labeledFieldLeadingInset)
+                    stack.addArrangedSubview(wrapper)
+                    wrapper.widthAnchor.constraint(
+                        equalTo: stack.widthAnchor,
+                        constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+                    ).isActive = true
+                } else if labelColumnMode == .pageContent,
+                          let maximumLabeledControlWidth {
+                    // General / Images 的短标签字段作为等宽整体居中；标题和其它页面不参与偏移。
+                    control.widthAnchor.constraint(equalToConstant: maximumLabeledControlWidth).isActive = true
+                    let availableWidth = layoutMetrics.formContentColumnWidth
+                        - stack.edgeInsets.left - stack.edgeInsets.right
+                    row.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.centeredFieldRowWidth(
+                        labelColumnWidth: fieldLabelColumnWidth,
+                        maximumControlWidth: maximumLabeledControlWidth,
+                        availableWidth: availableWidth
+                    )).isActive = true
+                    let wrapper = centeredFieldRow(row)
+                    stack.addArrangedSubview(wrapper)
+                    wrapper.widthAnchor.constraint(
+                        equalTo: stack.widthAnchor,
+                        constant: -(stack.edgeInsets.left + stack.edgeInsets.right)
+                    ).isActive = true
+                } else {
+                    stack.addArrangedSubview(row)
                 }
             }
         }
@@ -858,11 +932,44 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         return container
     }
 
-    private func fieldRow(_ title: String, _ control: NSView, checkboxWidth: CGFloat? = nil) -> NSView {
+    private func centeredFieldRow(_ row: NSView) -> NSView {
+        let wrapper = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.centerXAnchor.constraint(equalTo: wrapper.centerXAnchor),
+            row.leadingAnchor.constraint(greaterThanOrEqualTo: wrapper.leadingAnchor),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: wrapper.trailingAnchor),
+            row.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            row.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+        ])
+        return wrapper
+    }
+
+    private func leadingFieldRow(_ row: NSView, inset: CGFloat) -> NSView {
+        let wrapper = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: inset),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: wrapper.trailingAnchor),
+            row.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            row.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+        ])
+        return wrapper
+    }
+
+    private func fieldRow(
+        _ title: String,
+        _ control: NSView,
+        checkboxWidth: CGFloat? = nil,
+        labelColumnWidth: CGFloat,
+        usesIntrinsicCheckboxWidth: Bool = false
+    ) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 12
+        row.spacing = PreferencesWindowLayout.fieldRowSpacing
 
         if title.isEmpty {
             // 无标签的行（复选框 / 按钮）：在内容列中水平居中。
@@ -876,7 +983,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             if let checkboxWidth,
                let button = control as? NSButton,
                checkboxButtons.contains(button) {
-                button.widthAnchor.constraint(equalToConstant: checkboxWidth).isActive = true
+                button.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.centeredCheckboxControlWidth(
+                    intrinsicWidth: button.fittingSize.width,
+                    alignedWidth: checkboxWidth,
+                    usesIntrinsicWidth: usesIntrinsicCheckboxWidth
+                )).isActive = true
             }
             row.addArrangedSubview(leading)
             row.addArrangedSubview(control)
@@ -890,7 +1001,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         label.alignment = .right
         label.textColor = .labelColor
         label.focusRingType = .none
-        label.widthAnchor.constraint(equalToConstant: layoutMetrics.fieldLabelColumnWidth).isActive = true
+        label.widthAnchor.constraint(equalToConstant: labelColumnWidth).isActive = true
         row.addArrangedSubview(label)
 
         row.addArrangedSubview(control)

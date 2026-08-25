@@ -261,43 +261,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 s.loadDocument(markdown: "wheel gate test", fileURL: nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    guard let webView = s.webView else {
-                        NSApp.terminate(nil)
-                        return
+                    let initialZoom = s.zoomPercent
+                    for _ in 0..<5 {
+                        s.handleZoomWheel(deltaY: -20, source: "pinch", clientX: 100, clientY: 100)
                     }
-                    let fire = """
-                    (function (source, delta, count) {
-                      for (var i = 0; i < count; i++) {
-                        var ev = new WheelEvent('wheel', { deltaY: delta, ctrlKey: source === 'pinch', metaKey: source === 'wheel', bubbles: true, cancelable: true });
-                        window.dispatchEvent(ev);
-                      }
-                    })('pinch', -20, 5);
-                    """
-                    webView.evaluateJavaScript(fire) { _, _ in
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                            let z1 = s.zoomPercent
-                            // 设置关掉 ⌘+滚轮，捏合已发过；再发 ⌘+滚轮应无效
-                            SettingsService.shared.update { $0.ctrlWheelZoom = false }
-                            let fireWheel = "(function(){ var ev = new WheelEvent('wheel', { deltaY: -120, metaKey: true, bubbles: true, cancelable: true }); window.dispatchEvent(ev); })()"
-                            webView.evaluateJavaScript(fireWheel) { _, _ in
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                                    let z2 = s.zoomPercent
-                                    // 打开设置后 ⌘+滚轮应生效
-                                    SettingsService.shared.update { $0.ctrlWheelZoom = true }
-                                    webView.evaluateJavaScript(fireWheel) { _, _ in
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                                            let z3 = s.zoomPercent
-                                            let pinchOK = z1 > 100
-                                            let wheelOffOK = z2 == z1
-                                            let wheelOnOK = z3 > z1
-                                            AppLog.info("--wheel-gate-test: pinch后=\(z1) 关设置后⌘滚轮=\(z2) 开设置后⌘滚轮=\(z3) → 捏合\(pinchOK ? "✓" : "✗") ⌘滚轮关闭\(wheelOffOK ? "✓" : "✗") ⌘滚轮开启\(wheelOnOK ? "✓" : "✗")")
-                                            NSApp.terminate(nil)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let z1 = s.zoomPercent
+                    // 设置关掉 ⌘+滚轮后应无效。
+                    SettingsService.shared.update { $0.ctrlWheelZoom = false }
+                    let wheelOffBaseline = s.zoomPercent
+                    s.handleZoomWheel(deltaY: -120, source: "wheel", clientX: 100, clientY: 100)
+                    let z2 = s.zoomPercent
+                    // 打开设置后 ⌘+滚轮应生效。
+                    SettingsService.shared.update { $0.ctrlWheelZoom = true }
+                    let wheelOnBaseline = s.zoomPercent
+                    s.handleZoomWheel(deltaY: -120, source: "wheel", clientX: 100, clientY: 100)
+                    let z3 = s.zoomPercent
+                    let pinchOK = z1 > initialZoom
+                    let wheelOffOK = z2 == wheelOffBaseline
+                    let wheelOnOK = z3 > wheelOnBaseline
+                    AppLog.info("--wheel-gate-test: pinch后=\(z1) 关设置后⌘滚轮=\(z2) 开设置后⌘滚轮=\(z3) → 捏合\(pinchOK ? "✓" : "✗") ⌘滚轮关闭\(wheelOffOK ? "✓" : "✗") ⌘滚轮开启\(wheelOnOK ? "✓" : "✗")")
+                    NSApp.terminate(nil)
                 }
             }
         }

@@ -382,38 +382,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             pasteFromClipboard()
 
         case "zoomWheel":
-            let deltaY = payload?["deltaY"] as? Double ?? 0
-            let source = payload?["source"] as? String ?? "pinch"
-            if source == "wheel" {
-                // ⌘+滚轮：由「使用 ⌘ + 滚轮进行缩放」设置单独控制；未开启则忽略
-                guard SettingsService.shared.settings.ctrlWheelZoom else { break }
-                if let x = payload?["clientX"] as? Double, let y = payload?["clientY"] as? Double {
-                    pendingZoomAnchorPoint = (x: x, y: y)
-                }
-                // 累积小 delta 到阈值才跳档（一次滚轮格 ≈ 一档）
-                if (wheelZoomAccumulator < 0 && deltaY > 0) || (wheelZoomAccumulator > 0 && deltaY < 0) {
-                    wheelZoomAccumulator = 0
-                }
-                wheelZoomAccumulator += deltaY
-                // 阈值 12：macOS 滚轮事件 delta 较小，一次滚轮格 ≈ 一档
-                if abs(wheelZoomAccumulator) >= 12 {
-                    if wheelZoomAccumulator < 0 {
-                        zoomIn()
-                    } else {
-                        zoomOut()
-                    }
-                    continuousZoom = Double(zoomPercent)
-                    wheelZoomAccumulator = 0
-                }
-            } else {
-                // 触控板捏合（Ctrl+滚轮）：始终可用，连续平滑缩放
-                if let x = payload?["clientX"] as? Double, let y = payload?["clientY"] as? Double {
-                    pendingZoomAnchorPoint = (x: x, y: y)
-                }
-                continuousZoom = min(200, max(50, continuousZoom - deltaY * 0.25))
-                applyZoomPercent(continuousZoom, persist: false, preservePointerAnchor: true)
-                schedulePinchPersist(now: false)
-            }
+            handleZoomWheel(
+                deltaY: payload?["deltaY"] as? Double ?? 0,
+                source: payload?["source"] as? String ?? "pinch",
+                clientX: payload?["clientX"] as? Double,
+                clientY: payload?["clientY"] as? Double
+            )
 
         case "unsafeEmphasisRequested":
             guard let requestID = message["requestId"] as? String, !requestID.isEmpty else { break }
@@ -1042,6 +1016,47 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     // MARK: - 缩放（对应 Windows 的 WebView2.ZoomFactor）
+
+    /// 处理宿主层传入的修饰键滚轮。macOS 直接由 WKWebView 子类调用，Windows
+    /// 仍可通过前端 `zoomWheel` 消息复用同一套缩放与设置门控逻辑。
+    func handleZoomWheel(
+        deltaY: Double,
+        source: String,
+        clientX: Double? = nil,
+        clientY: Double? = nil
+    ) {
+        if source == "wheel" {
+            // ⌘+滚轮：由「使用 ⌘ + 滚轮进行缩放」设置单独控制；未开启则忽略。
+            guard SettingsService.shared.settings.ctrlWheelZoom else { return }
+            if let clientX, let clientY {
+                pendingZoomAnchorPoint = (x: clientX, y: clientY)
+            }
+            // 累积小 delta 到阈值才跳档（一次滚轮格 ≈ 一档）。
+            if (wheelZoomAccumulator < 0 && deltaY > 0)
+                || (wheelZoomAccumulator > 0 && deltaY < 0) {
+                wheelZoomAccumulator = 0
+            }
+            wheelZoomAccumulator += deltaY
+            if abs(wheelZoomAccumulator) >= 12 {
+                if wheelZoomAccumulator < 0 {
+                    zoomIn()
+                } else {
+                    zoomOut()
+                }
+                continuousZoom = Double(zoomPercent)
+                wheelZoomAccumulator = 0
+            }
+            return
+        }
+
+        // 触控板捏合（Ctrl+滚轮）：始终可用，连续平滑缩放。
+        if let clientX, let clientY {
+            pendingZoomAnchorPoint = (x: clientX, y: clientY)
+        }
+        continuousZoom = min(200, max(50, continuousZoom - deltaY * 0.25))
+        applyZoomPercent(continuousZoom, persist: false, preservePointerAnchor: true)
+        schedulePinchPersist(now: false)
+    }
 
     func zoomIn() { nextZoom(delta: 1) }
     func zoomOut() { nextZoom(delta: -1) }

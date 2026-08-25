@@ -3,6 +3,11 @@ import AppKit
 /// 偏好设置窗口的尺寸与内容列布局策略。
 /// 将窗口的紧凑边界与页面内容的居中规则集中管理，便于回归测试。
 enum PreferencesWindowLayout {
+    enum FieldLabelColumnMode {
+        case languageMaximum
+        case pageContent
+    }
+
     struct Metrics: Equatable {
         let minimumWindowWidth: CGFloat
         let maximumWindowWidth: CGFloat
@@ -101,6 +106,58 @@ enum PreferencesWindowLayout {
     static let fieldLabelColumnWidth = simplifiedChinese.fieldLabelColumnWidth
     static let bottomBarTopInset = simplifiedChinese.bottomBarTopInset
     static let bottomBarBottomInset = simplifiedChinese.bottomBarBottomInset
+
+    static let formHorizontalInset: CGFloat = 28
+    static let fieldRowSpacing: CGFloat = 12
+    static let numericFieldWidth: CGFloat = 70
+
+    static func editorLabeledFieldLeadingInset(
+        for language: String,
+        primaryLabelWidth: CGFloat,
+        metrics: Metrics
+    ) -> CGFloat {
+        guard language == "zh-Hans" else { return 0 }
+        let availableWidth = metrics.formContentColumnWidth - 2 * formHorizontalInset
+        let visibleRowWidth = primaryLabelWidth + fieldRowSpacing + numericFieldWidth
+        let centeredVisibleLeading = (availableWidth - visibleRowWidth) / 2
+        let hiddenLabelLeadingSpace = max(0, metrics.fieldLabelColumnWidth - primaryLabelWidth)
+        return max(0, centeredVisibleLeading - hiddenLabelLeadingSpace)
+    }
+
+    static func centeredCheckboxControlWidth(
+        intrinsicWidth: CGFloat,
+        alignedWidth: CGFloat,
+        usesIntrinsicWidth: Bool
+    ) -> CGFloat {
+        usesIntrinsicWidth ? intrinsicWidth : alignedWidth
+    }
+
+    static func appearanceCentersFollowSystemCheckbox(for language: String) -> Bool {
+        language == "en" || language == "ja"
+    }
+
+    static func resolvedFieldLabelColumnWidth(
+        fittingWidths: [CGFloat],
+        metrics: Metrics,
+        mode: FieldLabelColumnMode
+    ) -> CGFloat {
+        guard mode == .pageContent else {
+            return metrics.fieldLabelColumnWidth
+        }
+        let widestLabel = ceil(fittingWidths.max() ?? 0)
+        return min(metrics.fieldLabelColumnWidth, widestLabel)
+    }
+
+    static func centeredFieldRowWidth(
+        labelColumnWidth: CGFloat,
+        maximumControlWidth: CGFloat,
+        availableWidth: CGFloat
+    ) -> CGFloat {
+        min(
+            max(0, availableWidth),
+            max(0, labelColumnWidth) + fieldRowSpacing + max(0, maximumControlWidth)
+        )
+    }
 
     static func windowContentSize(for fittingSize: NSSize) -> NSSize {
         windowContentSize(for: fittingSize, metrics: simplifiedChinese)

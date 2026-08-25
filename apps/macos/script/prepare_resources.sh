@@ -37,6 +37,7 @@ cat > "$DIST_DIR/native-shim.js" <<'SHIM_EOF'
   }
   var listeners = [];
   var webview = {
+    hostPlatform: 'macOS',
     postMessage: function (message) {
       window.webkit.messageHandlers.markleaf.postMessage(message);
     },
@@ -81,29 +82,6 @@ cat > "$DIST_DIR/native-shim.js" <<'SHIM_EOF'
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
   }
   setInterval(rewriteImages, 800);
-  setInterval(rewriteImages, 800);
-
-  // ---- macOS：缩放滚轮事件统一入口 ----
-  // ⌘+滚轮 → source 'wheel'（离散跳档）；Ctrl+滚轮/触控板捏合 → source 'pinch'（连续平滑）。
-  // stopImmediatePropagation 阻止前端自带 ctrlKey 处理器重复上报。
-  window.addEventListener('wheel', function (event) {
-    if (event.metaKey || event.ctrlKey) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      webview.postMessage({
-        protocolVersion: 1,
-        type: 'zoomWheel',
-        documentId: 'shim',
-        revision: 0,
-        payload: {
-          deltaY: event.deltaY,
-          source: event.metaKey ? 'wheel' : 'pinch',
-          clientX: event.clientX,
-          clientY: event.clientY
-        }
-      });
-    }
-  }, { passive: false });
 })();
 SHIM_EOF
 
