@@ -214,6 +214,74 @@ describe('IME composition safety', () => {
     expect(output).toContain('한국어 문장.')
     expect(output).toContain('😀🌿')
   })
+
+  it('does not duplicate a full-width symbol inserted through text input', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '中文')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    const handled = editor.view.someProp('handleTextInput', handler => handler(editor.view, editor.state.selection.from, editor.state.selection.to, '，', () => editor.state.tr.insertText('，')))
+    if (!handled) {
+      editor.view.dispatch(editor.state.tr.insertText('，', editor.state.selection.from, editor.state.selection.to))
+    }
+
+    expect(getMarkdown(editor)).toBe('中文，')
+  })
+})
+
+describe('visual Markdown shortcuts', () => {
+  it('applies bold and italic when closed triple asterisks are typed', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '前')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.commands.insertContent('***粗斜体**')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      '*',
+      () => editor.state.tr.insertText('*'),
+    ))
+
+    expect(handled).toBe(true)
+    expect(editor.getHTML()).toMatch(/<(strong|em)><(em|strong)>粗斜体<\/\2><\/\1>/)
+    expect(getMarkdown(editor)).toContain('前***粗斜体***')
+    expect(editor.isActive('bold')).toBe(false)
+    expect(editor.isActive('italic')).toBe(false)
+  })
+
+  it('applies bold when closed asterisks are typed next to Chinese text', async () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '前')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.commands.insertContent('**加粗*')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(editor.view, editor.state.selection.from, editor.state.selection.to, '*', () => editor.state.tr.insertText('*')))
+
+    expect(handled).toBe(true)
+    expect(editor.getHTML()).toContain('<strong>加粗</strong>')
+    expect(getMarkdown(editor)).toContain('前**加粗**')
+  })
+
+  it('turns a leading greater-than marker into a blockquote', async () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+
+    editor.commands.insertContent('>')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(editor.view, editor.state.selection.from, editor.state.selection.to, ' ', () => editor.state.tr.insertText(' ')))
+
+    expect(handled).toBe(true)
+    expect(editor.isActive('blockquote')).toBe(true)
+  })
 })
 
 describe('editing history', () => {
@@ -648,6 +716,56 @@ describe('paragraph menu commands', () => {
 
     expect(getMarkdown(editor)).toContain('markleaf:widthPct=49;ratio=0.5625;rotation=0')
     expect(editor.can().undo()).toBe(true)
+  })
+
+  it('does not let responsive image layout overwrite an active resize preview', () => {
+    const originalResizeObserver = globalThis.ResizeObserver
+    const callbacks: ResizeObserverCallback[] = []
+    class ControlledResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        callbacks.push(callback)
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    globalThis.ResizeObserver = ControlledResizeObserver as unknown as typeof ResizeObserver
+
+    try {
+      const element = document.createElement('div')
+      document.body.append(element)
+      const editor = createEditor(
+        element,
+        '![diagram](image.png "markleaf:widthPct=39;ratio=0.5625;rotation=0")',
+      )
+      editors.push(editor)
+      editor.commands.setNodeSelection(0)
+
+      const frame = element.querySelector<HTMLElement>('.markleaf-image-frame')!
+      Object.defineProperty(frame, 'offsetWidth', {
+        configurable: true,
+        get: () => Number.parseFloat(frame.style.width) || 320,
+      })
+      Object.defineProperty(frame, 'offsetHeight', {
+        configurable: true,
+        get: () => Number.parseFloat(frame.style.height) || 180,
+      })
+      const handle = element.querySelector<HTMLElement>('[data-resize-handle="bottom-right"]')!
+      handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 0, clientY: 0 }))
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 80, clientY: 40 }))
+      const previewWidth = frame.style.width
+      const previewHeight = frame.style.height
+
+      for (const callback of callbacks) {
+        callback([], {} as ResizeObserver)
+      }
+
+      expect(frame.style.width).toBe(previewWidth)
+      expect(frame.style.height).toBe(previewHeight)
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 80, clientY: 40 }))
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
   })
 
   it('does not rotate when the selection is not an image', () => {

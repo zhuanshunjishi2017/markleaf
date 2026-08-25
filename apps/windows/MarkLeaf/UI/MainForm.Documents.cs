@@ -2,6 +2,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
+using MarkLeaf.Native;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
@@ -44,7 +45,10 @@ internal sealed partial class MainForm
         }
 
         StopWatchingDocument();
-        _document = _documentFileService.CreateNew(DefaultNewLine, kind);
+        _document = _documentFileService.CreateNew(
+            DefaultNewLine,
+            kind,
+            DocumentEncodingPolicy.FromId(_settings.File.DefaultEncoding));
         _workspaceTree.SelectedPath = null;
         _workspaceDocumentList.SelectedPath = null;
         LoadDocumentIntoEditor(_document);
@@ -501,6 +505,170 @@ internal sealed partial class MainForm
         UpdateDocumentChrome();
         ApplyBlockHandleVisibility();
         _recoveryTimer.Start();
+    }
+
+    private void ShowEncodingMenu()
+    {
+        if (_document is null || _document.IsReadOnly)
+        {
+            return;
+        }
+
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == 0)
+        {
+            return;
+        }
+
+        var current = DocumentEncodingPolicy.FromId(_document.EncodingPolicyId);
+        try
+        {
+            for (var index = 0; index < DocumentEncodingPolicy.All.Count; index++)
+            {
+                var encoding = DocumentEncodingPolicy.All[index];
+                var isCurrent = string.Equals(current.Id, encoding.Id, StringComparison.Ordinal);
+                var flags = NativeMethods.MfString
+                    | (isCurrent ? NativeMethods.MfChecked | NativeMethods.MfGrayed : NativeMethods.MfUnchecked);
+                NativeMethods.AppendMenu(menu, flags, (nuint)(index + 1), encoding.DisplayName);
+            }
+
+            var owner = _encodingLabel.GetCurrentParent();
+            if (owner is null)
+            {
+                return;
+            }
+
+            var bounds = _encodingLabel.Bounds;
+            var screenPoint = owner.PointToScreen(new Point(bounds.Left, bounds.Bottom));
+            NativeMethods.SetForegroundWindow(Handle);
+            var selected = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmLeftButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                Handle,
+                0);
+            NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
+            if (selected is > 0 && selected <= (uint)DocumentEncodingPolicy.All.Count)
+            {
+                _ = ChangeDocumentEncodingAsync(DocumentEncodingPolicy.All[(int)selected - 1]);
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    private async Task ChangeDocumentEncodingAsync(DocumentEncodingPolicy target)
+    {
+        if (_document is null || _document.IsReadOnly || _documentOperationInProgress)
+        {
+            return;
+        }
+
+        var current = DocumentEncodingPolicy.FromId(_document.EncodingPolicyId);
+        if (string.Equals(current.Id, target.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using var dialog = new EncodingChangeDialog(current.DisplayName, target.DisplayName);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        switch (dialog.Choice)
+        {
+            case EncodingChangeChoice.DirectRead:
+                await DirectReadDocumentEncodingAsync(target);
+                break;
+            case EncodingChangeChoice.ConvertEncoding:
+                await ConvertDocumentEncodingAsync(target);
+                break;
+        }
+    }
+
+    private async Task DirectReadDocumentEncodingAsync(DocumentEncodingPolicy target)
+    {
+        if (_document is null || _documentOperationInProgress)
+        {
+            return;
+        }
+
+        if (_document.FilePath is not null)
+        {
+            _documentOperationInProgress = true;
+            try
+            {
+                StopWatchingDocument();
+                var reopened = await _documentFileService.OpenAsync(_document.FilePath, target);
+                _document = reopened;
+                LoadDocumentIntoEditor(reopened);
+                StartWatchingDocument(reopened.FilePath!);
+            }
+            finally
+            {
+                _documentOperationInProgress = false;
+            }
+        }
+        else
+        {
+            _document.Encoding = target.CreateEncoding();
+            _document.EncodingPolicyId = target.Id;
+            _document.HasBom = target.HasBom;
+            _document.IsDirty = true;
+            RefreshPersistentStatusBar();
+            UpdateDocumentChrome();
+            SetStatus(Loc.Get("status.documentModified"));
+            return;
+        }
+
+        _document.Encoding = target.CreateEncoding();
+        _document.EncodingPolicyId = target.Id;
+        _document.HasBom = target.HasBom;
+        if (await SaveDocumentAsync(saveAs: false, forceOverwrite: true))
+        {
+            SetStatus(Loc.Get("status.documentSaved"));
+        }
+    }
+
+    private async Task ConvertDocumentEncodingAsync(DocumentEncodingPolicy target)
+    {
+        if (_document is null || _documentOperationInProgress)
+        {
+            return;
+        }
+
+        if (_document.FilePath is null)
+        {
+            _document.Encoding = target.CreateEncoding();
+            _document.EncodingPolicyId = target.Id;
+            _document.HasBom = target.HasBom;
+            _document.IsDirty = true;
+            RefreshPersistentStatusBar();
+            UpdateDocumentChrome();
+            SetStatus(Loc.Get("status.documentModified"));
+            return;
+        }
+
+        var oldPath = _document.FilePath;
+        var currentMarkdown = _document.Markdown;
+        _document.Encoding = target.CreateEncoding();
+        _document.EncodingPolicyId = target.Id;
+        _document.HasBom = target.HasBom;
+        _document.IsDirty = true;
+        RefreshPersistentStatusBar();
+        UpdateDocumentChrome();
+        if (await SaveDocumentAsync(saveAs: false, forceOverwrite: true))
+        {
+            SetStatus(Loc.Get("status.documentSaved"));
+            return;
+        }
+
+        _document.FilePath = oldPath;
+        _document.Markdown = currentMarkdown;
     }
 
     private static string GetDocumentType(string? filePath)

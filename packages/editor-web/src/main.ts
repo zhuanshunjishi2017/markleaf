@@ -8,6 +8,7 @@ import {
   findFootnoteDefinitionBody,
   getEditorCommandState,
   getEditorStatus,
+  getBlockHandleInfo,
   getMarkdown,
   captureVisualSelection,
   collapseVisualSelection,
@@ -93,6 +94,57 @@ let readOnly = false
 let editor = createEditor(editorMount)
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
+
+const blockHandleButton = document.createElement('button')
+blockHandleButton.type = 'button'
+blockHandleButton.className = 'ml-block-handle ml-block-handle-overlay'
+blockHandleButton.setAttribute('aria-label', '段落操作')
+blockHandleButton.setAttribute('tabindex', '-1')
+blockHandleButton.hidden = true
+let blockHandleOverlayPosition: number | null = null
+
+function ensureBlockHandleOverlay(): void {
+  if (blockHandleButton.parentElement !== editorMount) {
+    editorMount.appendChild(blockHandleButton)
+  }
+}
+
+function updateBlockHandleOverlay(): void {
+  ensureBlockHandleOverlay()
+  if (sourceMode || readOnly) {
+    blockHandleButton.hidden = true
+    blockHandleOverlayPosition = null
+    return
+  }
+  const info = getBlockHandleInfo(editor)
+  if (!info) {
+    blockHandleButton.hidden = true
+    blockHandleOverlayPosition = null
+    return
+  }
+  blockHandleOverlayPosition = info.position
+  blockHandleButton.hidden = false
+  blockHandleButton.textContent = info.label
+  blockHandleButton.classList.toggle('ml-block-handle-active', info.active)
+  const mountRect = editorMount.getBoundingClientRect()
+  const documentRect = editor.view.dom.getBoundingClientRect()
+  blockHandleButton.style.left = `${documentRect.left - mountRect.left - 36}px`
+  blockHandleButton.style.top = `${info.viewportTop - mountRect.top}px`
+}
+
+blockHandleButton.addEventListener('mousedown', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  if (blockHandleOverlayPosition === null) return
+  setBlockHighlight(editor, blockHandleOverlayPosition)
+  updateBlockHandleOverlay()
+  const rect = blockHandleButton.getBoundingClientRect()
+  send('blockMenuRequested', {
+    clientX: rect.left,
+    clientY: rect.bottom + 10,
+    position: blockHandleOverlayPosition,
+  })
+})
 
 /// 只读文档（如更新内容）中仍然允许的宿主命令白名单。
 const READ_ONLY_ALLOWED_COMMANDS = new Set([
@@ -391,6 +443,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     revision += 1
     send('dirtyChanged', { dirty: true })
     scheduleOutline()
+    updateBlockHandleOverlay()
     sendEditorState()
   })
 
@@ -400,6 +453,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
       })
+      updateBlockHandleOverlay()
       sendEditorState()
       sendOutlineSelectionFromCursor()
     }
@@ -433,6 +487,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
       revision += 1
       send('dirtyChanged', { dirty: true })
       scheduleOutline()
+      updateBlockHandleOverlay()
       sendEditorState()
     }
     compositionChanged = false
@@ -440,6 +495,12 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 }
 
 bindEditorEvents(editor)
+window.addEventListener('scroll', updateBlockHandleOverlay, true)
+window.addEventListener('resize', updateBlockHandleOverlay)
+editorMount.addEventListener('mousemove', updateBlockHandleOverlay)
+editorMount.addEventListener('mouseenter', updateBlockHandleOverlay)
+editorMount.addEventListener('focusin', updateBlockHandleOverlay)
+editorMount.addEventListener('click', () => window.setTimeout(updateBlockHandleOverlay, 0))
 
 function markSourceChanged(documentChanged: boolean): void {
   if (documentChanged) {
@@ -493,6 +554,7 @@ function setSourceMode(enabled: boolean): void {
     suppressUpdate = true
     editor = replaceEditorDocument(editor, editorMount, markdown)
     bindEditorEvents(editor)
+    ensureBlockHandleOverlay()
     suppressUpdate = false
     sourceMount.hidden = true
     editorMount.hidden = false
@@ -501,6 +563,7 @@ function setSourceMode(enabled: boolean): void {
     scheduleOutline()
     sendOutlineSelectionFromCursor()
   }
+  updateBlockHandleOverlay()
   sendEditorState()
 }
 
@@ -605,7 +668,7 @@ window.addEventListener('scroll', () => {
   })
 }, { passive: true })
 
-editorMount.addEventListener('click', (event) => {
+editorMount.addEventListener('mousedown', (event) => {
   if (!(event.target instanceof Element)) {
     return
   }
@@ -617,8 +680,21 @@ editorMount.addEventListener('click', (event) => {
   const footnoteLabel = footnoteRef?.getAttribute('data-footnote-ref')
   if (footnoteLabel) {
     event.preventDefault()
+    event.stopImmediatePropagation()
     if (!scrollToFootnoteDefinition(editor, footnoteLabel)) {
       send('footnoteDefinitionMissing', { label: footnoteLabel })
+    }
+    sendEditorState()
+    return
+  }
+
+  const footnoteDef = event.target.closest<HTMLElement>('p.markleaf-footnote-def')
+  if (footnoteDef) {
+    const label = footnoteDef.getAttribute('data-footnote-label') ?? ''
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if (!executeEditorCommand(editor, 'goToFootnoteReference', label)) {
+      send('footnoteReferenceMissing', { label })
     }
     sendEditorState()
     return
@@ -631,8 +707,9 @@ editorMount.addEventListener('click', (event) => {
   }
 
   event.preventDefault()
+  event.stopImmediatePropagation()
   send('openLink', { url })
-})
+}, true)
 
 // ---- 链接 / 注释角标悬停提示（手形光标 + 提示文本） ----
 const editorTooltip = document.createElement('div')
@@ -743,6 +820,18 @@ function findMathNodeAt(pos: number): number | null {
   return null
 }
 
+function findMermaidNodeAt(pos: number): number | null {
+  const node = editor.state.doc.nodeAt(pos)
+  if (node?.type.name === 'mermaid') {
+    return pos
+  }
+  const before = pos > 0 ? editor.state.doc.nodeAt(pos - 1) : null
+  if (before?.type.name === 'mermaid') {
+    return pos - 1
+  }
+  return null
+}
+
 const formatMenu = document.createElement('div')
 formatMenu.id = 'format-menu'
 formatMenu.className = 'format-menu'
@@ -835,6 +924,10 @@ function isDarkTheme(): boolean {
   return luminance < 0.5
 }
 
+function syncThemeModeClass(): void {
+  document.body.classList.toggle('markleaf-theme-dark', isDarkTheme())
+}
+
 let formatMenuHideTimer = 0
 
 function showFormatMenu(
@@ -892,7 +985,7 @@ function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): 
   if (sourceMode) {
     return false
   }
-  if (state.imageSelected || state.mathInline || state.mathBlock) {
+  if (state.imageSelected || state.mathInline || state.mathBlock || state.mermaidSelected) {
     return false
   }
   if (state.footnoteDefinitionLabel) {
@@ -908,8 +1001,11 @@ editorMount.addEventListener('contextmenu', (event) => {
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
   if (resolved) {
     const mathPos = findMathNodeAt(resolved.pos)
+    const mermaidPos = mathPos === null ? findMermaidNodeAt(resolved.pos) : null
     if (mathPos !== null) {
       editor.commands.setNodeSelection(mathPos)
+    } else if (mermaidPos !== null) {
+      editor.commands.setNodeSelection(mermaidPos)
     } else {
       const selection = editor.state.selection
       if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
@@ -949,13 +1045,23 @@ editorMount.addEventListener('dblclick', (event) => {
     return
   }
   const mathPos = findMathNodeAt(resolved.pos)
-  if (mathPos === null) {
+  if (mathPos !== null) {
+    event.preventDefault()
+    editor.commands.setNodeSelection(mathPos)
+    sendEditorState()
+    send('mathEditRequested', {})
     return
   }
+
+  const mermaidPos = findMermaidNodeAt(resolved.pos)
+  if (mermaidPos === null) {
+    return
+  }
+
   event.preventDefault()
-  editor.commands.setNodeSelection(mathPos)
+  editor.commands.setNodeSelection(mermaidPos)
+  executeEditorCommand(editor, 'editMermaid')
   sendEditorState()
-  send('mathEditRequested', {})
 })
 sourceMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
@@ -967,21 +1073,6 @@ sourceMount.addEventListener('contextmenu', (event) => {
     canStartFormatPainter: false,
     formatPainterArmed: false,
     readOnly,
-  })
-})
-
-editorMount.addEventListener('markleaf-block-handle', (event) => {
-  const detail = (event as CustomEvent<{ clientX: number; clientY: number; position: number }>).detail
-  if (!detail || typeof detail.clientX !== 'number' || typeof detail.clientY !== 'number') {
-    return
-  }
-  if (!sourceMode) {
-    setBlockHighlight(editor, typeof detail.position === 'number' ? detail.position : null)
-  }
-  send('blockMenuRequested', {
-    clientX: detail.clientX,
-    clientY: detail.clientY,
-    position: detail.position,
   })
 })
 
@@ -1090,10 +1181,12 @@ async function handleMessage(value: unknown): Promise<void> {
         editorMount.hidden = false
         editor = replaceEditorDocument(editor, editorMount, payload.markdown, readOnly)
         bindEditorEvents(editor)
+        ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
       }
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
+      updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
       sendOutlineSelectionFromCursor()
@@ -1121,9 +1214,11 @@ async function handleMessage(value: unknown): Promise<void> {
         editorMount.hidden = false
         editor = replaceEditorDocument(editor, editorMount, markdown, readOnly)
         bindEditorEvents(editor)
+        ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
       }
       suppressUpdate = false
+      updateBlockHandleOverlay()
       sendEditorState()
       sendOutline()
       sendOutlineSelectionFromCursor()
@@ -1164,6 +1259,7 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'setStyle') {
           applyMarkleafStyle(typeof payload.text === 'string' ? payload.text : 'serif')
+          syncThemeModeClass()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -1231,6 +1327,7 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'setBlockHandleVisible') {
           setBlockHandleVisible(editor, payload.text === '1')
+          updateBlockHandleOverlay()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -1316,7 +1413,9 @@ async function handleMessage(value: unknown): Promise<void> {
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
-              : payload.command === 'selectAll'
+            : payload.command === 'insertMermaid'
+              ? sourceEditor?.insertMermaidCodeBlock() ?? false
+            : payload.command === 'selectAll'
                 ? sourceEditor?.selectAll() ?? false
                 : false
           : executeEditorCommand(
@@ -1730,6 +1829,12 @@ body { margin: 0; background: var(--bg-primary); }
   table-layout: auto;
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid,
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid-view,
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid-export {
+  display: flex;
+  justify-content: center;
 }
 
 .export-header, .export-footer {

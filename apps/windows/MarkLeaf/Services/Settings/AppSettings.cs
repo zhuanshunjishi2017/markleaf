@@ -184,6 +184,8 @@ public sealed class AppearanceSettings
 
     public bool AutoHideScrollbars { get; set; }
 
+    public bool ShowCodeHighlight { get; set; }
+
     public bool FollowSystemColorMode { get; set; }
 
     public string DefaultLightThemeId { get; set; } = "white-only";
@@ -268,6 +270,8 @@ public sealed class FileSettings
     public bool RecordRecentFiles { get; set; } = true;
 
     public bool RecordRecentFolders { get; set; } = true;
+
+    public string DefaultEncoding { get; set; } = "utf-8";
 
     public NewLineStyle NewLineStyle { get; set; } = NewLineStyle.Crlf;
 }

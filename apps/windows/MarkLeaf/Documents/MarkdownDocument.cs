@@ -15,6 +15,8 @@ public sealed class MarkdownDocument
 
     public Encoding Encoding { get; set; } = new UTF8Encoding(false, true);
 
+    public string EncodingPolicyId { get; set; } = DocumentEncodingPolicy.Utf8.Id;
+
     public bool HasBom { get; set; }
 
     public string NewLine { get; set; } = Environment.NewLine;

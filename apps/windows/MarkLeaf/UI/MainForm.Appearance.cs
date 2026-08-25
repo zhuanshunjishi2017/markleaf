@@ -31,6 +31,19 @@ internal sealed partial class MainForm
         ApplyColorTheme(themeId, persistManualChoice: true);
     }
 
+    private void ToggleCodeHighlight()
+    {
+        _settings.Appearance.ShowCodeHighlight = !_settings.Appearance.ShowCodeHighlight;
+        ApplyCodeHighlightVisibility();
+        _menuService.RefreshStates();
+        SaveSettings();
+    }
+
+    private void ApplyCodeHighlightVisibility()
+    {
+        _editorHost?.ExecuteCommand("setCodeHighlightVisible", _settings.Appearance.ShowCodeHighlight ? "1" : "0");
+    }
+
     private void ApplyEffectiveColorTheme()
     {
         var themeId = _settings.Appearance.FollowSystemColorMode
@@ -89,22 +102,31 @@ internal sealed partial class MainForm
         var colors = ColorThemeService.GetActiveColors();
         if (colors.Count == 0) return;
 
-        if (colors.TryGetValue("bg-primary", out var bg))
+        var primaryBg = colors.TryGetValue("bg-primary", out var primary) ? primary : Color.White;
+        var sidebarBg = colors.TryGetValue("bg-secondary", out var secondary) ? secondary : primaryBg;
+        var sidebarColors = new Dictionary<string, Color>(colors, StringComparer.Ordinal)
         {
-            _sidebarPanel.BackColor = bg;
-            _sidebarLayout.BackColor = bg;
-            _sidebarContentHost.BackColor = bg;
-            _workspacePanelHost.BackColor = bg;
-            _outlinePanelHost.BackColor = bg;
-            _sidebarSplit.Panel2.BackColor = bg;
-            _editorPanel.BackColor = bg;
-            _workspaceContentPanel.BackColor = bg;
-            _editorLoadingView.BackColor = bg;
-            _sidebarSearchBar.BackColor = bg;
-            if (_searchResultsHost is not null)
-            {
-                _searchResultsHost.BackColor = bg;
-            }
+            ["bg-primary"] = sidebarBg,
+        };
+
+        _sidebarPanel.BackColor = sidebarBg;
+        _sidebarLayout.BackColor = sidebarBg;
+        _sidebarContentHost.BackColor = sidebarBg;
+        _workspacePanelHost.BackColor = sidebarBg;
+        _outlinePanelHost.BackColor = sidebarBg;
+        _sidebarSplit.Panel1.BackColor = sidebarBg;
+        _workspaceContentPanel.BackColor = sidebarBg;
+        _sidebarSearchBar.BackColor = sidebarBg;
+        if (_searchResultsHost is not null)
+        {
+            _searchResultsHost.BackColor = sidebarBg;
+        }
+
+        _sidebarSplit.Panel2.BackColor = primaryBg;
+        _editorPanel.BackColor = primaryBg;
+        if (_editorLoadingView is not null)
+        {
+            _editorLoadingView.BackColor = primaryBg;
         }
         if (colors.TryGetValue("bg-hover", out var splitter))
             _sidebarSplit.BackColor = splitter;
@@ -124,15 +146,15 @@ internal sealed partial class MainForm
             }
         }
 
-        _sidebarTabBar.ApplyThemeColors(colors);
-        _sidebarSearchBar.ApplyThemeColors(colors);
-        _openFolderPrompt.ApplyThemeColors(colors);
-        _workspaceTree.ApplyThemeColors(colors);
-        _workspaceDocumentList.ApplyThemeColors(colors);
-        _outlineTree.ApplyThemeColors(colors);
+        _sidebarTabBar.ApplyThemeColors(sidebarColors);
+        _sidebarSearchBar.ApplyThemeColors(sidebarColors);
+        _openFolderPrompt.ApplyThemeColors(sidebarColors);
+        _workspaceTree.ApplyThemeColors(sidebarColors);
+        _workspaceDocumentList.ApplyThemeColors(sidebarColors);
+        _outlineTree.ApplyThemeColors(sidebarColors);
         if (_searchResultsView is not null)
         {
-            _searchResultsView.ApplyThemeColors(colors);
+            _searchResultsView.ApplyThemeColors(sidebarColors);
         }
 
         if (colors.TryGetValue("bg-primary", out var menuBg))

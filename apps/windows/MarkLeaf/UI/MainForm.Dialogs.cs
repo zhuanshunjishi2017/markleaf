@@ -52,6 +52,7 @@ internal sealed partial class MainForm
         var editor = _settings.Editor;
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47());
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
+        ApplyCodeHighlightVisibility();
         ApplyBlockHandleVisibility();
 
         SetMarkdownStyle(_settings.MarkdownStyle);
@@ -823,6 +824,27 @@ internal sealed partial class MainForm
             _editorHost.ExecuteCommand("setMathNumber", dialog.Number);
         }
         SetStatus(Loc.Get("status.mathUpdated"));
+    }
+
+    private void InsertMermaid()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("insertMermaid");
+        SetStatus(Loc.Get("status.mermaidInserted"));
+    }
+
+    private void EditMermaid()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || !_editorCommandStatus.MermaidSelected)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("editMermaid");
     }
 
     private void EditImageCaption()

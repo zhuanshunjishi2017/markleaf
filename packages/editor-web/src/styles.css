@@ -21,15 +21,36 @@ body,
 
 #editor {
   cursor: text;
+  position: relative;
 }
 
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
+  --ml-code-keyword: #953800;
+  --ml-code-string: #0a7f4f;
+  --ml-code-number: #0550ae;
+  --ml-code-comment: #6e7781;
+  --ml-code-type: #8250df;
+  --ml-code-function: #6639ba;
+  --ml-code-property: #116329;
+  --ml-code-operator: #57606a;
 }
 
-/* 主题化选区（ProseMirror decoration，替代 ::selection 确保跨平台一致） */
-.markleaf-themed-selection,
+body.markleaf-theme-dark {
+  --ml-code-keyword: #ffab70;
+  --ml-code-string: #7ee787;
+  --ml-code-number: #79c0ff;
+  --ml-code-comment: #8b949e;
+  --ml-code-type: #d2a8ff;
+  --ml-code-function: #d2a8ff;
+  --ml-code-property: #a5d6ff;
+  --ml-code-operator: #c9d1d9;
+}
+
+/* WebView2 原生选区不会改写编辑器 DOM，可安全参与文字拖放。 */
+.markleaf-document::selection,
+.markleaf-document *::selection,
 .ml-source-selection {
   background: var(--theme-light);
   color: var(--text-selected);
@@ -65,7 +86,12 @@ body {
   z-index: 5;
 }
 
+.ml-block-handle-overlay {
+  left: calc(50% - min(var(--ml-max-width), 100%) / 2 - 36px);
+}
+
 .markleaf-document:hover .ml-block-handle,
+#editor:hover .ml-block-handle-overlay,
 .ml-block-handle:hover,
 .ml-block-handle-active {
   opacity: 1;
@@ -100,20 +126,34 @@ body {
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  background: var(--bg-secondary, #fafafa);
-  border: 1px solid var(--border-color, #d8dee4);
-  border-radius: 6px;
+  background: var(--bg-hover, #f0f0f0);
+  border: 1px solid var(--bg-selected, #e0e0e0);
+  border-radius: 0;
   padding: 12px;
   user-select: none;
+  font-family: inherit;
+  text-indent: 0;
 }
 
 .markleaf-mermaid-view {
   width: 100%;
+  min-height: 2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-indent: 0;
 }
 
 .markleaf-mermaid svg {
   max-width: 100%;
   height: auto;
+  font-family: inherit;
+  text-indent: 0;
+}
+
+.markleaf-mermaid svg * {
+  font-family: inherit !important;
+  text-indent: 0;
 }
 
 .markleaf-mermaid-fallback {
@@ -122,8 +162,49 @@ body {
   overflow-x: auto;
 }
 
-.markleaf-mermaid-error {
-  border-color: var(--theme-dark, #b3541e);
+.markleaf-mermaid-message {
+  width: 100%;
+  min-height: 2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: inherit;
+  font-size: calc(var(--ml-font-size) * 0.875);
+  font-weight: 600;
+  line-height: 1.4;
+  text-indent: 0;
+}
+
+.markleaf-mermaid-message-error {
+  color: #d1242f;
+}
+
+.markleaf-mermaid-message-empty {
+  color: var(--text-secondary, #57606a);
+}
+
+.markleaf-document pre:has(.markleaf-mermaid-render-button) {
+  position: relative;
+}
+
+.markleaf-mermaid-render-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 3px 10px;
+  border: 1px solid var(--bg-selected, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #24292f);
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  cursor: default;
+}
+
+.markleaf-mermaid-render-button:hover {
+  background: var(--bg-hover, #f0f0f0);
 }
 
 /* 表格 / 图片标题（widget decoration，居中显示） */
@@ -163,10 +244,6 @@ body {
   color: currentColor;
   font-weight: 600;
   user-select: none;
-}
-
-.markleaf-footnote-def .markleaf-themed-selection {
-  font-weight: inherit;
 }
 
 .markleaf-footnote-def-prefix {
@@ -287,8 +364,18 @@ body {
 .tok-list      { color: var(--theme-dark); }
 .tok-quote     { color: var(--text-tertiary); }
 
+.ml-code-keyword { color: var(--ml-code-keyword); font-weight: 600; }
+.ml-code-string { color: var(--ml-code-string); }
+.ml-code-number { color: var(--ml-code-number); }
+.ml-code-comment { color: var(--ml-code-comment); font-style: italic; }
+.ml-code-type { color: var(--ml-code-type); }
+.ml-code-function { color: var(--ml-code-function); }
+.ml-code-property { color: var(--ml-code-property); }
+.ml-code-operator { color: var(--ml-code-operator); }
+
 #editor {
   padding: 44px 48px 96px;
+  position: relative;
 }
 
 /* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
@@ -321,7 +408,12 @@ body {
   z-index: 5;
 }
 
+.ml-block-handle-overlay {
+  left: calc(50% - min(var(--ml-max-width), 100%) / 2 - 36px);
+}
+
 .markleaf-document:hover .ml-block-handle,
+#editor:hover .ml-block-handle-overlay,
 .ml-block-handle:hover,
 .ml-block-handle-active {
   opacity: 1;

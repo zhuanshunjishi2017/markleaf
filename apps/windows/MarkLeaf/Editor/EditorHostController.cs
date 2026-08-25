@@ -55,6 +55,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler? MathEditRequested;
 
+    public event EventHandler? MermaidEditRequested;
+
     public event EventHandler<EditorFindResult>? FindResultReceived;
 
     public event EventHandler<EditorOutline>? OutlineChanged;
@@ -72,6 +74,7 @@ internal sealed class EditorHostController : IDisposable
     public event EventHandler<UnsafeEmphasisRequest>? UnsafeEmphasisRequested;
 
     public event EventHandler? FootnoteDefinitionMissing;
+    public event EventHandler? FootnoteReferenceMissing;
 
     public EditorHostController(
         WebView2 webView,
@@ -260,18 +263,34 @@ internal sealed class EditorHostController : IDisposable
             parts.Add($"\"{sourceCjkFontFamily.Replace("\"", "\\\"")}\"");
         parts.Add("monospace");
         var fontFamilyValue = string.Join(", ", parts);
-        var familyJs = $"document.documentElement.style.setProperty('--ml-source-font-family','{fontFamilyValue}');";
-        var langJs = string.IsNullOrWhiteSpace(cjkLang)
-            ? string.Empty
-            : $"document.documentElement.setAttribute('lang','{cjkLang}');" +
-              $"document.documentElement.style.setProperty('--ml-cjk-lang','{cjkLang}');";
-        var script =
-            $"document.documentElement.style.setProperty('--ml-line-height','{lineHeight:F2}');" +
-            $"document.documentElement.style.setProperty('--ml-font-size','{fontSize}px');" +
-            $"document.documentElement.style.setProperty('--ml-max-width','{maxWidth}px');" +
-            $"document.documentElement.style.setProperty('--ml-source-font-size','{sourceFontSize}px');" +
-            familyJs +
-            langJs;
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            lineHeight = CultureInvariant($"{lineHeight:F2}"),
+            fontSize = $"{fontSize}px",
+            maxWidth = $"{maxWidth}px",
+            sourceFontSize = $"{sourceFontSize}px",
+            sourceFontFamily = fontFamilyValue,
+            cjkLanguage = cjkLang,
+            usePointerAnchor = false,
+            anchorX = (double?)null,
+            anchorY = (double?)null,
+        });
+        var script = $$"""
+            (() => {
+              const payload = {{payload}};
+              if (typeof window.__markleafApplyVisualVariables === 'function') {
+                window.__markleafApplyVisualVariables(payload);
+              } else {
+                document.documentElement.style.setProperty('--ml-line-height', payload.lineHeight);
+                document.documentElement.style.setProperty('--ml-font-size', payload.fontSize);
+                document.documentElement.style.setProperty('--ml-max-width', payload.maxWidth);
+                document.documentElement.style.setProperty('--ml-source-font-size', payload.sourceFontSize);
+                document.documentElement.style.setProperty('--ml-source-font-family', payload.sourceFontFamily);
+                document.documentElement.setAttribute('lang', payload.cjkLanguage);
+                document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage);
+              }
+            })();
+            """;
         EnqueueOrRun(() =>
         {
             if (_webView.CoreWebView2 is not null)
@@ -1026,6 +1045,9 @@ internal sealed class EditorHostController : IDisposable
             case "mathEditRequested":
                 MathEditRequested?.Invoke(this, EventArgs.Empty);
                 break;
+            case "mermaidEditRequested":
+                MermaidEditRequested?.Invoke(this, EventArgs.Empty);
+                break;
             case "findResult":
                 var replaced = message.Payload.TryGetProperty("replaced", out var replacedElement)
                     && replacedElement.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -1089,6 +1111,9 @@ internal sealed class EditorHostController : IDisposable
                 break;
             case "footnoteDefinitionMissing":
                 FootnoteDefinitionMissing?.Invoke(this, EventArgs.Empty);
+                break;
+            case "footnoteReferenceMissing":
+                FootnoteReferenceMissing?.Invoke(this, EventArgs.Empty);
                 break;
             case "snapshot":
                 if (_session.CompleteRequest(message.RequestId, "snapshot"))

@@ -5,6 +5,9 @@ type MermaidModule = typeof import('mermaid')
 let mermaidPromise: Promise<MermaidModule> | null = null
 let mermaidInitialized = false
 let mermaidSequence = 0
+const MERMAID_RENDER_TIMEOUT_MS = 1000
+const MERMAID_EMPTY_TEXT = '空Mermaid图表'
+const MERMAID_ERROR_TEXT = 'Mermaid图表文本格式错误'
 
 async function loadMermaid(): Promise<MermaidModule> {
   mermaidPromise ??= import('mermaid')
@@ -16,8 +19,9 @@ async function ensureMermaidInitialized(module: MermaidModule): Promise<void> {
   module.default.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
+    suppressErrorRendering: true,
     themeVariables: {
-      fontFamily: 'var(--font-sans, sans-serif)',
+      fontFamily: 'inherit',
     },
   })
   mermaidInitialized = true
@@ -29,25 +33,64 @@ function nextMermaidId(prefix: string): string {
 }
 
 async function renderMermaidSvgInto(host: HTMLElement, source: string): Promise<boolean> {
+  if (!source.trim()) {
+    renderMermaidMessage(host, MERMAID_EMPTY_TEXT, 'empty')
+    return true
+  }
   const module = await loadMermaid()
   await ensureMermaidInitialized(module)
   const id = nextMermaidId('markleaf-mermaid')
-  return module.default.render(id, source).then(({ svg }) => {
+  return withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS).then(({ svg }) => {
     host.innerHTML = svg
+    normalizeMermaidSvg(host)
     return true
-  }).catch(() => false)
+  }).catch(() => {
+    cleanupMermaidErrorArtifacts()
+    return false
+  })
 }
 
-function renderMermaidSourceFallback(host: HTMLElement, source: string): void {
-  const pre = document.createElement('pre')
-  pre.className = 'markleaf-mermaid-fallback'
-  const code = document.createElement('code')
-  code.textContent = source
-  pre.append(code)
-  host.replaceChildren(pre)
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('Mermaid render timed out')), timeoutMs)
+    promise.then(
+      value => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        window.clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }
 
-const MermaidNodeView = ({ node }: { node: { textContent: string } }) => {
+function cleanupMermaidErrorArtifacts(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement | SVGElement>('[id^="dmermaid-"], [id^="mermaid-"][aria-roledescription="error"], .mermaidError')
+    .forEach((element) => {
+      if (!element.closest('.markleaf-mermaid')) {
+        element.remove()
+      }
+    })
+}
+
+function renderMermaidMessage(host: HTMLElement, text: string, kind: 'empty' | 'error'): void {
+  const message = document.createElement('div')
+  message.className = `markleaf-mermaid-message markleaf-mermaid-message-${kind}`
+  message.textContent = text
+  host.replaceChildren(message)
+}
+
+function normalizeMermaidSvg(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement | SVGElement>('svg, svg *, foreignObject, foreignObject *')
+    .forEach((element) => {
+      ;(element as HTMLElement | SVGElement).style.textIndent = '0px'
+      ;(element as HTMLElement | SVGElement).style.fontFamily = 'inherit'
+    })
+}
+
+const MermaidNodeView = ({ node }: { node: { type?: { name: string }; textContent: string } }) => {
   const wrapper = document.createElement('div')
   wrapper.className = 'markleaf-mermaid'
   wrapper.contentEditable = 'false'
@@ -56,11 +99,17 @@ const MermaidNodeView = ({ node }: { node: { textContent: string } }) => {
   const section = document.createElement('div')
   section.className = 'markleaf-mermaid-view'
   wrapper.append(section)
-  void renderMermaidSvgInto(section, lastSource).then((ok) => {
-    if (!ok && section.isConnected) {
-      renderMermaidSourceFallback(section, lastSource)
-    }
-  })
+
+  const renderCurrent = () => {
+    section.replaceChildren()
+    void renderMermaidSvgInto(section, lastSource).then((ok) => {
+      if (!ok && section.isConnected) {
+        renderMermaidMessage(section, MERMAID_ERROR_TEXT, 'error')
+      }
+    })
+  }
+  wrapper.addEventListener('markleaf-rerender-mermaid', renderCurrent)
+  renderCurrent()
 
   return {
     dom: wrapper,
@@ -69,15 +118,25 @@ const MermaidNodeView = ({ node }: { node: { textContent: string } }) => {
       const source = updated.textContent
       if (source === lastSource) return true
       lastSource = source
-      section.replaceChildren()
-      void renderMermaidSvgInto(section, source).then((ok) => {
-        if (!ok && section.isConnected) {
-          renderMermaidSourceFallback(section, source)
-        }
-      })
+      renderCurrent()
       return true
     },
+    destroy: () => {
+      wrapper.removeEventListener('markleaf-rerender-mermaid', renderCurrent)
+    },
   }
+}
+
+export function rerenderMermaidElements(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>('.markleaf-mermaid')
+    .forEach((element) => element.dispatchEvent(new Event('markleaf-rerender-mermaid')))
+}
+
+export function rerenderMermaidElement(element: Element | null): boolean {
+  const target = element?.closest<HTMLElement>('.markleaf-mermaid') ?? null
+  if (!target) return false
+  target.dispatchEvent(new Event('markleaf-rerender-mermaid'))
+  return true
 }
 
 export const Mermaid = Node.create({
@@ -135,20 +194,34 @@ export async function renderMermaidInHtml(html: string): Promise<string> {
   await ensureMermaidInitialized(module)
   await Promise.all(placeholders.map(async (placeholder) => {
     const source = placeholder.textContent ?? ''
-    if (!source.trim()) {
-      placeholder.classList.add('markleaf-mermaid-error')
+      if (!source.trim()) {
+      const host = parsed.createElement('div')
+      host.className = 'markleaf-mermaid markleaf-mermaid-export'
+      const message = parsed.createElement('div')
+      message.className = 'markleaf-mermaid-message markleaf-mermaid-message-empty'
+      message.textContent = MERMAID_EMPTY_TEXT
+      host.append(message)
+      placeholder.replaceWith(host)
       return
     }
 
     try {
       const id = nextMermaidId('markleaf-export-mermaid')
-      const { svg } = await module.default.render(id, source)
+      const { svg } = await withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS)
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       host.innerHTML = svg
+      normalizeMermaidSvg(host)
       placeholder.replaceWith(host)
     } catch {
-      placeholder.classList.add('markleaf-mermaid-error')
+      cleanupMermaidErrorArtifacts(parsed)
+      const host = parsed.createElement('div')
+      host.className = 'markleaf-mermaid markleaf-mermaid-export'
+      const message = parsed.createElement('div')
+      message.className = 'markleaf-mermaid-message markleaf-mermaid-message-error'
+      message.textContent = MERMAID_ERROR_TEXT
+      host.append(message)
+      placeholder.replaceWith(host)
     }
   }))
 

@@ -1,4 +1,4 @@
-using System.Text;
+using MarkLeaf.Documents;
 using MarkLeaf.Services;
 
 namespace MarkLeaf.UI;
@@ -37,15 +37,9 @@ internal static class StatusBarFormatter
     public static string FormatPosition(Editor.EditorStatus status) =>
         Loc.Format("statusBar.position", status.Line, status.Column);
 
-    public static string FormatEncoding(Encoding encoding, bool hasBom)
+    public static string FormatEncoding(DocumentEncodingPolicy encoding)
     {
-        return encoding.CodePage switch
-        {
-            65001 => hasBom ? "UTF-8 BOM" : "UTF-8",
-            1200 => "UTF-16 LE",
-            1201 => "UTF-16 BE",
-            _ => encoding.WebName.ToUpperInvariant(),
-        };
+        return encoding.DisplayName;
     }
 
     public static string FormatNewLine(string newLine)

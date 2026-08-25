@@ -1,4 +1,4 @@
-import { Editor, Extension, Node, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, InputRule, Node, ResizableNodeView } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -11,7 +11,7 @@ import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import { MathBlock, MathInline } from './math'
-import { Mermaid } from './mermaid'
+import { Mermaid, rerenderMermaidElement, rerenderMermaidElements } from './mermaid'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -37,22 +37,118 @@ const EMPTY_PARAGRAPH_MARKDOWN = '&nbsp;'
 const NBSP_CHAR = '\u00A0'
 const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
 const VISUAL_INDENT = '  '
+const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
+const MERMAID_RENDER_BUTTON_TEXT = '渲染为图表'
+let codeHighlightVisible = false
 
-/// 可视化编辑器中的 Tab：普通文本块使用与源码模式默认值一致的两个空格缩进。
-/// 列表/表格等结构化内容仍交给各自的编辑器行为处理，避免 Tab 改变结构语义。
+const MarkdownShortcuts = Extension.create({
+  name: 'markleafMarkdownShortcuts',
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /(?<!\*)\*\*\*([^*\n]+)\*\*\*$/,
+        handler: ({ state, range, match }) => {
+          if (range.to === range.from) return null
+          const bold = state.schema.marks.bold
+          const italic = state.schema.marks.italic
+          if (!bold || !italic) return null
+          const text = match[1]
+          if (!text) return null
+          const markerLength = 3
+          const textStart = range.from + markerLength
+          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
+          const textEnd = range.to - closingMarkerInDocument
+          if (textEnd <= textStart) return null
+          state.tr
+            .delete(textEnd, range.to)
+            .delete(range.from, textStart)
+            .addMark(range.from, textEnd - markerLength, bold.create())
+            .addMark(range.from, textEnd - markerLength, italic.create())
+            .removeStoredMark(bold)
+            .removeStoredMark(italic)
+        },
+      }),
+      new InputRule({
+        find: /(?<!\*)\*\*([^*\n]+)\*\*$/,
+        handler: ({ state, range, match }) => {
+          if (range.to === range.from) return null
+          const bold = state.schema.marks.bold
+          if (!bold) return null
+          const text = match[1]
+          if (!text) return null
+          const markerLength = 2
+          const textStart = range.from + markerLength
+          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
+          const textEnd = range.to - closingMarkerInDocument
+          if (textEnd <= textStart) return null
+          state.tr
+            .delete(textEnd, range.to)
+            .delete(range.from, textStart)
+            .addMark(range.from, textEnd - markerLength, bold.create())
+            .removeStoredMark(bold)
+        },
+      }),
+      new InputRule({
+        find: /(?<!\*)\*([^*\n]+)\*$/,
+        handler: ({ state, range, match }) => {
+          if (range.to === range.from) return null
+          const italic = state.schema.marks.italic
+          if (!italic) return null
+          const text = match[1]
+          if (!text) return null
+          const markerLength = 1
+          const textStart = range.from + markerLength
+          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
+          const textEnd = range.to - closingMarkerInDocument
+          if (textEnd <= textStart) return null
+          state.tr
+            .delete(textEnd, range.to)
+            .delete(range.from, textStart)
+            .addMark(range.from, textEnd - markerLength, italic.create())
+            .removeStoredMark(italic)
+        },
+      }),
+      new InputRule({
+        find: /^>\s$/,
+        handler: ({ state, range }) => {
+          const tr = state.tr.delete(range.from, range.to)
+          const $start = tr.doc.resolve(range.from)
+          const blockRange = $start.blockRange()
+          const blockquote = state.schema.nodes.blockquote
+          if (!blockquote || !blockRange) return null
+          tr.wrap(blockRange, [{ type: blockquote }])
+        },
+      }),
+    ]
+  },
+})
+
+function getListItemTypeAtSelection(editor: Editor): 'listItem' | 'taskItem' | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const nodeName = $from.node(depth).type.name
+    if (nodeName === 'taskItem') return 'taskItem'
+    if (nodeName === 'listItem') return 'listItem'
+  }
+  return null
+}
+
+/// 可视化编辑器中的 Tab：列表项执行结构化缩进，普通文本块插入两个空格。
+/// 表格仍交给表格扩展处理，以保留单元格间跳转行为。
 const VisualIndent = Extension.create({
   name: 'markleafVisualIndent',
   addKeyboardShortcuts() {
     return {
       Tab: () => {
         if (!this.editor.isEditable) return false
+        const listItemType = getListItemTypeAtSelection(this.editor)
+        if (listItemType) {
+          return this.editor.commands.sinkListItem(listItemType)
+        }
         const { $from } = this.editor.state.selection
-        // Lists and tables have their own Tab semantics (nest/move cells).
-        // Only ordinary text blocks should receive the visual two-space indent.
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
-          if (nodeName === 'bulletList' || nodeName === 'orderedList' || nodeName === 'taskList'
-            || nodeName === 'table' || nodeName === 'tableRow'
+          if (nodeName === 'table' || nodeName === 'tableRow'
             || nodeName === 'tableCell' || nodeName === 'tableHeader') {
             return false
           }
@@ -124,44 +220,6 @@ const FindHighlight = Extension.create({
   },
 })
 
-/// WYSIWYG 编辑器选区：用 ProseMirror 装饰绘制主题化选中背景。
-/// WKWebView 对 contenteditable 忽略 ::selection，只能用真实 DOM span 才能两平台一致。
-const themedSelectionKey = new PluginKey('markleaf-themed-selection')
-
-const ThemedSelection = Extension.create({
-  name: 'markleafThemedSelection',
-  addProseMirrorPlugins() {
-    return [new Plugin({
-      key: themedSelectionKey,
-      props: {
-        decorations(state) {
-          const { from, to, empty } = state.selection
-          // Atom 节点（公式、图片等）由 ProseMirror 的 NodeSelection 单独绘制。
-          // 对 NodeSelection 再套 inline decoration 会把节点边界前的文字一并染色。
-          if (!(state.selection instanceof TextSelection) || empty || from === to) {
-            return DecorationSet.empty
-          }
-          return DecorationSet.create(state.doc, [
-            Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
-          ])
-        },
-        // 失焦时折叠选区：让主题化选中装饰随选区清空而消失（WKWebView 不依赖 ::selection）。
-        handleDOMEvents: {
-          blur(view) {
-            const selection = view.state.selection
-            if (!selection.empty) {
-              view.dispatch(
-                view.state.tr.setSelection(TextSelection.create(view.state.doc, selection.anchor)),
-              )
-            }
-            return false
-          },
-        },
-      },
-    })]
-  },
-})
-
 /// Esc 折叠可视化编辑器选区（供 main.ts 的全局 keydown 调用）。
 export function collapseVisualSelection(editor: Editor): boolean {
   const selection = editor.state.selection
@@ -172,11 +230,12 @@ export function collapseVisualSelection(editor: Editor): boolean {
   return true
 }
 
-/// 段落左侧浮动操作按钮：光标进入文本块时在块首渲染一个 "+" 按钮，
-/// 点击后通过 DOM 自定义事件把坐标与块位置上报给宿主，由宿主弹出原生菜单。
+/// 段落左侧浮动操作按钮的状态：按钮本体由 main.ts 作为 overlay 渲染，
+/// 这里仅保留当前高亮块的 ProseMirror 状态，避免 contenteditable 内部插入 widget 干扰 IME。
 const blockHandleKey = new PluginKey('markleaf-block-handle')
 
 export type BlockHandleRequest = { clientX: number; clientY: number; position: number }
+export type BlockHandleInfo = { position: number; label: string; viewportTop: number; active: boolean }
 
 type BlockHandleState = { activeBlock: number | null }
 type BlockHandleMeta = Partial<BlockHandleState>
@@ -243,6 +302,51 @@ function getNodeText(node: any): string {
   return content.map(getNodeText).join('')
 }
 
+export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
+  if (!blockHandleVisible || blockHandleComposing) return null
+  const state = editor.state
+  const { from, empty } = state.selection
+  const $from = state.doc.resolve(from)
+  const parentName = $from.parent.type.name
+  let insideList = false
+  for (let depth = $from.depth; depth >= 1; depth -= 1) {
+    if (['bulletList', 'orderedList', 'taskList'].includes($from.node(depth).type.name)) {
+      insideList = true
+      break
+    }
+  }
+  if (!empty || (parentName !== 'paragraph' && parentName !== 'heading' && parentName !== 'codeBlock' && parentName !== 'mermaid')) {
+    return null
+  }
+
+  let nodePos = $from.before($from.depth)
+  let coordsPos = $from.start()
+  if (insideList) {
+    for (let depth = $from.depth; depth >= 1; depth -= 1) {
+      const name = $from.node(depth).type.name
+      if (name === 'listItem' || name === 'taskItem') {
+        nodePos = $from.before(depth)
+        coordsPos = nodePos + 1
+        break
+      }
+    }
+  }
+
+  try {
+    const nodeDom = editor.view.nodeDOM(nodePos)
+    const rect = nodeDom instanceof Element ? nodeDom.getBoundingClientRect() : editor.view.coordsAtPos(coordsPos)
+    const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
+    return {
+      position: nodePos,
+      label: getBlockTypeLabel(state, from),
+      viewportTop: rect.top,
+      active: activeBlock === nodePos,
+    }
+  } catch {
+    return null
+  }
+}
+
 const BlockHandle = Extension.create({
   name: 'markleafBlockHandle',
   addProseMirrorPlugins() {
@@ -257,6 +361,7 @@ const BlockHandle = Extension.create({
         },
       },
       appendTransaction(transactions, _oldState, newState) {
+        if (blockHandleComposing) return null
         // 光标移出高亮段落时，自动清除段落背景高亮。
         if (!transactions.some((tr) => tr.selectionSet)) return null
         const { activeBlock } = blockHandleKey.getState(newState) ?? { activeBlock: null }
@@ -282,45 +387,13 @@ const BlockHandle = Extension.create({
               if (!view.isDestroyed) {
                 view.dispatch(view.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
               }
-            }, 0)
+            }, 50)
             return false
           },
         },
         decorations(state) {
-          if (!blockHandleVisible) return DecorationSet.empty
           const { activeBlock } = blockHandleKey.getState(state) ?? { activeBlock: null }
-          if (blockHandleComposing) return DecorationSet.empty
           const decorations: Decoration[] = []
-          const { from, empty } = state.selection
-          const $from = state.doc.resolve(from)
-          const parentName = $from.parent.type.name
-          let insideList = false
-          for (let depth = $from.depth; depth >= 1; depth -= 1) {
-            if (['bulletList', 'orderedList', 'taskList'].includes($from.node(depth).type.name)) {
-              insideList = true
-              break
-            }
-          }
-          if (empty && (parentName === 'paragraph' || parentName === 'heading' || parentName === 'codeBlock' || parentName === 'mermaid')) {
-            // 普通块取自身位置；列表内把句柄挂到最近的列表项（listItem/taskItem）上。
-            let widgetPos = $from.start()
-            let nodePos = $from.before($from.depth)
-            if (insideList) {
-              for (let depth = $from.depth; depth >= 1; depth -= 1) {
-                const name = $from.node(depth).type.name
-                if (name === 'listItem' || name === 'taskItem') {
-                  nodePos = $from.before(depth)
-                  widgetPos = nodePos + 1
-                  break
-                }
-              }
-            }
-            decorations.push(Decoration.widget(
-              widgetPos,
-              () => createBlockHandle(nodePos, getBlockTypeLabel(state, from), activeBlock === nodePos),
-              { side: -1, ignoreSelection: true },
-            ))
-          }
           if (activeBlock !== null) {
             const node = state.doc.nodeAt(activeBlock)
             if (node) decorations.push(Decoration.node(
@@ -337,41 +410,6 @@ const BlockHandle = Extension.create({
     })]
   },
 })
-
-function createBlockHandle(nodePos: number, label: string, active: boolean): HTMLButtonElement {
-  const handle = document.createElement('button')
-  handle.type = 'button'
-  handle.className = active ? 'ml-block-handle ml-block-handle-active' : 'ml-block-handle'
-  handle.contentEditable = 'false'
-  handle.setAttribute('aria-label', '段落操作')
-  handle.setAttribute('tabindex', '-1')
-  handle.textContent = label
-  handle.addEventListener('mousedown', (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    const rect = handle.getBoundingClientRect()
-    const detail: BlockHandleRequest = {
-      clientX: rect.left,
-      clientY: rect.bottom + 10,
-      position: nodePos,
-    }
-    handle.dispatchEvent(new CustomEvent<BlockHandleRequest>('markleaf-block-handle', {
-      bubbles: true,
-      detail,
-    }))
-  })
-  requestAnimationFrame(() => positionBlockHandle(handle))
-  return handle
-}
-
-function positionBlockHandle(handle: HTMLButtonElement): void {
-  if (!handle.isConnected) return
-  const documentEl = handle.closest('.markleaf-document')
-  if (!documentEl) return
-  const docRect = documentEl.getBoundingClientRect()
-  const handleRect = handle.getBoundingClientRect()
-  handle.style.top = `${handleRect.top - docRect.top}px`
-}
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta))
@@ -767,6 +805,10 @@ const MarkLeafImage = Image.extend({
       let observer: ResizeObserver | null = null
       if (container) {
         observer = new ResizeObserver(() => {
+          // ResizableNodeView writes preview dimensions directly while a handle is
+          // being dragged. Reapplying the persisted percentage here would fight
+          // that preview and make the handle jump between old and new positions.
+          if (nodeView.dom.dataset.resizeState === 'true') return
           if (typeof currentNode.attrs.widthPercent === 'number') {
             applyImageLayout(currentNode.attrs)
           }
@@ -799,7 +841,12 @@ export type EditorCommandState = {
   link: boolean
   blockquote: boolean
   codeBlock: boolean
+  codeBlockLanguage: string | null
+  codeBlockText: string | null
   mermaid: boolean
+  mermaidSelected: boolean
+  mermaidSource: string | null
+  mermaidCount: number
   bulletList: boolean
   orderedList: boolean
   taskList: boolean
@@ -1087,7 +1134,178 @@ const Caption = Extension.create({
   },
 })
 
+const MermaidCodeBlockControls = Extension.create({
+  name: 'markleafMermaidCodeBlockControls',
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const decorations: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            if (!isMermaidCodeBlock(node)) return
+            decorations.push(Decoration.widget(pos + 1, () => createMermaidRenderButton(editor, pos), {
+              side: -1,
+              ignoreSelection: true,
+            }))
+          })
+          return decorations.length > 0
+            ? DecorationSet.create(state.doc, decorations)
+            : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
+function createMermaidRenderButton(editor: Editor, position: number): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'markleaf-mermaid-render-button'
+  button.contentEditable = 'false'
+  button.textContent = MERMAID_RENDER_BUTTON_TEXT
+  button.addEventListener('mousedown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+  })
+  button.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    renderMermaidCodeBlockAt(editor, position)
+  })
+  return button
+}
+
+type CodeHighlightToken = { from: number; to: number; className: string }
+
+const CodeBlockHighlight = Extension.create({
+  name: 'markleafCodeBlockHighlight',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          if (!codeHighlightVisible) return DecorationSet.empty
+          const decorations: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            if (node.type.name !== 'codeBlock') return
+            const language = normalizeCodeLanguage(node.attrs.language)
+            if (!language) return
+            const text = node.textContent
+            for (const token of highlightCode(text, language)) {
+              decorations.push(Decoration.inline(
+                pos + 1 + token.from,
+                pos + 1 + token.to,
+                { class: token.className },
+              ))
+            }
+          })
+          return decorations.length > 0
+            ? DecorationSet.create(state.doc, decorations)
+            : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
+function normalizeCodeLanguage(value: unknown): string {
+  const language = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return ({
+    js: 'javascript',
+    jsx: 'javascript',
+    mjs: 'javascript',
+    cjs: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    py: 'python',
+    sh: 'shell',
+    bash: 'shell',
+    zsh: 'shell',
+    ps1: 'powershell',
+    pwsh: 'powershell',
+    cs: 'csharp',
+    'c#': 'csharp',
+    cpp: 'cpp',
+    cxx: 'cpp',
+    hpp: 'cpp',
+    html: 'markup',
+    htm: 'markup',
+    xml: 'markup',
+    xaml: 'markup',
+    md: 'markdown',
+  } as Record<string, string>)[language] ?? language
+}
+
+function highlightCode(text: string, language: string): CodeHighlightToken[] {
+  const rules = getCodeHighlightRules(language)
+  if (!rules) return []
+  const tokens: CodeHighlightToken[] = []
+  for (const rule of rules) {
+    const regex = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`)
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(text)) !== null) {
+      const value = match[1] ?? match[0]
+      if (!value) {
+        regex.lastIndex += 1
+        continue
+      }
+      const from = match.index + match[0].indexOf(value)
+      tokens.push({ from, to: from + value.length, className: rule.className })
+    }
+  }
+  return removeOverlappingHighlightTokens(tokens)
+}
+
+function removeOverlappingHighlightTokens(tokens: CodeHighlightToken[]): CodeHighlightToken[] {
+  const result: CodeHighlightToken[] = []
+  for (const token of tokens.sort((a, b) => a.from - b.from || b.to - a.to)) {
+    if (result.some(existing => token.from < existing.to && token.to > existing.from)) continue
+    result.push(token)
+  }
+  return result
+}
+
+function getCodeHighlightRules(language: string): { pattern: RegExp; className: string }[] | null {
+  const string = { pattern: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, className: 'ml-code-string' }
+  const number = { pattern: /\b(?:0x[\da-f]+|\d+(?:\.\d+)?)\b/gi, className: 'ml-code-number' }
+  const comment = { pattern: /\/\/.*|\/\*[\s\S]*?\*\//g, className: 'ml-code-comment' }
+  const hashComment = { pattern: /#.*/g, className: 'ml-code-comment' }
+  const keyword = (words: string) => ({ pattern: new RegExp(`\\b(?:${words})\\b`, 'g'), className: 'ml-code-keyword' })
+  const type = (words: string) => ({ pattern: new RegExp(`\\b(?:${words})\\b`, 'g'), className: 'ml-code-type' })
+  const fn = { pattern: /\b([A-Za-z_$][\w$]*)\s*(?=\()/g, className: 'ml-code-function' }
+
+  if (['javascript', 'typescript'].includes(language)) {
+    return [comment, string, keyword('as|async|await|break|case|catch|class|const|continue|default|delete|do|else|export|extends|finally|for|from|function|get|if|import|in|instanceof|interface|let|new|of|return|set|static|super|switch|this|throw|try|type|typeof|var|void|while|yield'), type('boolean|number|string|unknown|never|any|object|Record|Promise|Array'), number, fn]
+  }
+  if (language === 'python') {
+    return [hashComment, string, keyword('and|as|assert|async|await|break|case|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|match|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield'), number, fn]
+  }
+  if (['c', 'cpp', 'csharp', 'java', 'go', 'rust', 'php'].includes(language)) {
+    return [comment, string, keyword('abstract|as|async|await|break|case|catch|class|const|continue|default|defer|do|else|enum|extends|false|finally|fn|for|foreach|func|if|implements|import|in|interface|match|namespace|new|null|package|private|protected|public|return|static|struct|switch|this|throw|trait|true|try|using|var|void|while'), type('bool|boolean|byte|char|decimal|double|float|int|long|short|string|uint|ulong|usize|i32|i64|u32|u64|String|Task'), number, fn]
+  }
+  if (['json'].includes(language)) {
+    return [{ pattern: /"(?:\\.|[^"\\])*"\s*(?=:)/g, className: 'ml-code-property' }, string, number, keyword('true|false|null')]
+  }
+  if (['css', 'scss', 'less'].includes(language)) {
+    return [comment, { pattern: /#[\da-f]{3,8}\b/gi, className: 'ml-code-number' }, string, { pattern: /[.#]?[A-Za-z_-][\w-]*(?=\s*:)/g, className: 'ml-code-property' }, keyword('important|inherit|initial|unset|revert|none|block|inline|flex|grid|absolute|relative|fixed|sticky')]
+  }
+  if (language === 'markup') {
+    return [comment, { pattern: /<\/?[A-Za-z][\w:-]*/g, className: 'ml-code-keyword' }, { pattern: /\s([A-Za-z_:][\w:.-]*)(?==)/g, className: 'ml-code-property' }, string]
+  }
+  if (['sql'].includes(language)) {
+    return [{ pattern: /--.*|\/\*[\s\S]*?\*\//g, className: 'ml-code-comment' }, string, keyword('ADD|ALTER|AND|AS|ASC|BY|CREATE|DELETE|DESC|DISTINCT|DROP|FROM|GROUP|HAVING|IN|INSERT|INTO|IS|JOIN|KEY|LEFT|LIKE|LIMIT|NOT|NULL|ON|OR|ORDER|PRIMARY|RIGHT|SELECT|SET|TABLE|UPDATE|VALUES|WHERE'), number]
+  }
+  if (['shell', 'powershell'].includes(language)) {
+    return [hashComment, string, { pattern: /\b(?:cd|cp|curl|echo|git|grep|ls|mkdir|mv|npm|pnpm|rm|sed|ssh|sudo|tar|where|dotnet)\b/g, className: 'ml-code-keyword' }, { pattern: /--?[\w-]+/g, className: 'ml-code-property' }, number]
+  }
+  if (language === 'markdown') {
+    return [{ pattern: /^#{1,6}.*/gm, className: 'ml-code-keyword' }, { pattern: /`[^`]+`/g, className: 'ml-code-string' }, { pattern: /\[[^\]]+\]\([^)]+\)/g, className: 'ml-code-function' }]
+  }
+  return null
+}
+
 export const editorExtensions = [
+  MarkdownShortcuts,
   StarterKit.configure({
     link: false,
     paragraph: false,
@@ -1109,6 +1327,8 @@ export const editorExtensions = [
   TableCell,
   FootnoteDefinitionDecorations,
   Caption,
+  MermaidCodeBlockControls,
+  CodeBlockHighlight,
   TaskList,
   TaskItem.configure({ nested: true }),
   Markdown.configure({
@@ -1118,7 +1338,6 @@ export const editorExtensions = [
     },
   }),
   FindHighlight,
-  ThemedSelection,
   VisualIndent,
   BlockHandle,
   MathInline,
@@ -1139,6 +1358,13 @@ export function createEditor(element: HTMLElement, content = '', readOnly = fals
         class: 'markleaf-document',
         spellcheck: 'true',
       },
+      handleDOMEvents: readOnly ? {
+        dragstart: (_view, event) => {
+          event.dataTransfer?.clearData()
+          event.preventDefault()
+          return true
+        },
+      } : undefined,
       transformPastedHTML: sanitizePastedHtml,
     },
   })
@@ -1149,6 +1375,11 @@ export function createEditor(element: HTMLElement, content = '', readOnly = fals
 export function replaceEditorDocument(editor: Editor, element: HTMLElement, content: string, readOnly = false): Editor {
   editor.destroy()
   return createEditor(element, content, readOnly)
+}
+
+export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
+  codeHighlightVisible = visible
+  editor.view.dispatch(editor.state.tr)
 }
 
 export function toVirtualImageUrl(markdownPath: string): string {
@@ -1800,6 +2031,12 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     ? (typeof selectedMath.node.attrs.number === 'string' && selectedMath.node.attrs.number.length > 0 ? selectedMath.node.attrs.number : null)
     : null
   const selectedImage = getSelectedImage(editor)
+  const currentCodeBlock = getCurrentCodeBlock(editor)
+  const selectedMermaid = getSelectedMermaid(editor)
+  let mermaidCount = 0
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'mermaid' || isMermaidCodeBlock(node)) mermaidCount += 1
+  })
   const footnoteDefinition = parseFootnoteDefinitionText(editor.state.selection.$from.parent.textContent)
   const caption = selectedImage
     ? (typeof selectedImage.attrs.caption === 'string' && selectedImage.attrs.caption.length > 0 ? selectedImage.attrs.caption : null)
@@ -1822,7 +2059,12 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     link: editor.isActive('link'),
     blockquote: editor.isActive('blockquote'),
     codeBlock: editor.isActive('codeBlock'),
+    codeBlockLanguage: currentCodeBlock?.language ?? null,
+    codeBlockText: currentCodeBlock?.node.textContent ?? null,
     mermaid: editor.isActive('mermaid'),
+    mermaidSelected: selectedMermaid !== null,
+    mermaidSource: selectedMermaid?.node.textContent ?? null,
+    mermaidCount,
     bulletList: editor.isActive('bulletList'),
     orderedList: editor.isActive('orderedList'),
     taskList: editor.isActive('taskList'),
@@ -2014,8 +2256,26 @@ export function executeEditorCommand(
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
+    insertMermaid: () => insertMermaid(editor),
+    setCodeHighlightVisible: () => {
+      setCodeHighlightVisible(editor, text === '1')
+      return true
+    },
+    setCodeBlockLanguage: () => setCodeBlockLanguage(editor, text),
+    editMermaid: () => editSelectedMermaid(editor),
+    updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
+    rerenderMermaid: () => rerenderSelectedMermaid(editor),
+    rerenderAllMermaid: () => {
+      renderAllMermaidCodeBlocks(editor)
+      rerenderMermaidElements(editor.view.dom)
+      return true
+    },
+    deleteMermaid: () => deleteMermaid(editor),
     insertFootnote: () => insertFootnote(editor, text),
     resetFootnoteLabel: () => resetFootnoteLabel(editor, text),
+    goToFootnoteReference: () => goToFootnoteReference(editor, text),
+    clearFootnoteReferences: () => clearFootnoteReferences(editor),
+    deleteFootnote: () => deleteFootnote(editor),
     updateMath: () => updateMath(editor, text),
     setMathNumber: () => changeMathNumber(editor, text),
     convertMath: () => convertMath(editor),
@@ -2369,7 +2629,125 @@ function resetFootnoteLabel(editor: Editor, text?: string): boolean {
   return true
 }
 
+function goToFootnoteReference(editor: Editor, labelText?: string): boolean {
+  const label = (labelText ?? getCurrentFootnoteDefinition(editor)?.label ?? '').trim()
+  if (!label) return false
+
+  const referencePosition = findFirstFootnoteReferencePosition(editor, label)
+  if (referencePosition === null) return false
+
+  editor.commands.setTextSelection(referencePosition)
+  editor.commands.focus()
+  scrollEditorPositionIntoCenter(editor, referencePosition)
+  setBlockHighlight(editor, referencePosition)
+  return true
+}
+
+function clearFootnoteReferences(editor: Editor): boolean {
+  const definition = getCurrentFootnoteDefinition(editor)
+  if (!definition) return false
+
+  const ranges = collectFootnoteReferenceRanges(editor, definition.label, definition.pos, definition.node.nodeSize)
+  if (ranges.length === 0) return false
+
+  let tr = editor.state.tr
+  for (const range of ranges.sort((a: { from: number }, b: { from: number }) => b.from - a.from)) {
+    tr = tr.delete(range.from, range.to)
+  }
+  editor.view.dispatch(tr.scrollIntoView())
+  return true
+}
+
+function deleteFootnote(editor: Editor): boolean {
+  const definition = getCurrentFootnoteDefinition(editor)
+  if (!definition) return false
+
+  const ranges = collectFootnoteReferenceRanges(editor, definition.label, definition.pos, definition.node.nodeSize)
+  ranges.push({ from: definition.pos, to: definition.pos + definition.node.nodeSize })
+
+  let tr = editor.state.tr
+  for (const range of ranges.sort((a: { from: number }, b: { from: number }) => b.from - a.from)) {
+    tr = tr.delete(range.from, range.to)
+  }
+  editor.view.dispatch(tr.scrollIntoView())
+  return true
+}
+
+function getCurrentFootnoteDefinition(editor: Editor): { label: string; node: any; pos: number } | null {
+  const { $from } = editor.state.selection
+  if ($from.depth <= 0) return null
+
+  const node = $from.parent
+  if (node.type.name !== 'paragraph') return null
+
+  const footnote = parseFootnoteDefinitionText(node.textContent)
+  if (!footnote) return null
+
+  return {
+    label: footnote.label.trim(),
+    node,
+    pos: $from.before($from.depth),
+  }
+}
+
+function findFirstFootnoteReferencePosition(editor: Editor, label: string): number | null {
+  const escaped = escapeRegExp(label)
+  const textualReference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
+  let firstPosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name === 'footnoteReference') {
+      if (node.attrs.label === label) {
+        firstPosition = position
+        return false
+      }
+      return true
+    }
+
+    if (firstPosition !== null || !node.isText || !node.text) return firstPosition === null
+    for (const match of node.text.matchAll(textualReference)) {
+      firstPosition = position + (match.index ?? 0)
+      return false
+    }
+    return true
+  })
+  return firstPosition
+}
+
+function collectFootnoteReferenceRanges(
+  editor: Editor,
+  label: string,
+  definitionPos: number,
+  definitionSize: number,
+): Array<{ from: number; to: number }> {
+  const escaped = escapeRegExp(label)
+  const textualReference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
+  const definitionEnd = definitionPos + definitionSize
+  const ranges: Array<{ from: number; to: number }> = []
+
+  editor.state.doc.descendants((node, position) => {
+    if (position >= definitionPos && position < definitionEnd) return false
+
+    if (node.type.name === 'footnoteReference') {
+      if (node.attrs.label === label) {
+        ranges.push({ from: position, to: position + node.nodeSize })
+      }
+      return false
+    }
+
+    if (!node.isText || !node.text) return true
+    for (const match of node.text.matchAll(textualReference)) {
+      const from = position + (match.index ?? 0)
+      ranges.push({ from, to: from + match[0].length })
+    }
+    return true
+  })
+
+  return ranges
+}
+
 type SelectedMathNode = { type: { name: string }; textContent: string; attrs: Record<string, unknown> }
+type SelectedMermaidNode = { type: { name: string }; textContent: string }
+type CurrentCodeBlockNode = { node: { type: { name: string }; textContent: string; attrs: Record<string, unknown> }; pos: number; language: string | null }
 
 function getSelectedMath(editor: Editor): { node: SelectedMathNode; from: number; to: number } | null {
   const selection = editor.state.selection
@@ -2377,6 +2755,142 @@ function getSelectedMath(editor: Editor): { node: SelectedMathNode; from: number
   const node = selection.node as unknown as SelectedMathNode
   if (node.type.name !== 'mathInline' && node.type.name !== 'mathBlock') return null
   return { node, from: selection.from, to: selection.to }
+}
+
+function getSelectedMermaid(editor: Editor): { node: SelectedMermaidNode; from: number; to: number } | null {
+  const selection = editor.state.selection
+  if (!('node' in selection)) return null
+  const node = selection.node as unknown as SelectedMermaidNode
+  if (node.type.name !== 'mermaid') return null
+  return { node, from: selection.from, to: selection.to }
+}
+
+function isMermaidCodeBlock(node: { type: { name: string }; attrs?: Record<string, unknown> }): boolean {
+  const language = typeof node.attrs?.language === 'string' ? node.attrs.language.toLowerCase() : ''
+  return node.type.name === 'codeBlock' && language === MERMAID_CODE_BLOCK_LANGUAGE
+}
+
+function getCurrentCodeBlock(editor: Editor): CurrentCodeBlockNode | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    const node = $from.node(depth)
+    if (node.type.name !== 'codeBlock') continue
+    const attrs = node.attrs as Record<string, unknown>
+    return {
+      node: {
+        type: node.type,
+        textContent: node.textContent,
+        attrs,
+      },
+      pos: depth === 0 ? 0 : $from.before(depth),
+      language: typeof attrs.language === 'string' && attrs.language.length > 0 ? attrs.language : null,
+    }
+  }
+  return null
+}
+
+function insertMermaid(editor: Editor): boolean {
+  const inserted = editor.chain().focus().insertContent({
+    type: 'codeBlock',
+    attrs: { language: MERMAID_CODE_BLOCK_LANGUAGE },
+  }).run()
+  if (!inserted) return false
+
+  const selectionPosition = editor.state.selection.from
+  let codeBlockPosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (position >= selectionPosition) return false
+    if (node.type.name === 'codeBlock'
+      && node.attrs.language === MERMAID_CODE_BLOCK_LANGUAGE
+      && node.textContent.length === 0) {
+      codeBlockPosition = position
+    }
+    return true
+  })
+  if (codeBlockPosition !== null) {
+    editor.commands.setTextSelection(codeBlockPosition + 1)
+  }
+  return true
+}
+
+function setCodeBlockLanguage(editor: Editor, text?: string): boolean {
+  const current = getCurrentCodeBlock(editor)
+  if (!current) return false
+  const language = (text ?? '').trim()
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(current.pos, undefined, {
+    ...current.node.attrs,
+    language: language.length > 0 ? language : null,
+  }))
+  return true
+}
+
+function updateMermaid(editor: Editor, text?: string): boolean {
+  const source = (text ?? '').trim()
+  const selected = getSelectedMermaid(editor)
+  if (!selected || !source) return false
+  return editor.chain().focus().insertContentAt(
+    { from: selected.from, to: selected.to },
+    { type: 'mermaid', content: [{ type: 'text', text: source }] },
+  ).run()
+}
+
+function rerenderSelectedMermaid(editor: Editor): boolean {
+  const selected = getSelectedMermaid(editor)
+  if (!selected) return false
+  const dom = editor.view.nodeDOM(selected.from)
+  return rerenderMermaidElement(dom instanceof Element ? dom : null)
+}
+
+function editSelectedMermaid(editor: Editor): boolean {
+  const selected = getSelectedMermaid(editor)
+  if (!selected) return false
+  const codeBlock = editor.state.schema.nodes.codeBlock
+  if (!codeBlock) return false
+  const source = selected.node.textContent
+  return editor.chain().focus().insertContentAt(
+    { from: selected.from, to: selected.to },
+    { type: 'codeBlock', attrs: { language: MERMAID_CODE_BLOCK_LANGUAGE }, content: source ? [{ type: 'text', text: source }] : undefined },
+  ).run()
+}
+
+export function renderMermaidCodeBlockAt(editor: Editor, position: number): boolean {
+  const node = editor.state.doc.nodeAt(position)
+  if (!node || !isMermaidCodeBlock(node)) return false
+  const mermaidNode = editor.state.schema.nodes.mermaid
+  if (!mermaidNode) return false
+  const source = node.textContent
+  editor.view.dispatch(editor.state.tr.replaceWith(
+    position,
+    position + node.nodeSize,
+    mermaidNode.create(null, source ? editor.state.schema.text(source) : undefined),
+  ))
+  return true
+}
+
+function renderSelectedMermaidCodeBlock(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    const node = $from.node(depth)
+    if (!isMermaidCodeBlock(node)) continue
+    return renderMermaidCodeBlockAt(editor, depth === 0 ? 0 : $from.before(depth))
+  }
+  return false
+}
+
+function renderAllMermaidCodeBlocks(editor: Editor): boolean {
+  const positions: number[] = []
+  editor.state.doc.descendants((node, pos) => {
+    if (isMermaidCodeBlock(node)) positions.push(pos)
+  })
+  for (const position of positions.reverse()) {
+    renderMermaidCodeBlockAt(editor, position)
+  }
+  return positions.length > 0
+}
+
+function deleteMermaid(editor: Editor): boolean {
+  if (!getSelectedMermaid(editor)) return false
+  return editor.chain().focus().deleteSelection().run()
 }
 
 function changeMathNumber(editor: Editor, number?: string): boolean {

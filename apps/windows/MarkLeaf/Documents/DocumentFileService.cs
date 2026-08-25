@@ -6,18 +6,18 @@ namespace MarkLeaf.Documents;
 
 public sealed class DocumentFileService
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private static readonly UnicodeEncoding StrictUtf16LittleEndian = new(false, false, true);
-    private static readonly UnicodeEncoding StrictUtf16BigEndian = new(true, false, true);
-
     public MarkdownDocument CreateNew(
         string? newLine = null,
-        NewDocumentKind kind = NewDocumentKind.Markdown)
+        NewDocumentKind kind = NewDocumentKind.Markdown,
+        DocumentEncodingPolicy? encodingPolicy = null)
     {
+        encodingPolicy ??= DocumentEncodingPolicy.Utf8;
         return new MarkdownDocument
         {
             Kind = kind,
-            Encoding = StrictUtf8,
+            Encoding = encodingPolicy.CreateEncoding(),
+            EncodingPolicyId = encodingPolicy.Id,
+            HasBom = encodingPolicy.HasBom,
             NewLine = newLine ?? Environment.NewLine,
         };
     }
@@ -26,8 +26,31 @@ public sealed class DocumentFileService
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
-        var detected = DetectTextFormat(bytes);
-        var markdown = detected.Encoding.GetString(bytes, detected.PreambleLength, bytes.Length - detected.PreambleLength);
+        var detected = DocumentEncodingPolicy.Detect(bytes);
+        return await OpenAsync(fullPath, bytes, detected.Policy, detected.PreambleLength, cancellationToken);
+    }
+
+    public async Task<MarkdownDocument> OpenAsync(
+        string path,
+        DocumentEncodingPolicy encodingPolicy,
+        CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+        var preambleLength = bytes.AsSpan().StartsWith(DocumentEncodingPolicy.GetPreamble(encodingPolicy))
+            ? DocumentEncodingPolicy.GetPreamble(encodingPolicy).Length
+            : 0;
+        return await OpenAsync(fullPath, bytes, encodingPolicy, preambleLength, cancellationToken);
+    }
+
+    private async Task<MarkdownDocument> OpenAsync(
+        string fullPath,
+        byte[] bytes,
+        DocumentEncodingPolicy encodingPolicy,
+        int preambleLength,
+        CancellationToken cancellationToken)
+    {
+        var markdown = DocumentEncodingPolicy.Decode(bytes, encodingPolicy);
         var info = new FileInfo(fullPath);
 
         return new MarkdownDocument
@@ -35,8 +58,9 @@ public sealed class DocumentFileService
             FilePath = fullPath,
             Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath)),
             Markdown = markdown,
-            Encoding = detected.Encoding,
-            HasBom = detected.PreambleLength > 0,
+            Encoding = encodingPolicy.CreateEncoding(),
+            EncodingPolicyId = encodingPolicy.Id,
+            HasBom = encodingPolicy.HasBom || preambleLength > 0,
             NewLine = DetectNewLine(markdown),
             IsReadOnly = info.IsReadOnly,
             LastKnownWriteTime = info.LastWriteTimeUtc,
@@ -121,8 +145,9 @@ public sealed class DocumentFileService
             }
 
             var normalizedMarkdown = NormalizeNewLines(markdown, document.NewLine);
+            var encodingPolicy = DocumentEncodingPolicy.FromId(document.EncodingPolicyId);
             var contentBytes = document.Encoding.GetBytes(normalizedMarkdown);
-            var preamble = document.HasBom ? GetPreamble(document.Encoding) : [];
+            var preamble = document.HasBom ? DocumentEncodingPolicy.GetPreamble(encodingPolicy) : [];
             temporaryPath = Path.Combine(
                 directory,
                 $".{Path.GetFileName(fullPath)}.markleaf-{Guid.NewGuid():N}.tmp");
@@ -159,6 +184,9 @@ public sealed class DocumentFileService
             document.FilePath = fullPath;
             document.Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath));
             document.Markdown = normalizedMarkdown;
+            document.Encoding = encodingPolicy.CreateEncoding();
+            document.EncodingPolicyId = encodingPolicy.Id;
+            document.HasBom = encodingPolicy.HasBom;
             document.Revision = revision;
             document.IsDirty = false;
             document.IsReadOnly = false;
@@ -222,84 +250,6 @@ public sealed class DocumentFileService
             .Replace("\n", newLine, StringComparison.Ordinal);
     }
 
-    private static DetectedTextFormat DetectTextFormat(byte[] bytes)
-    {
-        if (bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }))
-        {
-            return new DetectedTextFormat(StrictUtf8, 3);
-        }
-
-        if (bytes.AsSpan().StartsWith(new byte[] { 0xff, 0xfe }))
-        {
-            return new DetectedTextFormat(StrictUtf16LittleEndian, 2);
-        }
-
-        if (bytes.AsSpan().StartsWith(new byte[] { 0xfe, 0xff }))
-        {
-            return new DetectedTextFormat(StrictUtf16BigEndian, 2);
-        }
-
-        if (LooksLikeUtf16(bytes, littleEndian: true))
-        {
-            return new DetectedTextFormat(StrictUtf16LittleEndian, 0);
-        }
-
-        if (LooksLikeUtf16(bytes, littleEndian: false))
-        {
-            return new DetectedTextFormat(StrictUtf16BigEndian, 0);
-        }
-
-        try
-        {
-            _ = StrictUtf8.GetString(bytes);
-            return new DetectedTextFormat(StrictUtf8, 0);
-        }
-        catch (DecoderFallbackException) when (LooksLikeUtf16(bytes, littleEndian: true))
-        {
-            return new DetectedTextFormat(StrictUtf16LittleEndian, 0);
-        }
-        catch (DecoderFallbackException) when (LooksLikeUtf16(bytes, littleEndian: false))
-        {
-            return new DetectedTextFormat(StrictUtf16BigEndian, 0);
-        }
-        catch (DecoderFallbackException exception)
-        {
-            throw new InvalidDataException("The file is not valid UTF-8 or UTF-16 text.", exception);
-        }
-    }
-
-    private static bool LooksLikeUtf16(byte[] bytes, bool littleEndian)
-    {
-        if (bytes.Length < 2 || bytes.Length % 2 != 0)
-        {
-            return false;
-        }
-
-        var expectedNulls = 0;
-        var samplePairs = Math.Min(bytes.Length / 2, 512);
-        for (var index = 0; index < samplePairs; index++)
-        {
-            var nullIndex = index * 2 + (littleEndian ? 1 : 0);
-            if (bytes[nullIndex] == 0)
-            {
-                expectedNulls++;
-            }
-        }
-
-        return expectedNulls >= Math.Max(1, samplePairs / 3);
-    }
-
-    private static byte[] GetPreamble(Encoding encoding)
-    {
-        return encoding.CodePage switch
-        {
-            65001 => [0xef, 0xbb, 0xbf],
-            1200 => [0xff, 0xfe],
-            1201 => [0xfe, 0xff],
-            _ => encoding.GetPreamble(),
-        };
-    }
-
     private static async Task<FileFingerprint> CreateFingerprintAsync(
         string path,
         CancellationToken cancellationToken)
@@ -330,5 +280,4 @@ public sealed class DocumentFileService
         return string.Equals(Path.GetFullPath(first), Path.GetFullPath(second), StringComparison.OrdinalIgnoreCase);
     }
 
-    private sealed record DetectedTextFormat(Encoding Encoding, int PreambleLength);
 }

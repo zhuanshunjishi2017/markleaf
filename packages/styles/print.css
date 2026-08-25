@@ -286,6 +286,18 @@
   color: var(--text-primary);
 }
 
+.markleaf-style-print .markleaf-document .markleaf-mermaid,
+.markleaf-style-print .markleaf-document .markleaf-mermaid *,
+.markleaf-style-print .markleaf-document .markleaf-mermaid svg,
+.markleaf-style-print .markleaf-document .markleaf-mermaid svg * {
+  text-indent: 0 !important;
+}
+
+.markleaf-style-print .markleaf-document .markleaf-mermaid {
+  background: transparent;
+  border-color: transparent;
+}
+
 html[lang="ja"] .markleaf-style-print .markleaf-document,
 html[lang="ja"] .markleaf-style-print .markleaf-document p {
   font-family: "Times New Roman", "Yu Mincho", "方正书宋_GBK", "宋体", serif;

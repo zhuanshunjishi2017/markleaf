@@ -4,6 +4,7 @@
 
 :root {
   --bg-primary:          #000000;
+  --bg-secondary:        #050505;
   --bg-hover:            #141414;
   --bg-selected:         #242424;
   --bg-selected-hover:   #333333;

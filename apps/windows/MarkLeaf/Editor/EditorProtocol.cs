@@ -24,6 +24,7 @@ public static class EditorProtocol
         "contextMenuRequested",
         "blockMenuRequested",
         "mathEditRequested",
+        "mermaidEditRequested",
         "outlineChanged",
         "outlineSelectionChanged",
         "requestSave",
@@ -36,6 +37,7 @@ public static class EditorProtocol
         "zoomWheel",
         "unsafeEmphasisRequested",
         "footnoteDefinitionMissing",
+        "footnoteReferenceMissing",
         "error",
     ];
 
@@ -174,6 +176,7 @@ public static class EditorProtocol
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
             "mathEditRequested" => IsMissingOrObject(payload),
+            "mermaidEditRequested" => IsMissingOrObject(payload),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
             "findResult" => HasFindResultPayload(payload),
@@ -182,6 +185,7 @@ public static class EditorProtocol
             "zoomWheel" => HasNonZeroNumber(payload, "deltaY"),
             "unsafeEmphasisRequested" => HasUnsafeEmphasisPayload(payload),
             "footnoteDefinitionMissing" => HasProperty(payload, "label", JsonValueKind.String),
+            "footnoteReferenceMissing" => HasProperty(payload, "label", JsonValueKind.String),
             "openLink" => HasAllowedUrl(payload),
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
@@ -234,6 +238,11 @@ public static class EditorProtocol
             && HasBooleanProperty(payload, "imageSelected")
             && HasBooleanProperty(payload, "mathInline")
             && HasBooleanProperty(payload, "mathBlock")
+            && HasOptionalBooleanProperty(payload, "mermaidSelected")
+            && (!payload.TryGetProperty("mermaidSource", out var mermaidSource)
+                || mermaidSource.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+            && (!payload.TryGetProperty("mermaidCount", out var mermaidCount)
+                || mermaidCount.ValueKind == JsonValueKind.Number && mermaidCount.TryGetInt32(out var count) && count >= 0)
             && HasBooleanProperty(payload, "sourceMode")
             && HasNullableString(payload, "mathLatex")
             && HasNullableString(payload, "mathNumber")

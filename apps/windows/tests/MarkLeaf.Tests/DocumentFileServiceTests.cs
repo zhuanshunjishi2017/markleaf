@@ -69,6 +69,31 @@ public sealed class DocumentFileServiceTests
     }
 
     [TestMethod]
+    public async Task OpenAsync_DetectsGbkText()
+    {
+        var path = Path.Combine(_testDirectory, "gbk.md");
+        var bytes = DocumentEncodingPolicy.Encode("中文内容€", DocumentEncodingPolicy.Gbk);
+        await File.WriteAllBytesAsync(path, bytes);
+
+        var document = await _service.OpenAsync(path);
+
+        Assert.AreEqual(DocumentEncodingPolicy.Gbk.Id, document.EncodingPolicyId);
+        Assert.AreEqual("中文内容€", document.Markdown);
+    }
+
+    [TestMethod]
+    public async Task OpenAsync_CanReloadWithExplicitEncoding()
+    {
+        var path = Path.Combine(_testDirectory, "big5.md");
+        await File.WriteAllBytesAsync(path, DocumentEncodingPolicy.Encode("繁體內容", DocumentEncodingPolicy.Big5));
+
+        var document = await _service.OpenAsync(path, DocumentEncodingPolicy.Big5);
+
+        Assert.AreEqual(DocumentEncodingPolicy.Big5.Id, document.EncodingPolicyId);
+        Assert.AreEqual("繁體內容", document.Markdown);
+    }
+
+    [TestMethod]
     public async Task SaveAsync_PreservesEncodingBomAndNewLines()
     {
         var path = Path.Combine(_testDirectory, "preserve.md");
@@ -98,6 +123,19 @@ public sealed class DocumentFileServiceTests
         Assert.IsFalse(bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }));
         Assert.AreEqual("content\n", Encoding.UTF8.GetString(bytes));
         Assert.AreEqual(Path.GetFullPath(path), document.FilePath);
+    }
+
+    [TestMethod]
+    public async Task SaveAsync_UsesSelectedNewDocumentEncoding()
+    {
+        var path = Path.Combine(_testDirectory, "gb18030.md");
+        var document = _service.CreateNew("\n", NewDocumentKind.Markdown, DocumentEncodingPolicy.Gb18030);
+
+        await _service.SaveAsync(document, "中文\n", 1, path);
+
+        var reopened = await _service.OpenAsync(path, DocumentEncodingPolicy.Gb18030);
+        Assert.AreEqual(DocumentEncodingPolicy.Gb18030.Id, reopened.EncodingPolicyId);
+        Assert.AreEqual("中文\n", reopened.Markdown);
     }
 
     [TestMethod]

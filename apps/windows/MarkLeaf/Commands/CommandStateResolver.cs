@@ -13,6 +13,7 @@ public static class CommandStateResolver
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
                 or AppCommand.RecoverUnsavedFiles
                 or AppCommand.FollowSystemColorMode => new(true),
+            AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
@@ -62,12 +63,21 @@ public static class CommandStateResolver
                 => new(context.EditorReady && !context.ReadOnly && context.ImageSelected),
             AppCommand.ToggleQuote => new(context.EditorReady && !context.ReadOnly, context.QuoteActive),
             AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly, context.CodeBlockActive),
+            AppCommand.DeclareCodeLanguage => new(context.EditorReady && !context.ReadOnly && context.CodeBlockActive),
+            AppCommand.CopyCodeBlock => new(context.EditorReady && context.CodeBlockActive && !string.IsNullOrEmpty(context.CodeBlockText)),
             AppCommand.ToggleBulletList => new(context.EditorReady && !context.ReadOnly, context.BulletListActive),
             AppCommand.ToggleOrderedList => new(context.EditorReady && !context.ReadOnly, context.OrderedListActive),
             AppCommand.ToggleTaskList => new(context.EditorReady && !context.ReadOnly, context.TaskListActive),
             AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.InsertMermaid => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.EditMermaid or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid =>
+                new(context.EditorReady && !context.ReadOnly && context.MermaidSelected),
+            AppCommand.RerenderAllMermaid =>
+                new(context.EditorReady && context.MermaidCount > 0),
             AppCommand.InsertFootnote => new(context.EditorReady && !context.ReadOnly),
-            AppCommand.ResetFootnoteLabel => new(context.EditorReady && !context.ReadOnly && !string.IsNullOrWhiteSpace(context.FootnoteDefinitionLabel)),
+            AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
+                or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote =>
+                new(context.EditorReady && !context.ReadOnly && !string.IsNullOrWhiteSpace(context.FootnoteDefinitionLabel)),
             AppCommand.ClearFormat => new(context.EditorReady && !context.ReadOnly),
             AppCommand.FormatPainter => new(
                 context.EditorReady && !context.ReadOnly && (context.CanStartFormatPainter || context.FormatPainterArmed),

@@ -26,6 +26,7 @@ export type EditorMessage = {
     | 'contextMenuRequested'
     | 'blockMenuRequested'
     | 'mathEditRequested'
+    | 'mermaidEditRequested'
     | 'outlineChanged'
     | 'outlineSelectionChanged'
     | 'requestSave'
@@ -38,6 +39,7 @@ export type EditorMessage = {
     | 'zoomWheel'
     | 'unsafeEmphasisRequested'
     | 'footnoteDefinitionMissing'
+    | 'footnoteReferenceMissing'
     | 'error'
   requestId?: string
   documentId: string

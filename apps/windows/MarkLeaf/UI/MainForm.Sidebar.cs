@@ -27,7 +27,7 @@ internal sealed partial class MainForm
             IsSplitterFixed = false,
         };
         split.Panel1.Controls.Add(CreateSidebarPanel());
-        split.Panel2.Controls.Add(CreateEditorHost());
+        split.Panel2.Controls.Add(_editorPanel);
         split.HandleCreated += (_, _) => SetSplitterDistanceSafely(split, sidebarWidth, FixedPanel.Panel1);
         return split;
     }
@@ -200,6 +200,7 @@ internal sealed partial class MainForm
         strip.Items.Add(_characterCountButton);
         strip.Items.Add(_blockTypeLabel);
         strip.Items.Add(_positionLabel);
+        _encodingLabel.Click += (_, _) => ShowEncodingMenu();
         strip.Items.Add(_encodingLabel);
         strip.Items.Add(_newLineLabel);
         _modeButton.Click += (_, _) => _editorHost?.ExecuteCommand("toggleSourceMode");

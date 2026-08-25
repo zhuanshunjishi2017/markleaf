@@ -5,22 +5,14 @@ namespace MarkLeaf.UI.Controls;
 
 internal sealed class MarkLeafScrollbar : Control
 {
-    private const int TrackWidth = 8;
-    private const int ControlLayoutWidth = 14;
-    private const int ThumbLeftInset = 2;
-    private const int ArrowLeftInset = 0;
-    private const int ArrowTopSpacing = 2;
-    private const int ArrowBottomSpacing = 0;
-    private const int TrackTopShift = 6;
+    private const float ControlLayoutWidthPoints = 7F;
+    private const float ThumbRightPaddingPoints = 1F;
     private const int ThumbRadius = 4;
     private const int MinThumbHeight = 24;
-    private const int ArrowSizeDpi = 18;
+    private const int MaxThumbHeight = 128;
 
     private Color _thumbIdle = Color.FromArgb(0x8B, 0x8B, 0x8B);
     private Color _thumbActive = Color.FromArgb(0x63, 0x63, 0x63);
-
-    private readonly System.Windows.Forms.Timer _arrowTimer = new() { Interval = 50 };
-    private readonly Font _arrowFont;
 
     private int _minimum;
     private int _maximum;
@@ -34,8 +26,6 @@ internal sealed class MarkLeafScrollbar : Control
     private bool _thumbHovered;
     private bool _dragging;
     private int _dragThumbOffset;
-    private int _arrowDirection;
-    private bool _arrowInitialDelay = true;
 
     public MarkLeafScrollbar()
     {
@@ -44,9 +34,13 @@ internal sealed class MarkLeafScrollbar : Control
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
         TabStop = false;
-        Width = this.ScaleForDpi(ControlLayoutWidth);
-        _arrowFont = new Font(SystemIconProvider.IconFontName, 7F, FontStyle.Regular, GraphicsUnit.Point);
-        _arrowTimer.Tick += OnArrowTimerTick;
+        UpdateLayoutWidth();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        UpdateLayoutWidth();
     }
 
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
@@ -141,24 +135,30 @@ internal sealed class MarkLeafScrollbar : Control
         Scroll?.Invoke(this, new ScrollEventArgs(type, _value));
     }
 
-    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging || _arrowDirection != 0;
+    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging;
+
+    private void UpdateLayoutWidth()
+    {
+        Width = Math.Max(1, (int)Math.Round(ControlLayoutWidthPoints * DeviceDpi / 72F));
+    }
 
     private int GetMaximumScrollValue() => Math.Max(0, _maximum - _largeChange + 1);
 
-    private int ArrowHeight() => this.ScaleForDpi(ArrowSizeDpi);
+    private int TrackTop() => 0;
 
-    private int TrackTop() => ArrowHeight() + this.ScaleForDpi(ArrowTopSpacing * 2 - TrackTopShift);
-
-    private int TrackBottom() => ClientSize.Height - ArrowHeight() - this.ScaleForDpi(ArrowBottomSpacing);
-
-    private int TrackHeight() => Math.Max(0, TrackBottom() - TrackTop());
+    private int TrackHeight() => ClientSize.Height;
 
     private int ThumbHeight()
     {
         if (_maximum <= _minimum) return TrackHeight();
         var range = _maximum - _minimum + _largeChange;
         var ratio = (double)_largeChange / range;
-        return Math.Max(this.ScaleForDpi(MinThumbHeight), (int)(TrackHeight() * ratio));
+        var minimumHeight = Math.Min(TrackHeight(), this.ScaleForDpi(MinThumbHeight));
+        var maximumHeight = Math.Min(TrackHeight(), this.ScaleForDpi(MaxThumbHeight));
+        return Math.Clamp(
+            (int)(TrackHeight() * ratio),
+            minimumHeight,
+            maximumHeight);
     }
 
     private int ThumbTop()
@@ -171,16 +171,11 @@ internal sealed class MarkLeafScrollbar : Control
         return TrackTop() + (int)((_value - _minimum) / (double)maxScroll * available);
     }
 
-    private int ThumbVisualLeft() => this.ScaleForDpi(ThumbLeftInset);
-
-    private int ArrowVisualLeft() => this.ScaleForDpi(ArrowLeftInset);
-
-    private int VisualWidth() => this.ScaleForDpi(TrackWidth);
-
     private Rectangle ThumbBounds()
     {
         var t = ThumbTop();
-        return new Rectangle(ThumbVisualLeft(), t, VisualWidth(), ThumbHeight());
+        var rightPadding = Math.Max(1, (int)Math.Round(ThumbRightPaddingPoints * DeviceDpi / 72F));
+        return new Rectangle(0, t, Math.Max(1, ClientSize.Width - rightPadding), ThumbHeight());
     }
 
     private Rectangle ThumbDragBounds()
@@ -188,12 +183,6 @@ internal sealed class MarkLeafScrollbar : Control
         var t = ThumbTop();
         return new Rectangle(0, t, ClientSize.Width, ThumbHeight());
     }
-
-    private Rectangle UpArrowBounds()
-        => new(ArrowVisualLeft(), this.ScaleForDpi(ArrowTopSpacing), VisualWidth(), ArrowHeight());
-
-    private Rectangle DownArrowBounds()
-        => new(ArrowVisualLeft(), ClientSize.Height - ArrowHeight() - this.ScaleForDpi(ArrowBottomSpacing), VisualWidth(), ArrowHeight());
 
     private Rectangle TrackBounds() => new(0, TrackTop(), ClientSize.Width, TrackHeight());
 
@@ -208,23 +197,9 @@ internal sealed class MarkLeafScrollbar : Control
         e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
         if (canScroll && showParts)
         {
-            var upColor = _arrowDirection == -1 ? _thumbActive : _thumbIdle;
-            using var upBrush = new SolidBrush(upColor);
-            DrawArrowChar(e.Graphics, _arrowFont, upBrush, UpArrowBounds(), SystemIconProvider.ScrollUpArrow);
-        }
-
-        if (canScroll && showParts)
-        {
             var color = _dragging || _thumbHovered ? _thumbActive : _thumbIdle;
             using var brush = new SolidBrush(color);
             SidebarGdi.FillRoundedRect(e.Graphics, ThumbBounds(), this.ScaleForDpi(ThumbRadius), brush);
-        }
-
-        if (canScroll && showParts)
-        {
-            var downColor = _arrowDirection == 1 ? _thumbActive : _thumbIdle;
-            using var downBrush = new SolidBrush(downColor);
-            DrawArrowChar(e.Graphics, _arrowFont, downBrush, DownArrowBounds(), SystemIconProvider.ScrollDownArrow);
         }
 
         e.Graphics.SmoothingMode = SmoothingMode.Default;
@@ -259,18 +234,6 @@ internal sealed class MarkLeafScrollbar : Control
             _dragThumbOffset = e.Y - thumbBounds.Top;
             Capture = true;
             Invalidate();
-            return;
-        }
-
-        if (UpArrowBounds().Contains(e.Location))
-        {
-            StartArrowScroll(-1);
-            return;
-        }
-
-        if (DownArrowBounds().Contains(e.Location))
-        {
-            StartArrowScroll(1);
             return;
         }
 
@@ -339,65 +302,6 @@ internal sealed class MarkLeafScrollbar : Control
             RaiseScroll(ScrollEventType.ThumbPosition);
             Invalidate();
         }
-        StopArrowScroll();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _arrowTimer.Dispose();
-            _arrowFont.Dispose();
-        }
-        base.Dispose(disposing);
-    }
-
-    private void StartArrowScroll(int direction)
-    {
-        _arrowDirection = direction;
-        _arrowInitialDelay = true;
-        _arrowTimer.Interval = 400;
-        Value = _value + direction * _smallChange;
-        RaiseScroll(ScrollEventType.SmallDecrement);
-        _arrowTimer.Start();
-    }
-
-    private void StopArrowScroll()
-    {
-        _arrowDirection = 0;
-        _arrowTimer.Stop();
-        Invalidate();
-    }
-
-    private void OnArrowTimerTick(object? sender, EventArgs e)
-    {
-        if (_arrowDirection == 0)
-        {
-            _arrowTimer.Stop();
-            return;
-        }
-
-        if (_arrowInitialDelay)
-        {
-            _arrowInitialDelay = false;
-            _arrowTimer.Interval = 50;
-        }
-
-        Value = _value + _arrowDirection * _smallChange;
-        RaiseScroll(ScrollEventType.SmallDecrement);
-    }
-
-    private static void DrawArrowChar(Graphics g, Font font, Brush brush, Rectangle bounds, string text)
-    {
-        using var path = new GraphicsPath();
-        path.AddString(
-            text,
-            font.FontFamily,
-            (int)font.Style,
-            g.DpiY * font.SizeInPoints / 72f,
-            bounds,
-            StringFormat.GenericDefault);
-        g.FillPath(brush, path);
     }
 
 }

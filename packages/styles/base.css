@@ -206,6 +206,36 @@
   margin: 0;
 }
 
+.markleaf-document .markleaf-mermaid {
+  margin: 1em 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  background: var(--bg-hover);
+  border: 1px solid var(--bg-selected);
+  border-radius: 0;
+  padding: 12px;
+}
+
+.markleaf-document .markleaf-mermaid-view,
+.markleaf-document .markleaf-mermaid-export {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.markleaf-document .markleaf-mermaid,
+.markleaf-document .markleaf-mermaid svg,
+.markleaf-document .markleaf-mermaid svg * {
+  font-family: inherit !important;
+  text-indent: 0 !important;
+}
+
+.markleaf-document .markleaf-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .markleaf-document th {
   font-weight: 600;
   background: var(--bg-hover);

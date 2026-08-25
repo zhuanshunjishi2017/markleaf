@@ -64,16 +64,56 @@ describe('read-only documents', () => {
     expect(editor.state.selection.empty).toBe(true)
   })
 
-  it('clears themed selection decorations when the visual editor loses focus', () => {
+  it('does not rewrite selected visual text with inline decorations', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const editor = createEditor(el, 'hello world', true)
+    editors.push(editor)
+    const htmlBeforeSelection = editor.view.dom.innerHTML
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+
+    expect(editor.view.dom.innerHTML).toBe(htmlBeforeSelection)
+    expect(editor.state.selection.empty).toBe(false)
+  })
+
+  it('cancels native text dragging in the read-only visual editor', () => {
     const el = document.createElement('div')
     document.body.append(el)
     const editor = createEditor(el, 'hello world', true)
     editors.push(editor)
     editor.commands.setTextSelection({ from: 1, to: 6 })
+    const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
 
-    expect(editor.view.dom.querySelector('.markleaf-themed-selection')).not.toBeNull()
-    editor.view.dom.dispatchEvent(new FocusEvent('blur'))
-    expect(editor.view.dom.querySelector('.markleaf-themed-selection')).toBeNull()
+    expect(editor.view.dom.dispatchEvent(dragStart)).toBe(false)
+    expect(dragStart.defaultPrevented).toBe(true)
+    expect(editor.state.selection.from).toBe(1)
+    expect(editor.state.selection.to).toBe(6)
+  })
+
+  it('keeps native text dragging available in the editable visual editor', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const editor = createEditor(el, 'hello world')
+    editors.push(editor)
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+    const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
+
+    expect(editor.view.dom.dispatchEvent(dragStart)).toBe(true)
+    expect(dragStart.defaultPrevented).toBe(false)
+  })
+
+  it('cancels native text dragging in the read-only source editor', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const source = new SourceEditor(el, 'hello world', () => {}, 2, true)
+    sources.push(source)
+    source.setSelection(1, 6)
+    const dragStart = new Event('dragstart', { bubbles: true, cancelable: true })
+
+    expect(source.view.contentDOM.dispatchEvent(dragStart)).toBe(false)
+    expect(dragStart.defaultPrevented).toBe(true)
+    expect(source.view.state.selection.main.from).toBe(1)
+    expect(source.view.state.selection.main.to).toBe(6)
   })
 
   it('clears source selection decorations when the source editor loses focus', () => {

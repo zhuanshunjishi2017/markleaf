@@ -36,12 +36,12 @@ public sealed class CommandCatalogTests
     [TestMethod]
     public void NewDocumentKind_UsesExpectedExtensionsAndEditorTypes()
     {
-        Assert.AreEqual("md", NewDocumentKind.Markdown.FileExtension);
-        Assert.AreEqual("markdown", NewDocumentKind.Markdown.EditorDocumentType);
-        Assert.AreEqual("txt", NewDocumentKind.PlainText.FileExtension);
-        Assert.AreEqual("plainText", NewDocumentKind.PlainText.EditorDocumentType);
-        Assert.AreEqual(NewDocumentKind.PlainText, NewDocumentKind.FromExtension("TXT"));
-        Assert.AreEqual(NewDocumentKind.Markdown, NewDocumentKind.FromExtension("markdown"));
+        Assert.AreEqual("md", NewDocumentKind.Markdown.FileExtension());
+        Assert.AreEqual("markdown", NewDocumentKind.Markdown.EditorDocumentType());
+        Assert.AreEqual("txt", NewDocumentKind.PlainText.FileExtension());
+        Assert.AreEqual("plainText", NewDocumentKind.PlainText.EditorDocumentType());
+        Assert.AreEqual(NewDocumentKind.PlainText, NewDocumentKindExtensions.FromExtension("TXT"));
+        Assert.AreEqual(NewDocumentKind.Markdown, NewDocumentKindExtensions.FromExtension("markdown"));
     }
 
     [TestMethod]

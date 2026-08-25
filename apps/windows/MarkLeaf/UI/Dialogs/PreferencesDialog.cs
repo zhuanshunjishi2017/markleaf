@@ -49,6 +49,8 @@ internal sealed class PreferencesDialog : Form
     { Text = Loc.Get("prefs.clearHistory"), AutoSize = true, FlatStyle = FlatStyle.System };
     private readonly ComboBox _newLineStyleCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _defaultEncodingCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly Button _editShortcutsButton;
 
@@ -82,6 +84,7 @@ internal sealed class PreferencesDialog : Form
     private readonly CheckBox _ctrlWheelZoomCheck;
     private readonly CheckBox _topMostCheck;
     private readonly CheckBox _autoHideScrollbarsCheck;
+    private readonly CheckBox _showCodeHighlightCheck;
     private readonly ComboBox _menuStyleCombo = new()
     { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _customizeStatusBarButton = new()
@@ -204,6 +207,10 @@ internal sealed class PreferencesDialog : Form
         { Text = Loc.Get("prefs.file.recordRecentFiles"), AutoSize = true, FlatStyle = FlatStyle.System };
         _recordRecentFoldersCheck = new CheckBox
         { Text = Loc.Get("prefs.file.recordRecentFolders"), AutoSize = true, FlatStyle = FlatStyle.System };
+        foreach (var encoding in DocumentEncodingPolicy.All)
+        {
+            _defaultEncodingCombo.Items.Add(encoding.DisplayName);
+        }
         _newLineStyleCombo.Items.Add("LF");
         _newLineStyleCombo.Items.Add("CRLF");
 
@@ -231,6 +238,8 @@ internal sealed class PreferencesDialog : Form
         { Text = Loc.Get("prefs.appearance.topMost"), AutoSize = true, FlatStyle = FlatStyle.System };
         _autoHideScrollbarsCheck = new CheckBox
         { Text = Loc.Get("prefs.appearance.autoHideScrollbars"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _showCodeHighlightCheck = new CheckBox
+        { Text = Loc.Get("prefs.appearance.showCodeHighlight"), AutoSize = true, FlatStyle = FlatStyle.System };
         _followSystemCheck = new CheckBox
         { Text = Loc.Get("prefs.appearance.followSystemColor"), AutoSize = true, FlatStyle = FlatStyle.System };
         _followSystemCheck.CheckedChanged += (_, _) =>
@@ -266,7 +275,7 @@ internal sealed class PreferencesDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(537));
+        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(566));
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
@@ -365,6 +374,7 @@ internal sealed class PreferencesDialog : Form
                 DarkModeService.SetWindowDarkTitleBar(this);
                 // .NET SetColorMode 对首个可见 TabPage 的控件覆盖不完整，再次强制设色。
                 ForceComboDark(_startupAction);
+                ForceComboDark(_defaultEncodingCombo);
                 ForceComboDark(_newLineStyleCombo);
             }
         };
@@ -384,10 +394,19 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
+            RowCount = 8,
             Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(11), this.ScaleForDpi(14), this.ScaleForDpi(7)),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.file.startupAction.label")), 0, 0);
         panel.Controls.Add(_startupAction, 1, 0);
@@ -402,8 +421,8 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(Gap(), 0, 3);
         panel.Controls.Add(Gap(), 1, 3);
 
-        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.newLineStyle.label")), 0, 4);
-        panel.Controls.Add(BuildNewLinePanel(), 1, 4);
+        panel.Controls.Add(NewLabel(Loc.Get("prefs.file.textFormat.label")), 0, 4);
+        panel.Controls.Add(BuildTextFormatPanel(), 1, 4);
 
         panel.Controls.Add(Gap(), 0, 5);
         panel.Controls.Add(Gap(), 1, 5);
@@ -414,6 +433,49 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 7);
 
+        return panel;
+    }
+
+    private Control BuildTextFormatPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 2,
+            RowCount = 5,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(64)));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, this.ScaleForDpi(6)));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var hintMaximumWidth = this.ScaleForDpi(226);
+        panel.Controls.Add(NewInlineLabel(Loc.Get("prefs.file.defaultEncoding.label")), 0, 0);
+        panel.Controls.Add(_defaultEncodingCombo, 1, 0);
+        panel.Controls.Add(new Label
+        {
+            Text = Loc.Get("prefs.file.defaultEncodingHint"),
+            AutoSize = true,
+            MaximumSize = new Size(hintMaximumWidth, 0),
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            Margin = new Padding(0, this.ScaleForDpi(2), 0, 0),
+        }, 1, 1);
+        panel.Controls.Add(NewInlineLabel(Loc.Get("prefs.file.newLineStyle.label")), 0, 3);
+        panel.Controls.Add(_newLineStyleCombo, 1, 3);
+        panel.Controls.Add(new Label
+        {
+            Text = Loc.Get("prefs.file.newLineHint"),
+            AutoSize = true,
+            MaximumSize = new Size(hintMaximumWidth, 0),
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            Margin = new Padding(0, this.ScaleForDpi(2), 0, 0),
+        }, 1, 4);
         return panel;
     }
 
@@ -433,29 +495,6 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(checks, 0, 0);
         panel.Controls.Add(Gap(), 0, 1);
         panel.Controls.Add(_clearHistoryButton, 0, 2);
-        return panel;
-    }
-
-    private Control BuildNewLinePanel()
-    {
-        var panel = new TableLayoutPanel
-        {
-            ColumnCount = 1,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        panel.Controls.Add(_newLineStyleCombo, 0, 0);
-        panel.Controls.Add(Gap(), 0, 1);
-        panel.Controls.Add(new Label
-        {
-            Text = Loc.Get("prefs.file.newLineHint"),
-            AutoSize = true,
-            MaximumSize = new Size(this.ScaleForDpi(246), 0),
-            ForeColor = SystemColors.GrayText,
-            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
-
-        }, 0, 2);
         return panel;
     }
 
@@ -578,6 +617,9 @@ internal sealed class PreferencesDialog : Form
 
         panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 8);
         panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(_showCodeHighlightCheck, 0, 10);
+        panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
         return panel;
     }
@@ -965,6 +1007,7 @@ internal sealed class PreferencesDialog : Form
         _snapshotInterval.Value = file.SnapshotIntervalSeconds;
         _recordRecentFilesCheck.Checked = file.RecordRecentFiles;
         _recordRecentFoldersCheck.Checked = file.RecordRecentFolders;
+        _defaultEncodingCombo.SelectedIndex = Math.Max(0, FindEncodingIndex(file.DefaultEncoding));
         _newLineStyleCombo.SelectedIndex = file.NewLineStyle == NewLineStyle.Lf ? 0 : 1;
 
         var editor = _settings.Editor;
@@ -983,6 +1026,7 @@ internal sealed class PreferencesDialog : Form
         _ctrlWheelZoomCheck.Checked = appearance.CtrlWheelZoom;
         _topMostCheck.Checked = appearance.TopMostWindow;
         _autoHideScrollbarsCheck.Checked = appearance.AutoHideScrollbars;
+        _showCodeHighlightCheck.Checked = appearance.ShowCodeHighlight;
         _followSystemCheck.Checked = appearance.FollowSystemColorMode;
         _themeCombo.Enabled = !appearance.FollowSystemColorMode;
         _menuStyleCombo.SelectedIndex = (int)appearance.MenuBarStyle;
@@ -1055,6 +1099,20 @@ internal sealed class PreferencesDialog : Form
         return 0;
     }
 
+    private static int FindEncodingIndex(string encodingId)
+    {
+        var encoding = DocumentEncodingPolicy.FromId(encodingId);
+        for (var index = 0; index < DocumentEncodingPolicy.All.Count; index++)
+        {
+            if (string.Equals(DocumentEncodingPolicy.All[index].Id, encoding.Id, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
     private void OnOkClick(object? sender, EventArgs e)
     {
         var file = _settings.File;
@@ -1064,6 +1122,11 @@ internal sealed class PreferencesDialog : Form
         file.SnapshotIntervalSeconds = (int)_snapshotInterval.Value;
         file.RecordRecentFiles = _recordRecentFilesCheck.Checked;
         file.RecordRecentFolders = _recordRecentFoldersCheck.Checked;
+        if (_defaultEncodingCombo.SelectedIndex >= 0
+            && _defaultEncodingCombo.SelectedIndex < DocumentEncodingPolicy.All.Count)
+        {
+            file.DefaultEncoding = DocumentEncodingPolicy.All[_defaultEncodingCombo.SelectedIndex].Id;
+        }
         file.NewLineStyle = _newLineStyleCombo.SelectedIndex == 0 ? NewLineStyle.Lf : NewLineStyle.Crlf;
 
         var editor = _settings.Editor;
@@ -1095,6 +1158,7 @@ internal sealed class PreferencesDialog : Form
         appearance.CtrlWheelZoom = _ctrlWheelZoomCheck.Checked;
         appearance.TopMostWindow = _topMostCheck.Checked;
         appearance.AutoHideScrollbars = _autoHideScrollbarsCheck.Checked;
+        appearance.ShowCodeHighlight = _showCodeHighlightCheck.Checked;
         appearance.FollowSystemColorMode = _followSystemCheck.Checked;
         if (_menuStyleCombo.SelectedIndex >= 0)
             appearance.MenuBarStyle = (MenuBarStyle)_menuStyleCombo.SelectedIndex;
@@ -1128,7 +1192,9 @@ internal sealed class PreferencesDialog : Form
 
         var comboW = this.ScaleForDpi(210);
         _startupAction.Width = comboW;
-        _newLineStyleCombo.Width = comboW;
+        var textFormatComboW = this.ScaleForDpi(156);
+        _defaultEncodingCombo.Width = textFormatComboW;
+        _newLineStyleCombo.Width = textFormatComboW;
         _cjkLanguageTagCombo.Width = this.ScaleForDpi(100);
         _styleCombo.Width = comboW;
         _themeCombo.Width = comboW;
@@ -1164,6 +1230,19 @@ internal sealed class PreferencesDialog : Form
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Bold),
             Padding = new Padding(this.ScaleForDpi(6), this.ScaleForDpi(6), 0, 0),
 
+        };
+    }
+
+    private Label NewInlineLabel(string text)
+    {
+        return new Label
+        {
+            Text = text,
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            Padding = new Padding(0, this.ScaleForDpi(4), 0, 0),
         };
     }
 

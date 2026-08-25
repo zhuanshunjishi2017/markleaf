@@ -153,6 +153,12 @@ export class SourceEditor {
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.domEventHandlers({
         paste: (event, view) => this.handlePaste(event, view),
+        dragstart: (event) => {
+          if (!this.readOnly) return false
+          event.dataTransfer?.clearData()
+          event.preventDefault()
+          return true
+        },
         // 失焦时折叠选区：让主题化选中装饰随选区清空而消失。
         blur: (_event, view) => {
           const selection = view.state.selection.main
@@ -353,6 +359,23 @@ export class SourceEditor {
     this.view.dispatch({
       changes: { from: selection.from, to: selection.to, insert: normalizedText },
       selection: { anchor: selection.from + normalizedText.length },
+    })
+    this.focus()
+    return true
+  }
+
+  insertMermaidCodeBlock(): boolean {
+    if (this.readOnly) return false
+    const selection = this.view.state.selection.main
+    const currentLine = this.view.state.doc.lineAt(selection.from)
+    const prefix = selection.from > currentLine.from ? '\n' : ''
+    const suffix = selection.to < currentLine.to ? '\n' : ''
+    const insertion = `${prefix}\`\`\`mermaid\n\n\`\`\`${suffix}`
+    const cursor = selection.from + prefix.length + '```mermaid\n'.length
+    this.view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: insertion },
+      selection: { anchor: cursor },
+      scrollIntoView: true,
     })
     this.focus()
     return true

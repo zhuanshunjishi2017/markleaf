@@ -21,9 +21,16 @@ internal sealed class MathInputDialog : Form
         PlaceholderText = "1",
     };
 
-    public MathInputDialog(bool isBlock, string initialLatex = "", string initialNumber = "", bool showNumber = false)
+    public MathInputDialog(
+        bool isBlock,
+        string initialLatex = "",
+        string initialNumber = "",
+        bool showNumber = false,
+        string? title = null,
+        string? inputLabel = null,
+        string? placeholderText = null)
     {
-        Text = isBlock ? Loc.Get("dialog.mathBlockTitle") : Loc.Get("dialog.mathInlineTitle");
+        Text = title ?? (isBlock ? Loc.Get("dialog.mathBlockTitle") : Loc.Get("dialog.mathInlineTitle"));
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
@@ -36,7 +43,7 @@ internal sealed class MathInputDialog : Form
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            Text = Loc.Get("dialog.mathLatexLabel"),
+            Text = inputLabel ?? Loc.Get("dialog.mathLatexLabel"),
             Padding = new Padding(0, 0, 0, this.ScaleForDpi(3)),
         };
         latexLabel.UseMnemonic = true;
@@ -55,6 +62,10 @@ internal sealed class MathInputDialog : Form
             DialogResult = DialogResult.Cancel,
         };
         _latex.TextChanged += (_, _) => okButton.Enabled = !string.IsNullOrWhiteSpace(_latex.Text);
+        if (!string.IsNullOrEmpty(placeholderText))
+        {
+            _latex.PlaceholderText = placeholderText;
+        }
         _latex.Text = initialLatex;
         _number.Text = initialNumber;
 

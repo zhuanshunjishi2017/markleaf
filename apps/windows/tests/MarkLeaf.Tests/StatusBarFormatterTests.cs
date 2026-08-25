@@ -1,4 +1,4 @@
-using System.Text;
+using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.UI;
 
@@ -33,9 +33,9 @@ public sealed class StatusBarFormatterTests
     [TestMethod]
     public void FormatDocumentMetadata_FormatsEncodingAndNewLines()
     {
-        Assert.AreEqual("UTF-8", StatusBarFormatter.FormatEncoding(new UTF8Encoding(false), false));
-        Assert.AreEqual("UTF-8 BOM", StatusBarFormatter.FormatEncoding(new UTF8Encoding(true), true));
-        Assert.AreEqual("UTF-16 LE", StatusBarFormatter.FormatEncoding(Encoding.Unicode, true));
+        Assert.AreEqual("UTF-8", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf8));
+        Assert.AreEqual("UTF-8 with BOM", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf8Bom));
+        Assert.AreEqual("UTF-16 with BOM", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf16Bom));
         Assert.AreEqual("CRLF", StatusBarFormatter.FormatNewLine("\r\n"));
         Assert.AreEqual("LF", StatusBarFormatter.FormatNewLine("\n"));
     }

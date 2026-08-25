@@ -195,4 +195,16 @@ describe('source editor', () => {
     expect(source.deleteSelection()).toBe(true)
     expect(source.getText()).toBe('')
   })
+
+  it('inserts an empty mermaid fence on a new line', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const source = new SourceEditor(parent, 'before after', () => {})
+    sources.push(source)
+    source.setSelection('before'.length)
+
+    expect(source.insertMermaidCodeBlock()).toBe(true)
+    expect(source.getText()).toBe('before\n```mermaid\n\n```\n after')
+    expect(source.view.state.selection.main.head).toBe('before\n```mermaid\n'.length)
+  })
 })

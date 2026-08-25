@@ -16,6 +16,8 @@ internal sealed record EditorCommandStatus(
     bool Link,
     bool Blockquote,
     bool CodeBlock,
+    string? CodeBlockLanguage,
+    string? CodeBlockText,
     bool BulletList,
     bool OrderedList,
     bool TaskList,
@@ -24,6 +26,9 @@ internal sealed record EditorCommandStatus(
     bool ImageSelected,
     bool MathInline,
     bool MathBlock,
+    bool MermaidSelected,
+    string? MermaidSource,
+    int MermaidCount,
     bool SourceMode,
     string? MathLatex,
     string? MathNumber,
@@ -34,8 +39,8 @@ internal sealed record EditorCommandStatus(
     bool ReadOnly)
 {
     public static EditorCommandStatus Empty { get; } = new(
-        false, false, false, false, null, false, false, false, false, false, false, false, false, false, false,
-        false, false, null, false, false, false, false, null, null, null, null, false, false, false);
+        false, false, false, false, null, false, false, false, false, false, false, false, false, null, null, false, false,
+        false, false, null, false, false, false, false, null, 0, false, null, null, null, null, false, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
     {
@@ -55,6 +60,12 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("link").GetBoolean(),
             payload.GetProperty("blockquote").GetBoolean(),
             payload.GetProperty("codeBlock").GetBoolean(),
+            payload.TryGetProperty("codeBlockLanguage", out var codeBlockLanguageProp) && codeBlockLanguageProp.ValueKind == JsonValueKind.String
+                ? codeBlockLanguageProp.GetString()
+                : null,
+            payload.TryGetProperty("codeBlockText", out var codeBlockTextProp) && codeBlockTextProp.ValueKind == JsonValueKind.String
+                ? codeBlockTextProp.GetString()
+                : null,
             payload.GetProperty("bulletList").GetBoolean(),
             payload.GetProperty("orderedList").GetBoolean(),
             payload.GetProperty("taskList").GetBoolean(),
@@ -65,6 +76,16 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("imageSelected").GetBoolean(),
             payload.GetProperty("mathInline").GetBoolean(),
             payload.GetProperty("mathBlock").GetBoolean(),
+            payload.TryGetProperty("mermaidSelected", out var mermaidSelected) && mermaidSelected.ValueKind == JsonValueKind.True,
+            payload.TryGetProperty("mermaidSource", out var mermaidSourceProp) && mermaidSourceProp.ValueKind == JsonValueKind.String
+                ? mermaidSourceProp.GetString()
+                : null,
+            payload.TryGetProperty("mermaidCount", out var mermaidCountProp)
+                && mermaidCountProp.ValueKind == JsonValueKind.Number
+                && mermaidCountProp.TryGetInt32(out var mermaidCount)
+                && mermaidCount >= 0
+                ? mermaidCount
+                : 0,
             payload.GetProperty("sourceMode").GetBoolean(),
             payload.GetProperty("mathLatex").ValueKind == JsonValueKind.Null
                 ? null

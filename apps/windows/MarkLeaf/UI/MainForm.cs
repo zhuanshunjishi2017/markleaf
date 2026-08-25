@@ -76,7 +76,10 @@ internal sealed partial class MainForm : Form
     };
     private readonly ToolStripStatusLabel _blockTypeLabel = new(Loc.Get("statusBar.blockType.paragraph"));
     private readonly ToolStripStatusLabel _positionLabel = new(Loc.Format("statusBar.position", 1, 1));
-    private readonly ToolStripStatusLabel _encodingLabel = new("UTF-8");
+    private readonly ToolStripButton _encodingLabel = new("UTF-8")
+    {
+        DisplayStyle = ToolStripItemDisplayStyle.Text,
+    };
     private readonly ToolStripStatusLabel _newLineLabel = new("CRLF");
     private readonly ToolStripButton _modeButton = new(Loc.Get("statusBar.mode.visual"))
     {
@@ -138,6 +141,15 @@ internal sealed partial class MainForm : Form
         }
         _imageAssetService = new ImageAssetService(_paths.DefaultImageDirectory);
         _effectiveDpi = options.LayoutDpiOverride ?? DeviceDpi;
+        var themeColors = ColorThemeService.GetActiveColors();
+        var editorBg = themeColors.TryGetValue("bg-primary", out var bgColor)
+            ? bgColor
+            : SystemColors.Window;
+        _editorPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = editorBg,
+        };
         _statusMessageTimer.Tick += (_, _) => ClearTemporaryStatusMessage();
         _viewToggleButton.Width = this.ScaleForDpi(18);
         _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
@@ -209,7 +221,7 @@ internal sealed partial class MainForm : Form
         ApplySidebarColors();
         ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
 
-        Shown += async (_, _) => await OnMainFormShownAsync(placement.IsMaximized);
+        Shown += (_, _) => _ = OnMainFormShownAsync(placement.IsMaximized);
         FormClosing += OnMainFormClosing;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         DpiChanged += (_, args) =>
@@ -337,6 +349,7 @@ internal sealed partial class MainForm : Form
 
     private async Task OnMainFormShownAsync(bool maximize)
     {
+        await Task.Yield();
         if (maximize)
         {
             WindowState = FormWindowState.Maximized;
@@ -348,31 +361,18 @@ internal sealed partial class MainForm : Form
         _logger.Info($"Main window shown at DPI {_effectiveDpi}.");
         WriteWindowReport();
 
+        if (_editorHost is null)
+        {
+            CreateEditorHost();
+        }
+
+        var startupTasks = new List<Task>();
         if (_editorHost is not null)
         {
-            await _editorHost.InitializeAsync();
+            startupTasks.Add(_editorHost.InitializeAsync());
         }
-
-        if (!string.IsNullOrWhiteSpace(_options.InitialDocumentPath))
-        {
-            _initialDocumentOpened = true;
-            await OpenDocumentPathAsync(_options.InitialDocumentPath);
-        }
-
-        if (_settings.File.StartupAction != StartupAction.NewDocument
-            && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
-            && Directory.Exists(_settings.Workspace.LastFolder))
-        {
-            await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
-
-            if (_settings.File.StartupAction == StartupAction.OpenLastWorkspaceAndFiles
-                && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)
-                && File.Exists(_settings.Workspace.LastFile)
-                && !_initialDocumentOpened)
-            {
-                await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
-            }
-        }
+        startupTasks.Add(InitializeStartupContentAsync());
+        await Task.WhenAll(startupTasks);
 
         if (_settings.File.StartupAction == StartupAction.NewDocument
             && !_initialDocumentOpened)
@@ -396,6 +396,43 @@ internal sealed partial class MainForm : Form
                 Close();
             };
             timer.Start();
+        }
+    }
+
+    private async Task InitializeStartupContentAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.InitialDocumentPath))
+        {
+            _initialDocumentOpened = true;
+            await OpenDocumentPathAsync(_options.InitialDocumentPath);
+        }
+
+        if (_settings.File.StartupAction == StartupAction.NewDocument
+            || string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
+            || !Directory.Exists(_settings.Workspace.LastFolder))
+        {
+            if (_settings.File.StartupAction == StartupAction.NewDocument
+                && !_initialDocumentOpened)
+            {
+                _sidebarSplit.Panel1Collapsed = true;
+            }
+            return;
+        }
+
+        await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
+
+        if (_settings.File.StartupAction == StartupAction.OpenLastWorkspaceAndFiles
+            && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)
+            && File.Exists(_settings.Workspace.LastFile)
+            && !_initialDocumentOpened)
+        {
+            await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
+        }
+
+        if (_settings.File.StartupAction == StartupAction.NewDocument
+            && !_initialDocumentOpened)
+        {
+            _sidebarSplit.Panel1Collapsed = true;
         }
     }
 

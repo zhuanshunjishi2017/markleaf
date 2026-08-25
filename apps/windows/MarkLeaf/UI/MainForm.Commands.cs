@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
+using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
 using MarkLeaf.Services.ExternalLinks;
@@ -92,18 +93,23 @@ internal sealed partial class MainForm
             LinkActive: _editorCommandStatus.Link,
             QuoteActive: _editorCommandStatus.Blockquote,
             CodeBlockActive: _editorCommandStatus.CodeBlock,
+            CodeBlockLanguage: _editorCommandStatus.CodeBlockLanguage,
+            CodeBlockText: _editorCommandStatus.CodeBlockText,
             BulletListActive: _editorCommandStatus.BulletList,
             OrderedListActive: _editorCommandStatus.OrderedList,
             TaskListActive: _editorCommandStatus.TaskList,
             InTable: _editorCommandStatus.InTable,
             TableAlign: _editorCommandStatus.TableAlign,
             ImageSelected: _editorCommandStatus.ImageSelected,
+            MermaidSelected: _editorCommandStatus.MermaidSelected,
+            MermaidCount: _editorCommandStatus.MermaidCount,
             CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
             FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
             DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
             FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
+            ShowCodeHighlight: _settings.Appearance.ShowCodeHighlight,
             ListViewActive: _workspaceListViewActive,
             FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
@@ -113,6 +119,7 @@ internal sealed partial class MainForm
             && command != AppCommand.InsertImage
             && command != AppCommand.InsertImageFromUrl
             && command != AppCommand.EditMath
+            && command != AppCommand.EditMermaid
             && command != AppCommand.ChangeImage
             && command != AppCommand.SaveImageAs
             && command is not AppCommand.ResizeImage100
@@ -268,6 +275,9 @@ internal sealed partial class MainForm
             case AppCommand.InsertMathBlock:
                 InsertMath(isBlock: true);
                 break;
+            case AppCommand.InsertMermaid:
+                InsertMermaid();
+                break;
             case AppCommand.InsertFootnote:
                 InsertFootnote();
                 break;
@@ -276,6 +286,15 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.EditMath:
                 EditMath();
+                break;
+            case AppCommand.EditMermaid:
+                EditMermaid();
+                break;
+            case AppCommand.DeclareCodeLanguage:
+                DeclareCodeLanguage();
+                break;
+            case AppCommand.CopyCodeBlock:
+                CopyCodeBlock();
                 break;
             case AppCommand.EditImageCaption:
                 EditImageCaption();
@@ -327,6 +346,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.FollowSystemColorMode:
                 ToggleFollowSystemColorMode();
+                break;
+            case AppCommand.ShowCodeHighlight:
+                ToggleCodeHighlight();
                 break;
             case AppCommand.Exit:
                 Close();
@@ -415,12 +437,21 @@ internal sealed partial class MainForm
             AppCommand.InsertLineAfter => "insertLineAfter",
             AppCommand.InsertMathInline => "insertMathInline",
             AppCommand.InsertMathBlock => "insertMathBlock",
+            AppCommand.InsertMermaid => "insertMermaid",
             AppCommand.InsertFootnote => "insertFootnote",
             AppCommand.ResetFootnoteLabel => "resetFootnoteLabel",
+            AppCommand.GoToFootnoteReference => "goToFootnoteReference",
+            AppCommand.ClearFootnoteReferences => "clearFootnoteReferences",
+            AppCommand.DeleteFootnote => "deleteFootnote",
             AppCommand.SelectAll => "selectAll",
             AppCommand.ExitCode => "exitCode",
             AppCommand.ConvertMath => "convertMath",
             AppCommand.DeleteMath => "deleteMath",
+            AppCommand.DeclareCodeLanguage => "setCodeBlockLanguage",
+            AppCommand.EditMermaid => "editMermaid",
+            AppCommand.RerenderMermaid => "rerenderMermaid",
+            AppCommand.DeleteMermaid => "deleteMermaid",
+            AppCommand.RerenderAllMermaid => "rerenderAllMermaid",
             AppCommand.ClearFormat => "clearFormat",
             AppCommand.FormatPainter => "formatPainter",
             _ => string.Empty,
@@ -435,10 +466,13 @@ internal sealed partial class MainForm
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
-            || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertFootnote
-                or AppCommand.ResetFootnoteLabel
+            || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
+                or AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
+                or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote
             || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
                 or AppCommand.DeleteMath or AppCommand.EditMath
+                or AppCommand.DeclareCodeLanguage or AppCommand.CopyCodeBlock
+                or AppCommand.EditMermaid or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid or AppCommand.RerenderAllMermaid
             || command is AppCommand.ChangeImage or AppCommand.SaveImageAs
                 or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
                 or AppCommand.ResizeImage75 or AppCommand.ResizeImage90
@@ -503,7 +537,7 @@ internal sealed partial class MainForm
         }
 
         var screenPoint = _editorHost.EditorPointToScreen(request);
-        _menuService.ShowBlockHandleMenu(Handle, screenPoint);
+        _menuService.ShowBlockHandleMenu(Handle, screenPoint, _editorCommandStatus);
         _editorHost.ClearBlockHighlight();
     }
 
@@ -516,6 +550,17 @@ internal sealed partial class MainForm
         }
 
         EditMath();
+    }
+
+    private void OnMermaidEditRequested(object? sender, EventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnMermaidEditRequested(sender, e));
+            return;
+        }
+
+        EditMermaid();
     }
 
     private void OnOpenLinkRequested(object? sender, string url)
@@ -545,6 +590,45 @@ internal sealed partial class MainForm
             "MarkLeaf",
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning);
+    }
+
+    private void DeclareCodeLanguage()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || !_editorCommandStatus.CodeBlock || _document?.IsReadOnly == true)
+        {
+            return;
+        }
+
+        using var dialog = new TextInputDialog(
+            Loc.Get("dialog.codeLanguageTitle"),
+            Loc.Get("dialog.codeLanguagePrompt"),
+            _editorCommandStatus.CodeBlockLanguage ?? string.Empty);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand("setCodeBlockLanguage", dialog.InputText);
+        SetStatus(Loc.Get("status.codeLanguageUpdated"));
+    }
+
+    private void CopyCodeBlock()
+    {
+        if (!_editorCommandStatus.CodeBlock || string.IsNullOrEmpty(_editorCommandStatus.CodeBlockText))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(_editorCommandStatus.CodeBlockText, TextDataFormat.UnicodeText);
+            SetStatus(Loc.Get("status.copied"));
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Copy code block command failed.", exception);
+            SetStatus(Loc.Get("status.clipboardFailed"));
+        }
     }
 
     private async Task ExecuteClipboardCopyAsync(ClipboardCopyMode mode, bool cut)

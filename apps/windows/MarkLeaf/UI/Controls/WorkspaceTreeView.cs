@@ -26,14 +26,12 @@ internal sealed class WorkspaceTreeView : Control
     // Theme colors (defaults match white theme).
     private Color _bgPrimary = Color.White;
     private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
-    private Color _themeLight = Color.FromArgb(0xE0, 0xE0, 0xE0);
-    private Color _themeDark = Color.FromArgb(0xD0, 0xD0, 0xD0);
+    private Color _bgSelected = Color.FromArgb(0xE0, 0xE0, 0xE0);
+    private Color _bgSelectedHover = Color.FromArgb(0xD0, 0xD0, 0xD0);
     private Color _textPrimary = Color.Black;
     private Color _textSecondary = Color.FromArgb(0x55, 0x55, 0x55);
     private Color _textTertiary = Color.FromArgb(0x6D, 0x6D, 0x6D);
-    private Color _textSelected = Color.Black;
     private Color _icon = Color.FromArgb(0x80, 0x80, 0x80);
-    private Color _iconSelected = Color.Black;
     private Color _iconSecondary = Color.FromArgb(0x80, 0x80, 0x80);
 
     private WorkspaceNode? _root;
@@ -103,14 +101,12 @@ internal sealed class WorkspaceTreeView : Control
     {
         if (colors.TryGetValue("bg-primary", out var c)) _bgPrimary = c;
         if (colors.TryGetValue("bg-hover", out c)) _bgHover = c;
-        if (colors.TryGetValue("theme-light", out c)) _themeLight = c;
-        if (colors.TryGetValue("theme-dark", out c)) _themeDark = c;
+        if (colors.TryGetValue("bg-selected", out c)) _bgSelected = c;
+        if (colors.TryGetValue("bg-selected-hover", out c)) _bgSelectedHover = c;
         if (colors.TryGetValue("text-primary", out c)) _textPrimary = c;
         if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
         if (colors.TryGetValue("text-tertiary", out c)) _textTertiary = c;
-        if (colors.TryGetValue("text-selected", out c)) _textSelected = c;
         if (colors.TryGetValue("icon", out c)) _icon = c;
-        if (colors.TryGetValue("icon-selected", out c)) _iconSelected = c;
         if (colors.TryGetValue("icon-secondary", out c)) _iconSecondary = c;
         BackColor = _bgPrimary;
         ForeColor = _textPrimary;
@@ -302,12 +298,12 @@ internal sealed class WorkspaceTreeView : Control
                 Math.Max(0, bounds.Width - this.ScaleForDpi(16)), bounds.Height);
             if (isSelected && isHovered)
             {
-                using var brush = new SolidBrush(_themeDark);
+                using var brush = new SolidBrush(_bgSelectedHover);
                 SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
             else if (isSelected)
             {
-                using var brush = new SolidBrush(_themeLight);
+                using var brush = new SolidBrush(_bgSelected);
                 SidebarGdi.FillRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), brush);
             }
             else if (isHovered || PathEquals(node.Entry.FullPath, _contextMenuPath))
@@ -330,13 +326,13 @@ internal sealed class WorkspaceTreeView : Control
             }
             var iconAdvance = this.ScaleForDpi(18);
             var iconBounds = new Rectangle(expanderBounds.Right, bounds.Top, iconAdvance, bounds.Height);
-            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, isSelected ? _iconSelected : _icon, _iconFont);
+            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, _icon, _iconFont);
             var textBounds = new Rectangle(
                 iconBounds.Right,
                 bounds.Top,
                 Math.Max(0, bounds.Width - iconBounds.Right - this.ScaleForDpi(4)),
                 bounds.Height);
-            DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, isSelected ? _textSelected : ForeColor);
+            DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, ForeColor);
 
         }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, getMarkdown } from '../src/editor'
+import { createEditor, executeEditorCommand, getMarkdown } from '../src/editor'
 import { renderMermaidInHtml } from '../src/mermaid'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -85,6 +85,17 @@ describe('Mermaid chart support', () => {
     expect(getMarkdown(editor)).toBe('```mermaid\n\n```')
   })
 
+  it('inserts an empty mermaid code block at the cursor', () => {
+    const editor = mount('before')
+    editor.commands.setTextSelection(4)
+
+    expect(executeEditorCommand(editor, 'insertMermaid')).toBe(true)
+    expect(editor.state.selection.$from.parent.type.name).toBe('codeBlock')
+    expect(editor.state.selection.$from.parent.attrs.language).toBe('mermaid')
+    expect(editor.state.selection.$from.parent.textContent).toBe('')
+    expect(getMarkdown(editor)).toBe('bef\n\n```mermaid\n\n```\n\nore')
+  })
+
   it('round-trips mermaid through serialized HTML without losing source', () => {
     const editor = mount('前文\n\n```mermaid\ngraph TD\n  A-->B\n```\n\n后文')
     const html = editor.getHTML()
@@ -100,15 +111,68 @@ describe('Mermaid chart support', () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     const html = await renderMermaidInHtml(editor.getHTML())
     expect(html).toContain('markleaf-mermaid')
+    expect(html).toContain('Mermaid图表文本格式错误')
+    expect(html).not.toContain('graph TD')
   })
 
-  it('renders a source fallback when mermaid render fails (jsdom)', async () => {
+  it('renders a localized error message when mermaid render fails (jsdom)', async () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     const element = editor.view.dom.querySelector('.markleaf-mermaid') as HTMLElement
     expect(element).not.toBeNull()
 
     await vi.waitFor(() => {
-      expect(element.querySelector('.markleaf-mermaid-fallback')).not.toBeNull()
+      expect(element.querySelector('.markleaf-mermaid-message-error')?.textContent).toBe('Mermaid图表文本格式错误')
     })
+    expect(element.textContent).not.toContain('graph TD')
+  })
+
+  it('renders an empty message for empty mermaid blocks', async () => {
+    const editor = mount('```mermaid\n```')
+    const element = editor.view.dom.querySelector('.markleaf-mermaid') as HTMLElement
+    expect(element).not.toBeNull()
+
+    await vi.waitFor(() => {
+      expect(element.querySelector('.markleaf-mermaid-message-empty')?.textContent).toBe('空Mermaid图表')
+    })
+
+    const html = await renderMermaidInHtml(editor.getHTML())
+    expect(html).toContain('空Mermaid图表')
+  })
+
+  it('edits mermaid source as a regular code block and renders it back', async () => {
+    const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
+    editor.commands.setNodeSelection(0)
+
+    expect(executeEditorCommand(editor, 'editMermaid')).toBe(true)
+    expect(editor.state.doc.firstChild?.type.name).toBe('codeBlock')
+    expect(editor.state.doc.firstChild?.attrs.language).toBe('mermaid')
+    expect(editor.view.dom.querySelector('pre code')?.textContent).toContain('A-->B')
+
+    Array.from(editor.view.dom.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent === '渲染为图表')
+      ?.click()
+
+    expect(editor.state.doc.firstChild?.type.name).toBe('mermaid')
+    expect(getMarkdown(editor)).toContain('```mermaid\ngraph TD\n  A-->B\n```')
+  })
+
+  it('shows the render button after declaring a code block as mermaid', () => {
+    const editor = mount('```\ngraph TD\n  A-->B\n```')
+
+    expect(executeEditorCommand(editor, 'setCodeBlockLanguage', 'mermaid')).toBe(true)
+    expect(editor.state.doc.firstChild?.attrs.language).toBe('mermaid')
+    expect(Array.from(editor.view.dom.querySelectorAll<HTMLButtonElement>('button'))
+      .some(button => button.textContent === '渲染为图表')).toBe(true)
+  })
+
+  it('toggles visual code block highlighting', () => {
+    const editor = mount('```ts\nconst answer = 42\n```')
+
+    expect(editor.view.dom.querySelector('.ml-code-keyword')).toBeNull()
+    expect(executeEditorCommand(editor, 'setCodeHighlightVisible', '1')).toBe(true)
+    expect(editor.view.dom.querySelector('.ml-code-keyword')?.textContent).toBe('const')
+    expect(editor.view.dom.querySelector('.ml-code-number')?.textContent).toBe('42')
+    expect(executeEditorCommand(editor, 'setCodeHighlightVisible', '0')).toBe(true)
+    expect(editor.view.dom.querySelector('.ml-code-keyword')).toBeNull()
   })
 })

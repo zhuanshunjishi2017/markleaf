@@ -31,6 +31,29 @@ internal sealed class NativeMenuService : IDisposable
         AppCommand.ClearFormat,
     ];
 
+    private static readonly AppCommand[] FootnoteBlockHandleCommands =
+    [
+        AppCommand.GoToFootnoteReference,
+        AppCommand.ResetFootnoteLabel,
+        AppCommand.ClearFootnoteReferences,
+        AppCommand.DeleteFootnote,
+    ];
+
+    private static readonly AppCommand[] TableBlockHandleCommands =
+    [
+        AppCommand.EditTableCaption,
+        AppCommand.AddTableRowBefore,
+        AppCommand.AddTableRowAfter,
+        AppCommand.DeleteTableRow,
+        AppCommand.AddTableColumnBefore,
+        AppCommand.AddTableColumnAfter,
+        AppCommand.DeleteTableColumn,
+        AppCommand.AlignTableLeft,
+        AppCommand.AlignTableCenter,
+        AppCommand.AlignTableRight,
+        AppCommand.DeleteTable,
+    ];
+
     private readonly CommandRouter _router;
     private readonly ShortcutManager _shortcutManager;
     private readonly Func<IReadOnlyList<string>> _recentWorkspaceProvider;
@@ -205,12 +228,12 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    public void ShowBlockHandleMenu(nint window, Point screenPoint)
+    public void ShowBlockHandleMenu(nint window, Point screenPoint, EditorCommandStatus status)
     {
-        var menu = BuildBlockHandleMenu();
+        var (menu, commands) = BuildBlockHandleMenu(status);
         try
         {
-            foreach (var command in BlockHandleCommands)
+            foreach (var command in commands)
             {
                 var state = _router.GetState(command);
                 NativeMethods.EnableMenuItem(
@@ -241,6 +264,51 @@ internal sealed class NativeMenuService : IDisposable
         {
             NativeMethods.DestroyMenu(menu);
         }
+    }
+
+    internal static AppCommand[] GetBlockHandleCommands(EditorCommandStatus status)
+    {
+        if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
+        {
+            return FootnoteBlockHandleCommands;
+        }
+
+        return status.InTable ? TableBlockHandleCommands : BlockHandleCommands;
+    }
+
+    private static (nint Menu, AppCommand[] Commands) BuildBlockHandleMenu(EditorCommandStatus status)
+    {
+        if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
+        {
+            var menu = CreateMenu(true);
+            try
+            {
+                AppendFootnoteCommands(menu);
+                return (menu, FootnoteBlockHandleCommands);
+            }
+            catch
+            {
+                NativeMethods.DestroyMenu(menu);
+                throw;
+            }
+        }
+
+        if (status.InTable)
+        {
+            var menu = CreateMenu(true);
+            try
+            {
+                AppendTableCommands(menu, includeClipboard: false);
+                return (menu, TableBlockHandleCommands);
+            }
+            catch
+            {
+                NativeMethods.DestroyMenu(menu);
+                throw;
+            }
+        }
+
+        return (BuildBlockHandleMenu(), BlockHandleCommands);
     }
 
     private static nint BuildBlockHandleMenu()
@@ -410,7 +478,7 @@ internal sealed class NativeMenuService : IDisposable
             }
             else if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
             {
-                AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
+                AppendFootnoteCommands(menu);
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
@@ -426,42 +494,14 @@ internal sealed class NativeMenuService : IDisposable
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
                 commands.AddRange([
-                    AppCommand.ResetFootnoteLabel,
+                    AppCommand.GoToFootnoteReference, AppCommand.ResetFootnoteLabel,
+                    AppCommand.ClearFootnoteReferences, AppCommand.DeleteFootnote,
                     AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
                     AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
             else if (status.InTable)
             {
-                AppendCommand(menu, AppCommand.EditTableCaption, Loc.Get("contextMenu.table.caption"));
-                AppendSeparator(menu);
-
-                // 行操作
-                AppendCommand(menu, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
-                AppendCommand(menu, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
-                AppendCommand(menu, AppCommand.DeleteTableRow, Loc.Get("menu.paragraph.deleteRow"));
-                AppendSeparator(menu);
-
-                // 列操作
-                AppendCommand(menu, AppCommand.AddTableColumnBefore, Loc.Get("menu.paragraph.addColumnLeft"));
-                AppendCommand(menu, AppCommand.AddTableColumnAfter, Loc.Get("menu.paragraph.addColumnRight"));
-                AppendCommand(menu, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
-                AppendSeparator(menu);
-
-                // 对齐
-                var align = CreateMenu(true);
-                AppendCommand(align, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
-                AppendCommand(align, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));
-                AppendCommand(align, AppCommand.AlignTableRight, Loc.Get("menu.paragraph.alignRight"));
-                AppendPopup(menu, Loc.Get("contextMenu.table.align"), align);
-                AppendSeparator(menu);
-
-                // 剪贴板
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
+                AppendTableCommands(menu, includeClipboard: true);
                 commands.AddRange([
                     AppCommand.EditTableCaption,
                     AppCommand.AddTableRowBefore, AppCommand.AddTableRowAfter, AppCommand.DeleteTableRow,
@@ -478,6 +518,14 @@ internal sealed class NativeMenuService : IDisposable
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.DeleteMath, Loc.Get("contextMenu.math.delete"));
                 commands.AddRange([AppCommand.EditMath, AppCommand.ConvertMath, AppCommand.DeleteMath]);
+            }
+            else if (status.MermaidSelected)
+            {
+                AppendCommand(menu, AppCommand.EditMermaid, Loc.Get("contextMenu.mermaid.edit"));
+                AppendCommand(menu, AppCommand.RerenderMermaid, Loc.Get("contextMenu.mermaid.rerender"));
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.DeleteMermaid, Loc.Get("contextMenu.mermaid.delete"));
+                commands.AddRange([AppCommand.EditMermaid, AppCommand.RerenderMermaid, AppCommand.DeleteMermaid]);
             }
             else if (status.ImageSelected)
             {
@@ -500,12 +548,17 @@ internal sealed class NativeMenuService : IDisposable
             }
             else if (status.CodeBlock)
             {
+                AppendCommand(menu, AppCommand.DeclareCodeLanguage, Loc.Get("contextMenu.code.declareLanguage"));
+                AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.code.copyBlock"));
+                AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.exitCode"));
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                commands.AddRange([AppCommand.ExitCode, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
+                commands.AddRange([
+                    AppCommand.DeclareCodeLanguage, AppCommand.CopyCodeBlock, AppCommand.ExitCode,
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
             }
             else
             {
@@ -543,6 +596,47 @@ internal sealed class NativeMenuService : IDisposable
             NativeMethods.DestroyMenu(menu);
             throw;
         }
+    }
+
+    private static void AppendFootnoteCommands(nint menu)
+    {
+        AppendCommand(menu, AppCommand.GoToFootnoteReference, Loc.Get("contextMenu.footnote.goToReference"));
+        AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
+        AppendCommand(menu, AppCommand.ClearFootnoteReferences, Loc.Get("contextMenu.footnote.clearReferences"));
+        AppendCommand(menu, AppCommand.DeleteFootnote, Loc.Get("contextMenu.footnote.delete"));
+    }
+
+    private static void AppendTableCommands(nint menu, bool includeClipboard)
+    {
+        AppendCommand(menu, AppCommand.EditTableCaption, Loc.Get("contextMenu.table.caption"));
+        AppendSeparator(menu);
+
+        AppendCommand(menu, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
+        AppendCommand(menu, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
+        AppendCommand(menu, AppCommand.DeleteTableRow, Loc.Get("menu.paragraph.deleteRow"));
+        AppendSeparator(menu);
+
+        AppendCommand(menu, AppCommand.AddTableColumnBefore, Loc.Get("menu.paragraph.addColumnLeft"));
+        AppendCommand(menu, AppCommand.AddTableColumnAfter, Loc.Get("menu.paragraph.addColumnRight"));
+        AppendCommand(menu, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
+        AppendSeparator(menu);
+
+        var align = CreateMenu(true);
+        AppendCommand(align, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
+        AppendCommand(align, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));
+        AppendCommand(align, AppCommand.AlignTableRight, Loc.Get("menu.paragraph.alignRight"));
+        AppendPopup(menu, Loc.Get("contextMenu.table.align"), align);
+        AppendSeparator(menu);
+
+        if (includeClipboard)
+        {
+            AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+            AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+            AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+            AppendSeparator(menu);
+        }
+
+        AppendCommand(menu, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
     }
 
     private static void AppendReadOnlyContextMenu(nint menu)
@@ -612,6 +706,12 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(table, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
             AppendPopup(menu, Loc.Get("menu.paragraph.table"), table);
 
+            var diagram = CreateMenu(true);
+            AppendMainMenuCommand(diagram, AppCommand.InsertMermaid, Loc.Get("menu.paragraph.insertMermaid"));
+            AppendSeparator(diagram);
+            AppendMainMenuCommand(diagram, AppCommand.RerenderAllMermaid, Loc.Get("menu.paragraph.rerenderAllMermaid"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.diagram"), diagram);
+
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.paragraph.insertFootnote"));
             AppendSeparator(menu);
@@ -639,6 +739,8 @@ internal sealed class NativeMenuService : IDisposable
         AppendSeparator(menu);
         AppendMainMenuCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
         AppendMainMenuCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.ShowCodeHighlight, Loc.Get("menu.format.showCodeHighlight"));
         AppendSeparator(menu);
         AppendMainMenuCommand(menu, AppCommand.FormatPainter, Loc.Get("menu.format.formatPainter"));
         AppendSeparator(menu);

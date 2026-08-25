@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
@@ -15,12 +16,7 @@ internal sealed partial class MainForm
     {
         var colors = ColorThemeService.GetActiveColors();
         var bg = colors.TryGetValue("bg-primary", out var c) ? c : SystemColors.Window;
-        var panel = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = bg,
-        };
-        _editorPanel = panel;
+        _editorPanel.BackColor = bg;
         var webView = new WebView2
         {
             Dock = DockStyle.Fill,
@@ -31,9 +27,9 @@ internal sealed partial class MainForm
         _webView = webView;
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
-        panel.Controls.Add(webView);
-        panel.Controls.Add(loadingView);
-        panel.Visible = false;
+        _editorPanel.Controls.Add(webView);
+        _editorPanel.Controls.Add(loadingView);
+        _editorPanel.Visible = false;
         _editorHost = new EditorHostController(
             webView,
             loadingView,
@@ -50,6 +46,7 @@ internal sealed partial class MainForm
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47());
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
+            ApplyCodeHighlightVisibility();
             ApplyBlockHandleVisibility();
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
             _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
@@ -73,6 +70,7 @@ internal sealed partial class MainForm
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.BlockMenuRequested += OnEditorBlockMenuRequested;
         _editorHost.MathEditRequested += OnMathEditRequested;
+        _editorHost.MermaidEditRequested += OnMermaidEditRequested;
         _editorHost.OutlineChanged += OnEditorOutlineChanged;
         _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;
         _editorHost.OpenLinkRequested += OnOpenLinkRequested;
@@ -80,6 +78,7 @@ internal sealed partial class MainForm
         _editorHost.PasteImageRequested += OnEditorPasteImageRequested;
         _editorHost.UnsafeEmphasisRequested += OnUnsafeEmphasisRequested;
         _editorHost.FootnoteDefinitionMissing += OnFootnoteDefinitionMissing;
+        _editorHost.FootnoteReferenceMissing += OnFootnoteReferenceMissing;
         _editorHost.ZoomWheelRequested += (_, deltaY) =>
         {
             if (!_settings.Appearance.CtrlWheelZoom)
@@ -91,7 +90,7 @@ internal sealed partial class MainForm
 
         _editorHost.Ready += async (_, _) => await RevealEditorPanelAsync();
 
-        return panel;
+        return _editorPanel;
     }
 
     private async Task RevealEditorPanelAsync()
@@ -185,6 +184,16 @@ internal sealed partial class MainForm
         _editorHost?.ResolveUnsafeEmphasis(request.RequestId, action);
     }
 
+    private void OnFootnoteReferenceMissing(object? sender, EventArgs e)
+    {
+        ShowMessage(
+            this,
+            Loc.Get("dialog.footnoteReferenceMissing"),
+            "MarkLeaf",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+    }
+
     private void RefreshPersistentStatusBar()
     {
         ApplyStatusBarItemVisibility();
@@ -194,7 +203,8 @@ internal sealed partial class MainForm
         _positionLabel.Text = StatusBarFormatter.FormatPosition(_editorStatus);
         _encodingLabel.Text = _document is null
             ? "UTF-8"
-            : StatusBarFormatter.FormatEncoding(_document.Encoding, _document.HasBom);
+            : StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.FromId(_document.EncodingPolicyId));
+        _encodingLabel.Enabled = _document?.IsReadOnly != true;
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
