@@ -6,6 +6,18 @@ import WebKit
 final class EditorWebView: WKWebView {
     weak var editorSession: EditorSession?
 
+    override func magnify(with event: NSEvent) {
+        // 触控板捏合：AppKit 的 magnification 为缩放因子增量，放大为正。
+        // 统一映射到 handleZoomWheel 的连续缩放路径。
+        let point = convert(event.locationInWindow, from: nil)
+        editorSession?.handleZoomWheel(
+            deltaY: -Double(event.magnification) * 80,
+            source: "pinch",
+            clientX: Double(point.x),
+            clientY: Double(point.y)
+        )
+    }
+
     override func scrollWheel(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let route = EditorScrollWheelRoutingPolicy.route(

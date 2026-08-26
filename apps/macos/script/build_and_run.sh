@@ -18,7 +18,8 @@ MIN_SYSTEM_VERSION="13.0"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/script/build_metadata.sh"
-APP_VERSION="${MARKLEAF_VERSION:-1.3.2}"
+source "$ROOT_DIR/script/release_version.sh"
+APP_VERSION="$(resolve_markleaf_version)"
 APP_BUILD="$(resolve_markleaf_build_number "$REPO_DIR")"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -45,28 +46,28 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 # ---- 2. 准备资源 + 构建 ----
 "$ROOT_DIR/script/prepare_resources.sh"
-swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$ROOT_DIR"
+swift build ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --package-path "$ROOT_DIR"
 
-BUILD_BINARY="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$ROOT_DIR" --show-bin-path)/$APP_NAME"
+BUILD_BINARY="$(swift build ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --package-path "$ROOT_DIR" --show-bin-path)/$APP_NAME"
 
 # ---- 3. 打包 .app（SwiftPM GUI 应用必须走 bundle，直接跑裸二进制会丢 Dock 图标/激活） ----
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
-cp "$BUILD_BINARY" "$APP_BINARY"
+cp -X "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 
 mkdir -p "$APP_CONTENTS/Resources"
-cp -R "$ROOT_DIR/Resources/EditorWeb" "$APP_CONTENTS/Resources/EditorWeb"
-cp -R "$ROOT_DIR/Resources/Styles" "$APP_CONTENTS/Resources/Styles"
+cp -RX "$ROOT_DIR/Resources/EditorWeb" "$APP_CONTENTS/Resources/EditorWeb"
+cp -RX "$ROOT_DIR/Resources/Styles" "$APP_CONTENTS/Resources/Styles"
 if [ -d "$ROOT_DIR/Changelog" ]; then
   mkdir -p "$APP_CONTENTS/Resources/Changelog"
-  cp -R "$ROOT_DIR/Changelog/." "$APP_CONTENTS/Resources/Changelog/"
+  cp -RX "$ROOT_DIR/Changelog/." "$APP_CONTENTS/Resources/Changelog/"
 fi
 if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
-  cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
+  cp -X "$ROOT_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 fi
 if [ -f "$ROOT_DIR/Resources/FileIcon.icns" ]; then
-  cp "$ROOT_DIR/Resources/FileIcon.icns" "$APP_CONTENTS/Resources/FileIcon.icns"
+  cp -X "$ROOT_DIR/Resources/FileIcon.icns" "$APP_CONTENTS/Resources/FileIcon.icns"
 fi
 
 cat > "$INFO_PLIST" <<PLIST
@@ -136,7 +137,20 @@ PLIST
 
 # ---- 4. 临时签名（自用无需 Apple 开发者账号；ad-hoc 签名避免 Gatekeeper 拦截） ----
 if command -v codesign >/dev/null 2>&1; then
-  codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 &&     echo "[build] 已 ad-hoc 签名 ($(codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | grep -o 'Signature=.*' | head -1))" ||     echo "[build] 签名跳过（非致命）"
+  # Finder/FSEvents 可能给源资源附加 FinderInfo、MACL 或 provenance。
+  # Documents 文件提供器还会立即给 .app 根目录恢复 FinderInfo，因此在临时目录
+  # 完成严格签名，再将已签名 bundle 无扩展属性地复制回 dist。
+  SIGNING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/markleaf-signing.XXXXXX")"
+  SIGNING_BUNDLE="$SIGNING_ROOT/$APP_NAME.app"
+  cp -RX "$APP_BUNDLE" "$SIGNING_BUNDLE"
+  xattr -cr "$SIGNING_BUNDLE"
+  codesign --force --deep --sign - "$SIGNING_BUNDLE" >/dev/null
+  codesign --verify --deep --strict "$SIGNING_BUNDLE"
+  rm -rf "$APP_BUNDLE"
+  cp -RX "$SIGNING_BUNDLE" "$APP_BUNDLE"
+  rm -rf "$SIGNING_ROOT"
+  codesign --verify --deep "$APP_BUNDLE"
+  echo "[build] 已 ad-hoc 签名并通过严格校验 ($(codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | grep -o 'Signature=.*' | head -1))"
 else
   echo "[build] codesign 不可用，跳过签名"
 fi

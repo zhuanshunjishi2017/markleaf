@@ -13,6 +13,7 @@ public static class ShortcutCatalog
     [
         new(AppCommand.NewDocument, "shortcut.new", Keys.Control | Keys.N),
         new(AppCommand.NewPlainTextDocument, "shortcut.newText", Keys.Control | Keys.Alt | Keys.N),
+        new(AppCommand.NewWindow, "shortcut.newWindow", Keys.Control | Keys.Shift | Keys.N),
         new(AppCommand.OpenDocument, "shortcut.open", Keys.Control | Keys.O),
         new(AppCommand.SaveDocument, "shortcut.save", Keys.Control | Keys.S),
         new(AppCommand.SaveDocumentAs, "shortcut.saveAs", Keys.Control | Keys.Shift | Keys.S),
@@ -24,7 +25,7 @@ public static class ShortcutCatalog
         new(AppCommand.Paste, "shortcut.paste", Keys.Control | Keys.V),
         new(AppCommand.PastePlainText, "shortcut.pastePlainText", Keys.Control | Keys.Shift | Keys.V),
         new(AppCommand.Find, "shortcut.find", Keys.Control | Keys.F),
-        new(AppCommand.Replace, "shortcut.replace", Keys.Control | Keys.H),
+        new(AppCommand.SelectAll, "shortcut.selectAll", Keys.Control | Keys.A),
         new(AppCommand.SetHeading1, "shortcut.heading1", Keys.Control | Keys.D1),
         new(AppCommand.SetHeading2, "shortcut.heading2", Keys.Control | Keys.D2),
         new(AppCommand.SetHeading3, "shortcut.heading3", Keys.Control | Keys.D3),

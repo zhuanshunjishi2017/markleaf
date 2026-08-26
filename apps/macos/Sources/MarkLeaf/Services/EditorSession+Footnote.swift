@@ -101,6 +101,23 @@ extension EditorSession {
         }
     }
 
+    func goToFootnoteReference() {
+        guard EditorMenuPolicy.allows(.goToFootnoteReference, state: editorMenuState) else { return }
+        execute("goToFootnoteReference", text: footnoteDefinitionLabel)
+    }
+
+    func clearFootnoteReferences() {
+        guard EditorMenuPolicy.allows(.clearFootnoteReferences, state: editorMenuState) else { return }
+        execute("clearFootnoteReferences")
+        statusText = L10n.t("已清空引用")
+    }
+
+    func deleteFootnoteDefinition() {
+        guard EditorMenuPolicy.allows(.deleteFootnote, state: editorMenuState) else { return }
+        execute("deleteFootnote")
+        statusText = L10n.t("已删除注释")
+    }
+
     // MARK: - 对话框
 
     private func presentFootnoteInputDialog(completion: @escaping (String?, String?) -> Void) {
@@ -210,6 +227,15 @@ extension EditorSession {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = L10n.t("未找到该注释的定义！")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("好"))
+        alert.beginSheetModal(for: window)
+    }
+
+    func presentFootnoteReferenceMissingAlert() {
+        guard let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.t("找不到引用！")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("好"))
         alert.beginSheetModal(for: window)

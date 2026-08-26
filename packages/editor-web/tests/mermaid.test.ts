@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, executeEditorCommand, getMarkdown } from '../src/editor'
-import { renderMermaidInHtml } from '../src/mermaid'
+import {
+  createEditor,
+  executeEditorCommand,
+  getMarkdown,
+  setEditorSharedStrings,
+} from '../src/editor'
+import { renderMermaidInHtml, setMermaidStrings } from '../src/mermaid'
+import { sharedEditorStrings } from '../src/shared-editor-strings'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
@@ -18,6 +24,9 @@ afterEach(() => {
     editor.destroy()
   }
   document.body.innerHTML = ''
+  const defaults = sharedEditorStrings('zh-Hans', 'ctrl')
+  setEditorSharedStrings(defaults)
+  setMermaidStrings(defaults)
 })
 
 function mount(markdown: string) {
@@ -111,7 +120,7 @@ describe('Mermaid chart support', () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     const html = await renderMermaidInHtml(editor.getHTML())
     expect(html).toContain('markleaf-mermaid')
-    expect(html).toContain('Mermaid图表文本格式错误')
+    expect(html).toContain('Mermaid 图表文本格式错误')
     expect(html).not.toContain('graph TD')
   })
 
@@ -121,7 +130,7 @@ describe('Mermaid chart support', () => {
     expect(element).not.toBeNull()
 
     await vi.waitFor(() => {
-      expect(element.querySelector('.markleaf-mermaid-message-error')?.textContent).toBe('Mermaid图表文本格式错误')
+      expect(element.querySelector('.markleaf-mermaid-message-error')?.textContent).toBe('Mermaid 图表文本格式错误')
     })
     expect(element.textContent).not.toContain('graph TD')
   })
@@ -132,11 +141,35 @@ describe('Mermaid chart support', () => {
     expect(element).not.toBeNull()
 
     await vi.waitFor(() => {
-      expect(element.querySelector('.markleaf-mermaid-message-empty')?.textContent).toBe('空Mermaid图表')
+      expect(element.querySelector('.markleaf-mermaid-message-empty')?.textContent).toBe('空 Mermaid 图表')
     })
 
     const html = await renderMermaidInHtml(editor.getHTML())
-    expect(html).toContain('空Mermaid图表')
+    expect(html).toContain('空 Mermaid 图表')
+  })
+
+  it('uses the active language for Mermaid controls, empty state, and export errors', async () => {
+    const strings = sharedEditorStrings('en', 'meta')
+    setEditorSharedStrings(strings)
+    setMermaidStrings(strings)
+
+    const emptyEditor = mount('```mermaid\n```')
+    const emptyElement = emptyEditor.view.dom.querySelector('.markleaf-mermaid') as HTMLElement
+    await vi.waitFor(() => {
+      expect(emptyElement.querySelector('.markleaf-mermaid-message-empty')?.textContent)
+        .toBe('Empty Mermaid diagram')
+    })
+
+    const codeEditor = mount('```\ngraph TD\n  A-->B\n```')
+    expect(executeEditorCommand(codeEditor, 'setCodeBlockLanguage', 'mermaid')).toBe(true)
+    expect(Array.from(codeEditor.view.dom.querySelectorAll<HTMLButtonElement>('button'))
+      .some(button => button.textContent === 'Render as Diagram')).toBe(true)
+
+    const failedExport = await renderMermaidInHtml(
+      mount('```mermaid\ngraph TD\n  A-->B\n```').getHTML(),
+    )
+    expect(failedExport).toContain('Invalid Mermaid diagram text')
+    expect(failedExport).not.toContain('Mermaid图表文本格式错误')
   })
 
   it('edits mermaid source as a regular code block and renders it back', async () => {

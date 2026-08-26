@@ -1,20 +1,19 @@
 import AppKit
 
 /// 原生菜单栏：与 Windows 版（NativeMenuService）保持一致的菜单结构。
-/// 菜单 → AppMenu / 文件 / 编辑 / 段落 / 格式 / 视图 / 外观 / 帮助。
+/// 菜单 → AppMenu / 文件 / 编辑 / 插入 / 格式 / 视图 / 帮助。
 /// macOS 惯例调整：关于/偏好设置/退出放在 App 菜单（Windows 在帮助/文件菜单）。
 final class NativeMenuBuilder {
-    private static let zoomOptions = [50, 75, 90, 100, 110, 125, 150, 175, 200]
+    static let zoomOptions = EditorSession.zoomOptions
 
     func build() -> NSMenu {
         let mainMenu = NSMenu()
         addMenu(mainMenu, title: ProcessInfo.processInfo.processName, submenu: appMenu())
         addMenu(mainMenu, title: L10n.t("文件"), submenu: fileMenu())
         addMenu(mainMenu, title: L10n.t("编辑"), submenu: editMenu())
-        addMenu(mainMenu, title: L10n.t("段落"), submenu: paragraphMenu())
+        addMenu(mainMenu, title: L10n.t("插入"), submenu: insertMenu())
         addMenu(mainMenu, title: L10n.t("格式"), submenu: formatMenu())
         addMenu(mainMenu, title: L10n.t("视图"), submenu: viewMenu())
-        addMenu(mainMenu, title: L10n.t("外观"), submenu: appearanceMenu())
         addMenu(mainMenu, title: L10n.t("帮助"), submenu: helpMenu())
         return mainMenu
     }
@@ -54,7 +53,7 @@ final class NativeMenuBuilder {
         newMenu.addItem(commandItem(L10n.t("Markdown 文件"), "new", key: "n"))
         newMenu.addItem(commandItem(L10n.t("文本文件"), "newPlainText", key: "n", mask: [.command, .option]))
         menu.addItem(popup(L10n.t("新建"), newMenu))
-        menu.addItem(commandItem(L10n.t("新建窗口"), "newWindow"))
+        menu.addItem(commandItem(L10n.t("新建窗口"), "newWindow", key: "N", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("打开…"), "open", key: "o"))
         menu.addItem(commandItem(L10n.t("以只读方式打开…"), "openReadOnly"))
         menu.addItem(commandItem(L10n.t("在新窗口中打开…"), "openInNewWindow"))
@@ -106,50 +105,67 @@ final class NativeMenuBuilder {
         return menu
     }
 
-    // MARK: - 段落（对应 Windows BuildParagraphMenu）
+    // MARK: - 插入
 
-    private func paragraphMenu() -> NSMenu {
+    private func insertMenu() -> NSMenu {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         menu.delegate = MenuRouter.shared
-        menu.addItem(commandItem(L10n.t("正文"), "setParagraph"))
+        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
+        let images = NSMenu(title: L10n.t("图片"))
+        images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
+        images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
+        menu.addItem(popup(L10n.t("图片"), images))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
+        menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
+        menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
+        menu.addItem(commandItem(L10n.t("插入注释"), "insertFootnote"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
+        menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
+        menu.addItem(.separator())
+        menu.addItem(tableSizePickerSubmenu { size in
+            AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
+        })
+        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu()))
+        return menu
+    }
 
+    private func mermaidMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("Mermaid"))
+        menu.addItem(commandItem(L10n.t("插入 Mermaid 图表"), "insertMermaid"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("重新渲染所有 Mermaid 图表"), "rerenderAllMermaid"))
+        return menu
+    }
+
+    // MARK: - 格式
+
+    private func paragraphStyleMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("段落样式"))
+        menu.addItem(commandItem(L10n.t("正文"), "setParagraph"))
         let headings = NSMenu(title: L10n.t("标题"))
         for level in 1...6 {
             headings.addItem(commandItem(L10n.f("%@级标题", Self.levelName(level)), "setHeading\(level)", key: "\(level)"))
         }
         menu.addItem(popup(L10n.t("标题"), headings))
-
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: "."))
-        menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ","))
+        menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: ".", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ",", mask: [.command, .option]))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
-        menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
-        menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
-        menu.addItem(commandItem(L10n.t("插入注释"), "insertFootnote"))
-        menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
-        menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
-
         let lists = NSMenu(title: L10n.t("列表"))
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
         lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
         lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
         menu.addItem(popup(L10n.t("列表"), lists))
-
-        menu.addItem(popup(L10n.t("表格"), tableMenu()))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("清除段落格式"), "clearFormat"))
         return menu
     }
 
-    private func tableMenu() -> NSMenu {
+    private func tableEditingMenu() -> NSMenu {
         let menu = NSMenu(title: L10n.t("表格"))
-        menu.addItem(tableSizePickerMenuItem { size in
-            AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
-        })
-        menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在上方添加行"), "addRowBefore"))
         menu.addItem(commandItem(L10n.t("在下方添加行"), "addRowAfter"))
         menu.addItem(commandItem(L10n.t("删除当前行"), "deleteRow"))
@@ -166,8 +182,6 @@ final class NativeMenuBuilder {
         return menu
     }
 
-    // MARK: - 格式（对应 Windows BuildFormatMenu）
-
     private func formatMenu() -> NSMenu {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
@@ -178,36 +192,18 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("删除线"), "toggleStrike"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
-        menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
-        menu.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
-        menu.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
-        menu.addItem(commandItem(L10n.t("顺时针旋转图片"), "rotateImage"))
-        let resizeImageItem = popup(L10n.t("调整图片大小"), resizeImageMenu())
-        resizeImageItem.representedObject = "resizeImage"
-        // 父级菜单项没有实际动作；为其设置 target+action 以便 AppKit 走自动校验，
-        // 在未选中图片时整体置灰（子菜单项已由各自的 command 校验置灰）。
-        resizeImageItem.target = MenuRouter.shared
-        resizeImageItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
-        menu.addItem(resizeImageItem)
-        menu.addItem(commandItem(L10n.t("将图片另存为…"), "saveImageAs"))
-        return menu
-    }
-
-    private func resizeImageMenu() -> NSMenu {
-        let menu = NSMenu(title: L10n.t("调整图片大小"))
-        for (title, command) in [
-            (L10n.t("100%"), "resizeImage100"),
-            (L10n.t("75%"), "resizeImage75"),
-            (L10n.t("90%"), "resizeImage90"),
-            (L10n.t("50%"), "resizeImage50"),
-        ] {
-            menu.addItem(commandItem(title, command))
-        }
+        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu()))
+        let tableItem = popup(L10n.t("表格"), tableEditingMenu())
+        tableItem.representedObject = "tableEditing"
+        tableItem.target = MenuRouter.shared
+        tableItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
+        menu.addItem(tableItem)
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("清除段落格式"), "clearFormat"))
         return menu
     }
 
@@ -247,14 +243,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
-        return menu
-    }
+        menu.addItem(.separator())
 
-    // MARK: - 外观（对应 Windows BuildAppearanceMenu）
-
-    private func appearanceMenu() -> NSMenu {
-        let menu = NSMenu()
-        let session = AppWindowManager.shared.activeSession
         let styles = session?.styles ?? []
         let themes = session?.colorThemes ?? []
 
@@ -287,12 +277,6 @@ final class NativeMenuBuilder {
         themeMenu.addItem(.separator())
         themeMenu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
         menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
-
-        menu.addItem(.separator())
-
-        // 主题文件（对齐 Windows fccc7ad：添加主题导入 CSS）
-        menu.addItem(commandItem(L10n.t("添加主题…"), "importTheme"))
-        menu.addItem(commandItem(L10n.t("打开主题文件夹…"), "revealThemeFolder"))
         return menu
     }
 
@@ -303,8 +287,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
         menu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("MarkLeaf 项目主页"), "openHomepage"))
-        menu.addItem(commandItem(L10n.t("MarkLeaf 帮助"), "openHelp"))
+        menu.addItem(commandItem(L10n.t("检查更新…"), "checkForUpdates"))
+        menu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))
         return menu
     }
 
@@ -427,6 +411,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
+        case "toggleCodeHighlight":
+            menuItem.state = SettingsService.shared.settings.showCodeHighlight ? .on : .off
         case "sourceMode":
             // 纯文本文档固定为源码模式，无法切换回可视化，直接置灰。
             if s?.isPlainText == true { return false }
@@ -444,6 +430,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 headingLevel: s?.headingLevel
             )
         // 表格命令：仅当光标在表格内可用
+        case "tableEditing":
+            return s?.inTable == true
         case "addRowBefore", "addRowAfter", "deleteRow",
              "addColumnBefore", "addColumnAfter", "deleteColumn",
              "alignTableLeft", "alignTableCenter", "alignTableRight", "deleteTable":
@@ -495,6 +483,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 isReadOnly: s?.isReadOnly == true,
                 isSourceMode: s?.isSourceMode ?? true
             )
+        case "insertMermaid", "editMermaid", "rerenderMermaid", "rerenderAllMermaid", "deleteMermaid",
+             "declareCodeLanguage", "copyCodeBlock", "goToFootnoteReference",
+             "clearFootnoteReferences", "deleteFootnote":
+            guard let state = s?.editorMenuState,
+                  let nativeCommand = EditorMenuPolicy.nativeCommand(for: command) else { return false }
+            return EditorMenuPolicy.allows(nativeCommand, state: state)
         default: break
         }
         return true
@@ -529,17 +523,20 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.showRecoveryDialog()
         case "openChangelog":
             AppWindowManager.shared.openChangelog()
+        case "checkForUpdates":
+            AppWindowManager.shared.checkForUpdates()
         case "toggleFollowSystemTheme":
             let newValue = !SettingsService.shared.settings.followSystemTheme
             SettingsService.shared.update { $0.followSystemTheme = newValue }
             AppWindowManager.shared.applyThemeModeToAll()
             NativeMenuBuilder.refreshIfNeeded()
+        case "toggleCodeHighlight":
+            let newValue = !SettingsService.shared.settings.showCodeHighlight
+            SettingsService.shared.update { $0.showCodeHighlight = newValue }
+            AppWindowManager.shared.applyPreferencesToAll()
+            NativeMenuBuilder.refreshIfNeeded()
         case "toggleFocusMode":
             AppWindowManager.shared.activeWindowController?.toggleFocusMode()
-        case "openHomepage":
-            if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf") {
-                NSWorkspace.shared.open(url)
-            }
         case "openHelp":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md") {
                 NSWorkspace.shared.open(url)
@@ -740,6 +737,16 @@ extension EditorSession {
         case "insertMathBlock": insertMath(isBlock: true)
         case "insertFootnote": insertFootnote()
         case "resetFootnoteLabel": resetFootnoteLabel()
+        case "goToFootnoteReference": goToFootnoteReference()
+        case "clearFootnoteReferences": clearFootnoteReferences()
+        case "deleteFootnote": deleteFootnoteDefinition()
+        case "insertMermaid": insertMermaid()
+        case "editMermaid": editSelectedMermaid()
+        case "rerenderMermaid": rerenderSelectedMermaid()
+        case "rerenderAllMermaid": rerenderAllMermaid()
+        case "deleteMermaid": deleteSelectedMermaid()
+        case "declareCodeLanguage": declareCodeBlockLanguage()
+        case "copyCodeBlock": copyEntireCodeBlock()
         case "editMath": editMath()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")

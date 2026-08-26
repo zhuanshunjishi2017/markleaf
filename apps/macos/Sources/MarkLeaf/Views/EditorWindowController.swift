@@ -12,7 +12,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private let encodingButton = NSButton()
     private let newLineButton = NSButton()
     private let modeButton = NSButton()
-    private let zoomLabel = NSTextField(labelWithString: "100%")
+    private let zoomButton = NSButton()
     private var sidebarView: SidebarView?
     private var sidebarContainerView: NSView?
     private var editorView: EditorWebContainerView?
@@ -150,11 +150,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         newLineButton.action = #selector(showNewLineMenu)
         newLineButton.setContentHuggingPriority(.required, for: .horizontal)
         newLineButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-        zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        zoomLabel.textColor = .secondaryLabelColor
-        zoomLabel.alignment = .right
-        zoomLabel.lineBreakMode = .byTruncatingTail
-        zoomLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        configureStatusButton(zoomButton, title: "100%")
+        zoomButton.target = self
+        zoomButton.action = #selector(showZoomMenu)
+        zoomButton.setContentHuggingPriority(.required, for: .horizontal)
+        zoomButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         configureStatusButton(viewToggleButton, title: "")
         viewToggleButton.image = NSImage(
@@ -192,7 +192,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBar.addView(encodingButton, in: .trailing)
         statusBar.addView(newLineButton, in: .trailing)
         statusBar.addView(modeButton, in: .trailing)
-        statusBar.addView(zoomLabel, in: .trailing)
+        statusBar.addView(zoomButton, in: .trailing)
 
         // 侧边栏默认隐藏时不让它参与 splitView 布局，避免窗口出现时先显示再播放收起动画。
         if session.sidebarVisible {
@@ -322,8 +322,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         modeButton.title = session.isSourceMode ? L10n.t("源码") : L10n.t("可视化")
         modeButton.toolTip = L10n.t("切换编辑模式")
         modeButton.isHidden = !status.modeToggleVisible
-        zoomLabel.stringValue = "\(session.zoomPercent)%"
-        zoomLabel.isHidden = !status.zoomVisible
+        zoomButton.title = "\(session.zoomPercent)%"
+        zoomButton.toolTip = L10n.t("设置缩放")
+        zoomButton.isHidden = !status.zoomVisible
         viewToggleButton.isHidden = !status.sidebarToggleVisible
     }
 
@@ -368,6 +369,30 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let wantsSource = mode == "source"
         guard wantsSource != session.isSourceMode, !(wantsSource && session.isPlainText) else { return }
         session.toggleSourceMode()
+    }
+
+    @objc private func showZoomMenu() {
+        let menu = NSMenu(title: L10n.t("设置缩放"))
+        let current = session.zoomPercent
+        for percent in NativeMenuBuilder.zoomOptions {
+            let item = NSMenuItem(title: "\(percent)%", action: #selector(selectZoom(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = percent
+            item.state = percent == current ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let resetItem = NSMenuItem(title: L10n.t("重置为100%"), action: #selector(selectZoom(_:)), keyEquivalent: "")
+        resetItem.target = self
+        resetItem.representedObject = 100
+        resetItem.state = current == 100 ? .on : .off
+        menu.addItem(resetItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: zoomButton.bounds.height), in: zoomButton)
+    }
+
+    @objc private func selectZoom(_ sender: NSMenuItem) {
+        guard let percent = sender.representedObject as? Int else { return }
+        session.setZoom(percent)
     }
 
     @objc private func showNewLineMenu() {

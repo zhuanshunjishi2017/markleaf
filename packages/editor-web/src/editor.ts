@@ -12,6 +12,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import { MathBlock, MathInline } from './math'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements } from './mermaid'
+import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -38,8 +39,14 @@ const NBSP_CHAR = '\u00A0'
 const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
 const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
-const MERMAID_RENDER_BUTTON_TEXT = '渲染为图表'
+let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
 let codeHighlightVisible = false
+
+export function setEditorSharedStrings(
+  strings: Pick<SharedEditorStrings, 'mermaidRender'>,
+): void {
+  mermaidRenderButtonText = strings.mermaidRender
+}
 
 const MarkdownShortcuts = Extension.create({
   name: 'markleafMarkdownShortcuts',
@@ -214,6 +221,64 @@ const FindHighlight = Extension.create({
               ? 'markleaf-find-match markleaf-find-match-current'
               : 'markleaf-find-match' },
           )))
+        },
+      },
+    })]
+  },
+})
+
+const themedSelectionKey = new PluginKey('markleaf-themed-selection')
+
+const ThemedSelection = Extension.create({
+  name: 'markleafThemedSelection',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: themedSelectionKey,
+      view(view) {
+        const mount = view.dom.parentElement
+        if (!mount) return {}
+
+        const handleBackgroundMouseDown = (event: MouseEvent) => {
+          if (event.button !== 0 || event.target !== mount || view.state.selection.empty) {
+            return
+          }
+
+          event.preventDefault()
+          const collapsed = Selection.near(view.state.doc.resolve(view.state.selection.from), 1)
+          view.dispatch(view.state.tr.setSelection(collapsed).setMeta('addToHistory', false))
+          view.focus()
+        }
+
+        mount.addEventListener('mousedown', handleBackgroundMouseDown)
+        return {
+          destroy() {
+            mount.removeEventListener('mousedown', handleBackgroundMouseDown)
+          },
+        }
+      },
+      props: {
+        decorations(state) {
+          const { from, to, empty } = state.selection
+          if (!(state.selection instanceof TextSelection) || empty || from === to) {
+            return DecorationSet.empty
+          }
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(from, to, { class: 'markleaf-themed-selection' }),
+          ])
+        },
+        handleDOMEvents: {
+          blur(view) {
+            const selection = view.state.selection
+            if (!selection.empty) {
+              const collapsed = Selection.near(view.state.doc.resolve(selection.from), 1)
+              view.dispatch(
+                view.state.tr
+                  .setSelection(collapsed)
+                  .setMeta('addToHistory', false),
+              )
+            }
+            return false
+          },
         },
       },
     })]
@@ -1163,7 +1228,7 @@ function createMermaidRenderButton(editor: Editor, position: number): HTMLButton
   button.type = 'button'
   button.className = 'markleaf-mermaid-render-button'
   button.contentEditable = 'false'
-  button.textContent = MERMAID_RENDER_BUTTON_TEXT
+  button.textContent = mermaidRenderButtonText
   button.addEventListener('mousedown', (event) => {
     event.preventDefault()
     event.stopPropagation()
@@ -1345,10 +1410,21 @@ export const editorExtensions = [
   Mermaid,
 ]
 
-export function createEditor(element: HTMLElement, content = '', readOnly = false): Editor {
+export type EditorCreationOptions = {
+  themedVisualSelection?: boolean
+}
+
+export function createEditor(
+  element: HTMLElement,
+  content = '',
+  readOnly = false,
+  options: EditorCreationOptions = {},
+): Editor {
   const editor = new Editor({
     element,
-    extensions: editorExtensions,
+    extensions: options.themedVisualSelection
+      ? [...editorExtensions, ThemedSelection]
+      : editorExtensions,
     content: protectFootnoteDefinitionsForVisualMarkdown(content),
     contentType: 'markdown',
     autofocus: false,
@@ -1372,9 +1448,15 @@ export function createEditor(element: HTMLElement, content = '', readOnly = fals
   return editor
 }
 
-export function replaceEditorDocument(editor: Editor, element: HTMLElement, content: string, readOnly = false): Editor {
+export function replaceEditorDocument(
+  editor: Editor,
+  element: HTMLElement,
+  content: string,
+  readOnly = false,
+  options: EditorCreationOptions = {},
+): Editor {
   editor.destroy()
-  return createEditor(element, content, readOnly)
+  return createEditor(element, content, readOnly, options)
 }
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {

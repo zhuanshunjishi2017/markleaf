@@ -13,6 +13,7 @@ enum ShortcutCatalog {
     static let entries: [ShortcutEntry] = [
         ShortcutEntry(command: "new", titleKey: "新建文档", defaultKey: "n", defaultMask: [.command]),
         ShortcutEntry(command: "newPlainText", titleKey: "新建文本文件", defaultKey: "n", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "newWindow", titleKey: "新建窗口", defaultKey: "N", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "open", titleKey: "打开…", defaultKey: "o", defaultMask: [.command]),
         ShortcutEntry(command: "save", titleKey: "保存", defaultKey: "s", defaultMask: [.command]),
         ShortcutEntry(command: "saveAs", titleKey: "另存为…", defaultKey: "S", defaultMask: [.command, .shift]),
@@ -30,8 +31,8 @@ enum ShortcutCatalog {
         ShortcutEntry(command: "formatPainter", titleKey: "格式刷", defaultKey: "c", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "formatPainterApply", titleKey: "应用格式刷", defaultKey: "v", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "insertLink", titleKey: "插入超链接…", defaultKey: "k", defaultMask: [.command]),
-        ShortcutEntry(command: "promoteHeading", titleKey: "提升标题级别", defaultKey: ".", defaultMask: [.command]),
-        ShortcutEntry(command: "demoteHeading", titleKey: "降低标题级别", defaultKey: ",", defaultMask: [.command]),
+        ShortcutEntry(command: "promoteHeading", titleKey: "提升标题级别", defaultKey: ".", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "demoteHeading", titleKey: "降低标题级别", defaultKey: ",", defaultMask: [.command, .option]),
         ShortcutEntry(command: "sourceMode", titleKey: "源码模式", defaultKey: "u", defaultMask: [.command, .option]),
         ShortcutEntry(command: "toggleFocusMode", titleKey: "专注模式", defaultKey: "f", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "zoomIn", titleKey: "放大", defaultKey: "=", defaultMask: [.command]),

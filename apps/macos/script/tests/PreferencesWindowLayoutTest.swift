@@ -130,6 +130,10 @@ expect(!PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "zh-H
        "simplified Chinese Appearance should retain its existing checkbox alignment")
 expect(!PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: "zh-Hant"),
        "traditional Chinese Appearance should retain its existing checkbox alignment")
+for language in ["zh-Hans", "zh-Hant", "en", "ja"] {
+    expect(PreferencesWindowLayout.appearanceCentersCodeHighlightCheckbox(for: language),
+           "the code-highlighting checkbox should be centered independently in \(language) without widening other rows")
+}
 let englishColumn = PreferencesWindowLayout.centeredColumnFrame(
     containerWidth: en.maximumWindowWidth,
     fittingWidth: en.maximumContentColumnWidth + 100,
@@ -213,6 +217,23 @@ let enWidePage = PreferencesWindowLayout.windowContentSize(
 )
 expect(enNarrowPage.width == enWidePage.width,
        "switching English preference tabs may change height but must preserve width")
+
+let shortRegularPage = PreferencesWindowLayout.windowContentSize(
+    for: NSSize(width: 400, height: 330),
+    metrics: zh,
+    page: .general
+)
+let shortImagesPage = PreferencesWindowLayout.windowContentSize(
+    for: NSSize(width: 400, height: 330),
+    metrics: zh,
+    page: .images
+)
+expect(shortRegularPage.height == zh.minimumWindowHeight,
+       "non-Images pages should retain the approved minimum window height")
+expect(shortImagesPage.height == 354,
+       "the short Images page should fit its content instead of leaving the largest bottom gap")
+expect(shortImagesPage.width == shortRegularPage.width,
+       "the Images-only height correction must not change preference window width")
 
 if failures > 0 {
     exit(1)

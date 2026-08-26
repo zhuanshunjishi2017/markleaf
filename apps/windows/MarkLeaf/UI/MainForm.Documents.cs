@@ -573,7 +573,10 @@ internal sealed partial class MainForm
             return;
         }
 
-        using var dialog = new EncodingChangeDialog(current.DisplayName, target.DisplayName);
+        using var dialog = new EncodingChangeDialog(
+            current.DisplayName,
+            target.DisplayName,
+            _document.IsDirty);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -607,6 +610,7 @@ internal sealed partial class MainForm
                 _document = reopened;
                 LoadDocumentIntoEditor(reopened);
                 StartWatchingDocument(reopened.FilePath!);
+                SetStatus(Loc.Get("status.documentReloaded"));
             }
             finally
             {
@@ -625,13 +629,6 @@ internal sealed partial class MainForm
             return;
         }
 
-        _document.Encoding = target.CreateEncoding();
-        _document.EncodingPolicyId = target.Id;
-        _document.HasBom = target.HasBom;
-        if (await SaveDocumentAsync(saveAs: false, forceOverwrite: true))
-        {
-            SetStatus(Loc.Get("status.documentSaved"));
-        }
     }
 
     private async Task ConvertDocumentEncodingAsync(DocumentEncodingPolicy target)

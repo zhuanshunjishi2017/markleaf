@@ -362,10 +362,9 @@ internal sealed class NativeMenuService : IDisposable
         {
             AppendPopup(root, Loc.Get("menu.file.label"), BuildFileMenu());
             AppendPopup(root, Loc.Get("menu.edit.label"), BuildEditMenu());
-            AppendPopup(root, Loc.Get("menu.paragraph.label"), BuildParagraphMenu());
+            AppendPopup(root, Loc.Get("menu.insert.label"), BuildInsertMenu());
             AppendPopup(root, Loc.Get("menu.format.label"), BuildFormatMenu());
             AppendPopup(root, Loc.Get("menu.view.label"), BuildViewMenu());
-            AppendPopup(root, Loc.Get("menu.appearance.label"), BuildAppearanceMenu());
             AppendPopup(root, Loc.Get("menu.help.label"), BuildHelpMenu());
             return root;
         }
@@ -441,8 +440,8 @@ internal sealed class NativeMenuService : IDisposable
 
             AppendMainMenuCommand(menu, AppCommand.Paste, Loc.Get("menu.edit.paste"));
             AppendSeparator(menu);
-            AppendMainMenuCommand(menu, AppCommand.Find, Loc.Get("menu.edit.find"));
-            AppendMainMenuCommand(menu, AppCommand.Replace, Loc.Get("menu.edit.replace"));
+            AppendMainMenuCommand(menu, AppCommand.Find, Loc.Get("menu.edit.findReplace"));
+            AppendMainMenuCommand(menu, AppCommand.SelectAll, Loc.Get("menu.edit.selectAll"));
             return menu;
         }
         catch
@@ -656,68 +655,108 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
     }
 
-    private nint BuildParagraphMenu()
+    private nint BuildInsertMenu()
     {
         var menu = CreateMenu(true);
         try
         {
-            AppendMainMenuCommand(menu, AppCommand.SetParagraph, Loc.Get("menu.paragraph.paragraph"));
-
-            var headings = CreateMenu(true);
-            AppendMainMenuCommand(headings, AppCommand.SetHeading1, Loc.Get("menu.paragraph.heading1"));
-            AppendMainMenuCommand(headings, AppCommand.SetHeading2, Loc.Get("menu.paragraph.heading2"));
-            AppendMainMenuCommand(headings, AppCommand.SetHeading3, Loc.Get("menu.paragraph.heading3"));
-            AppendMainMenuCommand(headings, AppCommand.SetHeading4, Loc.Get("menu.paragraph.heading4"));
-            AppendMainMenuCommand(headings, AppCommand.SetHeading5, Loc.Get("menu.paragraph.heading5"));
-            AppendMainMenuCommand(headings, AppCommand.SetHeading6, Loc.Get("menu.paragraph.heading6"));
-            AppendPopup(menu, Loc.Get("menu.paragraph.heading"), headings);
+            AppendMainMenuCommand(menu, AppCommand.InsertLink, Loc.Get("menu.insert.insertLink"));
+            var images = CreateMenu(true);
+            AppendMainMenuCommand(images, AppCommand.InsertImage, Loc.Get("menu.insert.insertImage"));
+            AppendMainMenuCommand(images, AppCommand.InsertImageFromUrl, Loc.Get("menu.insert.insertImageFromUrl"));
+            AppendPopup(menu, Loc.Get("menu.insert.image"), images);
 
             AppendSeparator(menu);
-            AppendMainMenuCommand(menu, AppCommand.PromoteHeading, Loc.Get("menu.paragraph.promoteHeading"));
-            AppendMainMenuCommand(menu, AppCommand.DemoteHeading, Loc.Get("menu.paragraph.demoteHeading"));
+            AppendMainMenuCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.insert.insertMathInline"));
+            AppendMainMenuCommand(menu, AppCommand.InsertMathBlock, Loc.Get("menu.insert.insertMathBlock"));
+            AppendMainMenuCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.insert.horizontalRule"));
+            AppendMainMenuCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.insert.insertFootnote"));
             AppendSeparator(menu);
-            AppendMainMenuCommand(menu, AppCommand.ToggleQuote, Loc.Get("menu.paragraph.quote"));
-            AppendMainMenuCommand(menu, AppCommand.InsertMathBlock, Loc.Get("menu.paragraph.insertMathBlock"));
-            AppendMainMenuCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
-            AppendMainMenuCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
-            AppendSeparator(menu);
-
-            var lists = CreateMenu(true);
-            AppendMainMenuCommand(lists, AppCommand.ToggleBulletList, Loc.Get("menu.paragraph.bulletList"));
-            AppendMainMenuCommand(lists, AppCommand.ToggleOrderedList, Loc.Get("menu.paragraph.orderedList"));
-            AppendMainMenuCommand(lists, AppCommand.ToggleTaskList, Loc.Get("menu.paragraph.taskList"));
-            AppendPopup(menu, Loc.Get("menu.paragraph.list"), lists);
-
-            var table = CreateMenu(true);
-            AppendMainMenuCommand(table, AppCommand.InsertTable, Loc.Get("menu.paragraph.insertTable"));
-            AppendSeparator(table);
-            AppendMainMenuCommand(table, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
-            AppendMainMenuCommand(table, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
-            AppendMainMenuCommand(table, AppCommand.DeleteTableRow, Loc.Get("menu.paragraph.deleteRow"));
-            AppendSeparator(table);
-            AppendMainMenuCommand(table, AppCommand.AddTableColumnBefore, Loc.Get("menu.paragraph.addColumnLeft"));
-            AppendMainMenuCommand(table, AppCommand.AddTableColumnAfter, Loc.Get("menu.paragraph.addColumnRight"));
-            AppendMainMenuCommand(table, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
-            AppendSeparator(table);
-            AppendMainMenuCommand(table, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
-            AppendMainMenuCommand(table, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));
-            AppendMainMenuCommand(table, AppCommand.AlignTableRight, Loc.Get("menu.paragraph.alignRight"));
-            AppendSeparator(table);
-            AppendMainMenuCommand(table, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
-            AppendPopup(menu, Loc.Get("menu.paragraph.table"), table);
-
-            var diagram = CreateMenu(true);
-            AppendMainMenuCommand(diagram, AppCommand.InsertMermaid, Loc.Get("menu.paragraph.insertMermaid"));
-            AppendSeparator(diagram);
-            AppendMainMenuCommand(diagram, AppCommand.RerenderAllMermaid, Loc.Get("menu.paragraph.rerenderAllMermaid"));
-            AppendPopup(menu, Loc.Get("menu.paragraph.diagram"), diagram);
+            AppendMainMenuCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.insert.insertLineBefore"));
+            AppendMainMenuCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.insert.insertLineAfter"));
 
             AppendSeparator(menu);
-            AppendMainMenuCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.paragraph.insertFootnote"));
-            AppendSeparator(menu);
+            var tableInsert = CreateMenu(true);
+            AppendMainMenuCommand(tableInsert, AppCommand.InsertTable, Loc.Get("menu.insert.insertTable"));
+            AppendPopup(menu, Loc.Get("menu.insert.table"), tableInsert);
+            var mermaid = CreateMenu(true);
+            AppendMainMenuCommand(mermaid, AppCommand.InsertMermaid, Loc.Get("menu.insert.insertMermaid"));
+            AppendSeparator(mermaid);
+            AppendMainMenuCommand(mermaid, AppCommand.RerenderAllMermaid, Loc.Get("menu.insert.rerenderAllMermaid"));
+            AppendPopup(menu, Loc.Get("menu.insert.mermaid"), mermaid);
+            return menu;
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
+        }
+    }
 
-            AppendMainMenuCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
-            AppendMainMenuCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.paragraph.insertLineAfter"));
+    private static nint BuildParagraphStyleMenu()
+    {
+        var menu = CreateMenu(true);
+        AppendMainMenuCommand(menu, AppCommand.SetParagraph, Loc.Get("menu.paragraph.paragraph"));
+
+        var headings = CreateMenu(true);
+        AppendMainMenuCommand(headings, AppCommand.SetHeading1, Loc.Get("menu.paragraph.heading1"));
+        AppendMainMenuCommand(headings, AppCommand.SetHeading2, Loc.Get("menu.paragraph.heading2"));
+        AppendMainMenuCommand(headings, AppCommand.SetHeading3, Loc.Get("menu.paragraph.heading3"));
+        AppendMainMenuCommand(headings, AppCommand.SetHeading4, Loc.Get("menu.paragraph.heading4"));
+        AppendMainMenuCommand(headings, AppCommand.SetHeading5, Loc.Get("menu.paragraph.heading5"));
+        AppendMainMenuCommand(headings, AppCommand.SetHeading6, Loc.Get("menu.paragraph.heading6"));
+        AppendPopup(menu, Loc.Get("menu.paragraph.heading"), headings);
+
+        AppendSeparator(menu);
+        AppendMainMenuCommand(menu, AppCommand.PromoteHeading, Loc.Get("menu.paragraph.promoteHeading"));
+        AppendMainMenuCommand(menu, AppCommand.DemoteHeading, Loc.Get("menu.paragraph.demoteHeading"));
+        AppendSeparator(menu);
+        AppendMainMenuCommand(menu, AppCommand.ToggleQuote, Loc.Get("menu.paragraph.quote"));
+        AppendMainMenuCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
+
+        var lists = CreateMenu(true);
+        AppendMainMenuCommand(lists, AppCommand.ToggleBulletList, Loc.Get("menu.paragraph.bulletList"));
+        AppendMainMenuCommand(lists, AppCommand.ToggleOrderedList, Loc.Get("menu.paragraph.orderedList"));
+        AppendMainMenuCommand(lists, AppCommand.ToggleTaskList, Loc.Get("menu.paragraph.taskList"));
+        AppendPopup(menu, Loc.Get("menu.paragraph.list"), lists);
+        return menu;
+    }
+
+    private static nint BuildTableEditingMenu()
+    {
+        var table = CreateMenu(true);
+        AppendMainMenuCommand(table, AppCommand.AddTableRowBefore, Loc.Get("menu.paragraph.addRowAbove"));
+        AppendMainMenuCommand(table, AppCommand.AddTableRowAfter, Loc.Get("menu.paragraph.addRowBelow"));
+        AppendMainMenuCommand(table, AppCommand.DeleteTableRow, Loc.Get("menu.paragraph.deleteRow"));
+        AppendSeparator(table);
+        AppendMainMenuCommand(table, AppCommand.AddTableColumnBefore, Loc.Get("menu.paragraph.addColumnLeft"));
+        AppendMainMenuCommand(table, AppCommand.AddTableColumnAfter, Loc.Get("menu.paragraph.addColumnRight"));
+        AppendMainMenuCommand(table, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
+        AppendSeparator(table);
+        AppendMainMenuCommand(table, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
+        AppendMainMenuCommand(table, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));
+        AppendMainMenuCommand(table, AppCommand.AlignTableRight, Loc.Get("menu.paragraph.alignRight"));
+        AppendSeparator(table);
+        AppendMainMenuCommand(table, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
+        return table;
+    }
+
+    private nint BuildFormatMenu()
+    {
+        var menu = CreateMenu(true);
+        try
+        {
+            AppendMainMenuCommand(menu, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
+            AppendMainMenuCommand(menu, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
+            AppendMainMenuCommand(menu, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
+            AppendMainMenuCommand(menu, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.FormatPainter, Loc.Get("menu.format.formatPainter"));
+            AppendSeparator(menu);
+            AppendPopup(menu, Loc.Get("menu.format.paragraphStyle"), BuildParagraphStyleMenu());
+            AppendPopup(menu, Loc.Get("menu.format.table"), BuildTableEditingMenu());
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.paragraph.clearFormat"));
             return menu;
@@ -729,30 +768,6 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private nint BuildFormatMenu()
-    {
-        var menu = CreateMenu(true);
-        AppendMainMenuCommand(menu, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
-        AppendMainMenuCommand(menu, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
-        AppendMainMenuCommand(menu, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
-        AppendMainMenuCommand(menu, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
-        AppendSeparator(menu);
-        AppendMainMenuCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
-        AppendMainMenuCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
-        AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.ShowCodeHighlight, Loc.Get("menu.format.showCodeHighlight"));
-        AppendSeparator(menu);
-        AppendMainMenuCommand(menu, AppCommand.FormatPainter, Loc.Get("menu.format.formatPainter"));
-        AppendSeparator(menu);
-        AppendMainMenuCommand(menu, AppCommand.InsertLink, Loc.Get("menu.format.insertLink"));
-        AppendMainMenuCommand(menu, AppCommand.InsertImage, Loc.Get("menu.format.insertImage"));
-        AppendMainMenuCommand(menu, AppCommand.InsertImageFromUrl, Loc.Get("menu.format.insertImageFromUrl"));
-        AppendMainMenuCommand(menu, AppCommand.RotateImageClockwise, Loc.Get("menu.format.rotateImageClockwise"));
-        AppendPopup(menu, Loc.Get("menu.format.resizeImage"), BuildResizeImageSubmenu());
-        AppendMainMenuCommand(menu, AppCommand.SaveImageAs, Loc.Get("menu.format.saveImageAs"));
-        return menu;
-    }
-
     private static nint BuildResizeImageSubmenu()
     {
         var resize = CreateMenu(true);
@@ -761,39 +776,6 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(resize, AppCommand.ResizeImage75, Loc.Get("contextMenu.image.resize75"));
         AppendCommand(resize, AppCommand.ResizeImage90, Loc.Get("contextMenu.image.resize90"));
         return resize;
-    }
-
-    private nint BuildAppearanceMenu()
-    {
-        var menu = CreateMenu(true);
-        try
-        {
-            _styleMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.style"), _styleMenu);
-            RefreshStyleMenu();
-
-            _colorMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.colorTheme"), _colorMenu);
-            RefreshColorMenu();
-
-            AppendSeparator(menu);
-            _zoomMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.zoom"), _zoomMenu);
-            RefreshZoomMenu();
-            AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.appearance.zoomIn"));
-            AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.appearance.zoomOut"));
-            AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.appearance.zoomReset"));
-
-            AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.AddTheme, Loc.Get("menu.appearance.addTheme"));
-            AppendCommand(menu, AppCommand.OpenThemeFolder, Loc.Get("menu.appearance.openThemeFolder"));
-            return menu;
-        }
-        catch
-        {
-            NativeMethods.DestroyMenu(menu);
-            throw;
-        }
     }
 
     /// <summary>
@@ -946,6 +928,23 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ToggleSourceMode, Loc.Get("menu.view.sourceMode"));
             AppendMainMenuCommand(menu, AppCommand.ToggleFocusMode, Loc.Get("menu.view.focusMode"));
+
+            AppendSeparator(menu);
+            _styleMenu = CreateMenu(true);
+            AppendPopup(menu, Loc.Get("menu.appearance.style"), _styleMenu);
+            RefreshStyleMenu();
+
+            _colorMenu = CreateMenu(true);
+            AppendPopup(menu, Loc.Get("menu.appearance.colorTheme"), _colorMenu);
+            RefreshColorMenu();
+
+            AppendSeparator(menu);
+            _zoomMenu = CreateMenu(true);
+            AppendPopup(menu, Loc.Get("menu.appearance.zoom"), _zoomMenu);
+            RefreshZoomMenu();
+            AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.appearance.zoomIn"));
+            AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.appearance.zoomOut"));
+            AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.appearance.zoomReset"));
             return menu;
         }
         catch

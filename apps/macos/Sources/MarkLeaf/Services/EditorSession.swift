@@ -93,6 +93,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var caption: String?
     private(set) var footnoteDefinitionLabel: String?
     private(set) var codeBlock = false
+    private(set) var codeBlockLanguage: String?
+    private(set) var codeBlockText: String?
+    private(set) var mermaidSelected = false
+    private(set) var mermaidSource: String?
+    private(set) var mermaidCount = 0
     private(set) var imageSelected = false
     private(set) var inTable = false
     private var newDocumentKind: NewDocumentKind = .markdown
@@ -121,7 +126,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "changeImage", "clearFormat",
         "formatPainter", "formatPainterArm", "formatPainterApply",
         "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
+        "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "declareCodeLanguage",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
+        "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
     ]
 
     // 工作区 / 大纲
@@ -163,7 +170,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var isPresentingExternalChange = false
 
     // 均匀 10% 步进（Windows 为 [50,75,90,100,110,125,150,175,200]，100→125→150 跨度 25% 偏大）
-    static let zoomOptions = Array(stride(from: 50, through: 200, by: 10))
+    // 缩放档位表（菜单/状态栏/吸附/步进单一来源，与 Windows ZoomPercentOptions 对齐）。
+    static let zoomOptions = [50, 75, 90, 100, 110, 125, 150, 175, 200]
     /// 触控板捏合：连续缩放值（平滑），手势结束（去抖）后写回设置。
     private var continuousZoom: Double = 100
     private var pinchPersistTimer: Timer?
@@ -300,7 +308,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
 
         case "commandStateChanged":
-            isSourceMode = payload?["sourceMode"] as? Bool ?? false
+            let decoded = EditorCommandStatePayload.decode(payload)
+            isSourceMode = decoded.sourceMode
             hasSelection = payload?["hasSelection"] as? Bool ?? false
             imageSelected = payload?["imageSelected"] as? Bool ?? false
             inTable = payload?["inTable"] as? Bool ?? false
@@ -310,13 +319,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             mathNumber = payload?["mathNumber"] as? String
             caption = payload?["caption"] as? String
             footnoteDefinitionLabel = payload?["footnoteDefinitionLabel"] as? String
-            codeBlock = payload?["codeBlock"] as? Bool ?? false
-            isReadOnly = payload?["readOnly"] as? Bool ?? false
+            codeBlock = decoded.codeBlock
+            codeBlockLanguage = decoded.codeBlockLanguage
+            codeBlockText = decoded.codeBlockText
+            mermaidSelected = decoded.mermaidSelected
+            mermaidSource = decoded.mermaidSource
+            mermaidCount = decoded.mermaidCount
+            isReadOnly = decoded.readOnly
             canUndo = (payload?["canUndo"] as? Bool ?? false) && !isReadOnly
             canRedo = (payload?["canRedo"] as? Bool ?? false) && !isReadOnly
             canStartFormatPainter = (payload?["canStartFormatPainter"] as? Bool ?? false) && !isReadOnly
             isFormatPainterArmed = (payload?["formatPainterArmed"] as? Bool ?? false) && !isReadOnly
             headingLevel = payload?["headingLevel"] as? Int
+            notify()
 
         case "outlineChanged":
             let headings = (payload?["headings"] as? [[String: Any]]) ?? []
@@ -418,6 +433,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "footnoteDefinitionMissing":
             presentFootnoteDefinitionMissingAlert()
+
+        case "footnoteReferenceMissing":
+            presentFootnoteReferenceMissingAlert()
+
+        case "mermaidEditRequested":
+            execute("editMermaid")
 
         case "findResult":
             if let payload, let current = payload["current"] as? Int, let total = payload["total"] as? Int {
@@ -580,6 +601,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applyVisualVariables(fontSize: nil, maxWidth: nil)
         applySourceIndent()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
+        setCodeHighlightVisible(settings.showCodeHighlight)
         if settings.restoreZoomOnOpen {
             applyZoom(settings.zoomPercent)
         }
@@ -655,53 +677,162 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         statusText = L10n.t("已修改")
     }
 
-    /// 状态栏切换当前文档编码。已打开文件会先尝试按目标编码重载原始字节。
+    /// 状态栏切换当前文档编码。磁盘重读与当前内容转码是两条明确分离的路径。
     func requestDocumentEncodingChange(_ rawValue: String) {
-        guard !isReadOnly else { return }
         let target = DocumentEncodingPolicy.defaultEncoding(rawValue: rawValue)
-        guard target.rawValue != documentEncoding else { return }
-        guard let url = documentURL else {
+        let current = DocumentEncodingPolicy.defaultEncoding(rawValue: documentEncoding)
+        switch DocumentEncodingChangePolicy.action(
+            current: current,
+            target: target,
+            hasFileURL: documentURL != nil,
+            isDirty: isDirty,
+            isReadOnly: isReadOnly
+        ) {
+        case .noOp, .rejectReadOnly:
+            return
+        case .updateUnsavedDocumentEncoding:
             documentEncoding = target.rawValue
             isDirty = true
             statusText = L10n.t("已修改")
-            return
+        case .prompt(_, let warnsAboutUnsavedChanges):
+            presentEncodingChangeSheet(
+                target: target,
+                warnsAboutUnsavedChanges: warnsAboutUnsavedChanges
+            )
         }
-        guard let data = try? Data(contentsOf: url),
-              let markdown = DocumentEncodingPolicy.decode(data, using: target) else {
-            presentEncodingWarning(for: target, message: L10n.t("无法使用此编码读取文件。"), markdown: nil)
-            return
-        }
-        let risky = DocumentEncodingPolicy.reloadWouldRiskGarbling(data: data, using: target)
-        if risky || isDirty {
-            let message = isDirty
-                ? L10n.t("切换编码将重新加载文件，当前未保存的修改可能丢失。")
-                : L10n.f("使用 %@ 重新加载当前文件可能导致乱码。", target.rawValue)
-            presentEncodingWarning(for: target, message: message, markdown: markdown)
-            return
-        }
-        loadDocument(markdown: markdown, fileURL: url, readOnly: false, encoding: target.rawValue)
-        statusText = L10n.t("已重新加载")
     }
 
-    private func presentEncodingWarning(
-        for target: DocumentEncodingPolicy,
-        message: String,
-        markdown: String?
+    private func presentEncodingChangeSheet(
+        target: DocumentEncodingPolicy,
+        warnsAboutUnsavedChanges: Bool
     ) {
+        guard let window = webView?.window else { return }
+        let message = warnsAboutUnsavedChanges
+            ? L10n.f("请选择直接使用 %@ 重新读取磁盘文件，或将当前编辑内容转换并保存为该编码。直接读取会丢弃当前未保存的修改。", target.rawValue)
+            : L10n.f("请选择直接使用 %@ 重新读取磁盘文件，或将当前编辑内容转换并保存为该编码。", target.rawValue)
+        EncodingChangeSheetPresenter.present(
+            for: window,
+            strings: EncodingChangeSheetStrings(
+                title: L10n.t("更改文档编码"),
+                message: message,
+                directReadButton: L10n.t("直接读取"),
+                convertEncodingButton: L10n.t("转换编码"),
+                cancelButton: L10n.t("取消")
+            )
+        ) { [weak self] choice in
+            guard let self else { return }
+            switch choice {
+            case .directRead:
+                self.directlyReadDocument(using: target)
+            case .convertEncoding:
+                self.convertDocumentEncoding(to: target)
+            case .cancel:
+                break
+            }
+        }
+    }
+
+    func directlyReadDocument(
+        using target: DocumentEncodingPolicy,
+        allowingGarblingRisk: Bool = false
+    ) {
+        guard !isReadOnly, let url = documentURL else { return }
+        do {
+            let snapshot = try EncodingConversionTransaction.directlyRead(from: url, using: target)
+            if !allowingGarblingRisk,
+               DocumentEncodingPolicy.reloadWouldRiskGarbling(data: snapshot.data, using: target) {
+                presentDirectReadWarning(for: target)
+                return
+            }
+            loadDocument(
+                markdown: snapshot.markdown,
+                fileURL: url,
+                readOnly: false,
+                encoding: target.rawValue
+            )
+            statusText = L10n.t("已重新加载")
+        } catch {
+            presentError(L10n.t("无法使用此编码读取文件。"))
+        }
+    }
+
+    private func presentDirectReadWarning(for target: DocumentEncodingPolicy) {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = L10n.t("编码可能导致乱码")
-        alert.informativeText = message
+        alert.informativeText = L10n.f(
+            "使用 %@ 重新加载当前文件可能导致乱码。",
+            target.rawValue
+        )
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("继续重新加载"))
         alert.addButton(withTitle: L10n.t("取消"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn,
-                  let url = self.documentURL,
-                  let data = try? Data(contentsOf: url),
-                  let markdown = markdown ?? DocumentEncodingPolicy.decode(data, using: target) else { return }
-            self.loadDocument(markdown: markdown, fileURL: url, readOnly: false, encoding: target.rawValue)
-            self.statusText = L10n.t("已重新加载")
+            guard response == .alertFirstButtonReturn else { return }
+            self?.directlyReadDocument(using: target, allowingGarblingRisk: true)
+        }
+    }
+
+    func convertDocumentEncoding(to target: DocumentEncodingPolicy) {
+        guard !isReadOnly, let url = documentURL else { return }
+        writeCoordinator.enqueue { [weak self] finish in
+            guard let self else {
+                finish()
+                return
+            }
+            self.requestVersionedSnapshot { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else {
+                        finish()
+                        return
+                    }
+                    switch result {
+                    case .success(let editorSnapshot):
+                        let markdown = DocumentNewLinePolicy.normalize(
+                            editorSnapshot.markdown,
+                            to: DocumentNewLinePolicy.style(from: self.documentNewLine)
+                        )
+                        let conversionSnapshot = EncodingConversionSnapshot(
+                            markdown: markdown,
+                            encoding: DocumentEncodingPolicy.defaultEncoding(rawValue: self.documentEncoding),
+                            isDirty: self.isDirty
+                        )
+                        do {
+                            self.stopExternalChangeWatch()
+                            self.externalChangeTracker.beginSelfWrite()
+                            let completed = try EncodingConversionTransaction.convert(
+                                snapshot: conversionSnapshot,
+                                target: target,
+                                destination: url
+                            )
+                            do {
+                                try self.externalChangeTracker.finishSelfWrite(at: url)
+                            } catch {
+                                self.externalChangeTracker.cancelSelfWrite()
+                                AppLog.warning("更新编码转换后的文件监控基线失败: \(error.localizedDescription)")
+                            }
+                            self.startExternalChangeWatch(for: url, acceptingCurrentVersion: true)
+                            self.documentEncoding = completed.encoding.rawValue
+                            self.isDirty = DocumentSaveRevisionPolicy.isDirty(
+                                savedRevision: editorSnapshot.revision,
+                                currentRevision: self.revision
+                            )
+                            self.statusText = self.isDirty ? L10n.t("已修改") : L10n.t("已保存")
+                            AppLog.info("文档编码已转换为 \(target.rawValue): \(url.path)")
+                        } catch {
+                            self.externalChangeTracker.cancelSelfWrite()
+                            self.startExternalChangeWatch(for: url, acceptingCurrentVersion: true)
+                            let message = error is EncodingConversionTransactionError
+                                ? L10n.f("当前内容无法无损转换为 %@。", target.rawValue)
+                                : L10n.f("转换编码失败：%@", error.localizedDescription)
+                            self.presentError(message)
+                        }
+                    case .failure(let error):
+                        self.presentError(L10n.f("获取文档内容失败：%@", error.localizedDescription))
+                    }
+                    finish()
+                }
+            }
         }
     }
 
@@ -969,7 +1100,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var onFindResult: ((Int, Int) -> Void)?
 
     func showFind() {
-        AppWindowManager.shared.showFindPanel(for: self)
+        AppWindowManager.shared.showFindPanel(for: self, showingReplace: false)
     }
 
     /// 行内格式命令：空选时应用到整个文本块。
@@ -987,6 +1118,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         setAutoHideScrollbar(settings.autoHideScrollbars)
         applySourceIndent()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
+        setCodeHighlightVisible(settings.showCodeHighlight)
     }
 
     /// 源码模式缩进宽度（对应偏好设置「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
@@ -1009,6 +1141,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         var settings = AppSettings()
         settings.showParagraphBlockHandle = enabled
         execute("setBlockHandleVisible", text: Self.blockHandleVisibilityCommandText(for: settings))
+    }
+
+    func setCodeHighlightVisible(_ visible: Bool) {
+        execute("setCodeHighlightVisible", text: visible ? "1" : "0")
     }
 
     func setAutoHideScrollbar(_ enabled: Bool) {

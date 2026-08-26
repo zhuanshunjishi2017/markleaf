@@ -48,9 +48,10 @@ body.markleaf-theme-dark {
   --ml-code-operator: #c9d1d9;
 }
 
-/* WebView2 原生选区不会改写编辑器 DOM，可安全参与文字拖放。 */
-.markleaf-document::selection,
-.markleaf-document *::selection,
+/* WebView2 使用原生选区，避免拖动期间由装饰改写编辑器 DOM。 */
+:root:not(.markleaf-host-macos) .markleaf-document::selection,
+:root:not(.markleaf-host-macos) .markleaf-document *::selection,
+.markleaf-host-macos .markleaf-themed-selection,
 .ml-source-selection {
   background: var(--theme-light);
   color: var(--text-selected);

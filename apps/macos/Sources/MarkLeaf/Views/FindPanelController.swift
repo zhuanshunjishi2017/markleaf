@@ -275,7 +275,8 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
         }
     }
 
-    func showPanel() {
+    func showPanel(showingReplace: Bool = false) {
+        setReplaceExpanded(showingReplace, animated: false)
         guard let window else { return }
         // 定位到主窗口顶部居中，淡入出现
         if let mainWindow = session?.webView?.window {

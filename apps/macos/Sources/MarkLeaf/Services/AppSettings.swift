@@ -84,6 +84,7 @@ struct AppSettings: Codable {
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
+        showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? false
         suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
@@ -164,6 +165,7 @@ struct AppSettings: Codable {
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var sourceIndentWidth = 2
     var showParagraphBlockHandle = true
+    var showCodeHighlight = false
     var suppressUnsafeEmphasisPrompt = false
     var unsafeEmphasisAction = UnsafeEmphasisAction.literal.rawValue
     var exportSettings = PersistedExportSettings()

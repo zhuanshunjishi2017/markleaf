@@ -3,6 +3,14 @@ import AppKit
 /// 偏好设置窗口的尺寸与内容列布局策略。
 /// 将窗口的紧凑边界与页面内容的居中规则集中管理，便于回归测试。
 enum PreferencesWindowLayout {
+    enum Page: Int {
+        case file
+        case editor
+        case appearance
+        case general
+        case images
+    }
+
     enum FieldLabelColumnMode {
         case languageMaximum
         case pageContent
@@ -136,6 +144,11 @@ enum PreferencesWindowLayout {
         language == "en" || language == "ja"
     }
 
+    static func appearanceCentersCodeHighlightCheckbox(for language: String) -> Bool {
+        _ = language
+        return true
+    }
+
     static func resolvedFieldLabelColumnWidth(
         fittingWidths: [CGFloat],
         metrics: Metrics,
@@ -163,11 +176,16 @@ enum PreferencesWindowLayout {
         windowContentSize(for: fittingSize, metrics: simplifiedChinese)
     }
 
-    static func windowContentSize(for fittingSize: NSSize, metrics: Metrics) -> NSSize {
+    static func windowContentSize(
+        for fittingSize: NSSize,
+        metrics: Metrics,
+        page: Page = .file
+    ) -> NSSize {
         let width = metrics.minimumWindowWidth
+        let minimumHeight = page == .images ? 0 : metrics.minimumWindowHeight
         let height = min(
             metrics.maximumWindowHeight,
-            max(metrics.minimumWindowHeight, ceil(fittingSize.height) + 24)
+            max(minimumHeight, ceil(fittingSize.height) + 24)
         )
         return NSSize(width: width, height: height)
     }

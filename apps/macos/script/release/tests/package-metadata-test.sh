@@ -13,7 +13,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-MARKLEAF_BUILD=987 "$WRITER" "$INFO_PLIST" "1.3.2"
+MARKLEAF_BUILD=987 "$WRITER" "$INFO_PLIST" "1.4.0"
 
 expect_plist_value() {
     local key="$1"
@@ -26,7 +26,7 @@ expect_plist_value() {
     fi
 }
 
-expect_plist_value CFBundleShortVersionString "1.3.2"
+expect_plist_value CFBundleShortVersionString "1.4.0"
 expect_plist_value CFBundleVersion "987"
 expect_plist_value NSHumanReadableCopyright "Copyright © 2026 zhuanshunjishi2017 & NaBian"
 

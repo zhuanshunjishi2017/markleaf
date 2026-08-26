@@ -1,5 +1,27 @@
 # MarkLeaf Changelog
 
+## 1.4.0 — 2026-08-26
+
+### New
+
+- Add Check for Updates, which detects the latest GitHub release, downloads the installer, and opens it automatically.
+- Add status bar zoom options, clickable to adjust the zoom percentage.
+- Add the Show Code Highlighting preference.
+
+### Changed
+
+- Restructure and unify the menu bar across platforms.
+- Rename the Diagrams menu to Mermaid.
+- Keep Show Code Highlighting, Add Theme, and Open Theme Folder in Preferences only.
+- Adjust the default shortcuts for some commands.
+
+### Fixed
+
+- Fix Format Painter occasionally failing to apply.
+- Fix the old Paragraph Block Handle text and position lingering after the toggle is turned off.
+- Fix trackpad pinch-to-zoom not working.
+- Fix Find & Replace leaving a leftover highlight after closing.
+
 ## 1.3.2 — 2026-08-25
 
 - Add Mermaid diagram support, with diagrams rendered from ````mermaid` fenced code blocks.

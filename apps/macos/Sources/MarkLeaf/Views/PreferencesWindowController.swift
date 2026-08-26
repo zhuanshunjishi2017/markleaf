@@ -66,6 +66,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let topMostCheck = NSButton(checkboxWithTitle: L10n.t("将窗口置于顶层"), target: nil, action: nil)
     private let autoHideScrollbarsCheck = NSButton(checkboxWithTitle: L10n.t("自动隐藏滚动条"), target: nil, action: nil)
     private let followSystemCheck = NSButton(checkboxWithTitle: L10n.t("与操作系统同步"), target: nil, action: nil)
+    private let codeHighlightCheck = NSButton(checkboxWithTitle: L10n.t("显示代码高亮"), target: nil, action: nil)
     private let defaultLightThemePopup = NSPopUpButton()
     private let defaultDarkThemePopup = NSPopUpButton()
 
@@ -162,6 +163,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         topMostCheck.state = settings.topMostWindow ? .on : .off
         autoHideScrollbarsCheck.state = settings.autoHideScrollbars ? .on : .off
         followSystemCheck.state = settings.followSystemTheme ? .on : .off
+        codeHighlightCheck.state = settings.showCodeHighlight ? .on : .off
         themePopup.isEnabled = !settings.followSystemTheme
         let themeDefaults = ThemeDefaultsSelectionModel(
             themes: themes,
@@ -212,7 +214,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         checkboxButtons = [
             autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
             blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
-            autoHideScrollbarsCheck, followSystemCheck, associateMDCheck, associateTextCheck,
+            autoHideScrollbarsCheck, followSystemCheck, codeHighlightCheck, associateMDCheck, associateTextCheck,
             useRelativePathsCheck, prefixDotSlashCheck,
         ]
 
@@ -291,7 +293,14 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         DispatchQueue.main.async {
             self.tabViewController.view.layoutSubtreeIfNeeded()
             let tabSize = self.tabViewController.view.fittingSize
-            let contentSize = PreferencesWindowLayout.windowContentSize(for: tabSize, metrics: self.layoutMetrics)
+            let page = PreferencesWindowLayout.Page(
+                rawValue: self.tabViewController.selectedTabViewItemIndex
+            ) ?? .file
+            let contentSize = PreferencesWindowLayout.windowContentSize(
+                for: tabSize,
+                metrics: self.layoutMetrics,
+                page: page
+            )
             let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
             // frame.origin 是左下角（屏幕坐标系 y 向上）；固定顶边，让标题栏不动、只动下边。
             let current = window.frame
@@ -347,7 +356,14 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         // 高度按当前标签页内容自适应；宽度由语言布局策略固定。
         root.layoutSubtreeIfNeeded()
         let tabSize = tabViewController.view.fittingSize
-        window.setContentSize(PreferencesWindowLayout.windowContentSize(for: tabSize, metrics: layoutMetrics))
+        let page = PreferencesWindowLayout.Page(
+            rawValue: tabViewController.selectedTabViewItemIndex
+        ) ?? .file
+        window.setContentSize(PreferencesWindowLayout.windowContentSize(
+            for: tabSize,
+            metrics: layoutMetrics,
+            page: page
+        ))
         window.center()
 
         preferencesKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -466,6 +482,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         for popup in themePopups {
             popup.widthAnchor.constraint(equalToConstant: themePopupWidth).isActive = true
         }
+        var centeredCheckboxes: Set<NSButton> = []
+        if PreferencesWindowLayout.appearanceCentersCodeHighlightCheckbox(for: displayLanguage) {
+            centeredCheckboxes.insert(codeHighlightCheck)
+        }
+        if PreferencesWindowLayout.appearanceCentersFollowSystemCheckbox(for: displayLanguage) {
+            centeredCheckboxes.insert(followSystemCheck)
+        }
         return formPage(rows: [
             .header(L10n.t("文档外观")),
             .field(L10n.t("排版样式"), stylePopup),
@@ -473,6 +496,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("默认浅色主题"), defaultLightThemePopup),
             .field(L10n.t("默认深色主题"), defaultDarkThemePopup),
             .field("", followSystemCheck),
+            .field("", codeHighlightCheck),
             .field("", linkButton(L10n.t("添加主题…"), #selector(importTheme))),
             .field("", linkButton(L10n.t("打开主题文件夹…"), #selector(openThemeFolder))),
             .header(L10n.t("窗口设置")),
@@ -480,10 +504,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", autoHideScrollbarsCheck),
             .header(L10n.t("状态栏")),
             .field("", linkButton(L10n.t("自定义状态栏…"), #selector(customizeStatusBar))),
-        ], intrinsicallyCenteredCheckboxes: PreferencesWindowLayout
-            .appearanceCentersFollowSystemCheckbox(for: displayLanguage)
-            ? [followSystemCheck]
-            : [])
+        ], intrinsicallyCenteredCheckboxes: centeredCheckboxes)
     }
 
     private func generalPage() -> NSView {
@@ -577,6 +598,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.topMostWindow = topMostCheck.state == .on
         settings.autoHideScrollbars = autoHideScrollbarsCheck.state == .on
         settings.followSystemTheme = followSystemCheck.state == .on
+        settings.showCodeHighlight = codeHighlightCheck.state == .on
         if defaultLightThemePopup.indexOfSelectedItem >= 0,
            defaultLightThemePopup.indexOfSelectedItem < defaultLightThemeIDs.count {
             settings.defaultLightThemeID = defaultLightThemeIDs[defaultLightThemePopup.indexOfSelectedItem]

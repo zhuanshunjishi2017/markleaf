@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
 type MermaidModule = typeof import('mermaid')
 
@@ -6,8 +7,16 @@ let mermaidPromise: Promise<MermaidModule> | null = null
 let mermaidInitialized = false
 let mermaidSequence = 0
 const MERMAID_RENDER_TIMEOUT_MS = 1000
-const MERMAID_EMPTY_TEXT = '空Mermaid图表'
-const MERMAID_ERROR_TEXT = 'Mermaid图表文本格式错误'
+let mermaidStrings = sharedEditorStrings('zh-Hans', 'ctrl')
+
+export function setMermaidStrings(
+  strings: Pick<SharedEditorStrings, 'mermaidEmpty' | 'mermaidError' | 'mermaidTimeout'>,
+): void {
+  mermaidStrings = { ...mermaidStrings, ...strings }
+}
+
+class MermaidRenderTimeoutError extends Error {}
+type MermaidRenderResult = 'rendered' | 'empty' | 'error' | 'timeout'
 
 async function loadMermaid(): Promise<MermaidModule> {
   mermaidPromise ??= import('mermaid')
@@ -32,10 +41,13 @@ function nextMermaidId(prefix: string): string {
   return `${prefix}-${mermaidSequence}`
 }
 
-async function renderMermaidSvgInto(host: HTMLElement, source: string): Promise<boolean> {
+async function renderMermaidSvgInto(
+  host: HTMLElement,
+  source: string,
+): Promise<MermaidRenderResult> {
   if (!source.trim()) {
-    renderMermaidMessage(host, MERMAID_EMPTY_TEXT, 'empty')
-    return true
+    renderMermaidMessage(host, mermaidStrings.mermaidEmpty, 'empty')
+    return 'empty'
   }
   const module = await loadMermaid()
   await ensureMermaidInitialized(module)
@@ -43,16 +55,19 @@ async function renderMermaidSvgInto(host: HTMLElement, source: string): Promise<
   return withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS).then(({ svg }) => {
     host.innerHTML = svg
     normalizeMermaidSvg(host)
-    return true
-  }).catch(() => {
+    return 'rendered' as const
+  }).catch((error: unknown) => {
     cleanupMermaidErrorArtifacts()
-    return false
+    return error instanceof MermaidRenderTimeoutError ? 'timeout' : 'error'
   })
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error('Mermaid render timed out')), timeoutMs)
+    const timer = window.setTimeout(
+      () => reject(new MermaidRenderTimeoutError('Mermaid render timed out')),
+      timeoutMs,
+    )
     promise.then(
       value => {
         window.clearTimeout(timer)
@@ -102,9 +117,13 @@ const MermaidNodeView = ({ node }: { node: { type?: { name: string }; textConten
 
   const renderCurrent = () => {
     section.replaceChildren()
-    void renderMermaidSvgInto(section, lastSource).then((ok) => {
-      if (!ok && section.isConnected) {
-        renderMermaidMessage(section, MERMAID_ERROR_TEXT, 'error')
+    void renderMermaidSvgInto(section, lastSource).then((result) => {
+      if ((result === 'error' || result === 'timeout') && section.isConnected) {
+        renderMermaidMessage(
+          section,
+          result === 'timeout' ? mermaidStrings.mermaidTimeout : mermaidStrings.mermaidError,
+          'error',
+        )
       }
     })
   }
@@ -199,7 +218,7 @@ export async function renderMermaidInHtml(html: string): Promise<string> {
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       const message = parsed.createElement('div')
       message.className = 'markleaf-mermaid-message markleaf-mermaid-message-empty'
-      message.textContent = MERMAID_EMPTY_TEXT
+      message.textContent = mermaidStrings.mermaidEmpty
       host.append(message)
       placeholder.replaceWith(host)
       return
@@ -213,13 +232,15 @@ export async function renderMermaidInHtml(html: string): Promise<string> {
       host.innerHTML = svg
       normalizeMermaidSvg(host)
       placeholder.replaceWith(host)
-    } catch {
+    } catch (error) {
       cleanupMermaidErrorArtifacts(parsed)
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       const message = parsed.createElement('div')
       message.className = 'markleaf-mermaid-message markleaf-mermaid-message-error'
-      message.textContent = MERMAID_ERROR_TEXT
+      message.textContent = error instanceof MermaidRenderTimeoutError
+        ? mermaidStrings.mermaidTimeout
+        : mermaidStrings.mermaidError
       host.append(message)
       placeholder.replaceWith(host)
     }

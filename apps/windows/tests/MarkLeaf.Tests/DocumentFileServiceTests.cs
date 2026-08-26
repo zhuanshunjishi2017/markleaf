@@ -94,6 +94,23 @@ public sealed class DocumentFileServiceTests
     }
 
     [TestMethod]
+    public async Task OpenAsync_WithExplicitEncoding_DoesNotModifySourceFile()
+    {
+        var path = Path.Combine(_testDirectory, "direct-read.md");
+        var originalBytes = DocumentEncodingPolicy.Encode("磁盘内容", DocumentEncodingPolicy.Utf8);
+        await File.WriteAllBytesAsync(path, originalBytes);
+        var originalWriteTime = new DateTime(2026, 8, 26, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, originalWriteTime);
+
+        var document = await _service.OpenAsync(path, DocumentEncodingPolicy.Utf8);
+
+        CollectionAssert.AreEqual(originalBytes, await File.ReadAllBytesAsync(path));
+        Assert.AreEqual(originalWriteTime, File.GetLastWriteTimeUtc(path));
+        Assert.AreEqual("磁盘内容", document.Markdown);
+        Assert.IsFalse(document.IsDirty);
+    }
+
+    [TestMethod]
     public async Task SaveAsync_PreservesEncodingBomAndNewLines()
     {
         var path = Path.Combine(_testDirectory, "preserve.md");

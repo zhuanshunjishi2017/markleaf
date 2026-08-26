@@ -5,7 +5,6 @@ extension EditorSession {
     /// 段落左侧句柄菜单（对应 Windows ParagraphBlockHandleMenu）。
     /// 菜单弹出期间由前端高亮当前块，菜单关闭后清除高亮。
     func showBlockMenu(clientX: Double, clientY: Double, position: Int) {
-        guard !isReadOnly else { return }
         guard let webView, let window = webView.window else { return }
         let pointInView = Self.editorContextMenuPoint(
             clientX: clientX,
@@ -14,6 +13,41 @@ extension EditorSession {
             isFlipped: webView.isFlipped
         )
         let menu = NSMenu()
+        let state = editorMenuState
+        guard !state.isReadOnly else {
+            execute("clearBlockHighlight")
+            return
+        }
+        switch EditorMenuPolicy.semanticContext(for: state) {
+        case .footnoteDefinition:
+            addFootnoteCommands(to: menu, state: state)
+        case .table:
+            addTableCommands(to: menu, state: state)
+        case .mermaid:
+            addMermaidCommands(to: menu, state: state)
+        case .codeBlock:
+            addCodeBlockCommands(to: menu, state: state)
+        case .image, .math:
+            break
+        case .ordinaryBlock:
+            if !state.isReadOnly && !state.isSourceMode {
+                addOrdinaryBlockHandleCommands(to: menu)
+            }
+        }
+
+        guard !menu.items.isEmpty else {
+            execute("clearBlockHighlight")
+            return
+        }
+
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        execute("clearBlockHighlight")
+        _ = position
+    }
+
+    private func addOrdinaryBlockHandleCommands(to menu: NSMenu) {
         addFormatCommand(menu, L10n.t("正文"), "setParagraph")
         let headings = NSMenu(title: L10n.t("标题"))
         for level in 1...6 {
@@ -45,12 +79,6 @@ extension EditorSession {
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
         addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
-
-        let windowPoint = webView.convert(pointInView, to: nil)
-        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
-        menu.popUp(positioning: nil, at: screenPoint, in: nil)
-        execute("clearBlockHighlight")
-        _ = position
     }
 
     private static func headingLevelName(_ level: Int) -> String {
@@ -80,46 +108,26 @@ extension EditorSession {
 
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
-        if isReadOnly {
-            addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
-            addFormatCommand(menu, L10n.t("全选"), "selectAll")
-        } else if isSourceMode {
+        let state = editorMenuState
+        let semanticContext = EditorMenuPolicy.semanticContext(for: state)
+        if state.isSourceMode {
             // 源码模式：剪贴板 + 全选
-            addClipboardCommands(menu)
-            menu.addItem(.separator())
+            if state.isReadOnly {
+                addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
+            } else {
+                addClipboardCommands(menu)
+                menu.addItem(.separator())
+            }
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
-        } else if let footnoteLabel = footnoteDefinitionLabel, !footnoteLabel.isEmpty {
-            // 脚注定义：重设编号 + 基础剪贴板操作
-            addFormatCommand(menu, L10n.t("重设注释编号"), "resetFootnoteLabel")
-            menu.addItem(.separator())
-            addClipboardCommands(menu)
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("全选"), "selectAll")
-        } else if inTable {
-            // 表格：行/列操作 + 对齐 + 剪贴板 + 删除表格
-            addFormatCommand(menu, L10n.t("在上方添加行"), "addRowBefore")
-            addFormatCommand(menu, L10n.t("在下方添加行"), "addRowAfter")
-            addFormatCommand(menu, L10n.t("删除当前行"), "deleteRow")
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("在左侧添加列"), "addColumnBefore")
-            addFormatCommand(menu, L10n.t("在右侧添加列"), "addColumnAfter")
-            addFormatCommand(menu, L10n.t("删除当前列"), "deleteColumn")
-            menu.addItem(.separator())
-            let align = NSMenu(title: L10n.t("对齐"))
-            addFormatCommand(align, L10n.t("左对齐"), "alignTableLeft")
-            addFormatCommand(align, L10n.t("居中对齐"), "alignTableCenter")
-            addFormatCommand(align, L10n.t("右对齐"), "alignTableRight")
-            let alignItem = NSMenuItem(title: L10n.t("对齐"), action: nil, keyEquivalent: "")
-            alignItem.submenu = align
-            menu.addItem(alignItem)
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
-            menu.addItem(.separator())
-            addClipboardCommands(menu)
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
-        } else if imageSelected {
+        } else if semanticContext == .footnoteDefinition {
+            addFootnoteCommands(to: menu, state: state)
+        } else if semanticContext == .table {
+            addTableCommands(to: menu, state: state)
+        } else if semanticContext == .mermaid {
+            addMermaidCommands(to: menu, state: state)
+        } else if semanticContext == .image {
             // 图片：更换 / 旋转 / 缩放 / 另存为 + 标题 + 剪贴板（对应 Windows ImageContextMenu）
+            guard !state.isReadOnly else { return }
             addFormatCommand(menu, L10n.t("更换图片…"), "changeImage")
             addFormatCommand(menu, L10n.t("顺时针旋转图片"), "rotateImage")
             let resize = NSMenu(title: L10n.t("调整图片大小"))
@@ -139,17 +147,25 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("编辑图片标题"), "editImageCaption")
             menu.addItem(.separator())
             addClipboardCommands(menu)
-        } else if mathInline || mathBlock {
+        } else if semanticContext == .math {
             // 公式：编辑 / 行内块级互转 / 删除
+            guard !state.isReadOnly else { return }
             addFormatCommand(menu, L10n.t("编辑公式"), "editMath")
             addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除公式"), "deleteMath")
-        } else if codeBlock {
-            // 代码块：退出代码 + 剪贴板
-            addFormatCommand(menu, L10n.t("退出代码"), "exitCode")
-            menu.addItem(.separator())
+        } else if semanticContext == .codeBlock {
+            // 代码块：语言 / 整段复制 / 退出代码 + 剪贴板
+            addCodeBlockCommands(to: menu, state: state)
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            if !state.isReadOnly {
+                addFormatCommand(menu, L10n.t("退出代码"), "exitCode")
+                menu.addItem(.separator())
+            }
             addClipboardCommands(menu)
+        } else if state.isReadOnly {
+            addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
+            addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else {
             // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
             if let headingLevel {
@@ -212,6 +228,8 @@ extension EditorSession {
             menu.addItem(.separator())
             addClipboardCommands(menu)
         }
+
+        guard !menu.items.isEmpty else { return }
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
         let windowPoint = webView.convert(pointInView, to: nil)
@@ -313,6 +331,78 @@ extension EditorSession {
         }
         guard let docDir = documentURL?.deletingLastPathComponent() else { return nil }
         return docDir.appendingPathComponent(decoded)
+    }
+
+    var editorMenuState: EditorContextMenuState {
+        EditorContextMenuState(
+            isSourceMode: isSourceMode,
+            isReadOnly: isReadOnly,
+            isPlainText: isPlainText,
+            footnoteDefinitionLabel: footnoteDefinitionLabel,
+            inTable: inTable,
+            mermaidSelected: mermaidSelected,
+            mermaidCount: mermaidCount,
+            imageSelected: imageSelected,
+            mathInline: mathInline,
+            mathBlock: mathBlock,
+            codeBlock: codeBlock,
+            codeBlockText: codeBlockText
+        )
+    }
+
+    private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {
+        let commands: [(String, String, EditorNativeCommand)] = [
+            (L10n.t("转到引用"), "goToFootnoteReference", .goToFootnoteReference),
+            (L10n.t("重设注释编号"), "resetFootnoteLabel", .resetFootnoteNumber),
+            (L10n.t("清空引用"), "clearFootnoteReferences", .clearFootnoteReferences),
+            (L10n.t("删除注释"), "deleteFootnote", .deleteFootnote),
+        ]
+        for (title, command, nativeCommand) in commands where EditorMenuPolicy.allows(nativeCommand, state: state) {
+            addFormatCommand(menu, title, command)
+        }
+    }
+
+    private func addTableCommands(to menu: NSMenu, state: EditorContextMenuState) {
+        guard EditorMenuPolicy.allows(.tableRows, state: state) else { return }
+        addFormatCommand(menu, L10n.t("在上方添加行"), "addRowBefore")
+        addFormatCommand(menu, L10n.t("在下方添加行"), "addRowAfter")
+        addFormatCommand(menu, L10n.t("删除当前行"), "deleteRow")
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("在左侧添加列"), "addColumnBefore")
+        addFormatCommand(menu, L10n.t("在右侧添加列"), "addColumnAfter")
+        addFormatCommand(menu, L10n.t("删除当前列"), "deleteColumn")
+        menu.addItem(.separator())
+        let align = NSMenu(title: L10n.t("对齐"))
+        addFormatCommand(align, L10n.t("左对齐"), "alignTableLeft")
+        addFormatCommand(align, L10n.t("居中对齐"), "alignTableCenter")
+        addFormatCommand(align, L10n.t("右对齐"), "alignTableRight")
+        let alignItem = NSMenuItem(title: L10n.t("对齐"), action: nil, keyEquivalent: "")
+        alignItem.submenu = align
+        menu.addItem(alignItem)
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
+    }
+
+    private func addMermaidCommands(to menu: NSMenu, state: EditorContextMenuState) {
+        let commands: [(String, String, EditorNativeCommand)] = [
+            (L10n.t("编辑 Mermaid 源码"), "editMermaid", .editMermaid),
+            (L10n.t("重新渲染 Mermaid 图表"), "rerenderMermaid", .rerenderMermaid),
+            (L10n.t("删除 Mermaid 图表"), "deleteMermaid", .deleteMermaid),
+        ]
+        for (title, command, nativeCommand) in commands where EditorMenuPolicy.allows(nativeCommand, state: state) {
+            addFormatCommand(menu, title, command)
+        }
+    }
+
+    private func addCodeBlockCommands(to menu: NSMenu, state: EditorContextMenuState) {
+        if EditorMenuPolicy.allows(.declareCodeLanguage, state: state) {
+            addFormatCommand(menu, L10n.t("声明代码语言…"), "declareCodeLanguage")
+        }
+        if EditorMenuPolicy.allows(.copyCodeBlock, state: state) {
+            addFormatCommand(menu, L10n.t("复制整段代码"), "copyCodeBlock")
+        }
     }
 
     private func addFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {

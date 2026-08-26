@@ -125,4 +125,104 @@ expect(EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", h
 expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", headingLevel: 6),
        "demote heading should be disabled at level 6")
 
+func contextState(
+    sourceMode: Bool = false,
+    readOnly: Bool = false,
+    plainText: Bool = false,
+    footnoteLabel: String? = nil,
+    inTable: Bool = false,
+    mermaidSelected: Bool = false,
+    mermaidCount: Int = 0,
+    imageSelected: Bool = false,
+    mathInline: Bool = false,
+    mathBlock: Bool = false,
+    codeBlock: Bool = false,
+    codeBlockText: String? = nil
+) -> EditorContextMenuState {
+    EditorContextMenuState(
+        isSourceMode: sourceMode,
+        isReadOnly: readOnly,
+        isPlainText: plainText,
+        footnoteDefinitionLabel: footnoteLabel,
+        inTable: inTable,
+        mermaidSelected: mermaidSelected,
+        mermaidCount: mermaidCount,
+        imageSelected: imageSelected,
+        mathInline: mathInline,
+        mathBlock: mathBlock,
+        codeBlock: codeBlock,
+        codeBlockText: codeBlockText
+    )
+}
+
+// 语义上下文必须按脚注、表格、Mermaid、图片、公式、代码块、普通块的顺序分类。
+expect(EditorMenuPolicy.semanticContext(for: contextState(
+    footnoteLabel: "1", inTable: true, mermaidSelected: true, imageSelected: true, mathBlock: true, codeBlock: true
+)) == .footnoteDefinition, "footnote definitions should have the highest context priority")
+expect(EditorMenuPolicy.semanticContext(for: contextState(
+    inTable: true, mermaidSelected: true, imageSelected: true, mathInline: true, codeBlock: true
+)) == .table, "tables should win over embedded block types")
+expect(EditorMenuPolicy.semanticContext(for: contextState(
+    mermaidSelected: true, imageSelected: true, mathBlock: true, codeBlock: true
+)) == .mermaid, "Mermaid should not fall through to the generic code-block context")
+expect(EditorMenuPolicy.semanticContext(for: contextState(imageSelected: true, mathBlock: true, codeBlock: true)) == .image,
+       "images should win over math and code blocks")
+expect(EditorMenuPolicy.semanticContext(for: contextState(mathInline: true, codeBlock: true)) == .math,
+       "math should win over code blocks")
+expect(EditorMenuPolicy.semanticContext(for: contextState(codeBlock: true)) == .codeBlock,
+       "ordinary fenced code should use the code-block context")
+expect(EditorMenuPolicy.semanticContext(for: contextState()) == .ordinaryBlock,
+       "unclassified content should use the ordinary block context")
+expect(EditorMenuPolicy.semanticContext(for: contextState(sourceMode: true, mermaidSelected: true, codeBlock: true)) == .ordinaryBlock,
+       "source mode should not expose visual block semantics")
+
+// Mermaid、代码块、脚注和表格命令统一由策略矩阵决定。
+let editableMermaid = contextState(mermaidSelected: true, mermaidCount: 2, codeBlock: true)
+expect(EditorMenuPolicy.allows(.insertMermaid, state: editableMermaid), "editable Markdown should allow Mermaid insertion")
+expect(EditorMenuPolicy.allows(.editMermaid, state: editableMermaid), "selected Mermaid should allow editing")
+expect(EditorMenuPolicy.allows(.rerenderMermaid, state: editableMermaid), "selected Mermaid should allow rerendering")
+expect(EditorMenuPolicy.allows(.rerenderAllMermaid, state: editableMermaid), "documents with Mermaid should allow rerender all")
+expect(EditorMenuPolicy.allows(.deleteMermaid, state: editableMermaid), "selected Mermaid should allow deletion")
+
+let readOnlyMermaid = contextState(readOnly: true, mermaidSelected: true, mermaidCount: 1, codeBlock: true)
+expect(!EditorMenuPolicy.allows(.insertMermaid, state: readOnlyMermaid), "read-only documents must reject Mermaid insertion")
+expect(!EditorMenuPolicy.allows(.editMermaid, state: readOnlyMermaid), "read-only documents must reject Mermaid editing")
+expect(!EditorMenuPolicy.allows(.rerenderMermaid, state: readOnlyMermaid), "read-only documents must not open selected-Mermaid context actions")
+expect(EditorMenuPolicy.allows(.rerenderAllMermaid, state: readOnlyMermaid), "read-only documents may rerender all Mermaid charts")
+expect(!EditorMenuPolicy.allows(.deleteMermaid, state: readOnlyMermaid), "read-only documents must reject Mermaid deletion")
+
+let plainText = contextState(plainText: true, mermaidCount: 1)
+expect(!EditorMenuPolicy.allows(.insertMermaid, state: plainText), "plain-text documents must reject Mermaid insertion")
+expect(!EditorMenuPolicy.allows(.rerenderAllMermaid, state: plainText), "plain-text documents have no Mermaid rendering context")
+
+let source = contextState(sourceMode: true, mermaidSelected: true, mermaidCount: 1, codeBlock: true, codeBlockText: "x")
+expect(EditorMenuPolicy.allows(.insertMermaid, state: source), "writable Markdown source mode should allow Mermaid insertion")
+expect(!EditorMenuPolicy.allows(.editMermaid, state: source), "source mode must not expose selected-Mermaid commands")
+expect(!EditorMenuPolicy.allows(.rerenderAllMermaid, state: source), "source mode must not expose Mermaid rendering commands")
+expect(!EditorMenuPolicy.allows(.declareCodeLanguage, state: source), "source mode must not expose visual code-block metadata commands")
+
+let editableCode = contextState(codeBlock: true, codeBlockText: "let leaf = 1")
+expect(EditorMenuPolicy.allows(.declareCodeLanguage, state: editableCode), "editable code blocks should allow language declaration")
+expect(EditorMenuPolicy.allows(.copyCodeBlock, state: editableCode), "code blocks with text should allow whole-block copy")
+expect(!EditorMenuPolicy.allows(.declareCodeLanguage, state: contextState(readOnly: true, codeBlock: true, codeBlockText: "x")),
+       "read-only code blocks must reject language changes")
+expect(EditorMenuPolicy.allows(.copyCodeBlock, state: contextState(readOnly: true, codeBlock: true, codeBlockText: "")),
+       "an empty read-only code block should remain copyable")
+expect(!EditorMenuPolicy.allows(.copyCodeBlock, state: contextState(codeBlock: true)),
+       "copy whole code block requires a decoded code-block text value")
+
+let footnote = contextState(footnoteLabel: "note")
+for command in [EditorNativeCommand.goToFootnoteReference, .resetFootnoteNumber, .clearFootnoteReferences, .deleteFootnote] {
+    expect(EditorMenuPolicy.allows(command, state: footnote), "editable footnote definitions should allow \(command)")
+    expect(!EditorMenuPolicy.allows(command, state: contextState(readOnly: true, footnoteLabel: "note")),
+           "read-only footnote definitions must reject \(command)")
+}
+
+let table = contextState(inTable: true)
+for command in [EditorNativeCommand.tableCaption, .tableRows, .tableColumns, .tableAlignment, .deleteTable] {
+    expect(EditorMenuPolicy.allows(command, state: table), "editable tables should allow \(command)")
+    expect(!EditorMenuPolicy.allows(command, state: contextState(readOnly: true, inTable: true)),
+           "read-only tables must reject \(command)")
+}
+
 print("PASS")

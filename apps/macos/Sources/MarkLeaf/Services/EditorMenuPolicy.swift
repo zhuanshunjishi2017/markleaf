@@ -1,5 +1,35 @@
 import Foundation
 
+enum EditorSemanticContext: Equatable {
+    case footnoteDefinition
+    case table
+    case mermaid
+    case image
+    case math
+    case codeBlock
+    case ordinaryBlock
+}
+
+enum EditorNativeCommand: Equatable {
+    case insertMermaid
+    case editMermaid
+    case rerenderMermaid
+    case rerenderAllMermaid
+    case deleteMermaid
+    case declareCodeLanguage
+    case copyCodeBlock
+    case goToFootnoteReference
+    case resetFootnoteNumber
+    case clearFootnoteReferences
+    case deleteFootnote
+    case tableCaption
+    case tableRows
+    case tableColumns
+    case tableAlignment
+    case deleteTable
+    case toggleCodeHighlight
+}
+
 enum EditorMenuPolicy {
     private static let selectionOnlyInlineFormatCommands: Set<String> = [
         "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike",
@@ -91,6 +121,62 @@ enum EditorMenuPolicy {
         case "promoteHeading": return headingLevel > 1
         case "demoteHeading": return headingLevel < 6
         default: return false
+        }
+    }
+
+    static func semanticContext(for state: EditorContextMenuState) -> EditorSemanticContext {
+        guard !state.isSourceMode else { return .ordinaryBlock }
+        if state.footnoteDefinitionLabel?.isEmpty == false { return .footnoteDefinition }
+        if state.inTable { return .table }
+        if state.mermaidSelected { return .mermaid }
+        if state.imageSelected { return .image }
+        if state.mathInline || state.mathBlock { return .math }
+        if state.codeBlock { return .codeBlock }
+        return .ordinaryBlock
+    }
+
+    static func allows(_ command: EditorNativeCommand, state: EditorContextMenuState) -> Bool {
+        let visualMode = !state.isSourceMode
+        let writableMarkdown = !state.isReadOnly && !state.isPlainText
+        let footnoteDefinition = state.footnoteDefinitionLabel?.isEmpty == false
+
+        switch command {
+        case .insertMermaid:
+            return writableMarkdown
+        case .editMermaid, .deleteMermaid:
+            return writableMarkdown && visualMode && state.mermaidSelected
+        case .rerenderMermaid:
+            return !state.isReadOnly && visualMode && !state.isPlainText && state.mermaidSelected
+        case .rerenderAllMermaid:
+            return visualMode && !state.isPlainText && state.mermaidCount > 0
+        case .declareCodeLanguage:
+            return writableMarkdown && visualMode && state.codeBlock
+        case .copyCodeBlock:
+            return visualMode && state.codeBlock && state.codeBlockText != nil
+        case .goToFootnoteReference, .resetFootnoteNumber, .clearFootnoteReferences, .deleteFootnote:
+            return writableMarkdown && visualMode && footnoteDefinition
+        case .tableCaption, .tableRows, .tableColumns, .tableAlignment, .deleteTable:
+            return !state.isReadOnly && visualMode && state.inTable
+        case .toggleCodeHighlight:
+            return true
+        }
+    }
+
+    static func nativeCommand(for command: String) -> EditorNativeCommand? {
+        switch command {
+        case "insertMermaid": return .insertMermaid
+        case "editMermaid": return .editMermaid
+        case "rerenderMermaid": return .rerenderMermaid
+        case "rerenderAllMermaid": return .rerenderAllMermaid
+        case "deleteMermaid": return .deleteMermaid
+        case "declareCodeLanguage": return .declareCodeLanguage
+        case "copyCodeBlock": return .copyCodeBlock
+        case "goToFootnoteReference": return .goToFootnoteReference
+        case "resetFootnoteLabel": return .resetFootnoteNumber
+        case "clearFootnoteReferences": return .clearFootnoteReferences
+        case "deleteFootnote": return .deleteFootnote
+        case "toggleCodeHighlight": return .toggleCodeHighlight
+        default: return nil
         }
     }
 }

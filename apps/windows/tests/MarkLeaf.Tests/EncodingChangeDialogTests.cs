@@ -12,4 +12,11 @@ public sealed class EncodingChangeDialogTests
         Assert.IsTrue(Enum.IsDefined(typeof(EncodingChangeChoice), EncodingChangeChoice.DirectRead));
         Assert.IsTrue(Enum.IsDefined(typeof(EncodingChangeChoice), EncodingChangeChoice.ConvertEncoding));
     }
+
+    [TestMethod]
+    public void PromptKey_WarnsOnlyWhenDirectReadWouldDiscardUnsavedChanges()
+    {
+        Assert.AreEqual("encoding.changePrompt", EncodingChangeDialog.PromptKey(hasUnsavedChanges: false));
+        Assert.AreEqual("encoding.changePromptDirty", EncodingChangeDialog.PromptKey(hasUnsavedChanges: true));
+    }
 }

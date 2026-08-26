@@ -44,11 +44,17 @@ function selectDomText(text: string, backwards = false): void {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.resetModules()
   document.body.innerHTML = ''
   delete window.chrome
 })
 
-it('applies after a backward mouse selection reaches ProseMirror after mouseup', async () => {
+async function createHarness(markdown: string): Promise<{
+  editorMessages: EditorMessage[]
+  editorMount: HTMLElement
+  editorDom: HTMLElement
+  send: (message: HostMessage) => void
+}> {
   document.body.innerHTML = shell
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -80,11 +86,21 @@ it('applies after a backward mouse selection reaches ProseMirror after mouseup',
     type: 'loadDocument',
     documentId: 'format-painter-event-test',
     revision: 0,
-    payload: { markdown: '**source**\n\ntarget line' },
+    payload: { markdown },
   })
 
-  const editorDom = document.querySelector<HTMLElement>('.ProseMirror')!
-  editorDom.focus()
+  return {
+    editorMessages,
+    editorMount: document.querySelector<HTMLElement>('#editor')!,
+    editorDom: document.querySelector<HTMLElement>('.ProseMirror')!,
+    send,
+  }
+}
+
+function armFormatPainter(
+  send: (message: HostMessage) => void,
+  editorMessages: EditorMessage[],
+): void {
   selectDomText('source')
   document.dispatchEvent(new Event('selectionchange'))
   send({
@@ -97,6 +113,26 @@ it('applies after a backward mouse selection reaches ProseMirror after mouseup',
   })
   expect(editorMessages.find((message) => message.requestId === 'arm')?.payload)
     .toEqual({ success: true })
+}
+
+function requestMarkdown(
+  send: (message: HostMessage) => void,
+  editorMessages: EditorMessage[],
+): unknown {
+  send({
+    protocolVersion: 1,
+    type: 'requestSnapshot',
+    requestId: 'snapshot',
+    documentId: 'format-painter-event-test',
+    revision: 0,
+  })
+  return editorMessages.find((message) => message.requestId === 'snapshot')?.payload
+}
+
+it('applies after a backward mouse selection reaches ProseMirror after mouseup', async () => {
+  const { editorMessages, editorDom, send } = await createHarness('**source**\n\ntarget line')
+  editorDom.focus()
+  armFormatPainter(send, editorMessages)
 
   // WebKit can paint the DOM selection before ProseMirror receives the
   // selectionchange event. The mouseup handler must wait for that state sync.
@@ -105,13 +141,84 @@ it('applies after a backward mouse selection reaches ProseMirror after mouseup',
   document.dispatchEvent(new Event('selectionchange'))
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
-  send({
-    protocolVersion: 1,
-    type: 'requestSnapshot',
-    requestId: 'snapshot',
-    documentId: 'format-painter-event-test',
-    revision: 0,
-  })
-  expect(editorMessages.find((message) => message.requestId === 'snapshot')?.payload)
+  expect(requestMarkdown(send, editorMessages))
     .toEqual({ markdown: '**source**\n\n**target line**' })
+})
+
+it('applies to a whole paragraph dragged backward without waiting for selectionchange', async () => {
+  const { editorMessages, editorDom, send } = await createHarness('**source**\n\ntarget line')
+  editorDom.focus()
+  armFormatPainter(send, editorMessages)
+
+  const target = editorDom.querySelectorAll('p')[1]!
+  window.getSelection()!.setBaseAndExtent(target, target.childNodes.length, target, 0)
+  editorDom.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+  expect(requestMarkdown(send, editorMessages))
+    .toEqual({ markdown: '**source**\n\n**target line**' })
+})
+
+it('applies to multiple paragraphs dragged backward without waiting for selectionchange', async () => {
+  const { editorMessages, editorDom, send } = await createHarness(
+    '**source**\n\nfirst target\n\nsecond target',
+  )
+  editorDom.focus()
+  armFormatPainter(send, editorMessages)
+
+  const paragraphs = editorDom.querySelectorAll('p')
+  const firstTarget = paragraphs[1]!
+  const secondTarget = paragraphs[2]!
+  window.getSelection()!.setBaseAndExtent(
+    secondTarget,
+    secondTarget.childNodes.length,
+    firstTarget,
+    0,
+  )
+  editorDom.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+  expect(requestMarkdown(send, editorMessages)).toEqual({
+    markdown: '**source**\n\n**first target**\n\n**second target**',
+  })
+})
+
+it('applies when a backward whole-line drag ends on the editor padding at line start', async () => {
+  const { editorMessages, editorMount, editorDom, send } = await createHarness(
+    '**source**\n\ntarget line',
+  )
+  editorDom.focus()
+  armFormatPainter(send, editorMessages)
+
+  const target = editorDom.querySelectorAll('p')[1]!
+  window.getSelection()!.setBaseAndExtent(target, target.childNodes.length, target, 0)
+  editorMount.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+  expect(requestMarkdown(send, editorMessages))
+    .toEqual({ markdown: '**source**\n\n**target line**' })
+})
+
+it('applies when a backward multi-line drag ends on the editor padding at a line start', async () => {
+  const { editorMessages, editorMount, editorDom, send } = await createHarness(
+    '**source**\n\nfirst target\n\nsecond target',
+  )
+  editorDom.focus()
+  armFormatPainter(send, editorMessages)
+
+  const paragraphs = editorDom.querySelectorAll('p')
+  const firstTarget = paragraphs[1]!
+  const secondTarget = paragraphs[2]!
+  window.getSelection()!.setBaseAndExtent(
+    secondTarget,
+    secondTarget.childNodes.length,
+    firstTarget,
+    0,
+  )
+  editorMount.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+  expect(requestMarkdown(send, editorMessages)).toEqual({
+    markdown: '**source**\n\n**first target**\n\n**second target**',
+  })
 })

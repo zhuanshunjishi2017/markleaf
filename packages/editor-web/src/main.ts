@@ -22,12 +22,13 @@ import {
   setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
+  setEditorSharedStrings,
   restoreVisualSelection,
   renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
-import { renderMermaidInHtml } from './mermaid'
+import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -36,6 +37,7 @@ import {
   captureFormat,
   normalizeContextMenuCaretPosition,
 } from './format-painter'
+import { applyFormatPainterFromDomSelection } from './format-painter-dom-events'
 import {
   isHostMessage,
   postToHost,
@@ -45,7 +47,9 @@ import {
 } from './protocol'
 import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
 import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
-import { shouldInstallFrontendWheelHandler } from './wheel-routing'
+import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
+import { sharedEditorStrings } from './shared-editor-strings'
+import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
@@ -75,6 +79,12 @@ bindReducedMotionPreference(
   document.body,
 )
 
+const hostCapabilities = resolveHostCapabilities(window.chrome?.webview?.hostPlatform)
+document.documentElement.classList.toggle(
+  'markleaf-host-macos',
+  hostCapabilities.usesThemedVisualSelection,
+)
+
 let documentId: string = crypto.randomUUID()
 let documentLoaded = false
 let revision = 0
@@ -92,14 +102,20 @@ let frontendFormatMenuEnabled = false
 let documentType: DocumentType = 'markdown'
 let readOnly = false
 
-let editor = createEditor(editorMount)
+const editorCreationOptions = {
+  themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
+}
+let editor = createEditor(editorMount, '', false, editorCreationOptions)
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
 
 const blockHandleButton = document.createElement('button')
 blockHandleButton.type = 'button'
 blockHandleButton.className = 'ml-block-handle ml-block-handle-overlay'
-blockHandleButton.setAttribute('aria-label', '段落操作')
+blockHandleButton.setAttribute(
+  'aria-label',
+  sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
+)
 blockHandleButton.setAttribute('tabindex', '-1')
 blockHandleButton.hidden = true
 let blockHandleOverlayPosition: number | null = null
@@ -110,21 +126,30 @@ function ensureBlockHandleOverlay(): void {
   }
 }
 
+function hideBlockHandleOverlay(): void {
+  blockHandleButton.hidden = true
+  blockHandleButton.style.display = 'none'
+  blockHandleButton.style.removeProperty('left')
+  blockHandleButton.style.removeProperty('top')
+  blockHandleButton.textContent = ''
+  blockHandleButton.classList.remove('ml-block-handle-active')
+  blockHandleOverlayPosition = null
+}
+
 function updateBlockHandleOverlay(): void {
   ensureBlockHandleOverlay()
   if (sourceMode || readOnly) {
-    blockHandleButton.hidden = true
-    blockHandleOverlayPosition = null
+    hideBlockHandleOverlay()
     return
   }
   const info = getBlockHandleInfo(editor)
   if (!info) {
-    blockHandleButton.hidden = true
-    blockHandleOverlayPosition = null
+    hideBlockHandleOverlay()
     return
   }
   blockHandleOverlayPosition = info.position
   blockHandleButton.hidden = false
+  blockHandleButton.style.removeProperty('display')
   blockHandleButton.textContent = info.label
   blockHandleButton.classList.toggle('ml-block-handle-active', info.active)
   const mountRect = editorMount.getBoundingClientRect()
@@ -146,25 +171,6 @@ blockHandleButton.addEventListener('mousedown', (event) => {
     position: blockHandleOverlayPosition,
   })
 })
-
-/// 只读文档（如更新内容）中仍然允许的宿主命令白名单。
-const READ_ONLY_ALLOWED_COMMANDS = new Set([
-  'find',
-  'toggleSourceMode',
-  'setStyle',
-  'setSourceSelection',
-  'findText',
-  'findNext',
-  'findPrev',
-  'findClose',
-  'setLanguage',
-  'setSourceIndent',
-  'setAutoHideScrollbar',
-  'setBlockHandleVisible',
-  'exportSelection',
-  'exportDocument',
-  'selectAll',
-])
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -425,6 +431,49 @@ function updateFormatPainterCursor(): void {
   editorMount.classList.toggle('format-painter-armed', !sourceMode && formatPainter.isArmed)
 }
 
+// Listen on the stable editor container: a backward drag that ends exactly at
+// a line start can release over the container padding rather than ProseMirror.
+editorMount.addEventListener('mouseup', (event) => {
+  if (compositionActive || sourceMode) return
+  const target = event.target
+  if (!(target instanceof Node)
+    || (target !== editorMount && !editor.view.dom.contains(target))) {
+    return
+  }
+  window.setTimeout(() => {
+    if (compositionActive || sourceMode) return
+    const wasArmed = formatPainter.isArmed
+    applyFormatPainterFromDomSelection(
+      editor,
+      formatPainter,
+      document.getSelection(),
+    )
+    if (wasArmed !== formatPainter.isArmed) {
+      updateFormatPainterCursor()
+      sendEditorState()
+    }
+  }, 0)
+})
+
+// 格式刷拖选时若鼠标最终移到编辑器/窗口外释放，editorMount 收不到 mouseup；
+// 只要画刷仍处于武装状态且选区落在编辑器 DOM 内，就在 window 级捕获释放并应用。
+window.addEventListener('mouseup', () => {
+  if (compositionActive || sourceMode) return
+  const sel = document.getSelection()
+  const dom = editor.view.dom
+  if (!sel || sel.isCollapsed
+    || !sel.anchorNode || !sel.focusNode
+    || !dom.contains(sel.anchorNode) || !dom.contains(sel.focusNode)) {
+    return
+  }
+  const wasArmed = formatPainter.isArmed
+  applyFormatPainterFromDomSelection(editor, formatPainter, sel)
+  if (wasArmed !== formatPainter.isArmed) {
+    updateFormatPainterCursor()
+    sendEditorState()
+  }
+})
+
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', ({ transaction }) => {
     // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
@@ -455,23 +504,6 @@ function bindEditorEvents(targetEditor: typeof editor): void {
       sendEditorState()
       sendOutlineSelectionFromCursor()
     }
-  })
-
-  // 格式刷在「鼠标抬起」时应用，而不是在选区开始变化的瞬间（对齐 Word 的涂抹交互）。
-  targetEditor.view.dom.addEventListener('mouseup', () => {
-    if (compositionActive) return
-    // WebKit may dispatch mouseup before selectionchange has synchronized the
-    // visible DOM selection into ProseMirror state. Defer one task so complete
-    // backward-line and multi-block drags use the settled target selection.
-    window.setTimeout(() => {
-      if (compositionActive) return
-      const wasArmed = formatPainter.isArmed
-      formatPainter.applyOnSelection(targetEditor)
-      if (wasArmed !== formatPainter.isArmed) {
-        updateFormatPainterCursor()
-        sendEditorState()
-      }
-    }, 0)
   })
 
   targetEditor.view.dom.addEventListener('compositionstart', () => {
@@ -550,7 +582,7 @@ function setSourceMode(enabled: boolean): void {
     sourceEditor = null
     visualSelectionBeforeSourceMode = null
     suppressUpdate = true
-    editor = replaceEditorDocument(editor, editorMount, markdown)
+    editor = replaceEditorDocument(editor, editorMount, markdown, false, editorCreationOptions)
     bindEditorEvents(editor)
     ensureBlockHandleOverlay()
     suppressUpdate = false
@@ -670,7 +702,7 @@ editorMount.addEventListener('mousedown', (event) => {
   if (!(event.target instanceof Element)) {
     return
   }
-  if (event.button !== 0 || !event.ctrlKey) {
+  if (event.button !== 0 || !hasPrimaryActivationModifier(event, hostCapabilities)) {
     return
   }
 
@@ -715,18 +747,19 @@ editorTooltip.className = 'editor-tooltip'
 editorTooltip.hidden = true
 document.body.appendChild(editorTooltip)
 
-const EDITOR_TOOLTIP_TEXT: Record<string, { link: string; footnote: string; footnoteNotFound: string }> = {
-  'zh-Hans': { link: '按住Ctrl并单击以打开链接', footnote: '按住Ctrl并单击以转到注释定义', footnoteNotFound: '找不到定义' },
-  'zh-Hant': { link: '按住Ctrl並按一下以開啟連結', footnote: '按住Ctrl並按一下以前往註解定義', footnoteNotFound: '找不到定義' },
-  en: { link: 'Hold Ctrl and click to open link', footnote: 'Hold Ctrl and click to go to the footnote definition', footnoteNotFound: 'Definition not found' },
-  ja: { link: 'Ctrlを押しながらクリックでリンクを開きます', footnote: 'Ctrlを押しながらクリックで脚注の定義に移動します', footnoteNotFound: '定義が見つかりません' },
-}
-
 let tooltipKind: 'link' | 'footnote' | null = null
 let tooltipHideTimer = 0
 
 function editorTooltipTexts(): { link: string; footnote: string; footnoteNotFound: string } {
-  return EDITOR_TOOLTIP_TEXT[markleafLanguage] ?? EDITOR_TOOLTIP_TEXT['zh-Hans']!
+  const strings = sharedEditorStrings(
+    markleafLanguage,
+    hostCapabilities.primaryActivationModifier,
+  )
+  return {
+    link: strings.linkTooltip,
+    footnote: strings.footnoteTooltip,
+    footnoteNotFound: strings.footnoteNotFound,
+  }
 }
 
 function hideEditorTooltip(delay = 0): void {
@@ -1177,7 +1210,13 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = false
         sourceMount.hidden = true
         editorMount.hidden = false
-        editor = replaceEditorDocument(editor, editorMount, payload.markdown, readOnly)
+        editor = replaceEditorDocument(
+          editor,
+          editorMount,
+          payload.markdown,
+          readOnly,
+          editorCreationOptions,
+        )
         bindEditorEvents(editor)
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
@@ -1210,7 +1249,13 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = false
         sourceMount.hidden = true
         editorMount.hidden = false
-        editor = replaceEditorDocument(editor, editorMount, markdown, readOnly)
+        editor = replaceEditorDocument(
+          editor,
+          editorMount,
+          markdown,
+          readOnly,
+          editorCreationOptions,
+        )
         bindEditorEvents(editor)
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
@@ -1241,7 +1286,7 @@ async function handleMessage(value: unknown): Promise<void> {
         applyToCurrentTextBlockWhenEmpty?: unknown
       }
       if (typeof payload?.command === 'string') {
-        if (readOnly && !READ_ONLY_ALLOWED_COMMANDS.has(payload.command)) {
+        if (!isHostCommandAllowed(payload.command, { readOnly, documentType })) {
           if (message.requestId) send('commandResult', { success: false }, message.requestId)
           break
         }
@@ -1445,7 +1490,7 @@ window.addEventListener('unhandledrejection', () => {
 
 // Windows WebView2 仍从前端接管 Ctrl+滚轮；macOS 在 WKWebView 子类中原生处理
 // 修饰键滚轮，避免全局非 passive 监听器让普通滚动退出 WebKit 异步滚动快路径。
-if (shouldInstallFrontendWheelHandler(window.chrome?.webview?.hostPlatform)) {
+if (hostCapabilities.installsFrontendWheelHandler) {
   window.addEventListener(
     'wheel',
     (event) => {
@@ -1583,9 +1628,14 @@ let findWholeWord = false
 function setMarkleafLanguage(lang: string): void {
   markleafLanguage = lang
   applyFindBarLanguage(lang)
+  const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
+  blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
+  setEditorSharedStrings(strings)
+  setMermaidStrings(strings)
+  editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
 }
 
-applyFindBarLanguage(markleafLanguage)
+setMarkleafLanguage(markleafLanguage)
 send('ready')
 
 ;(window as any).__markleaf_tab__ = (shift = false) => {

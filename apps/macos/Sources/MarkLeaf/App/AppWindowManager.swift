@@ -25,6 +25,7 @@ final class AppWindowManager {
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
     private var findPanelController: FindPanelController?
+    private var updateCheckController: UpdateCheckController?
     private var startupActionState = StartupActionState()
     private var bootstrapState = StartupBootstrapState()
 
@@ -301,7 +302,7 @@ final class AppWindowManager {
     }
 
     /// 查找与替换面板（原生弹出窗口）。
-    func showFindPanel(for session: EditorSession) {
+    func showFindPanel(for session: EditorSession, showingReplace: Bool = false) {
         let controller: FindPanelController
         if let existing = findPanelController {
             existing.updateSession(session)
@@ -313,7 +314,7 @@ final class AppWindowManager {
         session.onFindResult = { [weak controller] current, total in
             DispatchQueue.main.async { controller?.updateResult(current: current, total: total) }
         }
-        controller.showPanel()
+        controller.showPanel(showingReplace: showingReplace)
     }
 
     /// 快捷键参考窗口。
@@ -381,6 +382,14 @@ final class AppWindowManager {
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// 检查 GitHub 是否有新版本，并把状态栏切到“正在检查更新…”。
+    func checkForUpdates() {
+        activeSession?.statusText = L10n.t("正在检查更新…")
+        let controller = UpdateCheckController()
+        updateCheckController = controller
+        controller.begin()
     }
 
     /// 恢复未保存的文件（对应 C# RecoverUnsavedFiles）。

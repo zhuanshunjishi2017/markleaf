@@ -12,7 +12,10 @@ internal enum EncodingChangeChoice
 
 internal sealed class EncodingChangeDialog : Form
 {
-    public EncodingChangeDialog(string currentEncoding, string targetEncoding)
+    public EncodingChangeDialog(
+        string currentEncoding,
+        string targetEncoding,
+        bool hasUnsavedChanges)
     {
         Text = Loc.Get("encoding.warningTitle");
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -30,7 +33,7 @@ internal sealed class EncodingChangeDialog : Form
         {
             AutoSize = true,
             MaximumSize = new Size(this.ScaleForDpi(380), 0),
-            Text = Loc.Format("encoding.changePrompt", currentEncoding, targetEncoding),
+            Text = Loc.Format(PromptKey(hasUnsavedChanges), currentEncoding, targetEncoding),
         };
         var actions = new FlowLayoutPanel
         {
@@ -73,6 +76,11 @@ internal sealed class EncodingChangeDialog : Form
     }
 
     public EncodingChangeChoice Choice { get; private set; }
+
+    internal static string PromptKey(bool hasUnsavedChanges)
+    {
+        return hasUnsavedChanges ? "encoding.changePromptDirty" : "encoding.changePrompt";
+    }
 
     private Button CreateButton(string text, EncodingChangeChoice choice, DialogResult result)
     {
