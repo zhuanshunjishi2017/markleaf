@@ -49,7 +49,13 @@ jobs:
           "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup --version=6.7.3 -y --no-progress
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not found: $iscc" }
       - name: Build installer and portable archive
         shell: pwsh
         run: |
