@@ -7,6 +7,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
+$repoRoot = Split-Path -Parent (Split-Path -Parent $root)
+$editorWebDir = Join-Path $repoRoot "packages\editor-web"
 $setupScript = Join-Path $root "setup\markleaf.iss"
 $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
@@ -30,6 +32,12 @@ $scFlags = if ($PSBoundParameters.ContainsKey('SelfContained')) { @($SelfContain
 
 Write-Host "=== MarkLeaf v$v (Build $BuildNumber) ===" -ForegroundColor Cyan
 
+Write-Host "  Building EditorWeb..." -ForegroundColor Yellow
+pnpm --dir $editorWebDir install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw "EditorWeb dependency installation failed." }
+pnpm --dir $editorWebDir build
+if ($LASTEXITCODE -ne 0) { throw "EditorWeb build failed." }
+
 foreach ($rt in $runtimes) {
     foreach ($sc in $scFlags) {
         $label = if ($sc) { "with-runtime" } else { "slim" }
@@ -40,6 +48,12 @@ foreach ($rt in $runtimes) {
         $publishDir = [IO.Path]::GetFullPath($publishDir)
         Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
         dotnet publish (Join-Path $root "MarkLeaf\MarkLeaf.csproj") -c Release -r $rt --self-contained $sc -p:Version=$v -p:BuildNumber=$BuildNumber -o $publishDir
+        if ($LASTEXITCODE -ne 0) { throw ".NET publish failed for $rt ($label)." }
+        $editorIndex = Join-Path $publishDir "EditorWeb\index.html"
+        $editorAssets = Join-Path $publishDir "EditorWeb\assets"
+        if (-not (Test-Path $editorIndex) -or -not (Test-Path $editorAssets)) {
+            throw "Published EditorWeb resources are missing for $rt ($label)."
+        }
         & $iscc "/DMyAppVersion=$v" "/DBuildNumber=$BuildNumber" "/DAppArchitecture=$arch" "/DAppArchitectureAllowed=$archAllowed" "/DSelfContained=$(if($sc){1}else{0})" "/DSourceDir=$publishDir" "/O$(Join-Path $root 'setup')" $setupScript
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $rt ($label)." }
     }

@@ -12,6 +12,8 @@ param([string]$Version, [string]$BuildNumber, [string]$Runtime, [bool]$SelfConta
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
+$repoRoot = Split-Path -Parent (Split-Path -Parent $root)
+$editorWebDir = Join-Path $repoRoot "packages\editor-web"
 $setupScript = Join-Path $root "setup\markleaf.iss"
 $releaseDir = Join-Path $root "release"
 $csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
@@ -39,6 +41,12 @@ $scFlags  = if ($PSBoundParameters.ContainsKey('SelfContained')) { @($SelfContai
 Write-Host "=== MarkLeaf v$Version (Build $BuildNumber) Release ===" -ForegroundColor Cyan
 Write-Host ""
 
+Write-Host "Building EditorWeb..." -ForegroundColor Yellow
+pnpm --dir $editorWebDir install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw "EditorWeb dependency installation failed." }
+pnpm --dir $editorWebDir build
+if ($LASTEXITCODE -ne 0) { throw "EditorWeb build failed." }
+
 # Clean
 Remove-Item -Recurse -Force $releaseDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $releaseDir -Force | Out-Null
@@ -55,6 +63,12 @@ foreach ($rt in $runtimes) {
         $publishDir = [IO.Path]::GetFullPath($publishDir)
         Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
         dotnet publish (Join-Path $root "MarkLeaf\MarkLeaf.csproj") -c Release -r $rt --self-contained $sc -p:Version=$Version -p:BuildNumber=$BuildNumber -o $publishDir
+        if ($LASTEXITCODE -ne 0) { throw ".NET publish failed for $rt ($label)." }
+        $editorIndex = Join-Path $publishDir "EditorWeb\index.html"
+        $editorAssets = Join-Path $publishDir "EditorWeb\assets"
+        if (-not (Test-Path $editorIndex) -or -not (Test-Path $editorAssets)) {
+            throw "Published EditorWeb resources are missing for $rt ($label)."
+        }
         & $iscc "/DMyAppVersion=$Version" "/DBuildNumber=$BuildNumber" "/DAppArchitecture=$arch" "/DAppArchitectureAllowed=$archAllowed" "/DSelfContained=$(if($sc){1}else{0})" "/DSourceDir=$publishDir" "/O$(Join-Path $root 'setup')" $setupScript
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $rt ($label)." }
         $installerName = "MarkLeaf-$Version-win-$arch$(if($sc){'-with-runtime'}else{''}).exe"

@@ -29,6 +29,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.9.0'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: pnpm
+          cache-dependency-path: packages/editor-web/pnpm-lock.yaml
       - name: Resolve release metadata
         shell: pwsh
         run: |
@@ -41,11 +49,24 @@ jobs:
           $build = (git rev-list --count HEAD).Trim()
           "VERSION=$version" >> $env:GITHUB_ENV
           "BUILD_NUMBER=$build" >> $env:GITHUB_ENV
+      - name: Build EditorWeb
+        shell: pwsh
+        run: |
+          pnpm --dir packages/editor-web install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --dir packages/editor-web build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish application
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:RUNNER_TEMP "markleaf-publish-${{ matrix.runtime }}-${{ matrix.self_contained }}"
           dotnet publish apps/windows/MarkLeaf/MarkLeaf.csproj -c Release -r '${{ matrix.runtime }}' --self-contained ${{ matrix.self_contained }} -p:Version=$env:VERSION -p:BuildNumber=$env:BUILD_NUMBER -o $publishDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $editorIndex = Join-Path $publishDir 'EditorWeb\index.html'
+          $editorAssets = Join-Path $publishDir 'EditorWeb\assets'
+          if (!(Test-Path $editorIndex) -or !(Test-Path $editorAssets)) {
+            throw "Published EditorWeb resources are missing: $publishDir"
+          }
           "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
       - name: Install Inno Setup
         shell: pwsh
