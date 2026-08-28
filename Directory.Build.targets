@@ -1,14 +1,14 @@
 <Project>
   <!-- Use the number of commits in the checked-out Git history as the build number. -->
   <Target Name="ResolveGitBuildNumber"
-          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;BeforeBuild"
-          Condition="'$(BuildNumber)' == ''">
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;BeforeBuild">
     <Exec Command="git rev-list --count HEAD"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMsBuild="true"
           IgnoreExitCode="true"
           StandardOutputImportance="Low"
-          StandardErrorImportance="Low">
+          StandardErrorImportance="Low"
+          Condition="'$(BuildNumber)' == ''">
       <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
     </Exec>
     <PropertyGroup>

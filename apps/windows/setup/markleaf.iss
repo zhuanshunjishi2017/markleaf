@@ -61,6 +61,7 @@ AppCopyright=Copyright (c) MarkLeaf
 VersionInfoVersion={#AppVersionNumber}
 VersionInfoDescription=MarkLeaf {#MyAppVersion} (Build {#BuildNumber})
 CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 ; Keep the simplified Chinese language file beside this script because it is
@@ -68,32 +69,63 @@ CloseApplications=yes
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+chinesesimplified.AssociateMarkdownFiles=关联 .md 文件
+chinesesimplified.AssociateTextFiles=关联 .txt 文件
+chinesesimplified.CreateDesktopShortcut=创建桌面快捷方式
+chinesesimplified.AddToStartMenu=添加到开始菜单
+english.AssociateMarkdownFiles=Associate .md files
+english.AssociateTextFiles=Associate .txt files
+english.CreateDesktopShortcut=Create a desktop shortcut
+english.AddToStartMenu=Add to the Start menu
+
+[Tasks]
+Name: "associate_md"; Description: "{cm:AssociateMarkdownFiles}"
+Name: "associate_txt"; Description: "{cm:AssociateTextFiles}"
+Name: "desktopicon"; Description: "{cm:CreateDesktopShortcut}"; Flags: unchecked
+Name: "startmenu"; Description: "{cm:AddToStartMenu}"
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\MarkLeaf"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
+Name: "{autoprograms}\MarkLeaf"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: startmenu
+Name: "{autodesktop}\MarkLeaf"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
 ; Register only in HKCU because this is a per-user installer.
-Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc"; ValueType: string; ValueName: ""; ValueData: "MarkLeaf Markdown Document"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Resources\App\fileicon.ico"
-Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" --open-document ""%1"""
-Root: HKCU; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc"; ValueType: string; ValueName: ""; ValueData: "MarkLeaf Markdown Document"; Flags: uninsdeletekey; Tasks: associate_md or associate_txt
+Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\Resources\App\fileicon.ico"; Tasks: associate_md or associate_txt
+Root: HKCU; Subkey: "Software\Classes\MarkLeaf.MarkdownDoc\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" --open-document ""%1"""; Tasks: associate_md or associate_txt
+Root: HKCU; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_md
+Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_md
+Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_txt
 
-; Deliberately no [Run] section: finishing installation must not launch MarkLeaf.
+[Run]
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayName}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent unchecked
+
+; Inno Setup's Restart Manager closes running instances that lock files under
+; the installation directory. Do not launch MarkLeaf with a synthetic quit
+; argument here: older versions do not implement it and would block setup.
 
 [Code]
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  ResultCode: Integer;
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if FileExists(ExpandConstant('{app}\{#AppExeName}')) then
+  if CurStep <> ssInstall then
+    Exit;
+
+  if not WizardIsTaskSelected('associate_md') then
   begin
-    Exec(ExpandConstant('{app}\{#AppExeName}'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Sleep(500);
+    RegDeleteValue(HKCU, 'Software\Classes\.md\OpenWithProgids', 'MarkLeaf.MarkdownDoc');
+    RegDeleteValue(HKCU, 'Software\Classes\.markdown\OpenWithProgids', 'MarkLeaf.MarkdownDoc');
   end;
-  Result := '';
+
+  if not WizardIsTaskSelected('associate_txt') then
+    RegDeleteValue(HKCU, 'Software\Classes\.txt\OpenWithProgids', 'MarkLeaf.MarkdownDoc');
+
+  if not WizardIsTaskSelected('startmenu') then
+    DeleteFile(ExpandConstant('{autoprograms}\MarkLeaf.lnk'));
+
+  if not WizardIsTaskSelected('desktopicon') then
+    DeleteFile(ExpandConstant('{autodesktop}\MarkLeaf.lnk'));
 end;
