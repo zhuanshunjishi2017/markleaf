@@ -8,6 +8,7 @@ public static class CommandStateResolver
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowPreferences
                 or AppCommand.ShowAbout or AppCommand.ShowChangelog
+                or AppCommand.CheckForUpdates
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
@@ -19,10 +20,15 @@ public static class CommandStateResolver
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
             AppCommand.ViewTree => new(true, !context.ListViewActive),
             AppCommand.ViewList => new(true, context.ListViewActive),
+            AppCommand.UseIndependentOutlineSidebar => new(true, context.IndependentOutlineSidebar),
             AppCommand.ShowStatusBar => new(true, context.StatusBarVisible),
             AppCommand.ToggleSourceMode => new(context.EditorReady && !context.IsPlainText, context.SourceMode),
-            AppCommand.SwitchToWorkspace => new(!context.FocusMode && context.SidebarVisible, !context.OutlineActive),
-            AppCommand.SwitchToOutline => new(!context.FocusMode && context.SidebarVisible, context.OutlineActive),
+            AppCommand.SwitchToWorkspace => new(
+                !context.FocusMode && context.SidebarVisible && !context.IndependentOutlineSidebar,
+                !context.OutlineActive),
+            AppCommand.SwitchToOutline => new(
+                !context.FocusMode && context.SidebarVisible && !context.IndependentOutlineSidebar,
+                context.OutlineActive),
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
@@ -37,16 +43,16 @@ public static class CommandStateResolver
             AppCommand.Find => new(context.EditorReady),
             AppCommand.Replace => new(context.EditorReady && !context.ReadOnly),
 
-            AppCommand.SetParagraph => new(context.EditorReady && !context.ReadOnly, context.ParagraphActive),
-            AppCommand.SetHeading1 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 1),
-            AppCommand.SetHeading2 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 2),
-            AppCommand.SetHeading3 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 3),
-            AppCommand.SetHeading4 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 4),
-            AppCommand.SetHeading5 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 5),
-            AppCommand.SetHeading6 => new(context.EditorReady && !context.ReadOnly, context.HeadingLevel == 6),
-            AppCommand.PromoteHeading => new(context.EditorReady && !context.ReadOnly && context.HeadingLevel != 1),
+            AppCommand.SetParagraph => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.ParagraphActive),
+            AppCommand.SetHeading1 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 1),
+            AppCommand.SetHeading2 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 2),
+            AppCommand.SetHeading3 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 3),
+            AppCommand.SetHeading4 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 4),
+            AppCommand.SetHeading5 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 5),
+            AppCommand.SetHeading6 => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.HeadingLevel == 6),
+            AppCommand.PromoteHeading => new(context.EditorReady && !context.ReadOnly && !context.InTable && context.HeadingLevel != 1),
             AppCommand.DemoteHeading => new(
-                context.EditorReady && !context.ReadOnly
+                context.EditorReady && !context.ReadOnly && !context.InTable
                 && context.HeadingLevel is >= 1 and < 6),
             AppCommand.ToggleBold => new(context.EditorReady && !context.ReadOnly, context.BoldActive),
             AppCommand.ToggleItalic => new(context.EditorReady && !context.ReadOnly, context.ItalicActive),
@@ -61,19 +67,24 @@ public static class CommandStateResolver
                 or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
                 or AppCommand.ResizeImage75 or AppCommand.ResizeImage90
                 => new(context.EditorReady && !context.ReadOnly && context.ImageSelected),
-            AppCommand.ToggleQuote => new(context.EditorReady && !context.ReadOnly, context.QuoteActive),
-            AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly, context.CodeBlockActive),
+            AppCommand.ToggleQuote => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.QuoteActive),
+            AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.CodeBlockActive),
             AppCommand.DeclareCodeLanguage => new(context.EditorReady && !context.ReadOnly && context.CodeBlockActive),
             AppCommand.CopyCodeBlock => new(context.EditorReady && context.CodeBlockActive && !string.IsNullOrEmpty(context.CodeBlockText)),
-            AppCommand.ToggleBulletList => new(context.EditorReady && !context.ReadOnly, context.BulletListActive),
-            AppCommand.ToggleOrderedList => new(context.EditorReady && !context.ReadOnly, context.OrderedListActive),
-            AppCommand.ToggleTaskList => new(context.EditorReady && !context.ReadOnly, context.TaskListActive),
-            AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly),
-            AppCommand.InsertMermaid => new(context.EditorReady && !context.ReadOnly),
+            AppCommand.ToggleBulletList => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.BulletListActive),
+            AppCommand.ToggleOrderedList => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.OrderedListActive),
+            AppCommand.ToggleTaskList => new(context.EditorReady && !context.ReadOnly && !context.InTable, context.TaskListActive),
+            AppCommand.IncreaseListIndent or AppCommand.DecreaseListIndent => new(
+                context.EditorReady && !context.ReadOnly && !context.InTable
+                && (context.BulletListActive || context.OrderedListActive || context.TaskListActive)),
+            AppCommand.InsertMathBlock or AppCommand.InsertHorizontalRule =>
+                new(context.EditorReady && !context.ReadOnly && !context.InTable),
+            AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly && !context.InTable),
+            AppCommand.InsertMermaid => new(context.EditorReady && !context.ReadOnly && !context.InTable),
             AppCommand.EditMermaid or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid =>
                 new(context.EditorReady && !context.ReadOnly && context.MermaidSelected),
             AppCommand.RerenderAllMermaid =>
-                new(context.EditorReady && context.MermaidCount > 0),
+                new(context.EditorReady && !context.InTable && context.MermaidCount > 0),
             AppCommand.InsertFootnote => new(context.EditorReady && !context.ReadOnly),
             AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
                 or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote =>

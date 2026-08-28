@@ -8,7 +8,7 @@ internal sealed class PreferencesTabBar : Control
     private Color _bgHover = SystemColors.ControlLight;
     private Color _bgSelected = SystemColors.ControlLight;
     private Color _bgSelectedHover = SystemColors.Control;
-    private Color _bgPrimary = SystemColors.ControlLightLight;
+    private Color _bgSecondary = SystemColors.ControlLightLight;
     private Color _textPrimary = SystemColors.ControlText;
     private Color _textSecondary = SystemColors.GrayText;
     private Color _textSelected = SystemColors.Highlight;
@@ -41,13 +41,13 @@ internal sealed class PreferencesTabBar : Control
         Dock = DockStyle.Top;
         Height = this.ScaleForDpi(68);
         TabStop = true;
-        BackColor = _bgHover;
+        BackColor = _bgSecondary;
         ForeColor = _textPrimary;
     }
 
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
     {
-        if (colors.TryGetValue("bg-primary", out var c)) _bgPrimary = c;
+        if (colors.TryGetValue("bg-secondary", out var c)) _bgSecondary = c;
         if (colors.TryGetValue("bg-hover", out c)) _bgHover = c;
         if (colors.TryGetValue("bg-selected", out c)) _bgSelected = c;
         if (colors.TryGetValue("bg-selected-hover", out c)) _bgSelectedHover = c;
@@ -55,7 +55,7 @@ internal sealed class PreferencesTabBar : Control
         if (colors.TryGetValue("text-secondary", out c)) _textSecondary = c;
         if (colors.TryGetValue("theme-light", out c)) _textSelected = c;
         if (colors.TryGetValue("theme-dark", out c)) _textSelectedHover = c;
-        BackColor = _bgHover;
+        BackColor = _bgSecondary;
         ForeColor = _textPrimary;
         Invalidate();
     }

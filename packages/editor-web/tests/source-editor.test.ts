@@ -184,6 +184,28 @@ describe('source editor', () => {
     expect(source.getText()).toContain('"**xtext"**a')
   })
 
+  it('does not prompt for asterisk markup in plain text mode', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(
+      parent,
+      '**文本"a',
+      () => {},
+      2,
+      false,
+      request => requests.push(request),
+      false,
+    )
+    sources.push(source)
+
+    source.setSelection(5)
+    source.replaceSelection('**')
+
+    expect(requests).toHaveLength(0)
+    expect(source.getText()).toBe('**文本"**a')
+  })
+
   it('deletes only a non-empty source selection', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

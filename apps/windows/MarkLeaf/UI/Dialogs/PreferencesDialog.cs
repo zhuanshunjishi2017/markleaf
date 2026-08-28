@@ -57,6 +57,7 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualLineHeight;
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
+    private readonly CheckBox _visualCjkAutoSpacingCheck;
 
     private readonly NumericUpDown _sourceIndentWidth;
     private readonly CheckBox _showParagraphBlockHandleCheck;
@@ -220,6 +221,8 @@ internal sealed class PreferencesDialog : Form
         { Minimum = 12, Maximum = 24, Increment = 1 };
         _visualMaxWidth = new NumericUpDown
         { Minimum = 600, Maximum = 1200, Increment = 20 };
+        _visualCjkAutoSpacingCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _sourceIndentWidth = new NumericUpDown
         { Minimum = 2, Maximum = 8, Increment = 2 };
@@ -269,13 +272,14 @@ internal sealed class PreferencesDialog : Form
         ApplyDpiSizes();
 
         Text = Loc.Get("prefs.title");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(566));
+        Size = new Size(this.ScaleForDpi(446), this.ScaleForDpi(590));
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
@@ -615,10 +619,14 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(_cjkLanguageTagCombo, 1, 6);
         panel.Controls.Add(Gap(), 0, 7);
 
-        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 8);
-        panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
+        panel.Controls.Add(_visualCjkAutoSpacingCheck, 0, 8);
+        panel.SetColumnSpan(_visualCjkAutoSpacingCheck, 2);
         panel.Controls.Add(Gap(), 0, 9);
-        panel.Controls.Add(_showCodeHighlightCheck, 0, 10);
+
+        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 10);
+        panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
+        panel.Controls.Add(Gap(), 0, 11);
+        panel.Controls.Add(_showCodeHighlightCheck, 0, 12);
         panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
         return panel;
@@ -1018,6 +1026,7 @@ internal sealed class PreferencesDialog : Form
         _cjkFontFamily = editor.SourceCjkFontFamily;
         _westernFontFamily = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
+        _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
         _showParagraphBlockHandleCheck.Checked = editor.ShowParagraphBlockHandle;
 
@@ -1140,6 +1149,7 @@ internal sealed class PreferencesDialog : Form
             editor.SourceFontFamily = _westernFontFamily;
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
+        editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
         editor.ShowParagraphBlockHandle = _showParagraphBlockHandleCheck.Checked;
 

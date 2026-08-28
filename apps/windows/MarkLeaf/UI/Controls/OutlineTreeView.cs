@@ -66,6 +66,8 @@ internal sealed class OutlineTreeView : Control
 
     public event EventHandler<int>? NodeActivated;
 
+    public event EventHandler<Point>? ContextMenuRequested;
+
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int? SelectedPosition
@@ -137,6 +139,44 @@ internal sealed class OutlineTreeView : Control
         UpdateScrollBar();
         EnsureSelectionVisible();
         Invalidate();
+    }
+
+    public void ExpandAll()
+    {
+        SetExpandedRecursively(_roots, expanded: true);
+        UpdateScrollBar();
+        EnsureSelectionVisible();
+        Invalidate();
+    }
+
+    public void CollapseAll()
+    {
+        SetExpandedRecursively(_roots, expanded: false);
+        UpdateScrollBar();
+        Invalidate();
+    }
+
+    public bool RevealPosition(int position)
+    {
+        var found = false;
+        foreach (var root in _roots)
+        {
+            if (ExpandPathToPosition(root, position))
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            return false;
+        }
+
+        _selectedPosition = position;
+        UpdateScrollBar();
+        EnsureSelectionVisible();
+        Invalidate();
+        return true;
     }
 
     public void ConfigureTypography(int dpi)
@@ -213,6 +253,15 @@ internal sealed class OutlineTreeView : Control
     {
         base.OnMouseDown(eventArgs);
         Focus();
+        if (eventArgs.Button == MouseButtons.Right)
+        {
+            ContextMenuRequested?.Invoke(this, PointToScreen(eventArgs.Location));
+            return;
+        }
+        if (eventArgs.Button != MouseButtons.Left)
+        {
+            return;
+        }
         var row = HitTestRow(eventArgs.Location);
         if (row is null)
         {
@@ -382,6 +431,36 @@ internal sealed class OutlineTreeView : Control
                 yield return descendant;
             }
         }
+    }
+
+    private static void SetExpandedRecursively(IEnumerable<OutlineNode> nodes, bool expanded)
+    {
+        foreach (var node in nodes)
+        {
+            node.Expanded = expanded;
+            SetExpandedRecursively(node.Children, expanded);
+        }
+    }
+
+    private static bool ExpandPathToPosition(OutlineNode node, int position)
+    {
+        if (node.Item.Position == position)
+        {
+            return true;
+        }
+
+        foreach (var child in node.Children)
+        {
+            if (!ExpandPathToPosition(child, position))
+            {
+                continue;
+            }
+
+            node.Expanded = true;
+            return true;
+        }
+
+        return false;
     }
 
     private int GetContentHeight() => 0 + EnumerateVisibleNodes().Sum(GetRowHeight);

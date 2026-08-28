@@ -110,6 +110,7 @@ internal sealed class TableSizeDialog : Form
         Controls.Add(layout);
 
         Text = Loc.Get("dialog.tableSizeTitle");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

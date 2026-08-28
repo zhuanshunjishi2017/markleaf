@@ -3,6 +3,13 @@ using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
 
+internal enum SidebarTabBarMode
+{
+    Combined,
+    WorkspaceOnly,
+    OutlineOnly,
+}
+
 internal sealed class SidebarTabBar : Control
 {
     private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
@@ -20,8 +27,10 @@ internal sealed class SidebarTabBar : Control
     private Font _iconFont = new("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private readonly Rectangle[] _tabBounds = new Rectangle[2];
     private Rectangle _openFolderBounds;
+    private SidebarTabBarMode _mode;
 
-    private const string OpenFolderButtonIcon = "";
+    private const string NewMarkdownButtonIcon = "\uECC8";
+    private const string MergeButtonIcon = "\uE8A0";
 
     public SidebarTabBar()
     {
@@ -39,9 +48,28 @@ internal sealed class SidebarTabBar : Control
 
     public event EventHandler<int>? TabChanged;
     public event EventHandler<int>? TabReclicked;
-    public event EventHandler? OpenFolderClicked;
+    public event EventHandler? NewMarkdownClicked;
+    public event EventHandler? MergeClicked;
 
-    private bool OpenFolderButtonVisible => _selectedIndex == 0;
+    private bool NewMarkdownButtonVisible => _mode != SidebarTabBarMode.OutlineOnly && _selectedIndex == 0;
+
+    private bool MergeButtonVisible => _mode == SidebarTabBarMode.OutlineOnly;
+
+    private bool ActionButtonVisible => NewMarkdownButtonVisible || MergeButtonVisible;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public SidebarTabBarMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (_mode == value) return;
+            _mode = value;
+            ConfigureTabs();
+            Invalidate();
+        }
+    }
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -70,7 +98,7 @@ internal sealed class SidebarTabBar : Control
 
     public void ReloadTexts()
     {
-        _tabs = [Loc.Get("sidebar.workspace"), Loc.Get("sidebar.outline")];
+        ConfigureTabs();
         Invalidate();
     }
 
@@ -114,20 +142,20 @@ internal sealed class SidebarTabBar : Control
         var folderHPad = this.ScaleForDpi(8);
         var folderWidth = iconSide + folderHPad * 2;
         var folderX = ClientSize.Width - folderWidth - rightMargin;
-        var folderRightLimit = OpenFolderButtonVisible ? folderX : ClientSize.Width;
+        var folderRightLimit = ActionButtonVisible ? folderX : ClientSize.Width;
         _openFolderBounds = new Rectangle(folderX, 0, folderWidth + rightMargin, ClientSize.Height);
         var folderIconBounds = new Rectangle(folderX, topPad, folderWidth, iconSide);
 
         DrawTabs(e.Graphics, hPad, topPad, bottomPad, gap, radius, folderRightLimit);
 
-        if (OpenFolderButtonVisible)
+        if (ActionButtonVisible)
         {
             using (var brush = new SolidBrush(_openFolderHovered ? _bgSelectedHover : _bgHover))
                 SidebarGdi.FillRoundedRect(e.Graphics, folderIconBounds, radius, brush);
 
             TextRenderer.DrawText(
                 e.Graphics,
-                OpenFolderButtonIcon,
+                MergeButtonVisible ? MergeButtonIcon : NewMarkdownButtonIcon,
                 _iconFont,
                 folderIconBounds,
                 ForeColor,
@@ -163,16 +191,18 @@ internal sealed class SidebarTabBar : Control
             topPad,
             totalTabsWidth,
             ClientSize.Height - topPad - bottomPad);
-        using (var groupBrush = new SolidBrush(_bgHover))
+        using (var groupBrush = new SolidBrush(
+            _mode == SidebarTabBarMode.OutlineOnly ? BackColor : _bgHover))
             SidebarGdi.FillRoundedRect(g, groupBounds, radius, groupBrush);
 
+        Array.Clear(_tabBounds);
         var x = left;
         for (var i = 0; i < _tabs.Length; i++)
         {
             var tabWidth = tabWidths[i];
             var tabBounds = new Rectangle(x, topPad, tabWidth, groupBounds.Height);
             _tabBounds[i] = new Rectangle(x, 0, tabWidth, ClientSize.Height);
-            var isSelected = i == _selectedIndex;
+            var isSelected = _mode != SidebarTabBarMode.OutlineOnly && i == _selectedIndex;
 
             if (isSelected)
             {
@@ -202,7 +232,7 @@ internal sealed class SidebarTabBar : Control
             Invalidate();
         }
 
-        var folderHov = OpenFolderButtonVisible && _openFolderBounds.Contains(e.Location);
+        var folderHov = ActionButtonVisible && _openFolderBounds.Contains(e.Location);
         if (folderHov != _openFolderHovered)
         {
             _openFolderHovered = folderHov;
@@ -232,10 +262,13 @@ internal sealed class SidebarTabBar : Control
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
 
-        if (OpenFolderButtonVisible && _openFolderBounds.Contains(e.Location))
+        if (ActionButtonVisible && _openFolderBounds.Contains(e.Location))
         {
             Focus();
-            OpenFolderClicked?.Invoke(this, EventArgs.Empty);
+            if (MergeButtonVisible)
+                MergeClicked?.Invoke(this, EventArgs.Empty);
+            else
+                NewMarkdownClicked?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -258,6 +291,19 @@ internal sealed class SidebarTabBar : Control
                 return i;
         }
         return -1;
+    }
+
+    private void ConfigureTabs()
+    {
+        _tabs = _mode switch
+        {
+            SidebarTabBarMode.WorkspaceOnly => [Loc.Get("sidebar.workspace")],
+            SidebarTabBarMode.OutlineOnly => [Loc.Get("sidebar.outline")],
+            _ => [Loc.Get("sidebar.workspace"), Loc.Get("sidebar.outline")],
+        };
+        _selectedIndex = Math.Clamp(_selectedIndex, 0, _tabs.Length - 1);
+        _hoveredIndex = -1;
+        _openFolderHovered = false;
     }
 
     protected override bool IsInputKey(Keys keyData)

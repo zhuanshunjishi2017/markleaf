@@ -35,6 +35,7 @@ internal sealed class DefaultThemeDialog : Form
         _darkCombo.SelectedIndex = Math.Max(0, FindIndex(_darkThemes, currentDarkId));
 
         Text = Loc.Get("prefs.appearance.defaultTheme");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

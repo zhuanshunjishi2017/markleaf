@@ -160,6 +160,7 @@ internal sealed class ExportDialog : Form
         _generateHtmlAsync = generateHtmlAsync;
         var initialStyleIndex = Math.Max(0, IndexOfStyle(currentStyle));
         Text = Loc.Format("export.title", documentFileName);
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterParent;

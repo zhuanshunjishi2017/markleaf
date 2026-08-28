@@ -27,6 +27,8 @@ afterEach(() => {
     editor.destroy()
   }
   document.body.innerHTML = ''
+  document.documentElement.style.removeProperty('--highlight')
+  document.documentElement.style.removeProperty('--text-primary')
 })
 
 function roundTrip(markdown: string): string {
@@ -232,6 +234,67 @@ describe('IME composition safety', () => {
 })
 
 describe('visual Markdown shortcuts', () => {
+  it('turns a closed footnote reference after paragraph text into superscript', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '正文')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.commands.insertContent('[^注释')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      ']',
+      () => editor.state.tr.insertText(']'),
+    ))
+
+    expect(handled).toBe(true)
+    expect(editor.getHTML()).toContain('<sup data-footnote-ref="注释" class="markleaf-footnote-ref">[注释]</sup>')
+    expect(getMarkdown(editor)).toBe('正文[^注释]')
+  })
+
+  it('keeps a closed footnote reference as text at the start of a paragraph', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+
+    editor.commands.insertContent('[^注释')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      ']',
+      () => editor.state.tr.insertText(']'),
+    ))
+
+    expect(handled).toBeFalsy()
+    expect(editor.getHTML()).not.toContain('data-footnote-ref')
+  })
+
+  it('turns a footnote marker followed by a colon at paragraph start into a definition', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+
+    editor.commands.insertContent('[^注释]')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      ':',
+      () => editor.state.tr.insertText(':'),
+    ))
+
+    expect(handled).toBe(true)
+    expect(editor.state.selection.$from.parent.textContent).toBe('\u2060[^注释]: ')
+    expect(element.querySelector('p')?.classList.contains('markleaf-footnote-def')).toBe(true)
+    expect(getMarkdown(editor)).toBe('[^注释]: ')
+  })
+
   it('applies bold and italic when closed triple asterisks are typed', () => {
     const element = document.createElement('div')
     document.body.append(element)
@@ -549,6 +612,37 @@ describe('paragraph menu commands', () => {
     expect(editor.state.selection.from).toBe(selectionBefore)
     expect(document.documentElement.scrollTop).toBe(508)
     expect(heading.classList.contains('markleaf-outline-highlight')).toBe(true)
+  })
+
+  it('uses the dedicated theme highlight for outline animations', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '# First\n\n## Second')
+    editors.push(editor)
+    const secondHeadingPosition = editor.state.doc.content.size - 'Second'.length - 2
+    const heading = element.querySelector<HTMLElement>('h2')!
+    const animate = vi.fn()
+    Object.defineProperties(heading, {
+      animate: { configurable: true, value: animate },
+      getAnimations: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({
+          x: 0, y: 120, top: 120, right: 0, bottom: 0, left: 0, width: 0, height: 0,
+          toJSON: () => ({}),
+        }),
+      },
+    })
+    document.documentElement.style.setProperty('--highlight', '#FFF36D')
+    document.documentElement.style.setProperty('--text-primary', '#1A1A1A')
+
+    expect(executeEditorCommand(editor, 'scrollToPosition', String(secondHeadingPosition))).toBe(true)
+    expect(animate).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ backgroundColor: '#FFF36D', color: '#1A1A1A' }),
+      ]),
+      { duration: 1800, easing: 'ease-out' },
+    )
   })
 
   it('inserts a GFM table', () => {

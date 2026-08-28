@@ -63,7 +63,10 @@ internal sealed partial class MainForm
             WorkspaceWidth = WindowPlacementCalculator.ToLogicalPixels(
                 _sidebarSplit.SplitterDistance,
                 _effectiveDpi),
-            OutlineWidth = _settings.MainWindow.OutlineWidth,
+            OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(
+                _detachedOutlineWidth,
+                _effectiveDpi),
+            OutlineDetached = _outlineDetached,
             SidebarCollapsed = _sidebarSplit.Panel1Collapsed,
             SidebarActiveOutline = _sidebarActiveOutline,
         };

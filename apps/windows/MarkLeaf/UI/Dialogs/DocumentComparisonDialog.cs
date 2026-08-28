@@ -8,6 +8,7 @@ internal sealed class DocumentComparisonDialog : Form
     public DocumentComparisonDialog(string editorMarkdown, string diskMarkdown)
     {
         Text = Loc.Get("dialog.compareTitle");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(this.ScaleForDpi(514), this.ScaleForDpi(343));

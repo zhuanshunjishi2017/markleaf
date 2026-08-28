@@ -17,6 +17,8 @@ public sealed class WindowPlacementCalculatorTests
             Dpi = 168,
             WorkspaceWidth = 220,
             OutlineWidth = 200,
+            OutlineDetached = true,
+            SidebarCollapsed = true,
         };
 
         var actual = WindowPlacementCalculator.Normalize(
@@ -28,6 +30,8 @@ public sealed class WindowPlacementCalculatorTests
         Assert.AreEqual(1200, actual.Height);
         Assert.AreEqual(330, actual.WorkspaceWidth);
         Assert.AreEqual(300, actual.OutlineWidth);
+        Assert.IsTrue(actual.OutlineDetached);
+        Assert.IsTrue(actual.SidebarCollapsed);
         Assert.AreEqual(144, actual.Dpi);
     }
 

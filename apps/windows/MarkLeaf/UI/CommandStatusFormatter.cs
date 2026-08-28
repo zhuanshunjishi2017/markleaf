@@ -29,6 +29,8 @@ internal static class CommandStatusFormatter
             AppCommand.ToggleBulletList => Loc.Get("cmd.bulletList"),
             AppCommand.ToggleOrderedList => Loc.Get("cmd.orderedList"),
             AppCommand.ToggleTaskList => Loc.Get("cmd.taskList"),
+            AppCommand.IncreaseListIndent => Loc.Get("cmd.increaseIndent"),
+            AppCommand.DecreaseListIndent => Loc.Get("cmd.decreaseIndent"),
             AppCommand.InsertHorizontalRule => Loc.Get("cmd.horizontalRule"),
             AppCommand.InsertTable => Loc.Get("cmd.insertTable"),
             AppCommand.InsertFootnote => Loc.Get("cmd.insertFootnote"),

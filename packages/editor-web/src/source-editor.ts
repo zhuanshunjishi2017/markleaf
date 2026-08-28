@@ -117,6 +117,7 @@ export class SourceEditor {
   private readonly onChange: (documentChanged: boolean) => void
   private readonly readOnly: boolean
   private readonly onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void
+  private readonly detectUnsafeEmphasisEnabled: boolean
   private readonly pendingUnsafeEmphasis = new Map<string, UnsafeEmphasisMatch>()
 
   constructor(
@@ -126,10 +127,12 @@ export class SourceEditor {
     indentWidth = 2,
     readOnly = false,
     onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void,
+    detectUnsafeEmphasis = true,
   ) {
     this.onChange = onChange
     this.readOnly = readOnly
     this.onUnsafeEmphasis = onUnsafeEmphasis
+    this.detectUnsafeEmphasisEnabled = detectUnsafeEmphasis
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -463,7 +466,7 @@ export class SourceEditor {
   }
 
   private detectUnsafeEmphasis(update: ViewUpdate): void {
-    if (!this.onUnsafeEmphasis) return
+    if (!this.detectUnsafeEmphasisEnabled || !this.onUnsafeEmphasis) return
     const match = findUnsafeEmphasisInChangedLines(update)
     if (!match) return
     const requestId = `${match.kind}:${match.from}:${match.to}:${match.content}`

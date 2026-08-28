@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Workspace;
 
@@ -37,11 +38,6 @@ internal sealed partial class MainForm
         AddRecentWorkspace(fullPath);
         UpdateSidebarSearchEnabled();
         _openFolderPrompt.Visible = false;
-        if (!_focusMode && _sidebarSplit.Panel1Collapsed)
-        {
-            ExpandSidebar();
-        }
-
         var rootName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         if (string.IsNullOrWhiteSpace(rootName))
         {
@@ -72,10 +68,8 @@ internal sealed partial class MainForm
         _sidebarSearchBar.WorkspaceName = string.Empty;
         _sidebarSearchBar.ClearSearch();
         UpdateSidebarSearchEnabled();
-        _sidebarVisibleBeforeFocus = false;
         ClearWorkspacePlaceholder();
-        _openFolderPrompt.Visible = true;
-        CollapseSidebar();
+        ShowNoWorkspacePlaceholder();
         SetStatus(Loc.Get("status.workspaceClosed"));
         _menuService.RefreshStates();
     }
@@ -149,9 +143,13 @@ internal sealed partial class MainForm
         SetStatus(Loc.Get("status.workspaceRefreshed"));
     }
 
-    private async Task CreateUntitledWorkspaceDocumentAsync()
+    private async Task CreateUntitledWorkspaceDocumentAsync(
+        string directory,
+        NewDocumentKind kind = NewDocumentKind.Markdown)
     {
-        if (string.IsNullOrWhiteSpace(_workspaceRoot) || _documentOperationInProgress)
+        if (string.IsNullOrWhiteSpace(_workspaceRoot)
+            || _documentOperationInProgress
+            || !Directory.Exists(directory))
         {
             return;
         }
@@ -163,21 +161,66 @@ internal sealed partial class MainForm
 
         try
         {
-            var path = _workspaceService.GetAvailableUntitledDocumentPath(_workspaceRoot);
+            var path = _workspaceService.GetAvailableUntitledDocumentPath(directory, kind);
             await using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await stream.FlushAsync();
             }
 
-            await RefreshWorkspaceDirectoryAsync(_workspaceRoot);
+            await RefreshWorkspaceDirectoryAsync(directory);
             await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
             await OpenDocumentPathAsync(path);
+            await RevealPathInTreeAsync(path);
             _workspaceDocumentList.SelectedPath = path;
+            BeginWorkspaceEntryRename(new WorkspaceEntry(Path.GetFileName(path), path, false));
             SetStatus(Loc.Format("status.documentCreated", Path.GetFileName(path)));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             ShowWorkspaceOperationError(exception);
         }
+    }
+
+    private async Task CreateUntitledWorkspaceFolderAsync(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            var path = _workspaceService.GetAvailableUntitledDirectoryPath(directory);
+            Directory.CreateDirectory(path);
+            await RefreshWorkspaceDirectoryAsync(directory);
+            if (_workspaceListViewActive)
+            {
+                ToggleWorkspaceView();
+            }
+            BeginWorkspaceEntryRename(new WorkspaceEntry(Path.GetFileName(path), path, true));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ShowWorkspaceOperationError(exception);
+        }
+    }
+
+    private string GetNewWorkspaceDocumentDirectory()
+    {
+        var root = Path.GetFullPath(_workspaceRoot!);
+        if (_document?.FilePath is not { } documentPath)
+        {
+            return root;
+        }
+
+        var fullDocumentPath = Path.GetFullPath(documentPath);
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        if (!fullDocumentPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return root;
+        }
+
+        return Path.GetDirectoryName(fullDocumentPath) ?? root;
     }
 }

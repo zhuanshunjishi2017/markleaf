@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Reflection;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
 using MarkLeaf.Services.ExternalLinks;
+using MarkLeaf.Services.Updates;
 using MarkLeaf.UI.Dialogs;
 
 namespace MarkLeaf.UI;
@@ -43,6 +46,12 @@ internal sealed partial class MainForm
 
     private CommandState GetCommandState(AppCommand command)
     {
+        if (command == AppCommand.UseIndependentOutlineSidebar
+            && _outlineAnimationTargetDetached is not null)
+        {
+            return new CommandState(false, _outlineDetached);
+        }
+
         if (command is >= AppCommand.OpenRecentWorkspace1 and <= AppCommand.OpenRecentWorkspace8)
         {
             var index = (int)command - (int)AppCommand.OpenRecentWorkspace1;
@@ -111,6 +120,7 @@ internal sealed partial class MainForm
             FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
             ShowCodeHighlight: _settings.Appearance.ShowCodeHighlight,
             ListViewActive: _workspaceListViewActive,
+            IndependentOutlineSidebar: _outlineDetached,
             FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
@@ -242,6 +252,12 @@ internal sealed partial class MainForm
                 ShowSidebarView(outline: true);
                 SetStatus(Loc.Get("status.switchedToOutline"));
                 break;
+            case AppCommand.UseIndependentOutlineSidebar:
+                if (_outlineDetached)
+                    MergeOutlineSidebar();
+                else
+                    DetachOutlineSidebar();
+                break;
             case AppCommand.ViewTree:
                 if (_workspaceListViewActive) ToggleWorkspaceView();
                 break;
@@ -256,6 +272,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ShowChangelog:
                 ShowChangelog();
+                break;
+            case AppCommand.CheckForUpdates:
+                _ = CheckForUpdatesAsync();
                 break;
             case AppCommand.ShowPreferences:
                 ShowPreferences();
@@ -422,6 +441,8 @@ internal sealed partial class MainForm
             AppCommand.ToggleBulletList => "toggleBulletList",
             AppCommand.ToggleOrderedList => "toggleOrderedList",
             AppCommand.ToggleTaskList => "toggleTaskList",
+            AppCommand.IncreaseListIndent => "indentListItem",
+            AppCommand.DecreaseListIndent => "outdentListItem",
             AppCommand.InsertTable => "insertTable",
             AppCommand.AddTableRowBefore => "addRowBefore",
             AppCommand.AddTableRowAfter => "addRowAfter",
@@ -469,6 +490,7 @@ internal sealed partial class MainForm
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
                 or AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
                 or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote
+                or AppCommand.IncreaseListIndent or AppCommand.DecreaseListIndent
             || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
                 or AppCommand.DeleteMath or AppCommand.EditMath
                 or AppCommand.DeclareCodeLanguage or AppCommand.CopyCodeBlock
@@ -550,6 +572,44 @@ internal sealed partial class MainForm
         }
 
         EditMath();
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var currentVersion = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 0, 0);
+            var updateService = new GitHubUpdateService();
+            var release = await updateService.FindUpdateAsync(currentVersion, cancellation.Token);
+            if (release is null)
+            {
+                ShowMessage(this, Loc.Get("update.latest"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var prompt = Loc.Format("update.available", release.VersionText, release.BuildNumber);
+            if (ShowMessage(this, prompt, "MarkLeaf", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            SetStatus(Loc.Get("update.downloading"));
+            var installerPath = await updateService.DownloadInstallerAsync(release, cancellation.Token);
+            Process.Start(new ProcessStartInfo(installerPath) { UseShellExecute = true });
+            _closeApproved = true;
+            Close();
+        }
+        catch (OperationCanceledException)
+        {
+            ShowMessage(this, Loc.Get("update.failed"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Could not check for application updates.", exception);
+            ShowMessage(this, Loc.Get("update.failed") + "\r\n\r\n" + exception.Message,
+                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void OnMermaidEditRequested(object? sender, EventArgs e)

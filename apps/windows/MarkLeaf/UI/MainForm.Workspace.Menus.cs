@@ -37,9 +37,9 @@ internal sealed partial class MainForm
         {
             switch (ShowNativeWorkspaceMenu(menu, screenPoint))
             {
-                case WorkspacePopupCommand.NewMarkdownFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false, NewDocumentKind.Markdown); break;
-                case WorkspacePopupCommand.NewTextFile: await CreateWorkspaceEntryAsync(_workspaceRoot, false, NewDocumentKind.PlainText); break;
-                case WorkspacePopupCommand.NewFolder: await CreateWorkspaceEntryAsync(_workspaceRoot, true); break;
+                case WorkspacePopupCommand.NewMarkdownFile: await CreateUntitledWorkspaceDocumentAsync(_workspaceRoot, NewDocumentKind.Markdown); break;
+                case WorkspacePopupCommand.NewTextFile: await CreateUntitledWorkspaceDocumentAsync(_workspaceRoot, NewDocumentKind.PlainText); break;
+                case WorkspacePopupCommand.NewFolder: await CreateUntitledWorkspaceFolderAsync(_workspaceRoot); break;
                 case WorkspacePopupCommand.ShowInExplorer: ShowWorkspaceInExplorer(_workspaceRoot); break;
                 case WorkspacePopupCommand.ViewList: if (!_workspaceListViewActive) ToggleWorkspaceView(); break;
                 case WorkspacePopupCommand.ViewTree: if (_workspaceListViewActive) ToggleWorkspaceView(); break;
@@ -142,13 +142,13 @@ internal sealed partial class MainForm
                     StartNewWindow(entry.FullPath);
                     break;
                 case WorkspacePopupCommand.NewMarkdownFile:
-                    await CreateWorkspaceEntryAsync(targetDirectory, false, NewDocumentKind.Markdown);
+                    await CreateUntitledWorkspaceDocumentAsync(targetDirectory, NewDocumentKind.Markdown);
                     break;
                 case WorkspacePopupCommand.NewTextFile:
-                    await CreateWorkspaceEntryAsync(targetDirectory, false, NewDocumentKind.PlainText);
+                    await CreateUntitledWorkspaceDocumentAsync(targetDirectory, NewDocumentKind.PlainText);
                     break;
                 case WorkspacePopupCommand.NewFolder:
-                    await CreateWorkspaceEntryAsync(targetDirectory, true);
+                    await CreateUntitledWorkspaceFolderAsync(targetDirectory);
                     break;
                 case WorkspacePopupCommand.CopyPath:
                     CopyWorkspaceEntryPath(entry.FullPath);
@@ -157,7 +157,7 @@ internal sealed partial class MainForm
                     ShowWorkspaceEntryInExplorer(entry);
                     break;
                 case WorkspacePopupCommand.Rename:
-                    await RenameWorkspaceEntryAsync(entry);
+                    BeginWorkspaceEntryRename(entry);
                     break;
                 case WorkspacePopupCommand.Delete:
                     await DeleteWorkspaceEntryAsync(entry);

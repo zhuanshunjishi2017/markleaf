@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createEditor, getMarkdown } from '../src/editor'
+import { createEditor, executeEditorCommand, getMarkdown } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
@@ -83,6 +83,30 @@ describe('visual editor indentation', () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(getMarkdown(editor)).toMatch(nestedPattern)
+  })
+
+  it('outdents a nested list item when Shift+Tab is pressed', () => {
+    const markdown = '- 第一\n- 第二'
+    const editor = makeEditor(markdown)
+    placeCursorInText(editor, '第二')
+
+    expect(pressTab(editor).defaultPrevented).toBe(true)
+    expect(pressTab(editor, true).defaultPrevented).toBe(true)
+    expect(getMarkdown(editor).trimEnd()).toBe(markdown)
+  })
+
+  it.each([
+    ['bullet list', '- 第一\n- 第二'],
+    ['ordered list', '1. 第一\n2. 第二'],
+    ['task list', '- [ ] 第一\n- [ ] 第二'],
+  ])('indents and outdents the current %s item through editor commands', (_name, markdown) => {
+    const editor = makeEditor(markdown)
+    placeCursorInText(editor, '第二')
+
+    expect(executeEditorCommand(editor, 'indentListItem')).toBe(true)
+    expect(getMarkdown(editor)).not.toBe(markdown)
+    expect(executeEditorCommand(editor, 'outdentListItem')).toBe(true)
+    expect(getMarkdown(editor).trimEnd()).toBe(markdown)
   })
 
   it('does not insert visual indentation inside a table cell', () => {

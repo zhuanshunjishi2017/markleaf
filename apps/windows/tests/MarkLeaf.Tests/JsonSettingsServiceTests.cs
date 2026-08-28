@@ -26,11 +26,16 @@ public sealed class JsonSettingsServiceTests
                     IsMaximized = true,
                     WorkspaceWidth = 260,
                     OutlineWidth = 240,
+                    OutlineDetached = true,
                 },
                 Workspace = new WorkspaceSettings
                 {
                     LastFolder = @"D:\Notes",
                     RecentFolders = [@"D:\Notes", @"D:\Archive"],
+                },
+                Editor = new EditorSettings
+                {
+                    VisualCjkAutoSpacing = false,
                 },
             };
 
@@ -40,9 +45,12 @@ public sealed class JsonSettingsServiceTests
             Assert.AreEqual(42, actual.MainWindow.Left);
             Assert.AreEqual(144, actual.MainWindow.Dpi);
             Assert.AreEqual(260, actual.MainWindow.WorkspaceWidth);
+            Assert.AreEqual(240, actual.MainWindow.OutlineWidth);
+            Assert.IsTrue(actual.MainWindow.OutlineDetached);
             Assert.IsTrue(actual.MainWindow.IsMaximized);
             Assert.AreEqual(@"D:\Notes", actual.Workspace.LastFolder);
             CollectionAssert.AreEqual(new[] { @"D:\Notes", @"D:\Archive" }, actual.Workspace.RecentFolders);
+            Assert.IsFalse(actual.Editor.VisualCjkAutoSpacing);
             Assert.IsFalse(File.Exists(file + ".tmp"));
         }
         finally
@@ -74,6 +82,7 @@ public sealed class JsonSettingsServiceTests
             Assert.AreEqual(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
             Assert.IsNotNull(settings.Workspace);
             Assert.IsEmpty(settings.Workspace.RecentFolders);
+            Assert.IsTrue(settings.Editor.VisualCjkAutoSpacing);
         }
         finally
         {

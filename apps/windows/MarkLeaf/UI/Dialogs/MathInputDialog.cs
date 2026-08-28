@@ -31,6 +31,7 @@ internal sealed class MathInputDialog : Form
         string? placeholderText = null)
     {
         Text = title ?? (isBlock ? Loc.Get("dialog.mathBlockTitle") : Loc.Get("dialog.mathInlineTitle"));
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;

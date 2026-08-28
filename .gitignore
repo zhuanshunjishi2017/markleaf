@@ -76,10 +76,12 @@ apps/windows/MarkLeaf/Resources/App/*
 /build-markleaf.bat
 /release.bat
 
-# WiX publish output (generated at build)
+# Installer publish output (generated at build)
 apps/windows/setup/publish/
+apps/windows/setup/publish-*/
 apps/windows/setup/obj/
 apps/windows/setup/bin/
+apps/windows/setup/*.exe
 
 # Release output
 release/

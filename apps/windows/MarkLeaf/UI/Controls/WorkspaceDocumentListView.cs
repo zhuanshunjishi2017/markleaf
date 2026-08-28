@@ -13,6 +13,8 @@ internal sealed class WorkspaceDocumentListView : Control
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _documentFont = new("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _folderIconFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private TextBox? _renameEditor;
+    private WorkspaceDocumentEntry? _renameDocument;
 
     // Theme colors (defaults match white theme).
     private Color _bgPrimary = Color.White;
@@ -59,6 +61,7 @@ internal sealed class WorkspaceDocumentListView : Control
     public event EventHandler<WorkspaceDocumentContextEventArgs>? DocumentContextRequested;
     public event EventHandler<WorkspaceBackgroundContextEventArgs>? BackgroundContextRequested;
     public event EventHandler<WorkspaceFilesDroppedEventArgs>? FilesDropped;
+    public event EventHandler<WorkspaceRenameRequestedEventArgs>? RenameRequested;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -124,6 +127,44 @@ internal sealed class WorkspaceDocumentListView : Control
         previousFolderIcon.Dispose();
         UpdateScrollBar();
         Invalidate();
+    }
+
+    public void BeginInlineRename(WorkspaceEntry entry)
+    {
+        CancelInlineRename();
+        _selectedPath = entry.FullPath;
+        EnsureSelectionVisible();
+        BuildVisibleRows();
+        var row = _visibleRows.FirstOrDefault(item => PathEquals(item.Document.FullPath, entry.FullPath));
+        if (row.Document is null)
+        {
+            return;
+        }
+
+        var horizontalPadding = this.ScaleForDpi(15);
+        var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
+        var top = row.Bounds.Top + this.ScaleForDpi(3) + metadataHeight + this.ScaleForDpi(4);
+        var bounds = new Rectangle(
+            row.Bounds.Left + horizontalPadding,
+            top,
+            Math.Max(this.ScaleForDpi(40), row.Bounds.Width - horizontalPadding * 2),
+            _documentFont.Height + this.ScaleForDpi(2));
+        _renameDocument = row.Document;
+        _renameEditor = new TextBox
+        {
+            BorderStyle = BorderStyle.None,
+            Font = _documentFont,
+            BackColor = _themeLight,
+            ForeColor = _textSelected,
+            Text = entry.Name,
+            Bounds = bounds,
+        };
+        _renameEditor.KeyDown += OnRenameEditorKeyDown;
+        _renameEditor.LostFocus += (_, _) => CancelInlineRename();
+        Controls.Add(_renameEditor);
+        _renameEditor.BringToFront();
+        BeginInvoke(() => FocusRenameEditor(_renameEditor));
+        Invalidate(row.Bounds);
     }
 
     protected override void OnPaint(PaintEventArgs eventArgs)
@@ -290,6 +331,7 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         if (disposing)
         {
+            CancelInlineRename();
             _metadataFont.Dispose();
             _documentFont.Dispose();
             _folderIconFont.Dispose();
@@ -387,14 +429,17 @@ internal sealed class WorkspaceDocumentListView : Control
             bounds.Top + topPadding + metadataHeight + this.ScaleForDpi(4),
             metadataBounds.Width,
             (int)Math.Ceiling(_documentFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2));
-        DrawText(
-            graphics,
-            GetDisplayName(document.Name),
-            _documentFont,
-            documentBounds,
-            isSelected ? _textSelected : ForeColor,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
-                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        if (!PathEquals(document.FullPath, _renameDocument?.FullPath))
+        {
+            DrawText(
+                graphics,
+                GetDisplayName(document.Name),
+                _documentFont,
+                documentBounds,
+                isSelected ? _textSelected : ForeColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
+                    | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        }
     }
 
     private void BuildVisibleRows()
@@ -485,6 +530,53 @@ internal sealed class WorkspaceDocumentListView : Control
         TextFormatFlags flags)
     {
         TextRenderer.DrawText(graphics, text, font, bounds, color, flags);
+    }
+
+    private static void FocusRenameEditor(TextBox? editor)
+    {
+        if (editor is null || editor.IsDisposed)
+        {
+            return;
+        }
+        editor.Focus();
+        var extensionLength = Path.GetExtension(editor.Text).Length;
+        editor.Select(0, Math.Max(0, editor.Text.Length - extensionLength));
+    }
+
+    private void OnRenameEditorKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.KeyCode == Keys.Escape)
+        {
+            eventArgs.SuppressKeyPress = true;
+            CancelInlineRename();
+            Focus();
+            return;
+        }
+        if (eventArgs.KeyCode != Keys.Enter || _renameEditor is null || _renameDocument is null)
+        {
+            return;
+        }
+
+        eventArgs.SuppressKeyPress = true;
+        var document = _renameDocument;
+        var name = _renameEditor.Text;
+        CancelInlineRename();
+        RenameRequested?.Invoke(this, new WorkspaceRenameRequestedEventArgs(
+            new WorkspaceEntry(document.Name, document.FullPath, false),
+            name));
+    }
+
+    private void CancelInlineRename()
+    {
+        var editor = _renameEditor;
+        _renameEditor = null;
+        _renameDocument = null;
+        if (editor is not null)
+        {
+            Controls.Remove(editor);
+            editor.Dispose();
+            Invalidate();
+        }
     }
 
 

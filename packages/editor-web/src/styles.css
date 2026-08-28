@@ -24,6 +24,14 @@ body,
   position: relative;
 }
 
+#editor .ProseMirror {
+  text-autospace: no-autospace;
+}
+
+.markleaf-cjk-autospace #editor .ProseMirror {
+  text-autospace: normal;
+}
+
 body {
   background: var(--bg-primary);
   color: var(--text-primary);

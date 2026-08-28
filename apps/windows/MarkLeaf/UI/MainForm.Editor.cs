@@ -44,7 +44,7 @@ internal sealed partial class MainForm
             _editorHost?.SendFindBarLocalization();
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
-            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47());
+            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             ApplyCodeHighlightVisibility();
             ApplyBlockHandleVisibility();
@@ -208,9 +208,12 @@ internal sealed partial class MainForm
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
-        _modeButton.Text = _editorCommandStatus.SourceMode
-            ? Loc.Get("statusBar.mode.source")
-            : Loc.Get("statusBar.mode.visual");
+        _modeButton.AutoSize = false;
+        _modeButton.Width = _viewToggleButton.Width;
+        _modeButton.Text = "</>";
+        _modeButton.ToolTipText = _editorCommandStatus.SourceMode
+            ? Loc.Get("statusBar.mode.exitSource")
+            : Loc.Get("statusBar.mode.source");
         _modeButton.Enabled = !IsPlainTextDocument;
     }
 

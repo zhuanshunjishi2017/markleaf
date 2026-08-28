@@ -15,6 +15,7 @@ internal sealed class PdfHeaderFooterDialog : Form
     public PdfHeaderFooterDialog(string header, string footer)
     {
         Text = Loc.Get("export.customHeaderFooter");
+        BackColor = SystemColors.ControlLightLight;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;

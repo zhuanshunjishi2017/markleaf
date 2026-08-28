@@ -1,3 +1,4 @@
+using MarkLeaf.Documents;
 using MarkLeaf.Native;
 using MarkLeaf.Workspace;
 
@@ -191,6 +192,46 @@ public sealed class WorkspaceServiceTests
         finally
         {
             Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public void GetAvailableUntitledDocumentPath_PlainTextUsesTxtExtension()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "未命名.txt"), string.Empty);
+
+            var path = new WorkspaceService().GetAvailableUntitledDocumentPath(
+                root,
+                NewDocumentKind.PlainText);
+
+            Assert.AreEqual(Path.Combine(root, "未命名 (2).txt"), path);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void GetAvailableUntitledDirectoryPath_SkipsExistingNames()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "未命名文件夹"));
+
+            var path = new WorkspaceService().GetAvailableUntitledDirectoryPath(root);
+
+            Assert.AreEqual(Path.Combine(root, "未命名文件夹 (2)"), path);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 }

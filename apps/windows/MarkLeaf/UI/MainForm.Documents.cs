@@ -560,6 +560,54 @@ internal sealed partial class MainForm
         }
     }
 
+    private void ShowNewLineMenu()
+    {
+        if (_document is null || _document.IsReadOnly)
+        {
+            return;
+        }
+
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AppendNewLineMenuItem(menu, 1, "CRLF", _document.NewLine == "\r\n");
+            AppendNewLineMenuItem(menu, 2, "LF", _document.NewLine == "\n");
+            var selected = ShowStatusBarPopupMenu(menu, _newLineLabel);
+            var newLine = selected switch
+            {
+                1 => "\r\n",
+                2 => "\n",
+                _ => null,
+            };
+            if (newLine is null || _document.NewLine == newLine)
+            {
+                return;
+            }
+
+            _document.NewLine = newLine;
+            _document.IsDirty = true;
+            RefreshPersistentStatusBar();
+            UpdateDocumentChrome();
+            SetStatus(Loc.Get("status.documentModified"));
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    private static void AppendNewLineMenuItem(nint menu, uint command, string text, bool isCurrent)
+    {
+        var flags = NativeMethods.MfString
+            | (isCurrent ? NativeMethods.MfChecked | NativeMethods.MfGrayed : NativeMethods.MfUnchecked);
+        NativeMethods.AppendMenu(menu, flags, command, text);
+    }
+
     private async Task ChangeDocumentEncodingAsync(DocumentEncodingPolicy target)
     {
         if (_document is null || _document.IsReadOnly || _documentOperationInProgress)

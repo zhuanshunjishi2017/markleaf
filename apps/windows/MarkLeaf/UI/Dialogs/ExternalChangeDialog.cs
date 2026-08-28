@@ -17,6 +17,7 @@ internal sealed class ExternalChangeDialog : Form
     public ExternalChangeDialog(string fileName)
     {
         Text = Loc.Get("dialog.externalChangeTitle");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

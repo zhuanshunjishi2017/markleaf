@@ -1,9 +1,18 @@
 using MarkLeaf.Editor;
+using MarkLeaf.Native;
+using MarkLeaf.Services;
 
 namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
+    private enum OutlinePopupCommand : uint
+    {
+        ExpandAll = 0x7101,
+        CollapseAll,
+        LocateCurrent,
+    }
+
     private int? _activeOutlinePosition;
     private int? _pendingOutlinePosition;
     private DateTime _pendingOutlineUntilUtc;
@@ -66,6 +75,60 @@ internal sealed partial class MainForm
         }
 
         ExitOutlineSearch();
+    }
+
+    private void ShowOutlineContextMenu(Point screenPoint)
+    {
+        var menu = CreateNativePopupMenu();
+        try
+        {
+            AppendNativeMenu(
+                menu,
+                NativeMethods.MfString,
+                (nuint)OutlinePopupCommand.ExpandAll,
+                Loc.Get("outlineMenu.expandAll"));
+            AppendNativeMenu(
+                menu,
+                NativeMethods.MfString,
+                (nuint)OutlinePopupCommand.CollapseAll,
+                Loc.Get("outlineMenu.collapseAll"));
+            AppendNativeMenuSeparator(menu);
+            AppendNativeMenu(
+                menu,
+                NativeMethods.MfString | (_activeOutlinePosition is null ? NativeMethods.MfGrayed : NativeMethods.MfEnabled),
+                (nuint)OutlinePopupCommand.LocateCurrent,
+                Loc.Get("outlineMenu.locateCurrent"));
+
+            NativeMethods.SetForegroundWindow(Handle);
+            var selected = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                Handle,
+                0);
+            NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
+
+            switch ((OutlinePopupCommand)selected)
+            {
+                case OutlinePopupCommand.ExpandAll:
+                    ExitOutlineSearch();
+                    _outlineTree.ExpandAll();
+                    break;
+                case OutlinePopupCommand.CollapseAll:
+                    ExitOutlineSearch();
+                    _outlineTree.CollapseAll();
+                    break;
+                case OutlinePopupCommand.LocateCurrent when _activeOutlinePosition is { } position:
+                    ExitOutlineSearch();
+                    _outlineTree.RevealPosition(position);
+                    break;
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
     }
 
     private void ApplyOutlineSearch(string text)

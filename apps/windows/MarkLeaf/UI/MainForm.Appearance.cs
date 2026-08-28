@@ -13,7 +13,7 @@ internal sealed partial class MainForm
         _markdownStyle = StyleService.TryGetStyle(style) is not null ? style : StyleService.DefaultStyleId;
         _settings.MarkdownStyle = _markdownStyle;
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47());
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
@@ -114,6 +114,9 @@ internal sealed partial class MainForm
         _sidebarContentHost.BackColor = sidebarBg;
         _workspacePanelHost.BackColor = sidebarBg;
         _outlinePanelHost.BackColor = sidebarBg;
+        _detachedOutlinePanel.BackColor = sidebarBg;
+        _detachedOutlineLayout.BackColor = sidebarBg;
+        _detachedOutlineContentHost.BackColor = sidebarBg;
         _sidebarSplit.Panel1.BackColor = sidebarBg;
         _workspaceContentPanel.BackColor = sidebarBg;
         _sidebarSearchBar.BackColor = sidebarBg;
@@ -123,13 +126,18 @@ internal sealed partial class MainForm
         }
 
         _sidebarSplit.Panel2.BackColor = primaryBg;
+        _outlineSplit.Panel1.BackColor = primaryBg;
+        _outlineSplit.Panel2.BackColor = sidebarBg;
         _editorPanel.BackColor = primaryBg;
         if (_editorLoadingView is not null)
         {
             _editorLoadingView.BackColor = primaryBg;
         }
         if (colors.TryGetValue("bg-hover", out var splitter))
+        {
             _sidebarSplit.BackColor = splitter;
+            _outlineSplit.BackColor = splitter;
+        }
 
         if (_statusStrip is not null)
         {
@@ -148,6 +156,8 @@ internal sealed partial class MainForm
 
         _sidebarTabBar.ApplyThemeColors(sidebarColors);
         _sidebarSearchBar.ApplyThemeColors(sidebarColors);
+        _detachedOutlineTabBar.ApplyThemeColors(sidebarColors);
+        _detachedOutlineSearchBar.ApplyThemeColors(sidebarColors);
         _openFolderPrompt.ApplyThemeColors(sidebarColors);
         _workspaceTree.ApplyThemeColors(sidebarColors);
         _workspaceDocumentList.ApplyThemeColors(sidebarColors);
@@ -157,7 +167,8 @@ internal sealed partial class MainForm
             _searchResultsView.ApplyThemeColors(sidebarColors);
         }
 
-        if (colors.TryGetValue("bg-primary", out var menuBg))
+        if (colors.TryGetValue("bg-secondary", out var menuBg)
+            || colors.TryGetValue("bg-primary", out menuBg))
         {
             _menuBgBrush.Dispose();
             _menuBgBrush = new SolidBrush(menuBg);
@@ -283,6 +294,39 @@ internal sealed partial class MainForm
         _zoomLabel.Text = $"{target}%";
         _editorHost?.SetZoomPercent(target);
         _menuService.RefreshStates();
+    }
+
+    private void ShowZoomMenu()
+    {
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var options = AppearanceSettings.ZoomPercentOptions;
+            for (var index = 0; index < options.Length; index++)
+            {
+                var percent = options[index];
+                var flags = NativeMethods.MfString
+                    | (percent == _zoomPercent
+                        ? NativeMethods.MfChecked | NativeMethods.MfGrayed
+                        : NativeMethods.MfUnchecked);
+                NativeMethods.AppendMenu(menu, flags, (nuint)(index + 1), $"{percent}%");
+            }
+
+            var selected = ShowStatusBarPopupMenu(menu, _zoomLabel);
+            if (selected is > 0 && selected <= (uint)options.Length)
+            {
+                SetZoomPercent(options[(int)selected - 1]);
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
     }
 
     private static int NextZoom(int current, int delta)

@@ -20,8 +20,11 @@ internal sealed class WorkspaceTreeView : Control
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<(WorkspaceNode Node, Rectangle Bounds)> _visibleRows = [];
     private Font _treeFont = new("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _selectedTreeFont = new("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _iconFont = new(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _arrowFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
+    private TextBox? _renameEditor;
+    private WorkspaceEntry? _renameEntry;
 
     // Theme colors (defaults match white theme).
     private Color _bgPrimary = Color.White;
@@ -72,6 +75,7 @@ internal sealed class WorkspaceTreeView : Control
     public event EventHandler<WorkspaceFilesDroppedEventArgs>? FilesDropped;
 
     public event EventHandler<WorkspaceNodeMovedEventArgs>? NodeMoved;
+    public event EventHandler<WorkspaceRenameRequestedEventArgs>? RenameRequested;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -117,13 +121,16 @@ internal sealed class WorkspaceTreeView : Control
     public void ConfigureTypography(int dpi)
     {
         var previousFont = _treeFont;
+        var previousSelectedFont = _selectedTreeFont;
         var previousIconFont = _iconFont;
         var previousArrowFont = _arrowFont;
         _treeFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _selectedTreeFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
         _iconFont = new Font(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _rowHeight = (int)Math.Ceiling(_treeFont.GetHeight(dpi) * 1.75F);
         previousFont.Dispose();
+        previousSelectedFont.Dispose();
         previousIconFont.Dispose();
         previousArrowFont.Dispose();
         UpdateScrollBar();
@@ -271,6 +278,38 @@ internal sealed class WorkspaceTreeView : Control
 
     public bool ContainsPath(string path) => FindNode(path) is not null;
 
+    public void BeginInlineRename(WorkspaceEntry entry)
+    {
+        CancelInlineRename();
+        var node = FindNode(entry.FullPath);
+        if (node is null)
+        {
+            return;
+        }
+
+        EnsureNodeVisible(node);
+        BuildVisibleRows();
+        var row = _visibleRows.FirstOrDefault(item => PathEquals(item.Node.Entry.FullPath, entry.FullPath));
+        if (row.Node is null)
+        {
+            return;
+        }
+
+        var indent = this.ScaleForDpi(18) * node.Depth;
+        var left = this.ScaleForDpi(8) + indent + this.ScaleForDpi(16) + this.ScaleForDpi(18);
+        var bounds = new Rectangle(
+            left,
+            row.Bounds.Top,
+            Math.Max(this.ScaleForDpi(40), row.Bounds.Right - left - this.ScaleForDpi(4)),
+            row.Bounds.Height);
+        _renameEntry = entry;
+        _renameEditor = CreateRenameEditor(entry.Name, bounds, _bgSelected, _textPrimary);
+        Controls.Add(_renameEditor);
+        _renameEditor.BringToFront();
+        BeginInvoke(() => FocusRenameEditor(_renameEditor, entry.IsDirectory));
+        Invalidate(row.Bounds);
+    }
+
     protected override void OnPaint(PaintEventArgs eventArgs)
     {
         base.OnPaint(eventArgs);
@@ -332,7 +371,15 @@ internal sealed class WorkspaceTreeView : Control
                 bounds.Top,
                 Math.Max(0, bounds.Width - iconBounds.Right - this.ScaleForDpi(4)),
                 bounds.Height);
-            DrawText(eventArgs.Graphics, node.Entry.Name, textBounds, ForeColor);
+            if (!PathEquals(node.Entry.FullPath, _renameEntry?.FullPath))
+            {
+                DrawText(
+                    eventArgs.Graphics,
+                    node.Entry.Name,
+                    textBounds,
+                    ForeColor,
+                    isSelected ? _selectedTreeFont : _treeFont);
+            }
 
         }
 
@@ -549,7 +596,9 @@ internal sealed class WorkspaceTreeView : Control
     {
         if (disposing)
         {
+            CancelInlineRename();
             _treeFont.Dispose();
+            _selectedTreeFont.Dispose();
             _iconFont.Dispose();
             _arrowFont.Dispose();
         }
@@ -837,6 +886,71 @@ internal sealed class WorkspaceTreeView : Control
                 | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
+    private TextBox CreateRenameEditor(string name, Rectangle rowBounds, Color backColor, Color foreColor)
+    {
+        var editor = new TextBox
+        {
+            BorderStyle = BorderStyle.None,
+            Font = _selectedTreeFont,
+            BackColor = backColor,
+            ForeColor = foreColor,
+            Text = name,
+            Bounds = new Rectangle(
+                rowBounds.Left,
+                rowBounds.Top + Math.Max(0, (rowBounds.Height - _selectedTreeFont.Height) / 2),
+                rowBounds.Width,
+                _selectedTreeFont.Height + this.ScaleForDpi(2)),
+        };
+        editor.KeyDown += OnRenameEditorKeyDown;
+        editor.LostFocus += (_, _) => CancelInlineRename();
+        return editor;
+    }
+
+    private static void FocusRenameEditor(TextBox? editor, bool selectEntireName)
+    {
+        if (editor is null || editor.IsDisposed)
+        {
+            return;
+        }
+        editor.Focus();
+        var extensionLength = selectEntireName ? 0 : Path.GetExtension(editor.Text).Length;
+        editor.Select(0, Math.Max(0, editor.Text.Length - extensionLength));
+    }
+
+    private void OnRenameEditorKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.KeyCode == Keys.Escape)
+        {
+            eventArgs.SuppressKeyPress = true;
+            CancelInlineRename();
+            Focus();
+            return;
+        }
+        if (eventArgs.KeyCode != Keys.Enter || _renameEditor is null || _renameEntry is null)
+        {
+            return;
+        }
+
+        eventArgs.SuppressKeyPress = true;
+        var entry = _renameEntry;
+        var name = _renameEditor.Text;
+        CancelInlineRename();
+        RenameRequested?.Invoke(this, new WorkspaceRenameRequestedEventArgs(entry, name));
+    }
+
+    private void CancelInlineRename()
+    {
+        var editor = _renameEditor;
+        _renameEditor = null;
+        _renameEntry = null;
+        if (editor is not null)
+        {
+            Controls.Remove(editor);
+            editor.Dispose();
+            Invalidate();
+        }
+    }
+
     private static bool PathEquals(string? left, string? right)
         => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
@@ -876,4 +990,10 @@ internal sealed class WorkspaceNodeMovedEventArgs(string sourcePath, string targ
 {
     public string SourcePath { get; } = sourcePath;
     public string TargetDirectory { get; } = targetDirectory;
+}
+
+internal sealed class WorkspaceRenameRequestedEventArgs(WorkspaceEntry entry, string newName) : EventArgs
+{
+    public WorkspaceEntry Entry { get; } = entry;
+    public string NewName { get; } = newName;
 }

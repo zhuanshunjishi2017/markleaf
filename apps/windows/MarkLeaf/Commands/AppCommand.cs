@@ -117,6 +117,9 @@ public enum AppCommand
     GoToFootnoteReference = 0x1322,
     ClearFootnoteReferences = 0x1323,
     DeleteFootnote = 0x1324,
+    IncreaseListIndent = 0x1325,
+    DecreaseListIndent = 0x1326,
+    UseIndependentOutlineSidebar = 0x1327,
     EditMermaid = 0x131A,
     RerenderMermaid = 0x131B,
     DeleteMermaid = 0x131C,
@@ -133,6 +136,7 @@ public enum AppCommand
     ZoomReset,
     FollowSystemColorMode,
     ShowCodeHighlight,
+    CheckForUpdates = 0x140C,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -176,4 +180,5 @@ public readonly record struct CommandContext(
     bool FollowSystemColorMode = false,
     bool ShowCodeHighlight = false,
     bool ListViewActive = false,
+    bool IndependentOutlineSidebar = false,
     string? FootnoteDefinitionLabel = null);

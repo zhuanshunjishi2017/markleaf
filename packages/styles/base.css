@@ -106,14 +106,16 @@
 }
 
 .markleaf-document .markleaf-outline-highlight {
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
   animation: markleaf-outline-highlight 1.8s ease-out forwards;
 }
 
 @keyframes markleaf-outline-highlight {
   0%,
   25% {
-    background-color: var(--theme-light);
-    box-shadow: 0 0 0 4px var(--theme-light);
+    background-color: var(--highlight, #FFF36D);
+    box-shadow: 0 0 0 4px var(--highlight, #FFF36D);
   }
 
   100% {

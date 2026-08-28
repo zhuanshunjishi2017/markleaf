@@ -9,9 +9,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\App\App.ico</ApplicationIcon>
     <RootNamespace>MarkLeaf</RootNamespace>
-    <Version>1.4.0</Version>
-    <BuildNumber Condition="'$(BuildNumber)' == ''">42</BuildNumber>
-    <InformationalVersion>$(Version) (Build $(BuildNumber))</InformationalVersion>
+    <Version>1.5.0</Version>
+    <!-- BuildNumber is resolved from the current Git commit count by Directory.Build.targets. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Company>MarkLeaf</Company>
     <Description>A lightweight native Markdown editor for Windows.</Description>

@@ -20,6 +20,8 @@
   --scrollbar-active:    #777777;
   --theme-light:         #2D6AAA;
   --theme-dark:          #4A90D8;
+  --highlight:           #6F6800;
+  --highlight-current:   #A39A00;
 }
 
 /* ---- 全局 ---- */
@@ -54,13 +56,17 @@ body,
 
 /* ---- 查找高亮 ---- */
 .markleaf-find-match {
-  background: var(--theme-light);
-  box-shadow: 0 0 0 1px var(--theme-light);
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  background: var(--highlight);
+  box-shadow: 0 0 0 1px var(--highlight);
 }
 
 .markleaf-find-match-current {
-  background: var(--theme-light);
-  box-shadow: 0 0 0 2px var(--theme-dark);
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  background: var(--highlight);
+  box-shadow: 0 0 0 2px var(--highlight-current);
 }
 
 /* ---- 代码块 ---- */

@@ -28,6 +28,8 @@ public sealed class CommandCatalogTests
         Assert.AreEqual(AppCommand.FormatPainter, painter);
         Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.D6, out var heading6));
         Assert.AreEqual(AppCommand.SetHeading6, heading6);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.A, out var selectAll));
+        Assert.AreEqual(AppCommand.SelectAll, selectAll);
 
         Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Alt | Keys.N, out var newText));
         Assert.AreEqual(AppCommand.NewPlainTextDocument, newText);

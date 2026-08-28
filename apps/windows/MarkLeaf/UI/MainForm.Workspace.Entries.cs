@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.VisualBasic.FileIO;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
-using MarkLeaf.UI.Dialogs;
+using MarkLeaf.UI.Controls;
 using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI;
@@ -211,50 +211,6 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task CreateWorkspaceEntryAsync(
-        string directory,
-        bool isDirectory,
-        NewDocumentKind kind = NewDocumentKind.Markdown)
-    {
-        using var dialog = new TextInputDialog(
-            isDirectory ? Loc.Get("workspace.newFolder") : Loc.Get("workspace.newFile"),
-            Loc.Get("workspace.name"),
-            isDirectory
-                ? Loc.Get("workspace.newFolder")
-                : Loc.Get(kind == NewDocumentKind.PlainText ? "document.untitledTxt" : "document.untitledMd"));
-        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.InputText))
-        {
-            return;
-        }
-
-        try
-        {
-            var name = !isDirectory && string.IsNullOrEmpty(Path.GetExtension(dialog.InputText))
-                ? dialog.InputText + "." + kind.FileExtension()
-                : dialog.InputText;
-            var path = GetSafeChildPath(directory, name);
-            if (isDirectory)
-            {
-                if (Directory.Exists(path) || File.Exists(path))
-                {
-                    throw new IOException(Loc.Get("workspace.nameExists"));
-                }
-                Directory.CreateDirectory(path);
-            }
-            else
-            {
-                await using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                await stream.FlushAsync();
-            }
-            await RefreshWorkspaceDirectoryAsync(directory);
-            await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            ShowWorkspaceOperationError(exception);
-        }
-    }
-
     private async Task MoveWorkspaceEntryAsync(string sourcePath, string targetDirectory)
     {
         try
@@ -314,18 +270,45 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task RenameWorkspaceEntryAsync(WorkspaceEntry entry)
+    private void BeginWorkspaceEntryRename(WorkspaceEntry entry)
     {
-        using var dialog = new TextInputDialog(Loc.Get("workspace.rename"), Loc.Get("workspace.newName"), Path.GetFileName(entry.FullPath));
-        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.InputText))
+        ClearWorkspaceContextHighlight();
+        if (_workspaceListViewActive && !entry.IsDirectory)
         {
-            return;
+            _workspaceDocumentList.SelectedPath = entry.FullPath;
+            _workspaceDocumentList.BeginInlineRename(entry);
+        }
+        else
+        {
+            _workspaceTree.BeginInlineRename(entry);
+        }
+    }
+
+    private async void OnWorkspaceRenameRequested(object? sender, WorkspaceRenameRequestedEventArgs eventArgs)
+    {
+        if (!await RenameWorkspaceEntryAsync(eventArgs.Entry, eventArgs.NewName))
+        {
+            BeginWorkspaceEntryRename(eventArgs.Entry);
+        }
+    }
+
+    private async Task<bool> RenameWorkspaceEntryAsync(WorkspaceEntry entry, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            ShowWorkspaceOperationError(new ArgumentException(Loc.Get("workspace.nameInvalid")));
+            return false;
         }
 
+        var stoppedOpenDocumentWatcher = false;
         try
         {
             var parent = Path.GetDirectoryName(entry.FullPath)!;
-            var target = GetSafeChildPath(parent, dialog.InputText);
+            var target = GetSafeChildPath(parent, newName.Trim());
+            if (PathEquals(entry.FullPath, target))
+            {
+                return true;
+            }
             var isOpenDocument = !entry.IsDirectory
                 && _document?.FilePath is not null
                 && string.Equals(_document.FilePath, entry.FullPath, StringComparison.OrdinalIgnoreCase);
@@ -333,6 +316,7 @@ internal sealed partial class MainForm
             if (isOpenDocument)
             {
                 StopWatchingDocument();
+                stoppedOpenDocumentWatcher = true;
             }
 
             if (entry.IsDirectory)
@@ -350,6 +334,7 @@ internal sealed partial class MainForm
                 _document.LastKnownWriteTime = File.GetLastWriteTimeUtc(target);
                 UpdateDocumentChrome();
                 StartWatchingDocument(target);
+                stoppedOpenDocumentWatcher = false;
             }
 
             await RefreshWorkspaceDirectoryAsync(parent);
@@ -358,10 +343,16 @@ internal sealed partial class MainForm
                 _workspaceTree.SelectedPath = target;
             }
             await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
+            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            if (stoppedOpenDocumentWatcher && File.Exists(entry.FullPath))
+            {
+                StartWatchingDocument(entry.FullPath);
+            }
             ShowWorkspaceOperationError(exception);
+            return false;
         }
     }
 
@@ -397,13 +388,15 @@ internal sealed partial class MainForm
             await RefreshWorkspaceDocumentListAsync(_workspaceLoadCancellation?.Token ?? CancellationToken.None);
             if (deletesCurrentDocument && _document is not null)
             {
-                _document.FilePath = null;
-                _document.IsDirty = true;
-                _document.LastKnownWriteTime = null;
-                _document.LastKnownFingerprint = null;
+                var deletedDocumentKind = _document.Kind;
+                _document = _documentFileService.CreateNew(
+                    DefaultNewLine,
+                    deletedDocumentKind,
+                    DocumentEncodingPolicy.FromId(_settings.File.DefaultEncoding));
                 _workspaceTree.SelectedPath = null;
                 _workspaceDocumentList.SelectedPath = null;
-                UpdateDocumentChrome();
+                _recoveryService.DeleteOwnFiles();
+                LoadDocumentIntoEditor(_document);
                 SetStatus(Loc.Get("status.documentDeleted"));
             }
         }

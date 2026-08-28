@@ -57,6 +57,21 @@ public sealed class CommandStateResolverTests
     }
 
     [TestMethod]
+    public void Resolve_IndependentOutlineDisablesSidebarViewSwitching()
+    {
+        var context = CreateContext(sidebarVisible: true) with
+        {
+            IndependentOutlineSidebar = true,
+        };
+
+        Assert.AreEqual(
+            new CommandState(true, true),
+            CommandStateResolver.Resolve(AppCommand.UseIndependentOutlineSidebar, context));
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SwitchToWorkspace, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SwitchToOutline, context).IsEnabled);
+    }
+
+    [TestMethod]
     public void Resolve_FormattingCommandsExposeEditorCheckedState()
     {
         var context = new CommandContext(
@@ -82,20 +97,83 @@ public sealed class CommandStateResolverTests
             TableAlign: "center",
             ImageSelected: true);
 
-        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.SetHeading2, context));
+        Assert.AreEqual(new CommandState(false, true), CommandStateResolver.Resolve(AppCommand.SetHeading2, context));
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleBold, context));
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.InsertLink, context));
-        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleBulletList, context));
+        Assert.AreEqual(new CommandState(false, true), CommandStateResolver.Resolve(AppCommand.ToggleBulletList, context));
         Assert.AreEqual(new CommandState(true, false), CommandStateResolver.Resolve(AppCommand.ToggleItalic, context));
-        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.InsertHorizontalRule, context).IsEnabled);
-        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleTaskList, context));
-        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.InsertTable, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.InsertHorizontalRule, context).IsEnabled);
+        Assert.AreEqual(new CommandState(false, true), CommandStateResolver.Resolve(AppCommand.ToggleTaskList, context));
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.InsertTable, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.DeleteTableRow, context).IsEnabled);
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.AlignTableCenter, context));
         Assert.AreEqual(new CommandState(true, false), CommandStateResolver.Resolve(AppCommand.AlignTableLeft, context));
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.RotateImageClockwise, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExportPdf, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExportHtml, context).IsEnabled);
+    }
+
+    [TestMethod]
+    public void Resolve_ParagraphStructureCommandsAreDisabledInsideTables()
+    {
+        var context = CreateContext(editorReady: true) with
+        {
+            InTable = true,
+            ParagraphActive = true,
+            HeadingLevel = 3,
+            QuoteActive = true,
+            CodeBlockActive = true,
+            BulletListActive = true,
+            MermaidCount = 1,
+        };
+        var disabledCommands = new[]
+        {
+            AppCommand.SetParagraph,
+            AppCommand.SetHeading1,
+            AppCommand.SetHeading2,
+            AppCommand.SetHeading3,
+            AppCommand.SetHeading4,
+            AppCommand.SetHeading5,
+            AppCommand.SetHeading6,
+            AppCommand.PromoteHeading,
+            AppCommand.DemoteHeading,
+            AppCommand.ToggleQuote,
+            AppCommand.InsertMathBlock,
+            AppCommand.ToggleCodeBlock,
+            AppCommand.InsertHorizontalRule,
+            AppCommand.ToggleBulletList,
+            AppCommand.ToggleOrderedList,
+            AppCommand.ToggleTaskList,
+            AppCommand.IncreaseListIndent,
+            AppCommand.DecreaseListIndent,
+            AppCommand.InsertTable,
+            AppCommand.InsertMermaid,
+            AppCommand.RerenderAllMermaid,
+        };
+
+        foreach (var command in disabledCommands)
+        {
+            Assert.IsFalse(CommandStateResolver.Resolve(command, context).IsEnabled, command.ToString());
+        }
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.AddTableRowAfter, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.AddTableColumnAfter, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.DeleteTable, context).IsEnabled);
+    }
+
+    [TestMethod]
+    public void Resolve_ListIndentCommandsRequireListParagraph()
+    {
+        var paragraph = CreateContext(editorReady: true);
+        var bulletList = paragraph with { BulletListActive = true };
+        var orderedList = paragraph with { OrderedListActive = true };
+        var taskList = paragraph with { TaskListActive = true };
+
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.IncreaseListIndent, paragraph).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.DecreaseListIndent, paragraph).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.IncreaseListIndent, bulletList).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.DecreaseListIndent, orderedList).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.IncreaseListIndent, taskList).IsEnabled);
     }
 
     [TestMethod]

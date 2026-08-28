@@ -250,6 +250,8 @@ public sealed class EditorSettings
 
     public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
+    public bool VisualCjkAutoSpacing { get; set; } = true;
+
     public int SourceIndentWidth { get; set; } = 2;
 
     public bool ShowParagraphBlockHandle { get; set; } = true;
@@ -319,6 +321,8 @@ public sealed class WindowSettings
     public int WorkspaceWidth { get; set; } = 220;
 
     public int OutlineWidth { get; set; } = 220;
+
+    public bool OutlineDetached { get; set; }
 
     public bool SidebarCollapsed { get; set; }
 

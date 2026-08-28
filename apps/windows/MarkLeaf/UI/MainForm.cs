@@ -44,6 +44,8 @@ internal sealed partial class MainForm : Form
     private readonly OutlineTreeView _outlineTree;
     private readonly SidebarTabBar _sidebarTabBar = new();
     private readonly SidebarSearchBar _sidebarSearchBar = new();
+    private readonly SidebarTabBar _detachedOutlineTabBar = new();
+    private readonly SidebarSearchBar _detachedOutlineSearchBar = new();
     private readonly OpenFolderPrompt _openFolderPrompt = new();
     private EditorHostController? _editorHost;
     private FindReplaceDialog? _findReplaceDialog;
@@ -55,6 +57,8 @@ internal sealed partial class MainForm : Form
     private readonly System.Windows.Forms.Timer _recoveryTimer = new() { Interval = 30_000 };
     private readonly System.Windows.Forms.Timer _autoSaveTimer = new() { Interval = 500 };
     private readonly System.Windows.Forms.Timer _statusMessageTimer = new() { Interval = 5_000 };
+    private readonly System.Windows.Forms.Timer _sidebarAnimationTimer = new() { Interval = 15 };
+    private readonly System.Windows.Forms.Timer _outlineAnimationTimer = new() { Interval = 15 };
     private readonly WorkspaceChangeDebouncer _workspaceChangeDebouncer;
     private CancellationTokenSource? _workspaceLoadCancellation;
     private string? _workspaceRoot;
@@ -62,8 +66,34 @@ internal sealed partial class MainForm : Form
     private bool _documentOperationInProgress;
     private bool _closeApproved;
     private int _effectiveDpi;
-    private readonly SplitContainer _sidebarSplit;
+    private readonly LiveSplitContainer _sidebarSplit;
+    private LiveSplitContainer _outlineSplit = default!;
+    private Panel _detachedOutlinePanel = default!;
+    private Panel _detachedOutlineContentHost = default!;
+    private TableLayoutPanel _detachedOutlineLayout = default!;
     private StatusStrip? _statusStrip;
+    private Size _expandedWindowMinimumSize;
+    private bool? _sidebarAnimationTargetCollapsed;
+    private long _sidebarAnimationStartedAt;
+    private int _sidebarAnimationStartWidth;
+    private int _sidebarAnimationTargetWidth;
+    private int _sidebarAnimationEditorWidth;
+    private Rectangle _sidebarAnimationEditorBounds;
+    private bool _sidebarAnimationPreservesEditorWidth;
+    private Rectangle _sidebarAnimationStartBounds;
+    private Rectangle _sidebarAnimationTargetBounds;
+    private int _sidebarExpandedWidth;
+    private int _sidebarMinimumWidth;
+    private int _detachedOutlineWidth;
+    private int _detachedOutlineMinimumWidth;
+    private bool _outlineDetached;
+    private bool? _outlineAnimationTargetDetached;
+    private long _outlineAnimationStartedAt;
+    private bool _outlineAnimationUsesWindowBounds;
+    private int _outlineAnimationStartWidth;
+    private int _outlineAnimationTargetWidth;
+    private Rectangle _outlineAnimationStartBounds;
+    private Rectangle _outlineAnimationTargetBounds;
     private readonly ToolStripButton _viewToggleButton = new("")
     {
         Font = new Font(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point),
@@ -80,12 +110,20 @@ internal sealed partial class MainForm : Form
     {
         DisplayStyle = ToolStripItemDisplayStyle.Text,
     };
-    private readonly ToolStripStatusLabel _newLineLabel = new("CRLF");
-    private readonly ToolStripButton _modeButton = new(Loc.Get("statusBar.mode.visual"))
+    private readonly ToolStripButton _newLineLabel = new("CRLF")
     {
         DisplayStyle = ToolStripItemDisplayStyle.Text,
     };
-    private readonly ToolStripStatusLabel _zoomLabel = new("100%");
+    private readonly ToolStripButton _modeButton = new("</>")
+    {
+        DisplayStyle = ToolStripItemDisplayStyle.Text,
+        AutoSize = false,
+        TextAlign = ContentAlignment.MiddleCenter,
+    };
+    private readonly ToolStripButton _zoomLabel = new("100%")
+    {
+        DisplayStyle = ToolStripItemDisplayStyle.Text,
+    };
     private SolidBrush _menuBgBrush = new(Color.White);
     private SolidBrush _menuHighlightBrush = new(Color.FromArgb(0xF0, 0xF0, 0xF0));
     private SolidBrush _menuTextBrush = new(Color.Black);
@@ -151,8 +189,12 @@ internal sealed partial class MainForm : Form
             BackColor = editorBg,
         };
         _statusMessageTimer.Tick += (_, _) => ClearTemporaryStatusMessage();
-        _viewToggleButton.Width = this.ScaleForDpi(18);
+        _sidebarAnimationTimer.Tick += OnSidebarAnimationTick;
+        _outlineAnimationTimer.Tick += OnOutlineAnimationTick;
+        _viewToggleButton.Width = this.ScaleForDpi(26);
         _viewToggleButton.Margin = new Padding(this.ScaleForDpi(1), 0, this.ScaleForDpi(2), 0);
+        _modeButton.Width = _viewToggleButton.Width;
+        _modeButton.Margin = new Padding(0, 0, this.ScaleForDpi(2), 0);
         _shortcutManager = new ShortcutManager(_settings.Shortcut);
         _commandRouter = new CommandRouter(_shortcutManager, GetCommandState, ExecuteCommand);
         _menuService = new NativeMenuService(_commandRouter, _shortcutManager, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme, () => _settings.Appearance.FollowSystemColorMode);
@@ -188,6 +230,7 @@ internal sealed partial class MainForm : Form
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.Dpi;
         MinimumSize = new Size(900, 600);
+        _expandedWindowMinimumSize = MinimumSize;
         Font = new Font("Segoe UI", 9F, FontStyle.Regular);
 
         var placement = WindowPlacementCalculator.Normalize(
@@ -204,15 +247,21 @@ internal sealed partial class MainForm : Form
 
         Bounds = new Rectangle(placement.Left, placement.Top, placement.Width, placement.Height);
 
-        _sidebarSplit = CreateSidebarSplit(placement.WorkspaceWidth);
+        _sidebarSplit = CreateSidebarSplit(placement.WorkspaceWidth, placement.OutlineWidth);
 
         Controls.Add(_sidebarSplit);
         _statusStrip = CreateStatusBar();
-        Controls.Add(_statusStrip);
+        _outlineSplit.Panel1.Controls.Add(_statusStrip);
+        // Sidebar visibility is a window preference, independent of whether a
+        // workspace or document is restored during startup.
+        _sidebarSplit.Panel1Collapsed = settings.MainWindow.SidebarCollapsed;
+        if (settings.MainWindow.OutlineDetached)
+        {
+            DetachOutlineSidebar(resizeWindow: false);
+        }
         if (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
             || !Directory.Exists(settings.Workspace.LastFolder))
         {
-            _sidebarSplit.Panel1Collapsed = settings.MainWindow.SidebarCollapsed;
             if (!_sidebarSplit.Panel1Collapsed)
                 ShowNoWorkspacePlaceholder();
         }
@@ -234,6 +283,8 @@ internal sealed partial class MainForm : Form
             _logger.Info($"Main window DPI changed: {args.DeviceDpiOld} -> {args.DeviceDpiNew}.");
             _sidebarTabBar.ConfigureTypography(_effectiveDpi);
             _sidebarSearchBar.ConfigureTypography(_effectiveDpi);
+            _detachedOutlineTabBar.ConfigureTypography(_effectiveDpi);
+            _detachedOutlineSearchBar.ConfigureTypography(_effectiveDpi);
             UpdateSidebarHeaderRowHeights();
             _workspaceTree.ConfigureTypography(_effectiveDpi);
             _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
@@ -325,6 +376,8 @@ internal sealed partial class MainForm : Form
             StopWatchingDocument();
             StopWatchingWorkspace();
             _externalChangeTimer.Dispose();
+            _sidebarAnimationTimer.Dispose();
+            _outlineAnimationTimer.Dispose();
             _workspaceChangeDebouncer.Dispose();
             _recoveryTimer.Dispose();
             _autoSaveTimer.Dispose();
@@ -374,12 +427,6 @@ internal sealed partial class MainForm : Form
         startupTasks.Add(InitializeStartupContentAsync());
         await Task.WhenAll(startupTasks);
 
-        if (_settings.File.StartupAction == StartupAction.NewDocument
-            && !_initialDocumentOpened)
-        {
-            _sidebarSplit.Panel1Collapsed = true;
-        }
-
         if (!string.IsNullOrWhiteSpace(_options.SmokeCommand))
         {
             BeginInvoke(RunSmokeCommand);
@@ -411,11 +458,6 @@ internal sealed partial class MainForm : Form
             || string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
             || !Directory.Exists(_settings.Workspace.LastFolder))
         {
-            if (_settings.File.StartupAction == StartupAction.NewDocument
-                && !_initialDocumentOpened)
-            {
-                _sidebarSplit.Panel1Collapsed = true;
-            }
             return;
         }
 
@@ -429,11 +471,6 @@ internal sealed partial class MainForm : Form
             await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
         }
 
-        if (_settings.File.StartupAction == StartupAction.NewDocument
-            && !_initialDocumentOpened)
-        {
-            _sidebarSplit.Panel1Collapsed = true;
-        }
     }
 
     private void RunSmokeCommand()
@@ -509,7 +546,8 @@ internal sealed partial class MainForm : Form
             Bounds.Height,
             EffectiveDpi = _effectiveDpi,
             WorkspaceWidth = _sidebarSplit.SplitterDistance,
-            OutlineWidth = 0,
+            OutlineWidth = _outlineDetached ? _detachedOutlineWidth : 0,
+            OutlineDetached = _outlineDetached,
             WindowState = WindowState.ToString(),
         };
         File.WriteAllText(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));

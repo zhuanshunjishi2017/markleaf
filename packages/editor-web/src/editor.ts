@@ -140,6 +140,18 @@ function getListItemTypeAtSelection(editor: Editor): 'listItem' | 'taskItem' | n
   return null
 }
 
+export function indentListItem(editor: Editor): boolean {
+  if (!editor.isEditable) return false
+  const listItemType = getListItemTypeAtSelection(editor)
+  return listItemType ? editor.chain().focus().sinkListItem(listItemType).run() : false
+}
+
+export function outdentListItem(editor: Editor): boolean {
+  if (!editor.isEditable) return false
+  const listItemType = getListItemTypeAtSelection(editor)
+  return listItemType ? editor.chain().focus().liftListItem(listItemType).run() : false
+}
+
 /// 可视化编辑器中的 Tab：列表项执行结构化缩进，普通文本块插入两个空格。
 /// 表格仍交给表格扩展处理，以保留单元格间跳转行为。
 const VisualIndent = Extension.create({
@@ -148,10 +160,7 @@ const VisualIndent = Extension.create({
     return {
       Tab: () => {
         if (!this.editor.isEditable) return false
-        const listItemType = getListItemTypeAtSelection(this.editor)
-        if (listItemType) {
-          return this.editor.commands.sinkListItem(listItemType)
-        }
+        if (getListItemTypeAtSelection(this.editor)) return indentListItem(this.editor)
         const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
@@ -171,11 +180,11 @@ const VisualIndent = Extension.create({
       },
       'Shift-Tab': () => {
         if (!this.editor.isEditable) return false
+        if (getListItemTypeAtSelection(this.editor)) return outdentListItem(this.editor)
         const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
-          if (nodeName === 'bulletList' || nodeName === 'orderedList' || nodeName === 'taskList'
-            || nodeName === 'table' || nodeName === 'tableRow'
+          if (nodeName === 'table' || nodeName === 'tableRow'
             || nodeName === 'tableCell' || nodeName === 'tableHeader') {
             return false
           }
@@ -1085,6 +1094,32 @@ const FootnoteReference = Node.create({
       if (!match) return undefined
       return { type: 'footnoteReference', raw: match[0], text: match[1] }
     },
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /(?<=.)\[\^([^\]\n]+)\]$/,
+        handler: ({ state, range, match }) => {
+          const label = match[1]
+          const footnoteType = state.schema.nodes.footnoteReference
+          if (!label || !footnoteType) return null
+          state.tr.replaceWith(range.from, range.to, footnoteType.create({ label }))
+        },
+      }),
+      new InputRule({
+        find: /^\[\^([^\]\n]+)\]:$/,
+        handler: ({ state, range, match }) => {
+          const label = match[1]
+          if (!label) return null
+          state.tr.replaceWith(
+            range.from,
+            range.to,
+            state.schema.text(`${FOOTNOTE_DEFINITION_SENTINEL}[^${label}]: `),
+          )
+        },
+      }),
+    ]
   },
 })
 
@@ -2380,6 +2415,8 @@ export function executeEditorCommand(
     toggleBulletList: () => chain.toggleBulletList().run(),
     toggleOrderedList: () => chain.toggleOrderedList().run(),
     toggleTaskList: () => chain.toggleTaskList().run(),
+    indentListItem: () => indentListItem(editor),
+    outdentListItem: () => outdentListItem(editor),
     toggleBlockquote: () => chain.toggleBlockquote().run(),
     toggleCodeBlock: () => chain.toggleCodeBlock().run(),
     insertHorizontalRule: () => chain.setHorizontalRule().run(),
@@ -2515,11 +2552,13 @@ function highlightOutlineHeading(heading: HTMLElement): void {
     for (const animation of heading.getAnimations()) {
       animation.cancel()
     }
-    const hlColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-light').trim() || '#E0E0E0'
+    const rootStyle = getComputedStyle(document.documentElement)
+    const hlColor = rootStyle.getPropertyValue('--highlight').trim() || '#FFF36D'
+    const textColor = rootStyle.getPropertyValue('--text-primary').trim() || 'currentColor'
     animate([
-      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, offset: 0 },
-      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, offset: 0.25 },
-      { backgroundColor: 'transparent', boxShadow: '0 0 0 4px transparent', offset: 1 },
+      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, color: textColor, offset: 0 },
+      { backgroundColor: hlColor, boxShadow: `0 0 0 4px ${hlColor}`, color: textColor, offset: 0.25 },
+      { backgroundColor: 'transparent', boxShadow: '0 0 0 4px transparent', color: textColor, offset: 1 },
     ], { duration: 1800, easing: 'ease-out' })
     return
   }

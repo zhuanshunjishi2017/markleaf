@@ -108,6 +108,7 @@ const editorCreationOptions = {
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
+let lastVisualSelection = captureVisualSelection(editor)
 
 const blockHandleButton = document.createElement('button')
 blockHandleButton.type = 'button'
@@ -183,6 +184,7 @@ type VisualVariablePayload = {
   sourceFontSize: string
   sourceFontFamily: string
   cjkLanguage: string
+  visualCjkAutoSpacing: boolean
   usePointerAnchor?: boolean
   anchorX?: number | null
   anchorY?: number | null
@@ -301,6 +303,7 @@ window.__markleafApplyVisualVariables = (payload) => {
     document.documentElement.style.setProperty('--ml-source-font-family', payload.sourceFontFamily)
     document.documentElement.setAttribute('lang', payload.cjkLanguage)
     document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage)
+    document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing)
   }, anchorReader)
 }
 
@@ -496,6 +499,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
   targetEditor.on('selectionUpdate', () => {
     if (!compositionActive) {
+      lastVisualSelection = captureVisualSelection(targetEditor)
       send('selectionChanged', {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
@@ -564,7 +568,7 @@ function setSourceMode(enabled: boolean): void {
   if (enabled) {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
     const jumpTarget = getSourceModeJumpTarget(editor)
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown')
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -590,6 +594,7 @@ function setSourceMode(enabled: boolean): void {
     editorMount.hidden = false
     sourceMode = false
     restoreVisualSelection(editor, visualSelection, true)
+    lastVisualSelection = captureVisualSelection(editor)
     scheduleOutline()
     sendOutlineSelectionFromCursor()
   }
@@ -925,6 +930,16 @@ const promoteHeadingButton = createHeadingButton('promoteHeading')
 const demoteHeadingButton = createHeadingButton('demoteHeading')
 const headingButtonElements = [promoteHeadingButton, demoteHeadingButton]
 
+const clearFormatButton = document.createElement('button')
+clearFormatButton.type = 'button'
+clearFormatButton.className = 'format-menu-button'
+clearFormatButton.dataset.command = 'clearFormat'
+clearFormatButton.textContent = '\uE75C'
+clearFormatButton.setAttribute('aria-label', 'Clear formatting')
+clearFormatButton.title = 'Clear formatting'
+attachFormatCommand(clearFormatButton, 'clearFormat')
+formatMenu.appendChild(clearFormatButton)
+
 document.body.appendChild(formatMenu)
 
 function parseCssColor(value: string): [number, number, number] | null {
@@ -1205,7 +1220,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
       } else {
         sourceMode = false
         sourceMount.hidden = true
@@ -1220,6 +1235,7 @@ async function handleMessage(value: unknown): Promise<void> {
         bindEditorEvents(editor)
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
+        lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
@@ -1244,7 +1260,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution)
+        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
       } else {
         sourceMode = false
         sourceMount.hidden = true
@@ -1259,6 +1275,7 @@ async function handleMessage(value: unknown): Promise<void> {
         bindEditorEvents(editor)
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
+        lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
       updateBlockHandleOverlay()
@@ -1425,6 +1442,7 @@ async function handleMessage(value: unknown): Promise<void> {
               fontSize?: unknown
               lineHeight?: unknown
               maxWidth?: unknown
+              visualCjkAutoSpacing?: unknown
               colorSchemeCss?: unknown
               title?: unknown
             }
@@ -1436,9 +1454,23 @@ async function handleMessage(value: unknown): Promise<void> {
             const fontSize = typeof options.fontSize === 'number' ? options.fontSize : 16
             const lineHeight = typeof options.lineHeight === 'number' ? options.lineHeight : 1.6
             const maxWidth = typeof options.maxWidth === 'number' ? options.maxWidth : 820
+            const visualCjkAutoSpacing = typeof options.visualCjkAutoSpacing === 'boolean'
+              ? options.visualCjkAutoSpacing
+              : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const html = await generateExportHtml(style, format, header, footer, fontSize, lineHeight, maxWidth, colorSchemeCss, title)
+            const html = await generateExportHtml(
+              style,
+              format,
+              header,
+              footer,
+              fontSize,
+              lineHeight,
+              maxWidth,
+              visualCjkAutoSpacing,
+              colorSchemeCss,
+              title,
+            )
             send('exportContent', { html }, message.requestId)
           }
           break
@@ -1447,6 +1479,10 @@ async function handleMessage(value: unknown): Promise<void> {
           ? { left: payload.clientX, top: payload.clientY }
           : undefined
         const commandText = typeof payload.text === 'string' ? payload.text : undefined
+        if (!sourceMode
+          && (payload.command === 'indentListItem' || payload.command === 'outdentListItem')) {
+          restoreVisualSelection(editor, lastVisualSelection)
+        }
         const success = sourceMode
           ? payload.command === 'undo'
             ? sourceEditor?.undo() ?? false
@@ -1641,7 +1677,12 @@ send('ready')
 ;(window as any).__markleaf_tab__ = (shift = false) => {
   if (sourceEditor) {
     shift ? sourceEditor.insertShiftTab() : sourceEditor.insertTab()
+    return
   }
+  const command = shift ? 'outdentListItem' : 'indentListItem'
+  executeEditorCommand(editor, command)
+  lastVisualSelection = captureVisualSelection(editor)
+  sendEditorState()
 }
 
 function escapeHtml(text: string): string {
@@ -1783,6 +1824,7 @@ async function generateExportHtml(
   fontSize = 16,
   lineHeight = 1.6,
   maxWidth = 820,
+  visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
 ): Promise<string> {
@@ -1812,6 +1854,7 @@ async function generateExportHtml(
 * { box-sizing: border-box; }
 ${katexCss}
 ${baseCss}
+.markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
 ${colorSchemeCss}
 ${resolved.css}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */

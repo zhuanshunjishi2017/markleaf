@@ -254,7 +254,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "")
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -271,6 +271,7 @@ internal sealed class EditorHostController : IDisposable
             sourceFontSize = $"{sourceFontSize}px",
             sourceFontFamily = fontFamilyValue,
             cjkLanguage = cjkLang,
+            visualCjkAutoSpacing,
             usePointerAnchor = false,
             anchorX = (double?)null,
             anchorY = (double?)null,
@@ -288,6 +289,7 @@ internal sealed class EditorHostController : IDisposable
                 document.documentElement.style.setProperty('--ml-source-font-family', payload.sourceFontFamily);
                 document.documentElement.setAttribute('lang', payload.cjkLanguage);
                 document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage);
+                document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing);
               }
             })();
             """;
@@ -486,6 +488,7 @@ internal sealed class EditorHostController : IDisposable
         int fontSize,
         float lineHeight,
         int maxWidth,
+        bool visualCjkAutoSpacing,
         string? colorSchemeCss = null,
         string? title = null,
         TimeSpan? timeout = null,
@@ -503,6 +506,7 @@ internal sealed class EditorHostController : IDisposable
             fontSize,
             lineHeight,
             maxWidth,
+            visualCjkAutoSpacing,
             colorSchemeCss,
             title,
         });

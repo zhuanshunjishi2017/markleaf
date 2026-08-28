@@ -1,0 +1,94 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without a v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [win-x64, win-arm64]
+        self_contained: [false, true]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Resolve release metadata
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.version }}' } else { '${{ github.ref_name }}' }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Release tag must be a semantic version without a v prefix: $version" }
+          $projectVersion = [xml](Get-Content apps/windows/MarkLeaf/MarkLeaf.csproj).Project.PropertyGroup.Version
+          if ($version -ne $projectVersion) { throw "Release version $version does not match MarkLeaf.csproj version $projectVersion" }
+          $build = (git rev-list --count HEAD).Trim()
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "BUILD_NUMBER=$build" >> $env:GITHUB_ENV
+      - name: Publish application
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "markleaf-publish-${{ matrix.runtime }}-${{ matrix.self_contained }}"
+          dotnet publish apps/windows/MarkLeaf/MarkLeaf.csproj -c Release -r '${{ matrix.runtime }}' --self-contained ${{ matrix.self_contained }} -p:Version=$env:VERSION -p:BuildNumber=$env:BUILD_NUMBER -o $publishDir
+          "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.7.3 -y --no-progress
+      - name: Build installer and portable archive
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $arch = '${{ matrix.runtime }}'.Substring(4)
+          $allowed = if ($arch -eq 'arm64') { 'arm64compatible' } else { 'x64compatible' }
+          $sc = if ('${{ matrix.self_contained }}' -eq 'true') { '1' } else { '0' }
+          & $iscc "/DMyAppVersion=$env:VERSION" "/DBuildNumber=$env:BUILD_NUMBER" "/DAppArchitecture=$arch" "/DAppArchitectureAllowed=$allowed" "/DSelfContained=$sc" "/DSourceDir=$env:PUBLISH_DIR" "/O$env:RUNNER_TEMP" apps/windows/setup/markleaf.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $suffix = if ($sc -eq '1') { '-with-runtime' } else { '' }
+          $installerPath = Join-Path $env:RUNNER_TEMP "MarkLeaf-$env:VERSION-win-$arch$suffix.exe"
+          if (!(Test-Path $installerPath)) { throw "Installer was not produced: $installerPath" }
+          Copy-Item $installerPath .
+          if ($sc -eq '1') { Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "MarkLeaf-$env:VERSION-win-$arch-with-runtime.zip" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarkLeaf-${{ matrix.runtime }}-${{ matrix.self_contained }}
+          path: |
+            MarkLeaf-*.exe
+            MarkLeaf-*.zip
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          $build = (git rev-list --count HEAD).Trim()
+          "MarkLeaf build $build`n" | Out-File -Encoding utf8 "release-assets/MarkLeaf-build-$build.txt"
+          Get-ChildItem release-assets -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Add-Content release-assets/SHA256SUMS.txt
+          }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

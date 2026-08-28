@@ -20,6 +20,7 @@ internal sealed class ImageUrlDialog : Form
     public ImageUrlDialog()
     {
         Text = Loc.Get("dialog.insertImageUrlTitle");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

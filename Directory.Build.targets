@@ -1,0 +1,21 @@
+<Project>
+  <!-- Use the number of commits in the checked-out Git history as the build number. -->
+  <Target Name="ResolveGitBuildNumber"
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;BeforeBuild"
+          Condition="'$(BuildNumber)' == ''">
+    <Exec Command="git rev-list --count HEAD"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMsBuild="true"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+    </Exec>
+    <PropertyGroup>
+      <BuildNumber Condition="'$(GitCommitCount)' != ''">$([System.String]::Copy('$(GitCommitCount)').Trim())</BuildNumber>
+      <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+      <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version) (Build $(BuildNumber))</InformationalVersion>
+    </PropertyGroup>
+    <Message Importance="high" Text="MarkLeaf build number: $(BuildNumber)" />
+  </Target>
+</Project>

@@ -34,6 +34,9 @@ public static class WindowPlacementCalculator
             IsMaximized = saved.IsMaximized,
             WorkspaceWidth = Math.Max(ScaleDip(160, safeTargetDpi), ScaleDip(saved.WorkspaceWidth, safeTargetDpi)),
             OutlineWidth = Math.Max(ScaleDip(160, safeTargetDpi), ScaleDip(saved.OutlineWidth, safeTargetDpi)),
+            OutlineDetached = saved.OutlineDetached,
+            SidebarCollapsed = saved.SidebarCollapsed,
+            SidebarActiveOutline = saved.SidebarActiveOutline,
         };
 
         if (workingAreas.Count == 0)

@@ -32,6 +32,7 @@ internal sealed class StatusBarSettingsDialog : Form
         Settings = settings.Clone();
 
         Text = Loc.Get("prefs.statusBar.title");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;

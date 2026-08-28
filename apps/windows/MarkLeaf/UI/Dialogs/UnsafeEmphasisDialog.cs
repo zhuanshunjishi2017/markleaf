@@ -27,6 +27,7 @@ internal sealed class UnsafeEmphasisDialog : Form
     {
         var isBold = string.Equals(kind, "bold", StringComparison.Ordinal);
         Text = Loc.Get("dialog.unsafeEmphasisTitle");
+        BackColor = SystemColors.ControlLightLight;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

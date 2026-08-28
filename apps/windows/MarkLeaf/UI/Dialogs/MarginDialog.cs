@@ -18,6 +18,7 @@ internal sealed class MarginDialog : Form
     public MarginDialog(float top, float bottom, float left, float right)
     {
         Text = Loc.Get("export.customMargin");
+        BackColor = SystemColors.ControlLightLight;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;

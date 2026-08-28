@@ -1,17 +1,40 @@
+using MarkLeaf.Documents;
 using MarkLeaf.Services;
 
 namespace MarkLeaf.Workspace;
 
 internal sealed class WorkspaceService
 {
-    public string GetAvailableUntitledDocumentPath(string directory)
+    public string GetAvailableUntitledDocumentPath(
+        string directory,
+        NewDocumentKind kind = NewDocumentKind.Markdown)
     {
         var fullDirectory = Path.GetFullPath(directory);
+        var initialName = Loc.Get(kind == NewDocumentKind.PlainText
+            ? "document.untitledTxt"
+            : "document.untitledMd");
+        var stem = Path.GetFileNameWithoutExtension(initialName);
+        var extension = Path.GetExtension(initialName);
         for (var index = 1; ; index++)
         {
             var name = index == 1
-                ? Loc.Get("document.untitledMd")
-                : Loc.Format("document.untitledMdWithIndex", index);
+                ? initialName
+                : $"{stem} ({index}){extension}";
+            var path = Path.Combine(fullDirectory, name);
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                return path;
+            }
+        }
+    }
+
+    public string GetAvailableUntitledDirectoryPath(string directory)
+    {
+        var fullDirectory = Path.GetFullPath(directory);
+        var initialName = Loc.Get("workspace.untitledFolder");
+        for (var index = 1; ; index++)
+        {
+            var name = index == 1 ? initialName : $"{initialName} ({index})";
             var path = Path.Combine(fullDirectory, name);
             if (!File.Exists(path) && !Directory.Exists(path))
             {

@@ -50,7 +50,7 @@ internal sealed partial class MainForm
         _recoveryTimer.Start();
 
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47());
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         ApplyCodeHighlightVisibility();
         ApplyBlockHandleVisibility();
@@ -251,6 +251,7 @@ internal sealed partial class MainForm
                 editor.VisualFontSize,
                 editor.VisualLineHeight,
                 editor.VisualMaxContentWidth,
+                editor.VisualCjkAutoSpacing,
                 colorThemeCss,
                 defaultName);
 
@@ -601,6 +602,7 @@ internal sealed partial class MainForm
             editor.VisualFontSize,
             editor.VisualLineHeight,
             editor.VisualMaxContentWidth,
+            editor.VisualCjkAutoSpacing,
             colorSchemeCss,
             title);
         if (string.IsNullOrEmpty(html))

@@ -14,6 +14,7 @@ internal sealed class RecoveryDialog : Form
     public RecoveryDialog(IReadOnlyList<RecoverySnapshot> recoveries)
     {
         Text = Loc.Get("dialog.recoveryTitle");
+        BackColor = SystemColors.ControlLightLight;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
