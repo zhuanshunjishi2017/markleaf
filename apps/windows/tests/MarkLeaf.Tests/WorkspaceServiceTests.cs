@@ -166,11 +166,11 @@ public sealed class WorkspaceServiceTests
     {
         var now = new DateTime(2026, 8, 1, 16, 30, 0);
 
-        Assert.AreEqual("08:15", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 8, 1, 8, 15, 0), now));
-        Assert.AreEqual("昨天12:29", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 31, 12, 29, 0), now));
-        Assert.AreEqual("前天09:08", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 30, 9, 8, 0), now));
-        Assert.AreEqual("3天前", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 29, 9, 8, 0), now));
-        Assert.AreEqual("7天前", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 25, 9, 8, 0), now));
+        Assert.AreEqual("今天 08:15", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 8, 1, 8, 15, 0), now));
+        Assert.AreEqual("昨天 12:29", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 31, 12, 29, 0), now));
+        Assert.AreEqual("7月30日", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 30, 9, 8, 0), now));
+        Assert.AreEqual("7月29日", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 29, 9, 8, 0), now));
+        Assert.AreEqual("7月25日", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 7, 25, 9, 8, 0), now));
         Assert.AreEqual("3月9日", WorkspaceDocumentTimeFormatter.Format(new DateTime(2026, 3, 9, 9, 8, 0), now));
         Assert.AreEqual("2025/9/12", WorkspaceDocumentTimeFormatter.Format(new DateTime(2025, 9, 12, 9, 8, 0), now));
     }

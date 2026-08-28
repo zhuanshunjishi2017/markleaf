@@ -54,7 +54,11 @@ internal sealed class WorkspaceDocumentListView : Control
     public bool AutoHideScrollbar
     {
         get => _scrollBar.AutoHide;
-        set => _scrollBar.AutoHide = value;
+        set
+        {
+            _scrollBar.AutoHide = value;
+            Invalidate();
+        }
     }
 
     public event EventHandler<string>? DocumentActivated;
@@ -147,7 +151,8 @@ internal sealed class WorkspaceDocumentListView : Control
         var bounds = new Rectangle(
             row.Bounds.Left + horizontalPadding,
             top,
-            Math.Max(this.ScaleForDpi(40), row.Bounds.Width - horizontalPadding * 2),
+            Math.Max(this.ScaleForDpi(40), row.Bounds.Width - horizontalPadding
+                - ContentRightPadding(horizontalPadding)),
             _documentFont.Height + this.ScaleForDpi(2));
         _renameDocument = row.Document;
         _renameEditor = new TextBox
@@ -177,7 +182,14 @@ internal sealed class WorkspaceDocumentListView : Control
                 eventArgs.Graphics,
                 PlaceholderText,
                 _metadataFont,
-                new Rectangle(this.ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - this.ScaleForDpi(28)), _rowHeight),
+                new Rectangle(
+                    this.ScaleForDpi(16),
+                    0,
+                    Math.Max(0, ClientSize.Width
+                        - (_scrollBar.Visible ? _scrollBar.Width : 0)
+                        - this.ScaleForDpi(16)
+                        - ContentRightPadding(this.ScaleForDpi(12))),
+                    _rowHeight),
                 _textTertiary,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
@@ -194,9 +206,10 @@ internal sealed class WorkspaceDocumentListView : Control
 
             var isSelected = PathEquals(document.FullPath, _selectedPath);
             var isHovered = PathEquals(document.FullPath, _hoveredPath);
+            var rightPadding = ContentRightPadding(this.ScaleForDpi(8));
             var bgBounds = new Rectangle(
                 this.ScaleForDpi(8), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(16)), bounds.Height);
+                Math.Max(0, bounds.Width - this.ScaleForDpi(8) - rightPadding), bounds.Height);
             if (isSelected && isHovered)
             {
                 using var brush = new SolidBrush(_themeDark);
@@ -367,8 +380,10 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         var metaColor = isSelected ? _textTertiarySelected : _textTertiary;
         var horizontalPadding = this.ScaleForDpi(15);
+        var dateRightPadding = this.ScaleForDpi(12);
         var topPadding = this.ScaleForDpi(3);
-        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding * 2);
+        // Keep the title's right edge aligned with the date's fixed right edge.
+        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding - dateRightPadding);
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
         var iconAdvance = this.ScaleForDpi(14);
         var metadataBounds = new Rectangle(
@@ -392,12 +407,14 @@ internal sealed class WorkspaceDocumentListView : Control
         var folderBounds = new Rectangle(
             metadataBounds.Left + iconAdvance,
             metadataBounds.Top,
-            Math.Max(0, metadataBounds.Width - modifiedWidth - gap - iconAdvance),
+            Math.Max(0, bounds.Right - dateRightPadding - modifiedWidth - gap
+                - metadataBounds.Left - iconAdvance),
             metadataBounds.Height);
+        var modifiedRight = bounds.Right - dateRightPadding;
         var modifiedBounds = new Rectangle(
-            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth - this.ScaleForDpi(4)),
+            Math.Max(metadataBounds.Left, modifiedRight - modifiedWidth),
             metadataBounds.Top,
-            Math.Min(modifiedWidth, metadataBounds.Width),
+            Math.Min(modifiedWidth, Math.Max(0, modifiedRight - metadataBounds.Left)),
             metadataBounds.Height);
         DrawText(
             graphics,
@@ -453,6 +470,9 @@ internal sealed class WorkspaceDocumentListView : Control
             top += _rowHeight + this.ScaleForDpi(2);
         }
     }
+
+    private int ContentRightPadding(int defaultPadding)
+        => _scrollBar.Visible && _scrollBar.AutoHide ? 0 : defaultPadding;
 
     private (WorkspaceDocumentEntry Document, Rectangle Bounds)? HitTestRow(Point location)
     {

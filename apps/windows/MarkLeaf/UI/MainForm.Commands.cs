@@ -273,6 +273,9 @@ internal sealed partial class MainForm
             case AppCommand.ShowChangelog:
                 ShowChangelog();
                 break;
+            case AppCommand.ShowWelcome:
+                ShowWelcome();
+                break;
             case AppCommand.CheckForUpdates:
                 _ = CheckForUpdatesAsync();
                 break;

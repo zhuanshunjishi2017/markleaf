@@ -86,10 +86,13 @@ internal sealed partial class MainForm
             var color = isDisabled ? ((SolidBrush)_menuDisabledBrush).Color
                                    : ((SolidBrush)_menuTextBrush).Color;
             var textRect = new Rectangle(rc.Left, rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top);
+            var prefixFlags = (state & MenuBarDarkMode.OdsNoAccel) != 0
+                ? TextFormatFlags.HidePrefix
+                : TextFormatFlags.Default;
 
             TextRenderer.DrawText(g, itemText, SystemFonts.MenuFont!, textRect, color,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
-                | TextFormatFlags.SingleLine);
+                | TextFormatFlags.SingleLine | prefixFlags);
             m.Result = 0;
         }
         catch (ArgumentException) { }

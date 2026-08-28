@@ -45,7 +45,11 @@ internal sealed class SearchResultsView : Control
     public bool AutoHideScrollbar
     {
         get => _scrollBar.AutoHide;
-        set => _scrollBar.AutoHide = value;
+        set
+        {
+            _scrollBar.AutoHide = value;
+            Invalidate();
+        }
     }
 
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
@@ -100,7 +104,14 @@ internal sealed class SearchResultsView : Control
                 eventArgs.Graphics,
                 Loc.Get("sidebar.noSearchResults"),
                 _snippetFont,
-                new Rectangle(this.ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - this.ScaleForDpi(28)), _rowHeight),
+                new Rectangle(
+                    this.ScaleForDpi(16),
+                    0,
+                    Math.Max(0, ClientSize.Width
+                        - (_scrollBar.Visible ? _scrollBar.Width : 0)
+                        - this.ScaleForDpi(16)
+                        - ContentRightPadding(this.ScaleForDpi(12))),
+                    _rowHeight),
                 _textTertiary,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
@@ -116,9 +127,10 @@ internal sealed class SearchResultsView : Control
             }
 
             var isHovered = string.Equals(result.FullPath, _hoveredPath, StringComparison.OrdinalIgnoreCase);
+            var rightPadding = ContentRightPadding(this.ScaleForDpi(4));
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
+                Math.Max(0, bounds.Width - this.ScaleForDpi(4) - rightPadding), bounds.Height);
             if (isHovered)
             {
                 using var brush = new SolidBrush(_bgHover);
@@ -202,7 +214,8 @@ internal sealed class SearchResultsView : Control
     {
         var horizontalPadding = this.ScaleForDpi(10);
         var topPadding = this.ScaleForDpi(3);
-        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding * 2);
+        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding
+            - ContentRightPadding(horizontalPadding));
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
         var iconAdvance = this.ScaleForDpi(14);
 
@@ -277,6 +290,9 @@ internal sealed class SearchResultsView : Control
             top += _rowHeight + this.ScaleForDpi(2);
         }
     }
+
+    private int ContentRightPadding(int defaultPadding)
+        => _scrollBar.Visible && _scrollBar.AutoHide ? 0 : defaultPadding;
 
     private (SearchResult Result, Rectangle Bounds)? HitTestRow(Point location)
     {

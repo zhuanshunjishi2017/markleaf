@@ -99,6 +99,33 @@ public sealed class ImageAssetServiceTests
     }
 
     [TestMethod]
+    public void FindMissingImages_IgnoresImageSyntaxInsideFencedCodeBlocks()
+    {
+        var outside = Path.Combine(_testDirectory, "outside.png");
+        var markdown = $"```markdown\n![example](inside.png)\n```\n" +
+            $"~~~\n![another](inside-too.png)\n~~~\n" +
+            $"![missing]({ImageAssetService.ToMarkdownPath(outside)})";
+
+        var result = _service.FindMissingImages(markdown, Path.Combine(_testDirectory, "document.md"));
+
+        Assert.HasCount(1, result);
+        Assert.AreEqual("outside.png", result[0].FileName);
+    }
+
+    [TestMethod]
+    public void FindMissingImages_IgnoresImageSyntaxInsideInlineCode()
+    {
+        var outside = Path.Combine(_testDirectory, "outside.png");
+        var markdown = "Use `![example](inside.png)` or ``![example](`inside.png`)`` as syntax.\n" +
+            $"![missing]({ImageAssetService.ToMarkdownPath(outside)})";
+
+        var result = _service.FindMissingImages(markdown, Path.Combine(_testDirectory, "document.md"));
+
+        Assert.HasCount(1, result);
+        Assert.AreEqual("outside.png", result[0].FileName);
+    }
+
+    [TestMethod]
     public void ReplaceImagePaths_RewritesOnlySelectedImageReferences()
     {
         const string missing = "C:/old/missing.png";
@@ -111,5 +138,35 @@ public sealed class ImageAssetServiceTests
 
         StringAssert.Contains(updated, ImageAssetService.ToMarkdownPath(replacement));
         StringAssert.Contains(updated, "C:/old/kept.png");
+    }
+
+    [TestMethod]
+    public void ReplaceImagePaths_DoesNotRewriteImageSyntaxInsideFencedCodeBlocks()
+    {
+        const string missing = "C:/old/missing.png";
+        var replacement = Path.Combine(_testDirectory, "replacement.png");
+        var markdown = $"```markdown\n![example]({missing})\n```\n![missing]({missing})";
+
+        var updated = ImageAssetService.ReplaceImagePaths(
+            markdown,
+            new Dictionary<string, string> { [missing] = ImageAssetService.ToMarkdownPath(replacement) });
+
+        StringAssert.Contains(updated, $"```markdown\n![example]({missing})\n```");
+        StringAssert.EndsWith(updated, $"![missing]({ImageAssetService.ToMarkdownPath(replacement)})");
+    }
+
+    [TestMethod]
+    public void ReplaceImagePaths_DoesNotRewriteImageSyntaxInsideInlineCode()
+    {
+        const string missing = "C:/old/missing.png";
+        var replacement = Path.Combine(_testDirectory, "replacement.png");
+        var markdown = $"Use `![example]({missing})` here.\n![missing]({missing})";
+
+        var updated = ImageAssetService.ReplaceImagePaths(
+            markdown,
+            new Dictionary<string, string> { [missing] = ImageAssetService.ToMarkdownPath(replacement) });
+
+        StringAssert.Contains(updated, $"`![example]({missing})`");
+        StringAssert.EndsWith(updated, $"![missing]({ImageAssetService.ToMarkdownPath(replacement)})");
     }
 }

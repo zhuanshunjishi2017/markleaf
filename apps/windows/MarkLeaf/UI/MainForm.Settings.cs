@@ -61,7 +61,7 @@ internal sealed partial class MainForm
             Dpi = _effectiveDpi,
             IsMaximized = WindowState == FormWindowState.Maximized,
             WorkspaceWidth = WindowPlacementCalculator.ToLogicalPixels(
-                _sidebarSplit.SplitterDistance,
+                _sidebarExpandedWidth,
                 _effectiveDpi),
             OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(
                 _detachedOutlineWidth,

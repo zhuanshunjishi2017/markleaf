@@ -137,6 +137,7 @@ public enum AppCommand
     FollowSystemColorMode,
     ShowCodeHighlight,
     CheckForUpdates = 0x140C,
+    ShowWelcome = 0x140D,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);

@@ -376,6 +376,30 @@ function getNodeText(node: any): string {
   return content.map(getNodeText).join('')
 }
 
+function inlineContentAfterTextOffset(content: any[], offset: number): any[] {
+  const result: any[] = []
+  let remaining = Math.max(0, offset)
+
+  for (const child of content) {
+    const text = getNodeText(child)
+    if (remaining >= text.length) {
+      remaining -= text.length
+      continue
+    }
+
+    if (remaining > 0 && typeof child?.text === 'string') {
+      result.push({ ...child, text: child.text.slice(remaining) })
+      remaining = 0
+      continue
+    }
+
+    result.push(child)
+    remaining = 0
+  }
+
+  return result
+}
+
 export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
   if (!blockHandleVisible || blockHandleComposing) return null
   const state = editor.state
@@ -1112,11 +1136,13 @@ const FootnoteReference = Node.create({
         handler: ({ state, range, match }) => {
           const label = match[1]
           if (!label) return null
-          state.tr.replaceWith(
+          const replacement = `${FOOTNOTE_DEFINITION_SENTINEL}[^${label}]: `
+          const tr = state.tr.replaceWith(
             range.from,
             range.to,
-            state.schema.text(`${FOOTNOTE_DEFINITION_SENTINEL}[^${label}]: `),
+            state.schema.text(replacement),
           )
+          tr.setSelection(TextSelection.create(tr.doc, range.from + replacement.length))
         },
       }),
     ]
@@ -1168,7 +1194,10 @@ const MarkLeafParagraph = Node.create({
       }
       return helpers.renderChildren(content)
     }
-    return `[^${footnote.label}]: ${footnote.body.trim()}`
+    const prefix = new RegExp(`^\\s*${FOOTNOTE_DEFINITION_SENTINEL}?\\[\\^[^\\]\\n]+\\]:[ \\t]*`).exec(text)
+    const content = Array.isArray(node.content) ? node.content : []
+    const bodyContent = inlineContentAfterTextOffset(content, prefix?.[0].length ?? 0)
+    return `[^${footnote.label}]: ${helpers.renderChildren(bodyContent).trim()}`
   },
 
   addCommands(): any {
@@ -1194,7 +1223,7 @@ const FootnoteDefinitionDecorations = Extension.create({
           state.doc.descendants((node, pos) => {
             const footnote = parseFootnoteDefinitionText(node.textContent)
             if (node.type.name !== 'paragraph' || !footnote) return
-            const match = new RegExp(`^\\s*${FOOTNOTE_DEFINITION_SENTINEL}?\\[\\^[^\\]\\n]+\\]:[ \\t]*`).exec(node.textContent)
+            const match = new RegExp(`^\\s*${FOOTNOTE_DEFINITION_SENTINEL}?\\[\\^[^\\]\\n]+\\]:`).exec(node.textContent)
             decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'markleaf-footnote-def', 'data-footnote-label': footnote.label }))
             if (match) {
               decorations.push(Decoration.inline(pos + 1, pos + 1 + match[0].length, { class: 'markleaf-footnote-def-prefix' }))

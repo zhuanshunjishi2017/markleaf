@@ -12,6 +12,8 @@ internal enum SidebarTabBarMode
 
 internal sealed class SidebarTabBar : Control
 {
+    private const int SelectionAnimationDurationMs = 180;
+
     private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
     private Color _bgSelectedHover = Color.FromArgb(0xD0, 0xD0, 0xD0);
     private Color _themeLight = Color.FromArgb(0x66, 0x99, 0xFF);
@@ -26,6 +28,14 @@ internal sealed class SidebarTabBar : Control
     private Font _selectedFont = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _iconFont = new("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private readonly Rectangle[] _tabBounds = new Rectangle[2];
+    private readonly Rectangle[] _tabVisualBounds = new Rectangle[2];
+    private readonly System.Windows.Forms.Timer _selectionAnimationTimer = new() { Interval = 15 };
+    private RectangleF _selectionBounds;
+    private RectangleF _selectionAnimationStartBounds;
+    private RectangleF _selectionAnimationTargetBounds;
+    private long _selectionAnimationStartedAt;
+    private bool _selectionBoundsInitialized;
+    private bool _selectionAnimationActive;
     private Rectangle _openFolderBounds;
     private SidebarTabBarMode _mode;
 
@@ -44,6 +54,7 @@ internal sealed class SidebarTabBar : Control
         TabStop = true;
         BackColor = Color.White;
         ForeColor = _textPrimary;
+        _selectionAnimationTimer.Tick += SelectionAnimationTimer_Tick;
     }
 
     public event EventHandler<int>? TabChanged;
@@ -67,6 +78,7 @@ internal sealed class SidebarTabBar : Control
             if (_mode == value) return;
             _mode = value;
             ConfigureTabs();
+            ResetSelectionAnimation();
             Invalidate();
         }
     }
@@ -80,25 +92,21 @@ internal sealed class SidebarTabBar : Control
         {
             if (_selectedIndex != value && value >= 0 && value < _tabs.Length)
             {
-                _selectedIndex = value;
-                Invalidate();
-                TabChanged?.Invoke(this, value);
+                SetSelectedIndex(value, raiseChangedEvent: true);
             }
         }
     }
 
     public void SetSelectedIndexSilently(int index)
     {
-        if (index >= 0 && index < _tabs.Length)
-        {
-            _selectedIndex = index;
-            Invalidate();
-        }
+        if (_selectedIndex != index && index >= 0 && index < _tabs.Length)
+            SetSelectedIndex(index, raiseChangedEvent: false);
     }
 
     public void ReloadTexts()
     {
         ConfigureTabs();
+        ResetSelectionAnimation();
         Invalidate();
     }
 
@@ -123,6 +131,7 @@ internal sealed class SidebarTabBar : Control
         _selectedFont = new Font("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
         _iconFont = new Font("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
         Height = this.ScaleForDpi(39);
+        ResetSelectionAnimation();
         Invalidate();
     }
 
@@ -196,30 +205,120 @@ internal sealed class SidebarTabBar : Control
             SidebarGdi.FillRoundedRect(g, groupBounds, radius, groupBrush);
 
         Array.Clear(_tabBounds);
+        Array.Clear(_tabVisualBounds);
         var x = left;
         for (var i = 0; i < _tabs.Length; i++)
         {
             var tabWidth = tabWidths[i];
             var tabBounds = new Rectangle(x, topPad, tabWidth, groupBounds.Height);
             _tabBounds[i] = new Rectangle(x, 0, tabWidth, ClientSize.Height);
-            var isSelected = _mode != SidebarTabBarMode.OutlineOnly && i == _selectedIndex;
+            _tabVisualBounds[i] = tabBounds;
+            x += tabWidth + gap;
+        }
 
-            if (isSelected)
-            {
-                using var brush = new SolidBrush(_themeLight);
-                SidebarGdi.FillRoundedRect(g, tabBounds, radius, brush);
-            }
+        DrawSelectionSlider(g, radius);
+
+        for (var i = 0; i < _tabs.Length; i++)
+        {
+            var isSelected = _mode != SidebarTabBarMode.OutlineOnly && i == _selectedIndex;
+            var textColor = isSelected ? _textSelected : _textPrimary;
 
             TextRenderer.DrawText(
                 g,
                 _tabs[i],
                 isSelected ? _selectedFont : _font,
-                tabBounds,
-                isSelected ? _textSelected : ForeColor,
+                _tabVisualBounds[i],
+                textColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
-            x += tabWidth + gap;
         }
+    }
+
+    private void DrawSelectionSlider(Graphics graphics, int radius)
+    {
+        if (_mode == SidebarTabBarMode.OutlineOnly || _tabs.Length == 0)
+            return;
+
+        var targetBounds = (RectangleF)_tabVisualBounds[_selectedIndex];
+        if (!_selectionBoundsInitialized || !_selectionAnimationActive)
+        {
+            _selectionBounds = targetBounds;
+            _selectionBoundsInitialized = true;
+        }
+        else
+        {
+            _selectionAnimationTargetBounds = targetBounds;
+        }
+
+        using var brush = new SolidBrush(_themeLight);
+        SidebarGdi.FillRoundedRect(graphics, Rectangle.Round(_selectionBounds), radius, brush);
+    }
+
+    private void SetSelectedIndex(int index, bool raiseChangedEvent)
+    {
+        var animate = _mode == SidebarTabBarMode.Combined
+            && _selectionBoundsInitialized
+            && _tabVisualBounds[index].Width > 0;
+
+        _selectedIndex = index;
+        if (animate)
+            StartSelectionAnimation(_tabVisualBounds[index]);
+        else
+            ResetSelectionAnimation();
+
+        Invalidate();
+        if (raiseChangedEvent)
+            TabChanged?.Invoke(this, index);
+    }
+
+    private void StartSelectionAnimation(Rectangle targetBounds)
+    {
+        _selectionAnimationStartBounds = _selectionBounds;
+        _selectionAnimationTargetBounds = targetBounds;
+        _selectionAnimationStartedAt = Environment.TickCount64;
+        _selectionAnimationActive = true;
+        _selectionAnimationTimer.Start();
+    }
+
+    private void SelectionAnimationTimer_Tick(object? sender, EventArgs e)
+    {
+        var progress = Math.Clamp(
+            (Environment.TickCount64 - _selectionAnimationStartedAt) / (double)SelectionAnimationDurationMs,
+            0.0,
+            1.0);
+        var eased = progress < 0.5
+            ? 4.0 * progress * progress * progress
+            : 1.0 - Math.Pow(-2.0 * progress + 2.0, 3.0) / 2.0;
+
+        _selectionBounds = InterpolateBounds(
+            _selectionAnimationStartBounds,
+            _selectionAnimationTargetBounds,
+            (float)eased);
+
+        if (progress >= 1.0)
+        {
+            _selectionBounds = _selectionAnimationTargetBounds;
+            _selectionAnimationActive = false;
+            _selectionAnimationTimer.Stop();
+        }
+
+        Invalidate();
+    }
+
+    private static RectangleF InterpolateBounds(RectangleF start, RectangleF end, float progress)
+    {
+        return new RectangleF(
+            start.X + (end.X - start.X) * progress,
+            start.Y + (end.Y - start.Y) * progress,
+            start.Width + (end.Width - start.Width) * progress,
+            start.Height + (end.Height - start.Height) * progress);
+    }
+
+    private void ResetSelectionAnimation()
+    {
+        _selectionAnimationTimer.Stop();
+        _selectionAnimationActive = false;
+        _selectionBoundsInitialized = false;
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -306,6 +405,12 @@ internal sealed class SidebarTabBar : Control
         _openFolderHovered = false;
     }
 
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        ResetSelectionAnimation();
+        base.OnSizeChanged(e);
+    }
+
     protected override bool IsInputKey(Keys keyData)
     {
         return keyData is Keys.Left or Keys.Right or Keys.Enter or Keys.Space
@@ -333,6 +438,7 @@ internal sealed class SidebarTabBar : Control
     {
         if (disposing)
         {
+            _selectionAnimationTimer.Dispose();
             _font.Dispose();
             _selectedFont.Dispose();
             _iconFont.Dispose();

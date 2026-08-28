@@ -11,6 +11,7 @@ import {
   resetEditorViewport,
   sanitizePastedHtml,
   findInEditor,
+  findFootnoteDefinitionBody,
   exportEditorSelection,
   replaceAllInEditor,
   replaceCurrentInEditor,
@@ -234,6 +235,54 @@ describe('IME composition safety', () => {
 })
 
 describe('visual Markdown shortcuts', () => {
+  it('preserves inline formatting in footnote definitions and previews it as plain text', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '[^1]: **加粗**、*斜体*和`代码`')
+    editors.push(editor)
+
+    expect(editor.getHTML()).toContain('<strong>加粗</strong>')
+    expect(editor.getHTML()).toContain('<em>斜体</em>')
+    expect(editor.getHTML()).toContain('<code>代码</code>')
+    expect(getMarkdown(editor)).toBe('[^1]: **加粗**、*斜体*和`代码`')
+    expect(findFootnoteDefinitionBody(editor, '1')).toBe('加粗、斜体和代码')
+  })
+
+  it('renders inline math in footnote definitions and previews its source as plain text', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '[^1]: 公式 $x^2 + y^2$')
+    editors.push(editor)
+
+    const math = element.querySelector('.markleaf-math-inline')
+    expect(math).not.toBeNull()
+    expect(math?.querySelector('.katex')).not.toBeNull()
+    expect(getMarkdown(editor)).toBe('[^1]: 公式 $x^2 + y^2$')
+    expect(findFootnoteDefinitionBody(editor, '1')).toBe('公式 x^2 + y^2')
+  })
+
+  it('turns a closed inline formula typed in a footnote definition into rendered math', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '[^1]: 公式 ')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.commands.insertContent('$x^2')
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      '$',
+      () => editor.state.tr.insertText('$'),
+    ))
+
+    expect(handled).toBe(true)
+    expect(element.querySelector('.markleaf-math-inline .katex')).not.toBeNull()
+    expect(getMarkdown(editor)).toBe('[^1]: 公式 $x^2$')
+    expect(findFootnoteDefinitionBody(editor, '1')).toBe('公式 x^2')
+  })
+
   it('turns a closed footnote reference after paragraph text into superscript', () => {
     const element = document.createElement('div')
     document.body.append(element)
@@ -274,13 +323,15 @@ describe('visual Markdown shortcuts', () => {
     expect(editor.getHTML()).not.toContain('data-footnote-ref')
   })
 
-  it('turns a footnote marker followed by a colon at paragraph start into a definition', () => {
+  it.each(['注释', '1'])(
+    'turns a footnote marker %s followed by a colon at paragraph start into a definition',
+    (label) => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '')
     editors.push(editor)
 
-    editor.commands.insertContent('[^注释]')
+    editor.commands.insertContent(`[^${label}]`)
     const handled = editor.view.someProp('handleTextInput', handler => handler(
       editor.view,
       editor.state.selection.from,
@@ -290,10 +341,17 @@ describe('visual Markdown shortcuts', () => {
     ))
 
     expect(handled).toBe(true)
-    expect(editor.state.selection.$from.parent.textContent).toBe('\u2060[^注释]: ')
-    expect(element.querySelector('p')?.classList.contains('markleaf-footnote-def')).toBe(true)
-    expect(getMarkdown(editor)).toBe('[^注释]: ')
-  })
+    expect(editor.state.selection.$from.parent.textContent).toBe(`\u2060[^${label}]: `)
+    expect(editor.state.selection.empty).toBe(true)
+    expect(editor.state.selection.$from.parentOffset).toBe(`\u2060[^${label}]: `.length)
+    const paragraph = element.querySelector('p')
+    const hiddenPrefix = paragraph?.querySelector('.markleaf-footnote-def-prefix')
+    expect(paragraph?.classList.contains('markleaf-footnote-def')).toBe(true)
+    expect(hiddenPrefix?.textContent).toBe(`\u2060[^${label}]:`)
+    expect(paragraph?.lastChild?.textContent).toBe(' ')
+    expect(getMarkdown(editor)).toBe(`[^${label}]: `)
+    },
+  )
 
   it('applies bold and italic when closed triple asterisks are typed', () => {
     const element = document.createElement('div')

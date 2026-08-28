@@ -681,6 +681,10 @@ internal sealed partial class MainForm
         _editorPanel.Dock = DockStyle.Fill;
         _sidebarSplit.SetLiveDraggingEnabled(true);
         UpdateViewToggleIcon();
+        if (collapsed)
+        {
+            SaveWindowState();
+        }
     }
 
     private void ResizeWindowForSidebarExtent(int widthDelta)

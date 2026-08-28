@@ -7,7 +7,7 @@ public static class CommandStateResolver
         return command switch
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowPreferences
-                or AppCommand.ShowAbout or AppCommand.ShowChangelog
+                or AppCommand.ShowAbout or AppCommand.ShowChangelog or AppCommand.ShowWelcome
                 or AppCommand.CheckForUpdates
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder

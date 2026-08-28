@@ -75,6 +75,25 @@ public sealed class WindowPlacementCalculatorTests
     }
 
     [TestMethod]
+    public void Normalize_PreservesCollapsedWindowWidthBelowExpandedMinimum()
+    {
+        var saved = new WindowSettings
+        {
+            Width = 780,
+            Height = 700,
+            Dpi = 96,
+            WorkspaceWidth = 220,
+            SidebarCollapsed = true,
+        };
+
+        var actual = WindowPlacementCalculator.Normalize(saved, 96, []);
+
+        Assert.AreEqual(780, actual.Width);
+        Assert.AreEqual(220, actual.WorkspaceWidth);
+        Assert.IsTrue(actual.SidebarCollapsed);
+    }
+
+    [TestMethod]
     public void ToLogicalPixels_ConvertsPhysicalValuesAtCurrentDpi()
     {
         Assert.AreEqual(1067, WindowPlacementCalculator.ToLogicalPixels(1868, 168));

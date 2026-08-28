@@ -82,7 +82,11 @@ internal sealed class WorkspaceTreeView : Control
     public bool AutoHideScrollbar
     {
         get => _scrollBar.AutoHide;
-        set => _scrollBar.AutoHide = value;
+        set
+        {
+            _scrollBar.AutoHide = value;
+            Invalidate();
+        }
     }
 
     [Browsable(false)]
@@ -317,7 +321,14 @@ internal sealed class WorkspaceTreeView : Control
         if (_root is null)
         {
             DrawText(eventArgs.Graphics, _placeholderText ?? string.Empty,
-                new Rectangle(this.ScaleForDpi(16), 0, Math.Max(0, ClientSize.Width - this.ScaleForDpi(28)), _rowHeight),
+                new Rectangle(
+                    this.ScaleForDpi(16),
+                    0,
+                    Math.Max(0, ClientSize.Width
+                        - (_scrollBar.Visible ? _scrollBar.Width : 0)
+                        - this.ScaleForDpi(16)
+                        - ContentRightPadding(this.ScaleForDpi(12))),
+                    _rowHeight),
                 _textTertiary);
             return;
         }
@@ -332,9 +343,10 @@ internal sealed class WorkspaceTreeView : Control
             var isSelected = !node.Entry.IsDirectory && PathEquals(node.Entry.FullPath, _selectedPath);
             var isHovered = PathEquals(node.Entry.FullPath, _hoveredPath)
                 || PathEquals(node.Entry.FullPath, _keyboardHoverPath);
+            var rightPadding = ContentRightPadding(this.ScaleForDpi(8));
             var bgBounds = new Rectangle(
                 this.ScaleForDpi(8), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(16)), bounds.Height);
+                Math.Max(0, bounds.Width - this.ScaleForDpi(8) - rightPadding), bounds.Height);
             if (isSelected && isHovered)
             {
                 using var brush = new SolidBrush(_bgSelectedHover);
@@ -369,7 +381,7 @@ internal sealed class WorkspaceTreeView : Control
             var textBounds = new Rectangle(
                 iconBounds.Right,
                 bounds.Top,
-                Math.Max(0, bounds.Width - iconBounds.Right - this.ScaleForDpi(4)),
+                Math.Max(0, bounds.Width - iconBounds.Right - ContentRightPadding(this.ScaleForDpi(4))),
                 bounds.Height);
             if (!PathEquals(node.Entry.FullPath, _renameEntry?.FullPath))
             {
@@ -388,7 +400,8 @@ internal sealed class WorkspaceTreeView : Control
             var bgBounds = new Rectangle(
                 this.ScaleForDpi(8),
                 _dropTargetBounds.Y,
-                Math.Max(0, _dropTargetBounds.Width - this.ScaleForDpi(16)),
+                Math.Max(0, _dropTargetBounds.Width - this.ScaleForDpi(8)
+                    - ContentRightPadding(this.ScaleForDpi(8))),
                 _dropTargetBounds.Height);
             using var pen = new Pen(_textSecondary, 2);
             SidebarGdi.DrawRoundedRect(eventArgs.Graphics, bgBounds, this.ScaleForDpi(8), pen);
@@ -739,6 +752,9 @@ internal sealed class WorkspaceTreeView : Control
             top += _rowHeight + this.ScaleForDpi(2);
         }
     }
+
+    private int ContentRightPadding(int defaultPadding)
+        => _scrollBar.Visible && _scrollBar.AutoHide ? 0 : defaultPadding;
 
     private (WorkspaceNode Node, Rectangle Bounds)? HitTestRow(Point location)
     {

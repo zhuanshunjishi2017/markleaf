@@ -110,6 +110,29 @@ internal sealed partial class MainForm
         await OpenDocumentPathAsync(cachePath, readOnly: true);
     }
 
+    private async void ShowWelcome()
+    {
+        var welcomePath = Path.Combine(AppContext.BaseDirectory, "Resources", "welcome.md");
+        if (!File.Exists(welcomePath))
+        {
+            SetStatus(Loc.Get("welcome.notFound"));
+            return;
+        }
+
+        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "welcome.md");
+        try
+        {
+            File.Copy(welcomePath, cachePath, overwrite: true);
+        }
+        catch
+        {
+            SetStatus(Loc.Get("welcome.openFailed"));
+            return;
+        }
+
+        await OpenDocumentPathAsync(cachePath);
+    }
+
     private void OpenDocumentInNewWindow()
     {
         using var dialog = new OpenFileDialog

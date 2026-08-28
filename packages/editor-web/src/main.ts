@@ -1034,9 +1034,6 @@ function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): 
   if (state.imageSelected || state.mathInline || state.mathBlock || state.mermaidSelected) {
     return false
   }
-  if (state.footnoteDefinitionLabel) {
-    return false
-  }
   const inFormattableBlock = state.headingLevel !== null || state.paragraph
     || state.bulletList || state.orderedList || state.taskList || state.blockquote || state.inTable
   return state.hasSelection || inFormattableBlock

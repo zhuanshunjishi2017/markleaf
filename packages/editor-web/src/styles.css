@@ -125,8 +125,9 @@ body.markleaf-theme-dark {
 
 .markleaf-math.ProseMirror-selectednode {
   border-radius: 4px;
-  background: var(--theme-light);
-  box-shadow: 0 0 0 2px var(--theme-dark);
+  outline: none;
+  background: transparent;
+  box-shadow: 0 0 0 2px var(--theme-light);
 }
 
 /* Mermaid 图表 */
@@ -239,7 +240,7 @@ body.markleaf-theme-dark {
 }
 
 .markleaf-footnote-def::before {
-  content: '[' attr(data-footnote-label) '] ';
+  content: '[' attr(data-footnote-label) ']';
   color: currentColor;
   font-weight: 600;
   user-select: none;

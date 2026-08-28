@@ -222,7 +222,7 @@ public sealed partial class ImageAssetService
     public IReadOnlyList<MissingImage> FindMissingImages(string markdown, string? documentPath)
     {
         var missing = new Dictionary<string, MissingImage>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match match in MarkdownImageReference().Matches(markdown))
+        foreach (var match in MarkdownImageMatches(markdown))
         {
             var reference = match.Groups["path"].Value.Trim();
             var resolvedPath = TryResolveLocalImagePath(reference, documentPath);
@@ -244,7 +244,7 @@ public sealed partial class ImageAssetService
     public string NormalizeLocalImagePaths(string markdown, string? documentPath, bool useRelativePaths = false, bool prefixDotSlash = false)
     {
         var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (Match match in MarkdownImageReference().Matches(markdown))
+        foreach (var match in MarkdownImageMatches(markdown))
         {
             var reference = match.Groups["path"].Value.Trim();
             var resolvedPath = TryResolveLocalImagePath(reference, documentPath);
@@ -266,8 +266,14 @@ public sealed partial class ImageAssetService
             return markdown;
         }
 
+        var codeRanges = FindMarkdownCodeRanges(markdown);
         return MarkdownImageReference().Replace(markdown, match =>
         {
+            if (IsInsideRange(match.Index, codeRanges))
+            {
+                return match.Value;
+            }
+
             var pathGroup = match.Groups["path"];
             if (!replacements.TryGetValue(pathGroup.Value.Trim(), out var replacement))
             {
@@ -277,6 +283,164 @@ public sealed partial class ImageAssetService
             var relativeStart = pathGroup.Index - match.Index;
             return match.Value[..relativeStart] + replacement + match.Value[(relativeStart + pathGroup.Length)..];
         });
+    }
+
+    private static IEnumerable<Match> MarkdownImageMatches(string markdown)
+    {
+        var codeRanges = FindMarkdownCodeRanges(markdown);
+        return MarkdownImageReference()
+            .Matches(markdown)
+            .Cast<Match>()
+            .Where(match => !IsInsideRange(match.Index, codeRanges));
+    }
+
+    private static IReadOnlyList<(int Start, int End)> FindMarkdownCodeRanges(string markdown)
+    {
+        var fencedCodeRanges = FindFencedCodeRanges(markdown);
+        var ranges = new List<(int Start, int End)>(fencedCodeRanges);
+        var index = 0;
+
+        while (index < markdown.Length)
+        {
+            var fencedRange = RangeContainingOrAfter(index, fencedCodeRanges);
+            if (fencedRange is { } fence && index >= fence.Start)
+            {
+                index = fence.End;
+                continue;
+            }
+
+            if (markdown[index] != '`')
+            {
+                index++;
+                continue;
+            }
+
+            var openerStart = index;
+            var delimiterLength = CountRun(markdown, index, '`');
+            index += delimiterLength;
+
+            while (index < markdown.Length)
+            {
+                fencedRange = RangeContainingOrAfter(index, fencedCodeRanges);
+                if (fencedRange is { } nextFence && index >= nextFence.Start)
+                {
+                    index = nextFence.End;
+                    break;
+                }
+
+                var closingStart = markdown.IndexOf('`', index);
+                if (closingStart < 0 || fencedRange is { } upcomingFence && closingStart >= upcomingFence.Start)
+                {
+                    index = fencedRange?.Start ?? markdown.Length;
+                    break;
+                }
+
+                var closingLength = CountRun(markdown, closingStart, '`');
+                if (closingLength == delimiterLength)
+                {
+                    var end = closingStart + closingLength;
+                    ranges.Add((openerStart, end));
+                    index = end;
+                    break;
+                }
+
+                index = closingStart + closingLength;
+            }
+        }
+
+        return ranges.OrderBy(range => range.Start).ToArray();
+    }
+
+    private static IReadOnlyList<(int Start, int End)> FindFencedCodeRanges(string markdown)
+    {
+        var ranges = new List<(int Start, int End)>();
+        var lineStart = 0;
+        var fenceStart = -1;
+        var fenceCharacter = '\0';
+        var fenceLength = 0;
+
+        while (lineStart < markdown.Length)
+        {
+            var lineEnd = markdown.IndexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = markdown.Length;
+            var contentEnd = lineEnd > lineStart && markdown[lineEnd - 1] == '\r' ? lineEnd - 1 : lineEnd;
+            var line = markdown.AsSpan(lineStart, contentEnd - lineStart);
+
+            var indentation = 0;
+            while (indentation < line.Length && indentation < 4 && line[indentation] == ' ')
+                indentation++;
+
+            if (indentation <= 3 && indentation < line.Length)
+            {
+                var marker = line[indentation];
+                if (marker is '`' or '~')
+                {
+                    var markerLength = 1;
+                    while (indentation + markerLength < line.Length
+                        && line[indentation + markerLength] == marker)
+                    {
+                        markerLength++;
+                    }
+
+                    if (markerLength >= 3)
+                    {
+                        if (fenceStart < 0)
+                        {
+                            fenceStart = lineStart;
+                            fenceCharacter = marker;
+                            fenceLength = markerLength;
+                        }
+                        else if (marker == fenceCharacter && markerLength >= fenceLength
+                            && line[(indentation + markerLength)..].Trim().Length == 0)
+                        {
+                            ranges.Add((fenceStart, lineEnd < markdown.Length ? lineEnd + 1 : lineEnd));
+                            fenceStart = -1;
+                            fenceCharacter = '\0';
+                            fenceLength = 0;
+                        }
+                    }
+                }
+            }
+
+            lineStart = lineEnd < markdown.Length ? lineEnd + 1 : markdown.Length;
+        }
+
+        if (fenceStart >= 0)
+        {
+            ranges.Add((fenceStart, markdown.Length));
+        }
+
+        return ranges;
+    }
+
+    private static bool IsInsideRange(int index, IReadOnlyList<(int Start, int End)> ranges)
+    {
+        foreach (var range in ranges)
+        {
+            if (index < range.Start) return false;
+            if (index < range.End) return true;
+        }
+        return false;
+    }
+
+    private static (int Start, int End)? RangeContainingOrAfter(
+        int index,
+        IReadOnlyList<(int Start, int End)> ranges)
+    {
+        foreach (var range in ranges)
+        {
+            if (index < range.End)
+                return range;
+        }
+        return null;
+    }
+
+    private static int CountRun(string text, int start, char value)
+    {
+        var end = start;
+        while (end < text.Length && text[end] == value)
+            end++;
+        return end - start;
     }
 
     public static string? ResolveLocalImagePath(string reference, string? documentPath)

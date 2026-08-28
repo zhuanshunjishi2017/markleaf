@@ -367,7 +367,6 @@ internal sealed class NativeMenuService : IDisposable
             AppendPopup(root, Loc.Get("menu.paragraph.label"), BuildParagraphMenu());
             AppendPopup(root, Loc.Get("menu.format.label"), BuildFormatMenu());
             AppendPopup(root, Loc.Get("menu.view.label"), BuildViewMenu());
-            AppendPopup(root, Loc.Get("menu.appearance.label"), BuildAppearanceMenu());
             AppendPopup(root, Loc.Get("menu.help.label"), BuildHelpMenu());
             return root;
         }
@@ -776,31 +775,6 @@ internal sealed class NativeMenuService : IDisposable
         return resize;
     }
 
-    private nint BuildAppearanceMenu()
-    {
-        var menu = CreateMenu(true);
-        try
-        {
-            _styleMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.style"), _styleMenu);
-            RefreshStyleMenu();
-
-            _colorMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.colorTheme"), _colorMenu);
-            RefreshColorMenu();
-
-            AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.AddTheme, Loc.Get("menu.appearance.addTheme"));
-            AppendCommand(menu, AppCommand.OpenThemeFolder, Loc.Get("menu.appearance.openThemeFolder"));
-            return menu;
-        }
-        catch
-        {
-            NativeMethods.DestroyMenu(menu);
-            throw;
-        }
-    }
-
     /// <summary>
     /// 重建“设置缩放”子菜单：选项来自 AppearanceSettings.ZoomPercentOptions，
     /// 命令 ID 从 CommandCatalog.ZoomCommandBase 起按序分配，并在当前缩放上打勾。
@@ -961,11 +935,18 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.ToggleFocusMode, Loc.Get("menu.view.focusMode"));
             AppendSeparator(menu);
             _zoomMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.appearance.zoom"), _zoomMenu);
+            _styleMenu = CreateMenu(true);
+            AppendPopup(menu, Loc.Get("menu.view.style"), _styleMenu);
+            RefreshStyleMenu();
+            _colorMenu = CreateMenu(true);
+            AppendPopup(menu, Loc.Get("menu.view.colorTheme"), _colorMenu);
+            RefreshColorMenu();
+            AppendSeparator(menu);
+            AppendPopup(menu, Loc.Get("menu.view.zoom"), _zoomMenu);
             RefreshZoomMenu();
-            AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.appearance.zoomIn"));
-            AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.appearance.zoomOut"));
-            AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.appearance.zoomReset"));
+            AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.view.zoomIn"));
+            AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.view.zoomOut"));
+            AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.view.zoomReset"));
             return menu;
         }
         catch
@@ -982,6 +963,7 @@ internal sealed class NativeMenuService : IDisposable
         {
             AppendCommand(menu, AppCommand.CheckForUpdates, Loc.Get("menu.help.checkForUpdates"));
             AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.ShowWelcome, Loc.Get("menu.help.welcome"));
             AppendCommand(menu, AppCommand.ShowChangelog, Loc.Get("menu.help.changelog"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));

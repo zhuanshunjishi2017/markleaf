@@ -61,7 +61,11 @@ internal sealed class OutlineTreeView : Control
     public bool AutoHideScrollbar
     {
         get => _scrollBar.AutoHide;
-        set => _scrollBar.AutoHide = value;
+        set
+        {
+            _scrollBar.AutoHide = value;
+            Invalidate();
+        }
     }
 
     public event EventHandler<int>? NodeActivated;
@@ -209,7 +213,14 @@ internal sealed class OutlineTreeView : Control
                 eventArgs.Graphics,
                 Loc.Get("sidebar.noOutline"),
                 _secondaryFont,
-                new Rectangle(this.ScaleForDpi(24), 0, ClientSize.Width - this.ScaleForDpi(28), _secondaryRowHeight));
+                new Rectangle(
+                    this.ScaleForDpi(24),
+                    0,
+                    Math.Max(0, ClientSize.Width
+                        - (_scrollBar.Visible ? _scrollBar.Width : 0)
+                        - this.ScaleForDpi(24)
+                        - ContentRightPadding(this.ScaleForDpi(4))),
+                    _secondaryRowHeight));
             return;
         }
         BuildVisibleRows();
@@ -222,9 +233,10 @@ internal sealed class OutlineTreeView : Control
 
             var isSelected = node.Item.Position == _selectedPosition;
             var isHovered = node.Item.Position == _hoveredPosition;
+            var rightPadding = ContentRightPadding(this.ScaleForDpi(4));
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(8)), bounds.Height);
+                Math.Max(0, bounds.Width - this.ScaleForDpi(4) - rightPadding), bounds.Height);
             var indent = this.ScaleForDpi(18) * node.Depth;
             var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
@@ -238,7 +250,7 @@ internal sealed class OutlineTreeView : Control
                 Math.Max(
                     0,
                     ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0)
-                        - expanderBounds.Right - this.ScaleForDpi(4)),
+                        - expanderBounds.Right - ContentRightPadding(this.ScaleForDpi(4))),
                 bounds.Height);
             DrawNodeText(
                 eventArgs.Graphics,
@@ -392,6 +404,9 @@ internal sealed class OutlineTreeView : Control
             top += height;
         }
     }
+
+    private int ContentRightPadding(int defaultPadding)
+        => _scrollBar.Visible && _scrollBar.AutoHide ? 0 : defaultPadding;
 
     private (OutlineNode Node, Rectangle Bounds)? HitTestRow(Point location)
     {

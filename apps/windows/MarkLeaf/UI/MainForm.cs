@@ -245,6 +245,12 @@ internal sealed partial class MainForm : Form
                     screen.WorkingArea.Height))
                 .ToArray());
 
+        if (placement.SidebarCollapsed)
+        {
+            MinimumSize = new Size(
+                Math.Max(1, _expandedWindowMinimumSize.Width - placement.WorkspaceWidth - 1),
+                _expandedWindowMinimumSize.Height);
+        }
         Bounds = new Rectangle(placement.Left, placement.Top, placement.Width, placement.Height);
 
         _sidebarSplit = CreateSidebarSplit(placement.WorkspaceWidth, placement.OutlineWidth);
@@ -254,7 +260,7 @@ internal sealed partial class MainForm : Form
         _outlineSplit.Panel1.Controls.Add(_statusStrip);
         // Sidebar visibility is a window preference, independent of whether a
         // workspace or document is restored during startup.
-        _sidebarSplit.Panel1Collapsed = settings.MainWindow.SidebarCollapsed;
+        _sidebarSplit.Panel1Collapsed = placement.SidebarCollapsed;
         if (settings.MainWindow.OutlineDetached)
         {
             DetachOutlineSidebar(resizeWindow: false);

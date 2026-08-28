@@ -19,7 +19,11 @@ public static class WindowPlacementCalculator
         IReadOnlyList<ScreenArea> workingAreas)
     {
         var safeTargetDpi = Math.Max(96, targetDpi);
-        var minimumWidth = ScaleDip(MinimumWidthDip, safeTargetDpi);
+        var workspaceWidthDip = Math.Max(160, saved.WorkspaceWidth);
+        var minimumWidthDip = saved.SidebarCollapsed
+            ? Math.Max(1, MinimumWidthDip - workspaceWidthDip)
+            : MinimumWidthDip;
+        var minimumWidth = ScaleDip(minimumWidthDip, safeTargetDpi);
         var minimumHeight = ScaleDip(MinimumHeightDip, safeTargetDpi);
         var width = Math.Max(minimumWidth, ScaleDip(saved.Width, safeTargetDpi));
         var height = Math.Max(minimumHeight, ScaleDip(saved.Height, safeTargetDpi));
@@ -32,7 +36,7 @@ public static class WindowPlacementCalculator
             Height = height,
             Dpi = safeTargetDpi,
             IsMaximized = saved.IsMaximized,
-            WorkspaceWidth = Math.Max(ScaleDip(160, safeTargetDpi), ScaleDip(saved.WorkspaceWidth, safeTargetDpi)),
+            WorkspaceWidth = ScaleDip(workspaceWidthDip, safeTargetDpi),
             OutlineWidth = Math.Max(ScaleDip(160, safeTargetDpi), ScaleDip(saved.OutlineWidth, safeTargetDpi)),
             OutlineDetached = saved.OutlineDetached,
             SidebarCollapsed = saved.SidebarCollapsed,
