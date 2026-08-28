@@ -29,17 +29,20 @@ final class UpdateCheckController: NSObject, URLSessionDownloadDelegate {
             guard let self else { return }
             self.finishStatus()
             switch result {
-            case .failure:
-                self.presentFailure(message: L10n.t("检查更新失败"))
+            case .failure(let error):
+                self.presentFailure(error: error)
             case .success(let release):
-                if UpdateCheckService.hasUpdate(
+                switch UpdateCheckService.updateAvailability(
                     release: release,
                     currentVersion: self.currentVersion,
                     currentBuild: self.currentBuild
                 ) {
+                case .updateAvailable:
                     self.presentUpdate(release: release)
-                } else {
+                case .upToDate:
                     self.presentUpToDate()
+                case .missingBuildMetadata:
+                    self.presentMissingBuildMetadata()
                 }
             }
         }
@@ -66,9 +69,10 @@ final class UpdateCheckController: NSObject, URLSessionDownloadDelegate {
         present(alert)
     }
 
-    private func presentFailure(message: String) {
+    private func presentMissingBuildMetadata() {
         let alert = NSAlert()
-        alert.messageText = message
+        alert.messageText = L10n.t("无法确认更新")
+        alert.informativeText = L10n.t("GitHub Release 缺少构建号信息，无法确认当前构建是否为最新版本。")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("重试"))
         alert.addButton(withTitle: L10n.t("取消"))
@@ -77,6 +81,29 @@ final class UpdateCheckController: NSObject, URLSessionDownloadDelegate {
                 self?.begin()
             }
         }
+    }
+
+    private func presentFailure(error: UpdateCheckService.FetchError) {
+        let presentation = UpdateCheckService.failurePresentation(for: error)
+        let alert = NSAlert()
+        alert.messageText = L10n.t(presentation.title)
+        alert.informativeText = L10n.t(presentation.message)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("重试"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        present(alert) { [weak self] response in
+            if response == .alertFirstButtonReturn {
+                self?.begin()
+            }
+        }
+    }
+
+    private func presentFailure(message: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t("好"))
+        present(alert)
     }
 
     private func presentUpdate(release: UpdateCheckService.Release) {

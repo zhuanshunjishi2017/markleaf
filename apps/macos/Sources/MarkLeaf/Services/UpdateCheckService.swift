@@ -37,10 +37,23 @@ struct UpdateCheckService {
         }
     }
 
-    enum FetchError: Error {
-        case invalidURL
+    enum FetchError: Error, Equatable {
+        case offline
+        case timedOut
+        case connectionFailed
         case httpStatus(Int)
-        case decoding(DecodingError)
+        case invalidResponse
+    }
+
+    enum UpdateAvailability: Equatable {
+        case updateAvailable
+        case upToDate
+        case missingBuildMetadata
+    }
+
+    struct FailurePresentation: Equatable {
+        let title: String
+        let message: String
     }
 
     /// 版本号比较：按 "." 分段数值比较，缺段视为 0，长度不同也能正确比较。
@@ -85,15 +98,25 @@ struct UpdateCheckService {
 
     /// 当前的“发现新版本”判定：released 版本更高，或版本相同但构建号更高。
     static func hasUpdate(release: Release, currentVersion: String, currentBuild: String) -> Bool {
-        if isNewerVersion(release.tagName, than: currentVersion) { return true }
+        updateAvailability(release: release, currentVersion: currentVersion, currentBuild: currentBuild)
+            == .updateAvailable
+    }
+
+    static func updateAvailability(
+        release: Release,
+        currentVersion: String,
+        currentBuild: String
+    ) -> UpdateAvailability {
+        if isNewerVersion(release.tagName, than: currentVersion) { return .updateAvailable }
         guard isNewerVersion(currentVersion, than: release.tagName) == false,
               compareVersions(release.tagName, currentVersion) == .orderedSame else {
-            return false
+            return .upToDate
         }
         // 同版本号：仅当远端发布了更高构建号时才视为更新。
-        let releasedBuild = release.assets.compactMap { parseBuild(from: $0.name) }.max() ?? 0
-        guard releasedBuild > 0 else { return false }
-        return releasedBuild > (Int(currentBuild) ?? 0)
+        guard let releasedBuild = release.assets.compactMap({ parseBuild(from: $0.name) }).max() else {
+            return .missingBuildMetadata
+        }
+        return releasedBuild > (Int(currentBuild) ?? 0) ? .updateAvailable : .upToDate
     }
 
     /// 检查完成后只撤销仍然存在的“正在检查”状态，避免覆盖期间产生的新状态。
@@ -106,10 +129,14 @@ struct UpdateCheckService {
     }
 
     private static func parseBuild(from assetName: String) -> Int? {
+        let prefix = "markleaf-build-"
         let lower = assetName.lowercased()
-        guard lower.contains("build") || lower.contains("buildnumber") else { return nil }
-        let digits = lower.compactMap { $0.isNumber ? String($0) : "" }.joined()
-        return digits.isEmpty ? nil : Int(digits)
+        guard lower.hasPrefix(prefix), lower.hasSuffix(".txt") else { return nil }
+        let start = lower.index(lower.startIndex, offsetBy: prefix.count)
+        let end = lower.index(lower.endIndex, offsetBy: -4)
+        let digits = lower[start..<end]
+        guard !digits.isEmpty, digits.allSatisfy({ $0 >= "0" && $0 <= "9" }) else { return nil }
+        return Int(digits)
     }
 
     private static func numericComponents(_ version: String) -> [Int] {
@@ -119,31 +146,80 @@ struct UpdateCheckService {
         }
     }
 
-    /// 发起网络请求拉取最新 release。返回经过主线程回调的 `Result<Release, FetchError>`。
-    static func fetchLatestRelease(
-        completion: @escaping (Result<Release, FetchError>) -> Void
-    ) {
+    static func makeNetworkConfiguration(protocolClasses: [AnyClass]? = nil) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        configuration.protocolClasses = protocolClasses
+        return configuration
+    }
+
+    static func latestReleaseRequest() -> URLRequest {
         var request = URLRequest(url: apiLatestURL)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 15
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        return request
+    }
+
+    static func classifyNetworkError(_ error: URLError) -> FetchError {
+        switch error.code {
+        case .notConnectedToInternet, .dataNotAllowed:
+            return .offline
+        case .timedOut:
+            return .timedOut
+        default:
+            return .connectionFailed
+        }
+    }
+
+    static func failurePresentation(for error: FetchError) -> FailurePresentation {
+        switch error {
+        case .timedOut:
+            return FailurePresentation(
+                title: "检查更新超时",
+                message: "连接 GitHub 超时，服务器可能繁忙或网络不稳定。"
+            )
+        case .invalidResponse:
+            return FailurePresentation(
+                title: "无法读取更新信息",
+                message: "GitHub 返回的更新信息格式异常。"
+            )
+        case .offline, .connectionFailed, .httpStatus:
+            return FailurePresentation(
+                title: "无法检查更新",
+                message: "无法连接 GitHub，请检查网络连接后重试。"
+            )
+        }
+    }
+
+    /// 发起网络请求拉取最新 release。返回经过主线程回调的 `Result<Release, FetchError>`。
+    static func fetchLatestRelease(
+        session: URLSession? = nil,
+        completion: @escaping (Result<Release, FetchError>) -> Void
+    ) {
+        let request = latestReleaseRequest()
+        let requestSession = session ?? URLSession(configuration: makeNetworkConfiguration())
+        requestSession.dataTask(with: request) { data, response, error in
             let result: Result<Release, FetchError>
-            if error != nil {
-                result = .failure(.invalidURL)
+            if let urlError = error as? URLError {
+                result = .failure(classifyNetworkError(urlError))
+            } else if error != nil {
+                result = .failure(.connectionFailed)
             } else if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
                 result = .failure(.httpStatus(http.statusCode))
-            } else if let data {
+            } else if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data {
                 do {
                     result = .success(try JSONDecoder().decode(Release.self, from: data))
-                } catch let decoding as DecodingError {
-                    result = .failure(.decoding(decoding))
                 } catch {
-                    result = .failure(.decoding(DecodingError.dataCorrupted(
-                        .init(codingPath: [], debugDescription: error.localizedDescription)
-                    )))
+                    result = .failure(.invalidResponse)
                 }
             } else {
-                result = .failure(.invalidURL)
+                result = .failure(.invalidResponse)
             }
             DispatchQueue.main.async { completion(result) }
         }.resume()

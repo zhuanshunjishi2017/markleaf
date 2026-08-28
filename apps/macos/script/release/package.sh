@@ -10,6 +10,9 @@ REPO_DIR="$(cd "$MACOS_DIR/.." && pwd)"
 APP_NAME="MarkLeaf"
 source "$MACOS_DIR/script/release_version.sh"
 APP_VERSION="$(resolve_markleaf_version)"
+source "$MACOS_DIR/script/build_metadata.sh"
+BUILD_NUMBER="$(resolve_markleaf_build_number "$REPO_DIR")"
+COMMIT_SHA="$(git -C "$REPO_DIR" rev-parse HEAD)"
 DMG_VOLUME_NAME="${MARKLEAF_DMG_VOLUME_NAME:-$APP_NAME $APP_VERSION}"
 ARCH="arm64"
 OUTPUT_DIR="${1:-$MACOS_DIR/dist/release}"
@@ -20,6 +23,7 @@ APP_ZIP="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.zip"
 APP_DMG="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.dmg"
 DSYM_ZIP="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$ARCH.dSYM.zip"
 CHECKSUMS="$OUTPUT_DIR/SHA256SUMS.txt"
+BUILD_MARKER="$OUTPUT_DIR/$APP_NAME-build-$BUILD_NUMBER.txt"
 
 cleanup() {
     rm -rf "$BUILD_ROOT"
@@ -32,7 +36,7 @@ if [[ "${MARKLEAF_DISABLE_SWIFT_SANDBOX:-0}" == "1" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-rm -f "$APP_ZIP" "$APP_DMG" "$DSYM_ZIP" "$CHECKSUMS"
+rm -f "$APP_ZIP" "$APP_DMG" "$DSYM_ZIP" "$CHECKSUMS" "$BUILD_MARKER"
 
 echo "[package] preparing EditorWeb and runtime resources"
 "$MACOS_DIR/script/prepare_resources.sh"
@@ -45,7 +49,7 @@ echo '[package] assembling application bundle'
 mkdir -p "$APP_STAGE/Contents/MacOS" "$APP_STAGE/Contents/Resources"
 cp "$BUILD_BIN" "$APP_STAGE/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_STAGE/Contents/MacOS/$APP_NAME"
-"$HERE/write-info-plist.sh" "$APP_STAGE/Contents/Info.plist" "$APP_VERSION"
+MARKLEAF_BUILD="$BUILD_NUMBER" "$HERE/write-info-plist.sh" "$APP_STAGE/Contents/Info.plist" "$APP_VERSION"
 
 ditto "$MACOS_DIR/Resources/EditorWeb" "$APP_STAGE/Contents/Resources/EditorWeb"
 ditto "$MACOS_DIR/Resources/Styles" "$APP_STAGE/Contents/Resources/Styles"
@@ -70,11 +74,14 @@ ditto -c -k --keepParent "$BUILD_ROOT/$APP_NAME.app.dSYM" "$DSYM_ZIP"
 echo '[package] creating branded DMG'
 bash "$HERE/create-branded-dmg.sh" "$APP_STAGE" "$APP_DMG" "$DMG_VOLUME_NAME"
 
+echo '[package] writing build marker'
+bash "$HERE/write-build-marker.sh" "$BUILD_MARKER" "$APP_VERSION" "$BUILD_NUMBER" "$COMMIT_SHA"
+
 echo '[package] writing SHA-256 checksums'
 (
     cd "$OUTPUT_DIR"
-    shasum -a 256 "$(basename "$APP_DMG")" "$(basename "$APP_ZIP")" "$(basename "$DSYM_ZIP")" > "$(basename "$CHECKSUMS")"
+    shasum -a 256 "$(basename "$APP_DMG")" "$(basename "$APP_ZIP")" "$(basename "$DSYM_ZIP")" "$(basename "$BUILD_MARKER")" > "$(basename "$CHECKSUMS")"
 )
 
 echo "[package] completed: $OUTPUT_DIR"
-ls -lh "$APP_DMG" "$APP_ZIP" "$DSYM_ZIP" "$CHECKSUMS"
+ls -lh "$APP_DMG" "$APP_ZIP" "$DSYM_ZIP" "$BUILD_MARKER" "$CHECKSUMS"

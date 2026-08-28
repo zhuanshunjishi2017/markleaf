@@ -7,6 +7,38 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+final class StubURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) -> Error?)?
+    static var response: (HTTPURLResponse, Data)?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if let response = StubURLProtocol.response {
+            client?.urlProtocol(self, didReceive: response.0, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: response.1)
+            client?.urlProtocolDidFinishLoading(self)
+        } else if let error = StubURLProtocol.handler?(request) {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+func fetchResult(
+    session: URLSession
+) -> Result<UpdateCheckService.Release, UpdateCheckService.FetchError> {
+    var result: Result<UpdateCheckService.Release, UpdateCheckService.FetchError>?
+    UpdateCheckService.fetchLatestRelease(session: session) { result = $0 }
+    let deadline = Date().addingTimeInterval(2)
+    while result == nil && Date() < deadline {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    }
+    return result!
+}
+
 // —— 版本比较 ——
 expect(UpdateCheckService.compareVersions("1.4.0", "1.3.2") == .orderedDescending,
        "1.4.0 应大于 1.3.2")
@@ -57,6 +89,42 @@ let releaseSame = UpdateCheckService.Release(tagName: "1.3.2", name: nil, body: 
 expect(!UpdateCheckService.hasUpdate(release: releaseSame, currentVersion: "1.3.2", currentBuild: "100"),
        "相同版本且未发布构建号时应视为最新")
 
+let malformedBuild = UpdateCheckService.Asset(
+    name: "MarkLeaf-1.3.2-macos-build328-arm64.dmg",
+    browserDownloadURL: "https://example.com/malformed.dmg"
+)
+let malformedBuildRelease = UpdateCheckService.Release(
+    tagName: "1.3.2",
+    name: nil,
+    body: nil,
+    assets: [malformedBuild]
+)
+expect(!UpdateCheckService.hasUpdate(
+    release: malformedBuildRelease,
+    currentVersion: "1.3.2",
+    currentBuild: "327"
+), "构建号标记必须是独立资产，不能从安装包文件名拼接数字")
+let markedBuild = UpdateCheckService.Asset(
+    name: "MarkLeaf-build-328.txt",
+    browserDownloadURL: "https://example.com/build.txt"
+)
+let markedBuildRelease = UpdateCheckService.Release(
+    tagName: "1.3.2",
+    name: nil,
+    body: nil,
+    assets: [markedBuild]
+)
+expect(UpdateCheckService.updateAvailability(
+    release: markedBuildRelease,
+    currentVersion: "1.3.2",
+    currentBuild: "327"
+) == .updateAvailable, "严格构建标记高于当前构建时应提示更新")
+expect(UpdateCheckService.updateAvailability(
+    release: releaseSame,
+    currentVersion: "1.3.2",
+    currentBuild: "327"
+) == .missingBuildMetadata, "同版本缺少构建标记时不能误报为最新")
+
 // —— 检查结束后的状态栏恢复 ——
 expect(UpdateCheckService.statusAfterCheck(
     previousStatus: "已保存",
@@ -83,5 +151,72 @@ let json = """
 let decoded = try! JSONDecoder().decode(UpdateCheckService.Release.self, from: json)
 expect(decoded.tagName == "1.4.0", "应解析 tag_name")
 expect(decoded.assets.first?.browserDownloadURL == "https://example.com/a.dmg", "应解析资产下载地址")
+
+// —— 网络请求策略与错误分类 ——
+let configuration = UpdateCheckService.makeNetworkConfiguration(protocolClasses: [])
+expect(configuration.urlCache == nil, "更新检查不得使用 URL 缓存")
+expect(configuration.requestCachePolicy == .reloadIgnoringLocalCacheData,
+       "更新检查会话必须忽略本地缓存")
+expect(configuration.timeoutIntervalForRequest == 15,
+       "更新检查请求超时应为 15 秒")
+let request = UpdateCheckService.latestReleaseRequest()
+expect(request.cachePolicy == .reloadIgnoringLocalCacheData,
+       "更新检查请求必须忽略本地缓存")
+expect(request.value(forHTTPHeaderField: "Cache-Control") == "no-cache",
+       "更新检查请求必须声明 no-cache")
+expect(UpdateCheckService.classifyNetworkError(URLError(.notConnectedToInternet)) == .offline,
+       "无网络应分类为 offline")
+expect(UpdateCheckService.classifyNetworkError(URLError(.timedOut)) == .timedOut,
+       "超时应分类为 timedOut")
+expect(UpdateCheckService.classifyNetworkError(URLError(.cannotFindHost)) == .connectionFailed,
+       "连接失败应分类为 connectionFailed")
+
+expect(UpdateCheckService.failurePresentation(for: .offline).title == "无法检查更新",
+       "断网标题应统一为无法检查更新")
+expect(UpdateCheckService.failurePresentation(for: .connectionFailed).message ==
+       "无法连接 GitHub，请检查网络连接后重试。",
+       "连接失败说明应统一为网络重试提示")
+expect(UpdateCheckService.failurePresentation(for: .httpStatus(503)).title == "无法检查更新",
+       "HTTP 错误标题应统一为无法检查更新")
+expect(UpdateCheckService.failurePresentation(for: .timedOut).title == "检查更新超时",
+       "超时应使用独立标题")
+
+let protocolConfiguration = UpdateCheckService.makeNetworkConfiguration(protocolClasses: [StubURLProtocol.self])
+let protocolSession = URLSession(configuration: protocolConfiguration)
+StubURLProtocol.handler = { request in
+    expect(request.cachePolicy == .reloadIgnoringLocalCacheData, "实际请求必须绕过缓存")
+    expect(request.value(forHTTPHeaderField: "Cache-Control") == "no-cache", "实际请求必须发送 no-cache")
+    return URLError(.notConnectedToInternet)
+}
+if case .failure(.offline) = fetchResult(session: protocolSession) {
+} else {
+    expect(false, "URLSession 断网错误必须映射为 offline")
+}
+protocolSession.invalidateAndCancel()
+
+let httpConfiguration = UpdateCheckService.makeNetworkConfiguration(protocolClasses: [StubURLProtocol.self])
+let httpSession = URLSession(configuration: httpConfiguration)
+StubURLProtocol.handler = { _ in nil }
+StubURLProtocol.response = (HTTPURLResponse(
+    url: UpdateCheckService.apiLatestURL,
+    statusCode: 503,
+    httpVersion: nil,
+    headerFields: nil
+)!, Data())
+if case .failure(.httpStatus(503)) = fetchResult(session: httpSession) {
+} else {
+    expect(false, "HTTP 错误必须保留状态码并映射为 httpStatus")
+}
+httpSession.invalidateAndCancel()
+
+let timeoutConfiguration = UpdateCheckService.makeNetworkConfiguration(protocolClasses: [StubURLProtocol.self])
+let timeoutSession = URLSession(configuration: timeoutConfiguration)
+StubURLProtocol.response = nil
+StubURLProtocol.handler = { _ in URLError(.timedOut) }
+if case .failure(.timedOut) = fetchResult(session: timeoutSession) {
+} else {
+    expect(false, "URLSession 超时必须映射为 timedOut")
+}
+timeoutSession.invalidateAndCancel()
 
 print("PASS")
