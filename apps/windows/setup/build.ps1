@@ -35,7 +35,7 @@ foreach ($rt in $runtimes) {
         $label = if ($sc) { "with-runtime" } else { "slim" }
         Write-Host "  Building $rt $label..." -ForegroundColor Yellow
         $arch = $rt.Substring(4)
-        $archAllowed = if ($arch -eq "arm64") { "arm64compatible" } else { "x64compatible" }
+        $archAllowed = if ($arch -eq "arm64") { "arm64" } else { "x64compatible" }
         $publishDir = Join-Path $root "setup\publish-$rt-$sc"
         $publishDir = [IO.Path]::GetFullPath($publishDir)
         Remove-Item -LiteralPath $publishDir -Recurse -Force -ErrorAction SilentlyContinue
