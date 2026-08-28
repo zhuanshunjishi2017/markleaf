@@ -384,9 +384,8 @@ final class AppWindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// 检查 GitHub 是否有新版本，并把状态栏切到“正在检查更新…”。
+    /// 检查 GitHub 是否有新版本。
     func checkForUpdates() {
-        activeSession?.statusText = L10n.t("正在检查更新…")
         let controller = UpdateCheckController()
         updateCheckController = controller
         controller.begin()

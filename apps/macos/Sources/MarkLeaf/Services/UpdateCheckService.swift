@@ -96,6 +96,15 @@ struct UpdateCheckService {
         return releasedBuild > (Int(currentBuild) ?? 0)
     }
 
+    /// 检查完成后只撤销仍然存在的“正在检查”状态，避免覆盖期间产生的新状态。
+    static func statusAfterCheck(
+        previousStatus: String,
+        currentStatus: String,
+        checkingStatus: String
+    ) -> String {
+        currentStatus == checkingStatus ? previousStatus : currentStatus
+    }
+
     private static func parseBuild(from assetName: String) -> Int? {
         let lower = assetName.lowercased()
         guard lower.contains("build") || lower.contains("buildnumber") else { return nil }

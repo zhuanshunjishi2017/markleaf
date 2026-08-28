@@ -10,16 +10,24 @@ final class UpdateCheckController: NSObject, URLSessionDownloadDelegate {
     private var downloadProgressAlert: NSAlert?
     private var downloadProgressIndicator: NSProgressIndicator?
     private var downloadDestination: URL?
+    private weak var statusSession: EditorSession?
+    private var statusBeforeCheck = ""
+    private var checkingStatus = ""
 
-    /// 启动一次检查。调用方应先把状态栏设为“正在检查更新…”。
+    /// 启动一次检查，并在结果返回后恢复发起检查的窗口状态。
     func begin() {
-        AppWindowManager.shared.activeSession?.statusText = L10n.t("正在检查更新…")
+        let session = AppWindowManager.shared.activeSession
+        statusSession = session
+        statusBeforeCheck = session?.statusText ?? ""
+        checkingStatus = L10n.t("正在检查更新…")
+        session?.statusText = checkingStatus
         let info = Bundle.main.infoDictionary
         currentVersion = (info?["CFBundleShortVersionString"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "1.0.0"
         currentBuild = (info?["CFBundleVersion"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "1"
 
         UpdateCheckService.fetchLatestRelease { [weak self] result in
             guard let self else { return }
+            self.finishStatus()
             switch result {
             case .failure:
                 self.presentFailure(message: L10n.t("检查更新失败"))
@@ -35,6 +43,16 @@ final class UpdateCheckController: NSObject, URLSessionDownloadDelegate {
                 }
             }
         }
+    }
+
+    private func finishStatus() {
+        guard let session = statusSession else { return }
+        session.statusText = UpdateCheckService.statusAfterCheck(
+            previousStatus: statusBeforeCheck,
+            currentStatus: session.statusText,
+            checkingStatus: checkingStatus
+        )
+        statusSession = nil
     }
 
     // MARK: - Result dialogs

@@ -57,6 +57,18 @@ let releaseSame = UpdateCheckService.Release(tagName: "1.3.2", name: nil, body: 
 expect(!UpdateCheckService.hasUpdate(release: releaseSame, currentVersion: "1.3.2", currentBuild: "100"),
        "相同版本且未发布构建号时应视为最新")
 
+// —— 检查结束后的状态栏恢复 ——
+expect(UpdateCheckService.statusAfterCheck(
+    previousStatus: "已保存",
+    currentStatus: "正在检查更新…",
+    checkingStatus: "正在检查更新…"
+) == "已保存", "检查结束后应恢复检查前的状态")
+expect(UpdateCheckService.statusAfterCheck(
+    previousStatus: "已保存",
+    currentStatus: "已修改",
+    checkingStatus: "正在检查更新…"
+) == "已修改", "检查期间出现的新状态不应被旧状态覆盖")
+
 // —— JSON 解码 ——
 let json = """
 {
