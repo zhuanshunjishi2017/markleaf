@@ -24,6 +24,8 @@ jobs:
         self_contained: [false, true]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -32,7 +34,9 @@ jobs:
         run: |
           $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.version }}' } else { '${{ github.ref_name }}' }
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Release tag must be a semantic version without a v prefix: $version" }
-          $projectVersion = [xml](Get-Content apps/windows/MarkLeaf/MarkLeaf.csproj).Project.PropertyGroup.Version
+          $project = [xml](Get-Content apps/windows/MarkLeaf/MarkLeaf.csproj)
+          $projectVersion = $project.SelectSingleNode('/Project/PropertyGroup/Version')?.InnerText
+          if (!$projectVersion) { throw 'Version was not found in MarkLeaf.csproj' }
           if ($version -ne $projectVersion) { throw "Release version $version does not match MarkLeaf.csproj version $projectVersion" }
           $build = (git rev-list --count HEAD).Trim()
           "VERSION=$version" >> $env:GITHUB_ENV
@@ -73,6 +77,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
