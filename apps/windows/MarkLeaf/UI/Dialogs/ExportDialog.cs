@@ -16,7 +16,8 @@ internal enum ExportDialogMode
 
 internal sealed class ExportDialog : Form
 {
-    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML"], ["\uEA90", "\uE943"]);
+    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML"],
+        [SystemIconProvider.PdfIcon, SystemIconProvider.HtmlIcon]);
 
     private readonly Panel _contentPanel = new()
     {
@@ -76,6 +77,13 @@ internal sealed class ExportDialog : Form
 
     private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
+    private readonly CheckBox _keepTablesTogether = new()
+    {
+        Text = Loc.Get("export.keepTablesTogether"),
+        AutoSize = true,
+        FlatStyle = FlatStyle.System,
+    };
+
     private readonly Button _exportButton = new()
     { Text = Loc.Get("export.ok"), FlatStyle = FlatStyle.System };
 
@@ -104,6 +112,13 @@ internal sealed class ExportDialog : Form
         BackColor = Color.White,
         ForeColor = SystemColors.GrayText,
     };
+
+    private readonly System.Windows.Forms.Timer _previewSettingsTimer = new()
+    { Interval = 3000 };
+
+    private ExportOptions? _lastPreviewOptions;
+
+    private bool _previewRefreshInProgress;
 
     private string? _previewDir;
 
@@ -181,6 +196,14 @@ internal sealed class ExportDialog : Form
         BuildHtmlTab(initialStyleIndex);
         PopulateColorSchemes();
         ApplySavedSettings(savedSettings);
+        TrackCommittedSelection(_pageSize);
+        TrackCommittedSelection(_marginPreset);
+        TrackCommittedSelection(_pdfHeaderPreset);
+        TrackCommittedSelection(_pdfFooterPreset);
+        TrackCommittedSelection(_pdfStyle);
+        TrackCommittedSelection(_pdfColorScheme);
+        TrackCommittedSelection(_htmlStyle);
+        TrackCommittedSelection(_htmlColorScheme);
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildPdfContent(), BuildHtmlContent()];
@@ -195,6 +218,7 @@ internal sealed class ExportDialog : Form
         _exportButton.Click += OnExportClick;
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         _previewButton.Click += OnPreviewClick;
+        _previewSettingsTimer.Tick += OnPreviewSettingsTimerTick;
 
         var buttons = new FlowLayoutPanel
         {
@@ -283,6 +307,7 @@ internal sealed class ExportDialog : Form
         {
             await InitializePreviewAsync();
             await RefreshPreviewAsync();
+            _previewSettingsTimer.Start();
         };
     }
 
@@ -352,6 +377,7 @@ internal sealed class ExportDialog : Form
 
         _htmlHeader.Text = savedSettings.HtmlHeader ?? "";
         _htmlFooter.Text = savedSettings.HtmlFooter ?? "";
+        _keepTablesTogether.Checked = savedSettings.KeepTablesTogether;
     }
 
     private void ApplySavedMargins(float top, float bottom, float left, float right)
@@ -471,6 +497,7 @@ internal sealed class ExportDialog : Form
             PdfFooterCustom: _pdfFooterCustom,
             Style: MapExportStyle((string)(isPdf ? _pdfStyle : _htmlStyle).SelectedItem!),
             ColorScheme: colorThemeId,
+            KeepTablesTogether: _keepTablesTogether.Checked,
             OutputPath: _outputPath ?? "");
     }
 
@@ -548,34 +575,118 @@ internal sealed class ExportDialog : Form
         await RefreshPreviewAsync();
     }
 
+    private async void OnPreviewSettingsTimerTick(object? sender, EventArgs e)
+    {
+        if (_previewRefreshInProgress
+            || !_previewInitialized
+            || _previewView.CoreWebView2 is null
+            || _previewDir is null
+            || IsExportComboBoxOpen())
+        {
+            return;
+        }
+
+        ExportOptions currentOptions;
+        try
+        {
+            currentOptions = BuildOptions();
+        }
+        catch
+        {
+            return;
+        }
+
+        if (_lastPreviewOptions == currentOptions)
+        {
+            return;
+        }
+
+        await RefreshPreviewAsync(currentOptions);
+    }
+
+    private bool IsExportComboBoxOpen()
+    {
+        return _pageSize.DroppedDown
+            || _marginPreset.DroppedDown
+            || _pdfHeaderPreset.DroppedDown
+            || _pdfFooterPreset.DroppedDown
+            || _pdfStyle.DroppedDown
+            || _pdfColorScheme.DroppedDown
+            || _htmlStyle.DroppedDown
+            || _htmlColorScheme.DroppedDown;
+    }
+
+    private static void TrackCommittedSelection(ComboBox combo)
+    {
+        var selectedIndexBeforeDropDown = -1;
+        var selectionCommitted = false;
+
+        combo.DropDown += (_, _) =>
+        {
+            selectedIndexBeforeDropDown = combo.SelectedIndex;
+            selectionCommitted = false;
+        };
+        combo.SelectionChangeCommitted += (_, _) => selectionCommitted = true;
+        combo.DropDownClosed += (_, _) =>
+        {
+            if (!selectionCommitted && combo.SelectedIndex != selectedIndexBeforeDropDown)
+            {
+                combo.SelectedIndex = selectedIndexBeforeDropDown;
+            }
+        };
+    }
+
     private async Task RefreshPreviewAsync()
+    {
+        if (_previewRefreshInProgress)
+        {
+            return;
+        }
+
+        ExportOptions options;
+        try
+        {
+            options = BuildOptions();
+        }
+        catch
+        {
+            return;
+        }
+
+        await RefreshPreviewAsync(options);
+    }
+
+    private async Task RefreshPreviewAsync(ExportOptions options)
     {
         if (!_previewInitialized || _previewView.CoreWebView2 is null || _previewDir is null)
         {
             return;
         }
 
+        _previewRefreshInProgress = true;
         try
         {
             _previewButton.Enabled = false;
             if (_tabBar.SelectedIndex == 0)
             {
-                var pdfBytes = await _generatePdfAsync(BuildOptions());
+                var pdfBytes = await _generatePdfAsync(options);
                 if (pdfBytes.Length == 0) return;
 
                 var pdfPath = Path.Combine(_previewDir, "preview.pdf");
                 await File.WriteAllBytesAsync(pdfPath, pdfBytes);
                 _previewView.CoreWebView2.Navigate(
                     $"https://preview.local/preview.pdf?t={Guid.NewGuid():N}#toolbar=0&navpanes=0");
+                _lastPreviewOptions = options;
                 return;
             }
 
-            var html = await _generateHtmlAsync(BuildOptions());
+            var html = await _generateHtmlAsync(options);
             if (string.IsNullOrEmpty(html)) return;
 
             var htmlPath = Path.Combine(_previewDir, "preview.html");
             await File.WriteAllTextAsync(htmlPath, html, System.Text.Encoding.UTF8);
             _previewView.CoreWebView2.Navigate($"https://preview.local/preview.html?t={Guid.NewGuid():N}");
+            _lastPreviewOptions = options;
         }
         catch
         {
@@ -584,11 +695,14 @@ internal sealed class ExportDialog : Form
         finally
         {
             _previewButton.Enabled = true;
+            _previewRefreshInProgress = false;
         }
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _previewSettingsTimer.Stop();
+        _previewSettingsTimer.Dispose();
         base.OnFormClosed(e);
         if (_previewDir is not null)
         {
@@ -606,7 +720,7 @@ internal sealed class ExportDialog : Form
         foreach (var (labelKey, _, _, _, _) in MarginPresets)
             _marginPreset.Items.Add(Loc.Get(labelKey));
         _marginPreset.SelectedIndex = 0;
-        _marginPreset.SelectedIndexChanged += (_, _) =>
+        _marginPreset.SelectionChangeCommitted += (_, _) =>
         {
             if (_marginPreset.SelectedIndex != 3) ApplyMargins(_marginPreset.SelectedIndex);
         };
@@ -658,8 +772,14 @@ internal sealed class ExportDialog : Form
         panel.Controls.Add(CategoryLabel(Loc.Get("export.colorScheme.label")), 0, 8);
         panel.Controls.Add(_pdfColorScheme, 1, 8);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 9);
+        panel.Controls.Add(CategoryGap(), 0, 9);
+        panel.Controls.Add(CategoryGap(), 1, 9);
+
+        panel.Controls.Add(CategoryLabel(Loc.Get("export.pageBehavior.label")), 0, 10);
+        panel.Controls.Add(_keepTablesTogether, 1, 10);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 11);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 11);
 
         return panel;
     }
@@ -988,4 +1108,5 @@ internal sealed record ExportOptions(
     string PdfFooterCustom,
     string Style,
     string ColorScheme,
+    bool KeepTablesTogether,
     string OutputPath);

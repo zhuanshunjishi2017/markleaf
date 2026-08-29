@@ -409,7 +409,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.Print, Loc.Get("menu.file.print"));
             AppendMainMenuCommand(menu, AppCommand.RecoverUnsavedFiles, Loc.Get("menu.file.recoverUnsaved"));
 
-
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.CloseFolder, Loc.Get("menu.file.closeFolder"));
             AppendMainMenuCommand(menu, AppCommand.Exit, Loc.Get("menu.file.exit"));
@@ -740,6 +741,7 @@ internal sealed class NativeMenuService : IDisposable
         AppendMainMenuCommand(menu, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
         AppendMainMenuCommand(menu, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
         AppendMainMenuCommand(menu, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
+        AppendMainMenuCommand(menu, AppCommand.ToggleHighlight, Loc.Get("menu.format.highlight"));
         AppendSeparator(menu);
         AppendMainMenuCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
         AppendMainMenuCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
@@ -932,6 +934,10 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.ShowCodeHighlight, Loc.Get("menu.view.showCodeHighlight"));
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ToggleSourceMode, Loc.Get("menu.view.sourceMode"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.ToggleEditorFocusMode, Loc.Get("menu.view.editorFocusMode"));
+            AppendMainMenuCommand(menu, AppCommand.ToggleEditorTypewriterMode, Loc.Get("menu.view.editorTypewriterMode"));
+            AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ToggleFocusMode, Loc.Get("menu.view.focusMode"));
             AppendSeparator(menu);
             _zoomMenu = CreateMenu(true);
@@ -963,10 +969,12 @@ internal sealed class NativeMenuService : IDisposable
         {
             AppendCommand(menu, AppCommand.CheckForUpdates, Loc.Get("menu.help.checkForUpdates"));
             AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.LearnMarkdown, Loc.Get("menu.help.learnMarkdown"));
+            AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowWelcome, Loc.Get("menu.help.welcome"));
             AppendCommand(menu, AppCommand.ShowChangelog, Loc.Get("menu.help.changelog"));
             AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));
+            AppendCommand(menu, AppCommand.ShowShortcuts, Loc.Get("menu.help.shortcuts"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowAbout, Loc.Get("menu.help.about"));
             return menu;

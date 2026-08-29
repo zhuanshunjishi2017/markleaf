@@ -66,7 +66,8 @@ public sealed class ShortcutManager
         var representable = key is >= Keys.D0 and <= Keys.D9
             or >= Keys.A and <= Keys.Z
             or >= Keys.F1 and <= Keys.F24
-            or Keys.OemPeriod or Keys.Oemcomma or Keys.OemMinus or Keys.Oemplus or Keys.Space;
+            or Keys.OemPeriod or Keys.Oemcomma or Keys.OemMinus or Keys.Oemplus
+            or Keys.Oemtilde or Keys.Oem5 or Keys.Oem2 or Keys.Oem4 or Keys.Oem6 or Keys.Space;
         if (!hasCommandModifier && !isFunctionKey || !representable)
         {
             return new ShortcutConflict(ShortcutConflictKind.Invalid, default);

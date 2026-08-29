@@ -126,6 +126,7 @@ internal sealed partial class MainForm : Form
     };
     private SolidBrush _menuBgBrush = new(Color.White);
     private SolidBrush _menuHighlightBrush = new(Color.FromArgb(0xF0, 0xF0, 0xF0));
+    private SolidBrush _menuSeparatorBrush = new(Color.FromArgb(0xE0, 0xE0, 0xE0));
     private SolidBrush _menuTextBrush = new(Color.Black);
     private SolidBrush _menuDisabledBrush = new(Color.FromArgb(0x6D, 0x6D, 0x6D));
     private readonly Font _statusBarTextFont = new(
@@ -135,7 +136,11 @@ internal sealed partial class MainForm : Form
         GraphicsUnit.Point);
     private bool _menuDarkMode;
     private bool _focusMode;
+    private bool _editorFocusMode;
+    private bool _editorTypewriterMode;
     private bool _sidebarVisibleBeforeFocus = true;
+    private bool _outlineDetachedBeforeFocus;
+    private bool _restoreDetachedOutlineAfterSidebarExpand;
     private bool _editorSmokeStarted;
     private bool _editorCommandSmokeStarted;
     private bool _documentSmokeStarted;
@@ -277,6 +282,8 @@ internal sealed partial class MainForm : Form
         ApplyWindowDarkMode(ColorThemeService.IsActiveThemeDark());
 
         Shown += (_, _) => _ = OnMainFormShownAsync(placement.IsMaximized);
+        Activated += (_, _) => _editorHost?.SetWindowActive(true);
+        Deactivate += (_, _) => _editorHost?.SetWindowActive(false);
         FormClosing += OnMainFormClosing;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         DpiChanged += (_, args) =>
@@ -398,6 +405,7 @@ internal sealed partial class MainForm : Form
             _menuService.Dispose();
             _menuBgBrush.Dispose();
             _menuHighlightBrush.Dispose();
+            _menuSeparatorBrush.Dispose();
             _menuTextBrush.Dispose();
             _menuDisabledBrush.Dispose();
             _statusBarTextFont.Dispose();
@@ -562,9 +570,17 @@ internal sealed partial class MainForm : Form
 
 internal sealed class SolidStatusBarRenderer : ToolStripProfessionalRenderer
 {
+    public Color BorderColor { get; set; } = Color.FromArgb(0xE0, 0xE0, 0xE0);
+
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
     {
         using var brush = new SolidBrush(e.ToolStrip.BackColor);
         e.Graphics.FillRectangle(brush, e.AffectedBounds);
+    }
+
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(BorderColor);
+        e.Graphics.FillRectangle(brush, 0, 0, e.ToolStrip.ClientSize.Width, 1);
     }
 }

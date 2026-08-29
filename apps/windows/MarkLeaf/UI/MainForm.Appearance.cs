@@ -133,7 +133,7 @@ internal sealed partial class MainForm
         {
             _editorLoadingView.BackColor = primaryBg;
         }
-        if (colors.TryGetValue("bg-hover", out var splitter))
+        if (colors.TryGetValue("bg-selected", out var splitter))
         {
             _sidebarSplit.BackColor = splitter;
             _outlineSplit.BackColor = splitter;
@@ -141,6 +141,11 @@ internal sealed partial class MainForm
 
         if (_statusStrip is not null)
         {
+            if (_statusStrip.Renderer is SolidStatusBarRenderer statusRenderer
+                && colors.TryGetValue("bg-selected", out var statusBorder))
+            {
+                statusRenderer.BorderColor = statusBorder;
+            }
             if (colors.TryGetValue("bg-hover", out var statusBg))
                 _statusStrip.BackColor = statusBg;
             if (colors.TryGetValue("text-secondary", out var statusText))
@@ -177,6 +182,11 @@ internal sealed partial class MainForm
         {
             _menuHighlightBrush.Dispose();
             _menuHighlightBrush = new SolidBrush(menuHl);
+        }
+        if (colors.TryGetValue("bg-selected", out var menuSeparator))
+        {
+            _menuSeparatorBrush.Dispose();
+            _menuSeparatorBrush = new SolidBrush(menuSeparator);
         }
         if (colors.TryGetValue("text-primary", out var menuText))
         {
@@ -374,11 +384,28 @@ internal sealed partial class MainForm
         _editorHost?.ApplyBlockHandleVisibility(visible);
     }
 
+    private void ToggleEditorFocusMode()
+    {
+        _editorFocusMode = !_editorFocusMode;
+        _editorHost?.SetEditorFocusMode(_editorFocusMode);
+        _menuService.RefreshStates();
+    }
+
+    private void ToggleEditorTypewriterMode()
+    {
+        _editorTypewriterMode = !_editorTypewriterMode;
+        _editorHost?.SetEditorTypewriterMode(_editorTypewriterMode);
+        _menuService.RefreshStates();
+    }
+
     private void ToggleFocusMode()
     {
         if (!_focusMode)
         {
             _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
+            _outlineDetachedBeforeFocus = _outlineDetached;
+            if (_outlineDetachedBeforeFocus)
+                MergeOutlineSidebarImmediately();
             if (_sidebarVisibleBeforeFocus)
                 CollapseSidebar();
             _menuService.Detach();
@@ -399,7 +426,15 @@ internal sealed partial class MainForm
         }
 
         if (_sidebarVisibleBeforeFocus)
+        {
+            _restoreDetachedOutlineAfterSidebarExpand = _outlineDetachedBeforeFocus;
             ExpandSidebar();
+        }
+        else if (_outlineDetachedBeforeFocus)
+        {
+            DetachOutlineSidebar();
+        }
+        _outlineDetachedBeforeFocus = false;
         SetStatus(Loc.Get("status.focusModeOff"));
     }
 }

@@ -89,6 +89,8 @@ internal sealed partial class MainForm
             HasSelection: _editorCommandStatus.HasSelection,
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
+            EditorFocusMode: _editorFocusMode,
+            EditorTypewriterMode: _editorTypewriterMode,
             SourceMode: _editorCommandStatus.SourceMode,
             ReadOnly: _document?.IsReadOnly == true,
             IsPlainText: IsPlainTextDocument,
@@ -98,6 +100,7 @@ internal sealed partial class MainForm
             ItalicActive: _editorCommandStatus.Italic,
             UnderlineActive: _editorCommandStatus.Underline,
             StrikeActive: _editorCommandStatus.Strike,
+            HighlightActive: _editorCommandStatus.Highlight,
             InlineCodeActive: _editorCommandStatus.InlineCode,
             LinkActive: _editorCommandStatus.Link,
             QuoteActive: _editorCommandStatus.Blockquote,
@@ -244,6 +247,12 @@ internal sealed partial class MainForm
             case AppCommand.ToggleFocusMode:
                 ToggleFocusMode();
                 break;
+            case AppCommand.ToggleEditorFocusMode:
+                ToggleEditorFocusMode();
+                break;
+            case AppCommand.ToggleEditorTypewriterMode:
+                ToggleEditorTypewriterMode();
+                break;
             case AppCommand.SwitchToWorkspace:
                 ShowSidebarView(outline: false);
                 SetStatus(Loc.Get("status.switchedToWorkspace"));
@@ -278,6 +287,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.CheckForUpdates:
                 _ = CheckForUpdatesAsync();
+                break;
+            case AppCommand.LearnMarkdown:
+                ExternalLinkService.Open("https://www.runoob.com/markdown/md-tutorial.html");
                 break;
             case AppCommand.ShowPreferences:
                 ShowPreferences();
@@ -426,6 +438,7 @@ internal sealed partial class MainForm
             AppCommand.ToggleItalic => "toggleItalic",
             AppCommand.ToggleUnderline => "toggleUnderline",
             AppCommand.ToggleStrike => "toggleStrike",
+            AppCommand.ToggleHighlight => "toggleHighlight",
             AppCommand.ToggleInlineCode => "toggleCode",
             AppCommand.PromoteHeading => "promoteHeading",
             AppCommand.DemoteHeading => "demoteHeading",
@@ -487,7 +500,7 @@ internal sealed partial class MainForm
     {
         return command is >= AppCommand.Undo and <= AppCommand.Replace
             || command is >= AppCommand.SetParagraph and <= AppCommand.DeleteTable
-            || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleInlineCode
+            || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
@@ -508,7 +521,7 @@ internal sealed partial class MainForm
 
     private static bool IsInlineFormatCommand(AppCommand command) =>
         command is AppCommand.ToggleBold or AppCommand.ToggleItalic
-            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike;
+            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight;
 
     private void OnEditorCommandStateChanged(object? sender, EditorCommandStatus status)
     {

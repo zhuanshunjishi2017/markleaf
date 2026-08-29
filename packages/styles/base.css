@@ -94,6 +94,12 @@
   font-synthesis: style;
 }
 
+.markleaf-document mark {
+  background-color: var(--highlight, #FFF36D);
+  color: inherit;
+  padding: 0 0.08em;
+}
+
 .markleaf-document h1,
 .markleaf-document h2,
 .markleaf-document h3,

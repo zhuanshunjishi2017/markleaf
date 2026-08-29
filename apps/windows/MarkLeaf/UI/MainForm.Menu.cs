@@ -23,7 +23,7 @@ internal sealed partial class MainForm
             try
             {
                 using var g = Graphics.FromHdc(dc);
-                g.FillRectangle(_menuHighlightBrush, stripLeft, clientTop - 1, stripWidth, 1);
+                g.FillRectangle(_menuSeparatorBrush, stripLeft, clientTop - 1, stripWidth, 1);
             }
             finally
             {

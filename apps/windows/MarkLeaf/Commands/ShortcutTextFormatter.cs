@@ -63,6 +63,11 @@ public static class ShortcutTextFormatter
         Keys.Oemcomma => ",",
         Keys.OemMinus => "-",
         Keys.Oemplus => "=",
+        Keys.Oemtilde => "`",
+        Keys.Oem5 => "\\",
+        Keys.Oem2 => "/",
+        Keys.Oem4 => "[",
+        Keys.Oem6 => "]",
         Keys.Space => "Space",
         _ => key.ToString(),
     };
@@ -91,6 +96,11 @@ public static class ShortcutTextFormatter
                 case ',': key = Keys.Oemcomma; return true;
                 case '-': key = Keys.OemMinus; return true;
                 case '=': key = Keys.Oemplus; return true;
+                case '`': key = Keys.Oemtilde; return true;
+                case '\\': key = Keys.Oem5; return true;
+                case '/': key = Keys.Oem2; return true;
+                case '[': key = Keys.Oem4; return true;
+                case ']': key = Keys.Oem6; return true;
                 default: return false;
             }
         }

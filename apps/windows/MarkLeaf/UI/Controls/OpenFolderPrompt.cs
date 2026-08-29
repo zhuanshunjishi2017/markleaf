@@ -12,11 +12,11 @@ internal sealed class OpenFolderPrompt : Control
     private Color _textSecondary = Color.FromArgb(0x55, 0x55, 0x55);
 
     private bool _hovered;
-    private Font _iconFont = new("Segoe Fluent Icons", 11F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _iconFont = new(SystemIconProvider.IconFontName, 11F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _textFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _labelFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
 
-    private const string FolderIcon = "";
+    private static string FolderIcon => SystemIconProvider.OpenFolderIcon;
     private static string LabelText => Loc.Get("sidebar.noWorkspace");
     private static string ButtonText => Loc.Get("sidebar.openFolder");
 

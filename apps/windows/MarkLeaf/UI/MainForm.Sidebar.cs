@@ -141,6 +141,7 @@ internal sealed partial class MainForm
                 DetachOutlineSidebar();
         };
         _sidebarTabBar.NewMarkdownClicked += OnSidebarNewMarkdownClicked;
+        _sidebarTabBar.DetachClicked += (_, _) => DetachOutlineSidebar();
         _sidebarSearchBar.SearchTextChanged += OnSidebarSearchTextChanged;
 
         _searchResultsView = new SearchResultsView();
@@ -681,6 +682,11 @@ internal sealed partial class MainForm
         _editorPanel.Dock = DockStyle.Fill;
         _sidebarSplit.SetLiveDraggingEnabled(true);
         UpdateViewToggleIcon();
+        if (!collapsed && _restoreDetachedOutlineAfterSidebarExpand)
+        {
+            _restoreDetachedOutlineAfterSidebarExpand = false;
+            DetachOutlineSidebar();
+        }
         if (collapsed)
         {
             SaveWindowState();
@@ -770,6 +776,46 @@ internal sealed partial class MainForm
 
         _detachedOutlineSearchBar.ClearSearch();
         AnimateOutlineSidebar(detached: false);
+    }
+
+    private void MergeOutlineSidebarImmediately()
+    {
+        if (!_outlineDetached)
+            return;
+
+        _outlineAnimationTimer.Stop();
+        _outlineAnimationTargetDetached = null;
+        var visibleWidth = _outlineSplit.Panel2Collapsed
+            ? 0
+            : Math.Max(
+                0,
+                _outlineSplit.ClientSize.Width
+                    - _outlineSplit.SplitterDistance
+                    - _outlineSplit.SplitterWidth);
+        SuspendLayout();
+        _outlineSplit.SuspendLayout();
+        try
+        {
+            _outlineSplit.Panel2Collapsed = true;
+            _outlineSplit.Panel2MinSize = _detachedOutlineMinimumWidth;
+            _outlinePanelHost.Parent = _sidebarContentHost;
+            _outlinePanelHost.Dock = DockStyle.Fill;
+            _sidebarTabBar.Mode = SidebarTabBarMode.Combined;
+            _outlineDetached = false;
+            ShowSidebarView(outline: false);
+            _outlineSplit.Dock = DockStyle.Fill;
+            _detachedOutlinePanel.Dock = DockStyle.Fill;
+            _detachedOutlinePanel.Location = Point.Empty;
+            if (WindowState == FormWindowState.Normal && visibleWidth > 0)
+            {
+                ResizeWindowForSidebarExtent(-(visibleWidth + _outlineSplit.SplitterWidth));
+            }
+        }
+        finally
+        {
+            _outlineSplit.ResumeLayout(performLayout: true);
+            ResumeLayout(performLayout: true);
+        }
     }
 
     private void AnimateOutlineSidebar(bool detached)
@@ -902,7 +948,7 @@ internal sealed partial class MainForm
                 _outlinePanelHost.Dock = DockStyle.Fill;
                 _sidebarTabBar.Mode = SidebarTabBarMode.Combined;
                 _outlineDetached = false;
-                ShowSidebarView(outline: true);
+                ShowSidebarView(outline: false);
                 _outlineSplit.Dock = DockStyle.Fill;
                 _detachedOutlinePanel.Dock = DockStyle.Fill;
                 _detachedOutlinePanel.Location = Point.Empty;

@@ -26,7 +26,7 @@ internal sealed class SidebarTabBar : Control
     private bool _openFolderHovered;
     private Font _font = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
     private Font _selectedFont = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
-    private Font _iconFont = new("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _iconFont = new(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point);
     private readonly Rectangle[] _tabBounds = new Rectangle[2];
     private readonly Rectangle[] _tabVisualBounds = new Rectangle[2];
     private readonly System.Windows.Forms.Timer _selectionAnimationTimer = new() { Interval = 15 };
@@ -39,8 +39,8 @@ internal sealed class SidebarTabBar : Control
     private Rectangle _openFolderBounds;
     private SidebarTabBarMode _mode;
 
-    private const string NewMarkdownButtonIcon = "\uECC8";
-    private const string MergeButtonIcon = "\uE8A0";
+    private static string NewMarkdownButtonIcon => SystemIconProvider.NewFileIcon;
+    private static string MergeButtonIcon => SystemIconProvider.MergeIcon;
 
     public SidebarTabBar()
     {
@@ -60,13 +60,16 @@ internal sealed class SidebarTabBar : Control
     public event EventHandler<int>? TabChanged;
     public event EventHandler<int>? TabReclicked;
     public event EventHandler? NewMarkdownClicked;
+    public event EventHandler? DetachClicked;
     public event EventHandler? MergeClicked;
 
     private bool NewMarkdownButtonVisible => _mode != SidebarTabBarMode.OutlineOnly && _selectedIndex == 0;
 
     private bool MergeButtonVisible => _mode == SidebarTabBarMode.OutlineOnly;
 
-    private bool ActionButtonVisible => NewMarkdownButtonVisible || MergeButtonVisible;
+    private bool DetachButtonVisible => _mode == SidebarTabBarMode.Combined && _selectedIndex == 1;
+
+    private bool ActionButtonVisible => NewMarkdownButtonVisible || DetachButtonVisible || MergeButtonVisible;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -129,7 +132,7 @@ internal sealed class SidebarTabBar : Control
         _iconFont.Dispose();
         _font = new Font("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
         _selectedFont = new Font("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
-        _iconFont = new Font("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _iconFont = new Font(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point);
         Height = this.ScaleForDpi(39);
         ResetSelectionAnimation();
         Invalidate();
@@ -144,7 +147,7 @@ internal sealed class SidebarTabBar : Control
         var hPad = this.ScaleForDpi(8);
         var topPad = this.ScaleForDpi(8);
         var bottomPad = this.ScaleForDpi(4);
-        var gap = this.ScaleForDpi(2);
+        var gap = 0;
         var radius = this.ScaleForDpi(6);
         var iconSide = ClientSize.Height - topPad - bottomPad;
         var rightMargin = this.ScaleForDpi(8);
@@ -164,7 +167,9 @@ internal sealed class SidebarTabBar : Control
 
             TextRenderer.DrawText(
                 e.Graphics,
-                MergeButtonVisible ? MergeButtonIcon : NewMarkdownButtonIcon,
+                MergeButtonVisible
+                    ? MergeButtonIcon
+                    : DetachButtonVisible ? SystemIconProvider.DetachIcon : NewMarkdownButtonIcon,
                 _iconFont,
                 folderIconBounds,
                 ForeColor,
@@ -366,6 +371,8 @@ internal sealed class SidebarTabBar : Control
             Focus();
             if (MergeButtonVisible)
                 MergeClicked?.Invoke(this, EventArgs.Empty);
+            else if (DetachButtonVisible)
+                DetachClicked?.Invoke(this, EventArgs.Empty);
             else
                 NewMarkdownClicked?.Invoke(this, EventArgs.Empty);
             return;

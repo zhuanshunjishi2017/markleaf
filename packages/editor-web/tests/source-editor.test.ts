@@ -27,17 +27,18 @@ describe('source editor', () => {
     )
 
     // jsdom 无法按 !important 计算 caret-color，这里直接校验样式契约：
-    // 源码编辑器不得再隐藏原生光标，且必须提供可见的 caret 颜色。
+    // 源码编辑器默认隐藏光标，仅在前端确认编辑器真正获得焦点且可编辑时显示主题色。
     const caretHidingRules = rules.filter(rule =>
       rule.selectorText.includes('.cm-content') &&
       rule.style.getPropertyValue('caret-color').trim() === 'transparent'
     )
-    expect(caretHidingRules).toHaveLength(0)
+    expect(caretHidingRules.length).toBeGreaterThan(0)
+    expect(caretHidingRules.every(rule => rule.selectorText.includes('.cm-content'))).toBe(true)
 
     const visibleCaretRules = rules.filter(rule =>
       rule.selectorText.includes('#source-editor') &&
       rule.selectorText.includes('.cm-content') &&
-      !['', 'transparent', 'auto'].includes(rule.style.getPropertyValue('caret-color').trim())
+      rule.style.getPropertyValue('caret-color').trim() === 'var(--theme-dark)'
     )
     expect(visibleCaretRules.length).toBeGreaterThan(0)
     hostStyles.remove()

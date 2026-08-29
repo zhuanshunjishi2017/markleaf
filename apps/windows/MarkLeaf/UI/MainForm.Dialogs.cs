@@ -112,7 +112,24 @@ internal sealed partial class MainForm
 
     private async void ShowWelcome()
     {
-        var welcomePath = Path.Combine(AppContext.BaseDirectory, "Resources", "welcome.md");
+        var culture = _settings.General.UiLanguage;
+        if (string.IsNullOrWhiteSpace(culture))
+        {
+            culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+        }
+
+        var welcomeFileName = culture switch
+        {
+            "zh-TW" => "welcome.zh-TW.md",
+            "en-US" => "welcome.en-US.md",
+            "ja-JP" => "welcome.ja-JP.md",
+            _ => "welcome.md",
+        };
+        var welcomePath = Path.Combine(AppContext.BaseDirectory, "Resources", welcomeFileName);
+        if (!File.Exists(welcomePath))
+        {
+            welcomePath = Path.Combine(AppContext.BaseDirectory, "Resources", "welcome.md");
+        }
         if (!File.Exists(welcomePath))
         {
             SetStatus(Loc.Get("welcome.notFound"));
@@ -276,7 +293,8 @@ internal sealed partial class MainForm
                 editor.VisualMaxContentWidth,
                 editor.VisualCjkAutoSpacing,
                 colorThemeCss,
-                defaultName);
+                defaultName,
+                options.KeepTablesTogether);
 
             if (string.IsNullOrEmpty(html))
             {
@@ -358,7 +376,7 @@ internal sealed partial class MainForm
         }
 
         var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
-        var html = await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss);
+        var html = await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether);
         if (string.IsNullOrEmpty(html)) return [];
 
         return await _editorHost.PrintExportToPdfAsync(
@@ -399,6 +417,7 @@ internal sealed partial class MainForm
             PdfFooterCustom: export.PdfFooterCustom ?? "",
             Style: ResolveExportStyle(export.Style),
             ColorScheme: ResolveExportColorScheme(export.ColorScheme),
+            KeepTablesTogether: export.KeepTablesTogether,
             OutputPath: outputPath);
     }
 
@@ -425,6 +444,7 @@ internal sealed partial class MainForm
             PdfFooterAlignment = options.PdfFooterAlignment ?? "",
             Style = ResolveExportStyle(options.Style),
             ColorScheme = ResolveExportColorScheme(options.ColorScheme),
+            KeepTablesTogether = options.KeepTablesTogether,
         };
         SaveSettings();
     }
@@ -602,10 +622,16 @@ internal sealed partial class MainForm
         }
 
         var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
-        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss);
+        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether);
     }
 
-    private async Task<string> GeneratePrintHtmlAsync(string format, string style, string header, string footer, string colorSchemeCss)
+    private async Task<string> GeneratePrintHtmlAsync(
+        string format,
+        string style,
+        string header,
+        string footer,
+        string colorSchemeCss,
+        bool keepTablesTogether)
     {
         if (_editorHost is null || _document is null)
         {
@@ -627,7 +653,8 @@ internal sealed partial class MainForm
             editor.VisualMaxContentWidth,
             editor.VisualCjkAutoSpacing,
             colorSchemeCss,
-            title);
+            title,
+            keepTablesTogether);
         if (string.IsNullOrEmpty(html))
         {
             SetStatus(Loc.Get("export.noContent"));

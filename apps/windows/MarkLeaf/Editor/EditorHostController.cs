@@ -336,6 +336,28 @@ internal sealed class EditorHostController : IDisposable
         EnqueueOrRun(() => _webView.ZoomFactor = zoomFactor);
     }
 
+    public void SetWindowActive(bool active)
+    {
+        EnqueueOrRun(() =>
+        {
+            if (_webView.CoreWebView2 is null)
+                return;
+
+            _webView.CoreWebView2.ExecuteScriptAsync(
+                $"window.__markleafSetWindowActive?.({(active ? "true" : "false")});");
+        });
+    }
+
+    public void SetEditorFocusMode(bool enabled)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setEditorFocusMode", text = enabled ? "1" : "0" }));
+    }
+
+    public void SetEditorTypewriterMode(bool enabled)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setEditorTypewriterMode", text = enabled ? "1" : "0" }));
+    }
+
     public void ApplyStyles(string baseCss, IReadOnlyList<StyleDefinition> styles, string activeStyle)
     {
         var payload = new
@@ -491,6 +513,7 @@ internal sealed class EditorHostController : IDisposable
         bool visualCjkAutoSpacing,
         string? colorSchemeCss = null,
         string? title = null,
+        bool keepTablesTogether = false,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -509,6 +532,7 @@ internal sealed class EditorHostController : IDisposable
             visualCjkAutoSpacing,
             colorSchemeCss,
             title,
+            keepTablesTogether,
         });
         EnqueueOrRun(() =>
         {

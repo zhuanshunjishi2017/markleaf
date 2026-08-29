@@ -9,6 +9,7 @@ import {
   getEditorCommandState,
   getEditorStatus,
   getBlockHandleInfo,
+  setEditorFocusMode,
   getMarkdown,
   captureVisualSelection,
   collapseVisualSelection,
@@ -101,6 +102,8 @@ let visualSelectionBeforeSourceMode: VisualSelectionSnapshot | null = null
 let frontendFormatMenuEnabled = false
 let documentType: DocumentType = 'markdown'
 let readOnly = false
+let editorFocusMode = false
+let editorTypewriterMode = false
 
 const editorCreationOptions = {
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
@@ -109,6 +112,113 @@ let editor = createEditor(editorMount, '', false, editorCreationOptions)
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
 let lastVisualSelection = captureVisualSelection(editor)
+let typewriterAnimationFrame = 0
+
+function animateEditorScrollTo(target: number, duration = 100): void {
+  if (typewriterAnimationFrame !== 0) {
+    window.cancelAnimationFrame(typewriterAnimationFrame)
+    typewriterAnimationFrame = 0
+  }
+
+  const scrollingElement = document.scrollingElement ?? document.documentElement
+  const start = scrollingElement.scrollTop
+  const destination = Math.max(0, target)
+  const distance = destination - start
+  if (Math.abs(distance) <= 2) {
+    scrollingElement.scrollTop = destination
+    return
+  }
+
+  const startedAt = performance.now()
+  const step = (now: number): void => {
+    const progress = Math.min(1, (now - startedAt) / duration)
+    const eased = progress * (2 - progress)
+    scrollingElement.scrollTop = start + distance * eased
+    if (progress < 1) {
+      typewriterAnimationFrame = window.requestAnimationFrame(step)
+    } else {
+      typewriterAnimationFrame = 0
+    }
+  }
+  typewriterAnimationFrame = window.requestAnimationFrame(step)
+}
+
+function scrollEditorCursorToCenter(): void {
+  if (!editorTypewriterMode || sourceMode || readOnly) return
+
+  const position = editor.state.selection.from
+  let coords: { top: number }
+  try {
+    coords = editor.view.coordsAtPos(position)
+  } catch {
+    return
+  }
+  const scrollingElement = document.scrollingElement ?? document.documentElement
+  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
+}
+
+function updateEditorTypewriterMode(): void {
+  editorMount.classList.toggle('markleaf-editor-typewriter', editorTypewriterMode && !sourceMode && !readOnly)
+  if (editorTypewriterMode && !sourceMode && !readOnly) {
+    window.requestAnimationFrame(scrollEditorCursorToCenter)
+  }
+}
+
+function updateEditorFocusLine(): void {
+  sourceMount.querySelectorAll<HTMLElement>('.markleaf-focus-dim, .markleaf-focus-line').forEach(element => {
+    element.classList.remove('markleaf-focus-dim', 'markleaf-focus-line')
+  })
+  editorMount.classList.remove('markleaf-editor-focus-mode')
+  sourceMount.classList.remove('markleaf-editor-focus-mode')
+  if (!editorFocusMode || readOnly || sourceMode) return
+  editorMount.classList.add('markleaf-editor-focus-mode')
+}
+
+// Native window activation and editor focus are separate states. Re-activating
+// the window must not resurrect a caret until the editor itself is focused.
+let nativeWindowActive = true
+const updateCaretVisibility = (): void => {
+  const windowActive = nativeWindowActive
+    && document.hasFocus()
+    && document.visibilityState !== 'hidden'
+  const activeElement = document.activeElement
+  const visualHasFocus = activeElement !== null && editor.view.dom.contains(activeElement)
+  const sourceHasFocus = sourceEditor !== null
+    && activeElement !== null
+    && sourceEditor.view.dom.contains(activeElement)
+  const visualFocused = !readOnly && !editorMount.hidden && visualHasFocus
+  const sourceFocused = !readOnly && !sourceMount.hidden && sourceHasFocus
+  document.documentElement.classList.toggle('markleaf-window-inactive', !windowActive)
+  document.documentElement.classList.toggle(
+    'markleaf-editor-caret-visible',
+    windowActive && (visualFocused || sourceFocused),
+  )
+}
+
+const setNativeWindowActive = (active: boolean): void => {
+  nativeWindowActive = active
+  if (!active) {
+    const activeElement = document.activeElement
+    if (activeElement && (editorMount.contains(activeElement) || sourceMount.contains(activeElement))) {
+      ;(activeElement as HTMLElement).blur()
+    }
+  }
+  updateCaretVisibility()
+}
+
+declare global {
+  interface Window {
+    __markleafSetWindowActive?: (active: boolean) => void
+  }
+}
+
+window.__markleafSetWindowActive = setNativeWindowActive
+window.addEventListener('blur', () => setNativeWindowActive(false))
+window.addEventListener('focus', () => setNativeWindowActive(true))
+document.addEventListener('visibilitychange', updateCaretVisibility)
+document.addEventListener('focusin', updateCaretVisibility)
+document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibility, 0))
+updateCaretVisibility()
 
 const blockHandleButton = document.createElement('button')
 blockHandleButton.type = 'button'
@@ -498,6 +608,8 @@ function bindEditorEvents(targetEditor: typeof editor): void {
   })
 
   targetEditor.on('selectionUpdate', () => {
+    updateEditorFocusLine()
+    if (targetEditor === editor) scrollEditorCursorToCenter()
     if (!compositionActive) {
       lastVisualSelection = captureVisualSelection(targetEditor)
       send('selectionChanged', {
@@ -572,6 +684,8 @@ function setSourceMode(enabled: boolean): void {
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
+    updateEditorTypewriterMode()
+    updateEditorFocusLine()
     if (jumpTarget.type === 'tableEnd') {
       sourceEditor.setSelectionToTableEnd(jumpTarget.tableIndex, true)
     } else if (jumpTarget.type === 'afterTable') {
@@ -593,11 +707,15 @@ function setSourceMode(enabled: boolean): void {
     sourceMount.hidden = true
     editorMount.hidden = false
     sourceMode = false
+    updateEditorTypewriterMode()
+    if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+    updateEditorFocusLine()
     restoreVisualSelection(editor, visualSelection, true)
     lastVisualSelection = captureVisualSelection(editor)
     scheduleOutline()
     sendOutlineSelectionFromCursor()
   }
+  updateCaretVisibility()
   updateBlockHandleOverlay()
   sendEditorState()
 }
@@ -891,7 +1009,7 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     if (sourceMode) {
       return
     }
-    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline'
+    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline' || command === 'toggleHighlight'
     executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
     hideFormatMenu()
     sendEditorState()
@@ -993,6 +1111,7 @@ function showFormatMenu(
     toggleBold: state.bold,
     toggleItalic: state.italic,
     toggleUnderline: state.underline,
+    toggleHighlight: state.highlight,
   }
   for (const button of formatButtonElements) {
     button.classList.toggle(
@@ -1230,11 +1349,15 @@ async function handleMessage(value: unknown): Promise<void> {
           editorCreationOptions,
         )
         bindEditorEvents(editor)
+        if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+        updateEditorTypewriterMode()
+        updateEditorFocusLine()
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
         lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
+      updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
       updateBlockHandleOverlay()
       sendOutline()
@@ -1270,11 +1393,15 @@ async function handleMessage(value: unknown): Promise<void> {
           editorCreationOptions,
         )
         bindEditorEvents(editor)
+        if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+        updateEditorTypewriterMode()
+        updateEditorFocusLine()
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
         lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
+      updateCaretVisibility()
       updateBlockHandleOverlay()
       sendEditorState()
       sendOutline()
@@ -1306,6 +1433,19 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'toggleSourceMode') {
           setSourceMode(!sourceMode)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'setEditorFocusMode') {
+          editorFocusMode = payload.text === '1'
+          if (!sourceMode && !readOnly) setEditorFocusMode(editor, editorFocusMode)
+          updateEditorFocusLine()
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'setEditorTypewriterMode') {
+          editorTypewriterMode = payload.text === '1'
+          updateEditorTypewriterMode()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -1442,6 +1582,7 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing?: unknown
               colorSchemeCss?: unknown
               title?: unknown
+              keepTablesTogether?: unknown
             }
             try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
             const style = typeof options.style === 'string' ? options.style : 'serif'
@@ -1456,6 +1597,7 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
+            const keepTablesTogether = options.keepTablesTogether === true
             const html = await generateExportHtml(
               style,
               format,
@@ -1467,6 +1609,7 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing,
               colorSchemeCss,
               title,
+              keepTablesTogether,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -1824,6 +1967,7 @@ async function generateExportHtml(
   visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
+  keepTablesTogether = false,
 ): Promise<string> {
   const isPdf = format === 'pdf'
   const rawBodyHtml = sourceMode
@@ -1854,6 +1998,7 @@ ${baseCss}
 .markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
 ${colorSchemeCss}
 ${resolved.css}
+${keepTablesTogether ? '.markleaf-document figure:has(> table) { break-inside: avoid; page-break-inside: avoid; }\n.markleaf-document figure:has(> table) > table { break-inside: avoid; page-break-inside: avoid; }' : ''}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;

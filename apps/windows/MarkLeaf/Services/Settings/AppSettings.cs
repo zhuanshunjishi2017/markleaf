@@ -122,6 +122,8 @@ public sealed class ShortcutSettings
 
 public sealed class ExportSettings
 {
+    public bool KeepTablesTogether { get; set; }
+
     public string Format { get; set; } = "pdf";
 
     public string PaperSize { get; set; } = "A4";

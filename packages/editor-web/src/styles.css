@@ -26,10 +26,58 @@ body,
 
 #editor .ProseMirror {
   text-autospace: no-autospace;
+  color: var(--text-primary);
+  caret-color: transparent;
+}
+
+/* 专注模式：仅保留光标所在块/源码行的正常透明度。 */
+#editor.markleaf-editor-focus-mode .ProseMirror > .markleaf-focus-dim,
+#source-editor.markleaf-editor-focus-mode .cm-line.markleaf-focus-dim {
+  opacity: 0.32 !important;
+  transition: opacity 0.12s ease;
+}
+
+#editor.markleaf-editor-focus-mode .ProseMirror > .markleaf-focus-line,
+#source-editor.markleaf-editor-focus-mode .cm-line.markleaf-focus-line {
+  opacity: 1 !important;
+  transition: opacity 0.12s ease;
+}
+
+/* 只有窗口激活、编辑器真正获得焦点且处于可编辑状态时才显示光标。 */
+:root.markleaf-editor-caret-visible #editor .ProseMirror:focus-within {
+  caret-color: var(--theme-dark);
 }
 
 .markleaf-cjk-autospace #editor .ProseMirror {
   text-autospace: normal;
+}
+
+/* Markdown 表情别名保留在文档中，仅在可视化编辑器里替换为表情显示。 */
+.markleaf-emoji {
+  display: inline-block;
+  font-size: 0;
+  line-height: inherit;
+  letter-spacing: 0 !important;
+  word-spacing: 0 !important;
+  text-indent: 0 !important;
+  white-space: nowrap;
+}
+
+.markleaf-emoji::after {
+  content: attr(data-emoji);
+  display: inline-block;
+  font-size: var(--ml-font-size, 16px);
+  line-height: inherit;
+  letter-spacing: 0 !important;
+  word-spacing: 0 !important;
+  text-indent: 0 !important;
+  vertical-align: baseline;
+}
+
+.markleaf-document mark {
+  background-color: var(--highlight);
+  color: inherit;
+  padding: 0 0.08em;
 }
 
 body {
@@ -345,7 +393,12 @@ body.markleaf-theme-dark {
 /* 源码模式使用原生 contenteditable 光标（未启用 drawSelection），
    显式指定主题色，避免深色主题下光标不可见。 */
 #source-editor .cm-content {
-  caret-color: var(--text-primary);
+  color: var(--text-primary);
+  caret-color: transparent;
+}
+
+:root.markleaf-editor-caret-visible #source-editor .cm-editor.cm-focused .cm-content {
+  caret-color: var(--theme-dark);
 }
 
 /* ---- 源码模式语法高亮（class-based，颜色随主题变量） ---- */

@@ -12,6 +12,8 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
   'setLanguage',
   'setSourceIndent',
   'setAutoHideScrollbar',
+  'setEditorFocusMode',
+  'setEditorTypewriterMode',
   'setBlockHandleVisible',
   'setCodeHighlightVisible',
   'rerenderAllMermaid',

@@ -8,6 +8,7 @@ public static class CommandStateResolver
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowPreferences
                 or AppCommand.ShowAbout or AppCommand.ShowChangelog or AppCommand.ShowWelcome
+                or AppCommand.LearnMarkdown
                 or AppCommand.CheckForUpdates
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
@@ -18,6 +19,12 @@ public static class CommandStateResolver
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
+            AppCommand.ToggleEditorFocusMode => new(
+                context.EditorReady && !context.SourceMode,
+                context.EditorFocusMode),
+            AppCommand.ToggleEditorTypewriterMode => new(
+                context.EditorReady && !context.IsPlainText && !context.SourceMode,
+                context.EditorTypewriterMode),
             AppCommand.ViewTree => new(true, !context.ListViewActive),
             AppCommand.ViewList => new(true, context.ListViewActive),
             AppCommand.UseIndependentOutlineSidebar => new(true, context.IndependentOutlineSidebar),
@@ -58,6 +65,7 @@ public static class CommandStateResolver
             AppCommand.ToggleItalic => new(context.EditorReady && !context.ReadOnly, context.ItalicActive),
             AppCommand.ToggleUnderline => new(context.EditorReady && !context.ReadOnly, context.UnderlineActive),
             AppCommand.ToggleStrike => new(context.EditorReady && !context.ReadOnly, context.StrikeActive),
+            AppCommand.ToggleHighlight => new(context.EditorReady && !context.ReadOnly, context.HighlightActive),
             AppCommand.ToggleInlineCode => new(context.EditorReady && !context.ReadOnly, context.InlineCodeActive),
             AppCommand.InsertLink => new(context.EditorReady && !context.ReadOnly, context.LinkActive),
             AppCommand.InsertImage => new(context.DocumentAvailable && context.EditorReady && !context.ReadOnly),

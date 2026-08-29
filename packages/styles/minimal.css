@@ -1,7 +1,7 @@
 /* @type: typography
    @name: 网页(极简) */
 .markleaf-style-minimal .markleaf-document {
-  font-family: sans-serif;
+  font-family: "Segoe UI","Microsoft YaHei", sans-serif;
   font-size: var(--ml-font-size);
   line-height: calc(var(--ml-line-height) * 1.1);
   letter-spacing: 0.01em;
@@ -11,17 +11,21 @@
 .markleaf-style-minimal .markleaf-document h2,
 .markleaf-style-minimal .markleaf-document h3,
 .markleaf-style-minimal .markleaf-document h4 {
-  font-family: sans-serif;
+  font-family: "Segoe UI","Microsoft YaHei", sans-serif;
   font-weight: bold;
   letter-spacing: 0.03em;
 }
 
 .markleaf-style-minimal .markleaf-document h1 {
-  font-size: calc(var(--ml-font-size) * 1.5);
+  font-size: calc(var(--ml-font-size) * 2);
   margin-bottom: 1em;
 }
 
 .markleaf-style-minimal .markleaf-document h2 {
+  font-size: calc(var(--ml-font-size) * 1.5);
+}
+
+.markleaf-style-minimal .markleaf-document h3 {
   font-size: calc(var(--ml-font-size) * 1.25);
 }
 

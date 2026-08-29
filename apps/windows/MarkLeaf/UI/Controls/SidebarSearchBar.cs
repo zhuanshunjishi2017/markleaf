@@ -15,10 +15,10 @@ internal sealed class SidebarSearchBar : Control
     private Rectangle _clearIconBounds;
     private string _workspaceName = string.Empty;
     private Font _textFont = new("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-    private Font _iconFont = new("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _iconFont = new(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point);
 
-    private const string SearchIcon = "\uE721";
-    private const string ClearIcon = "\uEB90";
+    private static string SearchIcon => SystemIconProvider.SearchIcon;
+    private static string ClearIcon => SystemIconProvider.ClearIcon;
 
     public SidebarSearchBar()
     {
@@ -110,7 +110,7 @@ internal sealed class SidebarSearchBar : Control
         _textFont.Dispose();
         _iconFont.Dispose();
         _textFont = new Font("Microsoft YaHei", 9F, FontStyle.Regular, GraphicsUnit.Point);
-        _iconFont = new Font("Segoe Fluent Icons", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _iconFont = new Font(SystemIconProvider.IconFontName, 10F, FontStyle.Regular, GraphicsUnit.Point);
         _textBox.Font = _textFont;
         Height = this.ScaleForDpi(38);
         Invalidate();

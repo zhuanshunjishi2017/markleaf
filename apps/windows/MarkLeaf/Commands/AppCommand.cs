@@ -59,7 +59,8 @@ public enum AppCommand
     ToggleItalic,
     ToggleUnderline,
     ToggleStrike,
-    ToggleInlineCode,
+    ToggleHighlight = 0x132A,
+    ToggleInlineCode = 0x1216,
     InsertLink,
     InsertImage,
     InsertImageFromUrl,
@@ -97,6 +98,8 @@ public enum AppCommand
     SwitchToWorkspace = 0x1306,
     SwitchToOutline = 0x1307,
     ToggleFocusMode = 0x1308,
+    ToggleEditorFocusMode = 0x1328,
+    ToggleEditorTypewriterMode = 0x1329,
     SelectAll = 0x1309,
     ExitCode = 0x130A,
     EditMath = 0x130B,
@@ -138,6 +141,7 @@ public enum AppCommand
     ShowCodeHighlight,
     CheckForUpdates = 0x140C,
     ShowWelcome = 0x140D,
+    LearnMarkdown = 0x140E,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -160,6 +164,7 @@ public readonly record struct CommandContext(
     bool ItalicActive = false,
     bool UnderlineActive = false,
     bool StrikeActive = false,
+    bool HighlightActive = false,
     bool InlineCodeActive = false,
     bool LinkActive = false,
     bool QuoteActive = false,
@@ -182,4 +187,6 @@ public readonly record struct CommandContext(
     bool ShowCodeHighlight = false,
     bool ListViewActive = false,
     bool IndependentOutlineSidebar = false,
-    string? FootnoteDefinitionLabel = null);
+    string? FootnoteDefinitionLabel = null,
+    bool EditorFocusMode = false,
+    bool EditorTypewriterMode = false);

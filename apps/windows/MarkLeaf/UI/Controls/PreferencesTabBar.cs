@@ -19,14 +19,16 @@ internal sealed class PreferencesTabBar : Control
 
     private int _selectedIndex;
     private int _hoveredIndex = -1;
-    private Font _iconFont = new("Segoe Fluent Icons", 16F, FontStyle.Regular, GraphicsUnit.Point);
+    private Font _iconFont = new(SystemIconProvider.IconFontName, 16F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _textFont = new("Microsoft YaHei", 8F, FontStyle.Regular, GraphicsUnit.Point);
     private Rectangle[] _tabBounds;
 
     public PreferencesTabBar()
         : this(
             [Loc.Get("prefs.tab.file"), Loc.Get("prefs.tab.appearance"), Loc.Get("prefs.tab.editor"), Loc.Get("prefs.tab.images"), Loc.Get("prefs.tab.general")],
-            ["", "", "", "", ""]) { }
+            [SystemIconProvider.PreferencesFileIcon, SystemIconProvider.PreferencesAppearanceIcon,
+             SystemIconProvider.PreferencesEditorIcon, SystemIconProvider.PreferencesImagesIcon,
+             SystemIconProvider.PreferencesGeneralIcon]) { }
 
     public PreferencesTabBar(string[] tabs, string[] icons)
     {

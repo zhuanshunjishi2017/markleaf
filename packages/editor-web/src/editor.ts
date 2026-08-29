@@ -1,4 +1,4 @@
-import { Editor, Extension, InputRule, Node, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -31,6 +31,7 @@ type ImageMetadata = {
 }
 
 const findHighlightKey = new PluginKey<FindHighlightState>('markleaf-find-highlight')
+const editorFocusModeKey = new PluginKey<boolean>('markleaf-editor-focus-mode')
 type TextMatch = { from: number; to: number }
 type FindHighlightState = { matches: TextMatch[]; current: number }
 type FootnoteDefinition = { label: string; body: string }
@@ -41,6 +42,85 @@ const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
 let codeHighlightVisible = false
+
+const markdownEmojiAliases: Record<string, string> = {
+  '+1': '👍',
+  '-1': '👎',
+  angry: '😠',
+  blush: '😊',
+  clap: '👏',
+  coffee: '☕',
+  confused: '😕',
+  cry: '😢',
+  eyes: '👀',
+  fire: '🔥',
+  grin: '😁',
+  heart: '❤️',
+  joy: '😂',
+  laughing: '😆',
+  muscle: '💪',
+  ok_hand: '👌',
+  poop: '💩',
+  pray: '🙏',
+  rocket: '🚀',
+  sad: '😞',
+  scream: '😱',
+  smile: '😄',
+  sob: '😭',
+  star: '⭐',
+  tada: '🎉',
+  thinking: '🤔',
+  thumbsup: '👍',
+  wave: '👋',
+  wink: '😉',
+}
+
+function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
+  const decorations: Decoration[] = []
+
+  const visit = (node: any, position: number, insideCode: boolean, isDocument = false): void => {
+    const nodeIsCode = insideCode || node.type.name === 'codeBlock' || node.type.name === 'code'
+    const textIsCode = node.marks?.some((mark: any) => mark.type.name === 'code') === true
+    if (node.isText && !nodeIsCode && !textIsCode && node.text) {
+      const text = node.text as string
+      const pattern = /:([a-z0-9_+\-]+):/gi
+      let match: RegExpExecArray | null
+      while ((match = pattern.exec(text)) !== null) {
+        const alias = match[1]?.toLowerCase()
+        const emoji = alias ? markdownEmojiAliases[alias] : undefined
+        const previous = match.index > 0 ? text[match.index - 1] : undefined
+        if (!emoji || (previous && !/[\s([{"']/.test(previous))) continue
+
+        decorations.push(Decoration.inline(
+          position + match.index,
+          position + match.index + match[0].length,
+          { class: 'markleaf-emoji', 'data-emoji': emoji },
+        ))
+      }
+      return
+    }
+
+    if (!node.content) return
+    node.forEach((child: any, offset: number) => {
+      visit(child, position + offset + (isDocument ? 0 : 1), nodeIsCode)
+    })
+  }
+
+  visit(doc, 0, false, true)
+  return DecorationSet.create(doc, decorations)
+}
+
+const MarkdownEmoji = Extension.create({
+  name: 'markleafMarkdownEmoji',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('markleaf-markdown-emoji'),
+      props: {
+        decorations: state => buildMarkdownEmojiDecorations(state.doc),
+      },
+    })]
+  },
+})
 
 export function setEditorSharedStrings(
   strings: Pick<SharedEditorStrings, 'mermaidRender'>,
@@ -124,6 +204,69 @@ const MarkdownShortcuts = Extension.create({
           const blockquote = state.schema.nodes.blockquote
           if (!blockquote || !blockRange) return null
           tr.wrap(blockRange, [{ type: blockquote }])
+        },
+      }),
+    ]
+  },
+})
+
+const MarkdownHighlight = Mark.create({
+  name: 'highlight',
+  inclusive: true,
+
+  parseHTML() {
+    return [{ tag: 'mark' }]
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, string> }) {
+    return ['mark', HTMLAttributes, 0]
+  },
+
+  parseMarkdown(token: any, helpers: any) {
+    return helpers.applyMark('highlight', helpers.parseInline(token.tokens || []))
+  },
+
+  renderMarkdown(node: any, helpers: any) {
+    return `==${helpers.renderChildren(node.content || [])}==`
+  },
+
+  markdownTokenizer: {
+    name: 'highlight',
+    level: 'inline',
+    start: (src: string) => src.indexOf('=='),
+    tokenize: (src: string, _tokens: unknown[], helpers: any) => {
+      const match = /^==([^=\n]+?)==/.exec(src)
+      if (!match) return undefined
+      return {
+        type: 'highlight',
+        raw: match[0],
+        text: match[1],
+        tokens: helpers.inlineTokens(match[1]),
+      }
+    },
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /==([^=\n]+?)==$/,
+        handler: ({ state, range, match }) => {
+          if (range.to === range.from) return null
+          const highlight = state.schema.marks.highlight
+          const text = match[1]
+          if (!highlight || !text) return null
+          const markerLength = 2
+          const closingMarkerInDocument = Math.max(
+            0,
+            markerLength - (match[0].length - (range.to - range.from)),
+          )
+          const textEnd = range.to - closingMarkerInDocument
+          if (textEnd <= range.from + markerLength) return null
+          state.tr
+            .delete(textEnd, range.to)
+            .delete(range.from, range.from + markerLength)
+            .addMark(range.from, textEnd - markerLength, highlight.create())
+            .removeStoredMark(highlight)
         },
       }),
     ]
@@ -400,6 +543,30 @@ function inlineContentAfterTextOffset(content: any[], offset: number): any[] {
   return result
 }
 
+export function getCurrentBlockPosition(editor: Editor): number | null {
+  const { from } = editor.state.selection
+  const $from = editor.state.doc.resolve(from)
+  let insideList = false
+  for (let depth = $from.depth; depth >= 1; depth -= 1) {
+    if (['bulletList', 'orderedList', 'taskList'].includes($from.node(depth).type.name)) {
+      insideList = true
+      break
+    }
+  }
+
+  let nodePos = $from.before($from.depth)
+  if (insideList) {
+    for (let depth = $from.depth; depth >= 1; depth -= 1) {
+      const name = $from.node(depth).type.name
+      if (name === 'listItem' || name === 'taskItem') {
+        nodePos = $from.before(depth)
+        break
+      }
+    }
+  }
+  return nodePos
+}
+
 export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
   if (!blockHandleVisible || blockHandleComposing) return null
   const state = editor.state
@@ -417,13 +584,13 @@ export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
     return null
   }
 
-  let nodePos = $from.before($from.depth)
+  const nodePos = getCurrentBlockPosition(editor)
+  if (nodePos === null) return null
   let coordsPos = $from.start()
   if (insideList) {
     for (let depth = $from.depth; depth >= 1; depth -= 1) {
       const name = $from.node(depth).type.name
       if (name === 'listItem' || name === 'taskItem') {
-        nodePos = $from.before(depth)
         coordsPos = nodePos + 1
         break
       }
@@ -508,6 +675,51 @@ const BlockHandle = Extension.create({
     })]
   },
 })
+
+// MarkText's focus mode is model-driven: the editor root enables the mode and
+// the editor marks the active block from its selection state. ProseMirror's
+// node decorations provide the same contract without depending on the native
+// DOM selection having been synchronized yet.
+const EditorFocusMode = Extension.create({
+  name: 'markleafEditorFocusMode',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: editorFocusModeKey,
+      state: {
+        init: () => false,
+        apply(transaction, previous) {
+          const enabled = transaction.getMeta(editorFocusModeKey)
+          return typeof enabled === 'boolean' ? enabled : previous
+        },
+      },
+      props: {
+        decorations(state) {
+          if (!editorFocusModeKey.getState(state)) return DecorationSet.empty
+
+          const $from = state.doc.resolve(state.selection.from)
+          const currentTopLevelPosition = $from.depth > 0 ? $from.before(1) : null
+          const decorations: Decoration[] = []
+          state.doc.forEach((node, position) => {
+            decorations.push(Decoration.node(
+              position,
+              position + node.nodeSize,
+              {
+                class: position === currentTopLevelPosition
+                  ? 'markleaf-focus-line'
+                  : 'markleaf-focus-dim',
+              },
+            ))
+          })
+          return decorations.length > 0 ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
+export function setEditorFocusMode(editor: Editor, enabled: boolean): void {
+  editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled))
+}
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta))
@@ -935,6 +1147,7 @@ export type EditorCommandState = {
   italic: boolean
   underline: boolean
   strike: boolean
+  highlight: boolean
   code: boolean
   link: boolean
   blockquote: boolean
@@ -1435,6 +1648,8 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
 
 export const editorExtensions = [
   MarkdownShortcuts,
+  MarkdownEmoji,
+  MarkdownHighlight,
   StarterKit.configure({
     link: false,
     paragraph: false,
@@ -1469,6 +1684,7 @@ export const editorExtensions = [
   FindHighlight,
   VisualIndent,
   BlockHandle,
+  EditorFocusMode,
   MathInline,
   MathBlock,
   Mermaid,
@@ -2201,6 +2417,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     italic: editor.isActive('italic'),
     underline: editor.isActive('underline'),
     strike: editor.isActive('strike'),
+    highlight: editor.isActive('highlight'),
     code: editor.isActive('code'),
     link: editor.isActive('link'),
     blockquote: editor.isActive('blockquote'),
@@ -2436,6 +2653,7 @@ export function executeEditorCommand(
     setHeading6: () => chain.setHeading({ level: 6 }).run(),
     toggleUnderline: () => toggleInlineMark(editor, 'underline', applyToCurrentTextBlockWhenEmpty),
     toggleStrike: () => toggleInlineMark(editor, 'strike', applyToCurrentTextBlockWhenEmpty),
+    toggleHighlight: () => toggleInlineMark(editor, 'highlight', applyToCurrentTextBlockWhenEmpty),
     toggleCode: () => typeof text === 'string'
       ? chain.insertContent({ type: 'text', text, marks: [{ type: 'code' }] }).run()
       : chain.toggleCode().run(),
@@ -2600,7 +2818,7 @@ function highlightOutlineHeading(heading: HTMLElement): void {
 
 function toggleInlineMark(
   editor: Editor,
-  mark: 'bold' | 'italic' | 'underline' | 'strike',
+  mark: 'bold' | 'italic' | 'underline' | 'strike' | 'highlight',
   applyToCurrentTextBlockWhenEmpty: boolean,
 ): boolean {
   const selection = editor.state.selection
@@ -2609,6 +2827,7 @@ function toggleInlineMark(
     if (mark === 'bold') return chain.toggleBold().run()
     if (mark === 'italic') return chain.toggleItalic().run()
     if (mark === 'underline') return chain.toggleUnderline().run()
+    if (mark === 'highlight') return chain.toggleMark('highlight').run()
     return chain.toggleStrike().run()
   }
 
@@ -2618,6 +2837,7 @@ function toggleInlineMark(
   if (mark === 'bold') return chain.toggleBold().setTextSelection(cursor).run()
   if (mark === 'italic') return chain.toggleItalic().setTextSelection(cursor).run()
   if (mark === 'underline') return chain.toggleUnderline().setTextSelection(cursor).run()
+  if (mark === 'highlight') return chain.toggleMark('highlight').setTextSelection(cursor).run()
   return chain.toggleStrike().setTextSelection(cursor).run()
 }
 
