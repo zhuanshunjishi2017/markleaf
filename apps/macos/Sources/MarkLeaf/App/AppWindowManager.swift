@@ -376,6 +376,43 @@ final class AppWindowManager {
         }
     }
 
+    /// 打开可编辑的欢迎文档；每次从应用资源刷新缓存副本，避免修改内置资源。
+    func openWelcome() {
+        guard let source = WelcomeResource.bundledURL(
+            in: Bundle.main,
+            displayLanguage: SettingsService.shared.settings.displayLanguage
+        ) else {
+            activeSession?.statusText = L10n.t("未找到欢迎文档")
+            return
+        }
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let cacheDir = base.appendingPathComponent("MarkLeaf/Cache", isDirectory: true)
+        let target = WelcomeResource.cachedURL(cacheDirectory: cacheDir)
+        if let existing = windowControllers.first(where: { $0.session.documentURL == target }) {
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: target.path) {
+                try FileManager.default.removeItem(at: target)
+            }
+            try FileManager.default.copyItem(at: source, to: target)
+            let markdown = try String(contentsOf: target, encoding: .utf8)
+            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self else { return }
+                let controller = self.newWindow(preparedDocument: prepared)
+                controller.window?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        } catch {
+            activeSession?.statusText = L10n.t("无法打开欢迎文档")
+        }
+    }
+
     func showShortcuts() {
         let controller = ShortcutWindowController()
         shortcutController = controller

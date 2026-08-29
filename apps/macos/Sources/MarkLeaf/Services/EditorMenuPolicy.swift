@@ -41,7 +41,7 @@ enum EditorMenuPolicy {
         "promoteHeading", "demoteHeading", "toggleBlockquote", "insertMathBlock",
         "toggleCodeBlock", "insertHorizontalRule", "insertFootnote",
         "insertLineBefore", "insertLineAfter", "toggleBulletList",
-        "toggleOrderedList", "toggleTaskList", "clearFormat",
+        "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
     ]
     static let readOnlyCommands: Set<String> = [
         "copy", "copyMarkdown", "copyPlain", "selectAll"
@@ -110,9 +110,10 @@ enum EditorMenuPolicy {
     static func isParagraphCommandEnabled(
         command: String,
         isSourceMode: Bool,
-        isReadOnly: Bool
+        isReadOnly: Bool,
+        inTable: Bool = false
     ) -> Bool {
-        paragraphCommands.contains(command) && !isSourceMode && !isReadOnly
+        paragraphCommands.contains(command) && !isSourceMode && !isReadOnly && !inTable
     }
 
     static func isHeadingLevelCommandEnabled(command: String, headingLevel: Int?) -> Bool {
@@ -122,6 +123,11 @@ enum EditorMenuPolicy {
         case "demoteHeading": return headingLevel < 6
         default: return false
         }
+    }
+
+    /// 状态栏模式按钮仅在 Markdown 文档中可用；纯文本固定为可视化编辑器的源码内容。
+    static func isModeToggleEnabled(isPlainText: Bool) -> Bool {
+        !isPlainText
     }
 
     static func semanticContext(for state: EditorContextMenuState) -> EditorSemanticContext {

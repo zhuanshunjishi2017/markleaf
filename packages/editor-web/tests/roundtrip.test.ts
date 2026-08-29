@@ -283,6 +283,59 @@ describe('visual Markdown shortcuts', () => {
     expect(findFootnoteDefinitionBody(editor, '1')).toBe('公式 x^2')
   })
 
+  it('preserves ordered-list marker text when Enter follows a numeric-looking sentence', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '1. 2.')
+    editors.push(editor)
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    })
+    editor.view.dom.dispatchEvent(event)
+
+    expect(getMarkdown(editor)).toContain('1. 2.')
+  })
+
+  it('keeps a bare ordered-list marker when Enter is pressed', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    for (const character of '1. ') {
+      const handled = editor.view.someProp('handleTextInput', handler => handler(
+        editor.view, editor.state.selection.from, editor.state.selection.to, character,
+        () => editor.state.tr.insertText(character),
+      ))
+      if (!handled) editor.view.dispatch(editor.state.tr.insertText(character))
+    }
+
+    editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', code: 'Enter', bubbles: true, cancelable: true,
+    }))
+
+    expect(getMarkdown(editor)).toContain('1. ')
+  })
+
+  it('keeps the current number when an empty ordered-list item is exited', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '1. 内容\n2. ')
+    editors.push(editor)
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+
+    editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', code: 'Enter', bubbles: true, cancelable: true,
+    }))
+
+    expect(getMarkdown(editor)).toContain('2. ')
+    expect(getMarkdown(editor)).toContain('1. 内容')
+  })
+
   it('turns a closed footnote reference after paragraph text into superscript', () => {
     const element = document.createElement('div')
     document.body.append(element)

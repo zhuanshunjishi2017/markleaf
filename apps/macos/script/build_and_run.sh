@@ -63,6 +63,10 @@ if [ -d "$ROOT_DIR/Changelog" ]; then
   mkdir -p "$APP_CONTENTS/Resources/Changelog"
   cp -RX "$ROOT_DIR/Changelog/." "$APP_CONTENTS/Resources/Changelog/"
 fi
+if [ -d "$ROOT_DIR/Welcome" ]; then
+  mkdir -p "$APP_CONTENTS/Resources/Welcome"
+  cp -RX "$ROOT_DIR/Welcome/." "$APP_CONTENTS/Resources/Welcome/"
+fi
 if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
   cp -X "$ROOT_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 fi

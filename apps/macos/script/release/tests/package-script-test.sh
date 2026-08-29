@@ -15,6 +15,7 @@ fail() {
 
 for expected in \
     'prepare_resources.sh' \
+    'Contents/Resources/Welcome' \
     'DMG_VOLUME_NAME=' \
     'swift build' \
     'dsymutil' \

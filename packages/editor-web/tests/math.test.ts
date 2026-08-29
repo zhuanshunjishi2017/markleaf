@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createEditor, executeEditorCommand, getEditorCommandState, getMarkdown } from '../src/editor'
 import { renderMathInHtml } from '../src/math'
 
@@ -71,6 +73,22 @@ describe('math formulas', () => {
     selectMathNode(editor, 'mathInline')
 
     expect(document.querySelector('.markleaf-math.ProseMirror-selectednode')).not.toBeNull()
+  })
+
+  it('keeps selected formula content transparent while drawing the theme outline', () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
+    document.head.append(style)
+    const formula = document.createElement('span')
+    formula.className = 'markleaf-math ProseMirror-selectednode'
+    formula.style.setProperty('--theme-light', 'rgb(18, 52, 86)')
+    formula.style.setProperty('--theme-dark', 'rgb(170, 34, 51)')
+    document.body.append(formula)
+
+    const computed = getComputedStyle(formula)
+    expect(computed.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(computed.boxShadow).toContain('var(--theme-light)')
+    expect(computed.boxShadow).not.toContain('var(--theme-dark)')
   })
 
   it('renders math in exported html', () => {

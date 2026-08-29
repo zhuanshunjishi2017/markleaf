@@ -130,8 +130,16 @@
   "menu.help.checkForUpdates": "检查更新",
   "menu.help.welcome": "欢迎(&W)",
   "menu.help.changelog": "更新内容(&C)",
+  "menu.help.checkForUpdates": "检查更新",
   "menu.help.preferences": "首选项(&P)...",
   "menu.help.about": "关于 MarkLeaf(&A)",
+
+  "update.latest": "您当前已是最新版本。",
+  "update.available": "有更新版本 {0}（构建号 {1}），是否下载更新？",
+  "update.downloading": "正在下载更新...",
+  "update.failed.title": "无法检查更新",
+  "update.failed.message": "无法连接 GitHub，请检查网络连接后重试。",
+  "update.verificationFailed": "下载的更新文件校验失败，已取消安装。",
 
   "contextMenu.bold": "粗体(&B)",
   "contextMenu.italic": "斜体(&I)",

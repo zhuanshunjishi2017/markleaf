@@ -13,7 +13,8 @@ public static class CommandStateResolver
                 or AppCommand.OpenFolder
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
                 or AppCommand.RecoverUnsavedFiles
-                or AppCommand.FollowSystemColorMode => new(true),
+                or AppCommand.FollowSystemColorMode
+                or AppCommand.CheckForUpdates => new(true),
             AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),

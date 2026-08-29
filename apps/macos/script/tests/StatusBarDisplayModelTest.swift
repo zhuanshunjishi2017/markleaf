@@ -36,4 +36,10 @@ expect(StatusBarDisplayPolicy.shouldShowCommandStatus(
     zoomVisible: false,
     zoomStatus: "缩放 161%"
 ) == true, "zoom feedback should remain visible when zoom field is hidden")
+
+// 状态栏模式按钮必须按当前可视/源码状态显示对应文案，不能再统一渲染成 </>。
+expect(StatusBarModePolicy.title(isSourceMode: true) == "源码",
+       "source mode should display the source label")
+expect(StatusBarModePolicy.title(isSourceMode: false) == "可视化",
+       "visual mode should display the visual label")
 print("PASS")

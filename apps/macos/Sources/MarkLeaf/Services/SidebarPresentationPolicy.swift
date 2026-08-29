@@ -1,8 +1,17 @@
 import Foundation
+import CoreGraphics
 
 enum HiddenSidebarLayoutAction: Equatable {
     case animateCollapse
     case keepHiddenWithoutDividerMutation
+}
+
+enum SidebarMenuPolicy {
+    /// 左侧栏隐藏时，工作区/大纲/树结构/文档列表等“左栏内容”应置灰；
+    /// “在右侧显示大纲”控制独立右栏，不受左栏可见性影响，因此始终可用。
+    static func leftSidebarContentEnabled(sidebarVisible: Bool) -> Bool {
+        sidebarVisible
+    }
 }
 
 enum SidebarPresentationPolicy {
@@ -37,5 +46,29 @@ enum SidebarPresentationPolicy {
             return 0
         }
         return minimumWidth
+    }
+}
+
+enum SidebarTabTransitionPolicy {
+    static func interpolatedFrame(from start: CGRect, to end: CGRect, progress: CGFloat) -> CGRect {
+        let clamped = min(1, max(0, progress))
+        return CGRect(
+            x: start.origin.x + (end.origin.x - start.origin.x) * clamped,
+            y: start.origin.y + (end.origin.y - start.origin.y) * clamped,
+            width: start.size.width + (end.size.width - start.size.width) * clamped,
+            height: start.size.height + (end.size.height - start.size.height) * clamped
+        )
+    }
+
+    static func easeInOutCubic(_ progress: CGFloat) -> CGFloat {
+        let clamped = min(1, max(0, progress))
+        if clamped < 0.5 {
+            return 4 * clamped * clamped * clamped
+        }
+        return 1 - pow(-2 * clamped + 2, 3) / 2
+    }
+
+    static func shouldApplyCompletion(transition: Int, currentTransition: Int) -> Bool {
+        transition == currentTransition
     }
 }

@@ -152,6 +152,44 @@ export function outdentListItem(editor: Editor): boolean {
   return listItemType ? editor.chain().focus().liftListItem(listItemType).run() : false
 }
 
+function emptyOrderedListItemNumber(editor: Editor): number | null {
+  const { $from, empty } = editor.state.selection
+  if (!empty) return null
+
+  for (let depth = $from.depth; depth > 1; depth -= 1) {
+    if ($from.node(depth).type.name !== 'listItem') continue
+    const item = $from.node(depth)
+    const paragraph = item.firstChild
+    const list = $from.node(depth - 1)
+    if (list.type.name !== 'orderedList'
+      || item.childCount !== 1
+      || paragraph?.type.name !== 'paragraph'
+      || paragraph.content.size !== 0) {
+      continue
+    }
+    const start = typeof list.attrs.start === 'number' ? list.attrs.start : 1
+    return start + $from.index(depth - 1)
+  }
+  return null
+}
+
+/// 空的有序列表项通常会在回车时被 ProseMirror 作为“退出列表”删除。
+/// 这里保留用户刚输入的编号，使 `1. ` 这类内容不会凭空消失。
+const PreserveEmptyOrderedListMarker = Extension.create({
+  name: 'markleafPreserveEmptyOrderedListMarker',
+  priority: 1100,
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const number = emptyOrderedListItemNumber(this.editor)
+        if (number === null) return false
+        if (!this.editor.commands.liftListItem('listItem')) return false
+        return this.editor.commands.insertContent(`${number}. `)
+      },
+    }
+  },
+})
+
 /// 可视化编辑器中的 Tab：列表项执行结构化缩进，普通文本块插入两个空格。
 /// 表格仍交给表格扩展处理，以保留单元格间跳转行为。
 const VisualIndent = Extension.create({
@@ -1435,6 +1473,7 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
 
 export const editorExtensions = [
   MarkdownShortcuts,
+  PreserveEmptyOrderedListMarker,
   StarterKit.configure({
     link: false,
     paragraph: false,

@@ -965,6 +965,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowWelcome, Loc.Get("menu.help.welcome"));
             AppendCommand(menu, AppCommand.ShowChangelog, Loc.Get("menu.help.changelog"));
+            AppendCommand(menu, AppCommand.CheckForUpdates, Loc.Get("menu.help.checkForUpdates"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.ShowPreferences, Loc.Get("menu.help.preferences"));
             AppendSeparator(menu);

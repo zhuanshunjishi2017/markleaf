@@ -130,8 +130,16 @@
   "menu.help.checkForUpdates": "更新を確認",
   "menu.help.welcome": "ようこそ(&W)",
   "menu.help.changelog": "更新履歴(&C)",
+  "menu.help.checkForUpdates": "更新を確認",
   "menu.help.preferences": "設定(&P)...",
   "menu.help.about": "MarkLeafについて(&A)",
+
+  "update.latest": "最新バージョンを使用しています。",
+  "update.available": "バージョン {0}（ビルド {1}）が利用可能です。ダウンロードしますか？",
+  "update.downloading": "更新をダウンロードしています...",
+  "update.failed.title": "更新を確認できません",
+  "update.failed.message": "GitHub に接続できません。ネットワーク接続を確認して、もう一度お試しください。",
+  "update.verificationFailed": "ダウンロードした更新を検証できないため、インストールをキャンセルしました。",
 
   "contextMenu.bold": "太字(&B)",
   "contextMenu.italic": "斜体(&I)",

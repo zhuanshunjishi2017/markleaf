@@ -111,6 +111,12 @@ expect(!EditorMenuPolicy.isParagraphCommandEnabled(
 expect(!EditorMenuPolicy.isParagraphCommandEnabled(
     command: "toggleCodeBlock", isSourceMode: false, isReadOnly: true),
     "paragraph commands should be disabled in read-only documents")
+expect(EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "indentListItem", isSourceMode: false, isReadOnly: false),
+    "list indentation should be enabled in editable visual mode")
+expect(!EditorMenuPolicy.isParagraphCommandEnabled(
+    command: "indentListItem", isSourceMode: false, isReadOnly: false, inTable: true),
+    "list indentation should be disabled inside tables")
 
 expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "promoteHeading", headingLevel: nil),
        "promote heading should be disabled outside a heading")
@@ -124,6 +130,11 @@ expect(EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", h
        "demote heading should be enabled for levels 1 through 5")
 expect(!EditorMenuPolicy.isHeadingLevelCommandEnabled(command: "demoteHeading", headingLevel: 6),
        "demote heading should be disabled at level 6")
+
+expect(EditorMenuPolicy.isModeToggleEnabled(isPlainText: false),
+       "mode toggle should be enabled for Markdown documents")
+expect(!EditorMenuPolicy.isModeToggleEnabled(isPlainText: true),
+       "mode toggle should be disabled for plain-text documents")
 
 func contextState(
     sourceMode: Bool = false,

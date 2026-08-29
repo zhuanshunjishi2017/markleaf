@@ -69,6 +69,7 @@ extension EditorSession {
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
             "maxWidth": settings.visualMaxContentWidth,
+            "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "title": exportTitle,
         ]
@@ -118,6 +119,7 @@ extension EditorSession {
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
             "maxWidth": settings.visualMaxContentWidth,
+            "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),

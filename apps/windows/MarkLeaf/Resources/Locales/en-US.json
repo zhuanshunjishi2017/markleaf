@@ -130,8 +130,16 @@
   "menu.help.checkForUpdates": "Check for Updates",
   "menu.help.welcome": "&Welcome",
   "menu.help.changelog": "&What's New",
+  "menu.help.checkForUpdates": "Check for Updates",
   "menu.help.preferences": "&Preferences...",
   "menu.help.about": "&About MarkLeaf",
+
+  "update.latest": "You are already using the latest version.",
+  "update.available": "Version {0} (Build {1}) is available. Download it now?",
+  "update.downloading": "Downloading update...",
+  "update.failed.title": "Unable to Check for Updates",
+  "update.failed.message": "Unable to connect to GitHub. Check your network connection and try again.",
+  "update.verificationFailed": "The downloaded update could not be verified, so installation was cancelled.",
 
   "contextMenu.bold": "&Bold",
   "contextMenu.italic": "&Italic",
