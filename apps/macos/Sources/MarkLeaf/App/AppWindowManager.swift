@@ -47,6 +47,13 @@ final class AppWindowManager {
         windowSession.tabStore.append(tab)
         windowSession.attach(session: session, to: tab.tabID)
         controller.windowSession = windowSession
+        session.openViaWindow = { [weak windowSession] url in
+            windowSession?.requestOpenFile(url)
+        }
+        session.workspace.windowProvider = { [weak controller] in controller?.window }
+        windowSession.onOpenFile = { [weak controller] resolution, url in
+            controller?.handleOpenFileResolution(resolution, url: url)
+        }
         windowControllers.append(controller)
         windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in
@@ -73,6 +80,13 @@ final class AppWindowManager {
         windowSession.tabStore.append(tab)
         windowSession.attach(session: session, to: tab.tabID)
         controller.windowSession = windowSession
+        session.openViaWindow = { [weak windowSession] url in
+            windowSession?.requestOpenFile(url)
+        }
+        session.workspace.windowProvider = { [weak controller] in controller?.window }
+        windowSession.onOpenFile = { [weak controller] resolution, url in
+            controller?.handleOpenFileResolution(resolution, url: url)
+        }
         windowControllers.append(controller)
         windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in

@@ -44,6 +44,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     var onWindowClose: ((EditorWindowController) -> Void)?
     var windowSession: WindowSession?
 
+    /// 阶段 1 单标签窗口的打开决议处理：命中已有文档则忽略，未命中则按原逻辑加载。
+    func handleOpenFileResolution(_ resolution: TabOpenResolution.Result, url: URL) {
+        switch resolution {
+        case .activateExisting:
+            break
+        case .created:
+            session.openDocumentBypassingRouter(at: url)
+        }
+    }
+
     init(session: EditorSession) {
         self.session = session
         let window = NSWindow(

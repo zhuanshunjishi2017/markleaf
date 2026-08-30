@@ -1404,6 +1404,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func openDocument(at url: URL) {
+        if let hook = openViaWindow {
+            hook(url)
+            return
+        }
+        openDocumentBypassingRouter(at: url)
+    }
+
+    /// 打开文档的原始加载逻辑，绕过窗口路由（供窗口去重后的真实加载复用）。
+    func openDocumentBypassingRouter(at url: URL) {
         do {
             let prepared = try PreparedDocument.read(from: url)
             requestDisposition(for: .replaceDocument) { [weak self] result in
@@ -1415,6 +1424,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
         }
     }
+
+    /// 多标签路由：非 nil 时打开文件交由窗口去重处理。
+    var openViaWindow: ((URL) -> Void)?
 
     private func loadPreparedDocument(_ prepared: PreparedDocument) {
         loadDocument(

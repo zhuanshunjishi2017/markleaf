@@ -6,11 +6,31 @@ final class WindowSession {
     let windowID: String
     let tabStore = TabStore()
     let callbackGuard = TabCallbackGuard()
+    let workspace: WorkspaceContext
     weak var controller: EditorWindowController?
     private var sessionByTab: [DocumentTabID: EditorSession] = [:]
 
-    init(windowID: String = UUID().uuidString.lowercased()) {
+    init(
+        windowID: String = UUID().uuidString.lowercased(),
+        workspace: WorkspaceContext = WorkspaceContext()
+    ) {
         self.windowID = windowID
+        self.workspace = workspace
+        workspace.openDocumentRequest = { [weak self] url in
+            self?.requestOpenFile(url)
+        }
+    }
+
+    /// 窗口内打开文件的回调：去重命中激活，未命中则由窗口层创建编辑器。
+    var onOpenFile: ((TabOpenResolution.Result, URL) -> Void)?
+
+    func requestOpenFile(_ url: URL) {
+        let resolution = TabOpenResolution.resolve(
+            store: tabStore,
+            url: url,
+            untitledLabel: L10n.t("未命名")
+        )
+        onOpenFile?(resolution, url)
     }
 
     func attach(session: EditorSession, to tabID: DocumentTabID) {
