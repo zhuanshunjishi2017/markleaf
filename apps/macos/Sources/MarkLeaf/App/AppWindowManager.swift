@@ -52,7 +52,7 @@ final class AppWindowManager {
         }
         session.workspace.windowProvider = { [weak controller] in controller?.window }
         windowSession.onOpenFile = { [weak controller] resolution, url in
-            controller?.handleOpenFileResolution(resolution, url: url)
+            controller?.handleOpenResolution(resolution, url: url)
         }
         windowControllers.append(controller)
         windowSessions[controller] = windowSession
@@ -85,7 +85,7 @@ final class AppWindowManager {
         }
         session.workspace.windowProvider = { [weak controller] in controller?.window }
         windowSession.onOpenFile = { [weak controller] resolution, url in
-            controller?.handleOpenFileResolution(resolution, url: url)
+            controller?.handleOpenResolution(resolution, url: url)
         }
         windowControllers.append(controller)
         windowSessions[controller] = windowSession
@@ -147,17 +147,37 @@ final class AppWindowManager {
     }
 
     var primarySession: EditorSession? {
-        windowControllers.first?.session
+        windowControllers.first?.windowSession?.activeTabSession
     }
 
-    /// 当前活跃（键窗口）会话；无键窗口时退回第一个。
+    /// 当前活跃（键窗口）会话 = 活动窗口的活动标签会话；无键窗口时退回第一个窗口。
     var activeSession: EditorSession? {
-        activeWindowController?.session
+        activeWindowController?.windowSession?.activeTabSession
+            ?? windowControllers.first?.windowSession?.activeTabSession
     }
 
     /// 当前活跃窗口的会话边界。
     var activeWindowSession: WindowSession? {
         activeWindowController.flatMap { windowSessions[$0] }
+    }
+
+    /// 当前活动查找面板（供窗口层右键/菜单跟随活动标签使用）。
+    var currentFindPanel: FindPanelController? {
+        findPanelController
+    }
+
+    /// 找到一个其标签身份命中指定文件的窗口；命中则激活对应标签并前置。
+    private func controller(containing url: URL) -> EditorWindowController? {
+        let identity = FileIdentityPolicy.identity(for: url)
+        for (controller, windowSession) in windowSessions {
+            if let tab = windowSession.tabStore.tab(withIdentity: identity) {
+                if tab.tabID != windowSession.tabStore.activeTabID {
+                    controller.activateTab(tab.tabID, animated: true)
+                }
+                return controller
+            }
+        }
+        return nil
     }
 
     /// 当前活跃（键窗口）控制器；窗口级命令（如专注模式）使用它路由。
@@ -272,7 +292,7 @@ final class AppWindowManager {
     func applyPreferencesToAll() {
         let topMost = SettingsService.shared.settings.topMostWindow
         for controller in windowControllers {
-            controller.session.applyPreferences()
+            (controller.windowSession?.activeTabSession ?? controller.session).applyPreferences()
             controller.window?.level = topMost ? .floating : .normal
             controller.applyViewState()
         }
@@ -371,9 +391,9 @@ final class AppWindowManager {
         let follow = SettingsService.shared.settings.followSystemTheme
         for controller in windowControllers {
             if follow {
-                controller.session.applyFollowSystemTheme()
+                (controller.windowSession?.activeTabSession ?? controller.session).applyFollowSystemTheme()
             } else {
-                controller.session.setTheme(SettingsService.shared.settings.colorTheme)
+                (controller.windowSession?.activeTabSession ?? controller.session).setTheme(SettingsService.shared.settings.colorTheme)
             }
         }
         preferencesController?.syncFollowSystemThemeState()
@@ -408,9 +428,7 @@ final class AppWindowManager {
             // 避免只读窗口虽然打开却仍停留在旧窗口焦点上。
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self else { return }
-                if let existing = self.windowControllers.first(where: {
-                    $0.session.isReadOnly && $0.session.documentURL == target
-                }) {
+                if let existing = self.controller(containing: target) {
                     existing.window?.makeKeyAndOrderFront(nil)
                     NSApp.activate(ignoringOtherApps: true)
                     return
@@ -437,7 +455,7 @@ final class AppWindowManager {
             ?? FileManager.default.homeDirectoryForCurrentUser
         let cacheDir = base.appendingPathComponent("MarkLeaf/Cache", isDirectory: true)
         let target = WelcomeResource.cachedURL(cacheDirectory: cacheDir)
-        if let existing = windowControllers.first(where: { $0.session.documentURL == target }) {
+        if let existing = controller(containing: target) {
             existing.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -504,19 +522,19 @@ final class AppWindowManager {
         guard !paths.isEmpty else { return }
         if bootstrapState.cacheIncomingDocumentsIfNeeded(paths) { return }
 
-        let openDocuments = windowControllers.compactMap { $0.session.documentURL }
+        let openDocuments = windowControllers.compactMap { $0.windowSession?.activeTabSession?.documentURL }
         IncomingFileRouter.route(
             urls: urls,
             mode: SettingsService.shared.settings.externalFileOpenMode,
             activeEditor: activeWindowController != nil,
             openDocuments: openDocuments,
             activateExisting: { [weak self] url in
-                self?.windowControllers.first { $0.session.documentURL == url }?
+                self?.windowControllers.first { $0.windowSession?.activeTabSession?.documentURL == url }?
                     .window?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             },
             replaceActive: { [weak self] url in
-                self?.activeWindowController?.session.openDocument(at: url)
+                self?.activeWindowController?.windowSession?.activeTabSession?.openDocument(at: url)
             },
             createWindow: { [weak self] url in
                 guard let self else { return }
@@ -525,7 +543,8 @@ final class AppWindowManager {
                     _ = self.newWindow(preparedDocument: prepared)
                 } catch {
                     AppLog.error("无法打开外部文档: \(url.path) \(error.localizedDescription)")
-                    self.activeWindowController?.session.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                    self.activeWindowController?.windowSession?.activeTabSession?
+                        .presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
                 }
             }
         )

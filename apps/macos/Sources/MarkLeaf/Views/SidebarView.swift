@@ -4,7 +4,7 @@ import AppKit
 final class SidebarView: NSView {
     static let emptyStateIdentifier = NSUserInterfaceItemIdentifier("Sidebar.emptyState")
 
-    let session: EditorSession
+    private(set) var session: EditorSession
     private let localize: (String) -> String
     private let persistSidebarTab: (String) -> Void
 
@@ -400,11 +400,23 @@ final class SidebarView: NSView {
         }
         session.createWorkspaceFile(at: directory, kind: .markdown)
     }
+
+    /// 多标签切换时改绑活动会话：工作区状态来自共享 WorkspaceContext，无需重建；
+    /// 大纲与文档相关状态跟随新会话。
+    func rebind(to session: EditorSession) {
+        self.session = session
+        session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
+        session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
+        session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
+        outlineChanged()
+        outlineSelectionChanged()
+        updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
+    }
 }
 
 /// 独立大纲：在编辑器右侧显示，与左侧工作区并存。
 final class DetachedOutlineView: NSView {
-    private let session: EditorSession
+    private(set) var session: EditorSession
     private let titleLabel = NSTextField(labelWithString: L10n.t("大纲"))
     private let searchField = NSSearchField()
     private let outlineTree = OutlineTreeView()
@@ -458,6 +470,13 @@ final class DetachedOutlineView: NSView {
 
     func synchronizeSelection() {
         outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
+    }
+
+    /// 多标签切换时改绑活动会话并刷新大纲。
+    func rebind(to session: EditorSession) {
+        self.session = session
+        reload()
+        synchronizeSelection()
     }
 
     func applyLanguage() {
@@ -990,7 +1009,8 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
                 menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
                 menu.addItem(.separator())
             }
-            menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: URL(fileURLWithPath: entry.path, isDirectory: true))))
+            let targetDirectory = URL(fileURLWithPath: entry.path, isDirectory: true)
+            menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: targetDirectory)))
             menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), entry.path))
             menu.addItem(.separator())
             menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
