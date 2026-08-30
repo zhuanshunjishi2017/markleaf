@@ -23,6 +23,7 @@ final class SidebarView: NSView {
     private let searchResults = WorkspaceSearchResultsView()
     private let searchService = WorkspaceSearchService()
     private var isSearching = false
+    private var tabTransitionGeneration = 0
 
     /// Exposes the native search field to @testable layout regression tests.
     var searchFieldForTesting: NSSearchField { searchField }
@@ -61,7 +62,7 @@ final class SidebarView: NSView {
         tabControl.action = #selector(tabChanged)
 
         headerOpenFolderButton.image = NSImage(
-            systemSymbolName: "folder.badge.plus",
+            systemSymbolName: "doc.badge.plus",
             accessibilityDescription: nil
         )
         headerOpenFolderButton.title = ""
@@ -69,7 +70,7 @@ final class SidebarView: NSView {
         headerOpenFolderButton.bezelStyle = .rounded
         headerOpenFolderButton.controlSize = .regular
         headerOpenFolderButton.target = self
-        headerOpenFolderButton.action = #selector(openFolder)
+        headerOpenFolderButton.action = #selector(newMarkdownFileFromHeader)
         headerOpenFolderButton.translatesAutoresizingMaskIntoConstraints = false
         headerOpenFolderButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
 
@@ -202,8 +203,9 @@ final class SidebarView: NSView {
         tabControl.setLabel(localize("工作区"), forSegment: 0)
         tabControl.setLabel(localize("大纲"), forSegment: 1)
         let openFolderTitle = localize("打开文件夹")
-        headerOpenFolderButton.toolTip = openFolderTitle
-        headerOpenFolderButton.setAccessibilityLabel(openFolderTitle)
+        let newMarkdownTitle = localize("新建 Markdown 文件")
+        headerOpenFolderButton.toolTip = newMarkdownTitle
+        headerOpenFolderButton.setAccessibilityLabel(newMarkdownTitle)
         emptyStateLabel.stringValue = localize("暂未打开工作区")
         emptyStateOpenFolderButton.title = openFolderTitle
         searchField.placeholderString = localize(session.sidebarTabIndex == 1 ? "搜索大纲" : "搜索")
@@ -217,9 +219,13 @@ final class SidebarView: NSView {
     }
 
     /// 外部（视图菜单）切换标签。
-    func selectTab(_ index: Int) {
-        tabControl.selectedSegment = index
-        showTab(index)
+    /// 视图状态同步用——外部调用默认持久化；窗口布局同步（applyViewState）传 persist: false，
+    /// 避免“写设置 → onChange → 再次 applyViewState”形成递归。
+    func selectTab(_ index: Int, persist: Bool = true) {
+        let effectiveIndex = session.outlineDetached ? 0 : index
+        tabControl.setEnabled(!session.outlineDetached, forSegment: 1)
+        tabControl.selectedSegment = effectiveIndex
+        showTab(effectiveIndex, persist: persist)
     }
 
     /// 外部（视图菜单）切换树/列表模式。
@@ -231,7 +237,7 @@ final class SidebarView: NSView {
             // 启动时列表模式已持久化：确保文档列表完成首次扫描。
             session.scanWorkspaceDocuments()
         }
-        showTab(tabControl.selectedSegment)
+        showTab(tabControl.selectedSegment, persist: false)
     }
 
     private func showTab(_ index: Int, persist: Bool = true) {
@@ -257,18 +263,32 @@ final class SidebarView: NSView {
             outlineChanged()
         }
         searchField.placeholderString = localize(workspaceActive ? "搜索" : "搜索大纲")
-        // 交叉淡入淡出切换
+        // 交叉淡入淡出切换；快速反向切换时旧 completion 不得覆盖新状态。
+        tabTransitionGeneration += 1
+        let transition = tabTransitionGeneration
         workspaceScroll.isHidden = false
         outlineScroll.isHidden = false
+        if window == nil {
+            workspaceScroll.alphaValue = workspaceActive ? 1 : 0
+            outlineScroll.alphaValue = workspaceActive ? 0 : 1
+            workspaceScroll.isHidden = !workspaceActive
+            outlineScroll.isHidden = workspaceActive
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             workspaceScroll.animator().alphaValue = workspaceActive ? 1 : 0
             outlineScroll.animator().alphaValue = workspaceActive ? 0 : 1
         } completionHandler: { [weak self] in
-            self?.workspaceScroll.isHidden = !workspaceActive
-            self?.outlineScroll.isHidden = workspaceActive
-            self?.searchScroll.isHidden = !(self?.isSearching ?? false) || self?.session.sidebarTabIndex == 1
+            guard let self,
+                  SidebarTabTransitionPolicy.shouldApplyCompletion(
+                    transition: transition,
+                    currentTransition: self.tabTransitionGeneration
+                  ) else { return }
+            self.workspaceScroll.isHidden = !workspaceActive
+            self.outlineScroll.isHidden = workspaceActive
+            self.searchScroll.isHidden = !self.isSearching || self.session.sidebarTabIndex == 1
         }
     }
 
@@ -285,11 +305,11 @@ final class SidebarView: NSView {
         }
     }
 
-    private func outlineChanged() {
+    func outlineChanged() {
         outlineTree.reloadData(activePosition: session.activeOutlinePosition)
     }
 
-    private func outlineSelectionChanged() {
+    func outlineSelectionChanged() {
         outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
     }
 
@@ -348,6 +368,89 @@ final class SidebarView: NSView {
             self?.session.loadWorkspace(url.path)
         }
     }
+
+    @objc private func newMarkdownFileFromHeader() {
+        guard let root = session.workspaceRoot else {
+            openFolder()
+            return
+        }
+        let directory: URL
+        if let documentURL = session.documentURL,
+           documentURL.path.hasPrefix(root + "/") {
+            directory = documentURL.deletingLastPathComponent()
+        } else {
+            directory = URL(fileURLWithPath: root, isDirectory: true)
+        }
+        session.createWorkspaceFile(at: directory, kind: .markdown)
+    }
+}
+
+/// 独立大纲：在编辑器右侧显示，与左侧工作区并存。
+final class DetachedOutlineView: NSView {
+    private let session: EditorSession
+    private let titleLabel = NSTextField(labelWithString: L10n.t("大纲"))
+    private let searchField = NSSearchField()
+    private let outlineTree = OutlineTreeView()
+
+    init(session: EditorSession) {
+        self.session = session
+        super.init(frame: .zero)
+
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        searchField.placeholderString = L10n.t("搜索大纲")
+        searchField.controlSize = .small
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        searchField.sendsSearchStringImmediately = true
+        searchField.target = self
+        searchField.action = #selector(searchChanged)
+
+        outlineTree.configure(session: session)
+        let scroll = NSScrollView()
+        scroll.documentView = outlineTree
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+
+        let header = NSStackView(views: [titleLabel, searchField])
+        header.orientation = .vertical
+        header.alignment = .width
+        header.spacing = 7
+        header.translatesAutoresizingMaskIntoConstraints = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(header)
+        addSubview(scroll)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: topAnchor, constant: 11),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        reload()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func reload() {
+        outlineTree.reloadData(activePosition: session.activeOutlinePosition)
+    }
+
+    func synchronizeSelection() {
+        outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
+    }
+
+    func applyLanguage() {
+        titleLabel.stringValue = L10n.t("大纲")
+        searchField.placeholderString = L10n.t("搜索大纲")
+    }
+
+    @objc private func searchChanged() {
+        outlineTree.setFilter(searchField.stringValue)
+    }
 }
 
 // MARK: - 工作区文件树
@@ -361,6 +464,7 @@ final class FinderWorkspaceRowView: NSTableRowView {
 
 enum SidebarTreePresentation {
     static let rowFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+    static let selectedRowFont = NSFont.systemFont(ofSize: 13, weight: .bold)
 
     static func apply(to outlineView: NSOutlineView) {
         outlineView.rowSizeStyle = .medium
@@ -784,7 +888,10 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             return cell
         }()
         cell.textField?.stringValue = entry.name
-        cell.textField?.font = SidebarTreePresentation.rowFont
+        let isSelected = outlineView.row(forItem: entry) == outlineView.selectedRow
+        cell.textField?.font = isSelected
+            ? SidebarTreePresentation.selectedRowFont
+            : SidebarTreePresentation.rowFont
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)
         return cell
     }
@@ -797,6 +904,10 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             return cell
         }()
         cell.nameLabel.stringValue = entry.name
+        let isSelected = outlineView.row(forItem: entry) == outlineView.selectedRow
+        cell.nameLabel.font = isSelected
+            ? SidebarTreePresentation.selectedRowFont
+            : NSFont.systemFont(ofSize: 13, weight: .medium)
         cell.folderLabel.stringValue = Self.folderName(for: entry, root: session?.workspaceRoot)
         cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(
             Self.modificationDate(of: entry.path)
@@ -822,6 +933,22 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         return item is WorkspaceEntry
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        for row in 0..<numberOfRows {
+            guard let cell = view(atColumn: 0, row: row, makeIfNecessary: false) else { continue }
+            let selected = row == selectedRow
+            if let listCell = cell as? WorkspaceListCellView {
+                listCell.nameLabel.font = selected
+                    ? SidebarTreePresentation.selectedRowFont
+                    : NSFont.systemFont(ofSize: 13, weight: .medium)
+            } else if let tableCell = cell as? NSTableCellView {
+                tableCell.textField?.font = selected
+                    ? SidebarTreePresentation.selectedRowFont
+                    : SidebarTreePresentation.rowFont
+            }
+        }
     }
 
     func outlineView(_ outlineView: NSOutlineView, menuFor event: NSEvent) -> NSMenu? {
@@ -1106,22 +1233,25 @@ final class WorkspaceListCellView: NSTableCellView {
 
 // MARK: - 大纲树
 
-final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     static let headingLeadingConstraintIdentifier = "OutlineHeadingLeading"
     private weak var session: EditorSession?
     private var onHeadingActivated: ((OutlineHeading) -> Void)?
     private var isSynchronizingSelection = false
     private var suppressScrollSyncUntil: Date?
     private var filter = ""
+    private var roots: [OutlineNode] = []
 
     func setFilter(_ value: String) {
         filter = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         reloadData(activePosition: session?.activeOutlinePosition)
     }
 
-    private var visibleHeadings: [OutlineHeading] {
-        guard !filter.isEmpty else { return session?.outlineHeadings ?? [] }
-        return (session?.outlineHeadings ?? []).filter { $0.text.lowercased().contains(filter) }
+    private var visibleRoots: [OutlineNode] {
+        guard !filter.isEmpty else { return roots }
+        return OutlineHierarchy.flatten(roots)
+            .filter { $0.heading.text.lowercased().contains(filter) }
+            .map { OutlineNode(heading: $0.heading) }
     }
 
     func configure(
@@ -1140,6 +1270,16 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         dataSource = self
         delegate = self
         SidebarTreePresentation.apply(to: self)
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: L10n.t("全部展开"), action: #selector(expandAllHeadings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.t("全部折叠"), action: #selector(collapseAllHeadings), keyEquivalent: ""))
+        menu.addItem(.separator())
+        let locateItem = NSMenuItem(title: L10n.t("定位当前标题"), action: #selector(locateCurrentHeading), keyEquivalent: "")
+        locateItem.isEnabled = session.activeOutlinePosition != nil
+        menu.addItem(locateItem)
+        for item in menu.items { item.target = self }
+        menu.delegate = self
+        self.menu = menu
     }
 
     func synchronizeSelection(to position: Int?) {
@@ -1151,17 +1291,22 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         defer { isSynchronizingSelection = false }
         guard let position,
               let row = (0..<numberOfRows).first(where: {
-                  (item(atRow: $0) as? OutlineHeading)?.position == position
+                  (item(atRow: $0) as? OutlineNode)?.heading.position == position
               })
         else {
             deselectAll(nil)
             return
         }
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        scrollRowToVisible(row)
     }
 
     func reloadData(activePosition: Int?) {
+        roots = OutlineHierarchy.makeNodes(session?.outlineHeadings ?? [])
         super.reloadData()
+        if filter.isEmpty {
+            expandItem(nil, expandChildren: true)
+        }
         synchronizeSelection(to: activePosition)
     }
 
@@ -1175,19 +1320,19 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        item == nil ? visibleHeadings.count : 0
+        (item as? OutlineNode)?.children.count ?? visibleRoots.count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        visibleHeadings[index]
+        (item as? OutlineNode)?.children[index] ?? visibleRoots[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        false
+        (item as? OutlineNode)?.children.isEmpty == false
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        guard let heading = item as? OutlineHeading else { return nil }
+        guard let heading = (item as? OutlineNode)?.heading else { return nil }
         let id = NSUserInterfaceItemIdentifier("heading")
         let cell = (outlineView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? {
             let cell = NSTableCellView()
@@ -1221,19 +1366,35 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        item is OutlineHeading
+        item is OutlineNode
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSynchronizingSelection,
               selectedRow >= 0,
-              let heading = item(atRow: selectedRow) as? OutlineHeading
+              let heading = (item(atRow: selectedRow) as? OutlineNode)?.heading
         else { return }
         // 点击标题会滚动编辑器，随后滚动位置会回同步一次；短暂抑制以避免覆盖本次高亮。
         suppressScrollSyncUntil = Date().addingTimeInterval(0.25)
         DispatchQueue.main.async { [weak self] in
             self?.onHeadingActivated?(heading)
         }
+    }
+
+    @objc private func expandAllHeadings() {
+        expandItem(nil, expandChildren: true)
+    }
+
+    @objc private func collapseAllHeadings() {
+        collapseItem(nil, collapseChildren: true)
+    }
+
+    @objc private func locateCurrentHeading() {
+        synchronizeSelection(to: session?.activeOutlinePosition)
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.items.last?.isEnabled = session?.activeOutlinePosition != nil
     }
 
 }

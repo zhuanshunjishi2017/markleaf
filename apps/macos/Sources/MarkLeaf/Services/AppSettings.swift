@@ -82,6 +82,7 @@ struct AppSettings: Codable {
         sourceFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceFontFamily) ?? Self.defaultSourceFontFamily
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
+        visualCjkAutoSpacing = try container.decodeIfPresent(Bool.self, forKey: .visualCjkAutoSpacing) ?? true
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
         showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? false
@@ -115,6 +116,7 @@ struct AppSettings: Codable {
         recentFiles = try container.decodeIfPresent([String].self, forKey: .recentFiles) ?? []
         workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 230
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
+        outlineDetached = try container.decodeIfPresent(Bool.self, forKey: .outlineDetached) ?? false
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         statusBarVisible = try container.decodeIfPresent(Bool.self, forKey: .statusBarVisible) ?? true
         statusBar = try container.decodeIfPresent(StatusBarSettings.self, forKey: .statusBar) ?? StatusBarSettings()
@@ -163,6 +165,7 @@ struct AppSettings: Codable {
     /// 源码模式中文字体：对应 Windows SourceCjkFontFamily（默认 Microsoft YaHei）
     var sourceCjkFontFamily = AppSettings.defaultSourceCjkFontFamily
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
+    var visualCjkAutoSpacing = true
     var sourceIndentWidth = 2
     var showParagraphBlockHandle = true
     var showCodeHighlight = false
@@ -203,6 +206,7 @@ struct AppSettings: Codable {
     // 窗口
     var workspaceWidth = 230
     var outlineWidth = 230
+    var outlineDetached = false
     var sidebarVisible = true
     var statusBarVisible = true
     var statusBar = StatusBarSettings()

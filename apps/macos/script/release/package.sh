@@ -56,6 +56,9 @@ ditto "$MACOS_DIR/Resources/Styles" "$APP_STAGE/Contents/Resources/Styles"
 if [ -d "$MACOS_DIR/Changelog" ]; then
     ditto "$MACOS_DIR/Changelog" "$APP_STAGE/Contents/Resources/Changelog"
 fi
+if [ -d "$MACOS_DIR/Welcome" ]; then
+    ditto "$MACOS_DIR/Welcome" "$APP_STAGE/Contents/Resources/Welcome"
+fi
 for icon in AppIcon.icns FileIcon.icns; do
     if [ -f "$MACOS_DIR/Resources/$icon" ]; then
         cp "$MACOS_DIR/Resources/$icon" "$APP_STAGE/Contents/Resources/$icon"

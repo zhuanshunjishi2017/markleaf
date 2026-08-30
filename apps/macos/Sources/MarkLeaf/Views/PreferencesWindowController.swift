@@ -55,6 +55,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
     private var cjkLanguageTag: CJKLanguageTag
+    private let visualCjkAutoSpacingCheck = NSButton(checkboxWithTitle: L10n.t("中西文与数字之间自动添加空格"), target: nil, action: nil)
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
 
     // 外观
@@ -149,6 +150,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
+        visualCjkAutoSpacingCheck.state = settings.visualCjkAutoSpacing ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
@@ -213,7 +215,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
             autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
-            blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
+                      blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
+            visualCjkAutoSpacingCheck,
             autoHideScrollbarsCheck, followSystemCheck, codeHighlightCheck, associateMDCheck, associateTextCheck,
             useRelativePathsCheck, prefixDotSlashCheck,
         ]
@@ -249,7 +252,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
-                                     restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, topMostCheck, autoHideScrollbarsCheck,
+                                     restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, visualCjkAutoSpacingCheck, topMostCheck, autoHideScrollbarsCheck,
                                      followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
@@ -463,6 +466,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
+            .field("", visualCjkAutoSpacingCheck),
             .field("", blockHandleCheck),
             .header(L10n.t("源码模式")),
             .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
@@ -584,6 +588,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.sourceFontFamily = sourceFontField.fontName
         settings.sourceCjkFontFamily = sourceCjkFontField.fontName
         settings.cjkLanguageTag = cjkLanguageTag
+        settings.visualCjkAutoSpacing = visualCjkAutoSpacingCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 

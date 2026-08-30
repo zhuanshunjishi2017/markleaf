@@ -33,15 +33,18 @@ let decoder = JSONDecoder()
 let legacyJSON = Data(#"{"displayLanguage":"en","visualFontSize":19,"showParagraphBlockHandle":false}"#.utf8)
 let legacy = try decoder.decode(AppSettings.self, from: legacyJSON)
 expect(!legacy.showCodeHighlight, "legacy settings without showCodeHighlight should default to false")
+expect(legacy.visualCjkAutoSpacing, "legacy settings should enable CJK auto spacing by default")
 expect(legacy.displayLanguage == "en", "adding the optional key must preserve unrelated language settings")
 expect(legacy.visualFontSize == 19, "adding the optional key must preserve unrelated numeric settings")
 expect(!legacy.showParagraphBlockHandle, "adding the optional key must preserve unrelated Boolean settings")
 
 var enabled = legacy
 enabled.showCodeHighlight = true
+enabled.visualCjkAutoSpacing = false
 let encoded = try JSONEncoder().encode(enabled)
 let roundTrip = try decoder.decode(AppSettings.self, from: encoded)
 expect(roundTrip.showCodeHighlight, "an explicit true value should survive an encode/decode round trip")
+expect(!roundTrip.visualCjkAutoSpacing, "an explicit CJK auto spacing value should survive round trip")
 expect(roundTrip.visualFontSize == 19, "round-tripping code highlighting must not alter unrelated settings")
 
 let explicitFalse = try decoder.decode(AppSettings.self, from: Data(#"{"showCodeHighlight":false}"#.utf8))

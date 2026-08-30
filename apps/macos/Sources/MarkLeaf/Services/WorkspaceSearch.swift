@@ -83,20 +83,17 @@ final class WorkspaceSearchService {
 }
 
 /// 修改时间文案（对齐 Windows WorkspaceDocumentTimeFormatter）：
-/// 今天显示时间，昨天/前天带前缀，同年显示月日，更早显示年/月/日。
+/// 今天/昨天带前缀，其余同年日期显示月日，更早显示年/月/日。
 enum WorkspaceDocumentTimeFormatter {
     static func format(_ date: Date, now: Date = Date()) -> String {
         let calendar = Calendar.current
         let time = timeFormatter.string(from: date)
-        if calendar.isDateInToday(date) {
-            return time
+        if calendar.isDate(date, inSameDayAs: now) {
+            return L10n.f("今天 %@", time)
         }
-        if calendar.isDateInYesterday(date) {
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now)),
+           calendar.isDate(date, inSameDayAs: yesterday) {
             return L10n.f("昨天 %@", time)
-        }
-        if let twoDaysAgo = calendar.date(byAdding: .day, value: -2, to: calendar.startOfDay(for: now)),
-           date >= twoDaysAgo {
-            return L10n.f("前天 %@", time)
         }
         if calendar.isDate(date, equalTo: now, toGranularity: .year) {
             return monthDayFormatter.string(from: date)

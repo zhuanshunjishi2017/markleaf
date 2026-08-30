@@ -1,5 +1,29 @@
 # MarkLeaf Changelog
 
+## 1.5.1 — 2026-08-29
+
+### New
+
+- Added a "Show Outline on Right" feature so the outline appears in its own panel to the right of the editor.
+- Added "Increase List Indent / Decrease List Indent" menu commands.
+- Added a "Add a space between CJK text and digits" preference toggle.
+- Added a "Welcome" screen to the Help menu that highlights Markleaf's basic features.
+
+### Changed
+
+- Reorganized the layout of some items in the menu bar.
+- Improved the time display format for recently edited files.
+
+### Fixed
+
+- Fixed an infinite-recursion crash when clicking the "Outline" tab in the sidebar.
+- Fixed "Show Outline on Right" being unclickable and the outline show/hide animation being cut off by repeated layout passes.
+- Fixed the status bar still allowing a "Visual"/"Source" mode switch in plain-text mode.
+- Fixed footnotes (annotations) losing formatting after saving, changing encoding, or switching modes.
+- Fixed inline math formulas being lost during Markdown round-trip conversion.
+- Fixed plain-text files still showing Markdown syntax hints.
+- Fixed the workspace not restoring a clean unnamed document after the current document was deleted.
+
 ## 1.4.0 — 2026-08-28
 
 ### New

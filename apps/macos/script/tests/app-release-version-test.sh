@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT_DIR/script/release_version.sh"
 
 actual="$(resolve_markleaf_version)"
-if [[ "$actual" != "1.4.0" ]]; then
-  echo "FAIL: expected default product version 1.4.0, got $actual" >&2
+if [[ "$actual" != "1.5.1" ]]; then
+  echo "FAIL: expected default product version 1.5.1, got $actual" >&2
   exit 1
 fi
 

@@ -117,6 +117,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "promoteHeading", "demoteHeading",
         "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode",
         "toggleBlockquote", "toggleCodeBlock", "toggleBulletList", "toggleOrderedList", "toggleTaskList",
+        "indentListItem", "outdentListItem",
         "insertLink", "insertImage", "insertImageFromUrl", "insertHorizontalRule",
         "insertTable", "insertLineBefore", "insertLineAfter",
         "addRowBefore", "addRowAfter", "deleteRow",
@@ -138,8 +139,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var activeOutlinePosition: Int?
 
     var onWorkspaceChanged: (() -> Void)?
+    var onWorkspaceEntryCreated: ((URL) -> Void)?
     var onOutlineChanged: (() -> Void)?
     var onOutlineSelectionChanged: (() -> Void)?
+    var onThemeChanged: (() -> Void)?
     var onStylesReady: (() -> Void)?
     var onExportComplete: ((Bool) -> Void)?
     var onViewStateChanged: (() -> Void)?
@@ -149,6 +152,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // 视图状态（对应 Windows 视图菜单）
     var sidebarVisible = true
     var sidebarTabIndex = 0
+    var outlineDetached = false
     var workspaceListMode = false
     var workspaceSortOrder = AppSettings.WorkspaceSortOrder.modifiedTimeDescending
     var statusBarVisible = true
@@ -588,6 +592,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             payload["activeStyle"] = saved.markdownStyle
             currentStyleId = saved.markdownStyle
         }
+        payload["visualCjkAutoSpacing"] = saved.visualCjkAutoSpacing
         send("applyStyles", payload: payload)
         // 下发界面语言（前端查找栏等文案本地化）
         execute("setLanguage", text: SettingsService.shared.settings.displayLanguage)
@@ -620,6 +625,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let id = currentThemeId,
               let theme = colorThemes.first(where: { $0.id == id }),
               let hex = StyleManager.parseColorVariable("--bg-primary", in: theme.css) else { return nil }
+        return NSColor(hexString: hex)
+    }
+
+    var themeAccentColor: NSColor? {
+        themeColor(variable: "--theme-light")
+    }
+
+    var themeSelectedTextColor: NSColor? {
+        themeColor(variable: "--text-selected")
+    }
+
+    private func themeColor(variable: String) -> NSColor? {
+        guard let id = currentThemeId,
+              let theme = colorThemes.first(where: { $0.id == id }),
+              let hex = StyleManager.parseColorVariable(variable, in: theme.css) else { return nil }
         return NSColor(hexString: hex)
     }
 
@@ -1052,6 +1072,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         payload["colorThemeCss"] = theme.css
         payload["activeStyle"] = currentStyleId
         send("applyStyles", payload: payload)
+        onThemeChanged?()
     }
 
     func setStyle(_ id: String) {
@@ -1074,6 +1095,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             payload["activeStyle"] = currentStyleId
             send("applyStyles", payload: payload)
         }
+        onThemeChanged?()
     }
 
     private func applySystemAppearance(for theme: ColorThemeInfo) {
@@ -1272,6 +1294,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             sourceFontSize: '\(sourceFontSize)px',
             sourceFontFamily: '\(sourceFontFamily)',
             cjkLanguage: '\(cjkLanguage)',
+            visualCjkAutoSpacing: \(settings.visualCjkAutoSpacing ? "true" : "false"),
             usePointerAnchor: \(usePointerAnchor ? "true" : "false"),
             anchorX: \(anchorX),
             anchorY: \(anchorY)
@@ -1641,12 +1664,25 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func showWorkspaceTab() {
         guard sidebarTabIndex != 0 else { return }
         sidebarTabIndex = 0
+        SettingsService.shared.update { $0.sidebarTab = "workspace" }
         onViewStateChanged?()
     }
 
     func showOutlineTab() {
+        if outlineDetached { return }
         guard sidebarTabIndex != 1 else { return }
         sidebarTabIndex = 1
+        SettingsService.shared.update { $0.sidebarTab = "outline" }
+        onViewStateChanged?()
+    }
+
+    func toggleDetachedOutline() {
+        outlineDetached.toggle()
+        if outlineDetached, sidebarTabIndex == 1 {
+            sidebarTabIndex = 0
+            SettingsService.shared.update { $0.sidebarTab = "workspace" }
+        }
+        SettingsService.shared.update { $0.outlineDetached = outlineDetached }
         onViewStateChanged?()
     }
 
@@ -1710,24 +1746,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: - 工作区条目操作（对应 C# MainForm.Workspace.Entries / Menus）
 
     func createWorkspaceFile(at directory: URL, kind: NewDocumentKind = .markdown) {
-        presentWorkspaceNameDialog(
-            title: L10n.t("新建文件"),
-            message: L10n.t("输入新文件名："),
-            initialValue: L10n.t(kind.defaultFileName)
-        ) { [weak self] name in
-            guard let self, let name, let window = self.webView?.window else { return }
-            let fileName = Self.availableWorkspaceName(
-                base: Self.workspaceFileName(name, kind: kind),
-                directory: directory)
-            let url = directory.appendingPathComponent(fileName)
-            do {
-                try Data().write(to: url)
-                self.rescanWorkspace()
-                self.statusText = L10n.f("已创建文件 %@", fileName)
-            } catch {
-                self.presentError(L10n.f("创建文件失败：%@", error.localizedDescription))
-            }
-            _ = window
+        let fileName = Self.availableWorkspaceName(base: L10n.t(kind.defaultFileName), directory: directory)
+        let url = directory.appendingPathComponent(fileName)
+        do {
+            try Data().write(to: url)
+            openDocument(at: url)
+            onWorkspaceEntryCreated?(url)
+            rescanWorkspace()
+            statusText = L10n.f("已创建文件 %@", fileName)
+            renameWorkspaceEntry(
+                WorkspaceEntry(name: fileName, path: url.path, isDirectory: false),
+                initialValue: fileName
+            )
+        } catch {
+            presentError(L10n.f("创建文件失败：%@", error.localizedDescription))
         }
     }
 
@@ -1740,45 +1772,60 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func createWorkspaceFolder(at directory: URL) {
-        presentWorkspaceNameDialog(
-            title: L10n.t("新建文件夹"),
-            message: L10n.t("输入新文件夹名称："),
-            initialValue: L10n.t("新建文件夹")
-        ) { [weak self] name in
-            guard let self, let name else { return }
-            let folderName = Self.availableWorkspaceName(base: name, directory: directory)
-            let url = directory.appendingPathComponent(folderName)
-            do {
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
-                self.rescanWorkspace()
-                self.statusText = L10n.f("已创建文件夹 %@", folderName)
-            } catch {
-                self.presentError(L10n.f("创建文件夹失败：%@", error.localizedDescription))
-            }
+        let folderName = Self.availableWorkspaceName(base: L10n.t("新建文件夹"), directory: directory)
+        let url = directory.appendingPathComponent(folderName)
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            onWorkspaceEntryCreated?(url)
+            rescanWorkspace()
+            statusText = L10n.f("已创建文件夹 %@", folderName)
+            renameWorkspaceEntry(
+                WorkspaceEntry(name: folderName, path: url.path, isDirectory: true),
+                initialValue: folderName
+            )
+        } catch {
+            presentError(L10n.f("创建文件夹失败：%@", error.localizedDescription))
         }
     }
 
-    func renameWorkspaceEntry(_ entry: WorkspaceEntry) {
+    func renameWorkspaceEntry(_ entry: WorkspaceEntry, initialValue: String? = nil) {
         presentWorkspaceNameDialog(
             title: L10n.t("重命名"),
             message: L10n.t("输入新名称："),
-            initialValue: entry.name
+            initialValue: initialValue ?? entry.name
         ) { [weak self] name in
             guard let self, let name, !name.isEmpty, name != entry.name else { return }
-            let source = URL(fileURLWithPath: entry.path)
-            let destination = source.deletingLastPathComponent().appendingPathComponent(name)
-            do {
-                try FileManager.default.moveItem(at: source, to: destination)
-                if self.documentURL?.standardizedFileURL == source.standardizedFileURL {
-                    self.documentURL = destination
-                    self.statusText = destination.lastPathComponent
-                    SettingsService.shared.update { $0.lastFile = destination.path }
-                }
-                self.rescanWorkspace()
-                self.statusText = L10n.f("已重命名为 %@", name)
-            } catch {
-                self.presentError(L10n.f("重命名失败：%@", error.localizedDescription))
+            self.renameWorkspaceEntry(entry, to: name)
+        }
+    }
+
+    func renameWorkspaceEntry(_ entry: WorkspaceEntry, to requestedName: String) {
+        let trimmed = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != entry.name else { return }
+        let source = URL(fileURLWithPath: entry.path)
+        let name: String
+        if entry.isDirectory || source.pathExtension.isEmpty {
+            name = trimmed
+        } else {
+            let base = URL(fileURLWithPath: trimmed).deletingPathExtension().lastPathComponent
+            name = base + "." + source.pathExtension
+        }
+        let destination = source.deletingLastPathComponent().appendingPathComponent(name)
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            presentError(L10n.t("同名文件或文件夹已存在。"))
+            return
+        }
+        do {
+            try FileManager.default.moveItem(at: source, to: destination)
+            if documentURL?.standardizedFileURL == source.standardizedFileURL {
+                documentURL = destination
+                statusText = destination.lastPathComponent
+                SettingsService.shared.update { $0.lastFile = destination.path }
             }
+            rescanWorkspace()
+            statusText = L10n.f("已重命名为 %@", name)
+        } catch {
+            presentError(L10n.f("重命名失败：%@", error.localizedDescription))
         }
     }
 
@@ -1795,9 +1842,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             guard response == .alertFirstButtonReturn, let self else { return }
             let url = URL(fileURLWithPath: entry.path)
             do {
+                let resetsOpenDocument = WorkspaceDeletionPolicy.deletesOpenDocument(
+                    openDocument: self.documentURL,
+                    deletedEntry: url,
+                    isDirectory: entry.isDirectory
+                )
                 try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                if self.documentURL?.standardizedFileURL == url.standardizedFileURL {
-                    self.documentURL = nil
+                if resetsOpenDocument {
+                    self.loadDocument(markdown: "", fileURL: nil, documentKind: .markdown)
                 }
                 self.rescanWorkspace()
                 self.statusText = L10n.f("已删除 %@", entry.name)

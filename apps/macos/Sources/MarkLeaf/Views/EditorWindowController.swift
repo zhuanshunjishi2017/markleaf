@@ -15,19 +15,26 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private let zoomButton = NSButton()
     private var sidebarView: SidebarView?
     private var sidebarContainerView: NSView?
+    private var detachedOutlineView: DetachedOutlineView?
+    private var detachedOutlineContainerView: NSView?
     private var editorView: EditorWebContainerView?
     private var splitView: NSSplitView?
+    private var outerSplitView: NSSplitView?
     private var statusBar: NSStackView?
     private var statusDivider: NSBox?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var isAnimatingSidebar = false
+    private var isAnimatingOutline = false
     private var workspaceDividerPosition: CGFloat = 240
     private var sidebarVisibleBeforeFocus = true
+    private var outlineDetachedBeforeFocus = false
     private var statusBarVisibleBeforeFocus = true
     private var presentationOptionsBeforeFocus: NSApplication.PresentationOptions = []
     private var keyEventMonitor: Any?
     private var sidebarAnimationTimer: Timer?
+    private var outlineAnimationTimer: Timer?
     private var lastAppliedSidebarVisible: Bool?
+    private var lastAppliedOutlineDetached: Bool?
     private var statusClearTimer: Timer?
 
     private(set) var isFocusMode = false
@@ -49,6 +56,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.sidebarVisible = SettingsService.shared.settings.sidebarVisible
         session.statusBarVisible = SettingsService.shared.settings.statusBarVisible
         session.sidebarTabIndex = SettingsService.shared.settings.sidebarTab == "outline" ? 1 : 0
+        session.outlineDetached = SettingsService.shared.settings.outlineDetached
+        if session.outlineDetached, session.sidebarTabIndex == 1 { session.sidebarTabIndex = 0 }
         session.workspaceListMode = SettingsService.shared.settings.workspaceListMode
         session.workspaceSortOrder = SettingsService.shared.settings.workspaceSortOrder
         window.setFrameAutosaveName("MarkLeafMainWindow")
@@ -67,6 +76,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     deinit {
         statusClearTimer?.invalidate()
         sidebarAnimationTimer?.invalidate()
+        outlineAnimationTimer?.invalidate()
         if let keyEventMonitor {
             NSEvent.removeMonitor(keyEventMonitor)
         }
@@ -101,14 +111,21 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let rootView = NSView()
         let editorView = EditorWebContainerView(session: session)
         let sidebarView = SidebarView(session: session)
+        let detachedOutlineView = DetachedOutlineView(session: session)
         self.editorView = editorView
         self.sidebarView = sidebarView
+        self.detachedOutlineView = detachedOutlineView
 
         // 布局：左栏全高毛玻璃侧边栏 | 右栏（编辑器 + 底部状态栏）
         let splitView = NSSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.delegate = self
+
+        let outerSplitView = NSSplitView()
+        outerSplitView.isVertical = true
+        outerSplitView.dividerStyle = .thin
+        outerSplitView.delegate = self
 
         // 侧边栏毛玻璃容器：贯穿整个左栏（含底部），macOS 27 风格
         let sidebarContainer = NSVisualEffectView()
@@ -125,6 +142,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             sidebarView.topAnchor.constraint(equalTo: sidebarContainer.topAnchor),
             sidebarView.bottomAnchor.constraint(equalTo: sidebarContainer.bottomAnchor),
         ])
+
+        let detachedOutlineContainer = NSVisualEffectView()
+        detachedOutlineContainer.material = .sidebar
+        detachedOutlineContainer.blendingMode = .behindWindow
+        detachedOutlineContainer.state = .active
+        detachedOutlineView.translatesAutoresizingMaskIntoConstraints = false
+        detachedOutlineContainer.addSubview(detachedOutlineView)
+        NSLayoutConstraint.activate([
+            detachedOutlineView.leadingAnchor.constraint(equalTo: detachedOutlineContainer.leadingAnchor),
+            detachedOutlineView.trailingAnchor.constraint(equalTo: detachedOutlineContainer.trailingAnchor),
+            detachedOutlineView.topAnchor.constraint(equalTo: detachedOutlineContainer.topAnchor),
+            detachedOutlineView.bottomAnchor.constraint(equalTo: detachedOutlineContainer.bottomAnchor),
+        ])
+        self.detachedOutlineContainerView = detachedOutlineContainer
 
         // 右栏：编辑器 + 状态栏
         let rightColumn = NSView()
@@ -202,24 +233,29 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
         splitView.addArrangedSubview(rightColumn)
 
+        outerSplitView.addArrangedSubview(splitView)
+        if session.outlineDetached {
+            outerSplitView.addArrangedSubview(detachedOutlineContainer)
+        }
         self.splitView = splitView
+        self.outerSplitView = outerSplitView
         self.statusBar = statusBar
         self.statusDivider = divider
-        splitView.translatesAutoresizingMaskIntoConstraints = false
+        outerSplitView.translatesAutoresizingMaskIntoConstraints = false
         rightColumn.translatesAutoresizingMaskIntoConstraints = false
         editorView.translatesAutoresizingMaskIntoConstraints = false
         divider.translatesAutoresizingMaskIntoConstraints = false
         statusBar.translatesAutoresizingMaskIntoConstraints = false
 
-        rootView.addSubview(splitView)
+        rootView.addSubview(outerSplitView)
         rightColumn.addSubview(editorView)
         rightColumn.addSubview(divider)
         rightColumn.addSubview(statusBar)
         NSLayoutConstraint.activate([
-            splitView.topAnchor.constraint(equalTo: rootView.topAnchor),
-            splitView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            splitView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            splitView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+            outerSplitView.topAnchor.constraint(equalTo: rootView.topAnchor),
+            outerSplitView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            outerSplitView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            outerSplitView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
 
             editorView.topAnchor.constraint(equalTo: rightColumn.topAnchor),
             editorView.leadingAnchor.constraint(equalTo: rightColumn.leadingAnchor),
@@ -241,10 +277,17 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             SettingsService.shared.settings.workspaceWidth
         )
         // 侧边栏隐藏时不要用含侧边栏的初始宽度布局，避免启动瞬间先出现“展开一帧”。
+        // 默认编辑器内容宽 1000，并夹到当前屏幕可视区，避免默认窗口过大。
+        let baseEditorWidth: CGFloat = 1000
         let initialWidth = session.sidebarVisible
-            ? 1100 + sidebarWidth - 240
-            : 1100
-        window.setContentSize(NSSize(width: initialWidth, height: 760))
+            ? baseEditorWidth + sidebarWidth - 240
+            : baseEditorWidth
+        let outlineWidth = SidebarLayout.clampedWorkspaceWidth(SettingsService.shared.settings.outlineWidth)
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let desiredContentWidth = initialWidth + (session.outlineDetached ? outlineWidth : 0)
+        let contentWidth = max(SidebarLayout.minimumOutlineSplitWidth, min(desiredContentWidth, visibleFrame.width - 80))
+        let contentHeight = min(760, visibleFrame.height - 80)
+        window.setContentSize(NSSize(width: contentWidth, height: contentHeight))
         workspaceDividerPosition = sidebarWidth
     }
 
@@ -253,6 +296,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.applyLanguage()
         applyStatusBarContents()
         sidebarView?.applyLanguage()
+        detachedOutlineView?.applyLanguage()
     }
 
     private func configureStatusLabel(_ label: NSTextField) {
@@ -281,6 +325,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.onStateChanged?()
         session.onViewStateChanged = { [weak self] in
             DispatchQueue.main.async { self?.applyViewState() }
+        }
+        session.onOutlineChanged = { [weak self] in
+            DispatchQueue.main.async {
+                self?.sidebarView?.outlineChanged()
+                self?.detachedOutlineView?.reload()
+            }
+        }
+        session.onOutlineSelectionChanged = { [weak self] in
+            DispatchQueue.main.async {
+                self?.sidebarView?.outlineSelectionChanged()
+                self?.detachedOutlineView?.synchronizeSelection()
+            }
         }
     }
 
@@ -319,9 +375,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             : session.documentNewLine
         newLineButton.toolTip = L10n.t("切换换行符")
         newLineButton.isHidden = !status.newLineVisible
-        modeButton.title = session.isSourceMode ? L10n.t("源码") : L10n.t("可视化")
+        modeButton.title = L10n.t(StatusBarModePolicy.title(isSourceMode: session.isSourceMode))
         modeButton.toolTip = L10n.t("切换编辑模式")
         modeButton.isHidden = !status.modeToggleVisible
+        modeButton.isEnabled = EditorMenuPolicy.isModeToggleEnabled(isPlainText: session.isPlainText)
         zoomButton.title = "\(session.zoomPercent)%"
         zoomButton.toolTip = L10n.t("设置缩放")
         zoomButton.isHidden = !status.zoomVisible
@@ -444,10 +501,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
 
         sidebarVisibleBeforeFocus = session.sidebarVisible
+        outlineDetachedBeforeFocus = session.outlineDetached
         statusBarVisibleBeforeFocus = session.statusBarVisible
         presentationOptionsBeforeFocus = NSApp.presentationOptions
         isFocusMode = true
         session.sidebarVisible = false
+        session.outlineDetached = false
         session.statusBarVisible = false
         session.statusText = L10n.t("专注模式已开启")
         NSApp.presentationOptions.insert(.autoHideMenuBar)
@@ -461,6 +520,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         guard isFocusMode else { return }
         isFocusMode = false
         session.sidebarVisible = sidebarVisibleBeforeFocus
+        session.outlineDetached = outlineDetachedBeforeFocus
         session.statusBarVisible = statusBarVisibleBeforeFocus
         session.statusText = L10n.t("专注模式已关闭")
         NSApp.presentationOptions = presentationOptionsBeforeFocus
@@ -575,7 +635,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                     visibilityChanged: shouldAnimate
                 ) && abs(currentWidth - saved) > 1 {
                     animateSidebar(to: saved) {}
-                } else {
+                } else if !isAnimatingSidebar {
                     splitView.setPosition(saved, ofDividerAt: 0)
                 }
             }
@@ -592,12 +652,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                     self?.isAnimatingSidebar = false
                 }
             case .keepHiddenWithoutDividerMutation:
-                sidebar.isHidden = true
+                if !isAnimatingSidebar {
+                    sidebar.isHidden = true
+                }
             }
         }
 
-        sidebarView.selectTab(session.sidebarTabIndex)
+        sidebarView.selectTab(session.sidebarTabIndex, persist: false)
         sidebarView.setWorkspaceMode(listMode: session.workspaceListMode)
+        applyDetachedOutlineState()
 
         // 状态栏：高度平滑过渡
         let showStatusBar = session.statusBarVisible
@@ -620,6 +683,96 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 self?.statusDivider?.isHidden = true
             }
         }
+    }
+
+    private func applyDetachedOutlineState() {
+        guard let outerSplitView, let container = detachedOutlineContainerView else { return }
+        let shouldAnimate = lastAppliedOutlineDetached != nil
+            && lastAppliedOutlineDetached != session.outlineDetached
+        lastAppliedOutlineDetached = session.outlineDetached
+        let isArranged = outerSplitView.arrangedSubviews.contains(container)
+
+        if session.outlineDetached {
+            if !isArranged {
+                // 插入前就标记为动画态，允许分隔线先收齐到右缘（右侧宽度为 0），
+                // 再从 0 宽展开到保存宽度，等效于侧边栏的 reveal 动画。
+                isAnimatingOutline = true
+                outerSplitView.insertArrangedSubview(container, at: 1)
+                outerSplitView.layoutSubtreeIfNeeded()
+                outerSplitView.setPosition(outerSplitView.bounds.width, ofDividerAt: 0)
+                outerSplitView.layoutSubtreeIfNeeded()
+            }
+            container.isHidden = false
+            outerSplitView.layoutSubtreeIfNeeded()
+            let width = SidebarLayout.clampedWorkspaceWidth(SettingsService.shared.settings.outlineWidth)
+            let target = max(SidebarLayout.minimumOutlineSplitWidth, outerSplitView.bounds.width - width)
+            if shouldAnimate {
+                let start = isArranged
+                    ? (outerSplitView.arrangedSubviews.first?.frame.width ?? target)
+                    : outerSplitView.bounds.width
+                animateOutline(from: start, to: target) { [weak self] in
+                    self?.isAnimatingOutline = false
+                }
+            } else if !isAnimatingOutline {
+                outerSplitView.setPosition(target, ofDividerAt: 0)
+                isAnimatingOutline = false
+            }
+            detachedOutlineView?.reload()
+        } else if isArranged {
+            let remove = {
+                outerSplitView.removeArrangedSubview(container)
+                container.removeFromSuperview()
+                container.isHidden = true
+            }
+            if shouldAnimate {
+                let start = outerSplitView.arrangedSubviews.first?.frame.width ?? outerSplitView.bounds.width
+                animateOutline(from: start, to: outerSplitView.bounds.width) {
+                    if !self.session.outlineDetached { remove() }
+                }
+            } else if !isAnimatingOutline {
+                remove()
+            }
+        }
+    }
+
+    /// 手动插值动画右侧大纲分隔线位置（与 animateSidebar 共用同一套缓动/时长/回调机制）。
+    private func animateOutline(
+        from explicitStart: CGFloat? = nil,
+        to target: CGFloat,
+        completion: @escaping () -> Void
+    ) {
+        guard let outerSplitView else { completion(); return }
+        outlineAnimationTimer?.invalidate()
+        // 以右侧栏当前 frame 宽度对应的分隔线位置作为动画起点。
+        let start = explicitStart ?? outerSplitView.arrangedSubviews.first?.frame.width ?? 0
+        guard abs(start - target) > 1 else {
+            outerSplitView.setPosition(target, ofDividerAt: 0)
+            completion()
+            return
+        }
+        isAnimatingOutline = true
+        let duration = 0.28
+        let startTime = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self, let outerSplitView = self.outerSplitView else {
+                timer.invalidate()
+                completion()
+                return
+            }
+            let progress = min(1, (CACurrentMediaTime() - startTime) / duration)
+            let eased = progress < 0.5
+                ? 2 * progress * progress
+                : 1 - pow(-2 * progress + 2, 2) / 2
+            outerSplitView.setPosition(start + (target - start) * eased, ofDividerAt: 0)
+            if progress >= 1 {
+                timer.invalidate()
+                self.isAnimatingOutline = false
+                self.outlineAnimationTimer = nil
+                completion()
+            }
+        }
+        outlineAnimationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     // MARK: - NSWindowDelegate
@@ -671,11 +824,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 SettingsService.shared.update { $0.workspaceWidth = Int(width) }
             }
         }
+        if session.outlineDetached,
+           let outerSplitView,
+           outerSplitView.arrangedSubviews.count == 2 {
+            let width = outerSplitView.arrangedSubviews[1].frame.width
+            if width >= SidebarLayout.minimumWidth {
+                SettingsService.shared.update { $0.outlineWidth = Int(width) }
+            }
+        }
     }
 }
 
 extension EditorWindowController: NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        if splitView === outerSplitView {
+            return max(proposedMinimumPosition, SidebarLayout.minimumOutlineSplitWidth)
+        }
         // 折叠动画期间或侧边栏隐藏时允许收起到 0，避免窗口 resize 把隐藏侧边栏撑开；
         // 否则保持可用最小宽度。
         let minimum = SidebarPresentationPolicy.minimumDividerCoordinate(
@@ -687,14 +851,24 @@ extension EditorWindowController: NSSplitViewDelegate {
     }
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        min(
+        if splitView === outerSplitView {
+            // 右侧大纲滑入/滑出动画期间允许分隔线推到最右，使右栏宽度收到 0。
+            if isAnimatingOutline {
+                return min(proposedMaximumPosition, splitView.bounds.width)
+            }
+            return min(proposedMaximumPosition, splitView.bounds.width - SidebarLayout.minimumWidth)
+        }
+        return min(
             proposedMaximumPosition,
             SidebarLayout.maximumSidebarWidth(totalWidth: splitView.bounds.width)
         )
     }
 
     func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
+        if splitView === outerSplitView {
+            return view === splitView.arrangedSubviews.first
+        }
         // 编辑器侧可伸缩，侧边栏固定
-        view !== splitView.arrangedSubviews.first
+        return view !== splitView.arrangedSubviews.first
     }
 }

@@ -111,7 +111,6 @@ final class NativeMenuBuilder {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         menu.delegate = MenuRouter.shared
-        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
@@ -120,7 +119,9 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
         menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
-        menu.addItem(commandItem(L10n.t("插入注释"), "insertFootnote"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
+        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
         menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
@@ -160,6 +161,9 @@ final class NativeMenuBuilder {
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
         lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
         lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
+        lists.addItem(.separator())
+        lists.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
+        lists.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
         menu.addItem(popup(L10n.t("列表"), lists))
         return menu
     }
@@ -203,7 +207,7 @@ final class NativeMenuBuilder {
         tableItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
         menu.addItem(tableItem)
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("清除段落格式"), "clearFormat"))
+        menu.addItem(commandItem(L10n.t("清除格式"), "clearFormat"))
         return menu
     }
 
@@ -211,13 +215,16 @@ final class NativeMenuBuilder {
 
     private func viewMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))
-        menu.addItem(commandItem(L10n.t("大纲"), "outlineTab"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("树结构"), "treeView"))
-        menu.addItem(commandItem(L10n.t("文档列表"), "listView"))
+        let sidebarSettings = NSMenu(title: L10n.t("侧栏设置"))
+        sidebarSettings.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))
+        sidebarSettings.addItem(.separator())
+        sidebarSettings.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))
+        sidebarSettings.addItem(commandItem(L10n.t("大纲"), "outlineTab"))
+        sidebarSettings.addItem(commandItem(L10n.t("树结构"), "treeView"))
+        sidebarSettings.addItem(commandItem(L10n.t("文档列表"), "listView"))
+        sidebarSettings.addItem(.separator())
+        sidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))
+        menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
@@ -284,6 +291,8 @@ final class NativeMenuBuilder {
 
     private func helpMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.addItem(commandItem(L10n.t("欢迎"), "openWelcome"))
+        menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
         menu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))
         menu.addItem(.separator())
@@ -402,10 +411,20 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         switch command {
         case "print": return session != nil
         case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
-        case "workspaceTab": menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
-        case "outlineTab": menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
-        case "treeView": menuItem.state = s?.workspaceListMode == false ? .on : .off
-        case "listView": menuItem.state = s?.workspaceListMode == true ? .on : .off
+        case "workspaceTab":
+            menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+        case "outlineTab":
+            menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+                && s?.outlineDetached != true
+        case "toggleDetachedOutline": menuItem.state = s?.outlineDetached == true ? .on : .off
+        case "treeView":
+            menuItem.state = s?.workspaceListMode == false ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+        case "listView":
+            menuItem.state = s?.workspaceListMode == true ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
         case "toggleStatusBar": menuItem.state = s?.statusBarVisible == true ? .on : .off
         case "toggleFocusMode":
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
@@ -470,11 +489,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
              "setHeading4", "setHeading5", "setHeading6",
              "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
              "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
-             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "clearFormat":
+             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat":
             return EditorMenuPolicy.isParagraphCommandEnabled(
                 command: command,
                 isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true
+                isReadOnly: s?.isReadOnly == true,
+                inTable: s?.inTable == true
             )
         case "insertFootnote", "resetFootnoteLabel":
             return EditorMenuPolicy.isFootnoteCommandEnabled(
@@ -523,6 +543,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.showRecoveryDialog()
         case "openChangelog":
             AppWindowManager.shared.openChangelog()
+        case "openWelcome":
+            AppWindowManager.shared.openWelcome()
         case "checkForUpdates":
             AppWindowManager.shared.checkForUpdates()
         case "toggleFollowSystemTheme":
@@ -704,6 +726,7 @@ extension EditorSession {
         case "toggleSidebar": toggleSidebar()
         case "workspaceTab": showWorkspaceTab()
         case "outlineTab": showOutlineTab()
+        case "toggleDetachedOutline": toggleDetachedOutline()
         case "treeView": setWorkspaceListMode(false)
         case "listView": setWorkspaceListMode(true)
         case "toggleStatusBar": toggleStatusBar()
@@ -758,6 +781,7 @@ extension EditorSession {
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)
+        case "indentListItem", "outdentListItem": execute(command)
         case "insertHorizontalRule": execute("insertHorizontalRule")
         case "insertTable": execute("insertTable")
         case "insertLineBefore": execute("insertLineBefore")
