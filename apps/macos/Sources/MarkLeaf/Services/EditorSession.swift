@@ -217,6 +217,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         )
     }
 
+    /// 供窗口会话同步标签模型使用的当前修订号。
+    var currentRevision: Int64 { revision }
+
     var currentDocumentIdentifier: String { documentId }
     var pendingInitialDocumentPath: String? { pendingInitialOpenPath }
     var isDocumentDispositionInProgress: Bool { documentDisposition.isInProgress }

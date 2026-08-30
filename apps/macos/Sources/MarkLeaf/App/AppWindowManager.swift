@@ -21,6 +21,7 @@ final class AppWindowManager {
     static let shared = AppWindowManager()
 
     private(set) var windowControllers: [EditorWindowController] = []
+    private(set) var windowSessions: [EditorWindowController: WindowSession] = [:]
     private var preferencesController: PreferencesWindowController?
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
@@ -34,9 +35,23 @@ final class AppWindowManager {
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
         let session = EditorSession()
         let controller = EditorWindowController(session: session)
+        let windowSession = WindowSession()
+        windowSession.controller = controller
+        let tab = DocumentTab(
+            path: nil,
+            title: L10n.t("未命名"),
+            encoding: SettingsService.shared.settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        windowSession.tabStore.append(tab)
+        windowSession.attach(session: session, to: tab.tabID)
+        controller.windowSession = windowSession
         windowControllers.append(controller)
+        windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in
             self?.windowControllers.removeAll { $0 === closed }
+            self?.windowSessions.removeValue(forKey: closed)
         }
         controller.showWindow(nil)
         controller.openInitialDocument(path: documentPath)
@@ -46,9 +61,23 @@ final class AppWindowManager {
     func newWindow(preparedDocument: PreparedDocument) -> EditorWindowController {
         let session = EditorSession()
         let controller = EditorWindowController(session: session)
+        let windowSession = WindowSession()
+        windowSession.controller = controller
+        let tab = DocumentTab(
+            path: nil,
+            title: L10n.t("未命名"),
+            encoding: SettingsService.shared.settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        windowSession.tabStore.append(tab)
+        windowSession.attach(session: session, to: tab.tabID)
+        controller.windowSession = windowSession
         windowControllers.append(controller)
+        windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in
             self?.windowControllers.removeAll { $0 === closed }
+            self?.windowSessions.removeValue(forKey: closed)
         }
         controller.showWindow(nil)
         controller.openInitialDocument(prepared: preparedDocument)
@@ -110,6 +139,11 @@ final class AppWindowManager {
     /// 当前活跃（键窗口）会话；无键窗口时退回第一个。
     var activeSession: EditorSession? {
         activeWindowController?.session
+    }
+
+    /// 当前活跃窗口的会话边界。
+    var activeWindowSession: WindowSession? {
+        activeWindowController.flatMap { windowSessions[$0] }
     }
 
     /// 当前活跃（键窗口）控制器；窗口级命令（如专注模式）使用它路由。

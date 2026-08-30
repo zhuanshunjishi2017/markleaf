@@ -42,6 +42,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var pendingCloseAfterSheetEnds = false
 
     var onWindowClose: ((EditorWindowController) -> Void)?
+    var windowSession: WindowSession?
 
     init(session: EditorSession) {
         self.session = session
@@ -321,6 +322,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             window.title = self.session.windowTitle
             window.isDocumentEdited = self.session.isDirty
             self.applyStatusBarContents()
+            self.windowSession?.syncActiveTab(from: self.session, untitledLabel: L10n.t("未命名"))
         }
         session.onStateChanged?()
         session.onViewStateChanged = { [weak self] in
