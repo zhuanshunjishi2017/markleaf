@@ -1728,7 +1728,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             statusText = L10n.f("已创建文件 %@", fileName)
             renameWorkspaceEntry(
                 WorkspaceEntry(name: fileName, path: url.path, isDirectory: false),
-                initialValue: fileName
+                initialValue: fileName,
+                dialogTitle: L10n.t("新建文件"),
+                dialogMessage: L10n.t("输入新名称：")
             )
         } catch {
             presentError(L10n.f("创建文件失败：%@", error.localizedDescription))
@@ -1753,17 +1755,24 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             statusText = L10n.f("已创建文件夹 %@", folderName)
             renameWorkspaceEntry(
                 WorkspaceEntry(name: folderName, path: url.path, isDirectory: true),
-                initialValue: folderName
+                initialValue: folderName,
+                dialogTitle: L10n.t("新建文件夹"),
+                dialogMessage: L10n.t("输入新名称：")
             )
         } catch {
             presentError(L10n.f("创建文件夹失败：%@", error.localizedDescription))
         }
     }
 
-    func renameWorkspaceEntry(_ entry: WorkspaceEntry, initialValue: String? = nil) {
+    func renameWorkspaceEntry(
+        _ entry: WorkspaceEntry,
+        initialValue: String? = nil,
+        dialogTitle: String = L10n.t("重命名"),
+        dialogMessage: String = L10n.t("输入新名称：")
+    ) {
         presentWorkspaceNameDialog(
-            title: L10n.t("重命名"),
-            message: L10n.t("输入新名称："),
+            title: dialogTitle,
+            message: dialogMessage,
             initialValue: initialValue ?? entry.name
         ) { [weak self] name in
             guard let self, let name, !name.isEmpty, name != entry.name else { return }
@@ -1838,9 +1847,41 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         statusText = L10n.t("路径已复制")
     }
 
-    func openWorkspaceEntryInNewWindow(_ entry: WorkspaceEntry) {
+    /// 复制受支持文本文件的内容到剪贴板（仅 md/txt/markdown）。
+    func copyWorkspaceEntryContent(_ entry: WorkspaceEntry) {
         guard !entry.isDirectory else { return }
+        let ext = (entry.path as NSString).pathExtension.lowercased()
+        guard ["md", "txt", "markdown"].contains(ext) else {
+            statusText = L10n.t("无法复制该文件内容")
+            return
+        }
+        let url = URL(fileURLWithPath: entry.path)
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8) else {
+            statusText = L10n.t("无法复制该文件内容")
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        statusText = L10n.f("已复制内容 %@", entry.name)
+    }
+
+    func openWorkspaceEntryInNewWindow(_ entry: WorkspaceEntry) {
+        if entry.isDirectory {
+            let controller = AppWindowManager.shared.newWindow()
+            controller.session.loadWorkspace(entry.path)
+            return
+        }
         _ = AppWindowManager.shared.newWindow(documentPath: entry.path)
+    }
+
+    /// 用系统共享面板分享文件（AirDrop/邮件/信息等）。
+    func shareWorkspaceEntry(_ entry: WorkspaceEntry) {
+        guard !entry.isDirectory else { return }
+        guard let contentView = webView?.window?.contentView else { return }
+        let picker = NSSharingServicePicker(items: [URL(fileURLWithPath: entry.path)])
+        picker.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .minY)
     }
 
     func openWorkspaceEntryInFinder(_ entry: WorkspaceEntry) {
