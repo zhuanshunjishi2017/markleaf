@@ -213,14 +213,6 @@ struct AppSettings: Codable {
     var sidebarTab = "workspace"
     var workspaceListMode = false
     var workspaceSortOrder = WorkspaceSortOrder.modifiedTimeDescending
-
-    enum WorkspaceSortOrder: String, Codable, CaseIterable {
-        case fileNameAscending
-        case fileNameDescending
-        case modifiedTimeAscending
-        case modifiedTimeDescending
-    }
-
     enum StartupAction: String, Codable {
         case newDocument
         case openLastWorkspace

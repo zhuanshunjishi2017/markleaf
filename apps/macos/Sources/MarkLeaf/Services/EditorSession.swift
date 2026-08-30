@@ -133,36 +133,53 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     ]
 
     // 工作区 / 大纲
-    private(set) var workspaceRoot: String?
-    private(set) var workspaceTree: [WorkspaceEntry] = []
+    /// 窗口共享工作区（构造时注入；缺省自建，等价旧行为）。
+    let workspace: WorkspaceContext
+    var workspaceRoot: String? { workspace.root }
+    var workspaceTree: [WorkspaceEntry] { workspace.tree }
+    var workspaceDocuments: [WorkspaceEntry] { workspace.documents }
+    var workspaceListMode: Bool {
+        get { workspace.listMode }
+        set { workspace.listMode = newValue }
+    }
+    var workspaceSortOrder: WorkspaceSortOrder {
+        get { workspace.sortOrder }
+        set { workspace.sortOrder = newValue }
+    }
+    var onWorkspaceChanged: (() -> Void)? {
+        get { workspace.onChanged }
+        set { workspace.onChanged = newValue }
+    }
+    var onWorkspaceEntryCreated: ((URL) -> Void)? {
+        get { workspace.onEntryCreated }
+        set { workspace.onEntryCreated = newValue }
+    }
+
     private(set) var outlineHeadings: [OutlineHeading] = []
     private(set) var activeOutlinePosition: Int?
-
-    var onWorkspaceChanged: (() -> Void)?
-    var onWorkspaceEntryCreated: ((URL) -> Void)?
     var onOutlineChanged: (() -> Void)?
     var onOutlineSelectionChanged: (() -> Void)?
     var onThemeChanged: (() -> Void)?
     var onStylesReady: (() -> Void)?
     var onExportComplete: ((Bool) -> Void)?
     var onViewStateChanged: (() -> Void)?
-    var workspaceScanner: WorkspaceScanner?
-    private var workspaceWatcher: WorkspaceWatcher?
 
     // 视图状态（对应 Windows 视图菜单）
     var sidebarVisible = true
     var sidebarTabIndex = 0
     var outlineDetached = false
-    var workspaceListMode = false
-    var workspaceSortOrder = AppSettings.WorkspaceSortOrder.modifiedTimeDescending
     var statusBarVisible = true
-    private(set) var workspaceDocuments: [WorkspaceEntry] = []
 
     /// UI 状态变化回调（主线程）
     var onStateChanged: (() -> Void)?
     var snapshotModePath: String?
 
     weak var webView: WKWebView?
+
+    init(workspace: WorkspaceContext = WorkspaceContext()) {
+        self.workspace = workspace
+        super.init()
+    }
 
     private var documentId = UUID().uuidString.lowercased()
     private var startupRecoveryNotice: (documentID: String, text: String)?
@@ -905,8 +922,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         recoveryTimer?.invalidate()
         recoveryTimer = nil
         stopExternalChangeWatch()
-        workspaceWatcher?.stop()
-        workspaceWatcher = nil
+        workspace.closeForSessionTeardown()
         RecoveryService.shared.delete(documentId: documentId)
     }
 
@@ -1570,57 +1586,32 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: - 工作区（对应 C# MainForm.Workspace）
 
     func loadWorkspace(_ path: String) {
-        let fm = FileManager.default
-        var isDirectory: ObjCBool = false
-        guard fm.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return }
-
-        workspaceRoot = path
+        workspace.load(path)
+        guard workspace.root != nil else { return }
         SettingsService.shared.addRecentFolder(path)
         SettingsService.shared.update { $0.lastFolder = path }
         AppLog.info("打开工作区: \(path)")
-
-        rescanWorkspace()
-
-        // 自动监听工作区变化（删除刷新按钮）
-        let watcher = WorkspaceWatcher()
-        watcher.start(watching: path) { [weak self] in
-            self?.rescanWorkspace()
-        }
-        workspaceWatcher = watcher
     }
 
     /// 重新扫描当前工作区（自动刷新 / 手动刷新共用）。
     func rescanWorkspace() {
-        guard let root = workspaceRoot else { return }
-        workspaceScanner?.cancel()
-        workspaceTree = []
-        onWorkspaceChanged?()
-        let scanner = WorkspaceScanner(root: root) { [weak self] entries in
-            self?.workspaceTree = entries
-            self?.onWorkspaceChanged?()
-        }
-        workspaceScanner = scanner
-        scanner.scan()
-        if workspaceListMode {
-            scanWorkspaceDocuments()
-        }
+        workspace.rescan()
     }
 
     func closeWorkspace() {
-        workspaceScanner?.cancel()
-        workspaceScanner = nil
-        workspaceWatcher?.stop()
-        workspaceWatcher = nil
-        workspaceRoot = nil
-        workspaceTree = []
-        onWorkspaceChanged?()
+        workspace.close()
     }
 
     func openWorkspaceEntry(_ entry: WorkspaceEntry) {
         if entry.isDirectory {
             return // 由侧边栏展开处理
         }
-        openDocument(at: URL(fileURLWithPath: entry.path))
+        let url = URL(fileURLWithPath: entry.path)
+        if let hook = workspace.openDocumentRequest {
+            hook(url)
+        } else {
+            openDocument(at: url)
+        }
     }
 
     @discardableResult
@@ -1690,13 +1681,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func setWorkspaceListMode(_ listMode: Bool) {
-        guard workspaceListMode != listMode else { return }
-        workspaceListMode = listMode
+        guard workspace.listMode != listMode else { return }
+        workspace.setListMode(listMode)
         SettingsService.shared.update { $0.workspaceListMode = listMode }
         onViewStateChanged?()
-        if listMode, workspaceRoot != nil, workspaceDocuments.isEmpty {
-            scanWorkspaceDocuments()
-        }
     }
 
     func toggleStatusBar() {
@@ -1706,44 +1694,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func scanWorkspaceDocuments() {
-        guard let root = workspaceRoot else { return }
-        // 存入属性保持 scanner 存活（局部变量会提前释放导致异步扫描不回调）
-        workspaceScanner?.cancel()
-        let scanner = WorkspaceScanner(root: root) { _ in }
-        workspaceScanner = scanner
-        scanner.scanDocuments { [weak self] documents in
-            guard let self else { return }
-            self.workspaceDocuments = self.sortedDocuments(documents)
-            self.onWorkspaceChanged?()
-        }
+        workspace.scanDocuments()
     }
 
-    /// 按用户选择的字段/方向对文档列表排序（对齐 Windows MainForm.Workspace.Sort）。
-    private func sortedDocuments(_ documents: [WorkspaceEntry]) -> [WorkspaceEntry] {
-        let fm = FileManager.default
-        func modificationDate(_ path: String) -> Date {
-            (try? fm.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? .distantPast
-        }
-        switch workspaceSortOrder {
-        case .fileNameAscending:
-            return documents.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .fileNameDescending:
-            return documents.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedDescending }
-        case .modifiedTimeAscending:
-            return documents.sorted { modificationDate($0.path) < modificationDate($1.path) }
-        case .modifiedTimeDescending:
-            return documents.sorted { modificationDate($0.path) > modificationDate($1.path) }
-        }
-    }
-
-    func setWorkspaceSortOrder(_ order: AppSettings.WorkspaceSortOrder) {
-        guard workspaceSortOrder != order else { return }
-        workspaceSortOrder = order
+    func setWorkspaceSortOrder(_ order: WorkspaceSortOrder) {
+        guard workspace.sortOrder != order else { return }
+        workspace.setSortOrder(order)
         SettingsService.shared.update { $0.workspaceSortOrder = order }
-        if workspaceListMode {
-            workspaceDocuments = sortedDocuments(workspaceDocuments)
-        }
-        onWorkspaceChanged?()
     }
 
     // MARK: - 工作区条目操作（对应 C# MainForm.Workspace.Entries / Menus）
