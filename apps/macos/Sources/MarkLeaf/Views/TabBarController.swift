@@ -1,19 +1,28 @@
 import AppKit
 
 /// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
-/// 单击激活；关闭按钮关闭；完整路径走悬停提示与上下文菜单（Task 13 补溢出与拖拽）。
+/// 单击激活；关闭按钮关闭；完整路径走悬停提示；支持拖拽重排、溢出菜单与横向滚动。
 final class TabBarController: NSView {
     var onActivate: ((DocumentTabID) -> Void)?
     var onClose: ((DocumentTabID) -> Void)?
+    var onReorder: ((Int, Int) -> Void)?
 
     private let stack = NSStackView()
+    private let overflowButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private unowned let tabStore: TabStore
     private var cellsByTab: [DocumentTabID: TabCellView] = [:]
+    private var stackLeading: NSLayoutConstraint!
+    private var overflowWidth: NSLayoutConstraint!
+
+    private var scrollOffset: CGFloat = 0
+    private var reorderingTabID: DocumentTabID?
+    private var isReordering = false
 
     init(tabStore: TabStore) {
         self.tabStore = tabStore
         super.init(frame: .zero)
         wantsLayer = true
+        layer?.masksToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: 32).isActive = true
 
@@ -21,21 +30,55 @@ final class TabBarController: NSView {
         stack.alignment = .centerY
         stack.distribution = .fill
         stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        stackLeading = stack.leadingAnchor.constraint(equalTo: leadingAnchor)
         NSLayoutConstraint.activate([
+            stackLeading,
             stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+
+        configureOverflowButton()
+        overflowWidth = overflowButton.widthAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            overflowWidth,
+            overflowButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            overflowButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            overflowButton.leadingAnchor.constraint(greaterThanOrEqualTo: stack.trailingAnchor, constant: 6),
+        ])
+        overflowButton.isHidden = true
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(boundsChanged),
+            name: NSView.boundsDidChangeNotification,
+            object: self
+        )
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     private var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func configureOverflowButton() {
+        overflowButton.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: L10n.t("所有标签"))
+        overflowButton.imagePosition = .imageOnly
+        overflowButton.isBordered = false
+        overflowButton.controlSize = .small
+        overflowButton.translatesAutoresizingMaskIntoConstraints = false
+        overflowButton.refusesFirstResponder = false
+        overflowButton.focusRingType = .default
+        overflowButton.setAccessibilityLabel(L10n.t("所有标签"))
+        addSubview(overflowButton)
     }
 
     func reload() {
@@ -55,10 +98,14 @@ final class TabBarController: NSView {
             }
             configure(cell, for: tab)
         }
+        rebuildOverflowMenu()
+        updateOverflowVisibility()
     }
 
     private func makeCell(for tab: DocumentTab) -> TabCellView {
         let cell = TabCellView()
+        cell.tabID = tab.tabID
+        cell.controller = self
         cell.onActivate = { [weak self] in self?.onActivate?(tab.tabID) }
         cell.onClose = { [weak self] in self?.onClose?(tab.tabID) }
         return cell
@@ -78,17 +125,116 @@ final class TabBarController: NSView {
             accessibilityTitle: tab.path ?? tab.title
         )
     }
+
+    // MARK: - 拖拽重排
+
+    func beginReorder(from cell: TabCellView) {
+        guard isReordering == false else { return }
+        isReordering = true
+        reorderingTabID = cell.tabID
+    }
+
+    func dragReorder(to windowPoint: NSPoint) {
+        guard isReordering, let id = reorderingTabID,
+              let source = tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
+        let local = convert(windowPoint, from: nil)
+        let target = targetIndex(for: local)
+        guard target != source else { return }
+        let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
+        let cell = cellsByTab[id]
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.allowsImplicitAnimation = duration > 0
+            if let cell {
+                stack.removeArrangedSubview(cell)
+                stack.insertArrangedSubview(cell, at: min(target, stack.arrangedSubviews.count))
+            }
+        })
+    }
+
+    func endReorder(at windowPoint: NSPoint) {
+        guard isReordering, let id = reorderingTabID else {
+            isReordering = false
+            reorderingTabID = nil
+            return
+        }
+        let source = tabStore.tabs.firstIndex(where: { $0.tabID == id })
+        let target = targetIndex(for: convert(windowPoint, from: nil))
+        isReordering = false
+        reorderingTabID = nil
+        if let source {
+            onReorder?(source, target)
+        }
+    }
+
+    private func targetIndex(for localPoint: NSPoint) -> Int {
+        let p = stack.convert(localPoint, from: self)
+        for (index, view) in stack.arrangedSubviews.enumerated() {
+            if p.x < view.frame.midX {
+                return index
+            }
+        }
+        return stack.arrangedSubviews.count
+    }
+
+    // MARK: - 溢出菜单
+
+    private func rebuildOverflowMenu() {
+        overflowButton.menu?.removeAllItems()
+        for tab in tabStore.tabs {
+            let prefix = tab.isDirty ? "● " : ""
+            let item = NSMenuItem(title: prefix + tab.title, action: #selector(overflowSelect(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = tab.tabID.rawValue
+            item.state = tabStore.activeTabID == tab.tabID ? .on : .off
+            overflowButton.menu?.addItem(item)
+        }
+    }
+
+    @objc private func overflowSelect(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        onActivate?(DocumentTabID(raw))
+    }
+
+    @objc private func boundsChanged() {
+        updateOverflowVisibility()
+    }
+
+    private func updateOverflowVisibility() {
+        let show = stack.fittingSize.width > bounds.width
+        overflowButton.isHidden = !show
+        overflowWidth.constant = show ? 26 : 0
+        if !show { scrollOffset = 0 }
+    }
+
+    // MARK: - 横向滚动
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaY
+        guard delta != 0 else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let maxOffset = max(0, stack.fittingSize.width - bounds.width)
+        scrollOffset = max(0, min(scrollOffset - delta, maxOffset))
+        stackLeading.constant = -scrollOffset
+        layoutSubtreeIfNeeded()
+    }
 }
 
 /// 单个标签单元：标题 + 脏圆点 + 关闭按钮。
 final class TabCellView: NSView {
     var onActivate: (() -> Void)?
     var onClose: (() -> Void)?
+    weak var controller: TabBarController?
+    var tabID: DocumentTabID?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let dirtyDot = NSView()
     private let closeButton = NSButton()
     private var isActive = false
+    private var downPoint: NSPoint?
+    private var didDrag = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -143,7 +289,30 @@ final class TabCellView: NSView {
     @objc private func closeClicked() { onClose?() }
 
     override func mouseDown(with event: NSEvent) {
-        onActivate?()
+        downPoint = convert(event.locationInWindow, from: nil)
+        didDrag = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downPoint else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
+            didDrag = true
+            controller?.beginReorder(from: self)
+        }
+        if didDrag {
+            controller?.dragReorder(to: event.locationInWindow)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if didDrag {
+            controller?.endReorder(at: event.locationInWindow)
+        } else {
+            onActivate?()
+        }
+        downPoint = nil
+        didDrag = false
     }
 
     func configure(
