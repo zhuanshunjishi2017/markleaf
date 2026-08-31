@@ -971,9 +971,24 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     private func handleExternalChange(_ url: URL) {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        let fileExists = FileManager.default.fileExists(atPath: url.path)
+        let fingerprintChanged: Bool
+        if let current = try? DocumentFileVersion.read(from: url) {
+            fingerprintChanged = externalChangeTracker.hasAcceptedVersionDifferent(from: current)
+        } else {
+            fingerprintChanged = true
+        }
+        switch TabExternalChangePolicy.action(isDirty: isDirty, fileExists: fileExists, fingerprintChanged: fingerprintChanged) {
+        case .ignore:
+            return
+        case .keepPending:
+            statusText = L10n.t("文件已被外部删除，当前内容未保存")
+            return
+        case .showMissing:
             statusText = L10n.t("文件已被外部删除")
             return
+        case .reloadPreservingPosition, .presentConflict:
+            break
         }
         guard let window = webView?.window else { return }
         guard !isPresentingExternalChange else { return }

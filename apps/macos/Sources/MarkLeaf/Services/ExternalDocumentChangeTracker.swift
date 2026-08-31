@@ -92,4 +92,8 @@ final class ExternalDocumentChangeTracker {
         }
         return .presentExternalChange
     }
+
+    func hasAcceptedVersionDifferent(from current: DocumentFileVersion) -> Bool {
+        acceptedVersion != current
+    }
 }
