@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 enum TabContextAction {
     case close
@@ -26,6 +27,7 @@ final class TabBarController: NSView {
     private var scrollOffset: CGFloat = 0
     private var reorderingTabID: DocumentTabID?
     private var isReordering = false
+    private var motionGeneration = 0
 
     init(tabStore: TabStore) {
         self.tabStore = tabStore
@@ -116,40 +118,79 @@ final class TabBarController: NSView {
     }
 
     func reload() {
+        motionGeneration += 1
+        let generation = motionGeneration
         let existing = Set(cellsByTab.keys)
         let current = Set(tabStore.tabs.map(\.tabID))
-        var insertedCells: [TabCellView] = []
-        for id in existing.subtracting(current) {
-            if let cell = cellsByTab.removeValue(forKey: id) {
-                stack.removeArrangedSubview(cell)
-                cell.removeFromSuperview()
-            }
+        let removedCells = existing.subtracting(current).compactMap { id -> TabCellView? in
+            guard let cell = cellsByTab.removeValue(forKey: id) else { return nil }
+            cell.layer?.removeAllAnimations()
+            cell.setLifted(false, animated: false)
+            return cell
         }
-        for (index, tab) in tabStore.tabs.enumerated() {
+        let currentOrder = stack.arrangedSubviews.compactMap { ($0 as? TabCellView)?.tabID }
+        let desiredOrder = tabStore.tabs.map(\.tabID)
+        let orderChanged = currentOrder != desiredOrder
+        var insertedCells: [TabCellView] = []
+        for tab in tabStore.tabs {
             let cell: TabCellView
             if let existingCell = cellsByTab[tab.tabID] {
                 cell = existingCell
             } else {
                 cell = makeCell(for: tab)
-                cell.alphaValue = 0
+                cell.prepareForInsertion()
                 insertedCells.append(cell)
             }
             cellsByTab[tab.tabID] = cell
-            if stack.arrangedSubviews.count <= index || stack.arrangedSubviews[index] !== cell {
-                stack.insertArrangedSubview(cell, at: index)
-            }
             configure(cell, for: tab)
         }
         rebuildOverflowMenu()
         updateOverflowVisibility()
-        guard !insertedCells.isEmpty else { return }
+
+        let needsMotion = !insertedCells.isEmpty || !removedCells.isEmpty || orderChanged
+        guard needsMotion else { return }
+        // Establish the pre-change frames so Auto Layout can interpolate the
+        // stack's expansion, collapse, or reorder inside the animation group.
         layoutSubtreeIfNeeded()
+        animateTabChanges(
+            inserted: insertedCells,
+            removed: removedCells,
+            generation: generation
+        )
+    }
+
+    private func animateTabChanges(
+        inserted: [TabCellView],
+        removed: [TabCellView],
+        generation: Int
+    ) {
         let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.allowsImplicitAnimation = duration > 0
-            insertedCells.forEach { $0.animator().alphaValue = 1 }
+        removed.forEach { stack.removeArrangedSubview($0) }
+        for (index, tab) in tabStore.tabs.enumerated() {
+            guard let cell = cellsByTab[tab.tabID] else { continue }
+            if stack.arrangedSubviews.count <= index || stack.arrangedSubviews[index] !== cell {
+                stack.insertArrangedSubview(cell, at: min(index, stack.arrangedSubviews.count))
+            }
         }
+        guard duration > 0 else {
+            inserted.forEach { $0.finishInsertion() }
+            removed.forEach { $0.removeFromSuperview() }
+            layoutSubtreeIfNeeded()
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.allowsImplicitAnimation = true
+            self.layoutSubtreeIfNeeded()
+            inserted.forEach { $0.animator().alphaValue = 1 }
+            removed.forEach { $0.animator().alphaValue = 0 }
+        }, completionHandler: { [weak self] in
+            guard let self else { return }
+            removed.forEach { $0.removeFromSuperview() }
+            inserted.forEach { $0.finishInsertion() }
+            guard self.motionGeneration == generation else { return }
+            self.layoutSubtreeIfNeeded()
+        })
     }
 
     private func makeCell(for tab: DocumentTab) -> TabCellView {
@@ -188,6 +229,7 @@ final class TabBarController: NSView {
         guard isReordering == false else { return }
         isReordering = true
         reorderingTabID = cell.tabID
+        cell.setLifted(true, animated: !reduceMotion)
     }
 
     func dragReorder(to windowPoint: NSPoint) {
@@ -214,6 +256,7 @@ final class TabBarController: NSView {
             reorderingTabID = nil
             return
         }
+        cellsByTab[id]?.setLifted(false, animated: !reduceMotion)
         let source = tabStore.tabs.firstIndex(where: { $0.tabID == id })
         let target = targetIndex(for: convert(windowPoint, from: nil))
         isReordering = false
@@ -322,6 +365,7 @@ final class TabCellView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.cornerRadius = 6
+        layer?.shadowColor = NSColor.black.cgColor
 
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.font = .systemFont(ofSize: 12)
@@ -366,6 +410,51 @@ final class TabCellView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @objc private func closeClicked() { onClose?() }
+
+    func prepareForInsertion() {
+        alphaValue = 0
+        layer?.transform = CATransform3DMakeScale(0.96, 0.96, 1)
+    }
+
+    func finishInsertion() {
+        alphaValue = 1
+        layer?.transform = CATransform3DIdentity
+    }
+
+    func setLifted(_ lifted: Bool, animated: Bool) {
+        guard let layer else { return }
+        let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: !animated)
+        let fromTransform = layer.presentation()?.transform ?? layer.transform
+        let targetTransform = lifted
+            ? CATransform3DMakeScale(1.04, 1.08, 1)
+            : CATransform3DIdentity
+        let targetShadowOpacity: Float = lifted ? 0.24 : 0
+        let targetShadowRadius: CGFloat = lifted ? 10 : 0
+        let targetShadowOffset = lifted ? CGSize(width: 0, height: -2) : .zero
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = targetTransform
+        layer.shadowOpacity = targetShadowOpacity
+        layer.shadowRadius = targetShadowRadius
+        layer.shadowOffset = targetShadowOffset
+        layer.zPosition = lifted ? 10 : 0
+        CATransaction.commit()
+
+        guard duration > 0 else { return }
+        let transformAnimation = CABasicAnimation(keyPath: "transform")
+        transformAnimation.fromValue = NSValue(caTransform3D: fromTransform)
+        transformAnimation.toValue = NSValue(caTransform3D: targetTransform)
+        transformAnimation.duration = duration
+        transformAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(transformAnimation, forKey: "tabLift")
+
+        let shadowOpacityAnimation = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowOpacityAnimation.fromValue = layer.presentation()?.shadowOpacity ?? layer.shadowOpacity
+        shadowOpacityAnimation.toValue = targetShadowOpacity
+        shadowOpacityAnimation.duration = duration
+        layer.add(shadowOpacityAnimation, forKey: "tabLiftShadow")
+    }
 
     override func mouseDown(with event: NSEvent) {
         downPoint = convert(event.locationInWindow, from: nil)
