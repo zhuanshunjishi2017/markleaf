@@ -41,7 +41,7 @@ enum ExternalFileOpenPreferenceModel {
 
     static func titles(language: String) -> [String] {
         [
-            L10n.translate("始终在新窗口中打开", language: language),
+            L10n.translate("在新窗口中打开", language: language),
             L10n.translate("在当前窗口的新标签页中打开", language: language),
             L10n.translate("在当前标签页中打开", language: language),
         ]
@@ -61,7 +61,7 @@ enum WorkspaceFileOpenPreferenceModel {
     static func titles(language: String) -> [String] {
         [
             L10n.translate("在新标签页中打开", language: language),
-            L10n.translate("始终在当前标签中打开", language: language),
+            L10n.translate("在当前标签中打开", language: language),
         ]
     }
 
