@@ -504,18 +504,16 @@ final class TabCellView: NSView {
     override func mouseDown(with event: NSEvent) {
         downPoint = convert(event.locationInWindow, from: nil)
         didDrag = false
+        controller?.beginReorder(from: self, at: event.locationInWindow)
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = downPoint else { return }
         let point = convert(event.locationInWindow, from: nil)
-        if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
+        if hypot(point.x - start.x, point.y - start.y) > 6 {
             didDrag = true
-            controller?.beginReorder(from: self, at: event.locationInWindow)
         }
-        if didDrag {
-            controller?.dragReorder(to: event.locationInWindow)
-        }
+        controller?.dragReorder(to: event.locationInWindow)
     }
 
     override func mouseUp(with event: NSEvent) {

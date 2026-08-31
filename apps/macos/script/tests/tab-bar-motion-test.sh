@@ -13,6 +13,17 @@ require() {
   fi
 }
 
+require_block_contains() {
+  local start="$1"
+  local end="$2"
+  local text="$3"
+  local message="$4"
+  if ! sed -n "/$start/,/$end/p" "$TAB_BAR" | grep -Fq "$text"; then
+    echo "FAIL: $message" >&2
+    exit 1
+  fi
+}
+
 require 'animateTabChanges' 'tab reload must animate insertions and removals'
 require 'setLifted' 'dragging a tab must expose a lift animation state'
 require 'layoutSubtreeIfNeeded' 'tab layout changes must be animated as a group'
@@ -23,5 +34,10 @@ require 'draggingCell' 'dragging must keep a floating cell separate from the sta
 require 'setFrameOrigin' 'the lifted tab must follow the pointer continuously'
 require 'dragStartOffset' 'the floating tab must preserve the grab point'
 require 'acceptsFirstMouse' 'the first press on a tab must be eligible to start a drag'
+require_block_contains \
+  'override func mouseDown(with event: NSEvent)' \
+  'override func mouseDragged(with event: NSEvent)' \
+  'controller?.beginReorder(from: self, at: event.locationInWindow)' \
+  'the first press must lift the tab immediately'
 
 echo "PASS"
