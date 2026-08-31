@@ -152,7 +152,9 @@ struct AppSettings: Codable {
         lastFile = try container.decodeIfPresent(String.self, forKey: .lastFile)
         recentFolders = try container.decodeIfPresent([String].self, forKey: .recentFolders) ?? []
         recentFiles = try container.decodeIfPresent([String].self, forKey: .recentFiles) ?? []
-        workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 230
+        workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 260
+        // 旧默认 230 偏窄：未手动调整过的安装跟随加宽，已调宽的值不受影响。
+        if workspaceWidth == 230 { workspaceWidth = 260 }
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
         outlineDetached = try container.decodeIfPresent(Bool.self, forKey: .outlineDetached) ?? false
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
@@ -244,7 +246,7 @@ struct AppSettings: Codable {
     var recentFiles: [String] = []
 
     // 窗口
-    var workspaceWidth = 230
+    var workspaceWidth = 260
     var outlineWidth = 230
     var outlineDetached = false
     var sidebarVisible = true

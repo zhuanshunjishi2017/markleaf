@@ -14,15 +14,29 @@ require_block_contains() {
 }
 
 require_block_contains 'final class WorkspaceListCellView' 'MARK: - 大纲树' \
-  'nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8)' \
-  'file title must use the full row width instead of sharing it with the date'
+  'nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6)' \
+  'file title must share the first line with the timestamp'
 require_block_contains 'final class WorkspaceListCellView' 'MARK: - 大纲树' \
-  'timeLabel.centerYAnchor.constraint(equalTo: folderLabel.centerYAnchor)' \
-  'the timestamp must live on the secondary line so the title gets the full width'
+  'timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor)' \
+  'the timestamp must stay on the first line instead of wrapping below'
 if sed -n '/final class WorkspaceListCellView/,/MARK: - 大纲树/p' "$SIDEBAR" \
-   | grep -F 'timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor)' > /dev/null; then
-  echo 'FAIL: timestamp must not be vertically centered against the whole row' >&2
+   | grep -F 'timeLabel.centerYAnchor.constraint(equalTo: folderLabel.centerYAnchor)' > /dev/null; then
+  echo 'FAIL: timestamp must not sit on the secondary line' >&2
   exit 1
 fi
+
+require() {
+  local file="$1" text="$2" message="$3"
+  if ! grep -Fq "$text" "$file"; then
+    echo "FAIL: $message" >&2
+    exit 1
+  fi
+}
+
+SETTINGS="$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift"
+require "$SETTINGS" 'var workspaceWidth = 260' \
+  'the default workspace sidebar width must be wider'
+require "$SETTINGS" 'if workspaceWidth == 230 { workspaceWidth = 260 }' \
+  'stored legacy default widths must migrate to the wider default'
 
 echo "PASS"
