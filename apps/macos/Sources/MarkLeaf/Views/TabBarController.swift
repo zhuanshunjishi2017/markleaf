@@ -230,6 +230,18 @@ final class TabBarController: NSView {
 
     // MARK: - 拖拽重排
 
+    /// 按压时只在原位置做抬起效果，不改变视图层级，避免打断 mouse-up 事件流。
+    func liftCell(_ cell: TabCellView, animated: Bool) {
+        guard cell.superview != nil else { return }
+        cell.setLifted(true, animated: animated && !reduceMotion)
+    }
+
+    /// 未进入拖拽就松开时，把标签恢复平放并让其继续可点击激活。
+    func unliftCell(_ cell: TabCellView) {
+        guard !isReordering else { return }
+        cell.setLifted(false, animated: !reduceMotion)
+    }
+
     func beginReorder(from cell: TabCellView, at windowPoint: NSPoint) {
         guard isReordering == false else { return }
         guard let id = cell.tabID,
@@ -281,7 +293,7 @@ final class TabBarController: NSView {
         })
     }
 
-    func endReorder(at windowPoint: NSPoint, shouldReorder: Bool) {
+    func endReorder(at windowPoint: NSPoint) {
         guard isReordering, let id = reorderingTabID,
               let cell = draggingCell, let placeholder = dragPlaceholder else {
             isReordering = false
@@ -289,9 +301,7 @@ final class TabBarController: NSView {
             return
         }
         let source = dragSourceIndex ?? tabStore.tabs.firstIndex(where: { $0.tabID == id })
-        let target = shouldReorder
-            ? targetIndex(for: convert(windowPoint, from: nil))
-            : (source ?? stack.arrangedSubviews.firstIndex(of: placeholder) ?? 0)
+        let target = targetIndex(for: convert(windowPoint, from: nil))
         let placeholderIndex = stack.arrangedSubviews.firstIndex(of: placeholder) ?? target
         stack.removeArrangedSubview(placeholder)
         placeholder.removeFromSuperview()
@@ -506,21 +516,26 @@ final class TabCellView: NSView {
     override func mouseDown(with event: NSEvent) {
         downPoint = convert(event.locationInWindow, from: nil)
         didDrag = false
-        controller?.beginReorder(from: self, at: event.locationInWindow)
+        controller?.liftCell(self, animated: true)
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = downPoint else { return }
         let point = convert(event.locationInWindow, from: nil)
-        if hypot(point.x - start.x, point.y - start.y) > 6 {
+        if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
             didDrag = true
+            controller?.beginReorder(from: self, at: event.locationInWindow)
         }
-        controller?.dragReorder(to: event.locationInWindow)
+        if didDrag {
+            controller?.dragReorder(to: event.locationInWindow)
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        controller?.endReorder(at: event.locationInWindow, shouldReorder: didDrag)
-        if !didDrag {
+        if didDrag {
+            controller?.endReorder(at: event.locationInWindow)
+        } else {
+            controller?.unliftCell(self)
             onActivate?()
         }
         downPoint = nil

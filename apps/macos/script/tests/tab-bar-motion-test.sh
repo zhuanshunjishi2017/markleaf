@@ -37,17 +37,27 @@ require 'acceptsFirstMouse' 'the first press on a tab must be eligible to start 
 require_block_contains \
   'override func mouseDown(with event: NSEvent)' \
   'override func mouseDragged(with event: NSEvent)' \
+  'controller?.liftCell(self, animated: true)' \
+  'the first press must lift the tab in place immediately'
+require_block_contains \
+  'override func mouseDragged(with event: NSEvent)' \
+  'override func mouseUp(with event: NSEvent)' \
   'controller?.beginReorder(from: self, at: event.locationInWindow)' \
-  'the first press must lift the tab immediately'
+  'a drag past the threshold must start the floating reorder'
 require_block_contains \
   'override func mouseUp(with event: NSEvent)' \
   'override func rightMouseDown(with event: NSEvent)' \
-  'controller?.endReorder(at: event.locationInWindow, shouldReorder: didDrag)' \
-  'a press must always finish its drag lifecycle on release'
+  'controller?.endReorder(at: event.locationInWindow)' \
+  'a completed drag must finish the reorder lifecycle'
 require_block_contains \
   'override func mouseUp(with event: NSEvent)' \
   'override func rightMouseDown(with event: NSEvent)' \
-  'if !didDrag {' \
+  'controller?.unliftCell(self)' \
+  'a short press must return the tab to rest'
+require_block_contains \
+  'override func mouseUp(with event: NSEvent)' \
+  'override func rightMouseDown(with event: NSEvent)' \
+  'onActivate?()' \
   'a short press must still activate the tab'
 
 echo "PASS"
