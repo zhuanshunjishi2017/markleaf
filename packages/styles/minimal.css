@@ -16,6 +16,10 @@
   letter-spacing: 0.03em;
 }
 
+.markleaf-style-minimal .markleaf-alert::before {
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
 .markleaf-style-minimal .markleaf-document h1 {
   font-size: calc(var(--ml-font-size) * 2);
   margin-bottom: 1em;

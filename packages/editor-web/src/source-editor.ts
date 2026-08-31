@@ -343,10 +343,11 @@ export class SourceEditor {
 
   getStatus(): SourceEditorStatus {
     const text = this.getText()
+    const documentText = stripLeadingFrontMatter(text)
     const selection = this.view.state.selection.main
     const line = this.view.state.doc.lineAt(selection.from)
     return {
-      characterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
+      characterCount: Array.from(documentText).filter(character => !/\s/u.test(character)).length,
       selectedCharacterCount: Array.from(this.getSelectedText()).filter(character => !/\s/u.test(character)).length,
       ...getSourceDocumentStatistics(text),
       blockType: 'paragraph',
@@ -533,15 +534,20 @@ function normalizeInsertedText(text: string): string {
 }
 
 function getSourceDocumentStatistics(text: string) {
+  const documentText = stripLeadingFrontMatter(text)
   return {
-    totalCharacterCount: Array.from(text).length,
-    nonWhitespaceCharacterCount: Array.from(text).filter(character => !/\s/u.test(character)).length,
-    cjkCharacterCount: Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length,
-    westernWordCount: Array.from(text.matchAll(/[\p{Script=Latin}][\p{Script=Latin}\p{Mark}'’-]*/gu)).length,
-    formulaCount: countMarkdownFormulas(text),
-    codeLineCount: countFencedCodeLines(text),
-    paragraphCount: countMarkdownParagraphs(text),
+    totalCharacterCount: Array.from(documentText).length,
+    nonWhitespaceCharacterCount: Array.from(documentText).filter(character => !/\s/u.test(character)).length,
+    cjkCharacterCount: Array.from(documentText.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length,
+    westernWordCount: Array.from(documentText.matchAll(/[\p{Script=Latin}][\p{Script=Latin}\p{Mark}'’-]*/gu)).length,
+    formulaCount: countMarkdownFormulas(documentText),
+    codeLineCount: countFencedCodeLines(documentText),
+    paragraphCount: countMarkdownParagraphs(documentText),
   }
+}
+
+function stripLeadingFrontMatter(text: string): string {
+  return text.replace(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
 }
 
 function countMarkdownFormulas(text: string): number {

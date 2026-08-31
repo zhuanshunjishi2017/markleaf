@@ -197,6 +197,104 @@ public sealed class CommandStateResolverTests
     }
 
     [TestMethod]
+    public void Resolve_ParagraphAndFormatCommandsAreDisabledInSourceMode()
+    {
+        var context = CreateContext(editorReady: true, documentAvailable: true, hasSelection: true) with
+        {
+            SourceMode = true,
+            HeadingLevel = 3,
+            BulletListActive = true,
+            OrderedListActive = true,
+            TaskListActive = true,
+            ImageSelected = true,
+            InTable = true,
+            CodeBlockActive = true,
+            MermaidSelected = true,
+            MermaidCount = 1,
+            FootnoteDefinitionLabel = "1",
+            CanStartFormatPainter = true,
+        };
+
+        var commands = new[]
+        {
+            AppCommand.SetParagraph,
+            AppCommand.SetHeading1,
+            AppCommand.SetHeading2,
+            AppCommand.SetHeading3,
+            AppCommand.SetHeading4,
+            AppCommand.SetHeading5,
+            AppCommand.SetHeading6,
+            AppCommand.PromoteHeading,
+            AppCommand.DemoteHeading,
+            AppCommand.ToggleQuote,
+            AppCommand.InsertMathInline,
+            AppCommand.InsertMathBlock,
+            AppCommand.ToggleCodeBlock,
+            AppCommand.InsertHorizontalRule,
+            AppCommand.ToggleBulletList,
+            AppCommand.ToggleOrderedList,
+            AppCommand.ToggleTaskList,
+            AppCommand.IncreaseListIndent,
+            AppCommand.DecreaseListIndent,
+            AppCommand.InsertTable,
+            AppCommand.InsertMermaid,
+            AppCommand.ShowFrontMatter,
+            AppCommand.RerenderAllMermaid,
+            AppCommand.InsertFootnote,
+            AppCommand.InsertLineBefore,
+            AppCommand.InsertLineAfter,
+            AppCommand.ToggleBold,
+            AppCommand.ToggleItalic,
+            AppCommand.ToggleUnderline,
+            AppCommand.ToggleStrike,
+            AppCommand.ToggleHighlight,
+            AppCommand.ToggleInlineCode,
+            AppCommand.InsertLink,
+            AppCommand.InsertImage,
+            AppCommand.InsertImageFromUrl,
+            AppCommand.RotateImageClockwise,
+            AppCommand.ChangeImage,
+            AppCommand.SaveImageAs,
+            AppCommand.ResizeImage100,
+            AppCommand.ResizeImage50,
+            AppCommand.ResizeImage75,
+            AppCommand.ResizeImage90,
+            AppCommand.ClearFormat,
+            AppCommand.FormatPainter,
+        };
+
+        foreach (var command in commands)
+        {
+            Assert.IsFalse(CommandStateResolver.Resolve(command, context).IsEnabled, command.ToString());
+        }
+    }
+
+    [TestMethod]
+    public void Resolve_FrontMatterRequiresEditableVisualMarkdown()
+    {
+        var markdown = CreateContext(editorReady: true, documentAvailable: true);
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ShowFrontMatter, markdown).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ShowFrontMatter, markdown with { SourceMode = true }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ShowFrontMatter, markdown with { IsPlainText = true }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ShowFrontMatter, markdown with { ReadOnly = true }).IsEnabled);
+    }
+
+    [TestMethod]
+    public void Resolve_FrontMatterUsesCodeCommandsExceptLanguageDeclaration()
+    {
+        var context = CreateContext(editorReady: true) with
+        {
+            FrontMatterActive = true,
+            CodeBlockText = "title: MarkLeaf",
+        };
+
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyCodeBlock, context).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ExitCode, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.DeclareCodeLanguage, context).IsEnabled);
+    }
+
+    [TestMethod]
     public void Resolve_FindReplaceAndSourceModeAreEnabledWhenEditorIsReady()
     {
         var context = CreateContext(editorReady: true);

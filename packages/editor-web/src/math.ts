@@ -5,6 +5,11 @@ import katexSelfContainedCss from 'virtual:katex-css'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
 
+export function mathNumberFromLatex(latex: string): string | null {
+  const match = /\\tag\{([^{}]*)\}\s*$/.exec(latex)
+  return match?.[1]?.trim() || null
+}
+
 function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
 }
@@ -51,7 +56,7 @@ function fitBlockMathToWidth(container: HTMLElement): void {
   container.style.fontSize = `${((base * available) / content).toFixed(2)}px`
 }
 
-/// 行内数学公式：`$...$`
+/// 行内数学公式：`$...$` 或 `\(...\)`。
 export const MathInline = Node.create({
   name: 'mathInline',
   group: 'inline',
@@ -81,18 +86,40 @@ export const MathInline = Node.create({
   markdownTokenizer: {
     name: 'mathInline',
     level: 'inline',
-    start: (src: string) => src.indexOf('$'),
+    start: (src: string) => {
+      const dollar = src.indexOf('$')
+      const parenthesis = src.indexOf('\\(')
+      if (dollar < 0) return parenthesis
+      if (parenthesis < 0) return dollar
+      return Math.min(dollar, parenthesis)
+    },
     tokenize: (src: string) => {
-      const match = /^\$(?!\$)([^$\n]+?)\$/.exec(src)
+      const match = /^(?:(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
       if (!match) return undefined
-      return { type: 'mathInline', raw: match[0], text: match[1] }
+      return { type: 'mathInline', raw: match[0], text: match[1] ?? match[2] }
     },
   },
 
   addInputRules() {
     return [
       new InputRule({
-        find: /\$([^$\n]+?)\$$/,
+        // The first `$` must not be the second half of a display-math opener.
+        // Otherwise `$$x$` is incorrectly converted to inline math before the
+        // second closing `$` can complete the block formula.
+        find: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
+        handler: ({ state, range, match }) => {
+          const latex = match[1]!
+          const mathType = state.schema.nodes.mathInline
+          if (!mathType) return null
+          state.tr.replaceWith(
+            range.from,
+            range.to,
+            mathType.create(null, state.schema.text(latex)),
+          )
+        },
+      }),
+      new InputRule({
+        find: /\\\(((?:\\(?!\))|[^\\\n])*?)\\\)$/,
         handler: ({ state, range, match }) => {
           const latex = match[1]!
           const mathType = state.schema.nodes.mathInline
@@ -118,7 +145,7 @@ export const MathInline = Node.create({
   },
 })
 
-/// 块级数学公式：`$$...$$`
+/// 块级数学公式：`$$...$$` 或 `\[...\]`。
 export const MathBlock = Node.create({
   name: 'mathBlock',
   group: 'block',
@@ -148,28 +175,28 @@ export const MathBlock = Node.create({
 
   parseMarkdown(token, helpers) {
     const latex = (token.text ?? '').trim()
-    const tag = /\\tag\{([^}]*)\}\s*$/.exec(latex)
-    const number = tag ? tag[1] : null
-    const body = tag ? latex.slice(0, tag.index).trim() : latex
-    return helpers.createNode('mathBlock', { number }, [
-      helpers.createTextNode(body),
-    ])
+    return helpers.createNode('mathBlock', { number: null }, [helpers.createTextNode(latex)])
   },
 
   renderMarkdown(node) {
     const body = nodeLatex(node)
-    const number = typeof node.attrs?.number === 'string' && node.attrs.number.length > 0 ? node.attrs.number : null
-    return number ? `$$${body} \\tag{${number}}$$` : `$$${body}$$`
+    return `$$${body}$$`
   },
 
   markdownTokenizer: {
     name: 'mathBlock',
     level: 'block',
-    start: (src: string) => src.indexOf('$$'),
+    start: (src: string) => {
+      const dollars = src.indexOf('$$')
+      const brackets = src.indexOf('\\[')
+      if (dollars < 0) return brackets
+      if (brackets < 0) return dollars
+      return Math.min(dollars, brackets)
+    },
     tokenize: (src: string) => {
-      const match = /^\$\$([\s\S]+?)\$\$/.exec(src)
+      const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
       if (!match) return undefined
-      return { type: 'mathBlock', raw: match[0], text: match[1]!.trim() }
+      return { type: 'mathBlock', raw: match[0], text: (match[1] ?? match[2] ?? '').trim() }
     },
   },
 
@@ -179,6 +206,19 @@ export const MathBlock = Node.create({
         find: /\$\$([^$]+?)\$\$$/,
         handler: ({ state, range, match }) => {
           const latex = match[1]!
+          const mathType = state.schema.nodes.mathBlock
+          if (!mathType) return null
+          state.tr.replaceRangeWith(
+            range.from,
+            range.to,
+            mathType.create(null, state.schema.text(latex)),
+          )
+        },
+      }),
+      new InputRule({
+        find: /\\\[([\s\S]+?)\\\]$/,
+        handler: ({ state, range, match }) => {
+          const latex = match[1]!.trim()
           const mathType = state.schema.nodes.mathBlock
           if (!mathType) return null
           state.tr.replaceRangeWith(
@@ -198,11 +238,7 @@ export const MathBlock = Node.create({
       div.contentEditable = 'false'
 
       const render = (currentNode: { textContent: string; attrs?: Record<string, unknown> }) => {
-        const number = typeof currentNode.attrs?.number === 'string' && currentNode.attrs.number.length > 0
-          ? currentNode.attrs.number
-          : null
-        const latex = number ? `${currentNode.textContent} \\tag{${number}}` : currentNode.textContent
-        renderKatex(div, latex, true)
+        renderKatex(div, currentNode.textContent, true)
       }
       render(node)
 
@@ -253,9 +289,11 @@ export function renderMathInHtml(html: string): string {
     )
     .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
       const numberMatch = /data-math-number="([^"]*)"/.exec(attrs)
-      const number = numberMatch?.[1]
       const body = decodeHtmlEntities(latex)
-      const full = number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
+      const number = numberMatch?.[1]
+      const full = /\\tag\{[^{}]*\}\s*$/.test(body)
+        ? body
+        : number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
       return katex.renderToString(full, { displayMode: true, throwOnError: false })
     })
 }

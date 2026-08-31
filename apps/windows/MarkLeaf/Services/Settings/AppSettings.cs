@@ -124,6 +124,8 @@ public sealed class ExportSettings
 {
     public bool KeepTablesTogether { get; set; }
 
+    public bool KeepHeadingsWithNextBlock { get; set; }
+
     public string Format { get; set; } = "pdf";
 
     public string PaperSize { get; set; } = "A4";
@@ -253,6 +255,8 @@ public sealed class EditorSettings
     public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
     public bool VisualCjkAutoSpacing { get; set; } = true;
+
+    public bool AutoConvertUnsafeEmphasis { get; set; } = true;
 
     public int SourceIndentWidth { get; set; } = 2;
 

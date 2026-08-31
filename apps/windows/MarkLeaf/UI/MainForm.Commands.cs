@@ -105,6 +105,7 @@ internal sealed partial class MainForm
             LinkActive: _editorCommandStatus.Link,
             QuoteActive: _editorCommandStatus.Blockquote,
             CodeBlockActive: _editorCommandStatus.CodeBlock,
+            FrontMatterActive: _editorCommandStatus.FrontMatter,
             CodeBlockLanguage: _editorCommandStatus.CodeBlockLanguage,
             CodeBlockText: _editorCommandStatus.CodeBlockText,
             BulletListActive: _editorCommandStatus.BulletList,
@@ -112,10 +113,12 @@ internal sealed partial class MainForm
             TaskListActive: _editorCommandStatus.TaskList,
             InTable: _editorCommandStatus.InTable,
             TableAlign: _editorCommandStatus.TableAlign,
-            ImageSelected: _editorCommandStatus.ImageSelected,
-            MermaidSelected: _editorCommandStatus.MermaidSelected,
-            MermaidCount: _editorCommandStatus.MermaidCount,
-            CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
+             ImageSelected: _editorCommandStatus.ImageSelected,
+             MermaidSelected: _editorCommandStatus.MermaidSelected,
+             MermaidCount: _editorCommandStatus.MermaidCount,
+             MathInline: _editorCommandStatus.MathInline,
+             MathBlock: _editorCommandStatus.MathBlock,
+             CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
             FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
             DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
@@ -143,6 +146,7 @@ internal sealed partial class MainForm
                 and not AppCommand.Copy
                 and not AppCommand.CopyMarkdown
                 and not AppCommand.CopyPlainText
+                and not AppCommand.CopyHtml
                 and not AppCommand.Paste
             && command is not AppCommand.Find and not AppCommand.Replace and not AppCommand.ToggleSourceMode
             && !TryMapEditorCommand(command, out _))
@@ -170,6 +174,22 @@ internal sealed partial class MainForm
 
     private void ExecuteCommand(AppCommand command)
     {
+        if (_expandedSourceContextMenuOpen
+            && command is AppCommand.Undo or AppCommand.Redo
+                or AppCommand.Copy or AppCommand.Paste or AppCommand.Cut or AppCommand.SelectAll)
+        {
+            _editorHost?.ExecuteExpandedSourceCommand(command switch
+            {
+                AppCommand.Undo => "undo",
+                AppCommand.Redo => "redo",
+                AppCommand.Copy => "copy",
+                AppCommand.Paste => "paste",
+                AppCommand.Cut => "cut",
+                _ => "selectAll",
+            });
+            return;
+        }
+
         switch (command)
         {
             case AppCommand.NewDocument:
@@ -225,6 +245,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.CopyPlainText:
                 _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.PlainText, cut: false);
+                break;
+            case AppCommand.CopyHtml:
+                _ = CopySelectionHtmlAsync();
                 break;
             case AppCommand.Paste:
                 _ = PasteClipboardContentAsync();
@@ -321,6 +344,9 @@ internal sealed partial class MainForm
             case AppCommand.EditMath:
                 EditMath();
                 break;
+            case AppCommand.SetMathNumber:
+                SetMathNumber();
+                break;
             case AppCommand.EditMermaid:
                 EditMermaid();
                 break;
@@ -383,6 +409,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ShowCodeHighlight:
                 ToggleCodeHighlight();
+                break;
+            case AppCommand.RestartEditor:
+                _ = RestartEditorAsync();
                 break;
             case AppCommand.Exit:
                 Close();
@@ -475,6 +504,12 @@ internal sealed partial class MainForm
             AppCommand.InsertMathInline => "insertMathInline",
             AppCommand.InsertMathBlock => "insertMathBlock",
             AppCommand.InsertMermaid => "insertMermaid",
+            AppCommand.ShowFrontMatter => "showFrontMatter",
+            AppCommand.InsertAlertNote => "insertAlertNote",
+            AppCommand.InsertAlertTip => "insertAlertTip",
+            AppCommand.InsertAlertImportant => "insertAlertImportant",
+            AppCommand.InsertAlertWarning => "insertAlertWarning",
+            AppCommand.InsertAlertCaution => "insertAlertCaution",
             AppCommand.InsertFootnote => "insertFootnote",
             AppCommand.ResetFootnoteLabel => "resetFootnoteLabel",
             AppCommand.GoToFootnoteReference => "goToFootnoteReference",
@@ -483,6 +518,7 @@ internal sealed partial class MainForm
             AppCommand.SelectAll => "selectAll",
             AppCommand.ExitCode => "exitCode",
             AppCommand.ConvertMath => "convertMath",
+            AppCommand.SetMathNumber => "setMathNumber",
             AppCommand.DeleteMath => "deleteMath",
             AppCommand.DeclareCodeLanguage => "setCodeBlockLanguage",
             AppCommand.EditMermaid => "editMermaid",
@@ -504,11 +540,14 @@ internal sealed partial class MainForm
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
+                or AppCommand.ShowFrontMatter
+                or AppCommand.InsertAlertNote or AppCommand.InsertAlertTip or AppCommand.InsertAlertImportant
+                or AppCommand.InsertAlertWarning or AppCommand.InsertAlertCaution
                 or AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
                 or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote
                 or AppCommand.IncreaseListIndent or AppCommand.DecreaseListIndent
             || command is AppCommand.SelectAll or AppCommand.ExitCode or AppCommand.ConvertMath
-                or AppCommand.DeleteMath or AppCommand.EditMath
+                 or AppCommand.DeleteMath or AppCommand.EditMath or AppCommand.SetMathNumber
                 or AppCommand.DeclareCodeLanguage or AppCommand.CopyCodeBlock
                 or AppCommand.EditMermaid or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid or AppCommand.RerenderAllMermaid
             || command is AppCommand.ChangeImage or AppCommand.SaveImageAs
@@ -552,12 +591,24 @@ internal sealed partial class MainForm
         var screenPoint = _editorHost.EditorPointToScreen(request);
         try
         {
-            _menuService.ShowEditorContextMenu(Handle, screenPoint, _editorCommandStatus);
+            var status = request.ExpandedSource
+                ? _editorCommandStatus with
+                {
+                    SourceMode = false,
+                    ExpandedSource = true,
+                    HasSelection = true,
+                }
+                : request.SourceMode
+                ? _editorCommandStatus with { SourceMode = true, ExpandedSource = false }
+                : _editorCommandStatus;
+            _expandedSourceContextMenuOpen = request.ExpandedSource;
+            _menuService.ShowEditorContextMenu(Handle, screenPoint, status);
         }
         finally
         {
             // 原生菜单关闭时，同步隐藏前端格式菜单，保证两者同现同隐。
             _editorHost.ExecuteCommand("hideFormatMenu");
+            _expandedSourceContextMenuOpen = false;
         }
     }
 
@@ -577,17 +628,6 @@ internal sealed partial class MainForm
         var screenPoint = _editorHost.EditorPointToScreen(request);
         _menuService.ShowBlockHandleMenu(Handle, screenPoint, _editorCommandStatus);
         _editorHost.ClearBlockHighlight();
-    }
-
-    private void OnMathEditRequested(object? sender, EventArgs e)
-    {
-        if (InvokeRequired)
-        {
-            BeginInvoke(() => OnMathEditRequested(sender, e));
-            return;
-        }
-
-        EditMath();
     }
 
     private async Task CheckForUpdatesAsync()
@@ -690,7 +730,8 @@ internal sealed partial class MainForm
 
     private void CopyCodeBlock()
     {
-        if (!_editorCommandStatus.CodeBlock || string.IsNullOrEmpty(_editorCommandStatus.CodeBlockText))
+        if ((!_editorCommandStatus.CodeBlock && !_editorCommandStatus.FrontMatter)
+            || string.IsNullOrEmpty(_editorCommandStatus.CodeBlockText))
         {
             return;
         }
@@ -753,6 +794,32 @@ internal sealed partial class MainForm
         catch (Exception exception)
         {
             _logger.Error("Clipboard copy command failed.", exception);
+            SetStatus(Loc.Get("status.clipboardFailed"));
+        }
+    }
+
+    private async Task CopySelectionHtmlAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _editorCommandStatus.SourceMode)
+        {
+            return;
+        }
+
+        try
+        {
+            var selection = await _editorHost.RequestSelectionExportAsync();
+            if (string.IsNullOrEmpty(selection.Html))
+            {
+                SetStatus(Loc.Get("status.noTextToCopy"));
+                return;
+            }
+
+            Clipboard.SetText(selection.Html, TextDataFormat.UnicodeText);
+            SetStatus(Loc.Get("status.copied"));
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Copy HTML source command failed.", exception);
             SetStatus(Loc.Get("status.clipboardFailed"));
         }
     }

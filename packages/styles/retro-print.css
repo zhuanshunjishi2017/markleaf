@@ -39,6 +39,11 @@
   font-weight: normal;
 }
 
+.markleaf-style-retro-print .markleaf-alert::before {
+  font-family: "汇文港黑", "黑体", sans-serif;
+  font-weight: normal;
+}
+
 .markleaf-style-retro-print .markleaf-document h1 {
   font-family: "朝华标题A", "汇文港黑",  "黑体", sans-serif;
 }

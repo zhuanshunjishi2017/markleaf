@@ -52,6 +52,7 @@ internal sealed partial class MainForm
         var editor = _settings.Editor;
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
+        _editorHost?.ApplyAutoConvertUnsafeEmphasis(editor.AutoConvertUnsafeEmphasis);
         ApplyCodeHighlightVisibility();
         ApplyBlockHandleVisibility();
 
@@ -294,7 +295,8 @@ internal sealed partial class MainForm
                 editor.VisualCjkAutoSpacing,
                 colorThemeCss,
                 defaultName,
-                options.KeepTablesTogether);
+                options.KeepTablesTogether,
+                options.KeepHeadingsWithNextBlock);
 
             if (string.IsNullOrEmpty(html))
             {
@@ -376,7 +378,7 @@ internal sealed partial class MainForm
         }
 
         var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
-        var html = await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether);
+        var html = await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether, options.KeepHeadingsWithNextBlock);
         if (string.IsNullOrEmpty(html)) return [];
 
         return await _editorHost.PrintExportToPdfAsync(
@@ -418,6 +420,7 @@ internal sealed partial class MainForm
             Style: ResolveExportStyle(export.Style),
             ColorScheme: ResolveExportColorScheme(export.ColorScheme),
             KeepTablesTogether: export.KeepTablesTogether,
+            KeepHeadingsWithNextBlock: export.KeepHeadingsWithNextBlock,
             OutputPath: outputPath);
     }
 
@@ -445,6 +448,7 @@ internal sealed partial class MainForm
             Style = ResolveExportStyle(options.Style),
             ColorScheme = ResolveExportColorScheme(options.ColorScheme),
             KeepTablesTogether = options.KeepTablesTogether,
+            KeepHeadingsWithNextBlock = options.KeepHeadingsWithNextBlock,
         };
         SaveSettings();
     }
@@ -622,7 +626,7 @@ internal sealed partial class MainForm
         }
 
         var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
-        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether);
+        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether, options.KeepHeadingsWithNextBlock);
     }
 
     private async Task<string> GeneratePrintHtmlAsync(
@@ -631,7 +635,8 @@ internal sealed partial class MainForm
         string header,
         string footer,
         string colorSchemeCss,
-        bool keepTablesTogether)
+        bool keepTablesTogether,
+        bool keepHeadingsWithNextBlock)
     {
         if (_editorHost is null || _document is null)
         {
@@ -654,7 +659,8 @@ internal sealed partial class MainForm
             editor.VisualCjkAutoSpacing,
             colorSchemeCss,
             title,
-            keepTablesTogether);
+            keepTablesTogether,
+            keepHeadingsWithNextBlock);
         if (string.IsNullOrEmpty(html))
         {
             SetStatus(Loc.Get("export.noContent"));
@@ -725,26 +731,7 @@ internal sealed partial class MainForm
 
         var command = isBlock ? "insertMathBlock" : "insertMathInline";
 
-        // 有选区：直接套 $...$ / $$...$$，不弹框
-        if (_editorCommandStatus.HasSelection)
-        {
-            _editorHost.ExecuteCommand(command);
-            SetStatus(isBlock ? Loc.Get("status.mathBlockInserted") : Loc.Get("status.mathInlineInserted"));
-            return;
-        }
-
-        using var dialog = new MathInputDialog(isBlock);
-        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(dialog.Latex))
-        {
-            return;
-        }
-
-        _editorHost.ExecuteCommand(command, dialog.Latex);
+        _editorHost.ExecuteCommand(command);
         SetStatus(isBlock ? Loc.Get("status.mathBlockInserted") : Loc.Get("status.mathInlineInserted"));
     }
 
@@ -858,24 +845,26 @@ internal sealed partial class MainForm
             return;
         }
 
-        var isBlock = _editorCommandStatus.MathBlock;
-        using var dialog = new MathInputDialog(isBlock, _editorCommandStatus.MathLatex ?? "", _editorCommandStatus.MathNumber ?? "", showNumber: isBlock);
+        _editorHost.ExecuteCommand("editMath");
+    }
+
+    private void SetMathNumber()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || !_editorCommandStatus.MathBlock)
+        {
+            return;
+        }
+
+        using var dialog = new TextInputDialog(
+            Loc.Get("dialog.mathNumberTitle"),
+            Loc.Get("dialog.mathNumberLabel"),
+            _editorCommandStatus.MathNumber ?? "");
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(dialog.Latex))
-        {
-            return;
-        }
-
-        _editorHost.ExecuteCommand("updateMath", dialog.Latex);
-        if (isBlock)
-        {
-            _editorHost.ExecuteCommand("setMathNumber", dialog.Number);
-        }
-        SetStatus(Loc.Get("status.mathUpdated"));
+        _editorHost.ExecuteCommand("setMathNumber", dialog.InputText);
     }
 
     private void InsertMermaid()

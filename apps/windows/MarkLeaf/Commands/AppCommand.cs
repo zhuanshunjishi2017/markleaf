@@ -45,6 +45,7 @@ public enum AppCommand
     Find,
     Replace,
     PastePlainText,
+    CopyHtml = 0x1330,
 
     SetParagraph = 0x1201,
     SetHeading1,
@@ -142,6 +143,15 @@ public enum AppCommand
     CheckForUpdates = 0x140C,
     ShowWelcome = 0x140D,
     LearnMarkdown = 0x140E,
+
+    InsertAlertNote = 0x1331,
+    InsertAlertTip = 0x1332,
+    InsertAlertImportant = 0x1333,
+    InsertAlertWarning = 0x1334,
+    InsertAlertCaution = 0x1335,
+    ShowFrontMatter = 0x1336,
+    SetMathNumber = 0x1337,
+    RestartEditor = 0x1338,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -169,6 +179,7 @@ public readonly record struct CommandContext(
     bool LinkActive = false,
     bool QuoteActive = false,
     bool CodeBlockActive = false,
+    bool FrontMatterActive = false,
     string? CodeBlockLanguage = null,
     string? CodeBlockText = null,
     bool BulletListActive = false,
@@ -189,4 +200,6 @@ public readonly record struct CommandContext(
     bool IndependentOutlineSidebar = false,
     string? FootnoteDefinitionLabel = null,
     bool EditorFocusMode = false,
-    bool EditorTypewriterMode = false);
+    bool EditorTypewriterMode = false,
+    bool MathInline = false,
+    bool MathBlock = false);

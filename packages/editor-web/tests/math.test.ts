@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createEditor, executeEditorCommand, getEditorCommandState, getMarkdown } from '../src/editor'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createEditor, executeEditorCommand, expandSourceEditor, getEditorCommandState, getMarkdown } from '../src/editor'
 import { renderMathInHtml } from '../src/math'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -36,14 +36,89 @@ describe('math formulas', () => {
     expect(getMarkdown(editor)).toContain('$$y^2$$')
   })
 
+  it('parses LaTeX parenthesis and bracket math delimiters', () => {
+    const editor = makeEditor('a \\(\\frac{1}{2} + \\alpha\\) b\n\n\\[y^2 + 1\\]')
+
+    expect(editor.getHTML()).toContain('data-math-inline')
+    expect(editor.getHTML()).toContain('data-math-block')
+    expect(getMarkdown(editor)).toContain('$\\frac{1}{2} + \\alpha$')
+    expect(getMarkdown(editor)).toContain('$$y^2 + 1$$')
+    expect(getMarkdown(editor)).not.toContain('\\(')
+    expect(getMarkdown(editor)).not.toContain('\\[')
+  })
+
+  it('converts typed LaTeX parenthesis and bracket formulas', () => {
+    const inline = makeEditor('')
+    inline.commands.insertContent('\\(\\frac{1}{2}\\')
+    const inlineHandled = inline.view.someProp('handleTextInput', handler => handler(
+      inline.view,
+      inline.state.selection.from,
+      inline.state.selection.to,
+      ')',
+      () => inline.state.tr.insertText(')'),
+    ))
+
+    expect(inlineHandled).toBe(true)
+    expect(inline.getHTML()).toContain('data-math-inline')
+    expect(getMarkdown(inline)).toContain('$\\frac{1}{2}$')
+
+    const block = makeEditor('')
+    block.commands.insertContent('\\[y^2\\')
+    const blockHandled = block.view.someProp('handleTextInput', handler => handler(
+      block.view,
+      block.state.selection.from,
+      block.state.selection.to,
+      ']',
+      () => block.state.tr.insertText(']'),
+    ))
+
+    expect(blockHandled).toBe(true)
+    expect(block.getHTML()).toContain('data-math-block')
+    expect(getMarkdown(block)).toContain('$$y^2$$')
+  })
+
+  it('converts typed double-dollar formulas to a block formula', () => {
+    const editor = makeEditor('')
+
+    editor.commands.insertContent('$$x^2')
+    const firstClosingDollarHandled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      '$',
+      () => editor.state.tr.insertText('$'),
+    ))
+
+    expect(firstClosingDollarHandled).toBeFalsy()
+    expect(editor.getHTML()).not.toContain('data-math-inline')
+    editor.commands.insertContent('$')
+
+    const secondClosingDollarHandled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      '$',
+      () => editor.state.tr.insertText('$'),
+    ))
+
+    expect(secondClosingDollarHandled).toBe(true)
+    expect(editor.getHTML()).toContain('data-math-block')
+    expect(getMarkdown(editor)).toContain('$$x^2$$')
+  })
+
   it('inserts inline and block math from latex text', () => {
     const editor = makeEditor('')
 
     expect(executeEditorCommand(editor, 'insertMathInline', 'a+b')).toBe(true)
     expect(getMarkdown(editor)).toContain('$a+b$')
+    expect((editor.state.selection as any).node.type.name).toBe('mathInline')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
 
-    expect(executeEditorCommand(editor, 'insertMathBlock', 'c+d')).toBe(true)
-    expect(getMarkdown(editor)).toContain('$$c+d$$')
+    const block = makeEditor('')
+    expect(executeEditorCommand(block, 'insertMathBlock', 'c+d')).toBe(true)
+    expect(getMarkdown(block)).toContain('$$c+d$$')
+    expect((block.state.selection as any).node.type.name).toBe('mathBlock')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
   it('wraps the selection into a math block', () => {
@@ -52,6 +127,8 @@ describe('math formulas', () => {
 
     expect(executeEditorCommand(editor, 'insertMathBlock')).toBe(true)
     expect(getMarkdown(editor)).toContain('$$x^2$$')
+    expect((editor.state.selection as any).node.type.name).toBe('mathBlock')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
   it('converts and deletes a selected math node', () => {
@@ -71,6 +148,98 @@ describe('math formulas', () => {
     selectMathNode(editor, 'mathInline')
 
     expect(document.querySelector('.markleaf-math.ProseMirror-selectednode')).not.toBeNull()
+  })
+
+  it('expands a block formula into an editable source area without removing its render', () => {
+    const editor = makeEditor('$$x^2$$')
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+
+    const rendered = editor.view.dom.querySelector('.markleaf-math-block')
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')
+    expect(rendered).not.toBeNull()
+    expect(source?.textContent).toBe('x^2')
+    expect(editor.view.dom.querySelector('.markleaf-expanded-source')).toBeNull()
+
+    source!.textContent = 'y^2'
+    source!.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(getMarkdown(editor)).toContain('$$y^2$$')
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
+    expect(editor.view.dom.querySelector('.markleaf-math-block')).not.toBeNull()
+  })
+
+  it('highlights LaTeX source and marks mismatched brackets as invalid', async () => {
+    const editor = makeEditor('$$\\frac{1}{2 + \\alpha$$')
+    expect(executeEditorCommand(editor, 'setCodeHighlightVisible', '1')).toBe(true)
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+    await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)))
+
+    const source = document.querySelector('.markleaf-expanded-source-editor')
+    expect(source?.querySelector('.ml-code-keyword')?.textContent).toBe('\\frac')
+    expect(source?.querySelectorAll('.ml-code-invalid')).toHaveLength(1)
+    expect(source?.querySelector('.ml-code-invalid')?.textContent).toBe('{')
+  })
+
+  it('isolates inline source editing from the outer ProseMirror selection', () => {
+    const editor = makeEditor('$$abcdef$$')
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    expect(source.parentElement?.tagName).toBe('PRE')
+    expect(source.tagName).toBe('CODE')
+
+    const text = source.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 3)
+    range.collapse(true)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+
+    const bubbledClick = vi.fn()
+    const bubbledDelete = vi.fn()
+    editor.view.dom.addEventListener('click', bubbledClick)
+    editor.view.dom.addEventListener('keydown', bubbledDelete)
+    source.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }))
+    source.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Delete' }))
+
+    expect(bubbledClick).not.toHaveBeenCalled()
+    expect(bubbledDelete).not.toHaveBeenCalled()
+    expect(window.getSelection()?.focusOffset).toBe(3)
+  })
+
+  it('keeps the floating source editor open on blur and closes it on outside click', () => {
+    const editor = makeEditor('$$x^2$$')
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+
+    source.dispatchEvent(new FocusEvent('blur'))
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
+  })
+
+  it('does not close the floating editor when clicking highlighted content inside it', async () => {
+    const editor = makeEditor('$$\\alpha + 1$$')
+    expect(executeEditorCommand(editor, 'setCodeHighlightVisible', '1')).toBe(true)
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+    await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)))
+
+    const highlighted = document.querySelector<HTMLElement>('.markleaf-expanded-source .ml-code-keyword')!
+    highlighted.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true }))
+
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
+  })
+
+  it('keeps a formula NodeView target associated with its math node', () => {
+    const editor = makeEditor('before $x^2$ after\n\n$$y^2$$')
+    const mathElements = editor.view.dom.querySelectorAll<HTMLElement>('.markleaf-math')
+
+    expect(mathElements).toHaveLength(2)
+    expect(mathElements[0]?.closest('.markleaf-math')).toBe(mathElements[0])
+    expect(mathElements[0]?.querySelector('.katex')).not.toBeNull()
+    expect(mathElements[1]?.querySelector('.katex')).not.toBeNull()
   })
 
   it('renders math in exported html', () => {

@@ -84,6 +84,13 @@ internal sealed class ExportDialog : Form
         FlatStyle = FlatStyle.System,
     };
 
+    private readonly CheckBox _keepHeadingsWithNextBlock = new()
+    {
+        Text = Loc.Get("export.keepHeadingsWithNextBlock"),
+        AutoSize = true,
+        FlatStyle = FlatStyle.System,
+    };
+
     private readonly Button _exportButton = new()
     { Text = Loc.Get("export.ok"), FlatStyle = FlatStyle.System };
 
@@ -378,6 +385,7 @@ internal sealed class ExportDialog : Form
         _htmlHeader.Text = savedSettings.HtmlHeader ?? "";
         _htmlFooter.Text = savedSettings.HtmlFooter ?? "";
         _keepTablesTogether.Checked = savedSettings.KeepTablesTogether;
+        _keepHeadingsWithNextBlock.Checked = savedSettings.KeepHeadingsWithNextBlock;
     }
 
     private void ApplySavedMargins(float top, float bottom, float left, float right)
@@ -498,6 +506,7 @@ internal sealed class ExportDialog : Form
             Style: MapExportStyle((string)(isPdf ? _pdfStyle : _htmlStyle).SelectedItem!),
             ColorScheme: colorThemeId,
             KeepTablesTogether: _keepTablesTogether.Checked,
+            KeepHeadingsWithNextBlock: _keepHeadingsWithNextBlock.Checked,
             OutputPath: _outputPath ?? "");
     }
 
@@ -778,8 +787,11 @@ internal sealed class ExportDialog : Form
         panel.Controls.Add(CategoryLabel(Loc.Get("export.pageBehavior.label")), 0, 10);
         panel.Controls.Add(_keepTablesTogether, 1, 10);
 
+        panel.Controls.Add(_keepHeadingsWithNextBlock, 1, 11);
+
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 11);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 11);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 12);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 12);
 
         return panel;
     }
@@ -1109,4 +1121,5 @@ internal sealed record ExportOptions(
     string Style,
     string ColorScheme,
     bool KeepTablesTogether,
+    bool KeepHeadingsWithNextBlock,
     string OutputPath);

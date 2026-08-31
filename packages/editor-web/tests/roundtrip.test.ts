@@ -92,6 +92,37 @@ describe('selection export', () => {
   })
 })
 
+describe('GitHub alert blocks', () => {
+  it('round-trips all supported alert types and renders typed alert blocks', () => {
+    const markdown = [
+      '> [!NOTE]\n> Note **content**',
+      '> [!TIP]\n> Tip content',
+      '> [!IMPORTANT]\n> Important content',
+      '> [!WARNING]\n> Warning content',
+      '> [!CAUTION]\n> Caution content',
+    ].join('\n\n')
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, markdown)
+    editors.push(editor)
+
+    expect(element.querySelectorAll('.markleaf-alert')).toHaveLength(5)
+    expect(element.querySelector('.markleaf-alert-note')).not.toBeNull()
+    expect(element.querySelector('.markleaf-alert-tip')).not.toBeNull()
+    expect(element.querySelector('.markleaf-alert-important')).not.toBeNull()
+    expect(element.querySelector('.markleaf-alert-warning')).not.toBeNull()
+    expect(element.querySelector('.markleaf-alert-caution')).not.toBeNull()
+
+    const output = getMarkdown(editor)
+    expect(output).toContain('> [!NOTE]')
+    expect(output).toContain('> [!TIP]')
+    expect(output).toContain('> [!IMPORTANT]')
+    expect(output).toContain('> [!WARNING]')
+    expect(output).toContain('> [!CAUTION]')
+    expect(output).toContain('**content**')
+  })
+})
+
 describe('Markdown semantic round trip', () => {
   it('preserves the Stage 5 golden document semantically', () => {
     const markdown = readFileSync(resolve(import.meta.dirname, 'fixtures/stage5-golden.md'), 'utf8')
@@ -731,6 +762,32 @@ describe('paragraph menu commands', () => {
     expect(executeEditorCommand(editor, 'deleteColumn')).toBe(true)
     expect(executeEditorCommand(editor, 'deleteTable')).toBe(true)
     expect(getEditorCommandState(editor).inTable).toBe(false)
+  })
+
+  it('applies center and right alignment to table cells', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '| A | B |\n| --- | --- |\n| C | D |')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(4)
+    expect(executeEditorCommand(editor, 'alignTableCenter')).toBe(true)
+    const centeredCells = Array.from(element.querySelectorAll<HTMLTableCellElement>('th, td'))
+    expect(centeredCells[0]?.style.textAlign).toBe('center')
+    expect(centeredCells[2]?.style.textAlign).toBe('center')
+    expect(centeredCells[1]?.style.textAlign).not.toBe('center')
+    expect(centeredCells[3]?.style.textAlign).not.toBe('center')
+
+    editor.commands.setTextSelection(9)
+    expect(executeEditorCommand(editor, 'alignTableRight')).toBe(true)
+
+    const cells = Array.from(element.querySelectorAll<HTMLTableCellElement>('th, td'))
+    expect(cells[0]?.style.textAlign).toBe('center')
+    expect(cells[1]?.style.textAlign).toBe('right')
+    expect(cells[2]?.style.textAlign).toBe('center')
+    expect(cells[3]?.style.textAlign).toBe('right')
+    expect(getMarkdown(editor)).toMatch(/:---+:/)
+    expect(getMarkdown(editor)).toMatch(/---+:/)
   })
 
   it('handles last-row and last-column deletion without corrupting the table', () => {

@@ -45,7 +45,9 @@ internal sealed record EditorContextMenuRequest(
     double MenuHeight,
     bool CanStartFormatPainter,
     bool FormatPainterArmed,
-    bool ReadOnly);
+    bool ReadOnly,
+    bool SourceMode = false,
+    bool ExpandedSource = false);
 
 internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);
 

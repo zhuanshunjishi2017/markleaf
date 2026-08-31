@@ -100,6 +100,59 @@
   padding: 0 0.08em;
 }
 
+/* 默认提示框采用轻量引用框；印刷及其衍生主题在 print.css 中使用 tcolorbox 风格。 */
+.markleaf-alert {
+  --markleaf-alert-color: #0969da;
+  --markleaf-alert-content-spacing-x: 0.85em;
+  --markleaf-alert-content-spacing-y: 0.25em;
+  margin: 1em 0;
+  padding: 0.35em 0 0.35em var(--markleaf-alert-content-spacing-x);
+  border: 0;
+  border-left: 4px solid var(--markleaf-alert-color);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--markleaf-alert-color) 6%, transparent);
+}
+
+.markleaf-alert::before {
+  display: block;
+  padding: 0 0 var(--markleaf-alert-content-spacing-y);
+  color: var(--markleaf-alert-color);
+  font-family: inherit;
+  font-size: calc(var(--ml-font-size) * 1.1);
+  font-weight: 700;
+  line-height: inherit;
+  background: transparent;
+}
+
+.markleaf-alert > * {
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+  padding-right: var(--markleaf-alert-content-spacing-x);
+  padding-left: 0;
+  text-indent: 0 !important;
+}
+
+.markleaf-alert > :first-child {
+  margin-top: 0 !important;
+  padding-top: 0;
+}
+
+.markleaf-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.markleaf-alert-note { --markleaf-alert-color: #0969da; }
+.markleaf-alert-tip { --markleaf-alert-color: #1a7f37; }
+.markleaf-alert-important { --markleaf-alert-color: #8250df; }
+.markleaf-alert-warning { --markleaf-alert-color: #9a6700; }
+.markleaf-alert-caution { --markleaf-alert-color: #cf222e; }
+
+.markleaf-alert-note::before { content: var(--markleaf-alert-note-title, '备注'); }
+.markleaf-alert-tip::before { content: var(--markleaf-alert-tip-title, '提示'); }
+.markleaf-alert-important::before { content: var(--markleaf-alert-important-title, '重要'); }
+.markleaf-alert-warning::before { content: var(--markleaf-alert-warning-title, '警告'); }
+.markleaf-alert-caution::before { content: var(--markleaf-alert-caution-title, '注意'); }
+
 .markleaf-document h1,
 .markleaf-document h2,
 .markleaf-document h3,
@@ -208,6 +261,26 @@
   text-align: left;
   vertical-align: middle;
   border: 1px solid var(--bg-selected-hover);
+}
+
+.markleaf-document th[style*="text-align: center"],
+.markleaf-document td[style*="text-align: center"] {
+  text-align: center !important;
+}
+
+.markleaf-document th[style*="text-align: right"],
+.markleaf-document td[style*="text-align: right"] {
+  text-align: right !important;
+}
+
+.markleaf-document th[style*="text-align: center"] > p,
+.markleaf-document td[style*="text-align: center"] > p {
+  text-align: center !important;
+}
+
+.markleaf-document th[style*="text-align: right"] > p,
+.markleaf-document td[style*="text-align: right"] > p {
+  text-align: right !important;
 }
 
 .markleaf-document table p {

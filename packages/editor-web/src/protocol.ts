@@ -25,8 +25,6 @@ export type EditorMessage = {
     | 'editorStatusChanged'
     | 'contextMenuRequested'
     | 'blockMenuRequested'
-    | 'mathEditRequested'
-    | 'mermaidEditRequested'
     | 'outlineChanged'
     | 'outlineSelectionChanged'
     | 'requestSave'

@@ -7,6 +7,10 @@ export type SharedEditorStrings = {
   mermaidEmpty: string
   mermaidError: string
   mermaidTimeout: string
+  frontMatterTitle: string
+  frontMatterHide: string
+  frontMatterValid: string
+  frontMatterInvalid: string
 }
 
 type PrimaryModifier = 'meta' | 'ctrl'
@@ -25,6 +29,10 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 图表',
     mermaidError: 'Mermaid 图表文本格式错误',
     mermaidTimeout: 'Mermaid 图表渲染超时',
+    frontMatterTitle: '文档信息',
+    frontMatterHide: '隐藏',
+    frontMatterValid: 'YAML 格式有效',
+    frontMatterInvalid: 'YAML格式错误',
   },
   'zh-Hant': {
     linkTooltip: modifier => `按住 ${modifier} 並按一下以開啟連結`,
@@ -35,6 +43,10 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 圖表',
     mermaidError: 'Mermaid 圖表文字格式錯誤',
     mermaidTimeout: 'Mermaid 圖表算繪逾時',
+    frontMatterTitle: '文件資訊',
+    frontMatterHide: '隱藏',
+    frontMatterValid: 'YAML 格式有效',
+    frontMatterInvalid: 'YAML格式錯誤',
   },
   en: {
     linkTooltip: modifier => `Hold ${modifier} and click to open link`,
@@ -45,6 +57,10 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: 'Empty Mermaid diagram',
     mermaidError: 'Invalid Mermaid diagram text',
     mermaidTimeout: 'Mermaid diagram rendering timed out',
+    frontMatterTitle: 'Document Information',
+    frontMatterHide: 'Hide',
+    frontMatterValid: 'Valid YAML',
+    frontMatterInvalid: 'Invalid YAML',
   },
   ja: {
     linkTooltip: modifier => `${modifier}を押しながらクリックしてリンクを開きます`,
@@ -55,6 +71,10 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空の Mermaid 図表',
     mermaidError: 'Mermaid 図表のテキスト形式が正しくありません',
     mermaidTimeout: 'Mermaid 図表の描画がタイムアウトしました',
+    frontMatterTitle: '文書情報',
+    frontMatterHide: '非表示',
+    frontMatterValid: '有効な YAML',
+    frontMatterInvalid: '無効な YAML',
   },
 }
 

@@ -39,10 +39,21 @@ public sealed class EditorCommandStatusTests
         Assert.IsTrue(status.ReadOnly);
     }
 
+    [TestMethod]
+    public void FromPayload_ParsesFrontMatterField()
+    {
+        var payload = CommandStatePayload(frontMatter: true);
+
+        var status = EditorCommandStatus.FromPayload(payload);
+
+        Assert.IsTrue(status.FrontMatter);
+    }
+
     private static JsonElement CommandStatePayload(
         bool? canStartFormatPainter = null,
         bool? formatPainterArmed = null,
-        bool? readOnly = null)
+        bool? readOnly = null,
+        bool? frontMatter = null)
     {
         var tail = canStartFormatPainter is bool canStart
             ? $",\n      \"canStartFormatPainter\": {canStart.ToString().ToLowerInvariant()}"
@@ -54,6 +65,10 @@ public sealed class EditorCommandStatusTests
         if (readOnly is bool ro)
         {
             tail += $",\n      \"readOnly\": {ro.ToString().ToLowerInvariant()}";
+        }
+        if (frontMatter is bool fm)
+        {
+            tail += $",\n      \"frontMatter\": {fm.ToString().ToLowerInvariant()}";
         }
 
         var json = """

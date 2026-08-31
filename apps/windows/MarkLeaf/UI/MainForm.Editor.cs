@@ -46,6 +46,7 @@ internal sealed partial class MainForm
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
+            _editorHost?.ApplyAutoConvertUnsafeEmphasis(e.AutoConvertUnsafeEmphasis);
             ApplyCodeHighlightVisibility();
             ApplyBlockHandleVisibility();
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
@@ -69,7 +70,6 @@ internal sealed partial class MainForm
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.BlockMenuRequested += OnEditorBlockMenuRequested;
-        _editorHost.MathEditRequested += OnMathEditRequested;
         _editorHost.MermaidEditRequested += OnMermaidEditRequested;
         _editorHost.OutlineChanged += OnEditorOutlineChanged;
         _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;
@@ -99,6 +99,16 @@ internal sealed partial class MainForm
         {
             _editorPanel.Visible = true;
         }
+    }
+
+    private async Task RestartEditorAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true)
+        {
+            return;
+        }
+
+        await _editorHost.RestartEditorAsync();
     }
 
     private void OnEditorStateChanged()

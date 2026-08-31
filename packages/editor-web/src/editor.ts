@@ -3,6 +3,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { DOMSerializer } from '@tiptap/pm/model'
+import { TableMap } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { Table, TableRow, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
@@ -10,7 +11,8 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
-import { MathBlock, MathInline } from './math'
+import { parseDocument } from 'yaml'
+import { MathBlock, MathInline, mathNumberFromLatex } from './math'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements } from './mermaid'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
@@ -41,6 +43,7 @@ const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
 const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
+let frontMatterStrings = sharedEditorStrings('zh-Hans', 'ctrl')
 let codeHighlightVisible = false
 
 const markdownEmojiAliases: Record<string, string> = {
@@ -123,15 +126,239 @@ const MarkdownEmoji = Extension.create({
 })
 
 export function setEditorSharedStrings(
-  strings: Pick<SharedEditorStrings, 'mermaidRender'>,
+  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
 ): void {
   mermaidRenderButtonText = strings.mermaidRender
+  frontMatterStrings = { ...frontMatterStrings, ...strings }
+  for (const container of document.querySelectorAll<HTMLElement>('.markleaf-front-matter')) {
+    const toggle = container.querySelector<HTMLButtonElement>('.markleaf-front-matter-toggle')
+    const toggleError = container.querySelector<HTMLElement>('.markleaf-front-matter-toggle-error')
+    const hide = container.querySelector<HTMLButtonElement>('.markleaf-front-matter-hide')
+    const status = container.querySelector<HTMLElement>('.markleaf-front-matter-status')
+    if (toggle) {
+      const invalid = container.classList.contains('markleaf-front-matter-invalid')
+      const label = invalid ? frontMatterStrings.frontMatterInvalid : frontMatterStrings.frontMatterTitle
+      toggle.title = label
+      toggle.setAttribute('aria-label', label)
+    }
+    if (toggleError) toggleError.textContent = frontMatterStrings.frontMatterInvalid
+    if (hide) hide.textContent = frontMatterStrings.frontMatterHide
+    if (status) {
+      const invalid = container.classList.contains('markleaf-front-matter-invalid')
+      status.textContent = invalid ? frontMatterStrings.frontMatterInvalid : frontMatterStrings.frontMatterValid
+      if (!invalid) status.title = frontMatterStrings.frontMatterValid
+    }
+  }
 }
+
+function validateFrontMatter(raw: string): string | null {
+  try {
+    const document = parseDocument(raw, { prettyErrors: true, strict: true })
+    return document.errors[0]?.message ?? null
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
+const MarkdownFrontMatter = Node.create({
+  name: 'frontMatter',
+  group: 'block',
+  content: 'text*',
+  marks: '',
+  code: true,
+  selectable: true,
+  isolating: true,
+
+  parseHTML() {
+    return [{ tag: 'div[data-markleaf-front-matter]' }]
+  },
+
+  renderHTML({ HTMLAttributes }: any) {
+    return ['div', { 'data-markleaf-front-matter': '1', ...HTMLAttributes },
+      ['pre', { class: 'markleaf-front-matter-code' }, ['code', 0]]]
+  },
+
+  parseMarkdown(token: any, helpers: any) {
+    const raw = String(token.text ?? '')
+    return helpers.createNode('frontMatter', undefined, raw ? [helpers.createTextNode(raw)] : [])
+  },
+
+  renderMarkdown(node: any) {
+    return `---\n${getNodeText(node)}\n---`
+  },
+
+  markdownTokenizer: {
+    name: 'frontMatter',
+    level: 'block',
+    start: (src: string) => src.startsWith('---\n') || src.startsWith('---\r\n') ? 0 : -1,
+    tokenize: (src: string, tokens: unknown[]) => {
+      if (tokens.length > 0) return undefined
+      const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(src)
+      if (!match) return undefined
+      return {
+        type: 'frontMatter',
+        raw: match[0],
+        text: match[1] ?? '',
+      }
+    },
+  },
+
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const container = document.createElement('div')
+      container.className = 'markleaf-front-matter markleaf-front-matter-collapsed'
+
+      const toggle = document.createElement('button')
+      toggle.type = 'button'
+      toggle.className = 'markleaf-front-matter-toggle'
+      toggle.contentEditable = 'false'
+
+      const toggleIcon = document.createElement('span')
+      toggleIcon.className = 'markleaf-front-matter-toggle-icon'
+      toggleIcon.textContent = '\ue946'
+
+      const toggleError = document.createElement('span')
+      toggleError.className = 'markleaf-front-matter-toggle-error'
+      toggleError.textContent = frontMatterStrings.frontMatterInvalid
+      toggle.append(toggleIcon, toggleError)
+      toggle.title = frontMatterStrings.frontMatterTitle
+      toggle.setAttribute('aria-label', frontMatterStrings.frontMatterTitle)
+
+      const panel = document.createElement('div')
+      panel.className = 'markleaf-front-matter-panel'
+
+      const status = document.createElement('span')
+      status.className = 'markleaf-front-matter-status'
+
+      const hide = document.createElement('button')
+      hide.type = 'button'
+      hide.className = 'markleaf-front-matter-hide'
+      hide.contentEditable = 'false'
+      hide.textContent = frontMatterStrings.frontMatterHide
+
+      const codeBlock = document.createElement('pre')
+      codeBlock.className = 'markleaf-front-matter-code'
+
+      const code = document.createElement('code')
+
+      code.className = 'markleaf-front-matter-editor'
+      code.spellcheck = false
+
+      const updateStatus = (raw: string) => {
+        const error = validateFrontMatter(raw)
+        container.classList.toggle('markleaf-front-matter-invalid', error !== null)
+        status.textContent = error ? frontMatterStrings.frontMatterInvalid : frontMatterStrings.frontMatterValid
+        status.title = error ?? frontMatterStrings.frontMatterValid
+        const toggleLabel = error ? frontMatterStrings.frontMatterInvalid : frontMatterStrings.frontMatterTitle
+        toggleError.textContent = frontMatterStrings.frontMatterInvalid
+        toggle.title = toggleLabel
+        toggle.setAttribute('aria-label', toggleLabel)
+      }
+
+      const stopControlMouseDown = (event: MouseEvent) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+
+      toggle.addEventListener('mousedown', stopControlMouseDown)
+      toggle.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        container.classList.remove('markleaf-front-matter-collapsed')
+      })
+      hide.addEventListener('mousedown', stopControlMouseDown)
+      hide.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        container.classList.add('markleaf-front-matter-collapsed')
+      })
+
+      codeBlock.append(code)
+      panel.append(codeBlock, status, hide)
+      container.append(toggle, panel)
+      updateStatus(node.textContent)
+
+      return {
+        dom: container,
+        contentDOM: code,
+        update: (updatedNode: any) => {
+          if (updatedNode.type.name !== 'frontMatter') return false
+          hide.textContent = frontMatterStrings.frontMatterHide
+          updateStatus(updatedNode.textContent)
+          return true
+        },
+        stopEvent: (event: Event) => toggle.contains(event.target as globalThis.Node)
+          || hide.contains(event.target as globalThis.Node),
+        ignoreMutation: (mutation) => {
+          const target = mutation.target
+          if (target === code || code.contains(target)) return false
+          return container.contains(target)
+        },
+      }
+    }
+  },
+
+  addKeyboardShortcuts() {
+    const deleteEmptyFrontMatter = () => {
+      const { $from, empty } = this.editor.state.selection
+      if (!empty || $from.parent.type.name !== 'frontMatter' || $from.parent.textContent.length > 0) return false
+      const position = $from.before()
+      this.editor.view.dispatch(this.editor.state.tr.delete(position, position + $from.parent.nodeSize))
+      return true
+    }
+    return {
+      Backspace: deleteEmptyFrontMatter,
+      Delete: deleteEmptyFrontMatter,
+    }
+  },
+})
 
 const MarkdownShortcuts = Extension.create({
   name: 'markleafMarkdownShortcuts',
+  addKeyboardShortcuts() {
+    return {
+      // Shift+Enter 在同一段落中插入硬换行，Markdown 序列化为单个换行
+      // （带 Markdown 硬换行所需的行尾空格），不会生成空段落。
+      'Shift-Enter': () => this.editor.commands.setHardBreak(),
+    }
+  },
   addInputRules() {
+    const reverseMark = (
+      state: any,
+      range: { from: number; to: number },
+      markNames: Array<'bold' | 'italic' | 'strike' | 'highlight'>,
+      marker: string,
+    ) => {
+      const marks = markNames
+        .map(name => state.schema.marks[name])
+        .filter(Boolean)
+      if (marks.length !== markNames.length || !convertReverseInlineMark(state, range, marker, marks)) return null
+      return undefined
+    }
+
     return [
+      // 反向输入：先输入正文和结束标记，再在正文前补上开始标记。
+      // InputRule 默认只检查光标前方，因此这里显式向后寻找闭合标记。
+      new InputRule({
+        find: /(?<!\*)\*\*\*$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold', 'italic'], '***'),
+      }),
+      new InputRule({
+        find: /(?<!\*)\*\*$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold'], '**'),
+      }),
+      new InputRule({
+        find: /(?<!\*)\*$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['italic'], '*'),
+      }),
+      new InputRule({
+        find: /(?<!~)~~$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['strike'], '~~'),
+      }),
+      new InputRule({
+        find: /(?<![=])==$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['highlight'], '=='),
+      }),
       new InputRule({
         find: /(?<!\*)\*\*\*([^*\n]+)\*\*\*$/,
         handler: ({ state, range, match }) => {
@@ -210,6 +437,56 @@ const MarkdownShortcuts = Extension.create({
   },
 })
 
+function convertReverseInlineMark(
+  state: any,
+  range: { from: number; to: number },
+  marker: string,
+  marks: any[],
+): boolean {
+  const $from = state.doc.resolve(range.to)
+  const parent = $from.parent
+  if (!parent.isTextblock || $from.depth < 1) return false
+
+  const blockStart = $from.start()
+  const blockEnd = blockStart + parent.content.size
+  const afterOpening = state.doc.textBetween(range.to, blockEnd, '\n', '\n')
+  const closingOffset = afterOpening.indexOf(marker)
+  if (closingOffset < 1) return false
+
+  const closeFrom = range.to + closingOffset
+  const content = afterOpening.slice(0, closingOffset)
+  if (!content.trim() || content.includes('\n')) return false
+
+  // 不把已经存在的公式、图片等原子节点误当成可加格式的普通文本。
+  const tr = state.tr
+  tr.delete(closeFrom, closeFrom + marker.length)
+  tr.delete(tr.mapping.map(range.from), tr.mapping.map(range.to))
+  const contentFrom = tr.mapping.map(range.from)
+  const contentTo = tr.mapping.map(closeFrom)
+  for (const mark of marks) {
+    addMarkToTextNodes(tr, contentFrom, contentTo, mark)
+    tr.removeStoredMark(mark)
+  }
+  return true
+}
+
+function addMarkToTextNodes(tr: any, from: number, to: number, mark: any): void {
+  tr.doc.nodesBetween(from, to, (node: any, position: number) => {
+    if (!node.isText) {
+      // 原子节点内部的文本不是正文，不能被反向输入的文字格式覆盖。
+      if (node.type.name === 'mathInline'
+        || node.type.name === 'mathBlock'
+        || node.type.name === 'image'
+        || node.type.name === 'mermaid') return false
+      return true
+    }
+    const start = Math.max(from, position)
+    const end = Math.min(to, position + node.nodeSize)
+    if (end > start) tr.addMark(start, end, mark)
+    return true
+  })
+}
+
 const MarkdownHighlight = Mark.create({
   name: 'highlight',
   inclusive: true,
@@ -273,6 +550,96 @@ const MarkdownHighlight = Mark.create({
   },
 })
 
+const ALERT_TYPES = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'] as const
+type AlertType = typeof ALERT_TYPES[number]
+
+const MarkdownAlert = Node.create({
+  name: 'alert',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+
+  addAttributes() {
+    return {
+      type: {
+        default: 'NOTE',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-markleaf-alert') ?? 'NOTE',
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          'data-markleaf-alert': attributes.type ?? 'NOTE',
+        }),
+      },
+    }
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-markleaf-alert]' }]
+  },
+
+  renderHTML({ node, HTMLAttributes }: any) {
+    const type = String(node.attrs?.type ?? 'NOTE').toLowerCase()
+    return ['div', { ...HTMLAttributes, class: `markleaf-alert markleaf-alert-${type}` }, 0]
+  },
+
+  parseMarkdown(token: any, helpers: any) {
+    const type = String(token.alertType ?? 'NOTE').toUpperCase()
+    if (!(ALERT_TYPES as readonly string[]).includes(type)) return null
+    const content = helpers.parseBlockChildren(token.tokens ?? [])
+    return helpers.createNode('alert', { type }, content.length > 0 ? content : [helpers.createNode('paragraph', undefined, [])])
+  },
+
+  renderMarkdown(node: any, helpers: any) {
+    const type = String(node.attrs?.type ?? 'NOTE').toUpperCase()
+    const body = helpers.renderChildren(node.content ?? [], '\n').trim()
+    const lines = body ? body.split('\n') : ['']
+    return [`> [!${type}]`, ...lines.map((line: string) => `> ${line}`)].join('\n')
+  },
+
+  markdownTokenizer: {
+    name: 'alert',
+    level: 'block',
+    start: (src: string) => src.search(/^ {0,3}>[ \t]*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/m),
+    tokenize: (src: string, _tokens: unknown[], helpers: any) => {
+      const first = /^ {0,3}>[ \t]*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i.exec(src)
+      if (!first) return undefined
+      const type = first[1]!.toUpperCase()
+      const lines = [first[0].replace(/\r?\n$/, '')]
+      let offset = first[0].length
+      while (offset < src.length) {
+        const lineEnd = src.indexOf('\n', offset)
+        const end = lineEnd < 0 ? src.length : lineEnd
+        const line = src.slice(offset, end)
+        if (!/^ {0,3}>[ \t]?/.test(line)) break
+        lines.push(line)
+        offset = lineEnd < 0 ? src.length : lineEnd + 1
+      }
+      const body = lines.slice(1)
+        .map(line => line.replace(/^ {0,3}>[ \t]?/, ''))
+        .join('\n')
+        .replace(/\n+$/, '')
+      return {
+        type: 'alert',
+        alertType: type,
+        raw: src.slice(0, offset),
+        tokens: helpers.blockTokens(body),
+      }
+    },
+  },
+
+  addCommands(): any {
+    return {
+      setAlert: (type: AlertType) => ({ commands, state }: any) => {
+        const normalized = ALERT_TYPES.includes(type) ? type : 'NOTE'
+        for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
+          if (state.selection.$from.node(depth).type.name === 'alert') {
+            return commands.updateAttributes('alert', { type: normalized })
+          }
+        }
+        return commands.wrapIn('alert', { type: normalized })
+      },
+    }
+  },
+})
+
 function getListItemTypeAtSelection(editor: Editor): 'listItem' | 'taskItem' | null {
   const { $from } = editor.state.selection
   for (let depth = $from.depth; depth > 0; depth -= 1) {
@@ -294,6 +661,54 @@ export function outdentListItem(editor: Editor): boolean {
   const listItemType = getListItemTypeAtSelection(editor)
   return listItemType ? editor.chain().focus().liftListItem(listItemType).run() : false
 }
+
+function splitEmptyListItem(editor: Editor): boolean {
+  if (!editor.isEditable) return false
+
+  const { selection } = editor.state
+  if (!selection.empty) return false
+
+  const { $from } = selection
+  if ($from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false
+
+  let itemDepth = -1
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name
+    if (name === 'listItem' || name === 'taskItem') {
+      itemDepth = depth
+      break
+    }
+  }
+  if (itemDepth < 1) return false
+
+  const list = $from.node(itemDepth - 1)
+  if (!['bulletList', 'orderedList', 'taskList'].includes(list.type.name)) return false
+
+  const item = $from.node(itemDepth)
+  // 仅处理真正的空行；带有嵌套列表的项目仍交给 Tiptap 默认逻辑处理。
+  if (item.childCount !== 1 || item.firstChild?.type.name !== 'paragraph') return false
+
+  const itemPosition = $from.before(itemDepth)
+  const insertPosition = itemPosition + item.nodeSize
+  const newItem = item.type.createAndFill(item.attrs)
+  if (!newItem) return false
+
+  const transaction = editor.state.tr.insert(insertPosition, newItem)
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertPosition + 2)))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+// Tiptap 默认会在空列表项回车时退出列表。这里优先保留当前空项，并创建同级新项。
+const EmptyListItemEnter = Extension.create({
+  name: 'markleafEmptyListItemEnter',
+  priority: 110,
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => splitEmptyListItem(this.editor),
+    }
+  },
+})
 
 /// 可视化编辑器中的 Tab：列表项执行结构化缩进，普通文本块插入两个空格。
 /// 表格仍交给表格扩展处理，以保留单元格间跳转行为。
@@ -482,6 +897,7 @@ function getBlockTypeLabel(state: Editor['state'], from: number): string {
     if (name === 'orderedList') return blockTypeLabels.blockOrderedList ?? '1.'
     if (name === 'taskList') return blockTypeLabels.blockTaskList ?? '☑'
     if (name === 'blockquote') return blockTypeLabels.blockBlockquote ?? '❝'
+    if (name === 'alert') return blockTypeLabels.blockAlert ?? '示'
     if (name === 'codeBlock') return blockTypeLabels.blockCodeBlock ?? '</>'
     if (name === 'mermaid') return blockTypeLabels.blockMermaid ?? '⧉'
   }
@@ -580,7 +996,7 @@ export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
       break
     }
   }
-  if (!empty || (parentName !== 'paragraph' && parentName !== 'heading' && parentName !== 'codeBlock' && parentName !== 'mermaid')) {
+  if (!empty || (parentName !== 'paragraph' && parentName !== 'heading' && parentName !== 'codeBlock' && parentName !== 'mermaid' && parentName !== 'alert')) {
     return null
   }
 
@@ -896,6 +1312,50 @@ function getSelectedMathMode(editor: Editor): 'inline' | 'block' | null {
   return null
 }
 
+function alignTableColumn(editor: Editor, alignment: 'left' | 'center' | 'right'): boolean {
+  const { $from } = editor.state.selection
+  let tableDepth = -1
+  let cellDepth = -1
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name
+    if (cellDepth < 0 && (name === 'tableCell' || name === 'tableHeader')) cellDepth = depth
+    if (name === 'table') {
+      tableDepth = depth
+      break
+    }
+  }
+  if (tableDepth < 0 || cellDepth < 1) return false
+
+  const table = $from.node(tableDepth)
+  // TableMap positions are relative to the table content start, not the
+  // table node's opening position.
+  const tablePosition = $from.start(tableDepth)
+  const cellPosition = $from.before(cellDepth)
+  const relativeCellPosition = cellPosition - tablePosition
+  const map = TableMap.get(table)
+  const cellIndex = map.map.indexOf(relativeCellPosition)
+  if (cellIndex < 0) return false
+
+  const column = cellIndex % map.width
+  const transaction = editor.state.tr
+  const updatedCellPositions = new Set<number>()
+
+  for (let row = 0; row < map.height; row += 1) {
+    const position = map.map[row * map.width + column]
+    if (position === undefined || updatedCellPositions.has(position)) continue
+    const absolutePosition = tablePosition + position
+    const cell = transaction.doc.nodeAt(absolutePosition)
+    if (!cell || (cell.type.name !== 'tableCell' && cell.type.name !== 'tableHeader')) continue
+    transaction.setNodeMarkup(absolutePosition, undefined, { ...cell.attrs, align: alignment })
+    updatedCellPositions.add(position)
+  }
+
+  if (updatedCellPositions.size === 0) return false
+  editor.view.dispatch(transaction)
+  return true
+}
+
 const MarkLeafImage = Image.extend({
   addAttributes() {
     return {
@@ -1152,6 +1612,7 @@ export type EditorCommandState = {
   link: boolean
   blockquote: boolean
   codeBlock: boolean
+  frontMatter: boolean
   codeBlockLanguage: string | null
   codeBlockText: string | null
   mermaid: boolean
@@ -1185,7 +1646,7 @@ export type EditorStatus = {
   codeLineCount: number
   paragraphCount: number
   blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
-    | 'blockquote' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image' | 'footnoteDefinition'
+    | 'blockquote' | 'alert' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image' | 'footnoteDefinition'
   line: number
   column: number
 }
@@ -1529,8 +1990,10 @@ const CodeBlockHighlight = Extension.create({
           if (!codeHighlightVisible) return DecorationSet.empty
           const decorations: Decoration[] = []
           state.doc.descendants((node, pos) => {
-            if (node.type.name !== 'codeBlock') return
-            const language = normalizeCodeLanguage(node.attrs.language)
+            if (node.type.name !== 'codeBlock' && node.type.name !== 'frontMatter') return
+            const language = node.type.name === 'frontMatter'
+              ? 'yaml'
+              : normalizeCodeLanguage(node.attrs.language)
             if (!language) return
             const text = node.textContent
             for (const token of highlightCode(text, language)) {
@@ -1549,6 +2012,248 @@ const CodeBlockHighlight = Extension.create({
     })]
   },
 })
+
+type ExpandedSourceEditor = {
+  position: number
+  kind: 'mathInline' | 'mathBlock' | 'mermaid'
+}
+
+const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
+
+function createExpandedSourceEditor(
+  editor: Editor,
+  position: number,
+  kind: ExpandedSourceEditor['kind'],
+): { dom: HTMLElement; code: HTMLElement } {
+  const wrapper = document.createElement('div')
+  wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind}`
+  wrapper.contentEditable = 'false'
+
+  const themeContext = document.createElement('div')
+  themeContext.className = 'markleaf-document markleaf-expanded-source-theme'
+
+  const pre = document.createElement('pre')
+  pre.className = 'markleaf-expanded-source-code'
+  const code = document.createElement('code')
+  code.className = `markleaf-expanded-source-editor ${kind === 'mermaid' ? 'language-mermaid' : 'language-latex'}`
+  const editable = editor.isEditable
+  code.contentEditable = editable ? 'true' : 'false'
+  code.spellcheck = false
+  code.draggable = false
+  const initialSource = editor.state.doc.nodeAt(position)?.textContent ?? ''
+  code.textContent = initialSource
+  pre.append(code)
+  themeContext.append(pre)
+  wrapper.append(themeContext)
+
+  wrapper.addEventListener('pointerdown', (event) => event.stopPropagation())
+  wrapper.addEventListener('click', (event) => event.stopPropagation())
+
+  const stopEditorEvent = (event: Event) => event.stopPropagation()
+  for (const eventName of [
+    'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu',
+    'keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy',
+    'compositionstart', 'compositionupdate', 'compositionend',
+  ]) {
+    code.addEventListener(eventName, stopEditorEvent)
+  }
+  code.addEventListener('contextmenu', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    window.dispatchEvent(new CustomEvent('markleaf-expanded-source-contextmenu', {
+      detail: { clientX: event.clientX, clientY: event.clientY },
+    }))
+  })
+  code.addEventListener('keydown', (event) => {
+    if (!editable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
+    const key = event.key.toLowerCase()
+    if (key !== 'z' && key !== 'y') return
+    event.preventDefault()
+    event.stopPropagation()
+    const success = key === 'z' ? editor.commands.undo() : editor.commands.redo()
+    if (!success) return
+    const updated = editor.state.doc.nodeAt(position)
+    if (!updated || updated.type.name !== kind) return
+    const source = updated.textContent
+    code.textContent = source
+    refreshHighlight(source)
+    setCaretOffset(code, Math.min(source.length, getCaretOffset(code)))
+  })
+  code.addEventListener('dragstart', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+  })
+  let composing = false
+  const language = kind === 'mermaid' ? 'mermaid' : 'latex'
+  const refreshHighlight = (source: string, caretOffset?: number) => {
+    renderEditableCodeHighlight(code, source, language, caretOffset)
+  }
+  code.addEventListener('compositionstart', () => { composing = true })
+  code.addEventListener('compositionend', () => {
+    composing = false
+    const source = code.textContent ?? ''
+    refreshHighlight(source, source.length)
+  })
+  code.addEventListener('input', () => {
+    if (!editable) return
+    const current = editor.state.doc.nodeAt(position)
+    if (!current || current.type.name !== kind) return
+    const source = code.textContent ?? ''
+    const caretOffset = getCaretOffset(code)
+    const replacement = current.type.create(
+      current.attrs,
+      source.length > 0 ? editor.state.schema.text(source) : undefined,
+    )
+    editor.view.dispatch(editor.state.tr
+      .replaceWith(position, position + current.nodeSize, replacement)
+      .setMeta(expandedSourceEditorKey, { position, kind }))
+    if (!composing) refreshHighlight(source, caretOffset)
+  })
+  window.requestAnimationFrame(() => {
+    if (!code.isConnected) return
+    refreshHighlight(initialSource)
+    if (editable) {
+      code.focus()
+      setCaretOffset(code, initialSource.length)
+    }
+  })
+  return { dom: wrapper, code }
+}
+
+function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement): void {
+  const anchor = editor.view.nodeDOM(position)
+  if (!(anchor instanceof HTMLElement)) return
+  const anchorRect = anchor.getBoundingClientRect()
+  const documentRect = editor.view.dom.getBoundingClientRect()
+  const gap = 6
+  const viewportPadding = 8
+  const availableWidth = Math.max(0, window.innerWidth - viewportPadding * 2)
+  const width = Math.min(documentRect.width, availableWidth)
+  overlay.style.width = `${width}px`
+  overlay.hidden = false
+  const overlayWidth = overlay.getBoundingClientRect().width || width
+  const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
+  const top = anchorRect.bottom + gap
+  overlay.style.left = `${left}px`
+  overlay.style.top = `${top}px`
+}
+
+const ExpandedSourceEditor = Extension.create({
+  name: 'markleafExpandedSourceEditor',
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [new Plugin({
+      key: expandedSourceEditorKey,
+      state: {
+        init: () => null,
+        apply: (transaction, value: ExpandedSourceEditor | null) => {
+          const meta = transaction.getMeta(expandedSourceEditorKey) as ExpandedSourceEditor | null | undefined
+          if (meta !== undefined) return meta
+          if (value === null) return null
+          return { ...value, position: transaction.mapping.map(value.position, -1) }
+        },
+      },
+      view: () => {
+        let overlay: HTMLElement | null = null
+        let current: ExpandedSourceEditor | null = null
+        const collapse = () => {
+          if (expandedSourceEditorKey.getState(editor.state) === null) return
+          editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+        }
+        const removeOverlay = () => {
+          overlay?.remove()
+          overlay = null
+          current = null
+        }
+        const reposition = () => {
+          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
+        }
+        const handleOutsidePointer = (event: PointerEvent) => {
+          if (overlay && event.composedPath().includes(overlay)) return
+          collapse()
+        }
+        const handleViewportChange = () => reposition()
+        document.addEventListener('pointerdown', handleOutsidePointer)
+        window.addEventListener('resize', handleViewportChange)
+        window.addEventListener('scroll', handleViewportChange, true)
+        return {
+          update: (view) => {
+            const expanded = expandedSourceEditorKey.getState(view.state)
+            if (!expanded) {
+              removeOverlay()
+              return
+            }
+            const node = view.state.doc.nodeAt(expanded.position)
+            if (!node || node.type.name !== expanded.kind) {
+              collapse()
+              return
+            }
+            if (overlay && current?.position === expanded.position && current.kind === expanded.kind) {
+              current = expanded
+              const node = view.state.doc.nodeAt(expanded.position)
+              if (node && node.type.name === expanded.kind
+                && overlay.querySelector('.markleaf-expanded-source-editor') instanceof HTMLElement) {
+                const code = overlay.querySelector('.markleaf-expanded-source-editor') as HTMLElement
+                if (code.textContent !== node.textContent) {
+                  const source = node.textContent
+                  code.textContent = source
+                  renderEditableCodeHighlight(
+                    code,
+                    source,
+                    expanded.kind === 'mermaid' ? 'mermaid' : 'latex',
+                  )
+                }
+              }
+              reposition()
+              return
+            }
+            removeOverlay()
+            current = expanded
+            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind)
+            overlay = created.dom
+            overlay.hidden = true
+            document.body.append(overlay)
+            positionExpandedSourceEditor(editor, expanded.position, overlay)
+          },
+          destroy: () => {
+            document.removeEventListener('pointerdown', handleOutsidePointer)
+            window.removeEventListener('resize', handleViewportChange)
+            window.removeEventListener('scroll', handleViewportChange, true)
+            removeOverlay()
+          },
+        }
+      },
+    })]
+  },
+})
+
+export function expandSourceEditor(
+  editor: Editor,
+  position: number,
+  kind: ExpandedSourceEditor['kind'],
+): boolean {
+  const node = editor.state.doc.nodeAt(position)
+  if (!node || node.type.name !== kind) return false
+  const current = expandedSourceEditorKey.getState(editor.state)
+  if (current?.position === position && current.kind === kind) return true
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, { position, kind }))
+  return true
+}
+
+export function isSourceEditorExpanded(
+  editor: Editor,
+  position: number,
+  kind: ExpandedSourceEditor['kind'],
+): boolean {
+  const current = expandedSourceEditorKey.getState(editor.state)
+  return current?.position === position && current.kind === kind
+}
+
+export function collapseSourceEditor(editor: Editor): boolean {
+  if (expandedSourceEditorKey.getState(editor.state) === null) return false
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+  return true
+}
 
 function normalizeCodeLanguage(value: unknown): string {
   const language = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -1575,6 +2280,8 @@ function normalizeCodeLanguage(value: unknown): string {
     xml: 'markup',
     xaml: 'markup',
     md: 'markdown',
+    tex: 'latex',
+    yml: 'yaml',
   } as Record<string, string>)[language] ?? language
 }
 
@@ -1595,7 +2302,110 @@ function highlightCode(text: string, language: string): CodeHighlightToken[] {
       tokens.push({ from, to: from + value.length, className: rule.className })
     }
   }
-  return removeOverlappingHighlightTokens(tokens)
+  const highlighted = removeOverlappingHighlightTokens(tokens)
+  if (language === 'latex' || language === 'yaml') {
+    highlighted.push(...findMismatchedBrackets(text, highlighted, language))
+  }
+  return highlighted.sort((a, b) => a.from - b.from || b.to - a.to)
+}
+
+function findMismatchedBrackets(
+  text: string,
+  ignored: CodeHighlightToken[],
+  language: 'latex' | 'yaml',
+): CodeHighlightToken[] {
+  const stack: Array<{ character: string; position: number }> = []
+  const errors: CodeHighlightToken[] = []
+  const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
+  const closing = new Set(Object.values(pairs))
+  const isIgnored = (position: number) => ignored.some(token => position >= token.from && position < token.to
+    && (token.className === 'ml-code-string' || token.className === 'ml-code-comment'))
+
+  for (let position = 0; position < text.length; position += 1) {
+    const character = text[position]!
+    if (!(character in pairs) && !closing.has(character)) continue
+    if (isIgnored(position)) continue
+    if (language === 'latex' && position > 0 && text[position - 1] === '\\') continue
+    if (character in pairs) {
+      stack.push({ character, position })
+      continue
+    }
+    const latest = stack.at(-1)
+    if (!latest || pairs[latest.character] !== character) {
+      errors.push({ from: position, to: position + 1, className: 'ml-code-invalid' })
+      continue
+    }
+    stack.pop()
+  }
+  return errors.concat(stack.map(entry => ({
+    from: entry.position,
+    to: entry.position + 1,
+    className: 'ml-code-invalid',
+  })))
+}
+
+function getCaretOffset(root: HTMLElement): number {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || !root.contains(selection.focusNode)) {
+    return root.textContent?.length ?? 0
+  }
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.setEnd(selection.focusNode!, selection.focusOffset)
+  return range.toString().length
+}
+
+function setCaretOffset(root: HTMLElement, offset: number): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let remaining = Math.max(0, offset)
+  let textNode = walker.nextNode()
+  while (textNode) {
+    const length = textNode.textContent?.length ?? 0
+    if (remaining <= length) {
+      const range = document.createRange()
+      range.setStart(textNode, remaining)
+      range.collapse(true)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      return
+    }
+    remaining -= length
+    textNode = walker.nextNode()
+  }
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.collapse(false)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+}
+
+function renderEditableCodeHighlight(
+  element: HTMLElement,
+  source: string,
+  language: string,
+  caretOffset?: number,
+): void {
+  if (!codeHighlightVisible) {
+    element.textContent = source
+    if (caretOffset !== undefined) setCaretOffset(element, caretOffset)
+    return
+  }
+  const fragment = document.createDocumentFragment()
+  let position = 0
+  for (const token of highlightCode(source, language)) {
+    if (token.from < position) continue
+    if (token.from > position) fragment.append(document.createTextNode(source.slice(position, token.from)))
+    const span = document.createElement('span')
+    span.className = token.className
+    span.textContent = source.slice(token.from, token.to)
+    fragment.append(span)
+    position = token.to
+  }
+  if (position < source.length) fragment.append(document.createTextNode(source.slice(position)))
+  element.replaceChildren(fragment)
+  if (caretOffset !== undefined) setCaretOffset(element, caretOffset)
 }
 
 function removeOverlappingHighlightTokens(tokens: CodeHighlightToken[]): CodeHighlightToken[] {
@@ -1643,13 +2453,34 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
   if (language === 'markdown') {
     return [{ pattern: /^#{1,6}.*/gm, className: 'ml-code-keyword' }, { pattern: /`[^`]+`/g, className: 'ml-code-string' }, { pattern: /\[[^\]]+\]\([^)]+\)/g, className: 'ml-code-function' }]
   }
+  if (language === 'latex') {
+    return [
+      { pattern: /%.*/g, className: 'ml-code-comment' },
+      { pattern: /\\[A-Za-z@]+|\\./g, className: 'ml-code-keyword' },
+      { pattern: /\b\d+(?:\.\d+)?\b/g, className: 'ml-code-number' },
+      { pattern: /[&_^=+\-*/]/g, className: 'ml-code-operator' },
+    ]
+  }
+  if (language === 'yaml') {
+    return [
+      { pattern: /#.*/g, className: 'ml-code-comment' },
+      { pattern: /"(?:\\.|[^"\\])*"|'(?:''|[^'])*'/g, className: 'ml-code-string' },
+      { pattern: /^\s*([A-Za-z0-9_.-]+)(?=\s*:)/gm, className: 'ml-code-property' },
+      { pattern: /\b(?:true|false|null|yes|no|on|off)\b/gi, className: 'ml-code-keyword' },
+      { pattern: /\b[-+]?\d+(?:\.\d+)?\b/g, className: 'ml-code-number' },
+      { pattern: /^\s*(-)(?=\s+)/gm, className: 'ml-code-operator' },
+    ]
+  }
   return null
 }
 
 export const editorExtensions = [
+  MarkdownFrontMatter,
   MarkdownShortcuts,
   MarkdownEmoji,
   MarkdownHighlight,
+  MarkdownAlert,
+  EmptyListItemEnter,
   StarterKit.configure({
     link: false,
     paragraph: false,
@@ -1673,6 +2504,7 @@ export const editorExtensions = [
   Caption,
   MermaidCodeBlockControls,
   CodeBlockHighlight,
+  ExpandedSourceEditor,
   TaskList,
   TaskItem.configure({ nested: true }),
   Markdown.configure({
@@ -1725,6 +2557,9 @@ export function createEditor(
     },
   })
   normalizeTableCaptions(editor)
+  if (hasListFormattingThatNeedsPreservation(content)) {
+    originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
+  }
   return editor
 }
 
@@ -1759,7 +2594,53 @@ export function toVirtualImageUrl(markdownPath: string): string {
 }
 
 export function getMarkdown(editor: Editor): string {
-  return stabilizeUnsafeEmphasisMarkdown(editor.getMarkdown())
+  const original = originalListMarkdown.get(editor)
+  if (original && editor.state.doc.eq(original.doc)) {
+    return original.markdown
+  }
+  const markdown = editor.getMarkdown()
+  return autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+}
+
+const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
+
+function hasListFormattingThatNeedsPreservation(markdown: string): boolean {
+  const lines = markdown.split(/\r?\n/)
+  let hasListItem = false
+  let hasEmptyListItem = false
+  let previousListType: 'bullet' | 'ordered' | 'task' | null = null
+  let previousOrderedNumber: number | null = null
+
+  for (const line of lines) {
+    const match = /^(\s*)(?:(?:([-+*])\s+\[([ xX])\])|(\d+)[.)]|([-+*]))(?:[ \t]+|$)/.exec(line)
+    if (!match) {
+      if (hasListItem && line.trim() === '') return true
+      previousListType = null
+      previousOrderedNumber = null
+      continue
+    }
+
+    hasListItem = true
+    const isTask = match[2] !== undefined
+    const orderedNumber = match[4] ? Number(match[4]) : null
+    const listType = isTask ? 'task' : orderedNumber !== null ? 'ordered' : 'bullet'
+    const markerEnd = match[0].length
+    if (line.slice(markerEnd).trim() === '') hasEmptyListItem = true
+    if (listType === 'ordered' && previousListType === 'ordered' && previousOrderedNumber !== null
+      && orderedNumber !== previousOrderedNumber + 1) {
+      return true
+    }
+    previousListType = listType
+    previousOrderedNumber = orderedNumber
+  }
+
+  return hasEmptyListItem
+}
+
+let autoConvertUnsafeEmphasis = true
+
+export function setAutoConvertUnsafeEmphasis(enabled: boolean): void {
+  autoConvertUnsafeEmphasis = enabled
 }
 
 export function getVisualCursorLineNumber(editor: Editor): number {
@@ -2390,10 +3271,12 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   const mathMode = getSelectedMathMode(editor)
   const selectedMath = getSelectedMath(editor)
   const mathNumber = selectedMath && selectedMath.node.type.name === 'mathBlock'
-    ? (typeof selectedMath.node.attrs.number === 'string' && selectedMath.node.attrs.number.length > 0 ? selectedMath.node.attrs.number : null)
+    ? mathNumberFromLatex(selectedMath.node.textContent)
     : null
   const selectedImage = getSelectedImage(editor)
   const currentCodeBlock = getCurrentCodeBlock(editor)
+  const frontMatterActive = editor.isActive('frontMatter')
+  const frontMatterText = frontMatterActive ? editor.state.selection.$from.parent.textContent : null
   const selectedMermaid = getSelectedMermaid(editor)
   let mermaidCount = 0
   editor.state.doc.descendants((node) => {
@@ -2422,8 +3305,9 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     link: editor.isActive('link'),
     blockquote: editor.isActive('blockquote'),
     codeBlock: editor.isActive('codeBlock'),
+    frontMatter: frontMatterActive,
     codeBlockLanguage: currentCodeBlock?.language ?? null,
-    codeBlockText: currentCodeBlock?.node.textContent ?? null,
+    codeBlockText: currentCodeBlock?.node.textContent ?? frontMatterText,
     mermaid: editor.isActive('mermaid'),
     mermaidSelected: selectedMermaid !== null,
     mermaidSource: selectedMermaid?.node.textContent ?? null,
@@ -2447,11 +3331,11 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
 
 export function getEditorStatus(editor: Editor): EditorStatus {
   const selection = editor.state.selection
-  const documentText = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', '\n')
+  const documentText = textBetweenWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
   const selectedText = selection.empty
     ? ''
-    : editor.state.doc.textBetween(selection.from, selection.to, '\n', '\n')
-  const textBeforeCursor = editor.state.doc.textBetween(0, selection.from, '\n', '\n')
+    : textBetweenWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
+  const textBeforeCursor = textBetweenWithoutFrontMatter(editor.state.doc, 0, selection.from)
   const lines = textBeforeCursor.split('\n')
 
   return {
@@ -2464,6 +3348,20 @@ export function getEditorStatus(editor: Editor): EditorStatus {
   }
 }
 
+function textBetweenWithoutFrontMatter(doc: any, from: number, to: number): string {
+  const parts: string[] = []
+  doc.forEach((node: any, offset: number) => {
+    if (node.type.name === 'frontMatter') return
+    const contentStart = offset + 1
+    const contentEnd = contentStart + node.content.size
+    const localFrom = Math.max(0, from - contentStart)
+    const localTo = Math.min(node.content.size, to - contentStart)
+    if (localTo <= localFrom || to <= contentStart || from >= contentEnd) return
+    parts.push(node.textBetween(localFrom, localTo, '\n', '\n'))
+  })
+  return parts.join('\n')
+}
+
 function countVisibleCharacters(text: string): number {
   return Array.from(text).filter(character => !/\s/u.test(character)).length
 }
@@ -2474,6 +3372,7 @@ function getDocumentStatistics(editor: Editor, documentText: string) {
   let paragraphCount = 0
 
   editor.state.doc.descendants((node) => {
+    if (node.type.name === 'frontMatter') return false
     if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
       formulaCount += 1
     }
@@ -2526,6 +3425,7 @@ function getCurrentBlockType(editor: Editor): EditorStatus['blockType'] {
   if (editor.isActive('mermaid')) return 'codeBlock'
   if (editor.isActive('codeBlock')) return 'codeBlock'
   if (editor.isActive('blockquote')) return 'blockquote'
+  if (editor.isActive('alert')) return 'alert'
   for (let level = 1; level <= 6; level += 1) {
     if (editor.isActive('heading', { level })) {
       return `heading${level}` as EditorStatus['blockType']
@@ -2620,12 +3520,19 @@ export function executeEditorCommand(
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
     insertMermaid: () => insertMermaid(editor),
+    showFrontMatter: () => showFrontMatter(editor),
+    insertAlertNote: () => setAlertType(editor, 'NOTE'),
+    insertAlertTip: () => setAlertType(editor, 'TIP'),
+    insertAlertImportant: () => setAlertType(editor, 'IMPORTANT'),
+    insertAlertWarning: () => setAlertType(editor, 'WARNING'),
+    insertAlertCaution: () => setAlertType(editor, 'CAUTION'),
     setCodeHighlightVisible: () => {
       setCodeHighlightVisible(editor, text === '1')
       return true
     },
     setCodeBlockLanguage: () => setCodeBlockLanguage(editor, text),
-    editMermaid: () => editSelectedMermaid(editor),
+    editMath: () => expandSelectedMath(editor),
+    editMermaid: () => expandSelectedMermaid(editor),
     updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
     rerenderMermaid: () => rerenderSelectedMermaid(editor),
     rerenderAllMermaid: () => {
@@ -2677,9 +3584,9 @@ export function executeEditorCommand(
     addColumnBefore: () => chain.addColumnBefore().run(),
     addColumnAfter: () => chain.addColumnAfter().run(),
     deleteColumn: () => chain.deleteColumn().run(),
-    alignTableLeft: () => chain.setCellAttribute('align', 'left').run(),
-    alignTableCenter: () => chain.setCellAttribute('align', 'center').run(),
-    alignTableRight: () => chain.setCellAttribute('align', 'right').run(),
+    alignTableLeft: () => alignTableColumn(editor, 'left'),
+    alignTableCenter: () => alignTableColumn(editor, 'center'),
+    alignTableRight: () => alignTableColumn(editor, 'right'),
     deleteTable: () => chain.deleteTable().run(),
     insertImage: () => {
       if (!text) {
@@ -2822,6 +3729,31 @@ function toggleInlineMark(
   applyToCurrentTextBlockWhenEmpty: boolean,
 ): boolean {
   const selection = editor.state.selection
+  const selectedRange = { from: selection.from, to: selection.to }
+
+  // 数学公式是独立的原子节点，不属于可应用文字格式的范围。
+  // 尤其是整段加粗时，直接对包含公式的块执行 toggleBold 会让 Markdown
+  // 序列化器把 ** 插入到公式节点边界内部，生成无效的标记嵌套。
+  if (mark === 'bold') {
+    const from = applyToCurrentTextBlockWhenEmpty && selection.empty && selection.$from.parent.isTextblock
+      ? selection.$from.start()
+      : selection.from
+    const to = applyToCurrentTextBlockWhenEmpty && selection.empty && selection.$from.parent.isTextblock
+      ? selection.$from.end()
+      : selection.to
+    const textRanges = getTextRangesExcludingMath(editor, from, to)
+    const hasMath = hasMathNodeInRange(editor, from, to)
+    if (hasMath) {
+      if (textRanges.length === 0) return false
+      const chain = editor.chain().focus()
+      for (const range of textRanges) {
+        chain.setTextSelection(range).toggleBold()
+      }
+      chain.setTextSelection(selectedRange)
+      return chain.run()
+    }
+  }
+
   if (!applyToCurrentTextBlockWhenEmpty || !selection.empty || !selection.$from.parent.isTextblock) {
     const chain = editor.chain().focus()
     if (mark === 'bold') return chain.toggleBold().run()
@@ -2839,6 +3771,61 @@ function toggleInlineMark(
   if (mark === 'underline') return chain.toggleUnderline().setTextSelection(cursor).run()
   if (mark === 'highlight') return chain.toggleMark('highlight').setTextSelection(cursor).run()
   return chain.toggleStrike().setTextSelection(cursor).run()
+}
+
+function hasMathNodeInRange(editor: Editor, from: number, to: number): boolean {
+  let found = false
+  editor.state.doc.nodesBetween(from, to, node => {
+    if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
+      found = true
+      return false
+    }
+    return true
+  })
+  return found
+}
+
+function getTextRangesExcludingMath(editor: Editor, from: number, to: number): Array<{ from: number; to: number }> {
+  const ranges: Array<{ from: number; to: number }> = []
+  const mathStarts = new Set<number>()
+  const mathEnds = new Set<number>()
+
+  editor.state.doc.nodesBetween(from, to, (node, position) => {
+    if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
+      mathStarts.add(position)
+      mathEnds.add(position + node.nodeSize)
+      return false
+    }
+    return true
+  })
+
+  editor.state.doc.nodesBetween(from, to, (node, position) => {
+    if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') return false
+    if (!node.isText || node.nodeSize <= 0) return true
+
+    let start = Math.max(from, position)
+    let end = Math.min(to, position + node.nodeSize)
+    const text = node.text ?? ''
+    let textStart = start - position
+    let textEnd = text.length - (position + node.nodeSize - end)
+
+    // 公式相邻的空格是公式与正文之间的排版分隔符，不属于正文加粗范围。
+    if (mathEnds.has(position)) {
+      while (textStart < textEnd && /\s/.test(text[textStart] ?? '')) textStart += 1
+    }
+    if (mathStarts.has(position + node.nodeSize)) {
+      while (textEnd > textStart && /\s/.test(text[textEnd - 1] ?? '')) textEnd -= 1
+    }
+    start = position + textStart
+    end = position + textEnd
+    if (end > start) {
+      const previous = ranges[ranges.length - 1]
+      if (previous && previous.to === start) previous.to = end
+      else ranges.push({ from: start, to: end })
+    }
+    return true
+  })
+  return ranges
 }
 
 function promoteHeadingLevel(editor: Editor): boolean {
@@ -2894,27 +3881,71 @@ function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): bo
   return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
 }
 
+function setAlertType(editor: Editor, type: AlertType): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'alert') {
+      return editor.chain().focus().updateAttributes('alert', { type }).run()
+    }
+  }
+  return editor.chain().focus().wrapIn('alert', { type }).run()
+}
+
 function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): boolean {
   const nodeType = mode === 'inline' ? 'mathInline' : 'mathBlock'
   const { from, to, empty } = editor.state.selection
+  const selectedMath = getSelectedMath(editor)
   const chain = editor.chain().focus()
+
+  // 命令执行后公式保持节点选区；再次插入时，应在公式之后插入，而不是把已选中的公式当作普通文本替换。
+  if (selectedMath) {
+    const insertionPosition = selectedMath.node.type.name === 'mathBlock'
+      && editor.state.selection.$from.parent.type.name === 'paragraph'
+      ? editor.state.selection.$from.after(editor.state.selection.$from.depth)
+      : selectedMath.to
+    const latex = (text ?? '').trim()
+    const inserted = chain.setTextSelection(insertionPosition).insertContentAt(insertionPosition, {
+      type: nodeType,
+      content: latex ? [{ type: 'text', text: latex }] : undefined,
+    }).run()
+    if (!inserted || editor.state.doc.nodeAt(insertionPosition)?.type.name !== nodeType) return false
+    editor.commands.setNodeSelection(insertionPosition)
+    return expandSourceEditor(editor, insertionPosition, nodeType)
+  }
 
   // 有选区：直接用选区文本套 $...$ / $$...$$
   if (!empty) {
     const selected = editor.state.doc.textBetween(from, to)
-    return chain.insertContentAt({ from, to }, {
+    const inserted = chain.insertContentAt({ from, to }, {
       type: nodeType,
       content: [{ type: 'text', text: selected }],
     }).run()
+    if (!inserted || editor.state.doc.nodeAt(from)?.type.name !== nodeType) return false
+    editor.commands.setNodeSelection(from)
+    return expandSourceEditor(editor, from, nodeType)
   }
 
   // 无选区：插入传入的 LaTeX 文本
   const latex = (text ?? '').trim()
-  if (!latex) return false
-  return chain.insertContent({
+  const inserted = chain.insertContent({
     type: nodeType,
-    content: [{ type: 'text', text: latex }],
+    content: latex ? [{ type: 'text', text: latex }] : undefined,
   }).run()
+  if (!inserted) return false
+
+  let insertedPosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (insertedPosition === null && node.type.name === nodeType
+      && (latex.length === 0 || node.textContent === latex)
+      && position >= Math.max(0, from - 1)) {
+      insertedPosition = position
+      return false
+    }
+    return insertedPosition === null
+  })
+  if (insertedPosition === null) return false
+  editor.commands.setNodeSelection(insertedPosition)
+  return expandSourceEditor(editor, insertedPosition, nodeType)
 }
 
 function insertFootnote(editor: Editor, text?: string): boolean {
@@ -3183,6 +4214,21 @@ function insertMermaid(editor: Editor): boolean {
   return true
 }
 
+function showFrontMatter(editor: Editor): boolean {
+  if (editor.state.doc.firstChild?.type.name !== 'frontMatter') {
+    const frontMatter = editor.state.schema.nodes.frontMatter?.create()
+    if (!frontMatter) return false
+    editor.view.dispatch(editor.state.tr.insert(0, frontMatter))
+  }
+
+  const nodeDom = editor.view.nodeDOM(0)
+  const container = nodeDom instanceof HTMLElement
+    ? nodeDom.closest<HTMLElement>('.markleaf-front-matter') ?? nodeDom
+    : null
+  container?.classList.remove('markleaf-front-matter-collapsed')
+  return editor.chain().setTextSelection(1).focus().scrollIntoView().run()
+}
+
 function setCodeBlockLanguage(editor: Editor, text?: string): boolean {
   const current = getCurrentCodeBlock(editor)
   if (!current) return false
@@ -3211,16 +4257,10 @@ function rerenderSelectedMermaid(editor: Editor): boolean {
   return rerenderMermaidElement(dom instanceof Element ? dom : null)
 }
 
-function editSelectedMermaid(editor: Editor): boolean {
+function expandSelectedMermaid(editor: Editor): boolean {
   const selected = getSelectedMermaid(editor)
   if (!selected) return false
-  const codeBlock = editor.state.schema.nodes.codeBlock
-  if (!codeBlock) return false
-  const source = selected.node.textContent
-  return editor.chain().focus().insertContentAt(
-    { from: selected.from, to: selected.to },
-    { type: 'codeBlock', attrs: { language: MERMAID_CODE_BLOCK_LANGUAGE }, content: source ? [{ type: 'text', text: source }] : undefined },
-  ).run()
+  return expandSourceEditor(editor, selected.from, 'mermaid')
 }
 
 export function renderMermaidCodeBlockAt(editor: Editor, position: number): boolean {
@@ -3267,11 +4307,13 @@ function changeMathNumber(editor: Editor, number?: string): boolean {
   const selected = getSelectedMath(editor)
   if (!selected || selected.node.type.name !== 'mathBlock') return false
   const value = (number ?? '').trim()
-  editor.view.dispatch(editor.state.tr.setNodeMarkup(selected.from, undefined, {
-    ...selected.node.attrs,
-    number: value.length > 0 ? value : null,
-  }))
-  return true
+  const source = selected.node.textContent
+  const withoutTag = source.replace(/\\tag\{[^{}]*\}\s*$/, '').trimEnd()
+  const latex = value ? `${withoutTag} \\tag{${value}}` : withoutTag
+  return editor.chain().focus().insertContentAt(
+    { from: selected.from, to: selected.to },
+    { type: 'mathBlock', content: latex ? [{ type: 'text', text: latex }] : undefined },
+  ).run()
 }
 
 function updateMath(editor: Editor, text?: string): boolean {
@@ -3282,6 +4324,13 @@ function updateMath(editor: Editor, text?: string): boolean {
     { from: selected.from, to: selected.to },
     { type: selected.node.type.name, content: [{ type: 'text', text: latex }] },
   ).run()
+}
+
+function expandSelectedMath(editor: Editor): boolean {
+  const selected = getSelectedMath(editor)
+  if (!selected) return false
+  const kind = selected.node.type.name === 'mathInline' ? 'mathInline' : 'mathBlock'
+  return expandSourceEditor(editor, selected.from, kind)
 }
 
 function convertMath(editor: Editor): boolean {
@@ -3301,6 +4350,12 @@ function deleteMath(editor: Editor): boolean {
 }
 
 function exitCodeBlock(editor: Editor): boolean {
+  if (editor.isActive('frontMatter')) {
+    const frontMatter = editor.state.doc.firstChild
+    if (frontMatter?.type.name !== 'frontMatter') return false
+    const target = Math.min(frontMatter.nodeSize + 1, editor.state.doc.content.size)
+    return editor.chain().focus().setTextSelection(target).scrollIntoView().run()
+  }
   if (!editor.isActive('codeBlock')) return false
   return editor.chain().focus().toggleCodeBlock().run()
 }

@@ -80,6 +80,110 @@ body,
   padding: 0 0.08em;
 }
 
+.markleaf-front-matter {
+  position: relative;
+  min-height: 28px;
+  margin: 0 0 0.5em;
+}
+
+.markleaf-front-matter-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  outline: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.markleaf-front-matter-toggle-icon {
+  font: 14px/1 "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+}
+
+.markleaf-front-matter-toggle-error {
+  display: none;
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.markleaf-front-matter-toggle:hover,
+.markleaf-front-matter-toggle:focus-visible {
+  background: var(--bg-hover);
+}
+
+.markleaf-front-matter-invalid .markleaf-front-matter-toggle {
+  gap: 5px;
+  width: auto;
+  padding: 0 9px;
+  border-radius: 14px;
+  color: #cf222e;
+}
+
+.markleaf-front-matter-invalid .markleaf-front-matter-toggle-error {
+  display: inline;
+}
+
+.markleaf-front-matter-collapsed {
+  height: 28px;
+}
+
+.markleaf-front-matter-panel {
+  position: relative;
+  padding-top: 28px;
+}
+
+.markleaf-front-matter-collapsed .markleaf-front-matter-panel {
+  display: none;
+}
+
+.markleaf-front-matter:not(.markleaf-front-matter-collapsed) .markleaf-front-matter-toggle {
+  display: none;
+}
+
+.markleaf-front-matter:not(.markleaf-front-matter-collapsed) .markleaf-front-matter-panel {
+  padding-top: 0;
+}
+
+.markleaf-front-matter-code {
+  position: relative;
+}
+
+.markleaf-front-matter-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.markleaf-front-matter-hide {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+.markleaf-front-matter-invalid .markleaf-front-matter-status {
+  color: #cf222e;
+}
+
+.markleaf-front-matter-editor {
+  outline: 0;
+  text-indent: 0;
+}
+
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -178,6 +282,50 @@ body.markleaf-theme-dark {
   box-shadow: 0 0 0 2px var(--theme-light);
 }
 
+/* 点击公式或 Mermaid 后展开的源码编辑区。渲染节点保留在上方，
+   源码区仅作为临时编辑控件，失焦后由 NodeView 装饰自动移除。 */
+.markleaf-expanded-source {
+  position: fixed;
+  z-index: 2147483001;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  padding: 0 !important;
+  overflow: visible;
+  pointer-events: auto;
+  user-select: text;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.markleaf-expanded-source-theme {
+  position: relative !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: 100%;
+}
+
+.markleaf-expanded-source-code {
+  margin: 0;
+  width: 100%;
+  min-height: 0 !important;
+  max-height: none;
+  overflow: visible;
+  border-radius: 4px;
+}
+
+.markleaf-expanded-source-editor {
+  display: block;
+  min-height: 1.5em;
+  outline: none;
+  cursor: text;
+  user-select: text;
+}
+
 /* Mermaid 图表 */
 .markleaf-mermaid {
   margin: 1em 0;
@@ -246,7 +394,8 @@ body.markleaf-theme-dark {
   position: relative;
 }
 
-.markleaf-mermaid-render-button {
+.markleaf-mermaid-render-button,
+.markleaf-front-matter-hide {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -261,7 +410,9 @@ body.markleaf-theme-dark {
   cursor: default;
 }
 
-.markleaf-mermaid-render-button:hover {
+.markleaf-mermaid-render-button:hover,
+.markleaf-front-matter-hide:hover,
+.markleaf-front-matter-hide:focus-visible {
   background: var(--bg-hover, #f0f0f0);
 }
 
@@ -435,6 +586,12 @@ body.markleaf-theme-dark {
 .ml-code-function { color: var(--ml-code-function); }
 .ml-code-property { color: var(--ml-code-property); }
 .ml-code-operator { color: var(--ml-code-operator); }
+.ml-code-invalid {
+  color: #d1242f !important;
+  background: color-mix(in srgb, #d1242f 16%, transparent);
+  text-decoration: underline wavy #d1242f;
+  text-decoration-thickness: 1px;
+}
 
 #editor {
   padding: 44px 48px 96px;
@@ -678,4 +835,38 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   white-space: nowrap;
   margin-top: 2px;
   opacity: 0.75;
+}
+
+/* The expanded source editor shares the tooltip typography and elevation,
+   but its code block owns the visible frame and document-width layout. */
+.editor-tooltip.markleaf-expanded-source {
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  pointer-events: auto;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-theme {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: min(45vh, 360px);
+  overflow: auto;
 }

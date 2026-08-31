@@ -193,7 +193,9 @@ internal sealed class NativeMenuService : IDisposable
 
     public void ShowEditorContextMenu(nint window, Point screenPoint, EditorCommandStatus status)
     {
-        var (menu, commands) = BuildEditorContextMenu(status);
+        var (menu, commands) = status.ExpandedSource
+            ? BuildExpandedSourceContextMenu()
+            : BuildEditorContextMenu(status);
         try
         {
             foreach (var command in commands)
@@ -437,6 +439,7 @@ internal sealed class NativeMenuService : IDisposable
             var copyPasteAs = CreateMenu(true);
             AppendMainMenuCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
             AppendMainMenuCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("menu.edit.copyPlainText"));
+            AppendMainMenuCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("menu.edit.copyHtml"));
             AppendSeparator(copyPasteAs);
             AppendMainMenuCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("menu.edit.pastePlainText"));
             AppendPopup(menu, Loc.Get("menu.edit.copyPasteAs"), copyPasteAs);
@@ -466,7 +469,7 @@ internal sealed class NativeMenuService : IDisposable
             {
                 AppendReadOnlyContextMenu(menu);
                 commands.AddRange([
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
                     AppCommand.PastePlainText, AppCommand.Paste, AppCommand.SelectAll]);
                 return (menu, commands.ToArray());
             }
@@ -490,6 +493,7 @@ internal sealed class NativeMenuService : IDisposable
                 var copyPasteAs = CreateMenu(true);
                 AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
                 AppendSeparator(copyPasteAs);
                 AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
                 AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
@@ -500,7 +504,7 @@ internal sealed class NativeMenuService : IDisposable
                 commands.AddRange([
                     AppCommand.GoToFootnoteReference, AppCommand.ResetFootnoteLabel,
                     AppCommand.ClearFootnoteReferences, AppCommand.DeleteFootnote,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
                     AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
             else if (status.InTable)
@@ -517,11 +521,17 @@ internal sealed class NativeMenuService : IDisposable
             else if (status.MathInline || status.MathBlock)
             {
                 AppendCommand(menu, AppCommand.EditMath, Loc.Get("contextMenu.math.edit"));
+                if (status.MathBlock)
+                {
+                    AppendCommand(menu, AppCommand.SetMathNumber, Loc.Get("contextMenu.math.number"));
+                }
                 AppendCommand(menu, AppCommand.ConvertMath,
                     status.MathBlock ? Loc.Get("contextMenu.math.toInline") : Loc.Get("contextMenu.math.toBlock"));
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.DeleteMath, Loc.Get("contextMenu.math.delete"));
-                commands.AddRange([AppCommand.EditMath, AppCommand.ConvertMath, AppCommand.DeleteMath]);
+                commands.Add(AppCommand.EditMath);
+                if (status.MathBlock) commands.Add(AppCommand.SetMathNumber);
+                commands.AddRange([AppCommand.ConvertMath, AppCommand.DeleteMath]);
             }
             else if (status.MermaidSelected)
             {
@@ -550,19 +560,13 @@ internal sealed class NativeMenuService : IDisposable
                     AppCommand.ResizeImage75, AppCommand.ResizeImage90, AppCommand.RotateImageClockwise,
                     AppCommand.SaveImageAs, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
             }
+            else if (status.FrontMatter)
+            {
+                AppendCodeContextMenu(menu, commands, includeLanguage: false);
+            }
             else if (status.CodeBlock)
             {
-                AppendCommand(menu, AppCommand.DeclareCodeLanguage, Loc.Get("contextMenu.code.declareLanguage"));
-                AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.code.copyBlock"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.exitCode"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                commands.AddRange([
-                    AppCommand.DeclareCodeLanguage, AppCommand.CopyCodeBlock, AppCommand.ExitCode,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
+                AppendCodeContextMenu(menu, commands, includeLanguage: true);
             }
             else
             {
@@ -579,6 +583,7 @@ internal sealed class NativeMenuService : IDisposable
                 var copyPasteAs = CreateMenu(true);
                 AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
                 AppendSeparator(copyPasteAs);
                 AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
                 AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
@@ -589,7 +594,7 @@ internal sealed class NativeMenuService : IDisposable
                 commands.AddRange(BlockHandleCommands);
                 commands.AddRange([
                     AppCommand.FormatPainter,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText,
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
                     AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
 
@@ -600,6 +605,47 @@ internal sealed class NativeMenuService : IDisposable
             NativeMethods.DestroyMenu(menu);
             throw;
         }
+    }
+
+    private (nint Menu, AppCommand[] Commands) BuildExpandedSourceContextMenu()
+    {
+        var menu = CreateMenu(true);
+        try
+        {
+            AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
+            AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+            AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+            AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
+            return (menu, [AppCommand.Undo, AppCommand.Redo, AppCommand.Copy, AppCommand.Paste, AppCommand.Cut, AppCommand.SelectAll]);
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
+        }
+    }
+
+    private static void AppendCodeContextMenu(nint menu, List<AppCommand> commands, bool includeLanguage)
+    {
+        if (includeLanguage)
+        {
+            AppendCommand(menu, AppCommand.DeclareCodeLanguage, Loc.Get("contextMenu.code.declareLanguage"));
+            commands.Add(AppCommand.DeclareCodeLanguage);
+        }
+        AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.code.copyBlock"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.exitCode"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+        AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+        AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+        commands.AddRange([
+            AppCommand.CopyCodeBlock, AppCommand.ExitCode,
+            AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
     }
 
     private static void AppendFootnoteCommands(nint menu)
@@ -651,6 +697,7 @@ internal sealed class NativeMenuService : IDisposable
         var copyPasteAs = CreateMenu(true);
         AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
         AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+        AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
         AppendSeparator(copyPasteAs);
         AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
         AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
@@ -684,6 +731,13 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.InsertMathBlock, Loc.Get("menu.paragraph.insertMathBlock"));
             AppendMainMenuCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
             AppendMainMenuCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
+            var alerts = CreateMenu(true);
+            AppendMainMenuCommand(alerts, AppCommand.InsertAlertNote, Loc.Get("menu.paragraph.alertNote"));
+            AppendMainMenuCommand(alerts, AppCommand.InsertAlertTip, Loc.Get("menu.paragraph.alertTip"));
+            AppendMainMenuCommand(alerts, AppCommand.InsertAlertImportant, Loc.Get("menu.paragraph.alertImportant"));
+            AppendMainMenuCommand(alerts, AppCommand.InsertAlertWarning, Loc.Get("menu.paragraph.alertWarning"));
+            AppendMainMenuCommand(alerts, AppCommand.InsertAlertCaution, Loc.Get("menu.paragraph.alertCaution"));
+            AppendPopup(menu, Loc.Get("menu.paragraph.alert"), alerts);
             AppendSeparator(menu);
 
             var lists = CreateMenu(true);
@@ -725,6 +779,8 @@ internal sealed class NativeMenuService : IDisposable
 
             AppendMainMenuCommand(menu, AppCommand.InsertLineBefore, Loc.Get("menu.paragraph.insertLineBefore"));
             AppendMainMenuCommand(menu, AppCommand.InsertLineAfter, Loc.Get("menu.paragraph.insertLineAfter"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.ShowFrontMatter, Loc.Get("menu.paragraph.frontMatter"));
             return menu;
         }
         catch
@@ -953,6 +1009,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.ZoomIn, Loc.Get("menu.view.zoomIn"));
             AppendCommand(menu, AppCommand.ZoomOut, Loc.Get("menu.view.zoomOut"));
             AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.view.zoomReset"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.RestartEditor, Loc.Get("menu.view.restartEditor"));
             return menu;
         }
         catch

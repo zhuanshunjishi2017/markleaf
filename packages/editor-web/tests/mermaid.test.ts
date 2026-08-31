@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createEditor,
   executeEditorCommand,
+  expandSourceEditor,
   getMarkdown,
   setEditorSharedStrings,
 } from '../src/editor'
@@ -187,6 +188,25 @@ describe('Mermaid chart support', () => {
 
     expect(editor.state.doc.firstChild?.type.name).toBe('mermaid')
     expect(getMarkdown(editor)).toContain('```mermaid\ngraph TD\n  A-->B\n```')
+  })
+
+  it('edits Mermaid source below the rendered diagram and collapses on blur', () => {
+    const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
+    expect(expandSourceEditor(editor, 0, 'mermaid')).toBe(true)
+
+    const rendered = editor.view.dom.querySelector('.markleaf-mermaid')
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')
+    expect(rendered).not.toBeNull()
+    expect(source?.textContent).toContain('A-->B')
+
+    source!.textContent = 'graph TD\n  A-->C'
+    source!.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(getMarkdown(editor)).toContain('A-->C')
+    expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
+    expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
   })
 
   it('shows the render button after declaring a code block as mermaid', () => {

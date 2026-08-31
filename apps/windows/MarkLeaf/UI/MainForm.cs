@@ -48,6 +48,7 @@ internal sealed partial class MainForm : Form
     private readonly SidebarSearchBar _detachedOutlineSearchBar = new();
     private readonly OpenFolderPrompt _openFolderPrompt = new();
     private EditorHostController? _editorHost;
+    private bool _expandedSourceContextMenuOpen;
     private FindReplaceDialog? _findReplaceDialog;
     private WebView2? _webView;
     private MarkdownDocument? _document;

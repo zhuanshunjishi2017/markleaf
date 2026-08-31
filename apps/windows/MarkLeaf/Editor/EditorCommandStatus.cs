@@ -16,6 +16,7 @@ internal sealed record EditorCommandStatus(
     bool Link,
     bool Blockquote,
     bool CodeBlock,
+    bool FrontMatter,
     string? CodeBlockLanguage,
     string? CodeBlockText,
     bool BulletList,
@@ -37,10 +38,11 @@ internal sealed record EditorCommandStatus(
     bool CanStartFormatPainter,
     bool FormatPainterArmed,
     bool ReadOnly,
-    bool Highlight)
+    bool Highlight,
+    bool ExpandedSource = false)
 {
     public static EditorCommandStatus Empty { get; } = new(
-        false, false, false, false, null, false, false, false, false, false, false, false, false, null, null, false, false,
+        false, false, false, false, null, false, false, false, false, false, false, false, false, false, null, null, false, false,
         false, false, null, false, false, false, false, null, 0, false, null, null, null, null, false, false, false, false);
 
     public static EditorCommandStatus FromPayload(JsonElement payload)
@@ -61,6 +63,7 @@ internal sealed record EditorCommandStatus(
             payload.GetProperty("link").GetBoolean(),
             payload.GetProperty("blockquote").GetBoolean(),
             payload.GetProperty("codeBlock").GetBoolean(),
+            payload.TryGetProperty("frontMatter", out var frontMatter) && frontMatter.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("codeBlockLanguage", out var codeBlockLanguageProp) && codeBlockLanguageProp.ValueKind == JsonValueKind.String
                 ? codeBlockLanguageProp.GetString()
                 : null,
@@ -103,6 +106,7 @@ internal sealed record EditorCommandStatus(
             payload.TryGetProperty("canStartFormatPainter", out var canStart) && canStart.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("readOnly", out var readOnly) && readOnly.ValueKind == JsonValueKind.True,
-            payload.TryGetProperty("highlight", out var highlight) && highlight.ValueKind == JsonValueKind.True);
+            payload.TryGetProperty("highlight", out var highlight) && highlight.ValueKind == JsonValueKind.True,
+            false);
     }
 }

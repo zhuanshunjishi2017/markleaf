@@ -82,6 +82,19 @@ describe('source editor', () => {
     expect(source.getText()).toBe(content)
   })
 
+  it('excludes leading YAML front matter from source-mode statistics', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const source = new SourceEditor(parent, '---\ntitle: metadata words\nauthor: 作者\n---\n\n正文 body', () => {})
+    sources.push(source)
+
+    const status = source.getStatus()
+    expect(status.characterCount).toBe(6)
+    expect(status.westernWordCount).toBe(1)
+    expect(status.cjkCharacterCount).toBe(2)
+    expect(status.paragraphCount).toBe(1)
+  })
+
   it('exports and replaces the selected Markdown source', () => {
     const parent = document.createElement('div')
     document.body.append(parent)

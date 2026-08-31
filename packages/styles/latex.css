@@ -43,6 +43,12 @@
   margin-top: 1.1em;
 }
 
+.markleaf-style-latex .markleaf-alert::before {
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
+  font-size: var(--ml-font-size);
+  font-synthesis: none;
+}
+
 /* ---- 粗体：不强制 faux bold，由字体内建粗细决定 ---- */
 .markleaf-style-latex .markleaf-document strong,
 .markleaf-style-latex .markleaf-document b {
@@ -89,31 +95,36 @@
   color: var(--text-primary);
 }
 
-/* ---- 代码块：无框，左侧灰线 ---- */
+/* ---- 代码块：listings 风格的细边框，无背景填充 ---- */
 .markleaf-style-latex .markleaf-document pre {
-  background: var(--bg-hover);
-  border: 0;
-  border-left: 3px solid var(--bg-selected-hover);
+  background: transparent;
+  border: 1px solid var(--text-primary);
   border-radius: 0;
   padding: 0.8em 1em;
   margin: 1em 0;
 }
 
-/* ---- 引用：无框，左侧灰线，斜体 ---- */
+.markleaf-style-latex .markleaf-document pre code {
+  color: var(--text-primary);
+}
+
+/* ---- 引用：无标题 tcolorbox，沿用正文排版 ---- */
 .markleaf-style-latex .markleaf-document blockquote {
   margin: 0.8em 0;
-  padding: 0.4em 1.2em;
-  border: 0;
-  border-left: 3px solid var(--bg-selected-hover);
-  color: var(--text-secondary);
-  background: transparent;
-  font-style: italic;
-  font-synthesis: none;
+  padding: 0.5em 0.85em;
+  border: 2px solid var(--bg-selected);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-secondary) 4%, var(--bg-primary));
+  font-size: var(--ml-font-size);
+  font-style: normal;
 }
 
 .markleaf-style-latex .markleaf-document blockquote p {
-  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "仿宋", "FangSong", serif;
-  color: var(--text-secondary);
+  font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Times New Roman", "宋体-简", "宋体", serif;
+  color: var(--text-primary);
+  font-size: var(--ml-font-size);
+  font-style: normal;
   text-indent: 0;
 }
 

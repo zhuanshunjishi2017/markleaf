@@ -36,6 +36,12 @@ internal sealed class EditorHostController : IDisposable
     private bool _disposed;
     private bool _failureShown;
     private bool _documentLoaded;
+    private Guid? _lastDocumentId;
+    private long _lastDocumentRevision;
+    private string _lastDocumentMarkdown = string.Empty;
+    private bool _lastDocumentReadOnly;
+    private string? _lastDocumentType;
+    private bool _replayDocumentAfterNavigation;
 
     public event EventHandler? Ready;
 
@@ -52,8 +58,6 @@ internal sealed class EditorHostController : IDisposable
     public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
 
     public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
-
-    public event EventHandler? MathEditRequested;
 
     public event EventHandler? MermaidEditRequested;
 
@@ -200,6 +204,11 @@ internal sealed class EditorHostController : IDisposable
 
     public void LoadDocument(Guid documentId, long revision, string markdown, bool readOnly = false, string? documentType = null)
     {
+        _lastDocumentId = documentId;
+        _lastDocumentRevision = revision;
+        _lastDocumentMarkdown = markdown;
+        _lastDocumentReadOnly = readOnly;
+        _lastDocumentType = documentType;
         EnqueueOrRun(() =>
         {
             _session.StartDocument(documentId, revision);
@@ -305,6 +314,11 @@ internal sealed class EditorHostController : IDisposable
         EnqueueOrRun(() => Post("command", new { command = "setSourceIndent", text = indentWidth.ToString() }));
     }
 
+    public void ApplyAutoConvertUnsafeEmphasis(bool enabled)
+    {
+        EnqueueOrRun(() => Post("command", new { command = "setAutoConvertUnsafeEmphasis", text = enabled ? "1" : "0" }));
+    }
+
     /// <summary>
     /// WebView2 AreBrowserAcceleratorKeysEnabled=false 会屏蔽 Tab，
     /// 因此由宿主在 WinForms 层拦截并手动注入 Tab 键事件。
@@ -345,6 +359,56 @@ internal sealed class EditorHostController : IDisposable
 
             _webView.CoreWebView2.ExecuteScriptAsync(
                 $"window.__markleafSetWindowActive?.({(active ? "true" : "false")});");
+        });
+    }
+
+    public void ExecuteExpandedSourceCommand(string command)
+    {
+        if (command is "undo" or "redo")
+        {
+            EnqueueOrRun(() => Post("command", new { command }));
+            return;
+        }
+
+        var script = command switch
+        {
+            "copy" => "document.execCommand('copy')",
+            "cut" => "document.execCommand('cut')",
+            "paste" => "document.execCommand('paste')",
+            "selectAll" => "document.execCommand('selectAll')",
+            _ => "false",
+        };
+        EnqueueOrRun(() => _webView.CoreWebView2?.ExecuteScriptAsync($"(() => {{ return {script}; }})()"));
+    }
+
+    public async Task RestartEditorAsync()
+    {
+        if (!IsDocumentLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshot = await RequestSnapshotAsync(TimeSpan.FromSeconds(10));
+            _lastDocumentMarkdown = snapshot.Markdown;
+            _lastDocumentRevision = snapshot.Revision;
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
+        {
+            _logger.Warning($"Editor restart snapshot failed: {exception.Message}.");
+        }
+
+        EnqueueOrRun(() =>
+        {
+            if (_webView.CoreWebView2 is null)
+            {
+                return;
+            }
+
+            _replayDocumentAfterNavigation = _lastDocumentId is not null;
+            _documentLoaded = false;
+            _webView.CoreWebView2.Navigate(_editorUri.ToString());
         });
     }
 
@@ -410,6 +474,12 @@ internal sealed class EditorHostController : IDisposable
             blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
             blockTable = Loc.Get("blockHandle.table"),
             blockFootnote = Loc.Get("blockHandle.footnote"),
+            blockAlert = Loc.Get("blockHandle.alert"),
+            alertNote = Loc.Get("menu.paragraph.alertNote"),
+            alertTip = Loc.Get("menu.paragraph.alertTip"),
+            alertImportant = Loc.Get("menu.paragraph.alertImportant"),
+            alertWarning = Loc.Get("menu.paragraph.alertWarning"),
+            alertCaution = Loc.Get("menu.paragraph.alertCaution"),
             formatPromoteHeading = Loc.Get("formatMenu.promoteHeading"),
             formatDemoteHeading = Loc.Get("formatMenu.demoteHeading"),
         };
@@ -514,6 +584,7 @@ internal sealed class EditorHostController : IDisposable
         string? colorSchemeCss = null,
         string? title = null,
         bool keepTablesTogether = false,
+        bool keepHeadingsWithNextBlock = false,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -533,6 +604,7 @@ internal sealed class EditorHostController : IDisposable
             colorSchemeCss,
             title,
             keepTablesTogether,
+            keepHeadingsWithNextBlock,
         });
         EnqueueOrRun(() =>
         {
@@ -1060,7 +1132,11 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("formatPainterArmed", out var armed)
                             && armed.ValueKind == System.Text.Json.JsonValueKind.True,
                         message.Payload.TryGetProperty("readOnly", out var readOnly)
-                            && readOnly.ValueKind == System.Text.Json.JsonValueKind.True));
+                            && readOnly.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("sourceMode", out var sourceMode)
+                            && sourceMode.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("expandedSource", out var expandedSource)
+                            && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(
@@ -1069,9 +1145,6 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble(),
                         message.Payload.GetProperty("position").GetInt32()));
-                break;
-            case "mathEditRequested":
-                MathEditRequested?.Invoke(this, EventArgs.Empty);
                 break;
             case "mermaidEditRequested":
                 MermaidEditRequested?.Invoke(this, EventArgs.Empty);
@@ -1227,6 +1300,18 @@ internal sealed class EditorHostController : IDisposable
         while (_readyActions.TryDequeue(out var action))
         {
             action();
+        }
+
+        if (_replayDocumentAfterNavigation && _lastDocumentId is { } documentId)
+        {
+            _replayDocumentAfterNavigation = false;
+            _session.StartDocument(documentId, _lastDocumentRevision);
+            Post("loadDocument", new
+            {
+                markdown = _lastDocumentMarkdown,
+                readOnly = _lastDocumentReadOnly,
+                documentType = _lastDocumentType,
+            });
         }
     }
 

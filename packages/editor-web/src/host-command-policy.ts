@@ -11,6 +11,7 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
   'findClose',
   'setLanguage',
   'setSourceIndent',
+  'setAutoConvertUnsafeEmphasis',
   'setAutoHideScrollbar',
   'setEditorFocusMode',
   'setEditorTypewriterMode',

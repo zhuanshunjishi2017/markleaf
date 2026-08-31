@@ -23,7 +23,6 @@ public static class EditorProtocol
         "editorStatusChanged",
         "contextMenuRequested",
         "blockMenuRequested",
-        "mathEditRequested",
         "mermaidEditRequested",
         "outlineChanged",
         "outlineSelectionChanged",
@@ -171,11 +170,12 @@ public static class EditorProtocol
                 && HasOptionalNonNegativeNumber(payload, "menuHeight")
                 && HasOptionalBooleanProperty(payload, "canStartFormatPainter")
                 && HasOptionalBooleanProperty(payload, "formatPainterArmed")
-                && HasOptionalBooleanProperty(payload, "readOnly"),
+                && HasOptionalBooleanProperty(payload, "readOnly")
+                && HasOptionalBooleanProperty(payload, "sourceMode")
+                && HasOptionalBooleanProperty(payload, "expandedSource"),
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
-            "mathEditRequested" => IsMissingOrObject(payload),
             "mermaidEditRequested" => IsMissingOrObject(payload),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),

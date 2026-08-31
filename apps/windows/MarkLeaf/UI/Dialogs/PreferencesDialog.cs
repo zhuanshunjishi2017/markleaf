@@ -58,6 +58,7 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
     private readonly CheckBox _visualCjkAutoSpacingCheck;
+    private readonly CheckBox _autoConvertUnsafeEmphasisCheck;
 
     private readonly NumericUpDown _sourceIndentWidth;
     private readonly CheckBox _showParagraphBlockHandleCheck;
@@ -223,6 +224,8 @@ internal sealed class PreferencesDialog : Form
         { Minimum = 600, Maximum = 1200, Increment = 20 };
         _visualCjkAutoSpacingCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _autoConvertUnsafeEmphasisCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.autoConvertUnsafeEmphasis"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _sourceIndentWidth = new NumericUpDown
         { Minimum = 2, Maximum = 8, Increment = 2 };
@@ -623,10 +626,14 @@ internal sealed class PreferencesDialog : Form
         panel.SetColumnSpan(_visualCjkAutoSpacingCheck, 2);
         panel.Controls.Add(Gap(), 0, 9);
 
-        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 10);
-        panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
+        panel.Controls.Add(_autoConvertUnsafeEmphasisCheck, 0, 10);
+        panel.SetColumnSpan(_autoConvertUnsafeEmphasisCheck, 2);
         panel.Controls.Add(Gap(), 0, 11);
-        panel.Controls.Add(_showCodeHighlightCheck, 0, 12);
+
+        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 12);
+        panel.SetColumnSpan(_showParagraphBlockHandleCheck, 2);
+        panel.Controls.Add(Gap(), 0, 13);
+        panel.Controls.Add(_showCodeHighlightCheck, 0, 14);
         panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
         return panel;
@@ -1027,6 +1034,7 @@ internal sealed class PreferencesDialog : Form
         _westernFontFamily = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
+        _autoConvertUnsafeEmphasisCheck.Checked = editor.AutoConvertUnsafeEmphasis;
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
         _showParagraphBlockHandleCheck.Checked = editor.ShowParagraphBlockHandle;
 
@@ -1150,6 +1158,7 @@ internal sealed class PreferencesDialog : Form
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
+        editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisCheck.Checked;
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
         editor.ShowParagraphBlockHandle = _showParagraphBlockHandleCheck.Checked;
 

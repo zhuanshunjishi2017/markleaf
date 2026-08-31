@@ -65,6 +65,34 @@
   line-height: 1.75;
 }
 
+.markleaf-style-print .markleaf-alert::before {
+  padding: 0 0.85em;
+  color: #fff;
+  font-family: "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
+  font-size: var(--ml-font-size);
+  background: var(--markleaf-alert-color);
+  font-weight: normal;
+  font-synthesis: none;
+
+}
+
+.markleaf-style-print .markleaf-alert {
+  padding: 0 0 var(--markleaf-alert-content-spacing-y);
+  border: 2px solid var(--markleaf-alert-color);
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--markleaf-alert-color) 10%, var(--bg-primary));
+}
+
+.markleaf-style-print .markleaf-alert > * {
+  padding-right: var(--markleaf-alert-content-spacing-x);
+  padding-left: var(--markleaf-alert-content-spacing-x);
+}
+
+.markleaf-style-print .markleaf-alert > :first-child {
+  padding-top: var(--markleaf-alert-content-spacing-y);
+}
+
 .markleaf-style-print .markleaf-document p {
   margin: 0;
   text-indent: 2em;

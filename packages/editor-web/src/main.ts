@@ -1,4 +1,5 @@
 import './styles.css'
+import { NodeSelection } from '@tiptap/pm/state'
 import {
   createEditor,
   clearFindHighlights,
@@ -9,8 +10,12 @@ import {
   getEditorCommandState,
   getEditorStatus,
   getBlockHandleInfo,
+  expandSourceEditor,
+  isSourceEditorExpanded,
+  collapseSourceEditor,
   setEditorFocusMode,
   getMarkdown,
+  setAutoConvertUnsafeEmphasis,
   captureVisualSelection,
   collapseVisualSelection,
   getSourceModeJumpTarget,
@@ -104,6 +109,7 @@ let documentType: DocumentType = 'markdown'
 let readOnly = false
 let editorFocusMode = false
 let editorTypewriterMode = false
+let autoConvertUnsafeEmphasis = true
 
 const editorCreationOptions = {
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
@@ -419,9 +425,19 @@ window.__markleafApplyVisualVariables = (payload) => {
 
 let findBarLoc: Record<string, string> = {}
 
+function applyAlertTitleLocalization(loc: Record<string, string>): void {
+  const root = document.documentElement
+  root.style.setProperty('--markleaf-alert-note-title', JSON.stringify(loc.alertNote ?? '备注'))
+  root.style.setProperty('--markleaf-alert-tip-title', JSON.stringify(loc.alertTip ?? '提示'))
+  root.style.setProperty('--markleaf-alert-important-title', JSON.stringify(loc.alertImportant ?? '重要'))
+  root.style.setProperty('--markleaf-alert-warning-title', JSON.stringify(loc.alertWarning ?? '警告'))
+  root.style.setProperty('--markleaf-alert-caution-title', JSON.stringify(loc.alertCaution ?? '注意'))
+}
+
 function applyFindBarLocalization(loc: Record<string, string>): void {
   findBarLoc = loc
   setBlockTypeLabels(loc)
+  applyAlertTitleLocalization(loc)
   findInput.placeholder = loc.find ?? 'Find'
   findInput.ariaLabel = loc.findLabel ?? 'Find'
   replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
@@ -974,6 +990,46 @@ function findMathNodeAt(pos: number): number | null {
   return null
 }
 
+function findMathNodeFromTarget(target: EventTarget | null): number | null {
+  if (!(target instanceof Element)) {
+    return null
+  }
+
+  const mathElement = target.closest<HTMLElement>('.markleaf-math')
+  if (!mathElement || !editorMount.contains(mathElement)) {
+    return null
+  }
+
+  let mathPosition: number | null = null
+  editor.state.doc.descendants((node, position) => {
+    if (mathPosition !== null) return false
+    if (node.type.name !== 'mathInline' && node.type.name !== 'mathBlock') return true
+    if (editor.view.nodeDOM(position) === mathElement) {
+      mathPosition = position
+      return false
+    }
+    return true
+  })
+  return mathPosition
+}
+
+function findSpecialNodeFromTarget(target: EventTarget | null, nodeName: 'mathInline' | 'mathBlock' | 'mermaid', className: string): number | null {
+  if (!(target instanceof Element)) return null
+  const element = target.closest<HTMLElement>(className)
+  if (!element || !editorMount.contains(element)) return null
+
+  let position: number | null = null
+  editor.state.doc.descendants((node, nodePosition) => {
+    if (position !== null) return false
+    if (node.type.name === nodeName && editor.view.nodeDOM(nodePosition) === element) {
+      position = nodePosition
+      return false
+    }
+    return true
+  })
+  return position
+}
+
 function findMermaidNodeAt(pos: number): number | null {
   const node = editor.state.doc.nodeAt(pos)
   if (node?.type.name === 'mermaid') {
@@ -994,6 +1050,7 @@ const formatButtons: Array<{ command: string; glyph: string; label: string }> = 
   { command: 'toggleBold', glyph: '', label: 'Bold' },
   { command: 'toggleItalic', glyph: '', label: 'Italic' },
   { command: 'toggleUnderline', glyph: '', label: 'Underline' },
+  { command: 'toggleHighlight', glyph: '\uE7E6', label: 'Text highlight' },
 ]
 const formatButtonElements: HTMLButtonElement[] = []
 
@@ -1047,6 +1104,10 @@ function createHeadingButton(command: string): HTMLButtonElement {
 const promoteHeadingButton = createHeadingButton('promoteHeading')
 const demoteHeadingButton = createHeadingButton('demoteHeading')
 const headingButtonElements = [promoteHeadingButton, demoteHeadingButton]
+
+const clearFormatSeparator = document.createElement('div')
+clearFormatSeparator.className = 'format-menu-separator'
+formatMenu.appendChild(clearFormatSeparator)
 
 const clearFormatButton = document.createElement('button')
 clearFormatButton.type = 'button'
@@ -1198,31 +1259,89 @@ editorMount.addEventListener('contextmenu', (event) => {
   })
 })
 
-editorMount.addEventListener('dblclick', (event) => {
+let pendingSpecialClick: {
+  kind: 'math' | 'mermaid'
+  position: number
+  wasSelected: boolean
+} | null = null
+
+editorMount.addEventListener('mousedown', (event) => {
+  if (sourceMode || event.button !== 0) {
+    pendingSpecialClick = null
+    return
+  }
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
+    pendingSpecialClick = null
+    return
+  }
+
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  const mathPosition = findMathNodeFromTarget(event.target)
+    ?? (resolved ? findMathNodeAt(resolved.pos) : null)
+  const mermaidPosition = mathPosition === null
+    ? findSpecialNodeFromTarget(event.target, 'mermaid', '.markleaf-mermaid')
+      ?? (resolved ? findMermaidNodeAt(resolved.pos) : null)
+    : null
+  const position = mathPosition ?? mermaidPosition
+  if (position === null) {
+    pendingSpecialClick = null
+    return
+  }
+
+  const selected = editor.state.selection
+  pendingSpecialClick = {
+    kind: mathPosition !== null ? 'math' : 'mermaid',
+    position,
+    wasSelected: selected instanceof NodeSelection && selected.from === position,
+  }
+}, true)
+
+editorMount.addEventListener('click', (event) => {
   if (sourceMode) {
     return
   }
-  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-  if (!resolved) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
     return
   }
-  const mathPos = findMathNodeAt(resolved.pos)
-  if (mathPos !== null) {
-    event.preventDefault()
-    editor.commands.setNodeSelection(mathPos)
-    sendEditorState()
-    send('mathEditRequested', {})
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  const mathPosition = findMathNodeFromTarget(event.target)
+    ?? (resolved ? findMathNodeAt(resolved.pos) : null)
+  const mermaidPosition = mathPosition === null
+    ? findSpecialNodeFromTarget(event.target, 'mermaid', '.markleaf-mermaid')
+      ?? (resolved ? findMermaidNodeAt(resolved.pos) : null)
+    : null
+  const position = mathPosition ?? mermaidPosition
+  if (position === null) {
+    pendingSpecialClick = null
     return
   }
 
-  const mermaidPos = findMermaidNodeAt(resolved.pos)
-  if (mermaidPos === null) {
-    return
-  }
+  const kind = mathPosition !== null ? 'math' : 'mermaid'
+  const pending = pendingSpecialClick
+  pendingSpecialClick = null
+  const wasSelected = pending?.kind === kind
+    && pending.position === position
+    && pending.wasSelected
 
   event.preventDefault()
-  editor.commands.setNodeSelection(mermaidPos)
-  executeEditorCommand(editor, 'editMermaid')
+  if (!wasSelected) {
+    editor.commands.setNodeSelection(position)
+    sendEditorState()
+    return
+  }
+
+  if (kind === 'math') {
+    const selectedNode = editor.state.doc.nodeAt(position)
+    if (selectedNode?.type.name !== 'mathInline' && selectedNode?.type.name !== 'mathBlock') return
+    const selectedKind = selectedNode.type.name === 'mathInline' ? 'mathInline' : 'mathBlock'
+    if (isSourceEditorExpanded(editor, position, selectedKind)) collapseSourceEditor(editor)
+    else expandSourceEditor(editor, position, selectedKind)
+    sendEditorState()
+    return
+  }
+  editor.commands.setNodeSelection(position)
+  if (isSourceEditorExpanded(editor, position, 'mermaid')) collapseSourceEditor(editor)
+  else expandSourceEditor(editor, position, 'mermaid')
   sendEditorState()
 })
 sourceMount.addEventListener('contextmenu', (event) => {
@@ -1235,6 +1354,24 @@ sourceMount.addEventListener('contextmenu', (event) => {
     canStartFormatPainter: false,
     formatPainterArmed: false,
     readOnly,
+    sourceMode: true,
+    expandedSource: false,
+  })
+})
+
+window.addEventListener('markleaf-expanded-source-contextmenu', (event) => {
+  const detail = event instanceof CustomEvent
+    ? event.detail as { clientX?: number; clientY?: number }
+    : {}
+  send('contextMenuRequested', {
+    clientX: typeof detail.clientX === 'number' ? detail.clientX : 0,
+    clientY: typeof detail.clientY === 'number' ? detail.clientY : 0,
+    menuHeight: 0,
+    canStartFormatPainter: false,
+    formatPainterArmed: false,
+    readOnly,
+    sourceMode: false,
+    expandedSource: true,
   })
 })
 
@@ -1314,6 +1451,7 @@ async function handleMessage(value: unknown): Promise<void> {
         injectStyleSheet(`markleaf-style-${style.id}`, style.css)
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
+      syncThemeModeClass()
       break
     }
     case 'loadDocument': {
@@ -1517,6 +1655,12 @@ async function handleMessage(value: unknown): Promise<void> {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'setAutoConvertUnsafeEmphasis') {
+          autoConvertUnsafeEmphasis = payload.text !== '0'
+          setAutoConvertUnsafeEmphasis(autoConvertUnsafeEmphasis)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'setAutoHideScrollbar') {
           applyAutoHideScrollbar(payload.text === '1')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1583,6 +1727,7 @@ async function handleMessage(value: unknown): Promise<void> {
               colorSchemeCss?: unknown
               title?: unknown
               keepTablesTogether?: unknown
+              keepHeadingsWithNextBlock?: unknown
             }
             try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
             const style = typeof options.style === 'string' ? options.style : 'serif'
@@ -1598,6 +1743,7 @@ async function handleMessage(value: unknown): Promise<void> {
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
             const keepTablesTogether = options.keepTablesTogether === true
+            const keepHeadingsWithNextBlock = options.keepHeadingsWithNextBlock === true
             const html = await generateExportHtml(
               style,
               format,
@@ -1610,6 +1756,7 @@ async function handleMessage(value: unknown): Promise<void> {
               colorSchemeCss,
               title,
               keepTablesTogether,
+              keepHeadingsWithNextBlock,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -1754,10 +1901,10 @@ function applyAutoHideScrollbar(enabled: boolean): void {
 
 // ---- i18n：查找栏文案（跟随宿主语言，zh-Hans 为默认） ----
 const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
-  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockMermaid: '图表', blockTable: '表', blockFootnote: '注' },
-  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockMermaid: '圖表', blockTable: '表', blockFootnote: '註' },
-  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockMermaid: 'Diagram', blockTable: '▦', blockFootnote: 'Fn' },
-  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockHeading6: '見出し 6', blockBulletList: '箇条書き', blockOrderedList: '番号付きリスト', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockMermaid: '図表', blockTable: '表', blockFootnote: '注' },
+  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockMermaid: '图表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
+  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockMermaid: '圖表', blockTable: '表', blockFootnote: '註', blockAlert: '示' },
+  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockMermaid: 'Diagram', blockTable: '▦', blockFootnote: 'Fn', blockAlert: '示' },
+  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockMermaid: '図表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
 }
 
 function applyFindBarLanguage(lang: string): void {
@@ -1833,8 +1980,17 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function renderEditorHtmlForExport(html: string, preserveEmptyParagraphs = false): string {
+function renderEditorHtmlForExport(
+  html: string,
+  preserveEmptyParagraphs = false,
+  keepTablesTogether = false,
+  keepHeadingsWithNextBlock = false,
+): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
+
+  for (const frontMatter of Array.from(parsed.body.querySelectorAll('[data-markleaf-front-matter]'))) {
+    frontMatter.remove()
+  }
 
   for (const caption of Array.from(parsed.body.querySelectorAll<HTMLElement>('figcaption.markleaf-figcaption'))) {
     caption.innerHTML = renderEscapedCaptionHtml(caption.textContent ?? '')
@@ -1860,6 +2016,28 @@ function renderEditorHtmlForExport(html: string, preserveEmptyParagraphs = false
     labelElement.className = 'markleaf-footnote-def-label'
     labelElement.textContent = `[${label}] `
     paragraph.insertBefore(labelElement, paragraph.firstChild)
+  }
+
+  if (keepTablesTogether) {
+    for (const table of Array.from(parsed.body.querySelectorAll<HTMLTableElement>('table'))) {
+      const figure = table.parentElement?.matches('figure.markleaf-figure') === true
+        ? table.parentElement
+        : null
+      ;(figure ?? table).classList.add('markleaf-keep-together')
+    }
+  }
+
+  if (keepHeadingsWithNextBlock) {
+    const headings = Array.from(parsed.body.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'))
+    for (const heading of headings) {
+      const next = heading.nextElementSibling
+      const parent = heading.parentElement
+      if (!next || !parent || next.matches('h1, h2, h3, h4, h5, h6')) continue
+      const group = parsed.createElement('div')
+      group.className = 'markleaf-heading-with-next'
+      parent.insertBefore(group, heading)
+      group.append(heading, next)
+    }
   }
 
   return parsed.body.innerHTML.replace(/\u2060/g, '')
@@ -1968,12 +2146,18 @@ async function generateExportHtml(
   colorSchemeCss = '',
   title = '',
   keepTablesTogether = false,
+  keepHeadingsWithNextBlock = false,
 ): Promise<string> {
   const isPdf = format === 'pdf'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml), isPdf).replace(
+  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
+    renderMathInHtml(rawBodyHtml),
+    isPdf,
+    keepTablesTogether,
+    keepHeadingsWithNextBlock,
+  ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
@@ -1998,7 +2182,20 @@ ${baseCss}
 .markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
 ${colorSchemeCss}
 ${resolved.css}
-${keepTablesTogether ? '.markleaf-document figure:has(> table) { break-inside: avoid; page-break-inside: avoid; }\n.markleaf-document figure:has(> table) > table { break-inside: avoid; page-break-inside: avoid; }' : ''}
+.markleaf-document .markleaf-keep-together,
+.markleaf-document .markleaf-heading-with-next {
+  break-inside: avoid-page !important;
+  page-break-inside: avoid !important;
+}
+.markleaf-document .markleaf-heading-with-next > h1,
+.markleaf-document .markleaf-heading-with-next > h2,
+.markleaf-document .markleaf-heading-with-next > h3,
+.markleaf-document .markleaf-heading-with-next > h4,
+.markleaf-document .markleaf-heading-with-next > h5,
+.markleaf-document .markleaf-heading-with-next > h6 {
+  break-after: avoid-page !important;
+  page-break-after: avoid !important;
+}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;
@@ -2007,6 +2204,11 @@ ${keepTablesTogether ? '.markleaf-document figure:has(> table) { break-inside: a
   --ml-font-size: ${fontSize}px;
   --ml-line-height: ${lineHeight};
   --ml-max-width: ${maxWidth}px;
+  --markleaf-alert-note-title: ${JSON.stringify(findBarLoc.alertNote ?? '备注')};
+  --markleaf-alert-tip-title: ${JSON.stringify(findBarLoc.alertTip ?? '提示')};
+  --markleaf-alert-important-title: ${JSON.stringify(findBarLoc.alertImportant ?? '重要')};
+  --markleaf-alert-warning-title: ${JSON.stringify(findBarLoc.alertWarning ?? '警告')};
+  --markleaf-alert-caution-title: ${JSON.stringify(findBarLoc.alertCaution ?? '注意')};
 }
 html { font-size: var(--ml-font-size); }
 body { margin: 0; background: var(--bg-primary); }
