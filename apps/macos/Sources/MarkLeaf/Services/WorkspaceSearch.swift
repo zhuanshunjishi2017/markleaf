@@ -85,7 +85,16 @@ final class WorkspaceSearchService {
 /// 修改时间文案（对齐 Windows WorkspaceDocumentTimeFormatter）：
 /// 今天/昨天带前缀，其余同年日期显示月日，更早显示年/月/日。
 enum WorkspaceDocumentTimeFormatter {
+    /// 列表行使用：更短的日期腾出标题宽度（今天/昨天仍带时间）。
+    static func formatCompact(_ date: Date, now: Date = Date()) -> String {
+        format(date, now: now, style: .compact)
+    }
+
     static func format(_ date: Date, now: Date = Date()) -> String {
+        format(date, now: now, style: .standard)
+    }
+
+    private static func format(_ date: Date, now: Date, style: Style) -> String {
         let calendar = Calendar.current
         let time = timeFormatter.string(from: date)
         if calendar.isDate(date, inSameDayAs: now) {
@@ -95,10 +104,23 @@ enum WorkspaceDocumentTimeFormatter {
            calendar.isDate(date, inSameDayAs: yesterday) {
             return L10n.f("昨天 %@", time)
         }
-        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-            return monthDayFormatter.string(from: date)
+        switch style {
+        case .standard:
+            if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+                return monthDayFormatter.string(from: date)
+            }
+            return yearFormatter.string(from: date)
+        case .compact:
+            if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+                return compactMonthDayFormatter.string(from: date)
+            }
+            return compactYearFormatter.string(from: date)
         }
-        return yearFormatter.string(from: date)
+    }
+
+    private enum Style {
+        case standard
+        case compact
     }
 
     private static var locale: Locale {
@@ -124,6 +146,20 @@ enum WorkspaceDocumentTimeFormatter {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter
+    }
+
+    private static var compactMonthDayFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("Md")
+        return formatter
+    }
+
+    private static var compactYearFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("yMd")
         return formatter
     }
 

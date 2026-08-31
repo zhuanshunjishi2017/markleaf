@@ -961,7 +961,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             ? SidebarTreePresentation.selectedRowFont
             : NSFont.systemFont(ofSize: 13, weight: .medium)
         cell.folderLabel.stringValue = Self.folderName(for: entry, root: session?.workspaceRoot)
-        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(
+        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.formatCompact(
             Self.modificationDate(of: entry.path)
         )
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)
