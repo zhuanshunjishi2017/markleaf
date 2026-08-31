@@ -39,5 +39,15 @@ require_block_contains \
   'override func mouseDragged(with event: NSEvent)' \
   'controller?.beginReorder(from: self, at: event.locationInWindow)' \
   'the first press must lift the tab immediately'
+require_block_contains \
+  'override func mouseUp(with event: NSEvent)' \
+  'override func rightMouseDown(with event: NSEvent)' \
+  'controller?.endReorder(at: event.locationInWindow, shouldReorder: didDrag)' \
+  'a press must always finish its drag lifecycle on release'
+require_block_contains \
+  'override func mouseUp(with event: NSEvent)' \
+  'override func rightMouseDown(with event: NSEvent)' \
+  'if !didDrag {' \
+  'a short press must still activate the tab'
 
 echo "PASS"

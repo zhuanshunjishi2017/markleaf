@@ -281,7 +281,7 @@ final class TabBarController: NSView {
         })
     }
 
-    func endReorder(at windowPoint: NSPoint) {
+    func endReorder(at windowPoint: NSPoint, shouldReorder: Bool) {
         guard isReordering, let id = reorderingTabID,
               let cell = draggingCell, let placeholder = dragPlaceholder else {
             isReordering = false
@@ -289,7 +289,9 @@ final class TabBarController: NSView {
             return
         }
         let source = dragSourceIndex ?? tabStore.tabs.firstIndex(where: { $0.tabID == id })
-        let target = targetIndex(for: convert(windowPoint, from: nil))
+        let target = shouldReorder
+            ? targetIndex(for: convert(windowPoint, from: nil))
+            : (source ?? stack.arrangedSubviews.firstIndex(of: placeholder) ?? 0)
         let placeholderIndex = stack.arrangedSubviews.firstIndex(of: placeholder) ?? target
         stack.removeArrangedSubview(placeholder)
         placeholder.removeFromSuperview()
@@ -517,9 +519,8 @@ final class TabCellView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if didDrag {
-            controller?.endReorder(at: event.locationInWindow)
-        } else {
+        controller?.endReorder(at: event.locationInWindow, shouldReorder: didDrag)
+        if !didDrag {
             onActivate?()
         }
         downPoint = nil
