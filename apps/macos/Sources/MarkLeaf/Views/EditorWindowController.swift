@@ -116,6 +116,43 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func reloadTabBar() { tabBarController?.reload() }
 
+    func saveAllTabs() {
+        guard let windowSession else { return }
+        let targets = SaveAllPolicy.targets(tabs: windowSession.tabStore.tabs)
+        func saveNext(_ index: Int) {
+            guard index < targets.count else {
+                self.reloadTabBar()
+                return
+            }
+            let id = targets[index]
+            guard let tab = windowSession.tabStore.tab(withID: id),
+                  let session = windowSession.session(for: id) else {
+                saveNext(index + 1)
+                return
+            }
+            tab.lastError = nil
+            session.saveDocument { [weak self, weak tab] success in
+                guard let self else { return }
+                if !success {
+                    tab?.lastError = L10n.t("保存失败")
+                } else if let tab {
+                    TabStateSync.apply(
+                        tab: tab,
+                        fileName: session.documentURL?.path,
+                        isDirty: session.isDirty,
+                        revision: session.currentRevision,
+                        encoding: session.documentEncoding,
+                        newLine: session.documentNewLine,
+                        untitledLabel: L10n.t("未命名")
+                    )
+                }
+                self.reloadTabBar()
+                saveNext(index + 1)
+            }
+        }
+        saveNext(0)
+    }
+
     func restoreInitialTabIfNeeded() {
         guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
         let session = ensureEditor(for: tab)
@@ -350,6 +387,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func configureTabSession(_ session: EditorSession, in windowSession: WindowSession) {
         session.openViaWindow = { [weak windowSession] url in windowSession?.requestOpenFile(url) }
         session.newTabRequest = { [weak self] kind in self?.newUntitledTab(kind: kind) }
+        session.saveAllRequest = { [weak self] in self?.saveAllTabs() }
+        session.onAcquiredFileURL = { [weak self, weak windowSession, weak session] url in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return }
+            tab.path = url.path
+            tab.fileIdentity = FileIdentityPolicy.identity(forPath: url.path)
+            tab.title = url.lastPathComponent
+            tab.lastError = nil
+            self.reloadTabBar()
+        }
     }
 
     /// 把会话的观察回调绑定到窗口 UI（状态/大纲/视图状态），并同步到标签模型。

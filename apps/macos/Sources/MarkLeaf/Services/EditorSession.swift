@@ -110,7 +110,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
     static let readOnlyBlockedCommands: Set<String> = [
-        "save", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
+        "save", "saveAll", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
         "replaceOne", "replaceAll", "pasteText", "deleteSelection",
         "setParagraph", "setHeading1", "setHeading2", "setHeading3",
         "setHeading4", "setHeading5", "setHeading6",
@@ -1472,6 +1472,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// 多标签窗口中，“新建文档”菜单命令交由窗口创建一个新标签。
     var newTabRequest: ((NewDocumentKind) -> Void)?
 
+    /// 无标题标签首次保存成功后，将获得的文件 URL 交给窗口层同步标签身份。
+    var onAcquiredFileURL: ((URL) -> Void)?
+
+    /// “保存全部”菜单命令交由窗口层遍历所有标签。
+    var saveAllRequest: (() -> Void)?
+
     private func loadPreparedDocument(_ prepared: PreparedDocument) {
         loadDocument(
             markdown: prepared.markdown,
@@ -1602,6 +1608,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             )
                             self.statusText = self.isDirty ? L10n.t("已修改") : L10n.t("已保存")
                             AppLog.info("文档已保存: \(url.path)")
+                            if previousDocumentURL?.standardizedFileURL.path != url.standardizedFileURL.path {
+                                self.onAcquiredFileURL?(url)
+                            }
                             completion?(true)
                         } catch {
                             self.externalChangeTracker.cancelSelfWrite()

@@ -68,6 +68,7 @@ final class NativeMenuBuilder {
 
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
+        menu.addItem(commandItem(L10n.t("保存全部"), "saveAll", key: "s", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
@@ -706,6 +707,7 @@ extension EditorSession {
         case "open": openDocument()
         case "openReadOnly": openDocumentReadOnly()
         case "save": saveDocument()
+        case "saveAll": saveAllRequest?()
         case "saveAs": saveDocumentAs()
         case "export": exportDocument()
         case "exportWithLastSettings": exportWithLastSettings()
