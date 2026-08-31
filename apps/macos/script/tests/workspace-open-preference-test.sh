@@ -30,11 +30,13 @@ require "$SETTINGS" 'forKey: .workspaceOpenInNewTab' \
 require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceEntry' \
   'settings.workspaceOpenInNewTab' \
   'workspace entry opening must honor the new-tab preference'
-require "$PREFS" 'workspaceNewTabCheck' \
-  'preferences must expose the workspace new-tab toggle'
-require "$PREFS" 'checkboxWithTitle: L10n.t("在新标签页中打开")' \
-  'the toggle label must stay concise under the labeled workspace-file row'
-require "$PREFS" 'settings.workspaceOpenInNewTab = workspaceNewTabCheck.state == .on' \
+require "$SETTINGS" '始终在当前标签中打开' \
+  'the workspace popup must offer always-current-tab wording'
+require "$PREFS" 'workspaceOpenModePopup' \
+  'preferences must expose the workspace open mode as a popup'
+require "$PREFS" '工作区文件打开方式' \
+  'the workspace row label must mirror the external-file row label'
+require "$PREFS" 'settings.workspaceOpenInNewTab = WorkspaceFileOpenPreferenceModel.opensInNewTab(' \
   'preference changes must be saved back to settings'
 
 echo "PASS"

@@ -626,19 +626,40 @@ final class AppWindowManager {
         guard !paths.isEmpty else { return }
         if bootstrapState.cacheIncomingDocumentsIfNeeded(paths) { return }
 
-        let openDocuments = windowControllers.compactMap { $0.windowSession?.activeTabSession?.documentURL }
+        // 去重覆盖所有窗口的所有标签：后台标签中的重复文件也应激活而非二次打开。
+        let openDocuments = windowControllers.flatMap { controller -> [URL] in
+            guard let windowSession = controller.windowSession else { return [] }
+            return windowSession.tabStore.tabs.compactMap { tab in
+                windowSession.session(for: tab.tabID)?.documentURL
+            }
+        }
         IncomingFileRouter.route(
             urls: urls,
             mode: SettingsService.shared.settings.externalFileOpenMode,
             activeEditor: activeWindowController != nil,
             openDocuments: openDocuments,
             activateExisting: { [weak self] url in
-                self?.windowControllers.first { $0.windowSession?.activeTabSession?.documentURL == url }?
-                    .window?.makeKeyAndOrderFront(nil)
+                guard let self else { return }
+                for controller in self.windowControllers {
+                    guard let windowSession = controller.windowSession else { continue }
+                    if let tab = windowSession.tabStore.tabs.first(where: { tab in
+                        guard let documentURL = windowSession.session(for: tab.tabID)?.documentURL else { return false }
+                        return IncomingFileRouter.normalized(documentURL) == url
+                    }) {
+                        controller.window?.makeKeyAndOrderFront(nil)
+                        controller.activateTab(tab.tabID, animated: true)
+                        break
+                    }
+                }
                 NSApp.activate(ignoringOtherApps: true)
             },
             replaceActive: { [weak self] url in
                 self?.activeWindowController?.windowSession?.activeTabSession?.openDocument(at: url)
+            },
+            newTabInActiveWindow: { [weak self] url in
+                guard let self, let controller = self.activeWindowController else { return }
+                controller.window?.makeKeyAndOrderFront(nil)
+                controller.windowSession?.requestOpenFile(url)
             },
             createWindow: { [weak self] url in
                 guard let self else { return }

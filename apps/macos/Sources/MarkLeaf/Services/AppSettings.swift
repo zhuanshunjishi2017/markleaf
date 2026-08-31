@@ -11,6 +11,7 @@ enum CJKLanguageTag: String, Codable, CaseIterable {
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
 enum ExternalFileOpenMode: String, Codable, CaseIterable {
     case newWindow
+    case newTab
     case currentWindow
 }
 
@@ -41,7 +42,8 @@ enum ExternalFileOpenPreferenceModel {
     static func titles(language: String) -> [String] {
         [
             L10n.translate("始终在新窗口中打开", language: language),
-            L10n.translate("在当前窗口中打开", language: language),
+            L10n.translate("在当前窗口的新标签页中打开", language: language),
+            L10n.translate("在当前标签页中打开", language: language),
         ]
     }
 
@@ -51,6 +53,24 @@ enum ExternalFileOpenPreferenceModel {
 
     static func mode(at index: Int) -> ExternalFileOpenMode {
         orderedModes.indices.contains(index) ? orderedModes[index] : .newWindow
+    }
+}
+
+/// 工作区文件打开方式：默认新标签页；也可始终替换当前标签文档。
+enum WorkspaceFileOpenPreferenceModel {
+    static func titles(language: String) -> [String] {
+        [
+            L10n.translate("在新标签页中打开", language: language),
+            L10n.translate("始终在当前标签中打开", language: language),
+        ]
+    }
+
+    static func selectedIndex(opensInNewTab: Bool) -> Int {
+        opensInNewTab ? 0 : 1
+    }
+
+    static func opensInNewTab(at index: Int) -> Bool {
+        index == 0
     }
 }
 
