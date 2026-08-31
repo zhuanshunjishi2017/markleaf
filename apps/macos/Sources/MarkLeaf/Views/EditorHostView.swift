@@ -5,6 +5,7 @@ import AppKit
 final class EditorHostView: NSView {
     private var viewsByTab: [DocumentTabID: EditorWebContainerView] = [:]
     private(set) var visibleTabID: DocumentTabID?
+    private var transitionGeneration = 0
 
     func attach(tabID: DocumentTabID, view: EditorWebContainerView) {
         guard viewsByTab[tabID] == nil else { return }
@@ -29,23 +30,46 @@ final class EditorHostView: NSView {
     func show(tabID: DocumentTabID, animated: Bool, reduceMotion: Bool) {
         guard let target = viewsByTab[tabID] else { return }
         let outgoing = visibleTabID.flatMap { viewsByTab[$0] }
+        let previousID = visibleTabID?.rawValue
         visibleTabID = tabID
 
-        let duration = animated && !reduceMotion
-            ? TabAnimationPolicy.duration(for: .editorFade, reduceMotion: false)
-            : 0
+        transitionGeneration += 1
+        let generation = transitionGeneration
+
+        let duration = EditorHostTransitionPolicy.shouldAnimate(
+            from: previousID,
+            to: tabID.rawValue,
+            requested: animated,
+            reduceMotion: reduceMotion
+        ) ? TabAnimationPolicy.duration(for: .editorFade, reduceMotion: false) : 0
         guard duration > 0 else {
-            outgoing?.isHidden = true
-            target.isHidden = false
+            viewsByTab.forEach { id, view in
+                view.layer?.removeAllAnimations()
+                view.alphaValue = 1
+                view.isHidden = id != tabID
+            }
             return
         }
+        viewsByTab.forEach { id, view in
+            view.layer?.removeAllAnimations()
+            if id != tabID && view !== outgoing {
+                view.alphaValue = 1
+                view.isHidden = true
+            }
+        }
+        outgoing?.alphaValue = 1
+        outgoing?.isHidden = false
         target.alphaValue = 0
         target.isHidden = false
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             target.animator().alphaValue = 1
-        }, completionHandler: { [weak outgoing] in
+            outgoing?.animator().alphaValue = 0
+        }, completionHandler: { [weak self, weak outgoing] in
+            guard let self, self.transitionGeneration == generation else { return }
             outgoing?.isHidden = true
+            outgoing?.alphaValue = 1
+            target.alphaValue = 1
         })
     }
 

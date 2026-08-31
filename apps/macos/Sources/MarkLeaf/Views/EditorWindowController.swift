@@ -94,21 +94,31 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     /// 为标签创建（或复用）会话与编辑器视图；懒加载的唯一入口。
     private func ensureEditor(for tab: DocumentTab, prepared: PreparedDocument? = nil) -> EditorSession {
-        if let existing = windowSession?.session(for: tab.tabID) {
-            if let windowSession {
-                configureTabSession(existing, in: windowSession)
-            }
-            return existing
-        }
         guard let windowSession else { fatalError("windowSession must exist before creating editors") }
 
-        let session = EditorSession(workspace: windowSession.workspace)
-        configureTabSession(session, in: windowSession)
-        windowSession.attach(session: session, to: tab.tabID)
+        let session: EditorSession
+        if let existing = windowSession.session(for: tab.tabID) {
+            session = existing
+            configureTabSession(existing, in: windowSession)
+        } else {
+            session = EditorSession(workspace: windowSession.workspace)
+            configureTabSession(session, in: windowSession)
+            windowSession.attach(session: session, to: tab.tabID)
+        }
 
-        let container = EditorWebContainerView(session: session)
-        editorHostView?.attach(tabID: tab.tabID, view: container)
-        if let prepared {
+        // The initial tab is registered before the tab bar is installed. In that
+        // path the session exists, but its WebView container does not yet exist.
+        // Always reconcile the session/container pair before returning.
+        if EditorAttachmentPolicy.needsContainer(
+            existingSession: windowSession.session(for: tab.tabID) != nil,
+            hasAttachedContainer: editorHostView?.attachedView(for: tab.tabID) != nil
+        ) {
+            let container = EditorWebContainerView(session: session)
+            editorHostView?.attach(tabID: tab.tabID, view: container)
+        }
+        if let prepared, windowSession.session(for: tab.tabID) === session,
+           editorHostView?.attachedView(for: tab.tabID) != nil,
+           session.documentURL == nil {
             session.openInitialDocument(prepared: prepared)
         }
         return session
@@ -377,7 +387,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         sidebarView?.rebind(to: session)
         detachedOutlineView?.rebind(to: session)
         applyStatusBarContents()
-        window?.title = session.windowTitle
+        window?.title = "MarkLeaf"
         window?.isDocumentEdited = session.isDirty
         if let findPanel = AppWindowManager.shared.currentFindPanel {
             findPanel.updateSession(session)
@@ -418,7 +428,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func bindSessionCallbacks(_ session: EditorSession) {
         session.onStateChanged = { [weak self] in
             guard let self, let window = self.window else { return }
-            window.title = session.windowTitle
+            window.title = "MarkLeaf"
             window.isDocumentEdited = session.isDirty
             self.applyStatusBarContents()
             self.windowSession?.syncActiveTab(from: session, untitledLabel: L10n.t("未命名"))
