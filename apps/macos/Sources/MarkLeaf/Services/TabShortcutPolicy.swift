@@ -13,7 +13,4 @@ enum TabShortcutPolicy {
         return tabs[(activeIndex + delta + tabs.count) % tabs.count].tabID
     }
 
-    static func closesWindow(tabCount: Int) -> Bool {
-        tabCount == 1
-    }
 }

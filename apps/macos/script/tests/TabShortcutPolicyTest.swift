@@ -37,9 +37,6 @@ expect(
     "Control-Shift-Tab should wrap from the first tab to the last"
 )
 
-expect(TabShortcutPolicy.closesWindow(tabCount: 1), "closing the last tab should close its window")
-expect(!TabShortcutPolicy.closesWindow(tabCount: 2), "closing one of multiple tabs should keep its window open")
-
 let solo = TabStore()
 solo.append(tab("Only"))
 expect(

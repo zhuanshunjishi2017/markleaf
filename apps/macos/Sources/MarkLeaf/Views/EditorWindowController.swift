@@ -289,11 +289,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             let next = windowSession.tabStore.close(id)
             windowSession.detach(id)
             self.editorHostView?.detach(tabID: id)
-            if TabShortcutPolicy.closesWindow(tabCount: windowSession.tabStore.tabs.count + 1) ||
-                (reason == .closeWindow && next == nil) {
-                self.closeWindowForReal()
-            } else if let next {
+            if let next {
                 self.activateTab(next, animated: true)
+            } else if WindowClosePolicy.keepsWindowAfterClosingAllTabs {
+                self.applyStatusBarContents()
+            } else {
+                self.closeWindowForReal()
             }
             self.tabBarController?.reload()
         }
@@ -345,6 +346,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             if let active = windowSession.tabStore.activeTabID {
                 self.activateTab(active, animated: true)
+            } else if WindowClosePolicy.keepsWindowAfterClosingAllTabs {
+                self.applyStatusBarContents()
             }
             self.tabBarController?.reload()
         }
@@ -1208,12 +1211,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         guard let windowSession, !windowSession.tabStore.tabs.isEmpty else { return true }
         DispatchQueue.main.async { [weak self] in
             guard let self, let windowSession = self.windowSession else { return }
-            if TabShortcutPolicy.closesWindow(tabCount: windowSession.tabStore.tabs.count),
-               let only = windowSession.tabStore.tabs.first {
-                self.closeTab(only.tabID, reason: .closeWindow)
-            } else if let active = windowSession.tabStore.activeTab {
-                self.closeTab(active.tabID, reason: .closeTab)
-            }
+            guard WindowClosePolicy.shouldCloseAllTabs(tabCount: windowSession.tabStore.tabs.count) else { return }
+            let ids = windowSession.tabStore.tabs.map(\.tabID)
+            self.closeTabs(ids)
         }
         return false
     }
