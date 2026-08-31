@@ -225,7 +225,7 @@ final class SidebarView: NSView {
         let effectiveIndex = session.outlineDetached ? 0 : index
         tabControl.setEnabled(!session.outlineDetached, forSegment: 1)
         tabControl.selectedSegment = effectiveIndex
-        showTab(effectiveIndex, persist: persist)
+        showTab(effectiveIndex, persist: persist, animate: false)
     }
 
     /// 外部（视图菜单）切换树/列表模式。
@@ -237,10 +237,10 @@ final class SidebarView: NSView {
             // 启动时列表模式已持久化：确保文档列表完成首次扫描。
             session.scanWorkspaceDocuments()
         }
-        showTab(tabControl.selectedSegment, persist: false)
+        showTab(tabControl.selectedSegment, persist: false, animate: false)
     }
 
-    private func showTab(_ index: Int, persist: Bool = true) {
+    private func showTab(_ index: Int, persist: Bool = true, animate: Bool = true) {
         tabControl.selectedSegment = index
         // 先同步会话标签索引：workspaceChanged/outlineChanged 会读取它判断占位文案
         session.sidebarTabIndex = index
@@ -268,11 +268,12 @@ final class SidebarView: NSView {
         let transition = tabTransitionGeneration
         workspaceScroll.isHidden = false
         outlineScroll.isHidden = false
-        if window == nil {
+        if window == nil || !animate {
             workspaceScroll.alphaValue = workspaceActive ? 1 : 0
             outlineScroll.alphaValue = workspaceActive ? 0 : 1
             workspaceScroll.isHidden = !workspaceActive
             outlineScroll.isHidden = workspaceActive
+            searchScroll.isHidden = !isSearching || !workspaceActive
             return
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -307,14 +308,23 @@ final class SidebarView: NSView {
             emptyStateOpenFolderButton.target = self
             emptyStateOpenFolderButton.action = #selector(openFolder)
             emptyStateView.isHidden = false
-        } else if session.workspaceTree.isEmpty {
+        } else {
+            let state = SidebarEmptyStatePolicy.state(
+                hasWorkspace: true,
+                treeCount: session.workspaceTree.count,
+                documentCount: session.workspaceDocuments.count,
+                listMode: session.workspaceListMode
+            )
+            guard case .noSupportedFiles = state else {
+                emptyStateView.isHidden = true
+                searchField.isEnabled = session.sidebarTabIndex == 1 || hasWorkspace
+                return
+            }
             emptyStateLabel.stringValue = localize("当前工作区没有受支持的文件")
             emptyStateOpenFolderButton.title = localize("新建文件")
             emptyStateOpenFolderButton.target = self
             emptyStateOpenFolderButton.action = #selector(newMarkdownFileFromHeader)
             emptyStateView.isHidden = false
-        } else {
-            emptyStateView.isHidden = true
         }
         searchField.isEnabled = session.sidebarTabIndex == 1 || hasWorkspace
         if !hasWorkspace && isWorkspaceTab && isSearching {

@@ -1073,8 +1073,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
         }
 
-        sidebarView.selectTab(session.sidebarTabIndex, persist: false)
-        sidebarView.setWorkspaceMode(listMode: session.workspaceListMode)
+        // Sidebar content follows the active tab session. The controller's
+        // session is the window bootstrap session and may no longer be the
+        // session currently bound to the sidebar after a tab switch.
+        let sidebarSession = sidebarView.session
+        let selectedTabIndex = SidebarStateSourcePolicy.selectedTabIndex(
+            activeSessionIndex: sidebarSession.sidebarTabIndex,
+            bootstrapSessionIndex: session.sidebarTabIndex
+        )
+        sidebarView.selectTab(selectedTabIndex, persist: false)
+        sidebarView.setWorkspaceMode(listMode: sidebarSession.workspaceListMode)
         applyDetachedOutlineState()
 
         // 状态栏：高度平滑过渡
