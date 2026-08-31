@@ -153,6 +153,8 @@ struct AppSettings: Codable {
         recentFolders = try container.decodeIfPresent([String].self, forKey: .recentFolders) ?? []
         recentFiles = try container.decodeIfPresent([String].self, forKey: .recentFiles) ?? []
         workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 230
+        // 260 是开发期临时加宽的默认值，恢复原始宽度。
+        if workspaceWidth == 260 { workspaceWidth = 230 }
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
         outlineDetached = try container.decodeIfPresent(Bool.self, forKey: .outlineDetached) ?? false
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true

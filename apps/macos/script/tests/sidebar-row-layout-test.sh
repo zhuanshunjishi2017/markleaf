@@ -36,6 +36,8 @@ require() {
 SETTINGS="$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift"
 require "$SETTINGS" 'var workspaceWidth = 230' \
   'the workspace sidebar width must stay at its original default'
+require "$SETTINGS" 'if workspaceWidth == 260 { workspaceWidth = 230 }' \
+  'widths saved by the temporary wider default must restore to the original'
 
 SIDEBAR="$ROOT_DIR/Sources/MarkLeaf/Views/SidebarView.swift"
 require "$SIDEBAR" 'lastColumnOnlyAutoresizingStyle' \
