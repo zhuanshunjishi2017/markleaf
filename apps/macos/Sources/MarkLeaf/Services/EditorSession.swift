@@ -668,7 +668,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         fileURL: URL?,
         readOnly: Bool = false,
         encoding: String? = nil,
-        documentKind: NewDocumentKind? = nil
+        documentKind: NewDocumentKind? = nil,
+        initialDirty: Bool = false
     ) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
@@ -706,7 +707,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             "markdown": markdown,
             "documentType": newDocumentKind.editorDocumentType,
             "readOnly": readOnly,
+            "initialDirty": initialDirty,
         ])
+    }
+
+    func sendRestoreViewport(scrollTop: Double?, selectionFrom: Int?, selectionTo: Int?) {
+        var payload: [String: Any] = [:]
+        if let scrollTop { payload["scrollTop"] = scrollTop }
+        if let from = selectionFrom, let to = selectionTo { payload["selection"] = ["from": from, "to": to] }
+        guard !payload.isEmpty else { return }
+        send("restoreViewport", payload: payload)
     }
 
     /// 从状态栏切换当前文档的换行风格；只读文档只允许查看，不允许转换。
