@@ -1308,13 +1308,13 @@ final class WorkspaceListCellView: NSTableCellView {
             imageView.heightAnchor.constraint(equalToConstant: 18),
             nameLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
             nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             folderLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
             folderLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 1),
             folderLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
             folderLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            timeLabel.centerYAnchor.constraint(equalTo: folderLabel.centerYAnchor),
         ])
     }
 }

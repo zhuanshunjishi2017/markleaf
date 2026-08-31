@@ -296,8 +296,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             // 揭示前同步打好主题底色；applySystemAppearance 里的调用是异步的，
             // 不能覆盖 ready → reveal 之间的首帧。
             applyScrollbarAppearance(dark: currentThemeIsDark)
-            // 对齐 Windows 1.1.3：前端就绪后再揭示 WebView，避免深色模式白闪
-            (webView?.superview as? EditorWebContainerView)?.revealEditor()
+            revealEditorAfterThemeApplied()
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true
                 loadInitialDocument()
@@ -622,6 +621,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         // 下发界面语言（前端查找栏等文案本地化）
         execute("setLanguage", text: SettingsService.shared.settings.displayLanguage)
         onStylesReady?()
+    }
+
+    /// 等主题样式真正落地后再揭示 WebView：WKWebView 按提交顺序求值，
+    /// 排在 applyStyles 之后的空脚本完成时，页面底色已切换为目标主题。
+    private func revealEditorAfterThemeApplied() {
+        webView?.evaluateJavaScript("1") { [weak self] _, _ in
+            DispatchQueue.main.async {
+                (self?.webView?.superview as? EditorWebContainerView)?.revealEditor()
+            }
+        }
     }
 
     /// 偏好设置变更后应用到当前文档（不重复持久化）。
@@ -1684,7 +1693,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         let url = URL(fileURLWithPath: entry.path)
         if let hook = workspace.openDocumentRequest {
-            hook(url)
+            if SettingsService.shared.settings.workspaceOpenInNewTab {
+                hook(url)
+            } else {
+                openDocument(at: url)
+            }
         } else {
             openDocument(at: url)
         }

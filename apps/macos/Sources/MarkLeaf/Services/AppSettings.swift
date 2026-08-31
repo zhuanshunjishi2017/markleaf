@@ -115,6 +115,10 @@ struct AppSettings: Codable {
             ExternalFileOpenMode.self,
             forKey: .externalFileOpenMode
         ) ?? .newWindow
+        workspaceOpenInNewTab = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .workspaceOpenInNewTab
+        ) ?? true
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
@@ -201,6 +205,8 @@ struct AppSettings: Codable {
     /// 切换文档（打开另一文件）时自动保存当前文档（对齐 Windows FileSettings.SaveOnDocumentSwitch）。
     var saveOnDocumentSwitch = true
     var externalFileOpenMode = ExternalFileOpenMode.newWindow
+    /// 工作区文件默认在新标签页中打开；关闭后在当前标签中替换文档。
+    var workspaceOpenInNewTab = true
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue

@@ -38,6 +38,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     // 文件
     private let startupPopup = NSPopUpButton()
     private let externalFileOpenModePopup = NSPopUpButton()
+    private let workspaceNewTabCheck = NSButton(checkboxWithTitle: L10n.t("在新标签页中打开"), target: nil, action: nil)
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
     private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
@@ -127,6 +128,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         externalFileOpenModePopup.addItems(withTitles: ExternalFileOpenPreferenceModel.titles(language: settings.displayLanguage))
         externalFileOpenModePopup.selectItem(at: ExternalFileOpenPreferenceModel.selectedIndex(for: settings.externalFileOpenMode))
+        workspaceNewTabCheck.state = settings.workspaceOpenInNewTab ? .on : .off
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
@@ -249,7 +251,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         )
 
         // 绑定
-        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceNewTabCheck, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, visualCjkAutoSpacingCheck, topMostCheck, autoHideScrollbarsCheck,
@@ -435,6 +437,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .header(L10n.t("启动")),
             .field(L10n.t("启动操作"), startupPopup),
             .field(L10n.t("外部文件打开方式"), externalFileOpenModePopup),
+            .field(L10n.t("工作区文件"), workspaceNewTabCheck),
             .header(L10n.t("保存选项")),
             .field("", autoSaveCheck),
             .field("", saveOnSwitchCheck),
@@ -573,6 +576,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.externalFileOpenMode = ExternalFileOpenPreferenceModel.mode(
             at: externalFileOpenModePopup.indexOfSelectedItem
         )
+        settings.workspaceOpenInNewTab = workspaceNewTabCheck.state == .on
         settings.snapshotIntervalSeconds = Int(snapshotIntervalField.stringValue) ?? 30
         settings.defaultEncoding = DocumentEncodingPolicy.defaultEncoding(
             rawValue: defaultEncodingPopup.titleOfSelectedItem ?? DocumentEncodingPolicy.utf8.rawValue

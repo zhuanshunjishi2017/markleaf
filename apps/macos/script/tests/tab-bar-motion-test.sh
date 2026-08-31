@@ -18,7 +18,8 @@ require_block_contains() {
   local end="$2"
   local text="$3"
   local message="$4"
-  if ! sed -n "/$start/,/$end/p" "$TAB_BAR" | grep -Fq "$text"; then
+  # grep -q 提前退出会在 pipefail 下触发 SIGPIPE；读取全部输入再判断。
+  if ! sed -n "/$start/,/$end/p" "$TAB_BAR" | grep -F "$text" > /dev/null; then
     echo "FAIL: $message" >&2
     exit 1
   fi
