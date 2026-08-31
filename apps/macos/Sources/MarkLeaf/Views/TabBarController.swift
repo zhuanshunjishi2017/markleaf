@@ -174,7 +174,7 @@ final class TabBarController: NSView {
             isDirty: tab.isDirty,
             isSuspended: tab.isSuspended,
             recoveryUnavailable: tab.recoveryUnavailable,
-            toolTip: tab.path ?? tab.title,
+            toolTip: [tab.path ?? tab.title, tab.lastError].compactMap { $0 }.joined(separator: "\n"),
             animationDuration: duration,
             accessibilityTitle: tab.path ?? tab.title
         )

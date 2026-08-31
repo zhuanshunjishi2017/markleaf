@@ -1048,6 +1048,22 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 立即补写一次恢复快照（切换无路径脏标签等场景）。
+    func flushRecoverySnapshotNow(completion: ((Bool) -> Void)? = nil) {
+        guard isReady, isDirty else { completion?(false); return }
+        requestVersionedSnapshot { [weak self] result in
+            guard let self, case .success(let snapshot) = result else { completion?(false); return }
+            RecoveryService.shared.writeSnapshot(
+                documentId: self.documentId,
+                path: self.documentURL?.path,
+                markdown: snapshot.markdown,
+                revision: self.revision,
+                displayName: self.documentURL?.lastPathComponent ?? self.windowTitle
+            )
+            completion?(true)
+        }
+    }
+
     private func requestVersionedSnapshot(
         completion: @escaping (Result<EditorSnapshot, Error>) -> Void
     ) {

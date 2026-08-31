@@ -260,9 +260,31 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// 切换前的文档就地保存/确认处理（Task 16 完整实现）。
+    /// 切换前处理旧标签；切换不弹保存确认，失败只在标签上留痕。
     private func performTabSwitchSave(of tabID: DocumentTabID?) {
-        _ = tabID
+        guard let windowSession, let tabID,
+              let tab = windowSession.tabStore.tab(withID: tabID),
+              let session = windowSession.session(for: tabID) else { return }
+        let action = TabSwitchSavePolicy.action(
+            isDirty: session.isDirty,
+            hasPath: session.documentURL != nil,
+            autoSaveOnSwitch: SettingsService.shared.settings.saveOnDocumentSwitch
+        )
+        switch action {
+        case .nothing:
+            break
+        case .save:
+            tab.lastError = nil
+            session.saveDocument { [weak self, weak tab] success in
+                guard let self, let tab else { return }
+                if !success {
+                    tab.lastError = L10n.t("自动保存失败")
+                    self.tabBarController?.reload()
+                }
+            }
+        case .snapshotOnly:
+            session.flushRecoverySnapshotNow()
+        }
     }
 
     /// 状态栏、侧栏、大纲、查找面板全部跟随活动标签会话。

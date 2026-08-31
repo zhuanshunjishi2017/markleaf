@@ -29,6 +29,7 @@ final class DocumentTab {
     var lastActivatedAt = Date()
     var isSuspended = false
     var recoveryUnavailable = false
+    var lastError: String?
 
     init(
         tabID: DocumentTabID = DocumentTabID(),
