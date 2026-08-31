@@ -44,5 +44,12 @@ require "$SIDEBAR" 'lastColumnOnlyAutoresizingStyle' \
   'the single table column must stretch to fill the sidebar width'
 require "$SIDEBAR" 'column.resizingMask = .autoresizingMask' \
   'the name column must opt into autoresizing so the row cell spans the panel'
+require_block_contains \
+  'class WorkspaceTreeView: NSOutlineView' \
+  'func rebind(to session: EditorSession)' \
+  'sizeLastColumnToFit()' \
+  'every layout pass must re-fit the column so no dead space trails the date'
+require "$SIDEBAR" 'intercellSpacing = NSSize(width: 0' \
+  'horizontal inter-cell spacing must not shave width off the row'
 
 echo "PASS"

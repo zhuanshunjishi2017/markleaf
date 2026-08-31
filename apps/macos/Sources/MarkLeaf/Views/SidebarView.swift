@@ -518,6 +518,7 @@ enum SidebarTreePresentation {
         outlineView.selectionHighlightStyle = .sourceList
         outlineView.rowHeight = 26
         outlineView.backgroundColor = .clear
+        outlineView.intercellSpacing = NSSize(width: 0, height: 2)
         // 单列场景必须保证列宽吃满表格：uniform 模式初始化阶段可能留出
         // 尾部空白，把行内可用宽度挤窄；lastColumn 负责吸收全部剩余宽度。
         outlineView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
@@ -553,6 +554,13 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         registerForDraggedTypes([.fileURL, Self.localDragPasteboardType])
         setDraggingSourceOperationMask(.move, forLocal: true)
         setDraggingSourceOperationMask(.copy, forLocal: false)
+    }
+
+    override func layout() {
+        super.layout()
+        // 列宽只在表格尺寸变化时自适应，初始布局可能错过；
+        // 每次布局强制最后一列吃满，消除日期右侧的死宽度。
+        sizeLastColumnToFit()
     }
 
     func rebind(to session: EditorSession) {
