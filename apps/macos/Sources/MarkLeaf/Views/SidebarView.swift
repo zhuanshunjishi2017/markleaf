@@ -518,7 +518,9 @@ enum SidebarTreePresentation {
         outlineView.selectionHighlightStyle = .sourceList
         outlineView.rowHeight = 26
         outlineView.backgroundColor = .clear
-        outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        // 单列场景必须保证列宽吃满表格：uniform 模式初始化阶段可能留出
+        // 尾部空白，把行内可用宽度挤窄；lastColumn 负责吸收全部剩余宽度。
+        outlineView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
     }
 }
 
@@ -541,6 +543,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
         column.title = ""
+        column.resizingMask = .autoresizingMask
         addTableColumn(column)
         outlineTableColumn = column
         headerView = nil
@@ -961,7 +964,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
             ? SidebarTreePresentation.selectedRowFont
             : NSFont.systemFont(ofSize: 13, weight: .medium)
         cell.folderLabel.stringValue = Self.folderName(for: entry, root: session?.workspaceRoot)
-        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.formatCompact(
+        cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(
             Self.modificationDate(of: entry.path)
         )
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)

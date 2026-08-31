@@ -37,16 +37,10 @@ SETTINGS="$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift"
 require "$SETTINGS" 'var workspaceWidth = 230' \
   'the workspace sidebar width must stay at its original default'
 
-SESSION="$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceSearch.swift"
 SIDEBAR="$ROOT_DIR/Sources/MarkLeaf/Views/SidebarView.swift"
-require "$SESSION" 'static func formatCompact(_ date: Date' \
-  'the time formatter must offer a compact style'
-require "$SESSION" 'compactMonthDayFormatter' \
-  'compact style must render short month-day dates'
-require_block_contains \
-  'private func listCell' \
-  'private static func folderName' \
-  'WorkspaceDocumentTimeFormatter.formatCompact(' \
-  'the list cell must use the compact time to give the title more width'
+require "$SIDEBAR" 'lastColumnOnlyAutoresizingStyle' \
+  'the single table column must stretch to fill the sidebar width'
+require "$SIDEBAR" 'column.resizingMask = .autoresizingMask' \
+  'the name column must opt into autoresizing so the row cell spans the panel'
 
 echo "PASS"
