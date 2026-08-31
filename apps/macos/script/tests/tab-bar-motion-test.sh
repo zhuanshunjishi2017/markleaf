@@ -22,5 +22,6 @@ require 'dragPlaceholder' 'dragging must leave a stable placeholder slot'
 require 'draggingCell' 'dragging must keep a floating cell separate from the stack'
 require 'setFrameOrigin' 'the lifted tab must follow the pointer continuously'
 require 'dragStartOffset' 'the floating tab must preserve the grab point'
+require 'acceptsFirstMouse' 'the first press on a tab must be eligible to start a drag'
 
 echo "PASS"

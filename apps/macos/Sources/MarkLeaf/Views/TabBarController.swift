@@ -452,6 +452,10 @@ final class TabCellView: NSView {
 
     @objc private func closeClicked() { onClose?() }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
     func prepareForInsertion() {
         alphaValue = 0
         layer?.transform = CATransform3DMakeScale(0.96, 0.96, 1)
