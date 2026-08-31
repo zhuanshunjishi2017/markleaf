@@ -14,7 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = NativeMenuBuilder().build()
 
         // 配置完成后再创建唯一初始窗口；早期 Finder 文件只会作为初始加载意图缓存。
-        AppWindowManager.shared.completeBootstrapAndEnsureInitialWindow()
+        let explicitFile = EditorSession.argumentValue("--open")
+        if !AppWindowManager.shared.restoreFullSession(explicitFile: explicitFile) {
+            AppWindowManager.shared.completeBootstrapAndEnsureInitialWindow()
+        }
 
         // 编辑器样式就绪后刷新样式/主题菜单；设置变更后广播到所有窗口
         AppWindowManager.shared.primarySession?.onStylesReady = {

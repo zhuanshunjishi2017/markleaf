@@ -160,6 +160,44 @@ final class AppWindowManager {
         }
     }
 
+    @discardableResult
+    func restoreFullSession(explicitFile: String?) -> Bool {
+        guard explicitFile == nil, SettingsService.shared.settings.startupAction == .restoreSession else { return false }
+        let loaded = SessionStore.shared.loadLatest()
+        guard let manifest = loaded.manifest, !manifest.windows.isEmpty else { return false }
+        _ = startupActionState.consume()
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let frames = WindowFrameRestorationPolicy.stagger(manifest.windows.map { record in
+            let frame = CGRect(x: record.frameX ?? 100, y: record.frameY ?? 100, width: record.frameWidth ?? 1100, height: record.frameHeight ?? 760)
+            return WindowFrameRestorationPolicy.constrain(frame, screens: screens)
+        })
+        for (index, record) in manifest.windows.enumerated() {
+            let workspace = WorkspaceContext()
+            if let path = record.workspacePath { workspace.load(path) }
+            let windowSession = WindowSession(windowID: record.windowID, workspace: workspace)
+            let ordered = record.tabOrder.compactMap { id in record.tabs.first { $0.tabID == id } } + record.tabs.filter { !record.tabOrder.contains($0.tabID) }
+            for item in ordered {
+                let tab = DocumentTab(tabID: DocumentTabID(item.tabID), path: item.path, title: item.title, encoding: item.encoding, newLine: item.newLine, untitledSequence: item.untitledSequence)
+                tab.isDirty = item.isDirty; tab.contentRevision = item.revision
+                tab.fingerprintModificationSeconds = item.fingerprintModificationSeconds; tab.fingerprintSize = item.fingerprintSize
+                tab.cursorPosition = item.cursorPosition; tab.selectionAnchor = item.selectionAnchor; tab.selectionHead = item.selectionHead
+                tab.scrollTop = item.scrollTop; tab.snapshotFileName = item.snapshotFileName
+                windowSession.tabStore.append(tab, activate: false)
+            }
+            guard !windowSession.tabStore.tabs.isEmpty else { continue }
+            windowSession.tabStore.activate(record.activeTabID.map(DocumentTabID.init) ?? windowSession.tabStore.tabs[0].tabID)
+            let controller = EditorWindowController(session: EditorSession(workspace: workspace))
+            controller.windowSession = windowSession
+            windowControllers.append(controller); windowSessions[controller] = windowSession
+            controller.onWindowClose = { [weak self] closed in
+                self?.windowControllers.removeAll { $0 === closed }; self?.windowSessions.removeValue(forKey: closed)
+            }
+            if index < frames.count { controller.window?.setFrame(frames[index], display: false) }
+            controller.showWindow(nil); controller.restoreInitialTabIfNeeded()
+        }
+        return !windowControllers.isEmpty
+    }
+
     var primarySession: EditorSession? {
         windowControllers.first?.windowSession?.activeTabSession
     }

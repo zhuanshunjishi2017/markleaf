@@ -114,6 +114,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         return session
     }
 
+    func restoreInitialTabIfNeeded() {
+        guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
+        let session = ensureEditor(for: tab)
+        if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
+            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty)
+        } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
+            session.openInitialDocument(prepared: prepared)
+        } else {
+            session.newDocument()
+        }
+        editorHostView?.show(tabID: tab.tabID, animated: false, reduceMotion: true)
+        tabBarController?.reload()
+    }
+
     /// 打开文件为标签：去重命中则激活，未命中则建标签并加载。
     func openFileInTab(_ url: URL) {
         guard let windowSession else { return }
