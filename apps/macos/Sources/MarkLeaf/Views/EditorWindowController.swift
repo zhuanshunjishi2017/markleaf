@@ -172,7 +172,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
         if windowSession.session(for: id) == nil {
             if let tab = windowSession.tabStore.tab(withID: id) {
-                _ = ensureEditor(for: tab)
+                rebuildSuspendedTab(tab)
             }
         }
         editorHostView?.show(
@@ -183,6 +183,33 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         rebindActiveSessionUI()
         tabBarController?.reload()
         applyStatusBarContents()
+    }
+
+    func suspendBackgroundTabsIfNeeded() {
+        guard let windowSession else { return }
+        let order = TabMemoryPressurePolicy.suspensionOrder(
+            tabs: windowSession.tabStore.tabs,
+            activeTabID: windowSession.tabStore.activeTabID
+        )
+        for id in order {
+            guard let tab = windowSession.tabStore.tab(withID: id), !tab.isDirty,
+                  let session = windowSession.session(for: id) else { continue }
+            session.cleanupForClose()
+            windowSession.detach(id)
+            editorHostView?.detach(tabID: id)
+            tab.isSuspended = true
+        }
+        tabBarController?.reload()
+    }
+
+    private func rebuildSuspendedTab(_ tab: DocumentTab) {
+        let session = ensureEditor(for: tab)
+        tab.isSuspended = false
+        if let path = tab.path {
+            session.openDocument(at: URL(fileURLWithPath: path))
+        } else {
+            session.newDocument()
+        }
     }
 
     enum TabCloseReason {

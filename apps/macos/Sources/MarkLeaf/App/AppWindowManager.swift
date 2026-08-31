@@ -29,8 +29,22 @@ final class AppWindowManager {
     private var updateCheckController: UpdateCheckController?
     private var startupActionState = StartupActionState()
     private var bootstrapState = StartupBootstrapState()
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
 
     init() {}
+
+    func startMemoryPressureMonitoring() {
+        guard memoryPressureSource == nil else { return }
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in self?.suspendBackgroundTabsUnderPressure() }
+        source.setCancelHandler { }
+        source.resume()
+        memoryPressureSource = source
+    }
+
+    func suspendBackgroundTabsUnderPressure() {
+        windowControllers.forEach { $0.suspendBackgroundTabsIfNeeded() }
+    }
 
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
         let windowSession = WindowSession()

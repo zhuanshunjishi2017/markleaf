@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         SettingsService.shared.load()
+        AppWindowManager.shared.startMemoryPressureMonitoring()
         installAppIcon()
         // 文件关联：勾选即把 MarkLeaf 设为对应类型默认打开程序（取消还原）
         FileAssociationService.shared.apply(settings: SettingsService.shared.settings)
