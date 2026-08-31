@@ -1155,6 +1155,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         exitFocusMode()
         session.cleanupForClose()
         onWindowClose?(self)
+        if TerminationTransactionPolicy.windowCloseMayMutateSession(isTerminationCommitted: AppWindowManager.shared.isTerminationCommitted) {
+            do { try SessionStore.shared.commit(manifest: AppWindowManager.shared.buildSessionManifest()) }
+            catch { AppLog.warning("关窗会话提交失败: \(error.localizedDescription)") }
+        }
     }
 
     func windowDidResize(_ notification: Notification) {

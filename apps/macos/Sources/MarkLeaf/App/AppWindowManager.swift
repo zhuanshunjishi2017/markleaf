@@ -30,6 +30,8 @@ final class AppWindowManager {
     private var startupActionState = StartupActionState()
     private var bootstrapState = StartupBootstrapState()
     private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private(set) var isTerminationCommitted = false
+    private lazy var sessionScheduler = SessionWriteScheduler(store: .shared)
 
     init() {}
 
@@ -123,9 +125,30 @@ final class AppWindowManager {
                 if !started { finish(.cancel) }
             }
         }
-        SequentialDocumentDispositionQueue.run(requests) { result in
-            completion(result == .proceed)
+        SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
+            guard result == .proceed, let self else { completion(false); return }
+            self.sessionScheduler.manifestProvider = { [weak self] in self?.buildSessionManifest() }
+            self.sessionScheduler.flushNow(reason: .termination) { [weak self] _ in
+                guard let self else { completion(true); return }
+                do { try SessionStore.shared.commit(manifest: self.buildSessionManifest()) }
+                catch { AppLog.error("退出会话提交失败: \(error.localizedDescription)") }
+                self.isTerminationCommitted = true
+                completion(true)
+            }
         }
+    }
+
+    func buildSessionManifest() -> SessionManifest {
+        let previous = SessionStore.shared.loadLatest().manifest
+        let windows = windowControllers.compactMap { controller -> SessionWindowRecord? in
+            guard let session = windowSessions[controller] else { return nil }
+            let tabs = session.tabStore.tabs.map { tab in
+                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, scrollTop: tab.scrollTop, snapshotFileName: tab.snapshotFileName)
+            }
+            let frame = controller.window?.frame
+            return SessionWindowRecord(windowID: session.windowID, frameX: frame.map { Double($0.origin.x) }, frameY: frame.map { Double($0.origin.y) }, frameWidth: frame.map { Double($0.size.width) }, frameHeight: frame.map { Double($0.size.height) }, workspacePath: session.workspace.root, sidebarVisible: controller.session.sidebarVisible, sidebarTab: controller.session.sidebarTabIndex == 1 ? "outline" : "workspace", sidebarWidth: SettingsService.shared.settings.workspaceWidth, outlineDetached: controller.session.outlineDetached, outlineWidth: SettingsService.shared.settings.outlineWidth, statusBarVisible: controller.session.statusBarVisible, tabOrder: tabs.map(\.tabID), activeTabID: session.tabStore.activeTabID?.rawValue, tabs: tabs)
+        }
+        return SessionManifest(schemaVersion: SessionManifestCodec.currentSchemaVersion, generation: (previous?.generation ?? 0) + 1, savedAt: Date(), windows: windows)
     }
 
     /// 在设置、图标、文件关联和菜单完成配置后，建立唯一的初始窗口。
