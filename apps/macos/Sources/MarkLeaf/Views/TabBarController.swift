@@ -28,6 +28,10 @@ final class TabBarController: NSView {
     private var reorderingTabID: DocumentTabID?
     private var isReordering = false
     private var motionGeneration = 0
+    private var draggingCell: TabCellView?
+    private var dragPlaceholder: NSView?
+    private var dragSourceIndex: Int?
+    private var dragStartOffset = NSPoint.zero
 
     init(tabStore: TabStore) {
         self.tabStore = tabStore
@@ -118,6 +122,7 @@ final class TabBarController: NSView {
     }
 
     func reload() {
+        guard !isReordering else { return }
         motionGeneration += 1
         let generation = motionGeneration
         let existing = Set(cellsByTab.keys)
@@ -225,43 +230,79 @@ final class TabBarController: NSView {
 
     // MARK: - 拖拽重排
 
-    func beginReorder(from cell: TabCellView) {
+    func beginReorder(from cell: TabCellView, at windowPoint: NSPoint) {
         guard isReordering == false else { return }
+        guard let id = cell.tabID,
+              let source = tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
+        let initialFrame = cell.convert(cell.bounds, to: self)
+        let localPoint = convert(windowPoint, from: nil)
+        let placeholder = NSView(frame: .zero)
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        placeholder.wantsLayer = true
+
         isReordering = true
-        reorderingTabID = cell.tabID
+        reorderingTabID = id
+        draggingCell = cell
+        dragPlaceholder = placeholder
+        dragSourceIndex = source
+        dragStartOffset = NSPoint(
+            x: localPoint.x - initialFrame.minX,
+            y: localPoint.y - initialFrame.minY
+        )
+
+        stack.removeArrangedSubview(cell)
+        cell.removeFromSuperview()
+        stack.insertArrangedSubview(placeholder, at: source)
+        addSubview(cell)
+        cell.translatesAutoresizingMaskIntoConstraints = true
+        cell.frame = initialFrame
+        cell.setFrameOrigin(initialFrame.origin)
+        cell.needsLayout = true
         cell.setLifted(true, animated: !reduceMotion)
     }
 
     func dragReorder(to windowPoint: NSPoint) {
-        guard isReordering, let id = reorderingTabID,
-              let source = tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
+        guard isReordering, let cell = draggingCell, let placeholder = dragPlaceholder else { return }
         let local = convert(windowPoint, from: nil)
+        cell.setFrameOrigin(NSPoint(
+            x: local.x - dragStartOffset.x,
+            y: local.y - dragStartOffset.y
+        ))
         let target = targetIndex(for: local)
-        guard target != source else { return }
+        let current = stack.arrangedSubviews.firstIndex(of: placeholder) ?? 0
+        guard target != current else { return }
         let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
-        let cell = cellsByTab[id]
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             context.allowsImplicitAnimation = duration > 0
-            if let cell {
-                stack.removeArrangedSubview(cell)
-                stack.insertArrangedSubview(cell, at: min(target, stack.arrangedSubviews.count))
-            }
+            stack.removeArrangedSubview(placeholder)
+            stack.insertArrangedSubview(placeholder, at: min(target, stack.arrangedSubviews.count))
+            stack.layoutSubtreeIfNeeded()
         })
     }
 
     func endReorder(at windowPoint: NSPoint) {
-        guard isReordering, let id = reorderingTabID else {
+        guard isReordering, let id = reorderingTabID,
+              let cell = draggingCell, let placeholder = dragPlaceholder else {
             isReordering = false
             reorderingTabID = nil
             return
         }
-        cellsByTab[id]?.setLifted(false, animated: !reduceMotion)
-        let source = tabStore.tabs.firstIndex(where: { $0.tabID == id })
+        let source = dragSourceIndex ?? tabStore.tabs.firstIndex(where: { $0.tabID == id })
         let target = targetIndex(for: convert(windowPoint, from: nil))
+        let placeholderIndex = stack.arrangedSubviews.firstIndex(of: placeholder) ?? target
+        stack.removeArrangedSubview(placeholder)
+        placeholder.removeFromSuperview()
+        cell.removeFromSuperview()
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        stack.insertArrangedSubview(cell, at: min(placeholderIndex, stack.arrangedSubviews.count))
+        cell.setLifted(false, animated: !reduceMotion)
         isReordering = false
         reorderingTabID = nil
-        if let source {
+        draggingCell = nil
+        dragPlaceholder = nil
+        dragSourceIndex = nil
+        if let source, source != target {
             onReorder?(source, target)
         }
     }
@@ -466,7 +507,7 @@ final class TabCellView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
             didDrag = true
-            controller?.beginReorder(from: self)
+            controller?.beginReorder(from: self, at: event.locationInWindow)
         }
         if didDrag {
             controller?.dragReorder(to: event.locationInWindow)
