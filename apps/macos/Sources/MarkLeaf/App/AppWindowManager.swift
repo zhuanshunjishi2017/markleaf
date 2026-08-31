@@ -33,7 +33,36 @@ final class AppWindowManager {
     private(set) var isTerminationCommitted = false
     private lazy var sessionScheduler = SessionWriteScheduler(store: .shared)
 
-    init() {}
+    init() {
+        sessionScheduler.onWriteFailure = { [weak self] tabID in
+            self?.markRecoveryUnavailable(tabID: DocumentTabID(tabID))
+        }
+        sessionScheduler.onSnapshotWritten = { [weak self] tabID, fileName in
+            self?.markRecoveryAvailable(tabID: DocumentTabID(tabID), snapshotFileName: fileName)
+        }
+    }
+
+    func markRecoveryUnavailable(tabID: DocumentTabID) {
+        for (_, windowSession) in windowSessions {
+            guard let tab = windowSession.tabStore.tab(withID: tabID) else { continue }
+            tab.recoveryUnavailable = true
+            windowSession.controller?.reloadTabBar()
+            if let session = windowSession.activeTabSession, windowSession.tabStore.activeTabID == tabID {
+                session.statusText = L10n.t("恢复保护暂时不可用")
+            }
+            return
+        }
+    }
+
+    func markRecoveryAvailable(tabID: DocumentTabID, snapshotFileName: String? = nil) {
+        for (_, windowSession) in windowSessions {
+            guard let tab = windowSession.tabStore.tab(withID: tabID) else { continue }
+            tab.recoveryUnavailable = false
+            if let snapshotFileName { tab.snapshotFileName = snapshotFileName }
+            windowSession.controller?.reloadTabBar()
+            return
+        }
+    }
 
     func startMemoryPressureMonitoring() {
         guard memoryPressureSource == nil else { return }

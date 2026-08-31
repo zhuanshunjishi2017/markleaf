@@ -167,7 +167,9 @@ final class TabBarController: NSView {
 
     private func configure(_ cell: TabCellView, for tab: DocumentTab) {
         let isActive = tabStore.activeTabID == tab.tabID
-        let duration = TabAnimationPolicy.duration(for: .activeState, reduceMotion: reduceMotion)
+        let duration = tab.recoveryUnavailable
+            ? TabAnimationPolicy.duration(for: .statusMark, reduceMotion: reduceMotion)
+            : TabAnimationPolicy.duration(for: .activeState, reduceMotion: reduceMotion)
         cell.configure(
             title: tab.title,
             isActive: isActive,
@@ -415,7 +417,7 @@ final class TabCellView: NSView {
         accessibilityTitle: String
     ) {
         self.isActive = isActive
-        titleLabel.stringValue = title
+        titleLabel.stringValue = recoveryUnavailable ? "\(title) ⚠︎" : title
         self.toolTip = toolTip
         dirtyDot.isHidden = !isDirty
         setAccessibilityLabel(
@@ -431,7 +433,9 @@ final class TabCellView: NSView {
             self.layer?.backgroundColor = (isActive
                 ? NSColor.controlBackgroundColor
                 : NSColor.clear).cgColor
-            self.titleLabel.textColor = isActive ? .labelColor : .secondaryLabelColor
+            self.titleLabel.textColor = recoveryUnavailable
+                ? .systemOrange
+                : (isActive ? .labelColor : .secondaryLabelColor)
         }
         guard animationDuration > 0 else { applyColors(); return }
         NSAnimationContext.runAnimationGroup { context in

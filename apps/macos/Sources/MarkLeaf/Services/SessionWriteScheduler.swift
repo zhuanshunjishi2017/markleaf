@@ -70,6 +70,10 @@ final class SessionWriteScheduler {
                 store.pruneOrphanSnapshots(keeping: manifest)
             }
             completion(true)
-        } catch { completion(false) }
+        } catch {
+            let failedIDs = Set(pending.keys)
+            failedIDs.forEach { onWriteFailure?($0) }
+            completion(false)
+        }
     }
 }

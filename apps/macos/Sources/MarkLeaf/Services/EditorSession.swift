@@ -163,6 +163,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var onStylesReady: (() -> Void)?
     var onExportComplete: ((Bool) -> Void)?
     var onViewStateChanged: (() -> Void)?
+    var onRecoveryWriteFailure: (() -> Void)?
+    var onRecoveryWriteSuccess: (() -> Void)?
 
     // 视图状态（对应 Windows 视图菜单）
     var sidebarVisible = true
@@ -918,12 +920,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         // 恢复快照：把当前内容写入 Recovery 目录
         requestSnapshot { [weak self] result in
             guard let self, case .success(let markdown) = result else { return }
-            RecoveryService.shared.writeSnapshot(
+            let written = RecoveryService.shared.writeSnapshot(
                 documentId: self.documentId,
                 path: self.documentURL?.path,
                 markdown: markdown,
                 revision: self.revision,
                 displayName: self.documentURL?.lastPathComponent)
+            written ? self.onRecoveryWriteSuccess?() : self.onRecoveryWriteFailure?()
         }
     }
 
@@ -1078,14 +1081,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard isReady, isDirty else { completion?(false); return }
         requestVersionedSnapshot { [weak self] result in
             guard let self, case .success(let snapshot) = result else { completion?(false); return }
-            RecoveryService.shared.writeSnapshot(
+            let written = RecoveryService.shared.writeSnapshot(
                 documentId: self.documentId,
                 path: self.documentURL?.path,
                 markdown: snapshot.markdown,
                 revision: self.revision,
                 displayName: self.documentURL?.lastPathComponent ?? self.windowTitle
             )
-            completion?(true)
+            if written {
+                self.onRecoveryWriteSuccess?()
+            } else {
+                self.onRecoveryWriteFailure?()
+            }
+            completion?(written)
         }
     }
 
