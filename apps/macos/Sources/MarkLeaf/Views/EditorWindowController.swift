@@ -742,6 +742,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyStatusBarContents() {
+        let hasActiveTab = windowSession?.activeTabSession != nil
+        guard StatusBarEmptyStatePolicy.shouldShowDocumentItems(hasActiveTab: hasActiveTab) else {
+            // 全部标签已关闭：清空并隐藏文档相关项，仅保留窗口级控件。
+            statusLabel.stringValue = ""
+            statusLabel.isHidden = true
+            statusClearTimer?.invalidate()
+            characterCountButton.isHidden = true
+            blockTypeLabel.isHidden = true
+            positionLabel.isHidden = true
+            encodingButton.isHidden = true
+            newLineButton.isHidden = true
+            modeButton.isHidden = true
+            zoomButton.isHidden = true
+            viewToggleButton.isHidden = !SettingsService.shared.settings.statusBar.sidebarToggleVisible
+            return
+        }
         let session = activeSession
         let settings = SettingsService.shared.settings
         let status = settings.statusBar

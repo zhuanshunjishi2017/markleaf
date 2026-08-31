@@ -29,3 +29,11 @@ enum StatusBarModePolicy {
         isSourceMode ? "源码" : "可视化"
     }
 }
+
+enum StatusBarEmptyStatePolicy {
+    /// 全部标签关闭后，文档相关项（字符、行列、编码等）全部隐藏；
+    /// 侧边栏开关属于窗口级控件，不受影响。
+    static func shouldShowDocumentItems(hasActiveTab: Bool) -> Bool {
+        hasActiveTab
+    }
+}
