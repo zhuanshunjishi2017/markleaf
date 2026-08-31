@@ -224,6 +224,10 @@ export class SourceEditor {
     this.focus()
   }
 
+  setScrollTop(top: number): void {
+    this.view.scrollDOM.scrollTop = Math.max(0, top)
+  }
+
   setSelectionToRenderedLineEnd(lineNumber: number, center = false): void {
     const line = this.lineForRenderedLine(lineNumber)
     this.setSelectionToLine(line, center)

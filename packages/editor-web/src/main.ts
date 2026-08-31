@@ -24,12 +24,14 @@ import {
   setBlockTypeLabels,
   setEditorSharedStrings,
   restoreVisualSelection,
+  restoreEditorScroll,
   renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
 import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
+import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -1200,7 +1202,7 @@ async function handleMessage(value: unknown): Promise<void> {
     case 'loadDocument': {
       formatPainter.cancel()
       updateFormatPainterCursor()
-      const payload = message.payload as { markdown?: unknown; documentType?: unknown; readOnly?: unknown }
+      const payload = message.payload as { markdown?: unknown; documentType?: unknown; readOnly?: unknown; initialDirty?: unknown }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
         return
@@ -1236,10 +1238,24 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       suppressUpdate = false
       send('documentLoaded', undefined, message.requestId)
+      if (payload.initialDirty === true) send('dirtyChanged', { dirty: true })
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
       sendOutlineSelectionFromCursor()
+      break
+    }
+    case 'restoreViewport': {
+      if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break
+      const payload = message.payload
+      if (payload.selection) {
+        if (sourceMode) sourceEditor?.setSelection(payload.selection.from, payload.selection.to)
+        else if (editor) restoreVisualSelection(editor, payload.selection)
+      }
+      if (typeof payload.scrollTop === 'number' && payload.scrollTop >= 0) {
+        if (sourceMode) sourceEditor?.setScrollTop(payload.scrollTop)
+        else restoreEditorScroll(editorMount, payload.scrollTop)
+      }
       break
     }
     case 'setDocumentType': {

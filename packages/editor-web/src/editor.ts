@@ -2608,6 +2608,12 @@ export function resetEditorViewport(editor: Editor, editorMount: HTMLElement): v
   window.requestAnimationFrame(() => window.requestAnimationFrame(reset))
 }
 
+export function restoreEditorScroll(editorMount: HTMLElement, top: number): void {
+  const value = Math.max(0, top)
+  editorMount.scrollTop = value
+  scrollPageTo(value)
+}
+
 function scrollPageTo(top: number): void {
   const scrollingElement = document.scrollingElement ?? document.documentElement
   scrollingElement.scrollTop = top
