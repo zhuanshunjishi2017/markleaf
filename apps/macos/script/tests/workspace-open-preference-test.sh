@@ -30,6 +30,9 @@ require "$SETTINGS" 'forKey: .workspaceOpenInNewTab' \
 require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceEntry' \
   'settings.workspaceOpenInNewTab' \
   'workspace entry opening must honor the new-tab preference'
+require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceEntry' \
+  'openDocumentBypassingRouter(at: url)' \
+  'current-tab mode must replace in place, not re-enter the new-tab router'
 require "$SETTINGS" '在当前标签中打开' \
   'the workspace popup must offer always-current-tab wording'
 require "$PREFS" 'workspaceOpenModePopup' \

@@ -1,10 +1,9 @@
 import Foundation
 
-/// 红绿灯/关闭窗口动作的标签页语义：关闭文档标签，但保留原生窗口容器。
+/// 红绿灯与标签页两种关闭动作的窗口语义。
 enum WindowClosePolicy {
-    static func shouldCloseAllTabs(tabCount: Int) -> Bool {
-        tabCount > 0
-    }
+    /// 红绿灯关闭 = 关闭窗口本身；窗口内标签先走保存确认队列。
+    static let closesWindowOnTrafficLight = true
 
     static let keepsWindowAfterClosingAllTabs = true
 }

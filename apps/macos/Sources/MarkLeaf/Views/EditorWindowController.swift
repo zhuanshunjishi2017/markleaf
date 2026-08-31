@@ -1225,11 +1225,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             return true
         }
         guard let windowSession, !windowSession.tabStore.tabs.isEmpty else { return true }
+        // 红绿灯 = 关闭窗口本身；先对所有标签走保存确认，再真正关窗。
+        guard WindowClosePolicy.closesWindowOnTrafficLight else { return true }
         DispatchQueue.main.async { [weak self] in
             guard let self, let windowSession = self.windowSession else { return }
-            guard WindowClosePolicy.shouldCloseAllTabs(tabCount: windowSession.tabStore.tabs.count) else { return }
-            let ids = windowSession.tabStore.tabs.map(\.tabID)
-            self.closeTabs(ids)
+            let requests: [SequentialDocumentDispositionQueue.Request] = windowSession.tabStore.tabs.compactMap { tab in
+                guard let session = windowSession.session(for: tab.tabID) else { return nil }
+                return { completion in
+                    _ = session.requestDisposition(for: .closeWindow, completion: completion)
+                }
+            }
+            SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
+                guard result == .proceed else { return }
+                self?.closeWindowForReal()
+            }
         }
         return false
     }

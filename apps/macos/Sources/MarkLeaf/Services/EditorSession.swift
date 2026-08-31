@@ -1692,14 +1692,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             return // 由侧边栏展开处理
         }
         let url = URL(fileURLWithPath: entry.path)
-        if let hook = workspace.openDocumentRequest {
-            if SettingsService.shared.settings.workspaceOpenInNewTab {
-                hook(url)
-            } else {
-                openDocument(at: url)
-            }
+        if SettingsService.shared.settings.workspaceOpenInNewTab,
+           let hook = workspace.openDocumentRequest {
+            hook(url)
         } else {
-            openDocument(at: url)
+            // 当前标签模式：绕过窗口级路由，原位替换当前标签文档（含保存确认）。
+            openDocumentBypassingRouter(at: url)
         }
     }
 

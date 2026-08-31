@@ -7,12 +7,8 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
-expect(WindowClosePolicy.shouldCloseAllTabs(tabCount: 3),
-       "red-button window close should target every open tab")
-expect(WindowClosePolicy.shouldCloseAllTabs(tabCount: 1),
-       "red-button window close should target the last open tab")
-expect(!WindowClosePolicy.shouldCloseAllTabs(tabCount: 0),
-       "an already empty editor has no tabs to close")
+expect(WindowClosePolicy.closesWindowOnTrafficLight,
+       "the red traffic-light button must close the window itself")
 expect(WindowClosePolicy.keepsWindowAfterClosingAllTabs,
        "closing all tabs should leave the native window open")
 

@@ -13,16 +13,22 @@ swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
 "$BUILD_DIR/window-close-policy-test"
 
 WINDOW="$ROOT_DIR/Sources/MarkLeaf/Views/EditorWindowController.swift"
-grep -Fq 'WindowClosePolicy.shouldCloseAllTabs' "$WINDOW" || {
-  echo "FAIL: window close delegate must route to the all-tabs policy" >&2
+grep -Fq 'WindowClosePolicy.closesWindowOnTrafficLight' "$WINDOW" || {
+  echo "FAIL: window close delegate must route to the traffic-light policy" >&2
   exit 1
 }
-grep -Fq 'self.closeTabs(ids)' "$WINDOW" || {
-  echo "FAIL: window close delegate must close every tab ID" >&2
+grep -Fq 'SequentialDocumentDispositionQueue.run' "$WINDOW" || {
+  echo "FAIL: window close must still run the save-prompt queue" >&2
   exit 1
 }
-if grep -Fq 'TabShortcutPolicy.closesWindow' "$WINDOW"; then
-  echo "FAIL: closing a tab must not close the native window" >&2
+if ! sed -n '/func windowShouldClose/,/private func closeWindowForReal/p' "$WINDOW" \
+     | grep -Fq 'closeWindowForReal()'; then
+  echo "FAIL: a passed save-queue must close the window itself" >&2
+  exit 1
+fi
+if sed -n '/func windowShouldClose/,/private func closeWindowForReal/p' "$WINDOW" \
+   | grep -Fq 'closeTabs(ids)'; then
+  echo 'FAIL: the red traffic-light button must not merely close tabs' >&2
   exit 1
 fi
 
