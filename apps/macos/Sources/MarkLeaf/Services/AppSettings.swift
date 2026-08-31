@@ -54,6 +54,18 @@ enum ExternalFileOpenPreferenceModel {
     }
 }
 
+enum StartupActionMigration {
+    static func migrate(rawValue: String?) -> AppSettings.StartupAction {
+        switch rawValue {
+        case AppSettings.StartupAction.newDocument.rawValue: return .newDocument
+        case AppSettings.StartupAction.openLastWorkspace.rawValue: return .openLastWorkspace
+        case AppSettings.StartupAction.restoreSession.rawValue: return .restoreSession
+        case "openLastWorkspaceAndFiles": return .restoreSession
+        default: return .restoreSession
+        }
+    }
+}
+
 struct AppSettings: Codable {
     var schemaVersion = 3
 
@@ -90,7 +102,9 @@ struct AppSettings: Codable {
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
         exportSettings.normalize()
-        startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
+        startupAction = StartupActionMigration.migrate(
+            rawValue: try container.decodeIfPresent(String.self, forKey: .startupAction)
+        )
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? false
         associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? false
         recordRecentFiles = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFiles) ?? true
@@ -177,7 +191,7 @@ struct AppSettings: Codable {
     static let defaultSourceCjkFontFamily = "PingFang SC"
 
     // 文件
-    var startupAction = StartupAction.newDocument
+    var startupAction = StartupAction.restoreSession
     // 默认不接管文件关联：只有用户主动勾选后才把 MarkLeaf 设为对应类型默认编辑器（对齐 Windows 默认 false）。
     var associateMarkdownFiles = false
     var associateTextFiles = false
@@ -217,6 +231,7 @@ struct AppSettings: Codable {
         case newDocument
         case openLastWorkspace
         case openLastWorkspaceAndFiles
+        case restoreSession
     }
 
     // MARK: - 数值边界（对齐 Windows PreferencesDialog NumericUpDown 范围）

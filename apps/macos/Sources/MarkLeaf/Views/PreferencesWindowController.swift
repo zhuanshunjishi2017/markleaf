@@ -122,7 +122,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         themeIDs = themes.map(\.id)
 
         // ---- 控件初值 ----
-        startupPopup.addItems(withTitles: [L10n.t("新建文档"), L10n.t("打开上次工作区"), L10n.t("打开上次工作区及文件")])
+        startupPopup.addItems(withTitles: [L10n.t("新建空白文档"), L10n.t("恢复最后工作区"), L10n.t("恢复完整会话")])
         startupPopup.selectItem(at: settings.startupAction == .newDocument ? 0
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         externalFileOpenModePopup.addItems(withTitles: ExternalFileOpenPreferenceModel.titles(language: settings.displayLanguage))
@@ -564,7 +564,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         if startupPopup.indexOfSelectedItem >= 0 {
             settings.startupAction = switch startupPopup.indexOfSelectedItem {
             case 1: .openLastWorkspace
-            case 2: .openLastWorkspaceAndFiles
+            case 2: .restoreSession
             default: .newDocument
             }
         }
