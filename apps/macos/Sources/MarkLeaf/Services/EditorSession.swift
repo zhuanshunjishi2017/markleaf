@@ -1897,7 +1897,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = L10n.f("确定要删除“%@”吗？", entry.name)
-        alert.informativeText = L10n.t("删除后可在废纸篓中恢复。")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("删除"))
         alert.addButton(withTitle: L10n.t("取消"))
