@@ -32,6 +32,7 @@ final class TabBarController: NSView {
     private var dragPlaceholder: NSView?
     private var dragSourceIndex: Int?
     private var dragStartOffset = NSPoint.zero
+    private var dragEventMonitor: Any?
 
     init(tabStore: TabStore) {
         self.tabStore = tabStore
@@ -83,6 +84,9 @@ final class TabBarController: NSView {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        if let monitor = dragEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     private var reduceMotion: Bool {
@@ -271,6 +275,22 @@ final class TabBarController: NSView {
         cell.setFrameOrigin(initialFrame.origin)
         cell.needsLayout = true
         cell.setLifted(true, animated: !reduceMotion)
+
+        // 拖拽会改变视图层级；改由窗口级监视器驱动后续事件，
+        // 不再依赖被移动的 cell 继续接收 mouseDragged/mouseUp。
+        dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            switch event.type {
+            case .leftMouseDragged:
+                guard event.window === self.window else { return event }
+                self.dragReorder(to: event.locationInWindow)
+            case .leftMouseUp:
+                self.endReorder(at: event.locationInWindow)
+            default:
+                break
+            }
+            return nil
+        }
     }
 
     func dragReorder(to windowPoint: NSPoint) {
@@ -294,6 +314,10 @@ final class TabBarController: NSView {
     }
 
     func endReorder(at windowPoint: NSPoint) {
+        if let monitor = dragEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            dragEventMonitor = nil
+        }
         guard isReordering, let id = reorderingTabID,
               let cell = draggingCell, let placeholder = dragPlaceholder else {
             isReordering = false

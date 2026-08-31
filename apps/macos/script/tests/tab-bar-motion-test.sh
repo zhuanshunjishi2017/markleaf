@@ -59,5 +59,16 @@ require_block_contains \
   'override func rightMouseDown(with event: NSEvent)' \
   'onActivate?()' \
   'a short press must still activate the tab'
+require 'addLocalMonitorForEvents' 'reordering must track events at window level, not via a reparented view'
+require_block_contains \
+  'func beginReorder(from cell: TabCellView, at windowPoint: NSPoint)' \
+  'func dragReorder(to windowPoint: NSPoint)' \
+  'dragEventMonitor = NSEvent.addLocalMonitorForEvents' \
+  'beginning a reorder must install the window-level drag monitor'
+require_block_contains \
+  'func endReorder(at windowPoint: NSPoint)' \
+  'private func targetIndex(for localPoint: NSPoint)' \
+  'NSEvent.removeMonitor' \
+  'ending a reorder must remove the drag monitor so state can never stick'
 
 echo "PASS"

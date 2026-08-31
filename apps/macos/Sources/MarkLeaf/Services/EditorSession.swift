@@ -293,6 +293,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
             applyStyles()
+            // 揭示前同步打好主题底色；applySystemAppearance 里的调用是异步的，
+            // 不能覆盖 ready → reveal 之间的首帧。
+            applyScrollbarAppearance(dark: currentThemeIsDark)
             // 对齐 Windows 1.1.3：前端就绪后再揭示 WebView，避免深色模式白闪
             (webView?.superview as? EditorWebContainerView)?.revealEditor()
             if !didLoadInitialDocument {
