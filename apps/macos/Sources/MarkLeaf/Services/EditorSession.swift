@@ -1695,6 +1695,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             startExternalChangeWatch(for: destination)
             SettingsService.shared.update { $0.lastFile = destination.path }
         }
+        workspace.onEntryMoved?(sourceURL.path, destination.path)
         rescanWorkspace()
         return destination
     }
@@ -1859,11 +1860,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 statusText = destination.lastPathComponent
                 SettingsService.shared.update { $0.lastFile = destination.path }
             }
+            workspace.onEntryMoved?(source.path, destination.path)
             rescanWorkspace()
             statusText = L10n.f("已重命名为 %@", name)
         } catch {
             presentError(L10n.f("重命名失败：%@", error.localizedDescription))
         }
+    }
+
+    func adoptRenamedFile(from oldURL: String, to newURL: String) {
+        guard documentURL?.standardizedFileURL.path == URL(fileURLWithPath: oldURL).standardizedFileURL.path else { return }
+        stopExternalChangeWatch()
+        documentURL = URL(fileURLWithPath: newURL)
+        statusText = documentURL?.lastPathComponent ?? statusText
+        startExternalChangeWatch(for: documentURL!)
     }
 
     func deleteWorkspaceEntry(_ entry: WorkspaceEntry) {

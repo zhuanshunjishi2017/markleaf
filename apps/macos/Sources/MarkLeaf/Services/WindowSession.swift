@@ -19,6 +19,12 @@ final class WindowSession {
         workspace.openDocumentRequest = { [weak self] url in
             self?.requestOpenFile(url)
         }
+        workspace.onEntryMoved = { [weak self] oldPath, newPath in
+            guard let self else { return }
+            let migrated = TabPathMigration.applyRename(store: self.tabStore, from: oldPath, to: newPath)
+            for id in migrated { self.session(for: id)?.adoptRenamedFile(from: oldPath, to: newPath) }
+            self.controller?.reloadTabBar()
+        }
     }
 
     /// 窗口内打开文件的回调：去重命中激活，未命中则由窗口层创建编辑器。

@@ -12,6 +12,7 @@ final class WorkspaceContext {
 
     var onChanged: (() -> Void)?
     var onEntryCreated: ((URL) -> Void)?
+    var onEntryMoved: ((String, String) -> Void)?
 
     /// 对话框宿主窗口（由窗口层注入）。
     var windowProvider: () -> NSWindow? = { nil }

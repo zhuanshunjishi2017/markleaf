@@ -114,6 +114,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         return session
     }
 
+    func reloadTabBar() { tabBarController?.reload() }
+
     func restoreInitialTabIfNeeded() {
         guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
         let session = ensureEditor(for: tab)
