@@ -699,8 +699,10 @@ extension EditorSession {
             return
         }
         switch command {
-        case "new": newDocument()
-        case "newPlainText": newDocument(kind: .plainText)
+        case "new":
+            if let newTabRequest { newTabRequest(.markdown) } else { newDocument() }
+        case "newPlainText":
+            if let newTabRequest { newTabRequest(.plainText) } else { newDocument(kind: .plainText) }
         case "open": openDocument()
         case "openReadOnly": openDocumentReadOnly()
         case "save": saveDocument()

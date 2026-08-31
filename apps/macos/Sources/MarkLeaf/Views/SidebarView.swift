@@ -408,9 +408,10 @@ final class SidebarView: NSView {
         session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
         session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
         session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
+        workspaceTree.rebind(to: session)
+        workspaceChanged()
         outlineChanged()
         outlineSelectionChanged()
-        updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
     }
 }
 
@@ -539,6 +540,11 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         registerForDraggedTypes([.fileURL, Self.localDragPasteboardType])
         setDraggingSourceOperationMask(.move, forLocal: true)
         setDraggingSourceOperationMask(.copy, forLocal: false)
+    }
+
+    func rebind(to session: EditorSession) {
+        self.session = session
+        reloadData(activePath: session.documentURL?.path)
     }
 
     func setListMode(_ listMode: Bool) {
@@ -987,7 +993,19 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu = contextMenu(for: event) else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, menuFor event: NSEvent) -> NSMenu? {
+        contextMenu(for: event)
+    }
+
+    private func contextMenu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
         guard let root = session?.workspaceRoot else { return nil }

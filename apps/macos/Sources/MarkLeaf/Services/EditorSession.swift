@@ -1428,6 +1428,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// 多标签路由：非 nil 时打开文件交由窗口去重处理。
     var openViaWindow: ((URL) -> Void)?
 
+    /// 多标签窗口中，“新建文档”菜单命令交由窗口创建一个新标签。
+    var newTabRequest: ((NewDocumentKind) -> Void)?
+
     private func loadPreparedDocument(_ prepared: PreparedDocument) {
         loadDocument(
             markdown: prepared.markdown,
@@ -1718,20 +1721,32 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: - 工作区条目操作（对应 C# MainForm.Workspace.Entries / Menus）
 
     func createWorkspaceFile(at directory: URL, kind: NewDocumentKind = .markdown) {
-        let fileName = Self.availableWorkspaceName(base: L10n.t(kind.defaultFileName), directory: directory)
+        let suggestedName = Self.availableWorkspaceName(base: L10n.t(kind.defaultFileName), directory: directory)
+        presentWorkspaceNameDialog(
+            title: L10n.t("新建文件"),
+            message: L10n.t("输入文件名："),
+            initialValue: suggestedName
+        ) { [weak self] requestedName in
+            guard let self, let requestedName else { return }
+            self.createWorkspaceFile(
+                named: Self.workspaceFileName(requestedName, kind: kind),
+                at: directory
+            )
+        }
+    }
+
+    private func createWorkspaceFile(named fileName: String, at directory: URL) {
         let url = directory.appendingPathComponent(fileName)
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            presentError(L10n.t("同名文件或文件夹已存在。"))
+            return
+        }
         do {
             try Data().write(to: url)
             openDocument(at: url)
             onWorkspaceEntryCreated?(url)
             rescanWorkspace()
             statusText = L10n.f("已创建文件 %@", fileName)
-            renameWorkspaceEntry(
-                WorkspaceEntry(name: fileName, path: url.path, isDirectory: false),
-                initialValue: fileName,
-                dialogTitle: L10n.t("新建文件"),
-                dialogMessage: L10n.t("输入新名称：")
-            )
         } catch {
             presentError(L10n.f("创建文件失败：%@", error.localizedDescription))
         }
@@ -1921,7 +1936,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         initialValue: String,
         completion: @escaping (String?) -> Void
     ) {
-        guard let window = webView?.window else {
+        guard let window = workspace.windowProvider() ?? webView?.window else {
             completion(nil)
             return
         }

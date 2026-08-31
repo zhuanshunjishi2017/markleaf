@@ -33,9 +33,9 @@ final class AppWindowManager {
     init() {}
 
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
-        let session = EditorSession()
-        let controller = EditorWindowController(session: session)
         let windowSession = WindowSession()
+        let session = EditorSession(workspace: windowSession.workspace)
+        let controller = EditorWindowController(session: session)
         windowSession.controller = controller
         let tab = DocumentTab(
             path: nil,
@@ -66,9 +66,9 @@ final class AppWindowManager {
     }
 
     func newWindow(preparedDocument: PreparedDocument) -> EditorWindowController {
-        let session = EditorSession()
-        let controller = EditorWindowController(session: session)
         let windowSession = WindowSession()
+        let session = EditorSession(workspace: windowSession.workspace)
+        let controller = EditorWindowController(session: session)
         windowSession.controller = controller
         let tab = DocumentTab(
             path: nil,
