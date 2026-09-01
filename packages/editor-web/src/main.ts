@@ -31,6 +31,7 @@ import {
 import { katexCss, renderMathInHtml } from './math'
 import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
+import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
 import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -1458,6 +1459,8 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing?: unknown
               colorSchemeCss?: unknown
               title?: unknown
+              keepTablesTogether?: unknown
+              keepHeadingsWithNextBlock?: unknown
             }
             try { options = JSON.parse(payload.text) as Record<string, unknown> } catch { break }
             const style = typeof options.style === 'string' ? options.style : 'serif'
@@ -1472,6 +1475,10 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
+            const pagination: ExportPaginationOptions = {
+              keepTablesTogether: format === 'pdf' && options.keepTablesTogether === true,
+              keepHeadingsWithNextBlock: format === 'pdf' && options.keepHeadingsWithNextBlock === true,
+            }
             const html = await generateExportHtml(
               style,
               format,
@@ -1483,6 +1490,7 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing,
               colorSchemeCss,
               title,
+              pagination,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -1706,7 +1714,11 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function renderEditorHtmlForExport(html: string, preserveEmptyParagraphs = false): string {
+function renderEditorHtmlForExport(
+  html: string,
+  preserveEmptyParagraphs = false,
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
+): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
   for (const caption of Array.from(parsed.body.querySelectorAll<HTMLElement>('figcaption.markleaf-figcaption'))) {
@@ -1735,7 +1747,7 @@ function renderEditorHtmlForExport(html: string, preserveEmptyParagraphs = false
     paragraph.insertBefore(labelElement, paragraph.firstChild)
   }
 
-  return parsed.body.innerHTML.replace(/\u2060/g, '')
+  return applyExportPagination(parsed.body.innerHTML, pagination)
 }
 
 function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
@@ -1840,12 +1852,17 @@ async function generateExportHtml(
   visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
 ): Promise<string> {
   const isPdf = format === 'pdf'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
-  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(renderMathInHtml(rawBodyHtml), isPdf).replace(
+  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
+    renderMathInHtml(rawBodyHtml),
+    isPdf,
+    pagination,
+  ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
@@ -1870,6 +1887,7 @@ ${baseCss}
 .markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
 ${colorSchemeCss}
 ${resolved.css}
+${exportPaginationCss}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;
