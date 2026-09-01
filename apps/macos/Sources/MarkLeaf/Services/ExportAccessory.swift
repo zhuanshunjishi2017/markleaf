@@ -15,6 +15,8 @@ struct ExportOptions {
     var pdfFooter = ""
     var pdfFooterAlignment = ""
     var headerFooterFontFamily = ""
+    var keepTablesTogether = true
+    var keepHeadingsWithNextBlock = true
 }
 
 /// 保存面板附属视图：格式/纸张/方向/边距/样式/页眉页脚（对应 Windows ExportDialog）。
