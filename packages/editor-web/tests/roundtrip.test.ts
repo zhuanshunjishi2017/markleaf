@@ -121,6 +121,20 @@ describe('GitHub alert blocks', () => {
     expect(output).toContain('> [!CAUTION]')
     expect(output).toContain('**content**')
   })
+
+  it('preserves separate paragraphs inside an alert', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '> [!NOTE]\n> 第一段。\n>\n> 第二段。')
+    editors.push(editor)
+
+    const alert = editor.state.doc.firstChild
+    expect(alert?.type.name).toBe('alert')
+    expect(alert?.childCount).toBe(2)
+    expect(alert?.child(0).textContent).toBe('第一段。')
+    expect(alert?.child(1).textContent).toBe('第二段。')
+    expect(getMarkdown(editor)).toContain('> 第一段。\n> \n> 第二段。')
+  })
 })
 
 describe('Markdown semantic round trip', () => {

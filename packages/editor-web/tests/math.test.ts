@@ -121,6 +121,46 @@ describe('math formulas', () => {
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
+  it('renders empty formulas with a visual placeholder and persists the placeholder syntax', () => {
+    const inline = makeEditor('')
+    expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
+    expect(inline.view.dom.querySelector('.markleaf-math-placeholder')?.textContent).toBe('...')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('')
+    expect(getMarkdown(inline)).toContain('$...$')
+
+    const block = makeEditor('')
+    expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
+    expect(block.view.dom.querySelector('.markleaf-math-placeholder')?.textContent).toBe('...')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('')
+    expect(getMarkdown(block)).toContain('$$...$$')
+  })
+
+  it('reads placeholder syntax as empty formulas and toggles the placeholder while editing', () => {
+    const editor = makeEditor('$...$\n\n$$...$$')
+    const formulas: Array<{ node: any; position: number }> = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
+        formulas.push({ node, position })
+      }
+    })
+
+    expect(formulas).toHaveLength(2)
+    expect(formulas.every(({ node }) => node.textContent === '')).toBe(true)
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(2)
+
+    const block = formulas[1]!
+    expect(expandSourceEditor(editor, block.position, 'mathBlock')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    source.textContent = 'x+1'
+    source.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(1)
+
+    source.textContent = ''
+    source.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(2)
+    expect(getMarkdown(editor)).toContain('$$...$$')
+  })
+
   it('wraps the selection into a math block', () => {
     const editor = makeEditor('x^2')
     editor.commands.selectAll()
@@ -141,6 +181,27 @@ describe('math formulas', () => {
     selectMathNode(editor, 'mathBlock')
     expect(executeEditorCommand(editor, 'deleteMath')).toBe(true)
     expect(getMarkdown(editor)).not.toContain('$')
+  })
+
+  it('opens or converts the selected formula through the inline and block commands', () => {
+    const inline = makeEditor('before $x$ after')
+    selectMathNode(inline, 'mathInline')
+    expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('x')
+
+    expect(executeEditorCommand(inline, 'insertMathBlock')).toBe(true)
+    expect((inline.state.selection as any).node.type.name).toBe('mathBlock')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('x')
+    expect(getMarkdown(inline)).toContain('$$x$$')
+
+    const block = makeEditor('$$y$$')
+    selectMathNode(block, 'mathBlock')
+    expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
+    expect(document.querySelectorAll('.markleaf-expanded-source-editor')[1]?.textContent).toBe('y')
+
+    expect(executeEditorCommand(block, 'insertMathInline')).toBe(true)
+    expect((block.state.selection as any).node.type.name).toBe('mathInline')
+    expect(getMarkdown(block)).toContain('$y$')
   })
 
   it('uses node selection for a formula', () => {

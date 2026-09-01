@@ -136,6 +136,16 @@ public sealed class JsonSettingsService : ISettingsService
     private static void NormalizeExport(ExportSettings export)
     {
         export.Format = NormalizeExportFormat(export.Format);
+        export.ImageMaxHeight = Math.Clamp(export.ImageMaxHeight, 1000, 30000);
+        export.ImageContentWidth = Math.Clamp(export.ImageContentWidth, 320, 4000);
+        export.ImageScale = float.IsFinite(export.ImageScale)
+            ? Math.Clamp(export.ImageScale, 1f, 4f)
+            : 2f;
+        export.ImageFormat = string.Equals(export.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(export.ImageFormat, "jpeg", StringComparison.OrdinalIgnoreCase)
+            ? "jpg"
+            : "png";
+        export.ImageJpegQuality = Math.Clamp(export.ImageJpegQuality, 1, 100);
         export.PaperSize = string.IsNullOrWhiteSpace(export.PaperSize) ? "A4" : export.PaperSize;
         export.HtmlHeader ??= "";
         export.HtmlFooter ??= "";
@@ -152,7 +162,9 @@ public sealed class JsonSettingsService : ISettingsService
     }
 
     private static string NormalizeExportFormat(string? format) =>
-        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html" : "pdf";
+        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html"
+        : string.Equals(format, "image", StringComparison.OrdinalIgnoreCase) ? "image"
+        : "pdf";
 
     private static string NormalizeHeaderFooterPreset(string? preset) =>
         preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"

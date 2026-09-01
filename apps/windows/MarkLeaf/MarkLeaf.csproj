@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\App\App.ico</ApplicationIcon>
     <RootNamespace>MarkLeaf</RootNamespace>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
     <!-- BuildNumber is resolved from the current Git commit count by Directory.Build.targets. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Company>MarkLeaf</Company>

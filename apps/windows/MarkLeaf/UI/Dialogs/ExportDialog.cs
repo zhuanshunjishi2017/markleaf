@@ -12,12 +12,13 @@ internal enum ExportDialogMode
 {
     Pdf,
     Html,
+    Image,
 }
 
 internal sealed class ExportDialog : Form
 {
-    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML"],
-        [SystemIconProvider.PdfIcon, SystemIconProvider.HtmlIcon]);
+    private readonly PreferencesTabBar _tabBar = new(["PDF", "HTML", Loc.Get("export.imageTab")],
+        [SystemIconProvider.PdfIcon, SystemIconProvider.HtmlIcon, SystemIconProvider.ImageIcon]);
 
     private readonly Panel _contentPanel = new()
     {
@@ -76,6 +77,42 @@ internal sealed class ExportDialog : Form
     private readonly ComboBox _pdfColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly ComboBox _htmlColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+
+    private readonly ComboBox _imageStyle = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+
+    private readonly ComboBox _imageColorScheme = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+
+    private readonly NumericUpDown _imageMaxHeight = new()
+    { Minimum = 1000, Maximum = 30000, Increment = 1000, Value = 12000, ThousandsSeparator = true };
+
+    private readonly NumericUpDown _imageContentWidth = new()
+    { Minimum = 320, Maximum = 4000, Increment = 20, Value = 1200, ThousandsSeparator = true };
+
+    private readonly ComboBox _imageScale = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+
+    private readonly RadioButton _imageFormatPng = new()
+    { Text = "PNG", AutoSize = true, Checked = true, FlatStyle = FlatStyle.System };
+
+    private readonly RadioButton _imageFormatJpeg = new()
+    { Text = "JPG", AutoSize = true, FlatStyle = FlatStyle.System };
+
+    private readonly TrackBar _imageJpegQuality = new()
+    {
+        Minimum = 1,
+        Maximum = 100,
+        TickFrequency = 10,
+        SmallChange = 1,
+        LargeChange = 10,
+        Value = 90,
+        AutoSize = false,
+    };
+
+    private readonly Label _imageJpegQualityValue = new()
+    {
+        Text = "90",
+        AutoSize = false,
+        TextAlign = ContentAlignment.MiddleRight,
+    };
 
     private readonly CheckBox _keepTablesTogether = new()
     {
@@ -201,6 +238,7 @@ internal sealed class ExportDialog : Form
         ApplyDpiSizes();
         BuildPdfTab(initialStyleIndex);
         BuildHtmlTab(initialStyleIndex);
+        BuildImageTab(initialStyleIndex);
         PopulateColorSchemes();
         ApplySavedSettings(savedSettings);
         TrackCommittedSelection(_pageSize);
@@ -211,16 +249,24 @@ internal sealed class ExportDialog : Form
         TrackCommittedSelection(_pdfColorScheme);
         TrackCommittedSelection(_htmlStyle);
         TrackCommittedSelection(_htmlColorScheme);
+        TrackCommittedSelection(_imageStyle);
+        TrackCommittedSelection(_imageColorScheme);
+        TrackCommittedSelection(_imageScale);
 
         _tabBar.Margin = Padding.Empty;
-        _tabContents = [BuildPdfContent(), BuildHtmlContent()];
+        _tabContents = [BuildPdfContent(), BuildHtmlContent(), BuildImageContent()];
         _contentPanel.Controls.Add(_tabContents[0]);
         _tabBar.TabChanged += async (_, index) =>
         {
             SwitchTabPage(index);
             await RefreshPreviewAsync();
         };
-        _tabBar.SelectedIndex = initialMode == ExportDialogMode.Html ? 1 : 0;
+        _tabBar.SelectedIndex = initialMode switch
+        {
+            ExportDialogMode.Html => 1,
+            ExportDialogMode.Image => 2,
+            _ => 0,
+        };
 
         _exportButton.Click += OnExportClick;
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -308,6 +354,9 @@ internal sealed class ExportDialog : Form
                 ForceComboDark(_pdfColorScheme);
                 ForceComboDark(_htmlStyle);
                 ForceComboDark(_htmlColorScheme);
+                ForceComboDark(_imageStyle);
+                ForceComboDark(_imageColorScheme);
+                ForceComboDark(_imageScale);
             }
         };
         Shown += async (_, _) =>
@@ -354,11 +403,13 @@ internal sealed class ExportDialog : Form
             var displayName = allThemes[i].DisplayName;
             _pdfColorScheme.Items.Add(displayName);
             _htmlColorScheme.Items.Add(displayName);
+            _imageColorScheme.Items.Add(displayName);
             if (string.Equals(allThemes[i].Id, ColorThemeService.ActiveThemeId, StringComparison.Ordinal))
                 activeThemeIndex = i;
         }
         _pdfColorScheme.SelectedIndex = activeThemeIndex;
         _htmlColorScheme.SelectedIndex = activeThemeIndex;
+        _imageColorScheme.SelectedIndex = activeThemeIndex;
     }
 
     private void ApplySavedSettings(ExportSettings? savedSettings)
@@ -386,6 +437,14 @@ internal sealed class ExportDialog : Form
         _htmlFooter.Text = savedSettings.HtmlFooter ?? "";
         _keepTablesTogether.Checked = savedSettings.KeepTablesTogether;
         _keepHeadingsWithNextBlock.Checked = savedSettings.KeepHeadingsWithNextBlock;
+        _imageMaxHeight.Value = Math.Clamp(savedSettings.ImageMaxHeight, 1000, 30000);
+        _imageContentWidth.Value = Math.Clamp(savedSettings.ImageContentWidth, 320, 4000);
+        SelectComboItem(_imageScale, $"{Math.Clamp(savedSettings.ImageScale, 1f, 4f):0.#}x");
+        _imageFormatJpeg.Checked = string.Equals(
+            savedSettings.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase);
+        _imageFormatPng.Checked = !_imageFormatJpeg.Checked;
+        _imageJpegQuality.Value = Math.Clamp(savedSettings.ImageJpegQuality, 1, 100);
+        UpdateImageJpegQualityState();
     }
 
     private void ApplySavedMargins(float top, float bottom, float left, float right)
@@ -482,19 +541,21 @@ internal sealed class ExportDialog : Form
     private ExportOptions BuildOptions()
     {
         var isPdf = _tabBar.SelectedIndex == 0;
-        var colorThemeId = GetSelectedColorThemeId(isPdf ? _pdfColorScheme : _htmlColorScheme);
+        var isImage = _tabBar.SelectedIndex == 2;
+        var colorThemeId = GetSelectedColorThemeId(
+            isPdf ? _pdfColorScheme : isImage ? _imageColorScheme : _htmlColorScheme);
         var pdfHeader = ResolvePdfHeaderFooter(_pdfHeaderPreset, _pdfHeaderCustom);
         var pdfFooter = ResolvePdfHeaderFooter(_pdfFooterPreset, _pdfFooterCustom);
         return new ExportOptions(
-            Format: isPdf ? "pdf" : "html",
+            Format: isPdf ? "pdf" : isImage ? "image" : "html",
             PaperSize: (string)_pageSize.SelectedItem!,
             Landscape: _landscape.Checked,
             MarginTop: _marginTop,
             MarginBottom: _marginBottom,
             MarginLeft: _marginLeft,
             MarginRight: _marginRight,
-            HtmlHeader: isPdf ? "" : _htmlHeader.Text,
-            HtmlFooter: isPdf ? "" : _htmlFooter.Text,
+            HtmlHeader: isPdf || isImage ? "" : _htmlHeader.Text,
+            HtmlFooter: isPdf || isImage ? "" : _htmlFooter.Text,
             PdfHeaderText: isPdf ? pdfHeader.Text : "",
             PdfHeaderAlignment: isPdf ? pdfHeader.Alignment : "",
             PdfFooterText: isPdf ? pdfFooter.Text : "",
@@ -503,10 +564,15 @@ internal sealed class ExportDialog : Form
             PdfFooterPreset: GetSelectedHeaderFooterPreset(_pdfFooterPreset),
             PdfHeaderCustom: _pdfHeaderCustom,
             PdfFooterCustom: _pdfFooterCustom,
-            Style: MapExportStyle((string)(isPdf ? _pdfStyle : _htmlStyle).SelectedItem!),
+            Style: MapExportStyle((string)(isPdf ? _pdfStyle : isImage ? _imageStyle : _htmlStyle).SelectedItem!),
             ColorScheme: colorThemeId,
             KeepTablesTogether: _keepTablesTogether.Checked,
             KeepHeadingsWithNextBlock: _keepHeadingsWithNextBlock.Checked,
+            ImageMaxHeight: (int)_imageMaxHeight.Value,
+            ImageContentWidth: (int)_imageContentWidth.Value,
+            ImageScale: ParseImageScale(),
+            ImageFormat: _imageFormatJpeg.Checked ? "jpg" : "png",
+            ImageJpegQuality: _imageJpegQuality.Value,
             OutputPath: _outputPath ?? "");
     }
 
@@ -520,8 +586,16 @@ internal sealed class ExportDialog : Form
     private void OnExportClick(object? sender, EventArgs eventArgs)
     {
         var isPdf = _tabBar.SelectedIndex == 0;
-        var extension = isPdf ? "pdf" : "html";
-        var filter = isPdf ? $"{Loc.Get("export.pdf")}|*.pdf" : $"{Loc.Get("export.html")}|*.html";
+        var isImage = _tabBar.SelectedIndex == 2;
+        var imageExtension = _imageFormatJpeg.Checked ? "jpg" : "png";
+        var extension = isPdf ? "pdf" : isImage ? imageExtension : "html";
+        var filter = isPdf
+            ? $"{Loc.Get("export.pdf")}|*.pdf"
+            : isImage
+                ? (imageExtension == "jpg"
+                    ? $"{Loc.Get("export.jpeg")}|*.jpg;*.jpeg"
+                    : $"{Loc.Get("export.png")}|*.png")
+                : $"{Loc.Get("export.html")}|*.html";
         using var dialog = new SaveFileDialog
         {
             Filter = filter,
@@ -605,12 +679,32 @@ internal sealed class ExportDialog : Form
             return;
         }
 
-        if (_lastPreviewOptions == currentOptions)
+        if (!PreviewNeedsRefresh(currentOptions))
         {
             return;
         }
 
         await RefreshPreviewAsync(currentOptions);
+    }
+
+    private bool PreviewNeedsRefresh(ExportOptions currentOptions)
+    {
+        if (_lastPreviewOptions is null)
+        {
+            return true;
+        }
+
+        if (_tabBar.SelectedIndex == 2 && currentOptions.Format == "image")
+        {
+            // 图像标签中只有会改变 HTML 排版或渲染结果的设置需要自动更新预览。
+            // 最大高度、输出倍率、格式和 JPEG 质量只影响最终截图文件。
+            return _lastPreviewOptions.Format != "image"
+                || _lastPreviewOptions.ImageContentWidth != currentOptions.ImageContentWidth
+                || _lastPreviewOptions.Style != currentOptions.Style
+                || _lastPreviewOptions.ColorScheme != currentOptions.ColorScheme;
+        }
+
+        return _lastPreviewOptions != currentOptions;
     }
 
     private bool IsExportComboBoxOpen()
@@ -691,6 +785,11 @@ internal sealed class ExportDialog : Form
 
             var html = await _generateHtmlAsync(options);
             if (string.IsNullOrEmpty(html)) return;
+
+            html = html.Replace(
+                "</style>",
+                "html, body { scrollbar-width: none !important; -ms-overflow-style: none !important; } html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }\n</style>",
+                StringComparison.Ordinal);
 
             var htmlPath = Path.Combine(_previewDir, "preview.html");
             await File.WriteAllTextAsync(htmlPath, html, System.Text.Encoding.UTF8);
@@ -849,6 +948,19 @@ internal sealed class ExportDialog : Form
         InitCombo(_htmlStyle, StyleDisplayNames(), styleIndex);
     }
 
+    private void BuildImageTab(int styleIndex)
+    {
+        InitCombo(_imageStyle, StyleDisplayNames(), styleIndex);
+        InitCombo(_imageScale, ["1x", "1.5x", "2x", "3x", "4x"], 2);
+        _imageFormatPng.CheckedChanged += (_, _) =>
+            UpdateImageJpegQualityState();
+        _imageFormatJpeg.CheckedChanged += (_, _) =>
+            UpdateImageJpegQualityState();
+        _imageJpegQuality.ValueChanged += (_, _) =>
+            _imageJpegQualityValue.Text = _imageJpegQuality.Value.ToString();
+        UpdateImageJpegQualityState();
+    }
+
     private Control BuildHtmlContent()
     {
         var panel = new TableLayoutPanel
@@ -885,6 +997,100 @@ internal sealed class ExportDialog : Form
         panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 7);
 
         return panel;
+    }
+
+    private Control BuildImageContent()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Padding = new Padding(0, this.ScaleForDpi(11), 0, this.ScaleForDpi(7)),
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(110)));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        AddImageSettingRowWithHint(panel, 0, "export.imageMaxHeight", _imageMaxHeight, "export.imageMaxHeightHint");
+        AddImageSettingRow(panel, 3, "export.imageContentWidth", _imageContentWidth);
+        AddImageSettingRow(panel, 5, "export.imageScale", _imageScale);
+        var formatPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+        };
+        formatPanel.Controls.Add(_imageFormatPng);
+        formatPanel.Controls.Add(_imageFormatJpeg);
+        AddImageSettingRow(panel, 7, "export.imageFormat", formatPanel);
+        var qualityPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Margin = Padding.Empty,
+        };
+        qualityPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(90)));
+        qualityPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(36)));
+        qualityPanel.Controls.Add(_imageJpegQuality, 0, 0);
+        qualityPanel.Controls.Add(_imageJpegQualityValue, 1, 0);
+        AddImageSettingRow(panel, 9, "export.imageJpegQuality", qualityPanel);
+        AddImageSettingRow(panel, 11, "export.style.label", _imageStyle);
+        AddImageSettingRow(panel, 13, "export.colorScheme.label", _imageColorScheme);
+
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 15);
+        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 15);
+        return panel;
+    }
+
+    private void AddImageSettingRow(TableLayoutPanel panel, int row, string labelKey, Control control)
+    {
+        panel.Controls.Add(CategoryLabel(Loc.Get(labelKey)), 0, row);
+        panel.Controls.Add(control, 1, row);
+        panel.Controls.Add(CategoryGap(), 0, row + 1);
+        panel.Controls.Add(CategoryGap(), 1, row + 1);
+    }
+
+    private void AddImageSettingRowWithHint(
+        TableLayoutPanel panel,
+        int row,
+        string labelKey,
+        Control control,
+        string hintKey)
+    {
+        panel.Controls.Add(CategoryLabel(Loc.Get(labelKey)), 0, row);
+        panel.Controls.Add(control, 1, row);
+        panel.Controls.Add(new Label
+        {
+            Text = Loc.Get(hintKey),
+            AutoSize = true,
+            MaximumSize = new Size(this.ScaleForDpi(280), 0),
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            Margin = new Padding(0, this.ScaleForDpi(2), 0, 0),
+        }, 1, row + 1);
+        panel.Controls.Add(CategoryGap(), 0, row + 2);
+        panel.Controls.Add(CategoryGap(), 1, row + 2);
+    }
+
+    private float ParseImageScale()
+    {
+        var text = _imageScale.SelectedItem as string ?? "2x";
+        return float.TryParse(text.TrimEnd('x'),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value)
+            ? Math.Clamp(value, 1f, 4f)
+            : 2f;
+    }
+
+    private void UpdateImageJpegQualityState()
+    {
+        var enabled = _imageFormatJpeg.Checked;
+        _imageJpegQuality.Enabled = enabled;
+        _imageJpegQualityValue.Enabled = enabled;
+        _imageJpegQualityValue.Text = _imageJpegQuality.Value.ToString();
     }
 
     private Label CategoryLabel(string text)
@@ -958,8 +1164,17 @@ internal sealed class ExportDialog : Form
         var comboW = this.ScaleForDpi(135);
         _pdfStyle.Width = comboW;
         _htmlStyle.Width = comboW;
+        _imageStyle.Width = comboW;
         _pdfColorScheme.Width = comboW;
         _htmlColorScheme.Width = comboW;
+        _imageColorScheme.Width = comboW;
+        _imageScale.Width = comboW;
+        _imageMaxHeight.Width = comboW;
+        _imageContentWidth.Width = comboW;
+        _imageJpegQuality.Width = this.ScaleForDpi(90);
+        _imageJpegQuality.Height = this.ScaleForDpi(28);
+        _imageJpegQualityValue.Width = this.ScaleForDpi(36);
+        _imageJpegQualityValue.Height = this.ScaleForDpi(28);
         _pdfHeaderPreset.Width = comboW;
         _pdfFooterPreset.Width = comboW;
         _pageSize.Width = comboW;
@@ -1122,4 +1337,9 @@ internal sealed record ExportOptions(
     string ColorScheme,
     bool KeepTablesTogether,
     bool KeepHeadingsWithNextBlock,
+    int ImageMaxHeight,
+    int ImageContentWidth,
+    float ImageScale,
+    string ImageFormat,
+    int ImageJpegQuality,
     string OutputPath);

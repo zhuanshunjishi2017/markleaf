@@ -589,7 +589,7 @@ const MarkdownAlert = Node.create({
 
   renderMarkdown(node: any, helpers: any) {
     const type = String(node.attrs?.type ?? 'NOTE').toUpperCase()
-    const body = helpers.renderChildren(node.content ?? [], '\n').trim()
+    const body = helpers.renderChildren(node.content ?? [], '\n\n').trim()
     const lines = body ? body.split('\n') : ['']
     return [`> [!${type}]`, ...lines.map((line: string) => `> ${line}`)].join('\n')
   },
@@ -2065,6 +2065,33 @@ function createExpandedSourceEditor(
     }))
   })
   code.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      const expanded = expandedSourceEditorKey.getState(editor.state)
+      const node = expanded ? editor.state.doc.nodeAt(expanded.position) : null
+      if (!expanded || !node || node.type.name !== expanded.kind) return
+      const afterNode = Math.min(
+        expanded.position + node.nodeSize,
+        editor.state.doc.content.size,
+      )
+      editor.view.dispatch(editor.state.tr
+        .setSelection(TextSelection.near(editor.state.doc.resolve(afterNode), 1))
+        .setMeta(expandedSourceEditorKey, null)
+        .scrollIntoView())
+      editor.commands.focus()
+      return
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !event.altKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(code)
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      return
+    }
     if (!editable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
     const key = event.key.toLowerCase()
     if (key !== 'z' && key !== 'y') return
@@ -2173,9 +2200,11 @@ const ExpandedSourceEditor = Extension.create({
           collapse()
         }
         const handleViewportChange = () => reposition()
+        const handleMermaidRender = () => window.requestAnimationFrame(reposition)
         document.addEventListener('pointerdown', handleOutsidePointer)
         window.addEventListener('resize', handleViewportChange)
         window.addEventListener('scroll', handleViewportChange, true)
+        window.addEventListener('markleaf-mermaid-rendered', handleMermaidRender)
         return {
           update: (view) => {
             const expanded = expandedSourceEditorKey.getState(view.state)
@@ -2219,6 +2248,7 @@ const ExpandedSourceEditor = Extension.create({
             document.removeEventListener('pointerdown', handleOutsidePointer)
             window.removeEventListener('resize', handleViewportChange)
             window.removeEventListener('scroll', handleViewportChange, true)
+            window.removeEventListener('markleaf-mermaid-rendered', handleMermaidRender)
             removeOverlay()
           },
         }
@@ -2247,6 +2277,10 @@ export function isSourceEditorExpanded(
 ): boolean {
   const current = expandedSourceEditorKey.getState(editor.state)
   return current?.position === position && current.kind === kind
+}
+
+export function hasExpandedSourceEditor(editor: Editor): boolean {
+  return expandedSourceEditorKey.getState(editor.state) !== null
 }
 
 export function collapseSourceEditor(editor: Editor): boolean {
@@ -3897,20 +3931,35 @@ function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): bo
   const selectedMath = getSelectedMath(editor)
   const chain = editor.chain().focus()
 
-  // 命令执行后公式保持节点选区；再次插入时，应在公式之后插入，而不是把已选中的公式当作普通文本替换。
+  // 公式节点已选中时，相同类型的命令打开源码浮窗；另一种公式命令
+  // 原地转换节点类型并打开浮窗。
   if (selectedMath) {
-    const insertionPosition = selectedMath.node.type.name === 'mathBlock'
-      && editor.state.selection.$from.parent.type.name === 'paragraph'
-      ? editor.state.selection.$from.after(editor.state.selection.$from.depth)
-      : selectedMath.to
     const latex = (text ?? '').trim()
-    const inserted = chain.setTextSelection(insertionPosition).insertContentAt(insertionPosition, {
+    if (selectedMath.node.type.name === nodeType && latex.length === 0) {
+      return expandSourceEditor(editor, selectedMath.from, nodeType)
+    }
+
+    const source = latex || selectedMath.node.textContent
+    const converted = chain.insertContentAt({ from: selectedMath.from, to: selectedMath.to }, {
       type: nodeType,
-      content: latex ? [{ type: 'text', text: latex }] : undefined,
+      content: source ? [{ type: 'text', text: source }] : undefined,
     }).run()
-    if (!inserted || editor.state.doc.nodeAt(insertionPosition)?.type.name !== nodeType) return false
-    editor.commands.setNodeSelection(insertionPosition)
-    return expandSourceEditor(editor, insertionPosition, nodeType)
+    if (!converted) return false
+
+    let convertedPosition: number | null = null
+    editor.state.doc.descendants((node, position) => {
+      if (convertedPosition !== null || node.type.name !== nodeType) return convertedPosition === null
+      if (position >= Math.max(0, selectedMath.from - 1)
+        && position <= selectedMath.from + 1
+        && node.textContent === source) {
+        convertedPosition = position
+        return false
+      }
+      return true
+    })
+    if (convertedPosition === null) return false
+    editor.commands.setNodeSelection(convertedPosition)
+    return expandSourceEditor(editor, convertedPosition, nodeType)
   }
 
   // 有选区：直接用选区文本套 $...$ / $$...$$

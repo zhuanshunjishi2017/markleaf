@@ -44,9 +44,39 @@
 }
 
 .markleaf-style-latex .markleaf-alert::before {
+  padding: 0 0.85em;
+  color: #fff;
   font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
   font-size: var(--ml-font-size);
+  line-height: inherit;
+  text-align: left;
+  background: var(--markleaf-alert-color);
+  font-weight: normal;
   font-synthesis: none;
+  margin-bottom: 0;
+}
+
+/* ---- 提示框：tcolorbox 风格，仅 LaTeX 主题使用 ---- */
+.markleaf-style-latex .markleaf-alert {
+  margin: 1em 0;
+  padding: 0 0 var(--markleaf-alert-content-spacing-y);
+  border: 2px solid var(--markleaf-alert-color);
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--markleaf-alert-color) 10%, var(--bg-primary));
+}
+
+.markleaf-style-latex .markleaf-alert > * {
+  padding-right: var(--markleaf-alert-content-spacing-x);
+  padding-left: var(--markleaf-alert-content-spacing-x);
+}
+
+.markleaf-style-latex .markleaf-alert * {
+  text-indent: 0 !important;
+}
+
+.markleaf-style-latex .markleaf-alert > :first-child {
+  padding-top: var(--markleaf-alert-content-spacing-y);
 }
 
 /* ---- 粗体：不强制 faux bold，由字体内建粗细决定 ---- */
@@ -125,7 +155,7 @@
   color: var(--text-primary);
   font-size: var(--ml-font-size);
   font-style: normal;
-  text-indent: 0;
+  /* text-indent: 0; */
 }
 
 /* ---- 三线表 ---- */

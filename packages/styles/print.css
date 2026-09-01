@@ -66,31 +66,35 @@
 }
 
 .markleaf-style-print .markleaf-alert::before {
-  padding: 0 0.85em;
-  color: #fff;
+  padding: 0;
+  color: var(--text-primary);
   font-family: "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
-  font-size: var(--ml-font-size);
-  background: var(--markleaf-alert-color);
+  font-size: calc(var(--ml-font-size)*1.1);
+  line-height: 1.5;
+  text-align: center;
+  background: transparent;
   font-weight: normal;
   font-synthesis: none;
-
+  margin-bottom: 0.5em;
 }
 
 .markleaf-style-print .markleaf-alert {
-  padding: 0 0 var(--markleaf-alert-content-spacing-y);
-  border: 2px solid var(--markleaf-alert-color);
-  border-radius: 6px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--markleaf-alert-color) 10%, var(--bg-primary));
+  margin: 0.5em 0;
+  padding: 1em;
+  color: var(--text-primary);
+  border: 1px solid var(--text-primary);
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .markleaf-style-print .markleaf-alert > * {
-  padding-right: var(--markleaf-alert-content-spacing-x);
-  padding-left: var(--markleaf-alert-content-spacing-x);
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .markleaf-style-print .markleaf-alert > :first-child {
-  padding-top: var(--markleaf-alert-content-spacing-y);
+  padding-top: 0;
 }
 
 .markleaf-style-print .markleaf-document p {
@@ -190,7 +194,7 @@
 
 .markleaf-style-print .markleaf-document blockquote {
   margin: 0.5em 0;
-  padding: 0 1em;
+  padding: 0.5em;
   color: var(--text-primary);
   border: 1px solid var(--text-primary);
   background: transparent;
@@ -216,6 +220,12 @@
 
 .markleaf-style-print .markleaf-document blockquote p {
   font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  text-indent: 2em;
+}
+
+.markleaf-style-print .markleaf-alert p {
+  font-family: "Times New Roman", "仿宋", "FangSong", serif;
+  color: var(--text-primary);
   text-indent: 2em;
 }
 

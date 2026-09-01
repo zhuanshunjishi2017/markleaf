@@ -5,20 +5,20 @@
 :root {
   --bg-primary:          #FFFFFF;
   --bg-secondary:        #FCFCFD;
-  --bg-hover:            #F3F2F8;
+  --bg-hover:            #F2F1F5;
   --bg-selected:         #e7e7ef;
-  --bg-selected-hover:   #e4e2eb;
+  --bg-selected-hover:   #e4e2e9;
   --text-primary:        #000000;
   --text-secondary:      #99989D;
   --text-tertiary:       #8C8C8C;
   --text-selected:       #FFFFFF;
   --text-tertiary-selected:     #7CC7FF;
-  --icon:                       #0088FE;
+  --icon:                       #0284F9;
   --icon-selected:              #FFFFFF;
   --icon-secondary:      #505864;
   --scrollbar-idle:      #8B8B8B;
   --scrollbar-active:    #636363;
-  --theme-light:         #0088FE;
+  --theme-light:         #0284F9;
   --theme-dark:          #0a7bdd;
   --highlight:           #FFF36D;
   --highlight-current:   #B8A900;

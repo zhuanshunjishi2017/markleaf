@@ -14,6 +14,20 @@ function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
 }
 
+function normalizeMathSource(source: string): string {
+  return source.trim() === '...' ? '' : source
+}
+
+function renderMathNode(element: HTMLElement, latex: string, displayMode: boolean): void {
+  if (latex.length === 0) {
+    element.textContent = '...'
+    element.classList.add('markleaf-math-placeholder')
+    return
+  }
+  element.classList.remove('markleaf-math-placeholder')
+  renderKatex(element, latex, displayMode)
+}
+
 function renderKatex(element: HTMLElement, latex: string, displayMode: boolean): void {
   try {
     katex.render(latex, element, {
@@ -74,13 +88,17 @@ export const MathInline = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    return helpers.createNode('mathInline', null, [
-      helpers.createTextNode((token.text ?? '').trim()),
-    ])
+    const latex = normalizeMathSource((token.text ?? '').trim())
+    return helpers.createNode(
+      'mathInline',
+      null,
+      latex ? [helpers.createTextNode(latex)] : [],
+    )
   },
 
   renderMarkdown(node) {
-    return `$${nodeLatex(node)}$`
+    const latex = nodeLatex(node)
+    return `$${latex || '...'}$`
   },
 
   markdownTokenizer: {
@@ -96,7 +114,7 @@ export const MathInline = Node.create({
     tokenize: (src: string) => {
       const match = /^(?:(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
       if (!match) return undefined
-      return { type: 'mathInline', raw: match[0], text: match[1] ?? match[2] }
+      return { type: 'mathInline', raw: match[0], text: normalizeMathSource(match[1] ?? match[2] ?? '') }
     },
   },
 
@@ -108,7 +126,7 @@ export const MathInline = Node.create({
         // second closing `$` can complete the block formula.
         find: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
         handler: ({ state, range, match }) => {
-          const latex = match[1]!
+          const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathInline
           if (!mathType) return null
           state.tr.replaceWith(
@@ -139,7 +157,7 @@ export const MathInline = Node.create({
       const span = document.createElement('span')
       span.className = 'markleaf-math markleaf-math-inline'
       span.contentEditable = 'false'
-      renderKatex(span, node.textContent, false)
+      renderMathNode(span, node.textContent, false)
       return { dom: span }
     }
   },
@@ -174,13 +192,17 @@ export const MathBlock = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    const latex = (token.text ?? '').trim()
-    return helpers.createNode('mathBlock', { number: null }, [helpers.createTextNode(latex)])
+    const latex = normalizeMathSource((token.text ?? '').trim())
+    return helpers.createNode(
+      'mathBlock',
+      { number: null },
+      latex ? [helpers.createTextNode(latex)] : [],
+    )
   },
 
   renderMarkdown(node) {
     const body = nodeLatex(node)
-    return `$$${body}$$`
+    return `$$${body || '...'}$$`
   },
 
   markdownTokenizer: {
@@ -196,7 +218,11 @@ export const MathBlock = Node.create({
     tokenize: (src: string) => {
       const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
       if (!match) return undefined
-      return { type: 'mathBlock', raw: match[0], text: (match[1] ?? match[2] ?? '').trim() }
+      return {
+        type: 'mathBlock',
+        raw: match[0],
+        text: normalizeMathSource((match[1] ?? match[2] ?? '').trim()),
+      }
     },
   },
 
@@ -205,7 +231,7 @@ export const MathBlock = Node.create({
       new InputRule({
         find: /\$\$([^$]+?)\$\$$/,
         handler: ({ state, range, match }) => {
-          const latex = match[1]!
+          const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathBlock
           if (!mathType) return null
           state.tr.replaceRangeWith(
@@ -218,7 +244,7 @@ export const MathBlock = Node.create({
       new InputRule({
         find: /\\\[([\s\S]+?)\\\]$/,
         handler: ({ state, range, match }) => {
-          const latex = match[1]!.trim()
+          const latex = normalizeMathSource(match[1]!.trim())
           const mathType = state.schema.nodes.mathBlock
           if (!mathType) return null
           state.tr.replaceRangeWith(
@@ -238,7 +264,7 @@ export const MathBlock = Node.create({
       div.contentEditable = 'false'
 
       const render = (currentNode: { textContent: string; attrs?: Record<string, unknown> }) => {
-        renderKatex(div, currentNode.textContent, true)
+        renderMathNode(div, currentNode.textContent, true)
       }
       render(node)
 
@@ -284,12 +310,16 @@ function decodeHtmlEntities(text: string): string {
 /// 导出 HTML 由独立 WebView2 加载，无法复用编辑器的 KaTeX 运行时，因此需预渲染。
 export function renderMathInHtml(html: string): string {
   return html
-    .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) =>
-      katex.renderToString(decodeHtmlEntities(latex), { throwOnError: false }),
-    )
+    .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) => {
+      const source = decodeHtmlEntities(latex)
+      return source
+        ? katex.renderToString(source, { throwOnError: false })
+        : '<span class="markleaf-math-placeholder">...</span>'
+    })
     .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
       const numberMatch = /data-math-number="([^"]*)"/.exec(attrs)
       const body = decodeHtmlEntities(latex)
+      if (!body) return '<div class="markleaf-math-block markleaf-math-placeholder">...</div>'
       const number = numberMatch?.[1]
       const full = /\\tag\{[^{}]*\}\s*$/.test(body)
         ? body

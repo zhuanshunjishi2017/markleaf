@@ -19,6 +19,7 @@ internal sealed partial class MainForm
     {
         var previousAssociateMarkdown = _settings.General.AssociateMarkdownFiles;
         var previousAssociateText = _settings.General.AssociateTextFiles;
+        var previousLanguage = _settings.General.UiLanguage ?? "";
 
         using var dialog = new PreferencesDialog(
             _settings,
@@ -31,11 +32,16 @@ internal sealed partial class MainForm
             ClearLogs,
             OpenSettingsJson,
             ClearHistory,
-            ResetAllSettingsToDefaults,
-            ApplyStatusBarSettingsFromPreferences);
-        var previousLanguage = _settings.General.UiLanguage ?? "";
+            () => _ = CheckForUpdatesAsync());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
+        ApplyPreferencesChanges(previousAssociateMarkdown, previousAssociateText, previousLanguage);
+    }
 
+    private void ApplyPreferencesChanges(
+        bool previousAssociateMarkdown,
+        bool previousAssociateText,
+        string previousLanguage)
+    {
         ColorThemeService.DefaultLightThemeId = _settings.Appearance.DefaultLightThemeId;
         ColorThemeService.DefaultDarkThemeId = _settings.Appearance.DefaultDarkThemeId;
 
@@ -63,6 +69,7 @@ internal sealed partial class MainForm
         _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
         ApplySidebarAutoHideScrollbar();
         RefreshPersistentStatusBar();
+        _menuService.RebuildMenu();
 
         // 仅在文件关联设置实际变化时才修改注册表。
         if (_settings.General.AssociateMarkdownFiles != previousAssociateMarkdown
@@ -245,6 +252,39 @@ internal sealed partial class MainForm
         await RunExportAsync(options, defaultName);
     }
 
+    private async Task ExportImageAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true || _document is null)
+        {
+            return;
+        }
+
+        var docName = _document.FilePath is not null
+            ? Path.GetFileName(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        var defaultName = _document.FilePath is not null
+            ? Path.GetFileNameWithoutExtension(_document.FilePath)
+            : Loc.Get("common.unnamed");
+        using var dialog = new ExportDialog(
+            docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
+            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
+            ExportDialogMode.Image, _settings.Export);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var options = dialog.Options;
+        if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
+        {
+            SetStatus(Loc.Get("export.emptyPath"));
+            return;
+        }
+
+        SaveLastExportOptions(options);
+        await RunExportAsync(options, defaultName);
+    }
+
     private async Task ExportWithLastSettingsAsync()
     {
         if (_editorHost?.IsDocumentLoaded != true || _document is null)
@@ -283,6 +323,9 @@ internal sealed partial class MainForm
         {
             SetStatus(Loc.Get("export.generating"));
             var editor = _settings.Editor;
+            var exportWidth = options.Format == "image"
+                ? options.ImageContentWidth
+                : editor.VisualMaxContentWidth;
             var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
             var html = await _editorHost.RequestExportAsync(
                 options.Format,
@@ -291,7 +334,7 @@ internal sealed partial class MainForm
                 options.HtmlFooter,
                 editor.VisualFontSize,
                 editor.VisualLineHeight,
-                editor.VisualMaxContentWidth,
+                exportWidth,
                 editor.VisualCjkAutoSpacing,
                 colorThemeCss,
                 defaultName,
@@ -309,7 +352,11 @@ internal sealed partial class MainForm
             {
                 outputPath = Path.ChangeExtension(
                     outputPath,
-                    options.Format == "pdf" ? ".pdf" : ".html");
+                    options.Format == "pdf"
+                        ? ".pdf"
+                        : options.Format == "image"
+                            ? (options.ImageFormat == "jpg" ? ".jpg" : ".png")
+                            : ".html");
             }
 
             if (options.Format == "pdf")
@@ -329,6 +376,25 @@ internal sealed partial class MainForm
                     options.PdfFooterAlignment,
                     ResolveHeaderFooterFontFamily(options.Style));
                 await File.WriteAllBytesAsync(outputPath, pdfBytes);
+            }
+            else if (options.Format == "image")
+            {
+                SetStatus(Loc.Get("export.generatingImage"));
+                var paths = await _editorHost.CaptureExportImagesAsync(
+                    html,
+                    outputPath,
+                    options.ImageContentWidth,
+                    options.ImageMaxHeight,
+                    options.ImageScale,
+                    options.ImageFormat,
+                    options.ImageJpegQuality);
+                if (paths.Count == 0)
+                {
+                    SetStatus(Loc.Get("export.noContent"));
+                    return;
+                }
+                outputPath = paths[0];
+                exportDir = Path.GetDirectoryName(outputPath);
             }
             else
             {
@@ -421,6 +487,11 @@ internal sealed partial class MainForm
             ColorScheme: ResolveExportColorScheme(export.ColorScheme),
             KeepTablesTogether: export.KeepTablesTogether,
             KeepHeadingsWithNextBlock: export.KeepHeadingsWithNextBlock,
+            ImageMaxHeight: Math.Clamp(export.ImageMaxHeight, 1000, 30000),
+            ImageContentWidth: Math.Clamp(export.ImageContentWidth, 320, 4000),
+            ImageScale: float.IsFinite(export.ImageScale) ? Math.Clamp(export.ImageScale, 1f, 4f) : 2f,
+            ImageFormat: string.Equals(export.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png",
+            ImageJpegQuality: Math.Clamp(export.ImageJpegQuality, 1, 100),
             OutputPath: outputPath);
     }
 
@@ -449,6 +520,11 @@ internal sealed partial class MainForm
             ColorScheme = ResolveExportColorScheme(options.ColorScheme),
             KeepTablesTogether = options.KeepTablesTogether,
             KeepHeadingsWithNextBlock = options.KeepHeadingsWithNextBlock,
+            ImageMaxHeight = Math.Clamp(options.ImageMaxHeight, 1000, 30000),
+            ImageContentWidth = Math.Clamp(options.ImageContentWidth, 320, 4000),
+            ImageScale = float.IsFinite(options.ImageScale) ? Math.Clamp(options.ImageScale, 1f, 4f) : 2f,
+            ImageFormat = string.Equals(options.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png",
+            ImageJpegQuality = Math.Clamp(options.ImageJpegQuality, 1, 100),
         };
         SaveSettings();
     }
@@ -463,8 +539,16 @@ internal sealed partial class MainForm
     private string? PromptExportPath(string format, string defaultName)
     {
         var isPdf = string.Equals(format, "pdf", StringComparison.Ordinal);
-        var extension = isPdf ? "pdf" : "html";
-        var filter = isPdf ? $"{Loc.Get("export.pdf")}|*.pdf" : $"{Loc.Get("export.html")}|*.html";
+        var isImage = string.Equals(format, "image", StringComparison.Ordinal);
+        var imageFormat = string.Equals(_settings.Export.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase)
+            ? "jpg"
+            : "png";
+        var extension = isPdf ? "pdf" : isImage ? imageFormat : "html";
+        var filter = isPdf
+            ? $"{Loc.Get("export.pdf")}|*.pdf"
+            : isImage
+                ? (imageFormat == "jpg" ? $"{Loc.Get("export.jpeg")}|*.jpg;*.jpeg" : $"{Loc.Get("export.png")}|*.png")
+                : $"{Loc.Get("export.html")}|*.html";
         using var dialog = new SaveFileDialog
         {
             Filter = filter,
@@ -479,7 +563,9 @@ internal sealed partial class MainForm
     }
 
     private static string NormalizeExportFormat(string? format) =>
-        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html" : "pdf";
+        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html"
+        : string.Equals(format, "image", StringComparison.OrdinalIgnoreCase) ? "image"
+        : "pdf";
 
     private static string NormalizeHeaderFooterPreset(string? preset) =>
         preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"
@@ -626,7 +712,15 @@ internal sealed partial class MainForm
         }
 
         var colorThemeCss = ColorThemeService.GetThemeCss(options.ColorScheme);
-        return await GeneratePrintHtmlAsync(options.Format, options.Style, options.HtmlHeader, options.HtmlFooter, colorThemeCss, options.KeepTablesTogether, options.KeepHeadingsWithNextBlock);
+        return await GeneratePrintHtmlAsync(
+            options.Format,
+            options.Style,
+            options.Format == "image" ? "" : options.HtmlHeader,
+            options.Format == "image" ? "" : options.HtmlFooter,
+            colorThemeCss,
+            options.KeepTablesTogether,
+            options.KeepHeadingsWithNextBlock,
+            options.Format == "image" ? options.ImageContentWidth : null);
     }
 
     private async Task<string> GeneratePrintHtmlAsync(
@@ -636,7 +730,8 @@ internal sealed partial class MainForm
         string footer,
         string colorSchemeCss,
         bool keepTablesTogether,
-        bool keepHeadingsWithNextBlock)
+        bool keepHeadingsWithNextBlock,
+        int? maxWidth = null)
     {
         if (_editorHost is null || _document is null)
         {
@@ -655,7 +750,7 @@ internal sealed partial class MainForm
             footer,
             editor.VisualFontSize,
             editor.VisualLineHeight,
-            editor.VisualMaxContentWidth,
+            maxWidth ?? editor.VisualMaxContentWidth,
             editor.VisualCjkAutoSpacing,
             colorSchemeCss,
             title,

@@ -107,6 +107,6 @@ internal sealed record EditorCommandStatus(
             payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("readOnly", out var readOnly) && readOnly.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("highlight", out var highlight) && highlight.ValueKind == JsonValueKind.True,
-            false);
+            payload.TryGetProperty("expandedSource", out var expandedSource) && expandedSource.ValueKind == JsonValueKind.True);
     }
 }

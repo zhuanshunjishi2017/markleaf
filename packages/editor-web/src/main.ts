@@ -11,6 +11,7 @@ import {
   getEditorStatus,
   getBlockHandleInfo,
   expandSourceEditor,
+  hasExpandedSourceEditor,
   isSourceEditorExpanded,
   collapseSourceEditor,
   setEditorFocusMode,
@@ -533,6 +534,7 @@ function sendCommandState(): void {
   const visualState = getEditorCommandState(editor)
   send('commandStateChanged', {
     ...visualState,
+    expandedSource: hasExpandedSourceEditor(editor),
     canUndo: sourceEditor?.canUndo() ?? visualState.canUndo,
     canRedo: sourceEditor?.canRedo() ?? visualState.canRedo,
     hasSelection: sourceSelection ? !sourceSelection.empty : visualState.hasSelection,
@@ -2149,6 +2151,7 @@ async function generateExportHtml(
   keepHeadingsWithNextBlock = false,
 ): Promise<string> {
   const isPdf = format === 'pdf'
+  const isImage = format === 'image'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
@@ -2167,6 +2170,7 @@ async function generateExportHtml(
   const rootClass = [
     resolved.rootClass,
     isPdf ? 'markleaf-export-pdf' : '',
+    isImage ? 'markleaf-export-image' : '',
   ].filter(Boolean).join(' ')
 
   return `<!DOCTYPE html>
@@ -2212,6 +2216,16 @@ ${resolved.css}
 }
 html { font-size: var(--ml-font-size); }
 body { margin: 0; background: var(--bg-primary); }
+.markleaf-export-image,
+.markleaf-export-image .markleaf-document {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-image {
+  overflow: hidden;
+}
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
   padding-left: 5px;

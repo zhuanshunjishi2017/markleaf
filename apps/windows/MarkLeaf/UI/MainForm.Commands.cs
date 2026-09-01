@@ -16,6 +16,42 @@ internal sealed partial class MainForm
 {
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        if (_editorCommandStatus.ExpandedSource
+            && (keyData & Keys.Control) != Keys.None
+            && (keyData & Keys.Alt) == Keys.None
+            && (keyData & Keys.KeyCode) is Keys.V or Keys.X)
+        {
+            if ((keyData & Keys.KeyCode) == Keys.V)
+            {
+                try
+                {
+                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
+                    {
+                        _editorHost?.ExecuteExpandedSourceCommand(
+                            "paste", Clipboard.GetText(TextDataFormat.UnicodeText));
+                    }
+                }
+                catch (ExternalException)
+                {
+                    // 剪贴板暂时被其他进程占用时保持无操作。
+                }
+            }
+            else if (_document?.IsReadOnly != true)
+            {
+                _editorHost?.ExecuteExpandedSourceCommand("cut");
+            }
+            return true;
+        }
+
+        if (_editorCommandStatus.ExpandedSource
+            && (keyData & Keys.KeyCode) == Keys.A
+            && (keyData & Keys.Control) != Keys.None
+            && (keyData & Keys.Alt) == Keys.None)
+        {
+            _editorHost?.ExecuteExpandedSourceCommand("selectAll");
+            return true;
+        }
+
         if (_focusMode && keyData == Keys.Escape)
         {
             ToggleFocusMode();
@@ -178,7 +214,7 @@ internal sealed partial class MainForm
             && command is AppCommand.Undo or AppCommand.Redo
                 or AppCommand.Copy or AppCommand.Paste or AppCommand.Cut or AppCommand.SelectAll)
         {
-            _editorHost?.ExecuteExpandedSourceCommand(command switch
+            var expandedCommand = command switch
             {
                 AppCommand.Undo => "undo",
                 AppCommand.Redo => "redo",
@@ -186,7 +222,25 @@ internal sealed partial class MainForm
                 AppCommand.Paste => "paste",
                 AppCommand.Cut => "cut",
                 _ => "selectAll",
-            });
+            };
+            if (expandedCommand == "paste")
+            {
+                try
+                {
+                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
+                    {
+                        _editorHost?.ExecuteExpandedSourceCommand("paste", Clipboard.GetText(TextDataFormat.UnicodeText));
+                    }
+                }
+                catch (ExternalException)
+                {
+                    // 剪贴板暂时被其他进程占用时保持原有的无操作行为。
+                }
+            }
+            else
+            {
+                _editorHost?.ExecuteExpandedSourceCommand(expandedCommand);
+            }
             return;
         }
 
@@ -230,6 +284,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ExportHtml:
                 _ = ExportHtmlAsync();
+                break;
+            case AppCommand.ExportImage:
+                _ = ExportImageAsync();
                 break;
             case AppCommand.Print:
                 PrintDocument();
@@ -630,7 +687,7 @@ internal sealed partial class MainForm
         _editorHost.ClearBlockHighlight();
     }
 
-    private async Task CheckForUpdatesAsync()
+    private async Task CheckForUpdatesAsync(bool silent = false)
     {
         try
         {
@@ -640,7 +697,10 @@ internal sealed partial class MainForm
             var release = await updateService.FindUpdateAsync(currentVersion, cancellation.Token);
             if (release is null)
             {
-                ShowMessage(this, Loc.Get("update.latest"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (!silent)
+                {
+                    ShowMessage(this, Loc.Get("update.latest"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
                 return;
             }
 
@@ -658,13 +718,19 @@ internal sealed partial class MainForm
         }
         catch (OperationCanceledException)
         {
-            ShowMessage(this, Loc.Get("update.failed"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!silent)
+            {
+                ShowMessage(this, Loc.Get("update.failed"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         catch (Exception exception)
         {
             _logger.Error("Could not check for application updates.", exception);
-            ShowMessage(this, Loc.Get("update.failed") + "\r\n\r\n" + exception.Message,
-                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!silent)
+            {
+                ShowMessage(this, Loc.Get("update.failed") + "\r\n\r\n" + exception.Message,
+                    "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 

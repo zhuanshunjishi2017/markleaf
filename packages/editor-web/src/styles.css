@@ -275,6 +275,10 @@ body.markleaf-theme-dark {
   overflow: hidden;
 }
 
+.markleaf-math-placeholder {
+  color: var(--text-secondary);
+}
+
 .markleaf-math.ProseMirror-selectednode {
   border-radius: 4px;
   outline: none;
@@ -840,6 +844,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
 /* The expanded source editor shares the tooltip typography and elevation,
    but its code block owns the visible frame and document-width layout. */
 .editor-tooltip.markleaf-expanded-source {
+  --markleaf-expanded-source-radius: 4px;
   box-sizing: border-box;
   max-width: calc(100vw - 16px);
   max-height: none;
@@ -849,9 +854,9 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   background: transparent;
   color: var(--text-primary);
   pointer-events: auto;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.16);
+  border-radius: var(--markleaf-expanded-source-radius);
+  /* 阴影由实际可见的 pre 代码块绘制，避免透明外层产生方形阴影。 */
+  box-shadow: none;
 }
 
 .editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-theme {
@@ -859,6 +864,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   width: 100%;
   min-height: 0 !important;
   height: auto !important;
+  border-radius: var(--markleaf-expanded-source-radius);
 }
 
 .editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
@@ -867,6 +873,10 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   margin: 0 !important;
   min-height: 0 !important;
   height: auto !important;
-  max-height: min(45vh, 360px);
+  border-radius: var(--markleaf-expanded-source-radius);
   overflow: auto;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.16);
+  max-height: min(45vh, 360px);
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
@@ -362,7 +363,7 @@ internal sealed class EditorHostController : IDisposable
         });
     }
 
-    public void ExecuteExpandedSourceCommand(string command)
+    public void ExecuteExpandedSourceCommand(string command, string? text = null)
     {
         if (command is "undo" or "redo")
         {
@@ -372,10 +373,11 @@ internal sealed class EditorHostController : IDisposable
 
         var script = command switch
         {
-            "copy" => "document.execCommand('copy')",
-            "cut" => "document.execCommand('cut')",
-            "paste" => "document.execCommand('paste')",
-            "selectAll" => "document.execCommand('selectAll')",
+            "copy" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('copy'); })()",
+            "cut" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('cut'); })()",
+            "paste" when text is not null => $"(() => {{ const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); return document.execCommand('insertText', false, {System.Text.Json.JsonSerializer.Serialize(text)}); }})()",
+            "paste" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('paste'); })()",
+            "selectAll" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); const selection = window.getSelection(); const range = document.createRange(); range.selectNodeContents(target); selection?.removeAllRanges(); selection?.addRange(range); return true; })()",
             _ => "false",
         };
         EnqueueOrRun(() => _webView.CoreWebView2?.ExecuteScriptAsync($"(() => {{ return {script}; }})()"));
@@ -729,6 +731,111 @@ internal sealed class EditorHostController : IDisposable
             var pdfBytes = await File.ReadAllBytesAsync(pdfTempPath, cancellationToken);
             try { File.Delete(pdfTempPath); } catch { }
             return pdfBytes;
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch { }
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> CaptureExportImagesAsync(
+        string html,
+        string outputPath,
+        int contentWidth,
+        int maximumImageHeight,
+        float scale,
+        string format,
+        int jpegQuality,
+        CancellationToken cancellationToken = default)
+    {
+        contentWidth = Math.Clamp(contentWidth, 320, 4000);
+        maximumImageHeight = Math.Clamp(maximumImageHeight, 1000, 30000);
+        scale = float.IsFinite(scale) ? Math.Clamp(scale, 1f, 4f) : 2f;
+        format = string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase) ? "jpeg" : "png";
+        jpegQuality = Math.Clamp(jpegQuality, 1, 100);
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"markleaf-image-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(tempPath, html, Encoding.UTF8, cancellationToken);
+
+        try
+        {
+            using var captureForm = new Form
+            {
+                ClientSize = new Size(contentWidth + 112, 800),
+                ShowInTaskbar = false,
+                FormBorderStyle = FormBorderStyle.None,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-32000, -32000),
+            };
+            var captureView = new WebView2 { Dock = DockStyle.Fill };
+            captureForm.Controls.Add(captureView);
+            captureForm.Show();
+
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: _webView2UserDataDirectory);
+            await captureView.EnsureCoreWebView2Async(environment);
+            var core = captureView.CoreWebView2
+                ?? throw new InvalidOperationException("Image export WebView2 failed to initialize.");
+
+            var loadComplete = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<CoreWebView2NavigationCompletedEventArgs>? handler = null;
+            handler = (_, args) =>
+            {
+                core.NavigationCompleted -= handler;
+                if (args.IsSuccess)
+                    loadComplete.TrySetResult(true);
+                else
+                    loadComplete.TrySetException(
+                        new InvalidOperationException($"Image export page failed to load: {args.WebErrorStatus}"));
+            };
+            core.NavigationCompleted += handler;
+            core.Navigate(new Uri(tempPath).AbsoluteUri);
+            await loadComplete.Task.WaitAsync(cancellationToken);
+
+            await core.ExecuteScriptAsync(
+                "Promise.all([document.fonts.ready, Promise.all(Array.from(document.images).map(function (img) { return img.complete ? Promise.resolve() : new Promise(function (resolve) { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }); }); }))]).then(function () { window.__markleafFitMath && window.__markleafFitMath(); })");
+            await Task.Delay(100, cancellationToken);
+
+            var metricsJson = await core.ExecuteScriptAsync(
+                "(function () { var root = document.getElementById('export-root'); var rect = root ? root.getBoundingClientRect() : document.documentElement.getBoundingClientRect(); return JSON.stringify({ width: Math.ceil(rect.width), height: Math.ceil(Math.max(root ? root.scrollHeight : 0, document.documentElement.scrollHeight, document.body.scrollHeight)) }); })()");
+            var metricsText = JsonSerializer.Deserialize<string>(metricsJson) ?? "{}";
+            using var metrics = JsonDocument.Parse(metricsText);
+            var pageWidth = Math.Max(1, metrics.RootElement.GetProperty("width").GetInt32());
+            var pageHeight = Math.Max(1, metrics.RootElement.GetProperty("height").GetInt32());
+            var chunkCssHeight = Math.Max(1, (int)Math.Floor(maximumImageHeight / scale));
+            var chunkCount = (int)Math.Ceiling(pageHeight / (double)chunkCssHeight);
+            var directory = Path.GetDirectoryName(outputPath) ?? "";
+            var baseName = Path.GetFileNameWithoutExtension(outputPath);
+            var extension = format == "jpeg" ? ".jpg" : ".png";
+            var paths = new List<string>(chunkCount);
+
+            for (var index = 0; index < chunkCount; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var y = index * chunkCssHeight;
+                var height = Math.Min(chunkCssHeight, pageHeight - y);
+                var parameters = JsonSerializer.Serialize(new
+                {
+                    format,
+                    quality = format == "jpeg" ? jpegQuality : (int?)null,
+                    fromSurface = true,
+                    captureBeyondViewport = true,
+                    clip = new { x = 0, y, width = pageWidth, height, scale },
+                }, new JsonSerializerOptions
+                {
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                });
+                var response = await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters);
+                using var responseJson = JsonDocument.Parse(response);
+                var bytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
+                var path = chunkCount == 1
+                    ? Path.ChangeExtension(outputPath, extension)
+                    : Path.Combine(directory, $"{baseName}-{index + 1:D2}{extension}");
+                await File.WriteAllBytesAsync(path, bytes, cancellationToken);
+                paths.Add(path);
+            }
+
+            return paths;
         }
         finally
         {

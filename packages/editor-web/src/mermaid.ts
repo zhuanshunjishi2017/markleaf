@@ -125,6 +125,10 @@ const MermaidNodeView = ({ node }: { node: { type?: { name: string }; textConten
           'error',
         )
       }
+      // 等最终 SVG 或错误提示插入 DOM 后再通知浮层重新测量锚点高度。
+      window.requestAnimationFrame(() => {
+        if (section.isConnected) window.dispatchEvent(new Event('markleaf-mermaid-rendered'))
+      })
     })
   }
   wrapper.addEventListener('markleaf-rerender-mermaid', renderCurrent)

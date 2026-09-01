@@ -100,7 +100,7 @@
   padding: 0 0.08em;
 }
 
-/* 默认提示框采用轻量引用框；印刷及其衍生主题在 print.css 中使用 tcolorbox 风格。 */
+/* 默认提示框采用轻量引用框；各排版主题可覆盖为自身的引用框样式。 */
 .markleaf-alert {
   --markleaf-alert-color: #0969da;
   --markleaf-alert-content-spacing-x: 0.85em;
@@ -128,8 +128,7 @@
   margin-right: 0 !important;
   margin-left: 0 !important;
   padding-right: var(--markleaf-alert-content-spacing-x);
-  padding-left: 0;
-  text-indent: 0 !important;
+  padding-left: 1em;
 }
 
 .markleaf-alert > :first-child {

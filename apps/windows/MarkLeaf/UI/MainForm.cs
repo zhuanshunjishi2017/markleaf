@@ -203,7 +203,18 @@ internal sealed partial class MainForm : Form
         _modeButton.Margin = new Padding(0, 0, this.ScaleForDpi(2), 0);
         _shortcutManager = new ShortcutManager(_settings.Shortcut);
         _commandRouter = new CommandRouter(_shortcutManager, GetCommandState, ExecuteCommand);
-        _menuService = new NativeMenuService(_commandRouter, _shortcutManager, GetRecentWorkspaces, GetRecentFiles, () => _markdownStyle, () => _zoomPercent, () => _colorTheme, () => _settings.Appearance.FollowSystemColorMode);
+        _menuService = new NativeMenuService(
+            _commandRouter,
+            _shortcutManager,
+            GetRecentWorkspaces,
+            GetRecentFiles,
+            () => _markdownStyle,
+            () => _zoomPercent,
+            () => _colorTheme,
+            () => _settings.Appearance.FollowSystemColorMode,
+            () => _settings.Appearance.ShowMenuKeyboardShortcuts,
+            () => _settings.Appearance.ShowMenuMnemonics,
+            () => _settings.General.UiLanguage);
         _shortcutManager.Changed += () =>
         {
             _menuService.RebuildMenu();
@@ -442,6 +453,11 @@ internal sealed partial class MainForm : Form
         startupTasks.Add(InitializeStartupContentAsync());
         await Task.WhenAll(startupTasks);
 
+        if (_settings.General.AutoCheckForUpdates)
+        {
+            _ = CheckForUpdatesAsync(silent: true);
+        }
+
         if (!string.IsNullOrWhiteSpace(_options.SmokeCommand))
         {
             BeginInvoke(RunSmokeCommand);
@@ -469,14 +485,16 @@ internal sealed partial class MainForm : Form
             await OpenDocumentPathAsync(_options.InitialDocumentPath);
         }
 
-        if (_settings.File.StartupAction == StartupAction.NewDocument
-            || string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
-            || !Directory.Exists(_settings.Workspace.LastFolder))
+        if (_settings.File.StartupAction == StartupAction.NewDocument)
         {
             return;
         }
 
-        await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
+        if (!string.IsNullOrWhiteSpace(_settings.Workspace.LastFolder)
+            && Directory.Exists(_settings.Workspace.LastFolder))
+        {
+            await OpenWorkspaceAsync(_settings.Workspace.LastFolder);
+        }
 
         if (_settings.File.StartupAction == StartupAction.OpenLastWorkspaceAndFiles
             && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)

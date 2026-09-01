@@ -122,6 +122,16 @@ public sealed class ShortcutSettings
 
 public sealed class ExportSettings
 {
+    public int ImageMaxHeight { get; set; } = 30000;
+
+    public int ImageContentWidth { get; set; } = 1200;
+
+    public float ImageScale { get; set; } = 2f;
+
+    public string ImageFormat { get; set; } = "png";
+
+    public int ImageJpegQuality { get; set; } = 90;
+
     public bool KeepTablesTogether { get; set; }
 
     public bool KeepHeadingsWithNextBlock { get; set; }
@@ -172,6 +182,8 @@ public sealed class GeneralSettings
     public bool AssociateTextFiles { get; set; }
 
     public string UiLanguage { get; set; } = "";
+
+    public bool AutoCheckForUpdates { get; set; } = true;
 }
 
 public sealed class AppearanceSettings
@@ -197,6 +209,10 @@ public sealed class AppearanceSettings
     public string DefaultDarkThemeId { get; set; } = "dark";
 
     public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.DarkThemeOnly;
+
+    public bool ShowMenuKeyboardShortcuts { get; set; } = true;
+
+    public bool ShowMenuMnemonics { get; set; } = true;
 
     public StatusBarSettings StatusBar { get; set; } = new();
 }

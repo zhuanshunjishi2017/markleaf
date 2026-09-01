@@ -63,6 +63,9 @@ internal sealed class NativeMenuService : IDisposable
     private readonly Func<int> _currentZoomProvider;
     private readonly Func<string> _currentColorThemeProvider;
     private readonly Func<bool> _followSystemProvider;
+    private readonly Func<bool> _showKeyboardShortcutsProvider;
+    private readonly Func<bool> _showMnemonicsProvider;
+    private readonly Func<string> _uiLanguageProvider;
     private readonly Dictionary<uint, string> _styleCommandIds = new();
     private readonly Dictionary<uint, int> _zoomCommandIds = new();
     private readonly Dictionary<uint, string> _colorCommandIds = new();
@@ -81,7 +84,10 @@ internal sealed class NativeMenuService : IDisposable
         Func<string> currentStyleProvider,
         Func<int> currentZoomProvider,
         Func<string> currentColorThemeProvider,
-        Func<bool> followSystemProvider)
+        Func<bool> followSystemProvider,
+        Func<bool> showKeyboardShortcutsProvider,
+        Func<bool> showMnemonicsProvider,
+        Func<string> uiLanguageProvider)
     {
         _router = router;
         _shortcutManager = shortcutManager;
@@ -91,6 +97,9 @@ internal sealed class NativeMenuService : IDisposable
         _currentZoomProvider = currentZoomProvider;
         _currentColorThemeProvider = currentColorThemeProvider;
         _followSystemProvider = followSystemProvider;
+        _showKeyboardShortcutsProvider = showKeyboardShortcutsProvider;
+        _showMnemonicsProvider = showMnemonicsProvider;
+        _uiLanguageProvider = uiLanguageProvider;
     }
 
     public void Attach(nint window)
@@ -279,7 +288,7 @@ internal sealed class NativeMenuService : IDisposable
         return status.InTable ? TableBlockHandleCommands : BlockHandleCommands;
     }
 
-    private static (nint Menu, AppCommand[] Commands) BuildBlockHandleMenu(EditorCommandStatus status)
+    private (nint Menu, AppCommand[] Commands) BuildBlockHandleMenu(EditorCommandStatus status)
     {
         if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
         {
@@ -314,7 +323,7 @@ internal sealed class NativeMenuService : IDisposable
         return (BuildBlockHandleMenu(), BlockHandleCommands);
     }
 
-    private static nint BuildBlockHandleMenu()
+    private nint BuildBlockHandleMenu()
     {
         var menu = CreateMenu(true);
         try
@@ -405,6 +414,7 @@ internal sealed class NativeMenuService : IDisposable
 
             AppendMainMenuCommand(exportMenu, AppCommand.ExportPdf, Loc.Get("menu.file.exportPdf"));
             AppendMainMenuCommand(exportMenu, AppCommand.ExportHtml, Loc.Get("menu.file.exportHtml"));
+            AppendMainMenuCommand(exportMenu, AppCommand.ExportImage, Loc.Get("menu.file.exportImage"));
             AppendSeparator(exportMenu);
             AppendMainMenuCommand(exportMenu, AppCommand.ExportWithLastSettings, Loc.Get("menu.file.exportLast"));
             AppendPopup(menu, Loc.Get("menu.file.export"), exportMenu);
@@ -629,7 +639,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static void AppendCodeContextMenu(nint menu, List<AppCommand> commands, bool includeLanguage)
+    private void AppendCodeContextMenu(nint menu, List<AppCommand> commands, bool includeLanguage)
     {
         if (includeLanguage)
         {
@@ -648,7 +658,7 @@ internal sealed class NativeMenuService : IDisposable
             AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
     }
 
-    private static void AppendFootnoteCommands(nint menu)
+    private void AppendFootnoteCommands(nint menu)
     {
         AppendCommand(menu, AppCommand.GoToFootnoteReference, Loc.Get("contextMenu.footnote.goToReference"));
         AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
@@ -656,7 +666,7 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.DeleteFootnote, Loc.Get("contextMenu.footnote.delete"));
     }
 
-    private static void AppendTableCommands(nint menu, bool includeClipboard)
+    private void AppendTableCommands(nint menu, bool includeClipboard)
     {
         AppendCommand(menu, AppCommand.EditTableCaption, Loc.Get("contextMenu.table.caption"));
         AppendSeparator(menu);
@@ -689,7 +699,7 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
     }
 
-    private static void AppendReadOnlyContextMenu(nint menu)
+    private void AppendReadOnlyContextMenu(nint menu)
     {
         AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
         AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
@@ -823,7 +833,7 @@ internal sealed class NativeMenuService : IDisposable
         return image;
     }
 
-    private static nint BuildResizeImageSubmenu()
+    private nint BuildResizeImageSubmenu()
     {
         var resize = CreateMenu(true);
         AppendCommand(resize, AppCommand.ResizeImage100, Loc.Get("contextMenu.image.resizeFull"));
@@ -1020,7 +1030,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static nint BuildHelpMenu()
+    private nint BuildHelpMenu()
     {
         var menu = CreateMenu(true);
         try
@@ -1098,7 +1108,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static void AppendCommand(nint menu, AppCommand command, string text)
+    private void AppendCommand(nint menu, AppCommand command, string text)
     {
         Append(menu, NativeMethods.MfString, (nuint)command, text);
     }
@@ -1127,7 +1137,7 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static void AppendPopup(nint menu, string text, nint popup)
+    private void AppendPopup(nint menu, string text, nint popup)
     {
         try
         {
@@ -1140,19 +1150,26 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private static void AppendSeparator(nint menu)
+    private void AppendSeparator(nint menu)
     {
         Append(menu, NativeMethods.MfSeparator, 0, null);
     }
 
-    private static void AppendDisabledText(nint menu, string text)
+    private void AppendDisabledText(nint menu, string text)
     {
         Append(menu, NativeMethods.MfString | NativeMethods.MfGrayed, 0, text);
     }
 
-    private static void Append(nint menu, uint flags, nuint item, string? text)
+    private void Append(nint menu, uint flags, nuint item, string? text)
     {
-        if (!NativeMethods.AppendMenu(menu, flags, item, text))
+        var formattedText = text is null
+            ? null
+            : MenuTextFormatter.Format(
+                text,
+                _showKeyboardShortcutsProvider(),
+                _showMnemonicsProvider(),
+                _uiLanguageProvider());
+        if (!NativeMethods.AppendMenu(menu, flags, item, formattedText))
         {
             throw new Win32Exception();
         }

@@ -39,7 +39,8 @@ public static class CommandStateResolver
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
-            AppCommand.ExportWithLastSettings or AppCommand.ExportPdf or AppCommand.ExportHtml or AppCommand.Print =>
+            AppCommand.ExportWithLastSettings or AppCommand.ExportPdf or AppCommand.ExportHtml
+                or AppCommand.ExportImage or AppCommand.Print =>
                 new(context.DocumentAvailable && context.EditorReady),
             AppCommand.Undo => new(context.EditorReady && !context.ReadOnly && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && !context.ReadOnly && context.CanRedo),

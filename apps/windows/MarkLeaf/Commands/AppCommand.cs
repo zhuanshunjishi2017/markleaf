@@ -152,6 +152,7 @@ public enum AppCommand
     ShowFrontMatter = 0x1336,
     SetMathNumber = 0x1337,
     RestartEditor = 0x1338,
+    ExportImage = 0x1339,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
