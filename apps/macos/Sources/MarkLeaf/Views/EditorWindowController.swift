@@ -589,7 +589,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let statusBar = NSStackView()
         statusBar.orientation = .horizontal
         statusBar.alignment = .centerY
-        statusBar.distribution = .fill
+        statusBar.distribution = .fillProportionally
         statusBar.spacing = 8
         statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
 

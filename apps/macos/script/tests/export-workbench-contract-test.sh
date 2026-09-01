@@ -11,9 +11,10 @@ refuse() {
   if grep -Fq "$2" "$1"; then echo "FAIL: $3" >&2; exit 1; fi
 }
 
-require "$CONTROLLER" 'NSSegmentedControl' 'export formats must use a native segmented control'
-require "$CONTROLLER" 'segmentStyle = .texturedRounded' 'format switch must use the large preferences-style control'
-require "$CONTROLLER" 'controlSize = .large' 'format switch must use a large control size'
+require "$CONTROLLER" 'pdfFormatButton' 'PDF format must have a large toggle button'
+require "$CONTROLLER" 'htmlFormatButton' 'HTML format must have a large toggle button'
+require "$CONTROLLER" 'imagePosition = .imageAbove' 'format buttons must use large preference-style icons'
+require "$CONTROLLER" 'button.layer?.cornerRadius = 8' 'format buttons must use rounded selection cards'
 require "$CONTROLLER" 'updateHeaderFooterFieldState(animated: false)' 'format switching must not animate header or footer rows'
 require "$CONTROLLER" 'let headerVisible = isPDF && selectedHeaderFooterPreset' 'header fields must be PDF-only'
 require "$CONTROLLER" 'PDFView()' 'PDF preview must use PDFKit'

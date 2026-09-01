@@ -260,6 +260,13 @@ final class AppWindowManager {
             ?? windowControllers.first?.windowSession?.activeTabSession
     }
 
+    /// Window-level state (sidebar/status bar) must remain controllable even
+    /// after the last document tab has been closed.
+    var activeViewStateSession: EditorSession? {
+        guard let controller = activeWindowController ?? windowControllers.first else { return nil }
+        return windowSessions[controller]?.controller?.session ?? controller.session
+    }
+
     /// 当前活跃窗口的会话边界。
     var activeWindowSession: WindowSession? {
         activeWindowController.flatMap { windowSessions[$0] }

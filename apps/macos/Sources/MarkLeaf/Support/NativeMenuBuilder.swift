@@ -355,6 +355,14 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     static let shared = MenuRouter()
 
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
+    private var viewStateSession: EditorSession? { AppWindowManager.shared.activeViewStateSession }
+    private static let documentRequiredCommands: Set<String> = [
+        "save", "saveAll", "saveAs", "export", "exportWithLastSettings", "print",
+        "undo", "redo", "cut", "copy", "copyMarkdown", "copyPlain", "paste", "pastePlainText",
+        "find", "replace", "toggleSourceMode", "toggleCode", "insertMathInline",
+        "insertMathBlock", "insertMermaid", "insertFootnote", "insertTable",
+        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "clearFormat",
+    ]
 
     /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
     /// WKWebView 编辑器不会使用 NSTextView，因此仍走 EditorSession 命令。
@@ -396,6 +404,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return !SettingsService.shared.settings.followSystemTheme
         }
         guard let command = menuItem.representedObject as? String else { return true }
+        if Self.documentRequiredCommands.contains(command) {
+            guard AppWindowManager.shared.activeSession != nil else { return false }
+        }
         if let editor = nativeTextFieldEditor,
            NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) {
             return NativeTextEditingPolicy.isEnabled(
@@ -411,22 +422,26 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         }
         switch command {
         case "print": return session != nil
-        case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
+        case "toggleSidebar":
+            menuItem.state = viewStateSession?.sidebarVisible == true ? .on : .off
+            return viewStateSession != nil
         case "workspaceTab":
-            menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+            menuItem.state = viewStateSession?.sidebarTabIndex == 0 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
         case "outlineTab":
-            menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
-                && s?.outlineDetached != true
+            menuItem.state = viewStateSession?.sidebarTabIndex == 1 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+                && viewStateSession?.outlineDetached != true
         case "toggleDetachedOutline": menuItem.state = s?.outlineDetached == true ? .on : .off
         case "treeView":
-            menuItem.state = s?.workspaceListMode == false ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+            menuItem.state = viewStateSession?.workspaceListMode == false ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
         case "listView":
-            menuItem.state = s?.workspaceListMode == true ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
-        case "toggleStatusBar": menuItem.state = s?.statusBarVisible == true ? .on : .off
+            menuItem.state = viewStateSession?.workspaceListMode == true ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+        case "toggleStatusBar":
+            menuItem.state = viewStateSession?.statusBarVisible == true ? .on : .off
+            return viewStateSession != nil
         case "toggleFocusMode":
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleFollowSystemTheme":
@@ -560,6 +575,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             NativeMenuBuilder.refreshIfNeeded()
         case "toggleFocusMode":
             AppWindowManager.shared.activeWindowController?.toggleFocusMode()
+        case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "treeView", "listView", "toggleDetachedOutline":
+            viewStateSession?.performMenuCommand(command)
         case "openHelp":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md") {
                 NSWorkspace.shared.open(url)

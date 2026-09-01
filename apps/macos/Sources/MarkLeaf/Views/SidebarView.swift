@@ -418,8 +418,16 @@ final class SidebarView: NSView {
         session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
         session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
         session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
-        workspaceTree.rebind(to: session)
-        workspaceChanged()
+        let previousRoot = self.session.workspaceRoot
+        let previousPaths = self.session.workspaceTree.map(\.path)
+        let topologyUnchanged = previousRoot == session.workspaceRoot
+            && previousPaths == session.workspaceTree.map(\.path)
+        workspaceTree.rebind(to: session, preservingTopology: topologyUnchanged)
+        if !topologyUnchanged {
+            workspaceChanged()
+        } else {
+            updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
+        }
         outlineChanged()
         outlineSelectionChanged()
     }
@@ -563,9 +571,22 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         sizeLastColumnToFit()
     }
 
-    func rebind(to session: EditorSession) {
+    func rebind(to session: EditorSession, preservingTopology: Bool = false) {
         self.session = session
-        reloadData(activePath: session.documentURL?.path)
+        if preservingTopology {
+            setActivePath(session.documentURL?.path)
+        } else {
+            reloadData(activePath: session.documentURL?.path)
+        }
+    }
+
+    func setActivePath(_ path: String?) {
+        if let path {
+            pendingRevealPath = path
+            scheduleRevealContinuation()
+        } else {
+            deselectAll(nil)
+        }
     }
 
     func setListMode(_ listMode: Bool) {

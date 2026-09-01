@@ -10,12 +10,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let binding: ExportBinding
     var onClose: (() -> Void)?
 
-    private let formatSegment = NSSegmentedControl(
-        labels: ["PDF", "HTML"],
-        trackingMode: .selectOne,
-        target: nil,
-        action: nil
-    )
+    private let pdfFormatButton = NSButton(title: "PDF", target: nil, action: nil)
+    private let htmlFormatButton = NSButton(title: "HTML", target: nil, action: nil)
+    private lazy var formatStack = NSStackView(views: [pdfFormatButton, htmlFormatButton])
     private let paperPopup = NSPopUpButton()
     private let landscapeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let marginPopup = NSPopUpButton()
@@ -100,20 +97,11 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         pdfPreviewView.translatesAutoresizingMaskIntoConstraints = false
         pdfPreviewView.autoScales = true
 
-        if let pdfIcon = NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: "PDF") {
-            formatSegment.setImage(pdfIcon, forSegment: 0)
-        }
-        if let htmlIcon = NSImage(systemSymbolName: "curlybraces", accessibilityDescription: "HTML") {
-            formatSegment.setImage(htmlIcon, forSegment: 1)
-        }
-        formatSegment.segmentStyle = .texturedRounded
-        formatSegment.controlSize = .large
-        formatSegment.font = .systemFont(ofSize: 13, weight: .medium)
-        formatSegment.selectedSegment = 0
-        formatSegment.target = self
-        formatSegment.action = #selector(formatChanged)
-        formatSegment.setWidth(112, forSegment: 0)
-        formatSegment.setWidth(116, forSegment: 1)
+        configureFormatButton(pdfFormatButton, title: "PDF", icon: "doc.richtext", tag: 0)
+        configureFormatButton(htmlFormatButton, title: "HTML", icon: "curlybraces", tag: 1)
+        formatStack.orientation = .horizontal
+        formatStack.spacing = 8
+        formatStack.alignment = .centerY
 
         keepTablesCheck.title = L10n.t("不允许表格分居两页")
         keepHeadingsCheck.title = L10n.t("不允许标题处于页面最底部")
@@ -121,6 +109,11 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         keepTablesCheck.action = #selector(optionChanged)
         keepHeadingsCheck.target = self
         keepHeadingsCheck.action = #selector(optionChanged)
+        for check in [keepTablesCheck, keepHeadingsCheck] {
+            check.lineBreakMode = .byWordWrapping
+            check.cell?.wraps = true
+            check.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
@@ -195,14 +188,18 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
         configureFieldRow(headerFieldRow, label: headerFieldLabel, field: headerField)
         configureFieldRow(footerFieldRow, label: footerFieldLabel, field: footerField)
-        pageBehaviorRow = labeled(L10n.t("页面行为"), NSStackView(views: [keepTablesCheck, keepHeadingsCheck]))
+        let pageBehaviorStack = NSStackView(views: [keepTablesCheck, keepHeadingsCheck])
+        pageBehaviorStack.orientation = .vertical
+        pageBehaviorStack.alignment = .leading
+        pageBehaviorStack.spacing = 6
+        pageBehaviorRow = labeled(L10n.t("页面行为"), pageBehaviorStack)
         headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         headerFieldRowHeight?.isActive = true
         footerFieldRowHeight?.isActive = true
 
         let optionsStack = NSStackView(views: [
-            formatSegment,
+            formatStack,
             paperRow!,
             landscapeRow!,
             marginRow!,
@@ -322,7 +319,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let idx = preferredThemeID.flatMap(themeIDs.firstIndex(of:)) {
             colorThemePopup.selectItem(at: idx)
         }
-        formatSegment.selectedSegment = saved.format == "html" ? 1 : 0
+        updateFormatSelection(selectedIndex: saved.format == "html" ? 1 : 0)
         paperPopup.selectItem(withTitle: saved.paperSize)
         landscapeCheck.state = saved.landscape ? .on : .off
         margins = ExportMargins(
@@ -362,7 +359,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var selectedFormat: String {
-        formatSegment.selectedSegment == 1 ? "html" : "pdf"
+        htmlFormatButton.layer?.backgroundColor != nil ? "html" : "pdf"
     }
 
     private func currentOptions() -> ExportOptions {
@@ -412,7 +409,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - 格式切换
 
-    @objc private func formatChanged() {
+    @objc private func formatChanged(_ sender: NSButton) {
+        updateFormatSelection(selectedIndex: sender.tag)
         updatePDFVisibility()
         if selectedFormat == "pdf" {
             pdfPreviewView.isHidden = false
@@ -422,6 +420,33 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             htmlPreviewView.isHidden = false
         }
         refreshPreview()
+    }
+
+    private func configureFormatButton(_ button: NSButton, title: String, icon: String, tag: Int) {
+        button.title = title
+        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
+        button.imagePosition = .imageAbove
+        button.symbolConfiguration = NSImage.SymbolConfiguration(textStyle: .title2, scale: .large)
+        button.font = .systemFont(ofSize: 13, weight: .medium)
+        button.isBordered = false
+        button.setButtonType(.momentaryPushIn)
+        button.target = self
+        button.action = #selector(formatChanged(_:))
+        button.tag = tag
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 8
+        button.widthAnchor.constraint(equalToConstant: 104).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 52).isActive = true
+    }
+
+    private func updateFormatSelection(selectedIndex: Int) {
+        for button in [pdfFormatButton, htmlFormatButton] {
+            let selected = button.tag == selectedIndex
+            button.layer?.backgroundColor = selected
+                ? NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
+                : NSColor.clear.cgColor
+            button.contentTintColor = selected ? .controlAccentColor : .secondaryLabelColor
+        }
     }
 
     private func updatePDFVisibility() {
