@@ -1692,8 +1692,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             return // 由侧边栏展开处理
         }
         let url = URL(fileURLWithPath: entry.path)
-        if SettingsService.shared.settings.workspaceOpenInNewTab,
-           let hook = workspace.openDocumentRequest {
+        if let hook = workspace.openDocumentRequest {
+            // 由窗口层统一处理偏好；空标签窗口也能为“当前标签”模式恢复新标签。
             hook(url)
         } else {
             // 当前标签模式：绕过窗口级路由，原位替换当前标签文档（含保存确认）。

@@ -17,7 +17,7 @@ final class WindowSession {
         self.windowID = windowID
         self.workspace = workspace
         workspace.openDocumentRequest = { [weak self] url in
-            self?.requestOpenFile(url)
+            self?.openWorkspaceDocument(url)
         }
         workspace.onEntryMoved = { [weak self] oldPath, newPath in
             guard let self else { return }
@@ -37,6 +37,20 @@ final class WindowSession {
             untitledLabel: L10n.t("未命名")
         )
         onOpenFile?(resolution, url)
+    }
+
+    /// 工作区请求统一从窗口层路由；“当前标签”在无标签可替换时回退为新标签。
+    func openWorkspaceDocument(_ url: URL) {
+        let route = WorkspaceOpenRoutingPolicy.route(
+            hasActiveTab: activeTabSession != nil,
+            prefersNewTab: SettingsService.shared.settings.workspaceOpenInNewTab
+        )
+        switch route {
+        case .newTab:
+            requestOpenFile(url)
+        case .currentTab:
+            activeTabSession?.openDocumentBypassingRouter(at: url)
+        }
     }
 
     func attach(session: EditorSession, to tabID: DocumentTabID) {

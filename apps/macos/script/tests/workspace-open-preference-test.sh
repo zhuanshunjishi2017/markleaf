@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SETTINGS="$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift"
 SESSION="$ROOT_DIR/Sources/MarkLeaf/Services/EditorSession.swift"
+WINDOW_SESSION="$ROOT_DIR/Sources/MarkLeaf/Services/WindowSession.swift"
 PREFS="$ROOT_DIR/Sources/MarkLeaf/Views/PreferencesWindowController.swift"
 
 require() {
@@ -28,8 +29,17 @@ require "$SETTINGS" 'var workspaceOpenInNewTab = true' \
 require "$SETTINGS" 'forKey: .workspaceOpenInNewTab' \
   'the workspace open preference must persist across launches'
 require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceEntry' \
-  'settings.workspaceOpenInNewTab' \
-  'workspace entry opening must honor the new-tab preference'
+  'workspace.openDocumentRequest' \
+  'workspace entries must delegate routing to the owning window session'
+require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \
+  'WorkspaceOpenRoutingPolicy.route' \
+  'window workspace routing must honor the new-tab preference and empty-tab fallback'
+require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \
+  'hasActiveTab: activeTabSession != nil' \
+  'routing must detect a window whose tabs were all closed'
+require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \
+  'activeTabSession?.openDocumentBypassingRouter(at: url)' \
+  'current-tab mode must replace in place when a tab exists'
 require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceEntry' \
   'openDocumentBypassingRouter(at: url)' \
   'current-tab mode must replace in place, not re-enter the new-tab router'
