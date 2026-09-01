@@ -1476,8 +1476,8 @@ async function handleMessage(value: unknown): Promise<void> {
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
             const pagination: ExportPaginationOptions = {
-              keepTablesTogether: format === 'pdf' && options.keepTablesTogether === true,
-              keepHeadingsWithNextBlock: format === 'pdf' && options.keepHeadingsWithNextBlock === true,
+              keepTablesTogether: options.keepTablesTogether === true,
+              keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
             }
             const html = await generateExportHtml(
               style,

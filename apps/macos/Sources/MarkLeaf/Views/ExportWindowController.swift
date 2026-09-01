@@ -8,7 +8,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private weak var session: EditorSession?
     var onClose: (() -> Void)?
 
-    private let formatPopup = NSPopUpButton()
+    private let formatSegment = NSSegmentedControl(
+        labels: ["PDF", "HTML"],
+        trackingMode: .selectOne,
+        target: nil,
+        action: nil
+    )
     private let paperPopup = NSPopUpButton()
     private let landscapeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let marginPopup = NSPopUpButton()
@@ -24,6 +29,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let headerFieldRow = NSView()
     private let footerFieldRow = NSView()
     private let lastSettingsButton = NSButton(title: "", target: nil, action: nil)
+    private let keepTablesCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let keepHeadingsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
 
@@ -32,6 +39,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private var marginRow: NSView?
     private var headerPresetRow: NSView?
     private var footerPresetRow: NSView?
+    private var pageBehaviorRow: NSView?
     private var headerFieldRowHeight: NSLayoutConstraint?
     private var footerFieldRowHeight: NSLayoutConstraint?
     private var themeIDs: [String] = []
@@ -86,11 +94,24 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         previewView.underPageBackgroundColor = .white
         previewView.setValue(false, forKey: "drawsBackground")
 
-        formatPopup.addItems(withTitles: [L10n.t("PDF"), L10n.t("HTML")])
-        formatPopup.selectItem(at: 0)
-        formatPopup.target = self
-        formatPopup.action = #selector(formatChanged)
-        formatPopup.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        if let pdfIcon = NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: "PDF") {
+            formatSegment.setImage(pdfIcon, forSegment: 0)
+        }
+        if let htmlIcon = NSImage(systemSymbolName: "curlybraces", accessibilityDescription: "HTML") {
+            formatSegment.setImage(htmlIcon, forSegment: 1)
+        }
+        formatSegment.selectedSegment = 0
+        formatSegment.target = self
+        formatSegment.action = #selector(formatChanged)
+        formatSegment.setWidth(78, forSegment: 0)
+        formatSegment.setWidth(78, forSegment: 1)
+
+        keepTablesCheck.title = L10n.t("不允许表格分居两页")
+        keepHeadingsCheck.title = L10n.t("不允许标题处于页面最底部")
+        keepTablesCheck.target = self
+        keepTablesCheck.action = #selector(optionChanged)
+        keepHeadingsCheck.target = self
+        keepHeadingsCheck.action = #selector(optionChanged)
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
@@ -165,13 +186,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
         configureFieldRow(headerFieldRow, label: headerFieldLabel, field: headerField)
         configureFieldRow(footerFieldRow, label: footerFieldLabel, field: footerField)
+        pageBehaviorRow = labeled(L10n.t("页面行为"), NSStackView(views: [keepTablesCheck, keepHeadingsCheck]))
         headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         headerFieldRowHeight?.isActive = true
         footerFieldRowHeight?.isActive = true
 
         let optionsStack = NSStackView(views: [
-            labeled(L10n.t("格式"), formatPopup),
+            formatSegment,
             paperRow!,
             landscapeRow!,
             marginRow!,
@@ -181,6 +203,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             headerFieldRow,
             footerPresetRow!,
             footerFieldRow,
+            pageBehaviorRow!,
         ])
         optionsStack.orientation = .vertical
         optionsStack.alignment = .leading
@@ -285,7 +308,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let idx = preferredThemeID.flatMap(themeIDs.firstIndex(of:)) {
             colorThemePopup.selectItem(at: idx)
         }
-        formatPopup.selectItem(at: saved.format == "html" ? 1 : 0)
+        formatSegment.selectedSegment = saved.format == "html" ? 1 : 0
         paperPopup.selectItem(withTitle: saved.paperSize)
         landscapeCheck.state = saved.landscape ? .on : .off
         margins = ExportMargins(
@@ -296,6 +319,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         footerField.stringValue = saved.format == "html" ? saved.htmlFooter : saved.footerCustom
         selectHeaderFooterPreset(saved.headerPreset, in: headerPresetPopup)
         selectHeaderFooterPreset(saved.footerPreset, in: footerPresetPopup)
+        keepTablesCheck.state = saved.keepTablesTogether ? .on : .off
+        keepHeadingsCheck.state = saved.keepHeadingsWithNextBlock ? .on : .off
         marginPopup.addItem(withTitle: L10n.t("自定义"))
         customMarginItemIndex = marginPopup.numberOfItems - 1
         if let presetIndex = Self.marginPresets.firstIndex(where: { preset in
@@ -323,7 +348,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var selectedFormat: String {
-        formatPopup.indexOfSelectedItem == 1 ? "html" : "pdf"
+        formatSegment.selectedSegment == 1 ? "html" : "pdf"
     }
 
     private func currentOptions() -> ExportOptions {
@@ -344,7 +369,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             options.pdfHeaderAlignment = PDFHeaderFooterPolicy.alignment(for: headerPreset)
             options.pdfFooter = PDFHeaderFooterPolicy.text(for: footerPreset, custom: footerField.stringValue)
             options.pdfFooterAlignment = PDFHeaderFooterPolicy.alignment(for: footerPreset)
-            options.headerFooterFontFamily = selectedHeaderFooterFontFamily
+        options.headerFooterFontFamily = selectedHeaderFooterFontFamily
+        options.keepTablesTogether = keepTablesCheck.state == .on
+        options.keepHeadingsWithNextBlock = keepHeadingsCheck.state == .on
         }
         return options
     }
@@ -383,6 +410,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         marginRow?.isHidden = !isPDF
         headerPresetRow?.isHidden = !isPDF
         footerPresetRow?.isHidden = !isPDF
+        pageBehaviorRow?.isHidden = !isPDF
         headerFieldLabel.stringValue = isPDF ? "" : L10n.t("页眉")
         footerFieldLabel.stringValue = isPDF ? "" : L10n.t("页脚")
         updateHeaderFooterFieldState()
@@ -655,7 +683,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
                 footerCustom: footerField.stringValue,
                 footerAlignment: options.pdfFooterAlignment,
                 headerFontFamily: options.headerFooterFontFamily,
-                footerFontFamily: options.headerFooterFontFamily
+                footerFontFamily: options.headerFooterFontFamily,
+                keepTablesTogether: options.keepTablesTogether,
+                keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock
             )
         }
     }

@@ -72,6 +72,8 @@ extension EditorSession {
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "title": exportTitle,
+            "keepTablesTogether": options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
@@ -121,6 +123,8 @@ extension EditorSession {
             "maxWidth": settings.visualMaxContentWidth,
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
+            "keepTablesTogether": forPrint || options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": forPrint || options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
