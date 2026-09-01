@@ -425,6 +425,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             tab.recoveryUnavailable = false
             self.reloadTabBar()
         }
+        session.exportLeaseProvider = { [weak self, weak windowSession, weak session] in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return nil }
+            let container = self.editorHostView?.attachedView(for: tab.tabID) as? EditorWebContainerView
+            return ExportSessionLease(tabID: tab.tabID, session: session, container: container)
+        }
     }
 
     /// 把会话的观察回调绑定到窗口 UI（状态/大纲/视图状态），并同步到标签模型。

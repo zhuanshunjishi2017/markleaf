@@ -12,6 +12,10 @@ refuse() {
 }
 
 require "$CONTROLLER" 'NSSegmentedControl' 'export formats must use a native segmented control'
+require "$CONTROLLER" 'PDFView()' 'PDF preview must use PDFKit'
+require "$CONTROLLER" 'htmlPreviewView' 'HTML preview must keep WebKit'
+require "$CONTROLLER" 'binding: ExportBinding' 'export windows must bind to a tab'
+require "$CONTROLLER" 'ExportSessionLease' 'export windows must retain the source editor lease'
 require "$CONTROLLER" 'keepTablesCheck' 'table pagination must have a control'
 require "$CONTROLLER" 'keepHeadingsCheck' 'heading pagination must have a control'
 require "$CONTROLLER" 'pageBehaviorRow?.isHidden = !isPDF' 'page behavior must be PDF-only'

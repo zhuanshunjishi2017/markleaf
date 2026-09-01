@@ -165,6 +165,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var onViewStateChanged: (() -> Void)?
     var onRecoveryWriteFailure: (() -> Void)?
     var onRecoveryWriteSuccess: (() -> Void)?
+    var exportLeaseProvider: (() -> ExportSessionLease?)?
 
     // 视图状态（对应 Windows 视图菜单）
     var sidebarVisible = true

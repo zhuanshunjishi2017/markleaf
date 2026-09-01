@@ -5,7 +5,9 @@ import WebKit
 /// “导出…”对话框：格式（PDF / HTML）切换 + 左侧选项，右侧 WKWebView 实时预览，
 /// 底部“导出… / 取消”。PDF 显示纸张/方向/页边距选项，HTML 隐藏之；两种格式均带预览。
 final class ExportWindowController: NSWindowController, NSWindowDelegate {
-    private weak var session: EditorSession?
+    private let lease: ExportSessionLease?
+    private var session: EditorSession? { lease?.session }
+    private let binding: ExportBinding
     var onClose: (() -> Void)?
 
     private let formatSegment = NSSegmentedControl(
@@ -31,7 +33,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let lastSettingsButton = NSButton(title: "", target: nil, action: nil)
     private let keepTablesCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keepHeadingsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-    private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    private let pdfPreviewView = PDFView()
+    private let htmlPreviewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
 
     private var paperRow: NSView?
@@ -68,8 +71,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     private static let fieldRowHeight: CGFloat = 28
 
-    init(session: EditorSession) {
-        self.session = session
+    init(lease: ExportSessionLease, binding: ExportBinding) {
+        self.lease = lease
+        self.binding = binding
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 920, height: 680),
             styleMask: [.titled, .closable, .resizable],
@@ -91,8 +95,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let window else { return }
 
-        previewView.underPageBackgroundColor = .white
-        previewView.setValue(false, forKey: "drawsBackground")
+        htmlPreviewView.underPageBackgroundColor = .white
+        htmlPreviewView.setValue(false, forKey: "drawsBackground")
+        pdfPreviewView.translatesAutoresizingMaskIntoConstraints = false
+        pdfPreviewView.autoScales = true
 
         if let pdfIcon = NSImage(systemSymbolName: "doc.richtext", accessibilityDescription: "PDF") {
             formatSegment.setImage(pdfIcon, forSegment: 0)
@@ -214,15 +220,20 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
         let previewContainer = NSView()
         previewContainer.translatesAutoresizingMaskIntoConstraints = false
-        previewView.translatesAutoresizingMaskIntoConstraints = false
+        htmlPreviewView.translatesAutoresizingMaskIntoConstraints = false
         pageCountLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewContainer.addSubview(previewView)
+        previewContainer.addSubview(pdfPreviewView)
+        previewContainer.addSubview(htmlPreviewView)
         previewContainer.addSubview(pageCountLabel)
         NSLayoutConstraint.activate([
-            previewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
-            previewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
-            previewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
-            previewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+            pdfPreviewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            pdfPreviewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            pdfPreviewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
+            pdfPreviewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+            htmlPreviewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            htmlPreviewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            htmlPreviewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
+            htmlPreviewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
             pageCountLabel.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
             pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
             pageCountLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor),
@@ -400,6 +411,13 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func formatChanged() {
         updatePDFVisibility()
+        if selectedFormat == "pdf" {
+            pdfPreviewView.isHidden = false
+            htmlPreviewView.isHidden = true
+        } else {
+            pdfPreviewView.isHidden = true
+            htmlPreviewView.isHidden = false
+        }
         refreshPreview()
     }
 
@@ -483,7 +501,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             if options.format == "pdf" {
                 self.renderPDFPreview(html: html, options: options, generation: generation)
             } else {
-                self.previewView.loadHTMLString(html, baseURL: nil)
+                self.pdfPreviewView.isHidden = true
+                self.htmlPreviewView.isHidden = false
+                self.htmlPreviewView.loadHTMLString(html, baseURL: nil)
             }
         }
     }
@@ -512,8 +532,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             DispatchQueue.main.async {
                 guard let self, generation == self.previewGeneration else { return }
                 if case .success(true) = result {
-                    self.previewView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
                     if let document = PDFDocument(url: url) {
+                        self.pdfPreviewView.document = document
+                        self.pdfPreviewView.isHidden = false
+                        self.htmlPreviewView.isHidden = true
                         self.pageCountLabel.stringValue = L10n.f("共 %d 页", document.pageCount)
                     }
                     self.cleanupOldPreviews(except: url)
