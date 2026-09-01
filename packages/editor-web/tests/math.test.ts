@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createEditor, executeEditorCommand, getEditorCommandState, getMarkdown } from '../src/editor'
-import { renderMathInHtml } from '../src/math'
+import { mathInputPatterns, renderMathInHtml } from '../src/math'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
@@ -31,6 +31,15 @@ function selectMathNode(editor: ReturnType<typeof createEditor>, name: string): 
 }
 
 describe('math formulas', () => {
+  it('does not treat the second opening dollar as an inline closing dollar', () => {
+    expect(mathInputPatterns.inline.test('$$w$')).toBe(false)
+  })
+
+  it('still recognizes normal inline math while typing block math', () => {
+    expect(mathInputPatterns.inline.test('$w$')).toBe(true)
+    expect(mathInputPatterns.block.test('$$w$$')).toBe(true)
+  })
+
   it('round-trips inline and block math markdown', () => {
     const editor = makeEditor('a $x^2$ b\n\n$$y^2$$\n')
 

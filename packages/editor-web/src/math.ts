@@ -5,6 +5,13 @@ import katexSelfContainedCss from 'virtual:katex-css'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
 
+// Input rules must not treat the second `$` of `$$` as an inline closing
+// delimiter; otherwise `$$x$` converts before block math can complete.
+export const mathInputPatterns = {
+  inline: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
+  block: /\$\$([^$]+?)\$\$$/,
+} as const
+
 function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
 }
@@ -92,7 +99,7 @@ export const MathInline = Node.create({
   addInputRules() {
     return [
       new InputRule({
-        find: /\$([^$\n]+?)\$$/,
+        find: mathInputPatterns.inline,
         handler: ({ state, range, match }) => {
           const latex = match[1]!
           const mathType = state.schema.nodes.mathInline
@@ -176,7 +183,7 @@ export const MathBlock = Node.create({
   addInputRules() {
     return [
       new InputRule({
-        find: /\$\$([^$]+?)\$\$$/,
+        find: mathInputPatterns.block,
         handler: ({ state, range, match }) => {
           const latex = match[1]!
           const mathType = state.schema.nodes.mathBlock
