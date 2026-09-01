@@ -106,11 +106,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let htmlIcon = NSImage(systemSymbolName: "curlybraces", accessibilityDescription: "HTML") {
             formatSegment.setImage(htmlIcon, forSegment: 1)
         }
+        formatSegment.segmentStyle = .texturedRounded
+        formatSegment.controlSize = .large
+        formatSegment.font = .systemFont(ofSize: 13, weight: .medium)
         formatSegment.selectedSegment = 0
         formatSegment.target = self
         formatSegment.action = #selector(formatChanged)
-        formatSegment.setWidth(78, forSegment: 0)
-        formatSegment.setWidth(78, forSegment: 1)
+        formatSegment.setWidth(112, forSegment: 0)
+        formatSegment.setWidth(116, forSegment: 1)
 
         keepTablesCheck.title = L10n.t("不允许表格分居两页")
         keepHeadingsCheck.title = L10n.t("不允许标题处于页面最底部")
@@ -429,9 +432,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         headerPresetRow?.isHidden = !isPDF
         footerPresetRow?.isHidden = !isPDF
         pageBehaviorRow?.isHidden = !isPDF
-        headerFieldLabel.stringValue = isPDF ? "" : L10n.t("页眉")
-        footerFieldLabel.stringValue = isPDF ? "" : L10n.t("页脚")
-        updateHeaderFooterFieldState()
+        headerFieldLabel.stringValue = isPDF ? L10n.t("页眉") : ""
+        footerFieldLabel.stringValue = isPDF ? L10n.t("页脚") : ""
+        updateHeaderFooterFieldState(animated: false)
     }
 
     @objc private func headerFooterPresetChanged() {
@@ -439,12 +442,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         schedulePreview()
     }
 
-    private func updateHeaderFooterFieldState() {
+    private func updateHeaderFooterFieldState(animated: Bool = true) {
         let isPDF = selectedFormat == "pdf"
-        let headerVisible = !isPDF || selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
-        let footerVisible = !isPDF || selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
-        setFieldRowVisible(headerFieldRow, height: headerFieldRowHeight, visible: headerVisible)
-        setFieldRowVisible(footerFieldRow, height: footerFieldRowHeight, visible: footerVisible)
+        let headerVisible = isPDF && selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
+        let footerVisible = isPDF && selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
+        setFieldRowVisible(headerFieldRow, height: headerFieldRowHeight, visible: headerVisible, animated: animated)
+        setFieldRowVisible(footerFieldRow, height: footerFieldRowHeight, visible: footerVisible, animated: animated)
     }
 
     private func setFieldRowVisible(_ row: NSView, height: NSLayoutConstraint?, visible: Bool, animated: Bool = true) {

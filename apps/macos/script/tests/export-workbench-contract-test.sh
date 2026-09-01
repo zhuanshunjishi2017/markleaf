@@ -12,6 +12,10 @@ refuse() {
 }
 
 require "$CONTROLLER" 'NSSegmentedControl' 'export formats must use a native segmented control'
+require "$CONTROLLER" 'segmentStyle = .texturedRounded' 'format switch must use the large preferences-style control'
+require "$CONTROLLER" 'controlSize = .large' 'format switch must use a large control size'
+require "$CONTROLLER" 'updateHeaderFooterFieldState(animated: false)' 'format switching must not animate header or footer rows'
+require "$CONTROLLER" 'let headerVisible = isPDF && selectedHeaderFooterPreset' 'header fields must be PDF-only'
 require "$CONTROLLER" 'PDFView()' 'PDF preview must use PDFKit'
 require "$CONTROLLER" 'htmlPreviewView' 'HTML preview must keep WebKit'
 require "$CONTROLLER" 'binding: ExportBinding' 'export windows must bind to a tab'

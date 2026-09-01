@@ -1974,11 +1974,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 用系统共享面板分享文件（AirDrop/邮件/信息等）。
-    func shareWorkspaceEntry(_ entry: WorkspaceEntry) {
+    func shareWorkspaceEntry(
+        _ entry: WorkspaceEntry,
+        sourceView: NSView? = nil,
+        sourceRect: NSRect? = nil
+    ) {
         guard !entry.isDirectory else { return }
-        guard let contentView = webView?.window?.contentView else { return }
+        guard let anchorView = sourceView ?? webView?.window?.contentView else { return }
+        let anchorRect = sourceRect ?? anchorView.bounds
         let picker = NSSharingServicePicker(items: [URL(fileURLWithPath: entry.path)])
-        picker.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .minY)
+        picker.show(relativeTo: anchorRect, of: anchorView, preferredEdge: .maxX)
     }
 
     func openWorkspaceEntryInFinder(_ entry: WorkspaceEntry) {

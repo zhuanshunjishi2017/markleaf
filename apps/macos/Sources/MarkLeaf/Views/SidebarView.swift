@@ -1173,7 +1173,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     @objc private func shareEntry(_ sender: NSMenuItem) {
         if let entry = sender.representedObject as? WorkspaceEntry {
-            session?.shareWorkspaceEntry(entry)
+            let row = row(forItem: entry)
+            let rect = row >= 0 ? rect(ofRow: row) : bounds
+            session?.shareWorkspaceEntry(entry, sourceView: self, sourceRect: rect)
         }
     }
 
