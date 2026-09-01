@@ -13,6 +13,7 @@ internal sealed partial class MainForm
     private SearchResultsView _searchResultsView = default!;
     private Panel _searchResultsHost = default!;
     private CancellationTokenSource? _searchCancellation;
+    private string? _pendingWorkspaceSearchQuery;
 
     private LiveSplitContainer CreateSidebarSplit(int sidebarWidth, int outlineWidth)
     {
@@ -400,13 +401,26 @@ internal sealed partial class MainForm
                 NewDocumentKind.Markdown);
     }
 
-    private async void OnSearchResultActivated(object? sender, string path)
+    private async void OnSearchResultActivated(object? sender, SearchResult result)
     {
+        var wasCurrentDocument = PathEquals(_document?.FilePath, result.FullPath);
         _sidebarSearchBar.ClearSearch();
         _searchCancellation?.Cancel();
         _searchResultsHost.Visible = false;
-        await ActivateWorkspaceDocumentAsync(path);
-        await RevealPathInTreeAsync(path);
+        _pendingWorkspaceSearchQuery = result.IsContentMatch && !wasCurrentDocument
+            ? result.Query
+            : null;
+        await ActivateWorkspaceDocumentAsync(result.FullPath);
+        if (!PathEquals(_document?.FilePath, result.FullPath))
+        {
+            _pendingWorkspaceSearchQuery = null;
+            return;
+        }
+        await RevealPathInTreeAsync(result.FullPath);
+        if (result.IsContentMatch && wasCurrentDocument)
+        {
+            OpenFindReplaceDialog(replace: false, result.Query);
+        }
     }
 
     private async void OnSidebarSearchTextChanged(object? sender, string text)

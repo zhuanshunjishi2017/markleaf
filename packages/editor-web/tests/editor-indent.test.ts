@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createEditor, executeEditorCommand, getMarkdown } from '../src/editor'
+import { createEditor, executeEditorCommand, getMarkdown, setMarkdownEditingSettings } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy()
   document.body.innerHTML = ''
+  setMarkdownEditingSettings({})
 })
 
 function makeEditor(markdown: string, readOnly = false): ReturnType<typeof createEditor> {
@@ -72,6 +73,26 @@ function placeCursorInEmptyListItem(editor: ReturnType<typeof createEditor>): vo
   editor.commands.setTextSelection(position)
 }
 
+function placeCursorInEmptyParagraphInside(
+  editor: ReturnType<typeof createEditor>,
+  containerType: 'blockquote' | 'alert',
+): void {
+  let position: number | null = null
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'paragraph' || node.content.size !== 0) return position === null
+    const $pos = editor.state.doc.resolve(pos + 1)
+    for (let depth = $pos.depth - 1; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === containerType) {
+        position = pos + 1
+        return false
+      }
+    }
+    return position === null
+  })
+  if (position === null) throw new Error(`Empty paragraph not found inside ${containerType}`)
+  editor.commands.setTextSelection(position)
+}
+
 function placeCursorAtEndOfText(editor: ReturnType<typeof createEditor>, text: string): void {
   let position: number | null = null
   editor.state.doc.descendants((node, pos) => {
@@ -86,9 +107,20 @@ function placeCursorAtEndOfText(editor: ReturnType<typeof createEditor>, text: s
 }
 
 describe('visual editor indentation', () => {
-  it('inserts an indent when Tab is pressed in a paragraph', () => {
+  it('turns a paragraph into a code block when Tab is pressed at its start', () => {
     const editor = makeEditor('文本')
     editor.commands.setTextSelection(1)
+
+    const event = pressTab(editor)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.isActive('codeBlock')).toBe(true)
+    expect(getMarkdown(editor)).toContain('```\n文本\n```')
+  })
+
+  it('inserts an indent when Tab is pressed inside a paragraph', () => {
+    const editor = makeEditor('文本')
+    editor.commands.setTextSelection(2)
 
     const event = pressTab(editor)
 
@@ -113,6 +145,51 @@ describe('visual editor indentation', () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(getMarkdown(editor)).toBe('文本')
+  })
+
+  it('turns four leading spaces into a code block', () => {
+    const editor = makeEditor('文本')
+    editor.commands.setTextSelection(1)
+
+    for (const character of '    ') {
+      const from = editor.state.selection.from
+      const handled = editor.view.someProp('handleTextInput', handler => handler(
+        editor.view,
+        from,
+        from,
+        character,
+        () => editor.state.tr.insertText(character),
+      ))
+      if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, from))
+    }
+
+    expect(editor.isActive('codeBlock')).toBe(true)
+    expect(getMarkdown(editor)).toContain('```\n文本\n```')
+  })
+
+  it.each([
+    ['=', 1, '# 标题'],
+    ['-', 2, '## 标题'],
+  ])('turns a hard-break Setext %s underline into a heading', (marker, level, markdown) => {
+    const editor = makeEditor('标题')
+    placeCursorAtEndOfText(editor, '标题')
+    expect(editor.commands.setHardBreak()).toBe(true)
+
+    for (const character of marker.repeat(3)) {
+      const from = editor.state.selection.from
+      const handled = editor.view.someProp('handleTextInput', handler => handler(
+        editor.view,
+        from,
+        from,
+        character,
+        () => editor.state.tr.insertText(character),
+      ))
+      if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, from))
+    }
+
+    expect(editor.isActive('heading', { level })).toBe(true)
+    expect(getMarkdown(editor).trimEnd()).toBe(markdown)
+    expect(editor.state.selection.$from.parentOffset).toBe(2)
   })
 
   it.each([
@@ -183,6 +260,99 @@ describe('visual editor indentation', () => {
     expect(pressEnter(editor).defaultPrevented).toBe(true)
     expect(pressEnter(editor).defaultPrevented).toBe(true)
     expect(getMarkdown(editor).trimEnd()).toBe('7. item\n8. \n9.')
+  })
+
+  it('uses the original Tiptap behavior when exiting on a trailing empty list item is enabled', () => {
+    setMarkdownEditingSettings({ exitBlockOnEmptyEnter: true })
+    const editor = makeEditor('- item\n- ')
+    placeCursorInEmptyListItem(editor)
+
+    const event = pressEnter(editor)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.isActive('bulletList')).toBe(false)
+    expect(editor.state.doc.lastChild?.type.name).toBe('paragraph')
+    expect(editor.state.doc.lastChild?.content.size).toBe(0)
+    expect(getMarkdown(editor)).toContain('- item')
+  })
+
+  it.each([
+    ['blockquote', { type: 'blockquote', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '引用' }] },
+      { type: 'paragraph' },
+    ] }],
+    ['alert', { type: 'alert', attrs: { type: 'NOTE' }, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '提示' }] },
+      { type: 'paragraph' },
+    ] }],
+  ] as const)('keeps adding empty paragraphs inside a trailing %s when block exit is disabled', (type, content) => {
+    const editor = makeEditor('')
+    editor.commands.setContent({ type: 'doc', content: [content] } as any)
+    placeCursorInEmptyParagraphInside(editor, type)
+
+    const event = pressEnter(editor)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.state.doc.firstChild?.type.name).toBe(type)
+    expect(editor.state.doc.firstChild?.childCount).toBe(3)
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+  })
+
+  it.each([
+    ['blockquote', { type: 'blockquote', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '引用' }] },
+      { type: 'paragraph' },
+    ] }],
+    ['alert', { type: 'alert', attrs: { type: 'NOTE' }, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '提示' }] },
+      { type: 'paragraph' },
+    ] }],
+  ] as const)('exits a trailing %s when block exit is enabled', (type, content) => {
+    setMarkdownEditingSettings({ exitBlockOnEmptyEnter: true })
+    const editor = makeEditor('')
+    editor.commands.setContent({ type: 'doc', content: [content] } as any)
+    placeCursorInEmptyParagraphInside(editor, type)
+
+    const event = pressEnter(editor)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.state.doc.lastChild?.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.depth).toBe(1)
+  })
+
+  it('keeps Enter inside a code block when block exit is disabled', () => {
+    const editor = makeEditor('```\ncode\n```')
+    placeCursorAtEndOfText(editor, 'code')
+
+    const first = pressEnter(editor)
+    const second = pressEnter(editor)
+    const third = pressEnter(editor)
+
+    expect(first.defaultPrevented).toBe(true)
+    expect(second.defaultPrevented).toBe(true)
+    expect(third.defaultPrevented).toBe(true)
+    expect(editor.state.doc.firstChild?.type.name).toBe('codeBlock')
+    expect(editor.state.doc.firstChild?.textContent).toBe('code\n\n\n')
+  })
+
+  it('can disable Shift+Enter hard breaks', () => {
+    setMarkdownEditingSettings({ useShiftEnterHardBreak: false })
+    const editor = makeEditor('文本')
+    placeCursorAtEndOfText(editor, '文本')
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      shiftKey: true,
+    })
+    editor.view.dom.dispatchEvent(event)
+
+    expect(editor.state.doc.firstChild?.type.name).toBe('paragraph')
+    expect(editor.state.doc.childCount).toBe(2)
+    expect(editor.state.doc.firstChild?.childCount).toBe(1)
   })
 
   it('preserves empty items, separate lists, and ordered list numbering during serialization', () => {

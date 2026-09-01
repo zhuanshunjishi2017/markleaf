@@ -120,6 +120,7 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Workspace.RecentFiles ??= [];
         settings.File ??= new FileSettings();
         settings.Editor ??= new EditorSettings();
+        NormalizeEditor(settings.Editor);
         settings.Appearance ??= new AppearanceSettings();
         settings.Appearance.StatusBar ??= new StatusBarSettings();
         NormalizeStatusBar(settings.Appearance.StatusBar);
@@ -131,6 +132,21 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Shortcut.Overrides ??= [];
         settings.Shortcut.Cleared ??= [];
         return settings;
+    }
+
+    private static void NormalizeEditor(EditorSettings editor)
+    {
+        editor.MarkdownCodeFence = editor.MarkdownCodeFence is "backtick" or "tilde"
+            ? editor.MarkdownCodeFence
+            : "backtick";
+        editor.MarkdownEmphasisMarker = editor.MarkdownEmphasisMarker is "asterisk" or "underscore"
+            ? editor.MarkdownEmphasisMarker
+            : "asterisk";
+        editor.MarkdownBulletMarker = editor.MarkdownBulletMarker is "dash" or "asterisk" or "plus"
+            ? editor.MarkdownBulletMarker
+            : "dash";
+        if (editor.UnsafeEmphasisPreference is not ("literal" or "html"))
+            editor.UnsafeEmphasisPreference = null;
     }
 
     private static void NormalizeExport(ExportSettings export)

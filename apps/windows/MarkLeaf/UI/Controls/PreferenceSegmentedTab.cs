@@ -17,7 +17,7 @@ internal sealed class PreferenceSegmentedTab : Control
     private Color _selection = SystemColors.Highlight;
     private Color _textPrimary = SystemColors.ControlText;
     private Color _textSelected = SystemColors.HighlightText;
-    private Font _textFont = new("Microsoft YaHei", 9F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _textFont = new("Microsoft YaHei", 8F, FontStyle.Bold, GraphicsUnit.Point);
     private RectangleF _selectionBounds;
     private RectangleF _selectionAnimationStartBounds;
     private RectangleF _selectionAnimationTargetBounds;
@@ -98,7 +98,7 @@ internal sealed class PreferenceSegmentedTab : Control
         }
 
         var radius = this.ScaleForDpi(5);
-        var horizontalPadding = this.ScaleForDpi(12);
+        var horizontalPadding = this.ScaleForDpi(10);
         var verticalPadding = this.ScaleForDpi(3);
         var textHeight = TextRenderer.MeasureText(
             e.Graphics, "Ag", _textFont, Size.Empty,

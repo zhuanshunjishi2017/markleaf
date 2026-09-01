@@ -15,6 +15,7 @@ import {
   exportEditorSelection,
   replaceAllInEditor,
   replaceCurrentInEditor,
+  setMarkdownEditingSettings,
 } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -30,6 +31,7 @@ afterEach(() => {
   document.body.innerHTML = ''
   document.documentElement.style.removeProperty('--highlight')
   document.documentElement.style.removeProperty('--text-primary')
+  setMarkdownEditingSettings({})
 })
 
 function roundTrip(markdown: string): string {
@@ -211,7 +213,7 @@ console.log(leaf)
     expect(output).toContain('./prototype.assets/image-placeholder.png')
   })
 
-  it('does not claim character-level fidelity for equivalent Markdown forms', () => {
+  it('preserves equivalent Setext heading and bullet marker forms when unchanged', () => {
     const markdown = `Heading
 =======
 
@@ -220,9 +222,7 @@ console.log(leaf)
 
     const output = roundTrip(markdown)
 
-    expect(output).toContain('# Heading')
-    expect(output).toContain('- item')
-    expect(output).not.toBe(markdown)
+    expect(output).toBe(markdown)
   })
 
   it('does not silently delete unsupported directive-like text', () => {
@@ -436,6 +436,80 @@ describe('visual Markdown shortcuts', () => {
     expect(getMarkdown(editor)).toContain('前**加粗**')
   })
 
+  it.each([
+    ['italic', '_斜体', '_', '<em>斜体</em>', '_斜体_'],
+    ['bold', '__粗体_', '_', '<strong>粗体</strong>', '__粗体__'],
+    ['bold italic', '___粗斜体__', '_', '<strong><em>粗斜体</em></strong>', '___粗斜体___'],
+  ])('applies %s when closed underscores are typed', (_name, initial, closing, html, markdown) => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '前')
+    editors.push(editor)
+    setMarkdownEditingSettings({ emphasisMarker: 'underscore' })
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    editor.commands.insertContent(initial)
+
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view,
+      editor.state.selection.from,
+      editor.state.selection.to,
+      closing,
+      () => editor.state.tr.insertText(closing),
+    ))
+
+    expect(handled).toBe(true)
+    expect(editor.getHTML()).toContain(html)
+    expect(getMarkdown(editor)).toContain(`前${markdown}`)
+  })
+
+  it.each([
+    ['italic', '文字*', '*', '<em>文字</em>', '*文字*'],
+    ['bold', '文字**', '**', '<strong>文字</strong>', '**文字**'],
+    ['bold italic', '文字***', '***', '<strong><em>文字</em></strong>', '***文字***'],
+    ['underscore italic', '文字_', '_', '<em>文字</em>', '_文字_'],
+    ['underscore bold', '文字__', '__', '<strong>文字</strong>', '__文字__'],
+    ['underscore bold italic', '文字___', '___', '<strong><em>文字</em></strong>', '___文字___'],
+    ['strike', '文字~~', '~~', '<s>文字</s>', '~~文字~~'],
+    ['highlight', '文字==', '==', '<mark>文字</mark>', '==文字=='],
+  ])('recognizes a %s marker inserted after its closing marker', (_name, initial, opening, html, markdown) => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, initial)
+    editors.push(editor)
+    if (_name.startsWith('underscore')) {
+      setMarkdownEditingSettings({ emphasisMarker: 'underscore' })
+    }
+    editor.commands.setTextSelection(1)
+
+    for (const character of opening) {
+      const from = editor.state.selection.from
+      const handled = editor.view.someProp('handleTextInput', handler => handler(
+        editor.view,
+        from,
+        from,
+        character,
+        () => editor.state.tr.insertText(character),
+      ))
+      if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, from))
+    }
+
+    expect(editor.getHTML()).toContain(html)
+    expect(getMarkdown(editor)).toBe(markdown)
+    expect(editor.state.selection.empty).toBe(true)
+    expect(editor.state.selection.$from.parentOffset).toBe(2)
+  })
+
+  it('keeps intraword underscores as literal text', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, 'snake_case')
+    editors.push(editor)
+
+    expect(editor.getHTML()).toContain('snake_case')
+    expect(editor.getHTML()).not.toContain('<em>')
+    expect(getMarkdown(editor)).toBe('snake_case')
+  })
+
   it('turns a leading greater-than marker into a blockquote', async () => {
     const element = document.createElement('div')
     document.body.append(element)
@@ -571,6 +645,98 @@ describe('editing history', () => {
     const reloaded = createEditor(document.createElement('div'), markdown)
     editors.push(reloaded)
     expect(reloaded.getHTML()).toContain('<strong><em>粗斜体</em></strong>')
+  })
+
+  it('normalizes Markdown markers according to the selected syntax preferences', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent('<p><strong>粗体</strong>和<em>斜体</em></p><ul><li><p>项目</p></li></ul><pre><code class="language-js">const marker = "```"</code></pre>')
+    setMarkdownEditingSettings({
+      codeFence: 'tilde',
+      emphasisMarker: 'underscore',
+      bulletMarker: 'plus',
+    })
+
+    const markdown = getMarkdown(editor)
+
+    expect(markdown).toContain('__粗体__和_斜体_')
+    expect(markdown).toContain('+ 项目')
+    expect(markdown).toContain('~~~js')
+    expect(markdown).toContain('const marker = "```"')
+  })
+
+  it('lengthens a preferred code fence when the code contains that fence marker', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent('<pre><code class="language-text">value ~~~ inside</code></pre>')
+    setMarkdownEditingSettings({ codeFence: 'tilde' })
+
+    expect(getMarkdown(editor)).toContain('~~~~text\nvalue ~~~ inside\n~~~~')
+  })
+
+  it('renders syntax preferences from document nodes instead of rewriting serialized text', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [
+          { type: 'text', text: '粗斜体', marks: [{ type: 'bold' }, { type: 'italic' }] },
+          { type: 'text', text: ' snake_case ' },
+          { type: 'text', text: '*literal*', marks: [{ type: 'code' }] },
+        ] },
+        { type: 'bulletList', content: [
+          { type: 'listItem', content: [
+            { type: 'paragraph', content: [{ type: 'text', text: '外层' }] },
+            { type: 'bulletList', content: [
+              { type: 'listItem', content: [
+                { type: 'paragraph', content: [{ type: 'text', text: '内层' }] },
+              ] },
+            ] },
+          ] },
+        ] },
+        { type: 'taskList', content: [
+          { type: 'taskItem', attrs: { checked: false }, content: [
+            { type: 'paragraph', content: [{ type: 'text', text: '任务' }] },
+          ] },
+        ] },
+        { type: 'mermaid', content: [{ type: 'text', text: 'graph TD\nA~~~B' }] },
+      ],
+    })
+    setMarkdownEditingSettings({
+      codeFence: 'tilde',
+      emphasisMarker: 'underscore',
+      bulletMarker: 'asterisk',
+    })
+
+    const markdown = getMarkdown(editor)
+
+    expect(markdown).toContain('___粗斜体___ snake_case `*literal*`')
+    expect(markdown).toContain('* 外层\n  * 内层')
+    expect(markdown).toContain('- [ ] 任务')
+    expect(markdown).toContain('~~~~mermaid\ngraph TD\nA~~~B\n~~~~')
+  })
+
+  it('does not rewrite asterisks inside inline code, formulas, or link destinations', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent('<p><strong>粗体</strong> <code>*code*</code> <span data-math-inline="1">*x*</span> <a href="https://example.com/*path*">链接</a></p>')
+    setMarkdownEditingSettings({ emphasisMarker: 'underscore' })
+
+    const markdown = getMarkdown(editor)
+
+    expect(markdown).toContain('__粗体__')
+    expect(markdown).toContain('`*code*`')
+    expect(markdown).toContain('$*x*$')
+    expect(markdown).toContain('(https://example.com/*path*)')
   })
 })
 

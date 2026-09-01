@@ -16,6 +16,7 @@ internal sealed partial class MainForm
         _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ApplyAutoConvertUnsafeEmphasis(editor.AutoConvertUnsafeEmphasis);
+        _editorHost?.ApplyMarkdownEditingSettings(editor);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
     }

@@ -295,7 +295,12 @@ internal sealed partial class MainForm : Form
 
         Shown += (_, _) => _ = OnMainFormShownAsync(placement.IsMaximized);
         Activated += (_, _) => _editorHost?.SetWindowActive(true);
-        Deactivate += (_, _) => _editorHost?.SetWindowActive(false);
+        Deactivate += (_, _) =>
+        {
+            _editorHost?.SetWindowActive(false);
+            _sidebarSearchBar.DismissFocusVisual();
+            _detachedOutlineSearchBar.DismissFocusVisual();
+        };
         FormClosing += OnMainFormClosing;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         DpiChanged += (_, args) =>

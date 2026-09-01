@@ -177,7 +177,7 @@ internal sealed class FindReplaceDialog : Form
         UseVisualStyleBackColor = true,
     };
 
-    public void Open(Form owner, bool replace)
+    public void Open(Form owner, bool replace, string? query = null)
     {
         if (Owner != owner)
         {
@@ -185,6 +185,10 @@ internal sealed class FindReplaceDialog : Form
         }
 
         SetReplaceMode(replace);
+        if (query is not null)
+        {
+            _findBox.Text = query;
+        }
         var x = owner.Left + Math.Max(this.ScaleForDpi(8), (owner.Width - Width) / 2);
         var y = owner.Top + Math.Max(this.ScaleForDpi(24), this.ScaleForDpi(40));
         Location = new Point(x, y);

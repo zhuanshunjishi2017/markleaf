@@ -17,6 +17,7 @@ import {
   setEditorFocusMode,
   getMarkdown,
   setAutoConvertUnsafeEmphasis,
+  setMarkdownEditingSettings,
   captureVisualSelection,
   collapseVisualSelection,
   getSourceModeJumpTarget,
@@ -1044,6 +1045,37 @@ function findMermaidNodeAt(pos: number): number | null {
   return null
 }
 
+function findHorizontalRuleAtY(clientY: number): number | null {
+  let closestPosition: number | null = null
+  let closestDistance = Number.POSITIVE_INFINITY
+
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'horizontalRule') return true
+
+    const nodeDom = editor.view.nodeDOM(position)
+    if (!(nodeDom instanceof HTMLElement)) return false
+
+    const rect = nodeDom.getBoundingClientRect()
+    const computed = window.getComputedStyle(nodeDom)
+    const marginTop = Number.parseFloat(computed.marginTop)
+    const marginBottom = Number.parseFloat(computed.marginBottom)
+    const lineHeight = Number.parseFloat(computed.lineHeight)
+    const fallbackPadding = Number.isFinite(lineHeight) ? lineHeight / 2 : 8
+    const rowTop = rect.top - (Number.isFinite(marginTop) ? marginTop : fallbackPadding)
+    const rowBottom = rect.bottom + (Number.isFinite(marginBottom) ? marginBottom : fallbackPadding)
+    if (clientY < rowTop || clientY > rowBottom) return false
+
+    const distance = Math.abs(clientY - (rect.top + rect.bottom) / 2)
+    if (distance < closestDistance) {
+      closestDistance = distance
+      closestPosition = position
+    }
+    return false
+  })
+
+  return closestPosition
+}
+
 const formatMenu = document.createElement('div')
 formatMenu.id = 'format-menu'
 formatMenu.className = 'format-menu'
@@ -1306,6 +1338,14 @@ editorMount.addEventListener('click', (event) => {
     return
   }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  const horizontalRulePosition = findHorizontalRuleAtY(event.clientY)
+  if (horizontalRulePosition !== null) {
+    event.preventDefault()
+    pendingSpecialClick = null
+    editor.commands.setNodeSelection(horizontalRulePosition)
+    sendEditorState()
+    return
+  }
   const mathPosition = findMathNodeFromTarget(event.target)
     ?? (resolved ? findMathNodeAt(resolved.pos) : null)
   const mermaidPosition = mathPosition === null
@@ -1660,6 +1700,16 @@ async function handleMessage(value: unknown): Promise<void> {
         if (payload.command === 'setAutoConvertUnsafeEmphasis') {
           autoConvertUnsafeEmphasis = payload.text !== '0'
           setAutoConvertUnsafeEmphasis(autoConvertUnsafeEmphasis)
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'setMarkdownEditingSettings') {
+          try {
+            setMarkdownEditingSettings(JSON.parse(String(payload.text ?? '{}')))
+          }
+          catch {
+            setMarkdownEditingSettings({})
+          }
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -2267,6 +2317,12 @@ body { margin: 0; background: var(--bg-primary); }
 }
 .markleaf-export-pdf .markleaf-document blockquote {
   box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document .markleaf-alert {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  overflow: visible;
 }
 .markleaf-export-pdf .markleaf-document table {
   width: auto;

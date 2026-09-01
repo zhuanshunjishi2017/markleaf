@@ -4,6 +4,7 @@ using System.Text.Json;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
+using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -318,6 +319,19 @@ internal sealed class EditorHostController : IDisposable
     public void ApplyAutoConvertUnsafeEmphasis(bool enabled)
     {
         EnqueueOrRun(() => Post("command", new { command = "setAutoConvertUnsafeEmphasis", text = enabled ? "1" : "0" }));
+    }
+
+    public void ApplyMarkdownEditingSettings(EditorSettings settings)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            exitBlockOnEmptyEnter = settings.ExitBlockOnEmptyEnter,
+            useShiftEnterHardBreak = settings.UseShiftEnterHardBreak,
+            codeFence = settings.MarkdownCodeFence,
+            emphasisMarker = settings.MarkdownEmphasisMarker,
+            bulletMarker = settings.MarkdownBulletMarker,
+        });
+        EnqueueOrRun(() => Post("command", new { command = "setMarkdownEditingSettings", text = payload }));
     }
 
     /// <summary>

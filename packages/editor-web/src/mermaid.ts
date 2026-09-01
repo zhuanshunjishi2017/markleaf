@@ -8,6 +8,11 @@ let mermaidInitialized = false
 let mermaidSequence = 0
 const MERMAID_RENDER_TIMEOUT_MS = 1000
 let mermaidStrings = sharedEditorStrings('zh-Hans', 'ctrl')
+let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
+
+export function setMermaidMarkdownCodeFence(preference: 'backtick' | 'tilde'): void {
+  markdownCodeFence = preference
+}
 
 export function setMermaidStrings(
   strings: Pick<SharedEditorStrings, 'mermaidEmpty' | 'mermaidError' | 'mermaidTimeout'>,
@@ -198,9 +203,11 @@ export const Mermaid = Node.create({
   renderMarkdown(node: any, helpers: any) {
     const hasContent = Array.isArray(node.content) && node.content.length > 0
     const source = hasContent ? helpers.renderChildren(node.content) : ''
-    return source.length > 0
-      ? ['```mermaid', source, '```'].join('\n')
-      : '```mermaid\n\n```'
+    const markerCharacter = markdownCodeFence === 'tilde' ? '~' : '`'
+    const runs = source.match(markerCharacter === '`' ? /`+/g : /~+/g) ?? []
+    const fenceLength = Math.max(3, ...runs.map((run: string) => run.length + 1))
+    const fence = markerCharacter.repeat(fenceLength)
+    return `${fence}mermaid\n${source}\n${fence}`
   },
 
   addNodeView() {

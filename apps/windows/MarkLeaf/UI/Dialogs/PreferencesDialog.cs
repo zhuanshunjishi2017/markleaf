@@ -60,15 +60,26 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
     private readonly CheckBox _visualCjkAutoSpacingCheck;
-    private readonly CheckBox _autoConvertUnsafeEmphasisCheck;
+    private readonly CheckBox _autoConvertUnsafeEmphasisOnNormalizeCheck;
+    private readonly RadioButton _unsafeEmphasisPromptRadio;
+    private readonly RadioButton _unsafeEmphasisLiteralRadio;
+    private readonly RadioButton _unsafeEmphasisAutoConvertRadio;
+    private readonly CheckBox _exitBlockOnEmptyEnterCheck;
+    private readonly CheckBox _useShiftEnterHardBreakCheck;
+    private readonly ComboBox _markdownCodeFenceCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _markdownEmphasisMarkerCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _markdownBulletMarkerCombo = new()
+    { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly NumericUpDown _sourceIndentWidth;
     private readonly CheckBox _showParagraphBlockHandleCheck;
     private string _cjkFontFamily = "Microsoft YaHei";
     private string _westernFontFamily = "Cascadia Mono";
     private int _sourceFontSize = 14;
-    private readonly TextBox _cjkFontTextBox = new() { ReadOnly = true };
-    private readonly TextBox _westernFontTextBox = new() { ReadOnly = true };
+    private readonly TextBox _cjkFontTextBox = new();
+    private readonly TextBox _westernFontTextBox = new();
     private readonly NumericUpDown _sourceFontSizeNumeric = new()
     { Minimum = 12, Maximum = 24, Increment = 1 };
     private readonly Button _selectCjkFontButton = new()
@@ -257,8 +268,25 @@ internal sealed class PreferencesDialog : Form
         { Minimum = 600, Maximum = 1200, Increment = 20 };
         _visualCjkAutoSpacingCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
-        _autoConvertUnsafeEmphasisCheck = new CheckBox
-        { Text = Loc.Get("prefs.editor.autoConvertUnsafeEmphasis"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _autoConvertUnsafeEmphasisOnNormalizeCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.autoConvertUnsafeEmphasis.normalize"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _unsafeEmphasisPromptRadio = new RadioButton
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.prompt"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _unsafeEmphasisLiteralRadio = new RadioButton
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.literal"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _unsafeEmphasisAutoConvertRadio = new RadioButton
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.autoConvert"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _exitBlockOnEmptyEnterCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.exitBlockOnEmptyEnter"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _useShiftEnterHardBreakCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.useShiftEnterHardBreak"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _markdownCodeFenceCombo.Items.Add(Loc.Get("prefs.editor.markdown.codeFence.backtick"));
+        _markdownCodeFenceCombo.Items.Add(Loc.Get("prefs.editor.markdown.codeFence.tilde"));
+        _markdownEmphasisMarkerCombo.Items.Add(Loc.Get("prefs.editor.markdown.emphasis.asterisk"));
+        _markdownEmphasisMarkerCombo.Items.Add(Loc.Get("prefs.editor.markdown.emphasis.underscore"));
+        _markdownBulletMarkerCombo.Items.Add(Loc.Get("prefs.editor.markdown.bullet.dash"));
+        _markdownBulletMarkerCombo.Items.Add(Loc.Get("prefs.editor.markdown.bullet.asterisk"));
+        _markdownBulletMarkerCombo.Items.Add(Loc.Get("prefs.editor.markdown.bullet.plus"));
 
         _sourceIndentWidth = new NumericUpDown
         { Minimum = 2, Maximum = 8, Increment = 2 };
@@ -588,12 +616,42 @@ internal sealed class PreferencesDialog : Form
         var source = CreateSettingsPage();
         source.Controls.Add(NewLabel(Loc.Get("prefs.editor.displaySettings.label")), 0, 0);
         source.Controls.Add(BuildSourcePanel(), 1, 0);
-        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 1);
-        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 1);
+        source.Controls.Add(Gap(), 0, 1);
+        source.Controls.Add(Gap(), 1, 1);
+        source.Controls.Add(NewLabel(Loc.Get("prefs.editor.featureSettings.label")), 0, 2);
+        source.Controls.Add(BuildSourceFeaturePanel(), 1, 2);
+        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 3);
+        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 3);
+
+        var markdown = CreateSettingsPage();
+        markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        markdown.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        markdown.Controls.Add(NewLabel(Loc.Get("prefs.editor.markdown.asterisk.label")), 0, 0);
+        markdown.Controls.Add(BuildMarkdownAsteriskPanel(), 1, 0);
+        markdown.Controls.Add(Gap(), 0, 1);
+        markdown.Controls.Add(Gap(), 1, 1);
+        markdown.Controls.Add(NewLabel(Loc.Get("prefs.editor.markdown.syntax.label")), 0, 2);
+        markdown.Controls.Add(BuildMarkdownSyntaxPanel(), 1, 2);
+        markdown.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 3);
+        markdown.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 3);
+        var markdownHint = new Label
+        {
+            Text = Loc.Get("prefs.editor.markdown.normalizationHint"),
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            Margin = new Padding(this.ScaleForDpi(6), 0, 0, this.ScaleForDpi(4)),
+        };
+        markdown.Controls.Add(markdownHint, 0, 4);
+        markdown.SetColumnSpan(markdownHint, 2);
 
         return BuildSegmentedPage(
-            [Loc.Get("prefs.editor.segment.visual"), Loc.Get("prefs.editor.segment.source")],
-            [visual, source]);
+            [Loc.Get("prefs.editor.segment.visual"), Loc.Get("prefs.editor.segment.source"),
+                Loc.Get("prefs.editor.segment.markdown")],
+            [visual, source, markdown]);
     }
 
     private Control BuildVisualDisplayPanel()
@@ -642,6 +700,9 @@ internal sealed class PreferencesDialog : Form
 
         panel.Controls.Add(_visualCjkAutoSpacingCheck, 0, 8);
         panel.SetColumnSpan(_visualCjkAutoSpacingCheck, 2);
+        panel.Controls.Add(Gap(), 0, 9);
+        panel.Controls.Add(_showCodeHighlightCheck, 0, 10);
+        panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
         return panel;
     }
@@ -654,11 +715,69 @@ internal sealed class PreferencesDialog : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
         };
-        panel.Controls.Add(_autoConvertUnsafeEmphasisCheck, 0, 0);
+        panel.Controls.Add(_exitBlockOnEmptyEnterCheck, 0, 0);
         panel.Controls.Add(Gap(), 0, 1);
-        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 2);
+        panel.Controls.Add(_useShiftEnterHardBreakCheck, 0, 2);
         panel.Controls.Add(Gap(), 0, 3);
-        panel.Controls.Add(_showCodeHighlightCheck, 0, 4);
+        panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 4);
+        return panel;
+    }
+
+    private Control BuildMarkdownAsteriskPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.Controls.Add(_autoConvertUnsafeEmphasisOnNormalizeCheck, 0, 0);
+        return panel;
+    }
+
+    private Control BuildSourceFeaturePanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.Controls.Add(NewPreferenceLabel(Loc.Get("prefs.editor.sourceUnsafeEmphasis.label")), 0, 0);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(_unsafeEmphasisPromptRadio, 0, 2);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(_unsafeEmphasisLiteralRadio, 0, 4);
+        panel.Controls.Add(Gap(), 0, 5);
+        panel.Controls.Add(_unsafeEmphasisAutoConvertRadio, 0, 6);
+        return panel;
+    }
+
+    private Control BuildMarkdownSyntaxPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            ColumnCount = 2,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(180)));
+
+        panel.Controls.Add(NewPreferenceLabel(Loc.Get("prefs.editor.markdown.codeFence.label")), 0, 0);
+        _markdownCodeFenceCombo.Anchor = AnchorStyles.Left;
+        panel.Controls.Add(_markdownCodeFenceCombo, 1, 0);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(Gap(), 1, 1);
+        panel.Controls.Add(NewPreferenceLabel(Loc.Get("prefs.editor.markdown.emphasis.label")), 0, 2);
+        _markdownEmphasisMarkerCombo.Anchor = AnchorStyles.Left;
+        panel.Controls.Add(_markdownEmphasisMarkerCombo, 1, 2);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(Gap(), 1, 3);
+        panel.Controls.Add(NewPreferenceLabel(Loc.Get("prefs.editor.markdown.bullet.label")), 0, 4);
+        _markdownBulletMarkerCombo.Anchor = AnchorStyles.Left;
+        panel.Controls.Add(_markdownBulletMarkerCombo, 1, 4);
         return panel;
     }
 
@@ -682,15 +801,25 @@ internal sealed class PreferencesDialog : Form
 
         panel.Controls.Add(new Label
         {
-            Text = Loc.Get("prefs.editor.fontSettings.cjkFont"),
+            Text = Loc.Get("prefs.editor.fontSettings.fontSize"),
             AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(0, 5, 0, 0),
         }, 0, 2);
-        panel.SetColumnSpan(panel.GetControlFromPosition(0, 2)!, 2);
-        panel.Controls.Add(BuildSourceFontRow(_cjkFontTextBox, _selectCjkFontButton), 0, 3);
-        panel.SetColumnSpan(panel.GetControlFromPosition(0, 3)!, 2);
-        panel.Controls.Add(Gap(), 0, 4);
+        panel.Controls.Add(_sourceFontSizeNumeric, 1, 2);
+        panel.Controls.Add(Gap(), 0, 3);
+
+        panel.Controls.Add(new Label
+        {
+            Text = Loc.Get("prefs.editor.fontSettings.cjkFont"),
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(0, 5, 0, 0),
+        }, 0, 4);
+        panel.SetColumnSpan(panel.GetControlFromPosition(0, 4)!, 2);
+        panel.Controls.Add(BuildSourceFontRow(_cjkFontTextBox, _selectCjkFontButton), 0, 5);
+        panel.SetColumnSpan(panel.GetControlFromPosition(0, 5)!, 2);
+        panel.Controls.Add(Gap(), 0, 6);
 
         panel.Controls.Add(new Label
         {
@@ -698,31 +827,24 @@ internal sealed class PreferencesDialog : Form
             AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(0, 5, 0, 0),
-        }, 0, 5);
-        panel.SetColumnSpan(panel.GetControlFromPosition(0, 5)!, 2);
-        panel.Controls.Add(BuildSourceFontRow(_westernFontTextBox, _selectWesternFontButton), 0, 6);
-        panel.SetColumnSpan(panel.GetControlFromPosition(0, 6)!, 2);
-        panel.Controls.Add(Gap(), 0, 7);
-
-        panel.Controls.Add(new Label
-        {
-            Text = Loc.Get("prefs.editor.fontSettings.fontSize"),
-            AutoSize = true,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(0, 5, 0, 0),
-        }, 0, 8);
-        panel.Controls.Add(_sourceFontSizeNumeric, 1, 8);
+        }, 0, 7);
+        panel.SetColumnSpan(panel.GetControlFromPosition(0, 7)!, 2);
+        panel.Controls.Add(BuildSourceFontRow(_westernFontTextBox, _selectWesternFontButton), 0, 8);
+        panel.SetColumnSpan(panel.GetControlFromPosition(0, 8)!, 2);
 
         return panel;
     }
 
-    private static Control BuildSourceFontRow(TextBox textBox, Button selectButton)
+    private Control BuildSourceFontRow(TextBox textBox, Button selectButton)
     {
         var row = new FlowLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = Padding.Empty,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            MaximumSize = new Size(this.ScaleForDpi(300), 0),
         };
         row.Controls.Add(textBox);
         row.Controls.Add(selectButton);
@@ -1142,7 +1264,20 @@ internal sealed class PreferencesDialog : Form
         _westernFontTextBox.Text = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
-        _autoConvertUnsafeEmphasisCheck.Checked = editor.AutoConvertUnsafeEmphasis;
+        _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked = editor.AutoConvertUnsafeEmphasis;
+        _exitBlockOnEmptyEnterCheck.Checked = editor.ExitBlockOnEmptyEnter;
+        _useShiftEnterHardBreakCheck.Checked = editor.UseShiftEnterHardBreak;
+        _unsafeEmphasisPromptRadio.Checked = editor.UnsafeEmphasisPreference is null;
+        _unsafeEmphasisLiteralRadio.Checked = editor.UnsafeEmphasisPreference == "literal";
+        _unsafeEmphasisAutoConvertRadio.Checked = editor.UnsafeEmphasisPreference == "html";
+        _markdownCodeFenceCombo.SelectedIndex = editor.MarkdownCodeFence == "tilde" ? 1 : 0;
+        _markdownEmphasisMarkerCombo.SelectedIndex = editor.MarkdownEmphasisMarker == "underscore" ? 1 : 0;
+        _markdownBulletMarkerCombo.SelectedIndex = editor.MarkdownBulletMarker switch
+        {
+            "asterisk" => 1,
+            "plus" => 2,
+            _ => 0,
+        };
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
         _showParagraphBlockHandleCheck.Checked = editor.ShowParagraphBlockHandle;
 
@@ -1274,14 +1409,27 @@ internal sealed class PreferencesDialog : Form
         editor.VisualFontSize = (int)_visualFontSize.Value;
         editor.VisualMaxContentWidth = (int)_visualMaxWidth.Value;
         editor.SourceFontSize = (int)_sourceFontSizeNumeric.Value;
-        if (!string.IsNullOrWhiteSpace(_cjkFontTextBox.Text))
-            editor.SourceCjkFontFamily = _cjkFontTextBox.Text;
-        if (!string.IsNullOrWhiteSpace(_westernFontTextBox.Text))
-            editor.SourceFontFamily = _westernFontTextBox.Text;
+        editor.SourceCjkFontFamily = _cjkFontTextBox.Text;
+        editor.SourceFontFamily = _westernFontTextBox.Text;
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
-        editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisCheck.Checked;
+        editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked;
+        editor.ExitBlockOnEmptyEnter = _exitBlockOnEmptyEnterCheck.Checked;
+        editor.UseShiftEnterHardBreak = _useShiftEnterHardBreakCheck.Checked;
+        editor.UnsafeEmphasisPreference = _unsafeEmphasisAutoConvertRadio.Checked
+            ? "html"
+            : _unsafeEmphasisLiteralRadio.Checked ? "literal" : null;
+        editor.MarkdownCodeFence = _markdownCodeFenceCombo.SelectedIndex == 1 ? "tilde" : "backtick";
+        editor.MarkdownEmphasisMarker = _markdownEmphasisMarkerCombo.SelectedIndex == 1
+            ? "underscore"
+            : "asterisk";
+        editor.MarkdownBulletMarker = _markdownBulletMarkerCombo.SelectedIndex switch
+        {
+            1 => "asterisk",
+            2 => "plus",
+            _ => "dash",
+        };
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
         editor.ShowParagraphBlockHandle = _showParagraphBlockHandleCheck.Checked;
 
@@ -1398,13 +1546,17 @@ internal sealed class PreferencesDialog : Form
         _fileImageCombo.Width = comboW;
         _defaultDirectoryTextBox.Width = comboW;
 
-        var nudW = this.ScaleForDpi(40);
+        var nudW = this.ScaleForDpi(52);
         _snapshotInterval.Width = nudW;
         _visualLineHeight.Width = nudW;
         _visualFontSize.Width = nudW;
         _visualMaxWidth.Width = nudW;
         _sourceIndentWidth.Width = nudW;
         _sourceFontSizeNumeric.Width = nudW;
+        var markdownComboW = this.ScaleForDpi(180);
+        _markdownCodeFenceCombo.Width = markdownComboW;
+        _markdownEmphasisMarkerCombo.Width = markdownComboW;
+        _markdownBulletMarkerCombo.Width = markdownComboW;
         var sourceFontTextBoxWidth = this.ScaleForDpi(150);
         _cjkFontTextBox.Width = sourceFontTextBoxWidth;
         _westernFontTextBox.Width = sourceFontTextBoxWidth;
@@ -1437,9 +1589,22 @@ internal sealed class PreferencesDialog : Form
             Text = text,
             AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = SystemColors.GrayText,
-            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 8F, FontStyle.Regular),
+            ForeColor = SystemColors.ControlText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 9F, FontStyle.Regular),
             Padding = new Padding(0, this.ScaleForDpi(4), 0, 0),
+        };
+    }
+
+    private Label NewPreferenceLabel(string text)
+    {
+        return new Label
+        {
+            Text = text,
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = SystemColors.ControlText,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 9F, FontStyle.Regular),
+            Padding = new Padding(0, this.ScaleForDpi(5), 0, 0),
         };
     }
 
@@ -1447,4 +1612,5 @@ internal sealed class PreferencesDialog : Form
     {
         return new Panel { Height = this.ScaleGapForDpi(), Width = 0, Dock = DockStyle.None };
     }
+
 }

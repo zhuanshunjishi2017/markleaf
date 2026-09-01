@@ -272,7 +272,17 @@ public sealed class EditorSettings
 
     public bool VisualCjkAutoSpacing { get; set; } = true;
 
+    public bool ExitBlockOnEmptyEnter { get; set; }
+
+    public bool UseShiftEnterHardBreak { get; set; } = true;
+
     public bool AutoConvertUnsafeEmphasis { get; set; } = true;
+
+    public string MarkdownCodeFence { get; set; } = "backtick";
+
+    public string MarkdownEmphasisMarker { get; set; } = "asterisk";
+
+    public string MarkdownBulletMarker { get; set; } = "dash";
 
     public int SourceIndentWidth { get; set; } = 2;
 

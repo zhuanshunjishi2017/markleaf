@@ -3,7 +3,7 @@ using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
 
-internal sealed class SidebarSearchBar : Control
+internal sealed class SidebarSearchBar : Control, IMessageFilter
 {
     private readonly TextBox _textBox;
     private Color _bgPrimary = Color.White;
@@ -84,6 +84,17 @@ internal sealed class SidebarSearchBar : Control
     public void ClearSearch()
     {
         _textBox.Text = string.Empty;
+    }
+
+    public void DismissFocusVisual()
+    {
+        if (!_focused)
+        {
+            return;
+        }
+
+        _focused = false;
+        Invalidate();
     }
 
     public void ReloadTexts()
@@ -205,6 +216,44 @@ internal sealed class SidebarSearchBar : Control
     {
         base.OnResize(e);
         Invalidate();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Application.AddMessageFilter(this);
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        Application.RemoveMessageFilter(this);
+        base.OnHandleDestroyed(e);
+    }
+
+    public bool PreFilterMessage(ref Message m)
+    {
+        const int WmLButtonDown = 0x0201;
+        const int WmRButtonDown = 0x0204;
+        const int WmMButtonDown = 0x0207;
+        if (m.Msg is not (WmLButtonDown or WmRButtonDown or WmMButtonDown)
+            || (!_focused && !_textBox.Focused))
+        {
+            return false;
+        }
+
+        if (RectangleToScreen(ClientRectangle).Contains(Cursor.Position))
+        {
+            if (!_focused)
+            {
+                _focused = true;
+                Invalidate();
+            }
+        }
+        else
+        {
+            DismissFocusVisual();
+        }
+        return false;
     }
 
     protected override void Dispose(bool disposing)

@@ -49,7 +49,25 @@ body,
 }
 
 .markleaf-cjk-autospace #editor .ProseMirror {
-  text-autospace: normal;
+  text-autospace: no-autospace;
+}
+
+.markleaf-cjk-autospace-widget {
+  display: inline-block;
+  width: 0.35em;
+  min-width: 0.35em;
+  height: 1px;
+  overflow: hidden;
+  vertical-align: baseline;
+  pointer-events: none;
+}
+
+#editor .markleaf-cjk-autospace-widget {
+  display: none;
+}
+
+.markleaf-cjk-autospace #editor .markleaf-cjk-autospace-widget {
+  display: inline-block;
 }
 
 /* Markdown 表情别名保留在文档中，仅在可视化编辑器里替换为表情显示。 */

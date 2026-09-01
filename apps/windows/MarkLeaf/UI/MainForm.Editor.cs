@@ -25,6 +25,11 @@ internal sealed partial class MainForm
             AllowExternalDrop = true,
         };
         _webView = webView;
+        webView.Enter += (_, _) =>
+        {
+            _sidebarSearchBar.DismissFocusVisual();
+            _detachedOutlineSearchBar.DismissFocusVisual();
+        };
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);
@@ -47,6 +52,7 @@ internal sealed partial class MainForm
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             _editorHost?.ApplyAutoConvertUnsafeEmphasis(e.AutoConvertUnsafeEmphasis);
+            _editorHost?.ApplyMarkdownEditingSettings(e);
             ApplyCodeHighlightVisibility();
             ApplyBlockHandleVisibility();
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
@@ -61,7 +67,15 @@ internal sealed partial class MainForm
         _editorHost.DocumentLoaded += (_, _) => ContinueEditorSmokeAfterLoad();
         _editorHost.DocumentLoaded += (_, _) => BeginEditorCommandSmokeIfRequested();
         _editorHost.DocumentLoaded += async (_, _) => await ContinueDocumentSmokeAfterLoadAsync();
-        _editorHost.DocumentLoaded += (_, _) => SetMarkdownStyle(_markdownStyle);
+        _editorHost.DocumentLoaded += (_, _) =>
+        {
+            SetMarkdownStyle(_markdownStyle);
+            if (_pendingWorkspaceSearchQuery is { } query)
+            {
+                _pendingWorkspaceSearchQuery = null;
+                OpenFindReplaceDialog(replace: false, query);
+            }
+        };
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorSmoke(message);
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorCommandSmoke(message);
         _editorHost.DirtyChanged += OnEditorDirtyChanged;

@@ -4,7 +4,8 @@ internal sealed record WorkspaceDocumentEntry(
     string Name,
     string FullPath,
     string FolderName,
-    DateTime LastWriteTime);
+    DateTime LastWriteTime,
+    string? Preview);
 
 internal enum WorkspaceDocumentSortOrder
 {

@@ -1,4 +1,4 @@
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -11,9 +11,13 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
+import Bold from '@tiptap/extension-bold'
+import Italic from '@tiptap/extension-italic'
+import CodeBlock from '@tiptap/extension-code-block'
+import { getListMarker, ListItem } from '@tiptap/extension-list'
 import { parseDocument } from 'yaml'
 import { MathBlock, MathInline, mathNumberFromLatex } from './math'
-import { Mermaid, rerenderMermaidElement, rerenderMermaidElements } from './mermaid'
+import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
 const imageMetadataPrefix = 'markleaf:'
@@ -113,6 +117,45 @@ function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
   return DecorationSet.create(doc, decorations)
 }
 
+function buildCjkAutoSpacingDecorations(doc: any): DecorationSet {
+  const decorations: Decoration[] = []
+  const isCjk = (character: string): boolean => /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
+  const isLatinOrNumber = (character: string): boolean => /[A-Za-z0-9]/.test(character)
+
+  const visit = (node: any, position: number, insideCode: boolean, isDocument = false): void => {
+    const nodeIsCode = insideCode || node.type.name === 'codeBlock' || node.type.name === 'code'
+    const textIsCode = node.marks?.some((mark: any) => mark.type.name === 'code') === true
+    if (node.isText && !nodeIsCode && !textIsCode && node.text) {
+      const text = node.text as string
+      for (let index = 1; index < text.length; index += 1) {
+        const previous = text[index - 1]!
+        const current = text[index]!
+        if (!((isCjk(previous) && isLatinOrNumber(current))
+          || (isLatinOrNumber(previous) && isCjk(current)))) continue
+        decorations.push(Decoration.widget(
+          position + index,
+          () => {
+            const spacer = document.createElement('span')
+            spacer.className = 'markleaf-cjk-autospace-widget'
+            spacer.setAttribute('aria-hidden', 'true')
+            return spacer
+          },
+          { side: 0, ignoreSelection: true, key: `cjk-space-${position + index}` },
+        ))
+      }
+      return
+    }
+
+    if (!node.content) return
+    node.forEach((child: any, offset: number) => {
+      visit(child, position + offset + (isDocument ? 0 : 1), nodeIsCode)
+    })
+  }
+
+  visit(doc, 0, false, true)
+  return DecorationSet.create(doc, decorations)
+}
+
 const MarkdownEmoji = Extension.create({
   name: 'markleafMarkdownEmoji',
   addProseMirrorPlugins() {
@@ -120,6 +163,18 @@ const MarkdownEmoji = Extension.create({
       key: new PluginKey('markleaf-markdown-emoji'),
       props: {
         decorations: state => buildMarkdownEmojiDecorations(state.doc),
+      },
+    })]
+  },
+})
+
+const CjkAutoSpacing = Extension.create({
+  name: 'markleafCjkAutoSpacing',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('markleaf-cjk-auto-spacing'),
+      props: {
+        decorations: state => buildCjkAutoSpacingDecorations(state.doc),
       },
     })]
   },
@@ -315,12 +370,36 @@ const MarkdownFrontMatter = Node.create({
 
 const MarkdownShortcuts = Extension.create({
   name: 'markleafMarkdownShortcuts',
+  priority: 120,
   addKeyboardShortcuts() {
     return {
       // Shift+Enter 在同一段落中插入硬换行，Markdown 序列化为单个换行
       // （带 Markdown 硬换行所需的行尾空格），不会生成空段落。
-      'Shift-Enter': () => this.editor.commands.setHardBreak(),
+      'Shift-Enter': () => useShiftEnterHardBreak
+        ? this.editor.commands.setHardBreak()
+        : this.editor.commands.splitBlock(),
     }
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        handleTextInput: (view, _from, to, text) => {
+          if (text === '*' || text === '_') {
+            const tr = convertClosedEmphasis(view.state, to, text)
+            if (tr) {
+              view.dispatch(tr)
+              return true
+            }
+          }
+          if (text !== '=' && text !== '-') return false
+          const level = text === '=' ? 1 : 2
+          const tr = convertSetextHeading(view.state, to, text, level, text)
+          if (!tr) return false
+          view.dispatch(tr)
+          return true
+        },
+      },
+    })]
   },
   addInputRules() {
     const reverseMark = (
@@ -352,6 +431,18 @@ const MarkdownShortcuts = Extension.create({
         handler: ({ state, range }) => reverseMark(state, range, ['italic'], '*'),
       }),
       new InputRule({
+        find: /(?<!_)___$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold', 'italic'], '___'),
+      }),
+      new InputRule({
+        find: /(?<!_)__$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold'], '__'),
+      }),
+      new InputRule({
+        find: /(?<!_)_$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['italic'], '_'),
+      }),
+      new InputRule({
         find: /(?<!~)~~$/,
         handler: ({ state, range }) => reverseMark(state, range, ['strike'], '~~'),
       }),
@@ -360,66 +451,16 @@ const MarkdownShortcuts = Extension.create({
         handler: ({ state, range }) => reverseMark(state, range, ['highlight'], '=='),
       }),
       new InputRule({
-        find: /(?<!\*)\*\*\*([^*\n]+)\*\*\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const bold = state.schema.marks.bold
-          const italic = state.schema.marks.italic
-          if (!bold || !italic) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 3
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
+        find: /^ {4}$/,
+        handler: ({ state, range }) => {
+          const $from = state.doc.resolve(range.to)
+          const codeBlock = state.schema.nodes.codeBlock
+          if (!codeBlock || $from.parent.type.name !== 'paragraph' || range.from !== $from.start()) {
+            return null
+          }
           state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, bold.create())
-            .addMark(range.from, textEnd - markerLength, italic.create())
-            .removeStoredMark(bold)
-            .removeStoredMark(italic)
-        },
-      }),
-      new InputRule({
-        find: /(?<!\*)\*\*([^*\n]+)\*\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const bold = state.schema.marks.bold
-          if (!bold) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 2
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
-          state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, bold.create())
-            .removeStoredMark(bold)
-        },
-      }),
-      new InputRule({
-        find: /(?<!\*)\*([^*\n]+)\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const italic = state.schema.marks.italic
-          if (!italic) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 1
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
-          state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, italic.create())
-            .removeStoredMark(italic)
+            .delete(range.from, range.to)
+            .setBlockType(range.from, range.from, codeBlock)
         },
       }),
       new InputRule({
@@ -437,6 +478,102 @@ const MarkdownShortcuts = Extension.create({
   },
 })
 
+const MarkdownBold = Bold.extend({
+  renderMarkdown(node: any, helpers: any) {
+    const marker = markdownEmphasisMarker === 'underscore' ? '__' : '**'
+    return `${marker}${helpers.renderChildren(node)}${marker}`
+  },
+})
+
+const MarkdownItalic = Italic.extend({
+  renderMarkdown(node: any, helpers: any) {
+    const marker = markdownEmphasisMarker === 'underscore' ? '_' : '*'
+    return `${marker}${helpers.renderChildren(node)}${marker}`
+  },
+})
+
+const MarkdownCodeBlock = CodeBlock.extend({
+  renderMarkdown(node: any, helpers: any) {
+    const markerCharacter = markdownCodeFence === 'tilde' ? '~' : '`'
+    const content = node.content ? helpers.renderChildren(node.content) : ''
+    const runs = content.match(markerCharacter === '`' ? /`+/g : /~+/g) ?? []
+    const fenceLength = Math.max(3, ...runs.map((run: string) => run.length + 1))
+    const fence = markerCharacter.repeat(fenceLength)
+    const language = node.attrs?.language || ''
+    return `${fence}${language}\n${content}\n${fence}`
+  },
+})
+
+const MarkdownListItem = ListItem.extend({
+  renderMarkdown(node: any, helpers: any, context: any) {
+    return renderNestedMarkdownContent(node, helpers, (current: any) => {
+      if (current.parentType === 'bulletList') {
+        const marker = markdownBulletMarker === 'asterisk'
+          ? '*' : markdownBulletMarker === 'plus' ? '+' : '-'
+        return `${marker} `
+      }
+      if (current.parentType === 'orderedList') {
+        const start = current.meta?.parentAttrs?.start || 1
+        const type = current.meta?.parentAttrs?.type as string | undefined
+        const index = start - 1 + (current.index || 0)
+        return getListMarker(type, index, '. ')
+      }
+      return '- '
+    }, context)
+  },
+})
+
+function convertClosedEmphasis(
+  state: any,
+  insertionPosition: number,
+  markerCharacter: '*' | '_',
+): any | null {
+  const $from = state.doc.resolve(insertionPosition)
+  if (!$from.parent.isTextblock || !state.selection.empty) return null
+  const blockStart = $from.start()
+  const before = state.doc.textBetween(blockStart, insertionPosition, '\n', '\n') + markerCharacter
+  let marker = ''
+  let content = ''
+  let openingOffset = -1
+  for (const markerLength of [3, 2, 1]) {
+    const candidate = markerCharacter.repeat(markerLength)
+    if (!before.endsWith(candidate)) continue
+    const closingOffset = before.length - markerLength
+    const candidateOpening = before.lastIndexOf(candidate, closingOffset - 1)
+    if (candidateOpening < 0) continue
+    const candidateContent = before.slice(candidateOpening + markerLength, closingOffset)
+    if (!candidateContent || candidateContent.includes(markerCharacter) || candidateContent.includes('\n')) continue
+    const beforeOpening = candidateOpening > 0 ? before[candidateOpening - 1] ?? '' : ''
+    if (beforeOpening === markerCharacter) continue
+    if (markerCharacter === '_' && /[A-Za-z0-9_]/.test(beforeOpening)) continue
+    marker = candidate
+    content = candidateContent
+    openingOffset = candidateOpening
+    break
+  }
+  if (!marker || !content || openingOffset < 0) return null
+
+  const markNames: Array<'bold' | 'italic'> = marker.length === 3
+    ? ['bold', 'italic']
+    : marker.length === 2 ? ['bold'] : ['italic']
+  const marks = markNames.map(name => state.schema.marks[name]).filter(Boolean)
+  if (marks.length !== markNames.length) return null
+
+  const openingFrom = blockStart + openingOffset
+  const closingFrom = openingFrom + marker.length + content.length
+  const transaction = state.tr.insertText(markerCharacter, insertionPosition)
+  transaction.delete(closingFrom, closingFrom + marker.length)
+  transaction.delete(openingFrom, openingFrom + marker.length)
+  const contentTo = openingFrom + content.length
+  for (const mark of marks) {
+    transaction.addMark(openingFrom, contentTo, mark.create())
+    transaction.removeStoredMark(mark)
+  }
+  transaction.setSelection(TextSelection.create(transaction.doc, contentTo))
+  transaction.setStoredMarks([])
+  return transaction
+}
+
 function convertReverseInlineMark(
   state: any,
   range: { from: number; to: number },
@@ -450,24 +587,93 @@ function convertReverseInlineMark(
   const blockStart = $from.start()
   const blockEnd = blockStart + parent.content.size
   const afterOpening = state.doc.textBetween(range.to, blockEnd, '\n', '\n')
-  const closingOffset = afterOpening.indexOf(marker)
+  const closingOffset = findExactClosingMarker(afterOpening, marker)
   if (closingOffset < 1) return false
 
   const closeFrom = range.to + closingOffset
   const content = afterOpening.slice(0, closingOffset)
   if (!content.trim() || content.includes('\n')) return false
 
-  // 不把已经存在的公式、图片等原子节点误当成可加格式的普通文本。
   const tr = state.tr
-  tr.delete(closeFrom, closeFrom + marker.length)
-  tr.delete(tr.mapping.map(range.from), tr.mapping.map(range.to))
-  const contentFrom = tr.mapping.map(range.from)
-  const contentTo = tr.mapping.map(closeFrom)
+  const openingLengthInDocument = range.to - range.from
+  if (openingLengthInDocument < 0 || openingLengthInDocument >= marker.length) return false
+
+  // InputRule 在最后一个输入字符写入文档前运行。先补入尚未落盘的标记字符，
+  // 再删除两侧标记，避免事务映射把正文或光标移动到错误的位置。
+  const missingOpening = marker.slice(openingLengthInDocument)
+  if (missingOpening) tr.insertText(missingOpening, range.to)
+  const mappedCloseFrom = tr.mapping.map(closeFrom, 1)
+  tr.delete(mappedCloseFrom, mappedCloseFrom + marker.length)
+  tr.delete(range.from, range.from + marker.length)
+
+  const contentFrom = range.from
+  const contentTo = contentFrom + (closeFrom - range.to)
   for (const mark of marks) {
-    addMarkToTextNodes(tr, contentFrom, contentTo, mark)
+    addMarkToTextNodes(tr, contentFrom, contentTo, mark.create())
     tr.removeStoredMark(mark)
   }
+  tr.setSelection(TextSelection.create(tr.doc, contentTo))
   return true
+}
+
+function findExactClosingMarker(text: string, marker: string): number {
+  const markerCharacter = marker[0]
+  let offset = text.indexOf(marker)
+  while (offset >= 0) {
+    const before = offset > 0 ? text[offset - 1] : ''
+    const after = text[offset + marker.length] ?? ''
+    if (before !== markerCharacter && after !== markerCharacter) return offset
+    offset = text.indexOf(marker, offset + 1)
+  }
+  return -1
+}
+
+function convertSetextHeading(
+  state: any,
+  insertionPosition: number,
+  marker: '=' | '-',
+  level: 1 | 2,
+  pendingText = '',
+): any | null {
+  const $from = state.doc.resolve(insertionPosition)
+  const parent = $from.parent
+  const heading = state.schema.nodes.heading
+  if (!heading || parent.type.name !== 'paragraph') return null
+
+  let offset = 0
+  let hardBreakOffset = -1
+  let markerText = ''
+  parent.forEach((node: any) => {
+    if (node.type.name === 'hardBreak') {
+      hardBreakOffset = offset
+      markerText = ''
+    }
+    else if (hardBreakOffset >= 0) {
+      if (!node.isText) {
+        markerText = ''
+        hardBreakOffset = -1
+      }
+      else {
+        markerText += node.text ?? ''
+      }
+    }
+    offset += node.nodeSize
+  })
+
+  const completeMarker = markerText + pendingText
+  if (hardBreakOffset <= 0 || completeMarker.length < 3
+    || [...completeMarker].some(character => character !== marker)) {
+    return null
+  }
+
+  const blockStart = $from.start()
+  const hardBreakPosition = blockStart + hardBreakOffset
+  const tr = state.tr
+  tr
+    .delete(hardBreakPosition, insertionPosition)
+    .setBlockType(blockStart, blockStart, heading, { level })
+    .setSelection(TextSelection.create(tr.doc, hardBreakPosition))
+  return tr
 }
 
 function addMarkToTextNodes(tr: any, from: number, to: number, mark: any): void {
@@ -663,6 +869,7 @@ export function outdentListItem(editor: Editor): boolean {
 }
 
 function splitEmptyListItem(editor: Editor): boolean {
+  if (exitBlockOnEmptyEnter) return false
   if (!editor.isEditable) return false
 
   const { selection } = editor.state
@@ -699,13 +906,57 @@ function splitEmptyListItem(editor: Editor): boolean {
   return true
 }
 
-// Tiptap 默认会在空列表项回车时退出列表。这里优先保留当前空项，并创建同级新项。
-const EmptyListItemEnter = Extension.create({
-  name: 'markleafEmptyListItemEnter',
+function preserveTrailingEmptyBlock(editor: Editor): boolean {
+  if (exitBlockOnEmptyEnter || !editor.isEditable) return false
+
+  const { selection } = editor.state
+  if (!selection.empty) return false
+  const { $from } = selection
+
+  // Tiptap 的代码块在末尾连续回车时会调用 exitCode。未启用退出选项时，
+  // 始终优先插入代码换行，保留当前代码块。
+  if ($from.parent.type.name === 'codeBlock'
+    && $from.parentOffset === $from.parent.content.size
+    && $from.parent.textContent.endsWith('\n\n')) {
+    return editor.commands.command(({ state, dispatch }) => {
+      const transaction = state.tr.insertText('\n')
+      dispatch?.(transaction.scrollIntoView())
+      return true
+    })
+  }
+
+  if ($from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false
+
+  let containerDepth = -1
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    if (['blockquote', 'alert'].includes($from.node(depth).type.name)) {
+      containerDepth = depth
+      break
+    }
+  }
+  if (containerDepth < 1) return false
+
+  const paragraphDepth = $from.depth
+  const paragraphIndex = $from.index(containerDepth)
+  const container = $from.node(containerDepth)
+  if (paragraphIndex !== container.childCount - 1) return false
+
+  const paragraph = editor.state.schema.nodes.paragraph?.createAndFill()
+  if (!paragraph) return false
+  const insertPosition = $from.after(paragraphDepth)
+  const transaction = editor.state.tr.insert(insertPosition, paragraph)
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertPosition + 1)))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+// Tiptap 默认会在末尾空块回车时退出。未启用该行为时，保留当前空块并继续创建内容。
+const EmptyBlockEnter = Extension.create({
+  name: 'markleafEmptyBlockEnter',
   priority: 110,
   addKeyboardShortcuts() {
     return {
-      Enter: () => splitEmptyListItem(this.editor),
+      Enter: () => splitEmptyListItem(this.editor) || preserveTrailingEmptyBlock(this.editor),
     }
   },
 })
@@ -729,6 +980,11 @@ const VisualIndent = Extension.create({
         }
         if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') {
           return false
+        }
+        if (this.editor.state.selection.empty
+          && $from.parent.type.name === 'paragraph'
+          && $from.parentOffset === 0) {
+          return this.editor.chain().focus().setNode('codeBlock').run()
         }
         const blockStart = $from.start($from.depth)
         return this.editor.chain()
@@ -2487,6 +2743,16 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
   if (language === 'markdown') {
     return [{ pattern: /^#{1,6}.*/gm, className: 'ml-code-keyword' }, { pattern: /`[^`]+`/g, className: 'ml-code-string' }, { pattern: /\[[^\]]+\]\([^)]+\)/g, className: 'ml-code-function' }]
   }
+  if (language === 'mermaid') {
+    return [
+      { pattern: /%%.*$/gm, className: 'ml-code-comment' },
+      { pattern: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, className: 'ml-code-string' },
+      { pattern: /\b(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart-beta|sankey-beta|block-beta|architecture-beta)\b/g, className: 'ml-code-keyword' },
+      { pattern: /\b(?:direction|subgraph|end|participant|actor|note|over|loop|alt|else|opt|par|and|rect|class|classDef|style|click|link|linkStyle|title|section|dateFormat|axisFormat|todayMarker|accTitle|accDescr)\b/g, className: 'ml-code-type' },
+      { pattern: /\b\d+(?:\.\d+)?\b/g, className: 'ml-code-number' },
+      { pattern: /(?:-->>|->>|-->|---|-.->|==>|===|~~~|--|->|\+\+|--)/g, className: 'ml-code-operator' },
+    ]
+  }
   if (language === 'latex') {
     return [
       { pattern: /%.*/g, className: 'ml-code-comment' },
@@ -2512,13 +2778,22 @@ export const editorExtensions = [
   MarkdownFrontMatter,
   MarkdownShortcuts,
   MarkdownEmoji,
+  CjkAutoSpacing,
   MarkdownHighlight,
   MarkdownAlert,
-  EmptyListItemEnter,
+  EmptyBlockEnter,
   StarterKit.configure({
+    bold: false,
+    italic: false,
+    codeBlock: false,
+    listItem: false,
     link: false,
     paragraph: false,
   }),
+  MarkdownBold,
+  MarkdownItalic,
+  MarkdownCodeBlock,
+  MarkdownListItem,
   MarkLeafParagraph,
   Link.configure({
     openOnClick: false,
@@ -2633,7 +2908,10 @@ export function getMarkdown(editor: Editor): string {
     return original.markdown
   }
   const markdown = editor.getMarkdown()
-  return autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
+  // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
+  return stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
@@ -2672,9 +2950,33 @@ function hasListFormattingThatNeedsPreservation(markdown: string): boolean {
 }
 
 let autoConvertUnsafeEmphasis = true
+let exitBlockOnEmptyEnter = false
+let useShiftEnterHardBreak = true
+let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
+let markdownEmphasisMarker: 'asterisk' | 'underscore' = 'asterisk'
+let markdownBulletMarker: 'dash' | 'asterisk' | 'plus' = 'dash'
 
 export function setAutoConvertUnsafeEmphasis(enabled: boolean): void {
   autoConvertUnsafeEmphasis = enabled
+}
+
+export type MarkdownEditingSettings = {
+  exitBlockOnEmptyEnter?: boolean
+  useShiftEnterHardBreak?: boolean
+  codeFence?: 'backtick' | 'tilde'
+  emphasisMarker?: 'asterisk' | 'underscore'
+  bulletMarker?: 'dash' | 'asterisk' | 'plus'
+}
+
+export function setMarkdownEditingSettings(settings: MarkdownEditingSettings): void {
+  exitBlockOnEmptyEnter = settings.exitBlockOnEmptyEnter === true
+  useShiftEnterHardBreak = settings.useShiftEnterHardBreak !== false
+  markdownCodeFence = settings.codeFence === 'tilde' ? 'tilde' : 'backtick'
+  setMermaidMarkdownCodeFence(markdownCodeFence)
+  markdownEmphasisMarker = settings.emphasisMarker === 'underscore' ? 'underscore' : 'asterisk'
+  markdownBulletMarker = settings.bulletMarker === 'asterisk'
+    ? 'asterisk'
+    : settings.bulletMarker === 'plus' ? 'plus' : 'dash'
 }
 
 export function getVisualCursorLineNumber(editor: Editor): number {
@@ -3035,6 +3337,7 @@ function readPotentialEmphasis(
   tag: 'em' | 'strong',
 ): { text: string; end: number } | null {
   if (!markdown.startsWith(marker, start) || isEscaped(markdown, start)) return null
+  if (marker === '*' && isAsteriskListMarker(markdown, start)) return null
   if (marker === '*' && markdown.startsWith('**', start)) return null
   if (marker === '**' && markdown.startsWith('***', start)) return null
   const contentStart = start + marker.length
@@ -3050,6 +3353,13 @@ function readPotentialEmphasis(
   }
 
   return { text: `<${tag}>${markdownInlineToHtmlText(content)}</${tag}>`, end }
+}
+
+function isAsteriskListMarker(markdown: string, start: number): boolean {
+  const lineStart = markdown.lastIndexOf('\n', start - 1) + 1
+  const indentation = markdown.slice(lineStart, start)
+  if (!/^ {0,3}$/.test(indentation)) return false
+  return markdown[start + 1] === ' '
 }
 
 /// 识别 `<delimiter>***…***</delimiter>` 的粗斜体（既有加粗又有斜体）。

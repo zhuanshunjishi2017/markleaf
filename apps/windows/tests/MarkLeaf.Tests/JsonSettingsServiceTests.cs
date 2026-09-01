@@ -36,6 +36,11 @@ public sealed class JsonSettingsServiceTests
                 Editor = new EditorSettings
                 {
                     VisualCjkAutoSpacing = false,
+                    ExitBlockOnEmptyEnter = true,
+                    UseShiftEnterHardBreak = false,
+                    MarkdownCodeFence = "tilde",
+                    MarkdownEmphasisMarker = "underscore",
+                    MarkdownBulletMarker = "plus",
                 },
             };
 
@@ -51,6 +56,11 @@ public sealed class JsonSettingsServiceTests
             Assert.AreEqual(@"D:\Notes", actual.Workspace.LastFolder);
             CollectionAssert.AreEqual(new[] { @"D:\Notes", @"D:\Archive" }, actual.Workspace.RecentFolders);
             Assert.IsFalse(actual.Editor.VisualCjkAutoSpacing);
+            Assert.IsTrue(actual.Editor.ExitBlockOnEmptyEnter);
+            Assert.IsFalse(actual.Editor.UseShiftEnterHardBreak);
+            Assert.AreEqual("tilde", actual.Editor.MarkdownCodeFence);
+            Assert.AreEqual("underscore", actual.Editor.MarkdownEmphasisMarker);
+            Assert.AreEqual("plus", actual.Editor.MarkdownBulletMarker);
             Assert.IsFalse(File.Exists(file + ".tmp"));
         }
         finally
@@ -59,6 +69,36 @@ public sealed class JsonSettingsServiceTests
             {
                 Directory.Delete(root, true);
             }
+        }
+    }
+
+    [TestMethod]
+    public async Task Load_InvalidMarkdownSyntaxPreferences_UsesDefaults()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "editor": {
+                "markdownCodeFence": "invalid",
+                "markdownEmphasisMarker": "invalid",
+                "markdownBulletMarker": "invalid"
+              }
+            }
+            """);
+
+        try
+        {
+            var settings = await new JsonSettingsService(file, new TestLogger()).LoadAsync();
+
+            Assert.AreEqual("backtick", settings.Editor.MarkdownCodeFence);
+            Assert.AreEqual("asterisk", settings.Editor.MarkdownEmphasisMarker);
+            Assert.AreEqual("dash", settings.Editor.MarkdownBulletMarker);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
         }
     }
 

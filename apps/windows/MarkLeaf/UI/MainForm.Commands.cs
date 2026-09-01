@@ -503,7 +503,7 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
-    private void OpenFindReplaceDialog(bool replace)
+    private void OpenFindReplaceDialog(bool replace, string? query = null)
     {
         if (_editorHost is null)
         {
@@ -511,7 +511,7 @@ internal sealed partial class MainForm
         }
 
         _findReplaceDialog ??= new FindReplaceDialog((command, text) => _editorHost?.ExecuteCommand(command, text));
-        _findReplaceDialog.Open(this, replace);
+        _findReplaceDialog.Open(this, replace, query);
     }
 
     private static bool TryMapEditorCommand(AppCommand command, out string editorCommand)

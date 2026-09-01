@@ -9,9 +9,11 @@ internal sealed class WorkspaceDocumentListView : Control
 {
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<WorkspaceDocumentEntry> _documents = [];
-    private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _visibleRows = [];
+    private readonly List<(WorkspaceDocumentEntry Document, Rectangle Bounds)> _rows = [];
+    private readonly Dictionary<string, int> _rowIndexByPath = new(StringComparer.OrdinalIgnoreCase);
     private Font _metadataFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _documentFont = new("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+    private Font _previewFont = new("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _folderIconFont = new(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
     private TextBox? _renameEditor;
     private WorkspaceDocumentEntry? _renameDocument;
@@ -31,7 +33,7 @@ internal sealed class WorkspaceDocumentListView : Control
     private string? _hoveredPath;
     private string? _contextMenuPath;
     private int _rowHeight;
-    private int TopInset => this.ScaleForDpi(5);
+    private int TopInset => 0;
 
     public WorkspaceDocumentListView()
     {
@@ -111,6 +113,7 @@ internal sealed class WorkspaceDocumentListView : Control
             _selectedPath = null;
         }
         UpdateScrollBar();
+        RebuildRows();
         EnsureSelectionVisible();
         Invalidate();
     }
@@ -119,17 +122,22 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         var previousMetadata = _metadataFont;
         var previousDocument = _documentFont;
+        var previousPreview = _previewFont;
         var previousFolderIcon = _folderIconFont;
         _metadataFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
         _documentFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _previewFont = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
         _folderIconFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
-        var verticalPadding = this.ScaleForDpi(21);
+        var verticalPadding = this.ScaleForDpi(18);
         _rowHeight = (int)Math.Ceiling(
-            _metadataFont.GetHeight(dpi) + _documentFont.GetHeight(dpi) + verticalPadding);
+            _metadataFont.GetHeight(dpi) + _documentFont.GetHeight(dpi)
+            + _previewFont.GetHeight(dpi) + verticalPadding);
         previousMetadata.Dispose();
         previousDocument.Dispose();
+        previousPreview.Dispose();
         previousFolderIcon.Dispose();
         UpdateScrollBar();
+        RebuildRows();
         Invalidate();
     }
 
@@ -138,23 +146,25 @@ internal sealed class WorkspaceDocumentListView : Control
         CancelInlineRename();
         _selectedPath = entry.FullPath;
         EnsureSelectionVisible();
-        BuildVisibleRows();
-        var row = _visibleRows.FirstOrDefault(item => PathEquals(item.Document.FullPath, entry.FullPath));
-        if (row.Document is null)
+        var index = _documents.FindIndex(document => PathEquals(document.FullPath, entry.FullPath));
+        if (index < 0)
         {
             return;
         }
 
-        var horizontalPadding = this.ScaleForDpi(15);
+        var document = _documents[index];
+        var rowBounds = GetDisplayBounds(_rows[index].Bounds);
+
+        var horizontalPadding = this.ScaleForDpi(10);
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
-        var top = row.Bounds.Top + this.ScaleForDpi(3) + metadataHeight + this.ScaleForDpi(4);
+        var top = rowBounds.Top + this.ScaleForDpi(3) + metadataHeight + this.ScaleForDpi(4);
         var bounds = new Rectangle(
-            row.Bounds.Left + horizontalPadding,
+            rowBounds.Left + horizontalPadding,
             top,
-            Math.Max(this.ScaleForDpi(40), row.Bounds.Width - horizontalPadding
+            Math.Max(this.ScaleForDpi(40), rowBounds.Width - horizontalPadding
                 - ContentRightPadding(horizontalPadding)),
             _documentFont.Height + this.ScaleForDpi(2));
-        _renameDocument = row.Document;
+        _renameDocument = document;
         _renameEditor = new TextBox
         {
             BorderStyle = BorderStyle.None,
@@ -169,7 +179,7 @@ internal sealed class WorkspaceDocumentListView : Control
         Controls.Add(_renameEditor);
         _renameEditor.BringToFront();
         BeginInvoke(() => FocusRenameEditor(_renameEditor));
-        Invalidate(row.Bounds);
+        Invalidate(rowBounds);
     }
 
     protected override void OnPaint(PaintEventArgs eventArgs)
@@ -196,20 +206,20 @@ internal sealed class WorkspaceDocumentListView : Control
             return;
         }
 
-        BuildVisibleRows();
-        foreach (var (document, bounds) in _visibleRows)
+        var (firstIndex, lastIndex) = GetVisibleRowRange();
+        for (var index = firstIndex; index <= lastIndex; index++)
         {
-            if (bounds.Bottom <= 0 || bounds.Top >= ClientSize.Height)
-            {
-                continue;
-            }
-
+            var row = _rows[index];
+            var document = row.Document;
+            var bounds = GetDisplayBounds(row.Bounds);
             var isSelected = PathEquals(document.FullPath, _selectedPath);
             var isHovered = PathEquals(document.FullPath, _hoveredPath);
-            var rightPadding = ContentRightPadding(this.ScaleForDpi(8));
+            var rightPadding = _scrollBar.Visible
+                ? ContentRightPadding(this.ScaleForDpi(4))
+                : _scrollBar.Width;
             var bgBounds = new Rectangle(
-                this.ScaleForDpi(8), bounds.Y,
-                Math.Max(0, bounds.Width - this.ScaleForDpi(8) - rightPadding), bounds.Height);
+                bounds.X + this.ScaleForDpi(4), bounds.Y,
+                Math.Max(0, bounds.Width - this.ScaleForDpi(4) - rightPadding), bounds.Height);
             if (isSelected && isHovered)
             {
                 using var brush = new SolidBrush(_themeDark);
@@ -273,8 +283,9 @@ internal sealed class WorkspaceDocumentListView : Control
         var hoveredPath = row?.Document.FullPath;
         if (!PathEquals(hoveredPath, _hoveredPath))
         {
+            InvalidatePath(_hoveredPath);
             _hoveredPath = hoveredPath;
-            Invalidate();
+            InvalidatePath(_hoveredPath);
         }
     }
 
@@ -283,8 +294,9 @@ internal sealed class WorkspaceDocumentListView : Control
         base.OnMouseLeave(eventArgs);
         if (_hoveredPath is not null)
         {
+            var previous = _hoveredPath;
             _hoveredPath = null;
-            Invalidate();
+            InvalidatePath(previous);
         }
     }
 
@@ -338,6 +350,7 @@ internal sealed class WorkspaceDocumentListView : Control
     {
         base.OnResize(eventArgs);
         UpdateScrollBar();
+        RebuildRows();
     }
 
     protected override void Dispose(bool disposing)
@@ -347,6 +360,7 @@ internal sealed class WorkspaceDocumentListView : Control
             CancelInlineRename();
             _metadataFont.Dispose();
             _documentFont.Dispose();
+            _previewFont.Dispose();
             _folderIconFont.Dispose();
         }
         base.Dispose(disposing);
@@ -379,11 +393,10 @@ internal sealed class WorkspaceDocumentListView : Control
     private void DrawDocument(Graphics graphics, WorkspaceDocumentEntry document, Rectangle bounds, bool isSelected)
     {
         var metaColor = isSelected ? _textTertiarySelected : _textTertiary;
-        var horizontalPadding = this.ScaleForDpi(15);
-        var dateRightPadding = this.ScaleForDpi(12);
+        var horizontalPadding = this.ScaleForDpi(10);
         var topPadding = this.ScaleForDpi(3);
-        // Keep the title's right edge aligned with the date's fixed right edge.
-        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding - dateRightPadding);
+        var availableWidth = Math.Max(0, bounds.Width - horizontalPadding
+            - ContentRightPadding(horizontalPadding));
         var metadataHeight = (int)Math.Ceiling(_metadataFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2);
         var iconAdvance = this.ScaleForDpi(14);
         var metadataBounds = new Rectangle(
@@ -407,14 +420,12 @@ internal sealed class WorkspaceDocumentListView : Control
         var folderBounds = new Rectangle(
             metadataBounds.Left + iconAdvance,
             metadataBounds.Top,
-            Math.Max(0, bounds.Right - dateRightPadding - modifiedWidth - gap
-                - metadataBounds.Left - iconAdvance),
+            Math.Max(0, metadataBounds.Width - modifiedWidth - gap - iconAdvance),
             metadataBounds.Height);
-        var modifiedRight = bounds.Right - dateRightPadding;
         var modifiedBounds = new Rectangle(
-            Math.Max(metadataBounds.Left, modifiedRight - modifiedWidth),
+            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth - this.ScaleForDpi(9)),
             metadataBounds.Top,
-            Math.Min(modifiedWidth, Math.Max(0, modifiedRight - metadataBounds.Left)),
+            Math.Min(modifiedWidth, metadataBounds.Width),
             metadataBounds.Height);
         DrawText(
             graphics,
@@ -457,17 +468,70 @@ internal sealed class WorkspaceDocumentListView : Control
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                     | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
         }
+
+        var previewBounds = new Rectangle(
+            metadataBounds.Left,
+            documentBounds.Bottom,
+            availableWidth,
+            (int)Math.Ceiling(_previewFont.GetHeight(DeviceDpi)) + this.ScaleForDpi(2));
+        DrawText(
+            graphics,
+            document.Preview ?? string.Empty,
+            _previewFont,
+            previewBounds,
+            metaColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
+                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
     }
 
-    private void BuildVisibleRows()
+    private void RebuildRows()
     {
-        _visibleRows.Clear();
-        var top = TopInset - _scrollBar.Value;
-        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0);
-        foreach (var document in _documents)
+        _rows.Clear();
+        _rowIndexByPath.Clear();
+        var width = ClientSize.Width - (_scrollBar.Visible ? _scrollBar.Width : 0) - this.ScaleForDpi(4);
+        var top = TopInset;
+        for (var index = 0; index < _documents.Count; index++)
         {
-            _visibleRows.Add((document, new Rectangle(0, top, width, _rowHeight)));
-            top += _rowHeight + this.ScaleForDpi(2);
+            var document = _documents[index];
+            _rows.Add((document, new Rectangle(this.ScaleForDpi(4), top, width, _rowHeight)));
+            _rowIndexByPath[document.FullPath] = index;
+            top += RowStride;
+        }
+    }
+
+    private int RowStride => _rowHeight + this.ScaleForDpi(2);
+
+    private Rectangle GetDisplayBounds(Rectangle contentBounds)
+        => new(contentBounds.X, contentBounds.Y - _scrollBar.Value, contentBounds.Width, contentBounds.Height);
+
+    private (int First, int Last) GetVisibleRowRange()
+    {
+        if (_rows.Count == 0)
+        {
+            return (0, -1);
+        }
+
+        var first = Math.Clamp(
+            Math.Max(0, _scrollBar.Value - TopInset) / RowStride,
+            0,
+            _rows.Count - 1);
+        var last = Math.Clamp(
+            Math.Max(0, _scrollBar.Value + ClientSize.Height - TopInset) / RowStride,
+            first,
+            _rows.Count - 1);
+        return (first, last);
+    }
+
+    private void InvalidatePath(string? path)
+    {
+        if (path is null)
+        {
+            return;
+        }
+
+        if (_rowIndexByPath.TryGetValue(path, out var index))
+        {
+            Invalidate(GetDisplayBounds(_rows[index].Bounds));
         }
     }
 
@@ -476,20 +540,26 @@ internal sealed class WorkspaceDocumentListView : Control
 
     private (WorkspaceDocumentEntry Document, Rectangle Bounds)? HitTestRow(Point location)
     {
-        BuildVisibleRows();
-        foreach (var row in _visibleRows)
+        var contentY = location.Y + _scrollBar.Value - TopInset;
+        if (contentY < 0)
         {
-            if (row.Bounds.Contains(location))
-            {
-                return row;
-            }
+            return null;
         }
-        return null;
+
+        var index = contentY / RowStride;
+        if (index < 0 || index >= _rows.Count || contentY % RowStride >= _rowHeight)
+        {
+            return null;
+        }
+
+        var row = _rows[index];
+        var bounds = GetDisplayBounds(row.Bounds);
+        return bounds.Contains(location) ? (row.Document, bounds) : null;
     }
 
     private void UpdateScrollBar()
     {
-        var contentHeight = TopInset + _documents.Count * (_rowHeight + this.ScaleForDpi(2)) - this.ScaleForDpi(2);
+        var contentHeight = TopInset + _documents.Count * RowStride - this.ScaleForDpi(2);
         _scrollBar.Visible = contentHeight > ClientSize.Height;
         _scrollBar.Minimum = 0;
         _scrollBar.LargeChange = Math.Max(1, ClientSize.Height);
@@ -510,20 +580,21 @@ internal sealed class WorkspaceDocumentListView : Control
             return;
         }
 
-        BuildVisibleRows();
-        var selected = _visibleRows.FirstOrDefault(row => PathEquals(row.Document.FullPath, _selectedPath));
-        if (selected.Document is null)
+        var index = _documents.FindIndex(document => PathEquals(document.FullPath, _selectedPath));
+        if (index < 0)
         {
             return;
         }
-        if (selected.Bounds.Top < 0)
+
+        var bounds = GetDisplayBounds(_rows[index].Bounds);
+        if (bounds.Top < 0)
         {
-            _scrollBar.Value = Math.Clamp(_scrollBar.Value + selected.Bounds.Top, 0, GetMaximumScrollValue());
+            _scrollBar.Value = Math.Clamp(_scrollBar.Value + bounds.Top, 0, GetMaximumScrollValue());
         }
-        else if (selected.Bounds.Bottom > ClientSize.Height)
+        else if (bounds.Bottom > ClientSize.Height)
         {
             _scrollBar.Value = Math.Clamp(
-                _scrollBar.Value + selected.Bounds.Bottom - ClientSize.Height,
+                _scrollBar.Value + bounds.Bottom - ClientSize.Height,
                 0,
                 GetMaximumScrollValue());
         }
