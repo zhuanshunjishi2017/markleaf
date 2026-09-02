@@ -2192,12 +2192,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         numberField.bezelStyle = .roundedBezel
         DialogTextFieldStyle.apply(to: numberField)
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: showNumber ? 78 : 44))
+        let fieldHeight = latexField.frame.height
+        let accessory = NSView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: 360,
+            height: MathInputDialogLayout.accessoryHeight(showNumber: showNumber, fieldHeight: fieldHeight)
+        ))
         latexField.frame = NSRect(
             x: 0,
-            y: showNumber ? 43 : 9,
+            y: MathInputDialogLayout.latexFieldY(showNumber: showNumber),
             width: 360,
-            height: latexField.frame.height
+            height: fieldHeight
         )
         accessory.addSubview(latexField)
         if showNumber {
@@ -2207,7 +2213,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             numberGrid.columnSpacing = MathInputDialogLayout.numberColumnSpacing
             numberGrid.row(at: 0).yPlacement = .center
             numberGrid.column(at: 0).width = MathInputDialogLayout.numberLabelColumnWidth(for: label)
-            numberGrid.frame = NSRect(x: 0, y: 6, width: 360, height: 28)
+            numberGrid.frame = NSRect(
+                x: 0,
+                y: MathInputDialogLayout.verticalInset,
+                width: 360,
+                height: MathInputDialogLayout.numberRowHeight
+            )
             accessory.addSubview(numberGrid)
         }
         alert.accessoryView = accessory

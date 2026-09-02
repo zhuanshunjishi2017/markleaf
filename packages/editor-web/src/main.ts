@@ -1291,6 +1291,12 @@ editorMount.addEventListener('mousedown', (event) => {
     return
   }
 
+  // Atom NodeViews are not editable text. If a previous text selection is
+  // still owned by WebKit, its native highlight can survive beside the
+  // ProseMirror NodeSelection and paint unrelated formula content blue.
+  event.preventDefault()
+  window.getSelection()?.removeAllRanges()
+
   const selected = editor.state.selection
   pendingSpecialClick = {
     kind: mathPosition !== null ? 'math' : 'mermaid',
