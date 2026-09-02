@@ -24,6 +24,12 @@ require_block_contains() {
 
 require "$MODEL" 'enum StatusBarEmptyStatePolicy' \
   'status bar must define an empty-state policy'
+require "$WINDOW" 'statusBar.distribution = .fill' \
+  'status bar must not use fillProportionally (stretches the lone sidebar toggle)'
+require "$WINDOW" 'statusSpacer.setContentHuggingPriority(.defaultLow' \
+  'status bar must keep a flexible spacer to absorb slack'
+require "$WINDOW" 'statusBar.addView(statusSpacer, in: .leading)' \
+  'the flexible spacer must live in the leading gravity area'
 require "$MODEL" 'shouldShowDocumentItems(hasActiveTab:' \
   'the policy must decide document-item visibility from tab presence'
 require_block_contains "$WINDOW" \

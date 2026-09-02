@@ -26,7 +26,7 @@ require_text() {
   fi
 }
 
-require_text "$MENU_FILE" 'popup(L10n.t("Mermaid"), mermaidMenu())'
+require_text "$MENU_FILE" 'popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true)'
 require_text "$MENU_FILE" 'commandItem(L10n.t("插入 Mermaid 图表"), "insertMermaid")'
 require_text "$MENU_FILE" 'commandItem(L10n.t("重新渲染所有 Mermaid 图表"), "rerenderAllMermaid")'
 

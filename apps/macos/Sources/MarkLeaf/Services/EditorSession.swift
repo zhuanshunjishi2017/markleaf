@@ -2148,6 +2148,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 公式编号合法性：留空合法；否则必须是 1 / 1.1 式的分级 ASCII 数字编号。
+    static func isValidMathNumberTag(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        let parts = trimmed.split(separator: ".", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy { part in
+            !part.isEmpty && part.allSatisfy { $0.isASCII && $0.isNumber }
+        }
+    }
+
     /// 段间公式编号以 `\tag{编号}` 追加到 LaTeX，前端渲染为右对齐编号并可随 Markdown 往返。
     private static func mathPayload(latex: String, number: String?, isBlock: Bool) -> String {
         let tag = (number ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2204,14 +2214,29 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.window.initialFirstResponder = latexField
         let okButton = alert.buttons.first
         okButton?.isEnabled = false
-        var validationToken: NSObjectProtocol?
-        validationToken = bindAlertInputValidation(field: latexField, button: okButton) {
-            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // 与其他输入弹窗一致：LaTeX 非空且公式编号合法（留空或 1 / 1.1 式分级编号）时才允许「确定」。
+        func refreshOK() {
+            let latex = latexField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let number = numberField.stringValue
+            okButton?.isEnabled = !latex.isEmpty && EditorSession.isValidMathNumberTag(number)
+        }
+        refreshOK()
+        var validationTokens: [NSObjectProtocol] = [
+            NotificationCenter.default.addObserver(
+                forName: NSControl.textDidChangeNotification,
+                object: latexField,
+                queue: .main
+            ) { _ in refreshOK() },
+        ]
+        if showNumber {
+            validationTokens.append(NotificationCenter.default.addObserver(
+                forName: NSControl.textDidChangeNotification,
+                object: numberField,
+                queue: .main
+            ) { _ in refreshOK() })
         }
         alert.beginSheetModal(for: window) { response in
-            if let token = validationToken {
-                NotificationCenter.default.removeObserver(token)
-            }
+            validationTokens.forEach { NotificationCenter.default.removeObserver($0) }
             guard response == .alertFirstButtonReturn else {
                 completion(nil, nil)
                 return
@@ -2343,7 +2368,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 让对话框的确认按钮随输入有效性启用/禁用（空值、非法值一律不可确认）。
-    private func bindAlertInputValidation(
+    func bindAlertInputValidation(
         field: NSTextField,
         button: NSButton?,
         validate: @escaping (String) -> Bool

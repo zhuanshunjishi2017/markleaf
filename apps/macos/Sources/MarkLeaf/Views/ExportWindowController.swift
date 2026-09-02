@@ -10,13 +10,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let binding: ExportBinding
     var onClose: (() -> Void)?
 
-    private let pdfFormatButton = NSButton(title: "PDF", target: nil, action: nil)
-    private let htmlFormatButton = NSButton(title: "HTML", target: nil, action: nil)
-    private lazy var formatStack = NSStackView(views: [pdfFormatButton, htmlFormatButton])
+    private let formatSelector = ExportFormatSelector.make()
     private let paperPopup = NSPopUpButton()
-    private let landscapeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let directionPopup = NSPopUpButton()
     private let marginPopup = NSPopUpButton()
     private let customMarginButton = NSButton(title: "", target: nil, action: nil)
+    private let marginSummaryLabel = NSTextField(labelWithString: "")
     private let stylePopup = NSPopUpButton()
     private let colorThemePopup = NSPopUpButton()
     private let headerPresetPopup = NSPopUpButton()
@@ -34,8 +33,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let htmlPreviewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
 
-    private var paperRow: NSView?
-    private var landscapeRow: NSView?
+    private var paperSettingsRow: NSView?
+    private var directionRow: NSView?
     private var marginRow: NSView?
     private var headerPresetRow: NSView?
     private var footerPresetRow: NSView?
@@ -45,6 +44,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private var themeIDs: [String] = []
     private var styleIDs: [String] = []
     private var margins = ExportMargins()
+    private var currentMarginFields: [NSTextField] = []
+    private var marginMonitors: [BoundedTextFieldMonitor] = []
     private var previewTimer: DispatchWorkItem?
     private var previewGeneration = 0
     private var previewFileCounter = 0
@@ -72,7 +73,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         self.lease = lease
         self.binding = binding
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 920, height: 680),
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 620),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false)
@@ -97,18 +98,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         pdfPreviewView.translatesAutoresizingMaskIntoConstraints = false
         pdfPreviewView.autoScales = true
 
-        configureFormatButton(pdfFormatButton, title: "PDF", icon: "doc.richtext", tag: 0)
-        configureFormatButton(htmlFormatButton, title: "HTML", icon: "curlybraces", tag: 1)
-        formatStack.orientation = .horizontal
-        formatStack.spacing = 8
-        formatStack.alignment = .centerY
-
-        keepTablesCheck.title = L10n.t("不允许表格分居两页")
-        keepHeadingsCheck.title = L10n.t("不允许标题处于页面最底部")
+        keepTablesCheck.title = L10n.t("尽量保持表格不跨页")
+        keepHeadingsCheck.title = L10n.t("尽量避免标题孤悬页尾")
         keepTablesCheck.target = self
         keepTablesCheck.action = #selector(optionChanged)
         keepHeadingsCheck.target = self
         keepHeadingsCheck.action = #selector(optionChanged)
+        formatSelector.target = self
+        formatSelector.action = #selector(formatChanged(_:))
         for check in [keepTablesCheck, keepHeadingsCheck] {
             check.lineBreakMode = .byWordWrapping
             check.cell?.wraps = true
@@ -120,9 +117,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         paperPopup.target = self
         paperPopup.action = #selector(optionChanged)
 
-        landscapeCheck.title = L10n.t("横向")
-        landscapeCheck.target = self
-        landscapeCheck.action = #selector(optionChanged)
+        directionPopup.addItems(withTitles: [L10n.t("纵向"), L10n.t("横向")])
+        directionPopup.selectItem(at: 0)
+        directionPopup.target = self
+        directionPopup.action = #selector(optionChanged)
 
         marginPopup.addItems(withTitles: Self.marginPresets.map(\.0))
         marginPopup.selectItem(withTitle: L10n.t("标准"))
@@ -133,6 +131,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         customMarginButton.bezelStyle = .rounded
         customMarginButton.target = self
         customMarginButton.action = #selector(presentCustomMarginSheet)
+        marginSummaryLabel.font = .systemFont(ofSize: 11)
+        marginSummaryLabel.textColor = .secondaryLabelColor
+        marginSummaryLabel.lineBreakMode = .byWordWrapping
+        marginSummaryLabel.maximumNumberOfLines = 2
+        marginSummaryLabel.alignment = .left
+        marginSummaryLabel.widthAnchor.constraint(equalToConstant: 200).isActive = true
 
         stylePopup.target = self
         stylePopup.action = #selector(optionChanged)
@@ -180,9 +184,19 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelClicked))
         cancelButton.bezelStyle = .rounded
 
-        paperRow = labeled(L10n.t("纸张"), paperPopup)
-        landscapeRow = labeled(L10n.t("方向"), landscapeCheck)
-        marginRow = labeled(L10n.t("页边距"), NSStackView(views: [marginPopup, customMarginButton]))
+        paperSettingsRow = labeled(L10n.t("纸张设置"), paperPopup)
+        directionRow = labeled(L10n.t("方向"), directionPopup)
+        let marginControlRow = NSStackView(views: [marginPopup, customMarginButton])
+        marginControlRow.orientation = .horizontal
+        marginControlRow.spacing = 8
+        let marginSettingsStack = NSStackView(views: [marginControlRow, marginSummaryLabel])
+        marginSettingsStack.orientation = .vertical
+        marginSettingsStack.alignment = .leading
+        marginSettingsStack.spacing = 4
+        marginRow = labeled(L10n.t("页边距"), marginSettingsStack)
+        if let marginRowStack = marginRow as? NSStackView {
+            marginRowStack.alignment = .top
+        }
         headerPresetRow = labeled(L10n.t("页眉"), headerPresetPopup)
         footerPresetRow = labeled(L10n.t("页脚"), footerPresetPopup)
 
@@ -193,15 +207,28 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         pageBehaviorStack.alignment = .leading
         pageBehaviorStack.spacing = 6
         pageBehaviorRow = labeled(L10n.t("页面行为"), pageBehaviorStack)
+        if let pageBehaviorRowStack = pageBehaviorRow as? NSStackView {
+            pageBehaviorRowStack.alignment = .top
+        }
         headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         headerFieldRowHeight?.isActive = true
         footerFieldRowHeight?.isActive = true
 
+        let formatHost = NSView()
+        formatSelector.translatesAutoresizingMaskIntoConstraints = false
+        formatHost.addSubview(formatSelector)
+        NSLayoutConstraint.activate([
+            formatSelector.centerXAnchor.constraint(equalTo: formatHost.centerXAnchor),
+            formatSelector.centerYAnchor.constraint(equalTo: formatHost.centerYAnchor),
+            formatHost.widthAnchor.constraint(equalToConstant: 260),
+            formatHost.heightAnchor.constraint(equalToConstant: 44),
+        ])
+
         let optionsStack = NSStackView(views: [
-            formatStack,
-            paperRow!,
-            landscapeRow!,
+            formatHost,
+            paperSettingsRow!,
+            directionRow!,
             marginRow!,
             labeled(L10n.t("排版样式"), stylePopup),
             labeled(L10n.t("配色方案"), colorThemePopup),
@@ -235,7 +262,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             htmlPreviewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
             htmlPreviewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
             pageCountLabel.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
-            pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
             pageCountLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor),
         ])
 
@@ -243,30 +270,39 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        let leftStack = NSStackView(views: [optionsStack, buttonRow])
+        leftStack.orientation = .vertical
+        leftStack.spacing = 8
+        leftStack.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
-        root.addSubview(optionsStack)
+        root.addSubview(leftStack)
         root.addSubview(previewContainer)
-        root.addSubview(buttonRow)
 
         window.contentView = root
         NSLayoutConstraint.activate([
-            optionsStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            optionsStack.topAnchor.constraint(equalTo: root.topAnchor),
+            leftStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            leftStack.topAnchor.constraint(equalTo: root.topAnchor),
+            leftStack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            leftStack.widthAnchor.constraint(equalToConstant: 320),
+
+            optionsStack.leadingAnchor.constraint(equalTo: leftStack.leadingAnchor),
+            optionsStack.topAnchor.constraint(equalTo: leftStack.topAnchor),
+            optionsStack.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor),
             optionsStack.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
 
-            previewContainer.leadingAnchor.constraint(equalTo: optionsStack.trailingAnchor, constant: 4),
-            previewContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            previewContainer.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            previewContainer.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
+            previewContainer.leadingAnchor.constraint(equalTo: leftStack.trailingAnchor),
+            previewContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            previewContainer.topAnchor.constraint(equalTo: root.topAnchor),
+            previewContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
-            buttonRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            buttonRow.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
-            buttonRow.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+            buttonRow.leadingAnchor.constraint(equalTo: leftStack.leadingAnchor, constant: 16),
+            buttonRow.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor, constant: -12),
+            buttonRow.bottomAnchor.constraint(equalTo: leftStack.bottomAnchor, constant: -14),
         ])
         if let contentView = window.contentView {
-            contentView.widthAnchor.constraint(equalToConstant: 920).isActive = true
-            contentView.heightAnchor.constraint(equalToConstant: 680).isActive = true
+            contentView.widthAnchor.constraint(equalToConstant: 860).isActive = true
+            contentView.heightAnchor.constraint(equalToConstant: 620).isActive = true
         }
         updatePDFVisibility()
     }
@@ -319,9 +355,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let idx = preferredThemeID.flatMap(themeIDs.firstIndex(of:)) {
             colorThemePopup.selectItem(at: idx)
         }
-        updateFormatSelection(selectedIndex: saved.format == "html" ? 1 : 0)
+        ExportFormatSelector.select(format: saved.format, in: formatSelector)
         paperPopup.selectItem(withTitle: saved.paperSize)
-        landscapeCheck.state = saved.landscape ? .on : .off
+        directionPopup.selectItem(at: saved.landscape ? 1 : 0)
         margins = ExportMargins(
             top: saved.marginTop, bottom: saved.marginBottom,
             left: saved.marginLeft, right: saved.marginRight
@@ -345,6 +381,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         updatePDFVisibility()
         updateHeaderFooterFieldState()
         refreshPreview()
+        updateMarginSummary()
     }
 
     private var selectedStyleID: String {
@@ -359,7 +396,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var selectedFormat: String {
-        htmlFormatButton.layer?.backgroundColor != nil ? "html" : "pdf"
+        ExportFormatSelector.selectedFormat(in: formatSelector)
     }
 
     private func currentOptions() -> ExportOptions {
@@ -368,7 +405,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         options.style = selectedStyleID
         options.colorScheme = selectedThemeID
         options.paperSize = PaperSize(rawValue: paperPopup.titleOfSelectedItem ?? "A4") ?? .a4
-        options.landscape = landscapeCheck.state == .on
+        options.landscape = directionPopup.indexOfSelectedItem == 1
         options.margins = margins
         if selectedFormat == "html" {
             options.header = headerField.stringValue
@@ -409,8 +446,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - 格式切换
 
-    @objc private func formatChanged(_ sender: NSButton) {
-        updateFormatSelection(selectedIndex: sender.tag)
+    @objc private func formatChanged(_ sender: NSSegmentedControl) {
         updatePDFVisibility()
         if selectedFormat == "pdf" {
             pdfPreviewView.isHidden = false
@@ -422,37 +458,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         refreshPreview()
     }
 
-    private func configureFormatButton(_ button: NSButton, title: String, icon: String, tag: Int) {
-        button.title = title
-        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: title)
-        button.imagePosition = .imageAbove
-        button.symbolConfiguration = NSImage.SymbolConfiguration(textStyle: .title2, scale: .large)
-        button.font = .systemFont(ofSize: 13, weight: .medium)
-        button.isBordered = false
-        button.setButtonType(.momentaryPushIn)
-        button.target = self
-        button.action = #selector(formatChanged(_:))
-        button.tag = tag
-        button.wantsLayer = true
-        button.layer?.cornerRadius = 8
-        button.widthAnchor.constraint(equalToConstant: 104).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 52).isActive = true
-    }
-
-    private func updateFormatSelection(selectedIndex: Int) {
-        for button in [pdfFormatButton, htmlFormatButton] {
-            let selected = button.tag == selectedIndex
-            button.layer?.backgroundColor = selected
-                ? NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
-                : NSColor.clear.cgColor
-            button.contentTintColor = selected ? .controlAccentColor : .secondaryLabelColor
-        }
-    }
-
     private func updatePDFVisibility() {
         let isPDF = selectedFormat == "pdf"
-        paperRow?.isHidden = !isPDF
-        landscapeRow?.isHidden = !isPDF
+        paperSettingsRow?.isHidden = !isPDF
+        directionRow?.isHidden = !isPDF
         marginRow?.isHidden = !isPDF
         headerPresetRow?.isHidden = !isPDF
         footerPresetRow?.isHidden = !isPDF
@@ -508,6 +517,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if idx < Self.marginPresets.count {
             margins = Self.marginPresets[idx].1
         }
+        updateMarginSummary()
         schedulePreview()
     }
 
@@ -594,21 +604,26 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func presentCustomMarginSheet() {
         guard let window else { return }
-        let topField = marginField(String(format: "%.1f", margins.top))
-        let bottomField = marginField(String(format: "%.1f", margins.bottom))
-        let leftField = marginField(String(format: "%.1f", margins.left))
-        let rightField = marginField(String(format: "%.1f", margins.right))
+        let topField = marginField(Self.compactMargin(margins.top))
+        let bottomField = marginField(Self.compactMargin(margins.bottom))
+        let leftField = marginField(Self.compactMargin(margins.left))
+        let rightField = marginField(Self.compactMargin(margins.right))
+        currentMarginFields = [topField, bottomField, leftField, rightField]
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 96))
-        let rows: [(String, NSTextField)] = [
-            (L10n.t("上边距"), topField),
-            (L10n.t("下边距"), bottomField),
-            (L10n.t("左边距"), leftField),
-            (L10n.t("右边距"), rightField),
-        ]
-        let grid = NSGridView(views: rows.map { [marginLabel($0.0), $0.1] })
-        grid.rowSpacing = 8
-        grid.columnSpacing = 8
+        let topCell = NSStackView(views: [marginLabel(L10n.t("上边距")), topField])
+        let bottomCell = NSStackView(views: [marginLabel(L10n.t("下边距")), bottomField])
+        let leftCell = NSStackView(views: [marginLabel(L10n.t("左边距")), leftField])
+        let rightCell = NSStackView(views: [marginLabel(L10n.t("右边距")), rightField])
+        for cell in [topCell, bottomCell, leftCell, rightCell] {
+            cell.orientation = .horizontal
+            cell.alignment = .centerY
+            cell.spacing = 8
+        }
+        let grid = NSGridView(views: [[topCell, bottomCell], [leftCell, rightCell]])
+        grid.rowSpacing = 7
+        grid.columnSpacing = 14
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 104))
         grid.translatesAutoresizingMaskIntoConstraints = false
         accessory.addSubview(grid)
         NSLayoutConstraint.activate([
@@ -623,11 +638,19 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         alert.addButton(withTitle: L10n.t("取消"))
         let okButton = alert.buttons.first
         func refreshOK() {
-            okButton?.isEnabled = [topField, bottomField, leftField, rightField].allSatisfy { marginValue($0) != nil }
+            okButton?.isEnabled = currentMarginFields.allSatisfy { field in
+                guard let value = marginValue(field) else { return false }
+                return (0...100).contains(value)
+            }
         }
         refreshOK()
+        // 与 Windows 版一致：0–100、最多 1 位小数；输入即过滤非法字符、超上限整串回退；
+        // 不做回显归一化（“18.0”“18.”原样保留），允许清空（此时「确定」禁用）。
+        marginMonitors = currentMarginFields.map {
+            BoundedTextFieldMonitor(field: $0, fractionDigits: 1, upperBound: 100, onChange: { refreshOK() })
+        }
         var tokens: [NSObjectProtocol] = []
-        for field in [topField, bottomField, leftField, rightField] {
+        for field in currentMarginFields {
             tokens.append(NotificationCenter.default.addObserver(
                 forName: NSControl.textDidChangeNotification,
                 object: field,
@@ -636,6 +659,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         }
         alert.beginSheetModal(for: window) { [weak self] response in
             tokens.forEach { NotificationCenter.default.removeObserver($0) }
+            self?.currentMarginFields = []
+            self?.marginMonitors = []
             guard response == .alertFirstButtonReturn,
                   let top = self?.marginValue(topField),
                   let bottom = self?.marginValue(bottomField),
@@ -645,6 +670,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             if let index = self?.customMarginItemIndex {
                 self?.marginPopup.selectItem(at: index)
             }
+            self?.updateMarginSummary()
             self?.schedulePreview()
         }
     }
@@ -652,25 +678,36 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private func marginLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 12)
-        label.alignment = .right
+        label.alignment = .left
         return label
     }
 
     private func marginField(_ value: String) -> NSTextField {
         let field = NSTextField(string: value)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimum = 0
-        formatter.maximum = 100
-        formatter.maximumFractionDigits = 1
-        field.formatter = formatter
         field.alignment = .center
-        field.widthAnchor.constraint(equalToConstant: 70).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 68).isActive = true
         return field
     }
 
     private func marginValue(_ field: NSTextField) -> Double? {
-        Double(field.stringValue.replacingOccurrences(of: ",", with: "."))
+        Double(field.stringValue
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: "."))
+    }
+
+    private func updateMarginSummary() {
+        marginSummaryLabel.stringValue = L10n.f(
+            "上: %@mm, 下: %@mm\n左: %@mm, 右: %@mm",
+            Self.compactMargin(margins.top),
+            Self.compactMargin(margins.bottom),
+            Self.compactMargin(margins.left),
+            Self.compactMargin(margins.right)
+        )
+    }
+
+    private static func compactMargin(_ value: Double) -> String {
+        let text = String(format: "%.1f", value)
+        return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
     }
 
     // MARK: - 导出/取消

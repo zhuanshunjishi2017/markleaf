@@ -125,6 +125,12 @@ body.markleaf-theme-dark {
 }
 
 /* 数学公式（KaTeX 渲染） */
+.markleaf-math,
+.markleaf-math * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .markleaf-math-block {
   margin: 1em 0;
   text-align: center;

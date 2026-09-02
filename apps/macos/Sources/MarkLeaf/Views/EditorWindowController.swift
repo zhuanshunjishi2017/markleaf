@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
 
 /// 主窗口控制器：侧边栏（工作区/大纲）+ WKWebView 编辑器 + 原生状态栏。
@@ -25,6 +26,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var splitView: NSSplitView?
     private var outerSplitView: NSSplitView?
     private var statusBar: NSStackView?
+    private var statusSpacer: NSView?
     private var statusDivider: NSBox?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var isAnimatingSidebar = false
@@ -178,6 +180,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// 打开文件为标签：去重命中则激活，未命中则建标签并加载。
+    /// 空标签状态下由菜单触发的「打开…」：面板挂在窗口上，选择后按标签去重打开。
+    func openDocumentPanel() {
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("打开 Markdown 文档")
+        panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard let window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.openFileInTab(url)
+        }
+    }
+
     func openFileInTab(_ url: URL) {
         guard let windowSession else { return }
         let resolution = TabOpenResolution.resolve(
@@ -589,9 +605,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let statusBar = NSStackView()
         statusBar.orientation = .horizontal
         statusBar.alignment = .centerY
-        statusBar.distribution = .fillProportionally
+        // .fill + 弹性占位：多余宽度由占位视图吸收；fillProportionally 会在
+        // 仅剩单个控件（如空标签时只剩侧栏按钮）时把它拉伸满整条状态栏。
+        statusBar.distribution = .fill
         statusBar.spacing = 8
         statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+
+        let statusSpacer = NSView()
+        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        statusSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        self.statusSpacer = statusSpacer
 
         configureStatusLabel(statusLabel)
         configureStatusLabel(blockTypeLabel)
@@ -642,6 +665,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         statusBar.addView(viewToggleButton, in: .leading)
         statusBar.addView(statusLabel, in: .leading)
+        statusBar.addView(statusSpacer, in: .leading)
         statusBar.addView(characterCountButton, in: .trailing)
         statusBar.addView(blockTypeLabel, in: .trailing)
         statusBar.addView(positionLabel, in: .trailing)
@@ -700,6 +724,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBarHeight.isActive = true
 
         window.contentView = rootView
+        // 首帧前完成一次布局，避免状态栏 trailing 重力在首次显示时短暂靠左。
+        rootView.layoutSubtreeIfNeeded()
         let sidebarWidth = SidebarLayout.clampedWorkspaceWidth(
             SettingsService.shared.settings.workspaceWidth
         )
@@ -762,6 +788,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             modeButton.isHidden = true
             zoomButton.isHidden = true
             viewToggleButton.isHidden = !SettingsService.shared.settings.statusBar.sidebarToggleVisible
+            statusBar?.needsLayout = true
             return
         }
         let session = activeSession

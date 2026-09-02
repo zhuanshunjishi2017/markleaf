@@ -193,4 +193,21 @@ for locale in "$ROOT_DIR"/windows/MarkLeaf/Resources/Locales/*.json; do
   require_text "$locale" '"menu.paragraph.label"'
 done
 
+# 空标签/无工作区时的菜单可用性契约（大修）：
+mac_file="$(method_body "$MAC_MENU" fileMenu)"
+reject_text "$mac_file" '关闭窗口'
+require_text "$mac_file" '"closeFolder"'
+mac_validate="$(method_body "$MAC_MENU" validateMenuItem)"
+require_text "$mac_validate" 'documentIndependentCommands'
+require_text "$mac_validate" '(session ?? viewStateSession)?.workspaceRoot != nil'
+require_text "$mac_validate" 'NativeTextEditingPolicy.shouldRoute'
+mac_router="$(method_body "$MAC_MENU" performCommand)"
+require_text "$mac_router" 'controller.newUntitledTab(kind:'
+require_text "$mac_router" 'controller.openDocumentPanel()'
+# 子菜单父项（图片/插入表格/Mermaid/段落样式/设置缩放/排版样式/复制为）必须挂校验钩子，
+# 否则 action=nil 的父项不参与 AppKit 校验，空标签时仍显示可用。
+require_text "$MAC_MENU" 'requiresDocument: true'
+require_text "$MAC_MENU" '"submenuParent"'
+require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" '"submenuParent"'
+
 echo "PASS"

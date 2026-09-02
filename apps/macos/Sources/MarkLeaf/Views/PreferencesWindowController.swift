@@ -26,6 +26,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let tabViewController = NSTabViewController()
     private var preferencesKeyMonitor: Any?
     private var textFieldEditingOriginals: [NSTextField: String] = [:]
+    private weak var applyButton: NSButton?
+    private var numericFieldMonitors: [BoundedTextFieldMonitor] = []
 
     var selectedPageIndex: Int {
         get { tabViewController.selectedTabViewItemIndex }
@@ -214,6 +216,30 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             field.alignment = .center
             field.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.numericFieldWidth).isActive = true
         }
+        // 与导出「自定义边距」一致：输入即过滤非法字符、超上限整串回退；
+        // 不做任何回显归一化——用户输入的 “1.60” 原样保留（不用会改写内容的 NumberFormatter）。
+        // 允许清空与低于下限的中间值：此时「应用更改」禁用，失焦还原并弹窗提示。
+        let refreshApply: () -> Void = { [weak self] in self?.refreshApplyButton() }
+        numericFieldMonitors = [
+            BoundedTextFieldMonitor(
+                field: snapshotIntervalField, fractionDigits: 0,
+                upperBound: Double(AppSettings.snapshotIntervalRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: lineHeightField, fractionDigits: 2,
+                upperBound: AppSettings.visualLineHeightRange.upperBound, onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: fontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: maxWidthField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualMaxContentWidthRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceFontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceIndentField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceIndentWidthRange.upperBound), onChange: refreshApply),
+        ]
         imageDirectoryField.bezelStyle = .roundedBezel
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
@@ -339,6 +365,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelAction))
         let applyButton = NSButton(title: L10n.t("应用更改"), target: self, action: #selector(okAction))
         applyButton.keyEquivalent = "\r"
+        self.applyButton = applyButton
+        refreshApplyButton()
         let bottom = NSStackView(views: [resetButton, NSView(), cancelButton, applyButton])
         bottom.orientation = .horizontal
         bottom.spacing = 10
@@ -407,6 +435,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     func controlTextDidBeginEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         textFieldEditingOriginals[field] = field.stringValue
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        refreshApplyButton()
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -666,6 +698,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
 
     @objc private func cancelAction() {
         window?.close()
+    }
+
+    /// 任一数值字段无效时禁用「应用更改」，与导出自定义边距弹窗行为一致。
+    private func refreshApplyButton() {
+        applyButton?.isEnabled = invalidNumericFieldLabel() == nil
     }
 
     /// 数值字段校验：返回第一个无效字段的错误文案（nil 表示全部有效）。

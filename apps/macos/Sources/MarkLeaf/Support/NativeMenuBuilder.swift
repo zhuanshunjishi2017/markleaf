@@ -61,6 +61,7 @@ final class NativeMenuBuilder {
 
         // 最近项目：最近文件 + 最近文件夹（动态刷新）
         let recent = NSMenu(title: L10n.t("最近项目"))
+        recent.autoenablesItems = false
         recent.delegate = RecentMenuDelegate.shared
         let recentParent = NSMenuItem(title: L10n.t("最近项目"), action: nil, keyEquivalent: "")
         recentParent.submenu = recent
@@ -75,8 +76,6 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
-        menu.addItem(.separator())
-        menu.addItem(item(L10n.t("关闭窗口"), #selector(NSWindow.performClose(_:)), target: nil, key: "w"))
         return menu
     }
 
@@ -96,7 +95,7 @@ final class NativeMenuBuilder {
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
-        let copyAsItem = popup(L10n.t("复制为"), copyAs)
+        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true)
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
         menu.addItem(.separator())
@@ -115,7 +114,7 @@ final class NativeMenuBuilder {
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
-        menu.addItem(popup(L10n.t("图片"), images))
+        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
         menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
@@ -130,7 +129,7 @@ final class NativeMenuBuilder {
         menu.addItem(tableSizePickerSubmenu { size in
             AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
         })
-        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu()))
+        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true))
         return menu
     }
 
@@ -201,7 +200,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
-        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu()))
+        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true))
         let tableItem = popup(L10n.t("表格"), tableEditingMenu())
         tableItem.representedObject = "tableEditing"
         tableItem.target = MenuRouter.shared
@@ -247,7 +246,7 @@ final class NativeMenuBuilder {
             item.state = percent == session?.zoomPercent ? .on : .off
             zoomMenu.addItem(item)
         }
-        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu))
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true))
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
@@ -263,7 +262,7 @@ final class NativeMenuBuilder {
             item.state = style.id == session?.currentStyleId ? .on : .off
             styleMenu.addItem(item)
         }
-        menu.addItem(popup(L10n.t("排版样式"), styleMenu))
+        menu.addItem(popup(L10n.t("排版样式"), styleMenu, requiresDocument: true))
 
         // 颜色主题（浅色 / 深色分组，对应 Windows RefreshColorMenu）
         let themeMenu = NSMenu(title: L10n.t("颜色主题"))
@@ -336,9 +335,16 @@ final class NativeMenuBuilder {
         return item
     }
 
-    private func popup(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
+    /// 子菜单父项。action 为 nil 的父项不会参与 AppKit 校验，空标签时仍显示可用；
+    /// requiresDocument: true 时挂上校验钩子，无文档会话时随子项一并置灰。
+    private func popup(_ title: String, _ submenu: NSMenu, requiresDocument: Bool = false) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = submenu
+        if requiresDocument {
+            item.representedObject = "submenuParent"
+            item.target = MenuRouter.shared
+            item.action = #selector(MenuRouter.validateSubmenuParent(_:))
+        }
         return item
     }
 
@@ -356,12 +362,16 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
 
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
     private var viewStateSession: EditorSession? { AppWindowManager.shared.activeViewStateSession }
-    private static let documentRequiredCommands: Set<String> = [
-        "save", "saveAll", "saveAs", "export", "exportWithLastSettings", "print",
-        "undo", "redo", "cut", "copy", "copyMarkdown", "copyPlain", "paste", "pastePlainText",
-        "find", "replace", "toggleSourceMode", "toggleCode", "insertMathInline",
-        "insertMathBlock", "insertMermaid", "insertFootnote", "insertTable",
-        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "clearFormat",
+
+    /// 无需打开文档即可使用的命令；其余命令在关闭所有标签页后一律置灰。
+    /// （新建/打开/打开文件夹在空标签窗口上由窗口级路由兜底，保持可用。）
+    private static let documentIndependentCommands: Set<String> = [
+        "new", "newPlainText", "newWindow", "open", "openInNewWindow", "openFolder",
+        "recoverUnsavedFiles", "showPreferences", "showAbout",
+        "openWelcome", "openChangelog", "showShortcuts", "checkForUpdates", "openHelp",
+        "toggleFollowSystemTheme", "toggleCodeHighlight",
+        "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
+        "treeView", "listView", "toggleDetachedOutline",
     ]
 
     /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
@@ -399,14 +409,16 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
 
     /// 视图菜单勾选状态（对应 Windows RefreshStates）。
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        // 跟随系统外观时禁用主题选择（对应偏好设置置灰）
+        // 跟随系统外观时禁用主题选择（对应偏好设置置灰）；无会话时一并置灰。
         if menuItem.action == #selector(chooseTheme(_:)) {
-            return !SettingsService.shared.settings.followSystemTheme
+            return !SettingsService.shared.settings.followSystemTheme && session != nil
+        }
+        // 缩放/排版样式跟随文档会话，无会话时置灰。
+        if menuItem.action == #selector(setZoom(_:)) || menuItem.action == #selector(chooseStyle(_:)) {
+            return session != nil
         }
         guard let command = menuItem.representedObject as? String else { return true }
-        if Self.documentRequiredCommands.contains(command) {
-            guard AppWindowManager.shared.activeSession != nil else { return false }
-        }
+        // 原生文本框（查找面板/偏好设置输入框等）编辑命令优先路由，不受空标签置灰影响。
         if let editor = nativeTextFieldEditor,
            NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) {
             return NativeTextEditingPolicy.isEnabled(
@@ -415,6 +427,26 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 hasSelection: editor.selectedRange.length > 0,
                 hasClipboard: NSPasteboard.general.string(forType: .string)?.isEmpty == false
             )
+        }
+        // 关闭所有标签页后：仅白名单命令保持可用，其余（保存/导出/编辑/插入/格式等）全部置灰。
+        if AppWindowManager.shared.activeSession == nil,
+           !Self.documentIndependentCommands.contains(command) {
+            return false
+        }
+        switch command {
+        case "new", "newPlainText", "open":
+            return AppWindowManager.shared.activeWindowController != nil
+        case "openReadOnly":
+            return session != nil
+        case "openFolder":
+            return AppWindowManager.shared.activeViewStateSession != nil
+        case "closeFolder":
+            // 没有打开工作区时禁用。
+            return (session ?? viewStateSession)?.workspaceRoot != nil
+        case "toggleFocusMode":
+            return AppWindowManager.shared.activeWindowController != nil
+        default:
+            break
         }
         let s = session
         if s?.isReadOnly == true, EditorSession.readOnlyBlockedCommands.contains(command) {
@@ -543,17 +575,35 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "openInNewWindow":
             AppWindowManager.shared.openDocumentInNewWindow()
         case "openFolder":
-            guard let session else { return }
+            // 空标签窗口也能打开/切换工作区（侧栏跟随窗口级会话）。
+            guard let target = session ?? AppWindowManager.shared.activeViewStateSession else { return }
             let panel = NSOpenPanel()
             panel.title = L10n.t("打开文件夹")
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
-            guard let window = session.webView?.window else { return }
+            guard let window = target.webView?.window ?? AppWindowManager.shared.activeWindowController?.window else { return }
             panel.beginSheetModal(for: window) { response in
                 if response == .OK, let url = panel.url {
-                    session.loadWorkspace(url.path)
+                    target.loadWorkspace(url.path)
                 }
+            }
+        case "closeFolder":
+            (session ?? AppWindowManager.shared.activeViewStateSession)?.closeWorkspace()
+        case "showShortcuts":
+            AppWindowManager.shared.showShortcuts()
+        case "new", "newPlainText":
+            if let session {
+                session.performMenuCommand(command)
+            } else if let controller = AppWindowManager.shared.activeWindowController {
+                // 空标签窗口：由窗口层直接开新标签。
+                controller.newUntitledTab(kind: command == "newPlainText" ? .plainText : .markdown)
+            }
+        case "open":
+            if let session {
+                session.performMenuCommand("open")
+            } else if let controller = AppWindowManager.shared.activeWindowController {
+                controller.openDocumentPanel()
             }
         case "recoverUnsavedFiles":
             AppWindowManager.shared.showRecoveryDialog()
@@ -618,6 +668,10 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
             menu.removeItem(item)
         }
         let settings = SettingsService.shared.settings
+        let manager = AppWindowManager.shared
+        // 最近文件：无标签时由窗口层兜底打开；最近文件夹：跟随窗口级会话。
+        let canOpenFile = manager.activeSession != nil || manager.activeWindowController != nil
+        let canOpenFolder = (manager.activeSession ?? manager.activeViewStateSession) != nil
 
         if settings.recordRecentFiles {
             let filesHeader = disabledItem(L10n.t("最近文件"))
@@ -627,7 +681,9 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in files.enumerated() {
-                menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path))
+                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path)
+                item.isEnabled = canOpenFile
+                menu.addItem(item)
             }
         }
         if settings.recordRecentFolders {
@@ -639,7 +695,9 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in folders.enumerated() {
-                menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path))
+                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path)
+                item.isEnabled = canOpenFolder
+                menu.addItem(item)
             }
         }
         if !settings.recordRecentFiles && !settings.recordRecentFolders {
@@ -662,14 +720,19 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
     }
 
     @objc private func openRecent(_ sender: NSMenuItem) {
-        guard let payload = sender.representedObject as? [String],
-              let session = AppWindowManager.shared.activeSession else { return }
+        guard let payload = sender.representedObject as? [String] else { return }
         let kind = payload[0]
         let path = payload[1]
+        let manager = AppWindowManager.shared
         if kind == "file" {
-            session.openRecentFile(path)
+            if let session = manager.activeSession {
+                session.openRecentFile(path)
+            } else if let controller = manager.activeWindowController {
+                // 空标签窗口：按标签去重打开。
+                controller.openFileInTab(URL(fileURLWithPath: path))
+            }
         } else {
-            session.openRecentFolder(path)
+            (manager.activeSession ?? manager.activeViewStateSession)?.openRecentFolder(path)
         }
     }
 }

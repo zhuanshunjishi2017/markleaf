@@ -100,6 +100,20 @@ describe('math formulas', () => {
     expect(computed.boxShadow).not.toContain('var(--theme-dark)')
   })
 
+  it('disables native text selection for a selected formula', () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
+    document.head.append(style)
+    const formula = document.createElement('div')
+    formula.className = 'markleaf-math markleaf-math-block ProseMirror-selectednode'
+    const renderedContent = document.createElement('span')
+    formula.append(renderedContent)
+    document.body.append(formula)
+
+    expect(getComputedStyle(formula).userSelect).toBe('none')
+    expect(getComputedStyle(renderedContent).userSelect).toBe('none')
+  })
+
   it('renders math in exported html', () => {
     const html = renderMathInHtml(
       '<span data-math-inline="1">x^2</span><div data-math-block="1">y^2</div>',
