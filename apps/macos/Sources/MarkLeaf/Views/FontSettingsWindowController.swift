@@ -7,6 +7,8 @@ final class FontSettingsWindowController: NSWindowController, NSTextFieldDelegat
     private let cjkLanguagePopup = NSPopUpButton()
     private var sizeFieldEditingOriginal: String?
     private var fontSettingsKeyMonitor: Any?
+    private weak var okButton: NSButton?
+    private var sizeFieldMonitor: BoundedTextFieldMonitor?
     private(set) var cjkFontFamily: String
     private(set) var westernFontFamily: String
     private(set) var fontSize: Int
@@ -34,7 +36,8 @@ final class FontSettingsWindowController: NSWindowController, NSTextFieldDelegat
         cjkField = FontField(fontName: cjkFontFamily) { [weak self] in self?.cjkFontFamily = $0 }
         westernField = FontField(fontName: westernFontFamily) { [weak self] in self?.westernFontFamily = $0 }
         sizeField.stringValue = "\(fontSize)"
-        // 与偏好设置里的数值字段保持一致：圆角样式 + 失焦校验，不使用会拒绝中间输入的格式化器。
+        // 与导出「自定义边距」/偏好设置数值字段一致：圆角样式 + 输入即过滤非法字符、
+        // 超上限整串回退；不做回显归一化，允许清空（此时“确定”禁用），失焦校验兜底并弹窗还原。
         sizeField.bezelStyle = .roundedBezel
         sizeField.alignment = .center
         sizeField.widthAnchor.constraint(equalToConstant: 80).isActive = true
@@ -55,6 +58,13 @@ final class FontSettingsWindowController: NSWindowController, NSTextFieldDelegat
         let cancel = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelAction))
         let ok = NSButton(title: L10n.t("确定"), target: self, action: #selector(okAction))
         ok.keyEquivalent = "\r"
+        self.okButton = ok
+        sizeFieldMonitor = BoundedTextFieldMonitor(
+            field: sizeField,
+            fractionDigits: 0,
+            upperBound: Double(AppSettings.sourceFontSizeRange.upperBound),
+            onChange: { [weak self] in self?.refreshOKButton() })
+        refreshOKButton()
         let buttons = NSStackView(views: [NSView(), cancel, ok])
         buttons.orientation = .horizontal
         let stack = NSStackView(views: [form, buttons])
@@ -116,6 +126,10 @@ final class FontSettingsWindowController: NSWindowController, NSTextFieldDelegat
         return nil
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        refreshOKButton()
+    }
+
     func controlTextDidBeginEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         sizeFieldEditingOriginal = field.stringValue
@@ -137,13 +151,26 @@ final class FontSettingsWindowController: NSWindowController, NSTextFieldDelegat
         field.stringValue = "\(value)"
     }
 
+    /// 字号无效（含清空）时禁用「确定」，与导出自定义边距弹窗行为一致。
+    private func refreshOKButton() {
+        okButton?.isEnabled = invalidFontSizeMessage() == nil
+    }
+
+    private func invalidFontSizeMessage() -> String? {
+        guard let value = Int(sizeField.stringValue.trimmingCharacters(in: .whitespaces)),
+              AppSettings.sourceFontSizeRange.contains(value) else {
+            return L10n.f(
+                "“%@”需要填写有效的数值（%@）",
+                L10n.t("基础字号"),
+                "\(AppSettings.sourceFontSizeRange.lowerBound)–\(AppSettings.sourceFontSizeRange.upperBound)"
+            )
+        }
+        return nil
+    }
+
     private func presentInvalidFontSizeAlert() {
         let alert = NSAlert()
-        alert.messageText = L10n.f(
-            "“%@”需要填写有效的数值（%@）",
-            L10n.t("基础字号"),
-            "\(AppSettings.sourceFontSizeRange.lowerBound)–\(AppSettings.sourceFontSizeRange.upperBound)"
-        )
+        alert.messageText = invalidFontSizeMessage() ?? ""
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("好"))
         if let window {

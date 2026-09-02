@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { isHostMessage, protocolVersion } from '../src/protocol'
+import { isHostMessage, isRestoreViewportPayload, protocolVersion } from '../src/protocol'
+
+describe('restoreViewport protocol', () => {
+  it('accepts scrollTop and selection', () => {
+    expect(isRestoreViewportPayload({ scrollTop: 120, selection: { from: 3, to: 9 } })).toBe(true)
+  })
+  it('rejects invalid shapes while allowing an empty payload', () => {
+    expect(isRestoreViewportPayload({ scrollTop: 'x' })).toBe(false)
+    expect(isRestoreViewportPayload({ selection: { from: 1 } })).toBe(false)
+    expect(isRestoreViewportPayload({})).toBe(true)
+  })
+})
 
 describe('editor protocol validation', () => {
   it('accepts a valid host command', () => {

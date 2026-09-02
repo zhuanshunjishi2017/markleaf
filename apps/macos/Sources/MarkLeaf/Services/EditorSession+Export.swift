@@ -4,8 +4,9 @@ import UniformTypeIdentifiers
 extension EditorSession {
     /// 文件 → 导出…：打开统一导出对话框（PDF / HTML 均带实时预览）。
     func exportDocument() {
-        guard webView?.window != nil else { return }
-        let controller = ExportWindowController(session: self)
+        guard webView?.window != nil, let lease = exportLeaseProvider?() else { return }
+        let binding = ExportBinding(tabID: lease.tabID, contentRevision: currentRevision)
+        let controller = ExportWindowController(lease: lease, binding: binding)
         exportController = controller
         controller.onClose = { [weak self] in
             self?.exportController = nil
@@ -72,6 +73,8 @@ extension EditorSession {
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "title": exportTitle,
+            "keepTablesTogether": options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
@@ -121,6 +124,8 @@ extension EditorSession {
             "maxWidth": settings.visualMaxContentWidth,
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
+            "keepTablesTogether": forPrint || options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": forPrint || options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }

@@ -21,6 +21,7 @@ final class AppWindowManager {
     static let shared = AppWindowManager()
 
     private(set) var windowControllers: [EditorWindowController] = []
+    private(set) var windowSessions: [EditorWindowController: WindowSession] = [:]
     private var preferencesController: PreferencesWindowController?
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
@@ -28,15 +29,81 @@ final class AppWindowManager {
     private var updateCheckController: UpdateCheckController?
     private var startupActionState = StartupActionState()
     private var bootstrapState = StartupBootstrapState()
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private(set) var isTerminationCommitted = false
+    private lazy var sessionScheduler = SessionWriteScheduler(store: .shared)
 
-    init() {}
+    init() {
+        sessionScheduler.onWriteFailure = { [weak self] tabID in
+            self?.markRecoveryUnavailable(tabID: DocumentTabID(tabID))
+        }
+        sessionScheduler.onSnapshotWritten = { [weak self] tabID, fileName in
+            self?.markRecoveryAvailable(tabID: DocumentTabID(tabID), snapshotFileName: fileName)
+        }
+    }
+
+    func markRecoveryUnavailable(tabID: DocumentTabID) {
+        for (_, windowSession) in windowSessions {
+            guard let tab = windowSession.tabStore.tab(withID: tabID) else { continue }
+            tab.recoveryUnavailable = true
+            windowSession.controller?.reloadTabBar()
+            if let session = windowSession.activeTabSession, windowSession.tabStore.activeTabID == tabID {
+                session.statusText = L10n.t("恢复保护暂时不可用")
+            }
+            return
+        }
+    }
+
+    func markRecoveryAvailable(tabID: DocumentTabID, snapshotFileName: String? = nil) {
+        for (_, windowSession) in windowSessions {
+            guard let tab = windowSession.tabStore.tab(withID: tabID) else { continue }
+            tab.recoveryUnavailable = false
+            if let snapshotFileName { tab.snapshotFileName = snapshotFileName }
+            windowSession.controller?.reloadTabBar()
+            return
+        }
+    }
+
+    func startMemoryPressureMonitoring() {
+        guard memoryPressureSource == nil else { return }
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in self?.suspendBackgroundTabsUnderPressure() }
+        source.setCancelHandler { }
+        source.resume()
+        memoryPressureSource = source
+    }
+
+    func suspendBackgroundTabsUnderPressure() {
+        windowControllers.forEach { $0.suspendBackgroundTabsIfNeeded() }
+    }
 
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
-        let session = EditorSession()
+        let windowSession = WindowSession()
+        let session = EditorSession(workspace: windowSession.workspace)
         let controller = EditorWindowController(session: session)
+        windowSession.controller = controller
+        let tab = DocumentTab(
+            path: nil,
+            title: L10n.t("未命名"),
+            encoding: SettingsService.shared.settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        windowSession.tabStore.append(tab)
+        windowSession.attach(session: session, to: tab.tabID)
+        controller.windowSession = windowSession
+        session.openViaWindow = { [weak windowSession] url in
+            windowSession?.requestOpenFile(url)
+        }
+        session.workspace.windowProvider = { [weak controller] in controller?.window }
+        windowSession.onOpenFile = { [weak controller] resolution, url in
+            controller?.handleOpenResolution(resolution, url: url)
+        }
         windowControllers.append(controller)
+        windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in
             self?.windowControllers.removeAll { $0 === closed }
+            self?.windowSessions.removeValue(forKey: closed)
         }
         controller.showWindow(nil)
         controller.openInitialDocument(path: documentPath)
@@ -44,11 +111,32 @@ final class AppWindowManager {
     }
 
     func newWindow(preparedDocument: PreparedDocument) -> EditorWindowController {
-        let session = EditorSession()
+        let windowSession = WindowSession()
+        let session = EditorSession(workspace: windowSession.workspace)
         let controller = EditorWindowController(session: session)
+        windowSession.controller = controller
+        let tab = DocumentTab(
+            path: nil,
+            title: L10n.t("未命名"),
+            encoding: SettingsService.shared.settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        windowSession.tabStore.append(tab)
+        windowSession.attach(session: session, to: tab.tabID)
+        controller.windowSession = windowSession
+        session.openViaWindow = { [weak windowSession] url in
+            windowSession?.requestOpenFile(url)
+        }
+        session.workspace.windowProvider = { [weak controller] in controller?.window }
+        windowSession.onOpenFile = { [weak controller] resolution, url in
+            controller?.handleOpenResolution(resolution, url: url)
+        }
         windowControllers.append(controller)
+        windowSessions[controller] = windowSession
         controller.onWindowClose = { [weak self] closed in
             self?.windowControllers.removeAll { $0 === closed }
+            self?.windowSessions.removeValue(forKey: closed)
         }
         controller.showWindow(nil)
         controller.openInitialDocument(prepared: preparedDocument)
@@ -66,9 +154,30 @@ final class AppWindowManager {
                 if !started { finish(.cancel) }
             }
         }
-        SequentialDocumentDispositionQueue.run(requests) { result in
-            completion(result == .proceed)
+        SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
+            guard result == .proceed, let self else { completion(false); return }
+            self.sessionScheduler.manifestProvider = { [weak self] in self?.buildSessionManifest() }
+            self.sessionScheduler.flushNow(reason: .termination) { [weak self] _ in
+                guard let self else { completion(true); return }
+                do { try SessionStore.shared.commit(manifest: self.buildSessionManifest()) }
+                catch { AppLog.error("退出会话提交失败: \(error.localizedDescription)") }
+                self.isTerminationCommitted = true
+                completion(true)
+            }
         }
+    }
+
+    func buildSessionManifest() -> SessionManifest {
+        let previous = SessionStore.shared.loadLatest().manifest
+        let windows = windowControllers.compactMap { controller -> SessionWindowRecord? in
+            guard let session = windowSessions[controller] else { return nil }
+            let tabs = session.tabStore.tabs.map { tab in
+                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, scrollTop: tab.scrollTop, snapshotFileName: tab.snapshotFileName)
+            }
+            let frame = controller.window?.frame
+            return SessionWindowRecord(windowID: session.windowID, frameX: frame.map { Double($0.origin.x) }, frameY: frame.map { Double($0.origin.y) }, frameWidth: frame.map { Double($0.size.width) }, frameHeight: frame.map { Double($0.size.height) }, workspacePath: session.workspace.root, sidebarVisible: controller.session.sidebarVisible, sidebarTab: controller.session.sidebarTabIndex == 1 ? "outline" : "workspace", sidebarWidth: SettingsService.shared.settings.workspaceWidth, outlineDetached: controller.session.outlineDetached, outlineWidth: SettingsService.shared.settings.outlineWidth, statusBarVisible: controller.session.statusBarVisible, tabOrder: tabs.map(\.tabID), activeTabID: session.tabStore.activeTabID?.rawValue, tabs: tabs)
+        }
+        return SessionManifest(schemaVersion: SessionManifestCodec.currentSchemaVersion, generation: (previous?.generation ?? 0) + 1, savedAt: Date(), windows: windows)
     }
 
     /// 在设置、图标、文件关联和菜单完成配置后，建立唯一的初始窗口。
@@ -103,13 +212,83 @@ final class AppWindowManager {
         }
     }
 
-    var primarySession: EditorSession? {
-        windowControllers.first?.session
+    @discardableResult
+    func restoreFullSession(explicitFile: String?) -> Bool {
+        guard explicitFile == nil, SettingsService.shared.settings.startupAction == .restoreSession else { return false }
+        let loaded = SessionStore.shared.loadLatest()
+        guard let manifest = loaded.manifest, !manifest.windows.isEmpty else { return false }
+        _ = startupActionState.consume()
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let frames = WindowFrameRestorationPolicy.stagger(manifest.windows.map { record in
+            let frame = CGRect(x: record.frameX ?? 100, y: record.frameY ?? 100, width: record.frameWidth ?? 1100, height: record.frameHeight ?? 760)
+            return WindowFrameRestorationPolicy.constrain(frame, screens: screens)
+        })
+        for (index, record) in manifest.windows.enumerated() {
+            let workspace = WorkspaceContext()
+            if let path = record.workspacePath { workspace.load(path) }
+            let windowSession = WindowSession(windowID: record.windowID, workspace: workspace)
+            let ordered = record.tabOrder.compactMap { id in record.tabs.first { $0.tabID == id } } + record.tabs.filter { !record.tabOrder.contains($0.tabID) }
+            for item in ordered {
+                let tab = DocumentTab(tabID: DocumentTabID(item.tabID), path: item.path, title: item.title, encoding: item.encoding, newLine: item.newLine, untitledSequence: item.untitledSequence)
+                tab.isDirty = item.isDirty; tab.contentRevision = item.revision
+                tab.fingerprintModificationSeconds = item.fingerprintModificationSeconds; tab.fingerprintSize = item.fingerprintSize
+                tab.cursorPosition = item.cursorPosition; tab.selectionAnchor = item.selectionAnchor; tab.selectionHead = item.selectionHead
+                tab.scrollTop = item.scrollTop; tab.snapshotFileName = item.snapshotFileName
+                windowSession.tabStore.append(tab, activate: false)
+            }
+            guard !windowSession.tabStore.tabs.isEmpty else { continue }
+            windowSession.tabStore.activate(record.activeTabID.map(DocumentTabID.init) ?? windowSession.tabStore.tabs[0].tabID)
+            let controller = EditorWindowController(session: EditorSession(workspace: workspace))
+            controller.windowSession = windowSession
+            windowControllers.append(controller); windowSessions[controller] = windowSession
+            controller.onWindowClose = { [weak self] closed in
+                self?.windowControllers.removeAll { $0 === closed }; self?.windowSessions.removeValue(forKey: closed)
+            }
+            if index < frames.count { controller.window?.setFrame(frames[index], display: false) }
+            controller.showWindow(nil); controller.restoreInitialTabIfNeeded()
+        }
+        return !windowControllers.isEmpty
     }
 
-    /// 当前活跃（键窗口）会话；无键窗口时退回第一个。
+    var primarySession: EditorSession? {
+        windowControllers.first?.windowSession?.activeTabSession
+    }
+
+    /// 当前活跃（键窗口）会话 = 活动窗口的活动标签会话；无键窗口时退回第一个窗口。
     var activeSession: EditorSession? {
-        activeWindowController?.session
+        activeWindowController?.windowSession?.activeTabSession
+            ?? windowControllers.first?.windowSession?.activeTabSession
+    }
+
+    /// Window-level state (sidebar/status bar) must remain controllable even
+    /// after the last document tab has been closed.
+    var activeViewStateSession: EditorSession? {
+        guard let controller = activeWindowController ?? windowControllers.first else { return nil }
+        return windowSessions[controller]?.controller?.session ?? controller.session
+    }
+
+    /// 当前活跃窗口的会话边界。
+    var activeWindowSession: WindowSession? {
+        activeWindowController.flatMap { windowSessions[$0] }
+    }
+
+    /// 当前活动查找面板（供窗口层右键/菜单跟随活动标签使用）。
+    var currentFindPanel: FindPanelController? {
+        findPanelController
+    }
+
+    /// 找到一个其标签身份命中指定文件的窗口；命中则激活对应标签并前置。
+    private func controller(containing url: URL) -> EditorWindowController? {
+        let identity = FileIdentityPolicy.identity(for: url)
+        for (controller, windowSession) in windowSessions {
+            if let tab = windowSession.tabStore.tab(withIdentity: identity) {
+                if tab.tabID != windowSession.tabStore.activeTabID {
+                    controller.activateTab(tab.tabID, animated: true)
+                }
+                return controller
+            }
+        }
+        return nil
     }
 
     /// 当前活跃（键窗口）控制器；窗口级命令（如专注模式）使用它路由。
@@ -224,7 +403,7 @@ final class AppWindowManager {
     func applyPreferencesToAll() {
         let topMost = SettingsService.shared.settings.topMostWindow
         for controller in windowControllers {
-            controller.session.applyPreferences()
+            (controller.windowSession?.activeTabSession ?? controller.session).applyPreferences()
             controller.window?.level = topMost ? .floating : .normal
             controller.applyViewState()
         }
@@ -323,9 +502,9 @@ final class AppWindowManager {
         let follow = SettingsService.shared.settings.followSystemTheme
         for controller in windowControllers {
             if follow {
-                controller.session.applyFollowSystemTheme()
+                (controller.windowSession?.activeTabSession ?? controller.session).applyFollowSystemTheme()
             } else {
-                controller.session.setTheme(SettingsService.shared.settings.colorTheme)
+                (controller.windowSession?.activeTabSession ?? controller.session).setTheme(SettingsService.shared.settings.colorTheme)
             }
         }
         preferencesController?.syncFollowSystemThemeState()
@@ -360,9 +539,7 @@ final class AppWindowManager {
             // 避免只读窗口虽然打开却仍停留在旧窗口焦点上。
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self else { return }
-                if let existing = self.windowControllers.first(where: {
-                    $0.session.isReadOnly && $0.session.documentURL == target
-                }) {
+                if let existing = self.controller(containing: target) {
                     existing.window?.makeKeyAndOrderFront(nil)
                     NSApp.activate(ignoringOtherApps: true)
                     return
@@ -389,7 +566,7 @@ final class AppWindowManager {
             ?? FileManager.default.homeDirectoryForCurrentUser
         let cacheDir = base.appendingPathComponent("MarkLeaf/Cache", isDirectory: true)
         let target = WelcomeResource.cachedURL(cacheDirectory: cacheDir)
-        if let existing = windowControllers.first(where: { $0.session.documentURL == target }) {
+        if let existing = controller(containing: target) {
             existing.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -456,19 +633,40 @@ final class AppWindowManager {
         guard !paths.isEmpty else { return }
         if bootstrapState.cacheIncomingDocumentsIfNeeded(paths) { return }
 
-        let openDocuments = windowControllers.compactMap { $0.session.documentURL }
+        // 去重覆盖所有窗口的所有标签：后台标签中的重复文件也应激活而非二次打开。
+        let openDocuments = windowControllers.flatMap { controller -> [URL] in
+            guard let windowSession = controller.windowSession else { return [] }
+            return windowSession.tabStore.tabs.compactMap { tab in
+                windowSession.session(for: tab.tabID)?.documentURL
+            }
+        }
         IncomingFileRouter.route(
             urls: urls,
             mode: SettingsService.shared.settings.externalFileOpenMode,
             activeEditor: activeWindowController != nil,
             openDocuments: openDocuments,
             activateExisting: { [weak self] url in
-                self?.windowControllers.first { $0.session.documentURL == url }?
-                    .window?.makeKeyAndOrderFront(nil)
+                guard let self else { return }
+                for controller in self.windowControllers {
+                    guard let windowSession = controller.windowSession else { continue }
+                    if let tab = windowSession.tabStore.tabs.first(where: { tab in
+                        guard let documentURL = windowSession.session(for: tab.tabID)?.documentURL else { return false }
+                        return IncomingFileRouter.normalized(documentURL) == url
+                    }) {
+                        controller.window?.makeKeyAndOrderFront(nil)
+                        controller.activateTab(tab.tabID, animated: true)
+                        break
+                    }
+                }
                 NSApp.activate(ignoringOtherApps: true)
             },
             replaceActive: { [weak self] url in
-                self?.activeWindowController?.session.openDocument(at: url)
+                self?.activeWindowController?.windowSession?.activeTabSession?.openDocument(at: url)
+            },
+            newTabInActiveWindow: { [weak self] url in
+                guard let self, let controller = self.activeWindowController else { return }
+                controller.window?.makeKeyAndOrderFront(nil)
+                controller.windowSession?.requestOpenFile(url)
             },
             createWindow: { [weak self] url in
                 guard let self else { return }
@@ -477,7 +675,8 @@ final class AppWindowManager {
                     _ = self.newWindow(preparedDocument: prepared)
                 } catch {
                     AppLog.error("无法打开外部文档: \(url.path) \(error.localizedDescription)")
-                    self.activeWindowController?.session.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                    self.activeWindowController?.windowSession?.activeTabSession?
+                        .presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
                 }
             }
         )

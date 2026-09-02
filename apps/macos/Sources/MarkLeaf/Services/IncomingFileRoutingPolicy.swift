@@ -1,6 +1,7 @@
 enum IncomingFileRouteAction: Equatable {
     case activateExisting
     case replaceActive
+    case newTabInActiveWindow
     case createWindow
 }
 
@@ -12,7 +13,14 @@ enum IncomingFileRoutingPolicy {
         hasOpenDuplicate: Bool
     ) -> IncomingFileRouteAction {
         if hasOpenDuplicate { return .activateExisting }
-        if mode == .currentWindow && eventIndex == 0 && hasActiveEditor { return .replaceActive }
-        return .createWindow
+        switch mode {
+        case .newWindow:
+            return .createWindow
+        case .newTab:
+            return hasActiveEditor ? .newTabInActiveWindow : .createWindow
+        case .currentWindow:
+            if eventIndex == 0, hasActiveEditor { return .replaceActive }
+            return .createWindow
+        }
     }
 }

@@ -54,6 +54,13 @@ enum StartupActionResolver {
             case (.none, .none):
                 return .init(operation: .newDocument, notice: .missingWorkspaceAndFile)
             }
+        case .restoreSession:
+            let folder = lastFolder.flatMap { isDirectory($0) ? $0 : nil }
+            let file = lastFile.flatMap { isFile($0) ? $0 : nil }
+            if let folder, let file { return .init(operation: .openWorkspaceAndFile(workspace: folder, file: file), notice: nil) }
+            if let folder { return .init(operation: .openWorkspace(folder), notice: .missingFile) }
+            if let file { return .init(operation: .openFile(file), notice: .missingWorkspace) }
+            return .init(operation: .newDocument, notice: .missingWorkspaceAndFile)
         }
     }
 }

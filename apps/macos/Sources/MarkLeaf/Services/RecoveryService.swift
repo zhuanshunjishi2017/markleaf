@@ -35,7 +35,8 @@ final class RecoveryService {
 
     // MARK: - 写入 / 删除
 
-    func writeSnapshot(documentId: String, path: String?, markdown: String, revision: Int64, displayName: String?) {
+    @discardableResult
+    func writeSnapshot(documentId: String, path: String?, markdown: String, revision: Int64, displayName: String?) -> Bool {
         do {
             try fm.createDirectory(at: recoveryDirectory, withIntermediateDirectories: true)
             let dataURL = dataPath(for: documentId)
@@ -52,8 +53,10 @@ final class RecoveryService {
             let json = try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys])
             try json.write(to: metaURL, options: .atomic)
             AppLog.info("恢复快照已保存: \(displayName ?? "未命名")")
+            return true
         } catch {
             AppLog.warning("恢复快照写入失败: \(error.localizedDescription)")
+            return false
         }
     }
 

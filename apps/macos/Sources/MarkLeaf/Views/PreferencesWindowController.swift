@@ -26,6 +26,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let tabViewController = NSTabViewController()
     private var preferencesKeyMonitor: Any?
     private var textFieldEditingOriginals: [NSTextField: String] = [:]
+    private weak var applyButton: NSButton?
+    private var numericFieldMonitors: [BoundedTextFieldMonitor] = []
 
     var selectedPageIndex: Int {
         get { tabViewController.selectedTabViewItemIndex }
@@ -38,6 +40,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     // 文件
     private let startupPopup = NSPopUpButton()
     private let externalFileOpenModePopup = NSPopUpButton()
+    private let workspaceOpenModePopup = NSPopUpButton()
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
     private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
@@ -122,11 +125,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         themeIDs = themes.map(\.id)
 
         // ---- 控件初值 ----
-        startupPopup.addItems(withTitles: [L10n.t("新建文档"), L10n.t("打开上次工作区"), L10n.t("打开上次工作区及文件")])
+        startupPopup.addItems(withTitles: [L10n.t("新建空白文档"), L10n.t("恢复最后工作区"), L10n.t("恢复完整会话")])
         startupPopup.selectItem(at: settings.startupAction == .newDocument ? 0
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         externalFileOpenModePopup.addItems(withTitles: ExternalFileOpenPreferenceModel.titles(language: settings.displayLanguage))
         externalFileOpenModePopup.selectItem(at: ExternalFileOpenPreferenceModel.selectedIndex(for: settings.externalFileOpenMode))
+        workspaceOpenModePopup.addItems(withTitles: WorkspaceFileOpenPreferenceModel.titles(language: settings.displayLanguage))
+        workspaceOpenModePopup.selectItem(at: WorkspaceFileOpenPreferenceModel.selectedIndex(opensInNewTab: settings.workspaceOpenInNewTab))
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
@@ -211,6 +216,30 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             field.alignment = .center
             field.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.numericFieldWidth).isActive = true
         }
+        // 与导出「自定义边距」一致：输入即过滤非法字符、超上限整串回退；
+        // 不做任何回显归一化——用户输入的 “1.60” 原样保留（不用会改写内容的 NumberFormatter）。
+        // 允许清空与低于下限的中间值：此时「应用更改」禁用，失焦还原并弹窗提示。
+        let refreshApply: () -> Void = { [weak self] in self?.refreshApplyButton() }
+        numericFieldMonitors = [
+            BoundedTextFieldMonitor(
+                field: snapshotIntervalField, fractionDigits: 0,
+                upperBound: Double(AppSettings.snapshotIntervalRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: lineHeightField, fractionDigits: 2,
+                upperBound: AppSettings.visualLineHeightRange.upperBound, onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: fontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: maxWidthField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualMaxContentWidthRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceFontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceIndentField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceIndentWidthRange.upperBound), onChange: refreshApply),
+        ]
         imageDirectoryField.bezelStyle = .roundedBezel
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
@@ -249,7 +278,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         )
 
         // 绑定
-        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, visualCjkAutoSpacingCheck, topMostCheck, autoHideScrollbarsCheck,
@@ -336,6 +365,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelAction))
         let applyButton = NSButton(title: L10n.t("应用更改"), target: self, action: #selector(okAction))
         applyButton.keyEquivalent = "\r"
+        self.applyButton = applyButton
+        refreshApplyButton()
         let bottom = NSStackView(views: [resetButton, NSView(), cancelButton, applyButton])
         bottom.orientation = .horizontal
         bottom.spacing = 10
@@ -406,6 +437,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         textFieldEditingOriginals[field] = field.stringValue
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        refreshApplyButton()
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         let original = textFieldEditingOriginals.removeValue(forKey: field)
@@ -435,6 +470,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .header(L10n.t("启动")),
             .field(L10n.t("启动操作"), startupPopup),
             .field(L10n.t("外部文件打开方式"), externalFileOpenModePopup),
+            .field(L10n.t("工作区文件打开方式"), workspaceOpenModePopup),
             .header(L10n.t("保存选项")),
             .field("", autoSaveCheck),
             .field("", saveOnSwitchCheck),
@@ -564,7 +600,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         if startupPopup.indexOfSelectedItem >= 0 {
             settings.startupAction = switch startupPopup.indexOfSelectedItem {
             case 1: .openLastWorkspace
-            case 2: .openLastWorkspaceAndFiles
+            case 2: .restoreSession
             default: .newDocument
             }
         }
@@ -572,6 +608,9 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.saveOnDocumentSwitch = saveOnSwitchCheck.state == .on
         settings.externalFileOpenMode = ExternalFileOpenPreferenceModel.mode(
             at: externalFileOpenModePopup.indexOfSelectedItem
+        )
+        settings.workspaceOpenInNewTab = WorkspaceFileOpenPreferenceModel.opensInNewTab(
+            at: workspaceOpenModePopup.indexOfSelectedItem
         )
         settings.snapshotIntervalSeconds = Int(snapshotIntervalField.stringValue) ?? 30
         settings.defaultEncoding = DocumentEncodingPolicy.defaultEncoding(
@@ -659,6 +698,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
 
     @objc private func cancelAction() {
         window?.close()
+    }
+
+    /// 任一数值字段无效时禁用「应用更改」，与导出自定义边距弹窗行为一致。
+    private func refreshApplyButton() {
+        applyButton?.isEnabled = invalidNumericFieldLabel() == nil
     }
 
     /// 数值字段校验：返回第一个无效字段的错误文案（nil 表示全部有效）。

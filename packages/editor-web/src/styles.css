@@ -7,6 +7,14 @@
   --ml-max-width: 820px;
 }
 
+/* 主题 CSS 由宿主异步注入；系统深色下先落默认深色底，避免首帧白闪。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1E1E1E;
+    --text-primary: #D4D4D4;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -269,6 +277,12 @@ body.markleaf-theme-dark {
 }
 
 /* 数学公式（KaTeX 渲染） */
+.markleaf-math,
+.markleaf-math * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .markleaf-math-block {
   margin: 1em 0;
   text-align: center;

@@ -8,6 +8,8 @@ enum PaperSize: String, CaseIterable {
     case a5 = "A5"
     case letter = "Letter"
     case legal = "Legal"
+    case b4 = "B4"
+    case b5 = "B5"
 
     var sizeInches: (width: Double, height: Double) {
         let (wMm, hMm): (Double, Double) = switch self {
@@ -15,6 +17,8 @@ enum PaperSize: String, CaseIterable {
         case .a5: (148.0, 210.0)
         case .letter: (215.9, 279.4)
         case .legal: (215.9, 355.6)
+        case .b4: (250.0, 353.0)
+        case .b5: (176.0, 250.0)
         default: (210.0, 297.0)
         }
         return (wMm / 25.4, hMm / 25.4)

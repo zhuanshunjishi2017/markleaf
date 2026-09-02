@@ -4,7 +4,7 @@ import AppKit
 final class SidebarView: NSView {
     static let emptyStateIdentifier = NSUserInterfaceItemIdentifier("Sidebar.emptyState")
 
-    let session: EditorSession
+    private(set) var session: EditorSession
     private let localize: (String) -> String
     private let persistSidebarTab: (String) -> Void
 
@@ -225,7 +225,7 @@ final class SidebarView: NSView {
         let effectiveIndex = session.outlineDetached ? 0 : index
         tabControl.setEnabled(!session.outlineDetached, forSegment: 1)
         tabControl.selectedSegment = effectiveIndex
-        showTab(effectiveIndex, persist: persist)
+        showTab(effectiveIndex, persist: persist, animate: false)
     }
 
     /// 外部（视图菜单）切换树/列表模式。
@@ -237,10 +237,10 @@ final class SidebarView: NSView {
             // 启动时列表模式已持久化：确保文档列表完成首次扫描。
             session.scanWorkspaceDocuments()
         }
-        showTab(tabControl.selectedSegment, persist: false)
+        showTab(tabControl.selectedSegment, persist: false, animate: false)
     }
 
-    private func showTab(_ index: Int, persist: Bool = true) {
+    private func showTab(_ index: Int, persist: Bool = true, animate: Bool = true) {
         tabControl.selectedSegment = index
         // 先同步会话标签索引：workspaceChanged/outlineChanged 会读取它判断占位文案
         session.sidebarTabIndex = index
@@ -268,11 +268,12 @@ final class SidebarView: NSView {
         let transition = tabTransitionGeneration
         workspaceScroll.isHidden = false
         outlineScroll.isHidden = false
-        if window == nil {
+        if window == nil || !animate {
             workspaceScroll.alphaValue = workspaceActive ? 1 : 0
             outlineScroll.alphaValue = workspaceActive ? 0 : 1
             workspaceScroll.isHidden = !workspaceActive
             outlineScroll.isHidden = workspaceActive
+            searchScroll.isHidden = !isSearching || !workspaceActive
             return
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -298,9 +299,35 @@ final class SidebarView: NSView {
     }
 
     func updateEmptyStateVisibility(hasWorkspace: Bool) {
-        emptyStateView.isHidden = !(session.sidebarTabIndex == 0 && !hasWorkspace)
+        let isWorkspaceTab = session.sidebarTabIndex == 0
+        if !isWorkspaceTab {
+            emptyStateView.isHidden = true
+        } else if !hasWorkspace {
+            emptyStateLabel.stringValue = localize("暂未打开工作区")
+            emptyStateOpenFolderButton.title = localize("打开文件夹")
+            emptyStateOpenFolderButton.target = self
+            emptyStateOpenFolderButton.action = #selector(openFolder)
+            emptyStateView.isHidden = false
+        } else {
+            let state = SidebarEmptyStatePolicy.state(
+                hasWorkspace: true,
+                treeCount: session.workspaceTree.count,
+                documentCount: session.workspaceDocuments.count,
+                listMode: session.workspaceListMode
+            )
+            guard case .noSupportedFiles = state else {
+                emptyStateView.isHidden = true
+                searchField.isEnabled = session.sidebarTabIndex == 1 || hasWorkspace
+                return
+            }
+            emptyStateLabel.stringValue = localize("当前工作区没有受支持的文件")
+            emptyStateOpenFolderButton.title = localize("新建文件")
+            emptyStateOpenFolderButton.target = self
+            emptyStateOpenFolderButton.action = #selector(newMarkdownFileFromHeader)
+            emptyStateView.isHidden = false
+        }
         searchField.isEnabled = session.sidebarTabIndex == 1 || hasWorkspace
-        if !hasWorkspace && session.sidebarTabIndex == 0 && isSearching {
+        if !hasWorkspace && isWorkspaceTab && isSearching {
             endSearch()
         }
     }
@@ -383,11 +410,32 @@ final class SidebarView: NSView {
         }
         session.createWorkspaceFile(at: directory, kind: .markdown)
     }
+
+    /// 多标签切换时改绑活动会话：工作区状态来自共享 WorkspaceContext，无需重建；
+    /// 大纲与文档相关状态跟随新会话。
+    func rebind(to session: EditorSession) {
+        self.session = session
+        session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
+        session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
+        session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
+        let previousRoot = self.session.workspaceRoot
+        let previousPaths = self.session.workspaceTree.map(\.path)
+        let topologyUnchanged = previousRoot == session.workspaceRoot
+            && previousPaths == session.workspaceTree.map(\.path)
+        workspaceTree.rebind(to: session, preservingTopology: topologyUnchanged)
+        if !topologyUnchanged {
+            workspaceChanged()
+        } else {
+            updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
+        }
+        outlineChanged()
+        outlineSelectionChanged()
+    }
 }
 
 /// 独立大纲：在编辑器右侧显示，与左侧工作区并存。
 final class DetachedOutlineView: NSView {
-    private let session: EditorSession
+    private(set) var session: EditorSession
     private let titleLabel = NSTextField(labelWithString: L10n.t("大纲"))
     private let searchField = NSSearchField()
     private let outlineTree = OutlineTreeView()
@@ -443,6 +491,13 @@ final class DetachedOutlineView: NSView {
         outlineTree.synchronizeSelection(to: session.activeOutlinePosition)
     }
 
+    /// 多标签切换时改绑活动会话并刷新大纲。
+    func rebind(to session: EditorSession) {
+        self.session = session
+        reload()
+        synchronizeSelection()
+    }
+
     func applyLanguage() {
         titleLabel.stringValue = L10n.t("大纲")
         searchField.placeholderString = L10n.t("搜索大纲")
@@ -471,7 +526,10 @@ enum SidebarTreePresentation {
         outlineView.selectionHighlightStyle = .sourceList
         outlineView.rowHeight = 26
         outlineView.backgroundColor = .clear
-        outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        outlineView.intercellSpacing = NSSize(width: 0, height: 2)
+        // 单列场景必须保证列宽吃满表格：uniform 模式初始化阶段可能留出
+        // 尾部空白，把行内可用宽度挤窄；lastColumn 负责吸收全部剩余宽度。
+        outlineView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
     }
 }
 
@@ -494,6 +552,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         self.session = session
         let column = NSTableColumn(identifier: .init("name"))
         column.title = ""
+        column.resizingMask = .autoresizingMask
         addTableColumn(column)
         outlineTableColumn = column
         headerView = nil
@@ -503,6 +562,31 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         registerForDraggedTypes([.fileURL, Self.localDragPasteboardType])
         setDraggingSourceOperationMask(.move, forLocal: true)
         setDraggingSourceOperationMask(.copy, forLocal: false)
+    }
+
+    override func layout() {
+        super.layout()
+        // 列宽只在表格尺寸变化时自适应，初始布局可能错过；
+        // 每次布局强制最后一列吃满，消除日期右侧的死宽度。
+        sizeLastColumnToFit()
+    }
+
+    func rebind(to session: EditorSession, preservingTopology: Bool = false) {
+        self.session = session
+        if preservingTopology {
+            setActivePath(session.documentURL?.path)
+        } else {
+            reloadData(activePath: session.documentURL?.path)
+        }
+    }
+
+    func setActivePath(_ path: String?) {
+        if let path {
+            pendingRevealPath = path
+            scheduleRevealContinuation()
+        } else {
+            deselectAll(nil)
+        }
     }
 
     func setListMode(_ listMode: Bool) {
@@ -951,7 +1035,19 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu = contextMenu(for: event) else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, menuFor event: NSEvent) -> NSMenu? {
+        contextMenu(for: event)
+    }
+
+    private func contextMenu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
         guard let root = session?.workspaceRoot else { return nil }
@@ -961,32 +1057,38 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
 
-        if !entry.isDirectory {
-            menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))
+        let isRoot = session?.workspaceRoot == entry.path
+        let pathTitle = entry.isDirectory ? L10n.t("复制文件夹路径") : L10n.t("复制文件路径")
+
+        if entry.isDirectory {
+            menu.addItem(item(L10n.t("打开"), #selector(openFolderEntry(_:)), entry))
             menu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))
             menu.addItem(.separator())
-        }
-        let targetDirectory = entry.isDirectory
-            ? URL(fileURLWithPath: entry.path, isDirectory: true)
-            : URL(fileURLWithPath: entry.path).deletingLastPathComponent()
-        menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: targetDirectory)))
-        menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), targetDirectory.path))
-        menu.addItem(.separator())
-        menu.addItem(item(L10n.t("复制路径"), #selector(copyPath(_:)), entry))
-        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
-        let isRoot = session?.workspaceRoot == entry.path
-        if !isRoot {
+            if !isRoot {
+                menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
+                menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
+                menu.addItem(.separator())
+            }
+            let targetDirectory = URL(fileURLWithPath: entry.path, isDirectory: true)
+            menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: targetDirectory)))
+            menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), entry.path))
             menu.addItem(.separator())
-            menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
-            menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
+            menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
+            menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
+            return menu
         }
+
+        menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))
+        menu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))
         menu.addItem(.separator())
-        menu.addItem(item(L10n.t("树状视图"), #selector(switchTreeView(_:)), nil))
-        menu.addItem(item(L10n.t("列表视图"), #selector(switchListView(_:)), nil))
-        menu.addItem(popupItem(L10n.t("排序"), sortMenu()))
+        menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
+        menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
         menu.addItem(.separator())
-        menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
-        menu.addItem(item(L10n.t("关闭工作区"), #selector(closeWorkspace(_:)), nil))
+        menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
+        menu.addItem(item(L10n.t("复制内容到剪贴板"), #selector(copyContent(_:)), entry))
+        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("分享"), #selector(shareEntry(_:)), entry))
         return menu
     }
 
@@ -1072,9 +1174,29 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         }
     }
 
+    @objc private func copyContent(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            session?.copyWorkspaceEntryContent(entry)
+        }
+    }
+
     @objc private func openLocation(_ sender: NSMenuItem) {
         if let entry = sender.representedObject as? WorkspaceEntry {
             session?.openWorkspaceEntryInFinder(entry)
+        }
+    }
+
+    @objc private func openFolderEntry(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            self.expandItem(entry)
+        }
+    }
+
+    @objc private func shareEntry(_ sender: NSMenuItem) {
+        if let entry = sender.representedObject as? WorkspaceEntry {
+            let row = row(forItem: entry)
+            let rect = row >= 0 ? rect(ofRow: row) : bounds
+            session?.shareWorkspaceEntry(entry, sourceView: self, sourceRect: rect)
         }
     }
 
@@ -1226,7 +1348,7 @@ final class WorkspaceListCellView: NSTableCellView {
             folderLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
             folderLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
         ])
     }
 }

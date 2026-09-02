@@ -125,55 +125,89 @@ for command in rotateImage resizeImage100 saveImageAs; do
   require_text "$MAC_CONTEXT" "\"$command\""
 done
 
+# Windows 1.5.1: top-level menus are File/Edit/Paragraph/Format/View/Help.
+# The legacy Insert and Appearance menus were removed: block-level insert
+# commands moved to the Paragraph menu, inline ones (math/link/image) to the
+# Format menu's body and its image submenu.
 win_main="$(method_body "$WIN_MENU" BuildMainMenu)"
-require_text "$win_main" 'BuildInsertMenu()'
+require_text "$win_main" 'BuildFileMenu()'
+require_text "$win_main" 'BuildEditMenu()'
+require_text "$win_main" 'BuildParagraphMenu()'
 require_text "$win_main" 'BuildFormatMenu()'
 require_text "$win_main" 'BuildViewMenu()'
 require_text "$win_main" 'BuildHelpMenu()'
-reject_text "$win_main" 'BuildParagraphMenu()'
+reject_text "$win_main" 'BuildInsertMenu()'
 reject_text "$win_main" 'BuildAppearanceMenu()'
 
-win_insert="$(method_body "$WIN_MENU" BuildInsertMenu)"
-for command in InsertLink InsertImage InsertImageFromUrl InsertMathInline InsertMathBlock \
-  InsertHorizontalRule InsertFootnote InsertLineBefore InsertLineAfter InsertMermaid; do
-  require_text "$win_insert" "AppCommand.$command"
+win_paragraph="$(method_body "$WIN_MENU" BuildParagraphMenu)"
+for command in SetParagraph ToggleQuote ToggleCodeBlock ToggleBulletList; do
+  require_text "$win_paragraph" "AppCommand.$command"
 done
-require_text "$win_insert" 'AppendPopup(menu, Loc.Get("menu.insert.table"), tableInsert)'
-require_text "$win_insert" 'AppendMainMenuCommand(tableInsert, AppCommand.InsertTable'
+for command in InsertMathBlock InsertHorizontalRule InsertFootnote InsertLineBefore InsertLineAfter \
+  InsertMermaid RerenderAllMermaid AddTableRowBefore; do
+  require_text "$win_paragraph" "AppCommand.$command"
+done
+require_text "$win_paragraph" 'AppendPopup(menu, Loc.Get("menu.paragraph.table"), table)'
+require_text "$win_paragraph" 'AppendMainMenuCommand(table, AppCommand.InsertTable'
+require_text "$win_paragraph" 'AppendPopup(menu, Loc.Get("menu.paragraph.diagram"), diagram)'
 
 win_format="$(method_body "$WIN_MENU" BuildFormatMenu)"
-require_text "$win_format" 'BuildParagraphStyleMenu()'
-require_text "$win_format" 'BuildTableEditingMenu()'
+require_text "$win_format" 'AppCommand.InsertMathInline'
+require_text "$win_format" 'AppCommand.InsertLink'
+require_text "$win_format" 'BuildImageSubmenu()'
 require_text "$win_format" 'ClearFormat'
-for command in RotateImageClockwise ResizeImage100 SaveImageAs ShowCodeHighlight AddTheme OpenThemeFolder; do
+for command in InsertMathBlock InsertHorizontalRule InsertFootnote InsertLineBefore InsertLineAfter \
+  InsertTable InsertMermaid SetParagraph ToggleQuote ToggleCodeBlock ToggleBulletList; do
+  reject_text "$win_format" "AppCommand.$command"
+done
+for command in ShowCodeHighlight AddTheme OpenThemeFolder; do
+  reject_text "$win_format" "AppCommand.$command"
+done
+for command in RotateImageClockwise ResizeImage100 SaveImageAs; do
   reject_text "$win_format" "AppCommand.$command"
 done
 
-win_paragraph_style="$(method_body "$WIN_MENU" BuildParagraphStyleMenu)"
-for command in SetParagraph ToggleQuote ToggleCodeBlock ToggleBulletList; do
-  require_text "$win_paragraph_style" "AppCommand.$command"
+win_image="$(method_body "$WIN_MENU" BuildImageSubmenu)"
+for command in InsertImage InsertImageFromUrl RotateImageClockwise SaveImageAs; do
+  require_text "$win_image" "AppCommand.$command"
 done
-
-win_table_edit="$(method_body "$WIN_MENU" BuildTableEditingMenu)"
-require_text "$win_table_edit" 'AddTableRowBefore'
+require_text "$win_image" 'BuildResizeImageSubmenu()'
 
 win_view="$(method_body "$WIN_MENU" BuildViewMenu)"
-for text in menu.appearance.style menu.appearance.colorTheme menu.appearance.zoom; do
+for text in menu.view.style menu.view.colorTheme menu.view.zoom; do
   require_text "$win_view" "$text"
 done
-for command in ShowCodeHighlight AddTheme OpenThemeFolder; do
+require_text "$win_view" 'AppCommand.ShowCodeHighlight'
+for command in AddTheme OpenThemeFolder; do
   reject_text "$win_view" "AppCommand.$command"
 done
 
 win_edit="$(method_body "$WIN_MENU" BuildEditMenu)"
-require_text "$win_edit" 'menu.edit.findReplace'
+require_text "$win_edit" 'menu.edit.find'
+require_text "$win_edit" 'AppCommand.Replace'
 require_text "$win_edit" 'AppCommand.SelectAll'
-reject_text "$win_edit" 'AppCommand.Replace'
-require_text "$WIN_SHORTCUTS" 'new(AppCommand.NewWindow, "shortcut.newWindow", Keys.Control | Keys.Shift | Keys.N)'
+require_text "$WIN_SHORTCUTS" 'new(AppCommand.NewDocument, "shortcut.new", Keys.Control | Keys.N)'
 require_text "$WIN_SHORTCUTS" 'new(AppCommand.SelectAll, "shortcut.selectAll", Keys.Control | Keys.A)'
 
 for locale in "$ROOT_DIR"/windows/MarkLeaf/Resources/Locales/*.json; do
-  require_text "$locale" '"menu.insert.label"'
+  require_text "$locale" '"menu.paragraph.label"'
 done
+
+# 空标签/无工作区时的菜单可用性契约（大修）：
+mac_file="$(method_body "$MAC_MENU" fileMenu)"
+reject_text "$mac_file" '关闭窗口'
+require_text "$mac_file" '"closeFolder"'
+mac_validate="$(method_body "$MAC_MENU" validateMenuItem)"
+require_text "$mac_validate" 'documentIndependentCommands'
+require_text "$mac_validate" '(session ?? viewStateSession)?.workspaceRoot != nil'
+require_text "$mac_validate" 'NativeTextEditingPolicy.shouldRoute'
+mac_router="$(method_body "$MAC_MENU" performCommand)"
+require_text "$mac_router" 'controller.newUntitledTab(kind:'
+require_text "$mac_router" 'controller.openDocumentPanel()'
+# 子菜单父项（图片/插入表格/Mermaid/段落样式/设置缩放/排版样式/复制为）必须挂校验钩子，
+# 否则 action=nil 的父项不参与 AppKit 校验，空标签时仍显示可用。
+require_text "$MAC_MENU" 'requiresDocument: true'
+require_text "$MAC_MENU" '"submenuParent"'
+require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" '"submenuParent"'
 
 echo "PASS"

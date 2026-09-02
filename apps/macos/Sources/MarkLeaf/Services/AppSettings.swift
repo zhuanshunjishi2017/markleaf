@@ -11,6 +11,7 @@ enum CJKLanguageTag: String, Codable, CaseIterable {
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
 enum ExternalFileOpenMode: String, Codable, CaseIterable {
     case newWindow
+    case newTab
     case currentWindow
 }
 
@@ -40,8 +41,9 @@ enum ExternalFileOpenPreferenceModel {
 
     static func titles(language: String) -> [String] {
         [
-            L10n.translate("始终在新窗口中打开", language: language),
-            L10n.translate("在当前窗口中打开", language: language),
+            L10n.translate("在新窗口中打开", language: language),
+            L10n.translate("在当前窗口的新标签页中打开", language: language),
+            L10n.translate("在当前标签页中打开", language: language),
         ]
     }
 
@@ -51,6 +53,36 @@ enum ExternalFileOpenPreferenceModel {
 
     static func mode(at index: Int) -> ExternalFileOpenMode {
         orderedModes.indices.contains(index) ? orderedModes[index] : .newWindow
+    }
+}
+
+/// 工作区文件打开方式：默认新标签页；也可始终替换当前标签文档。
+enum WorkspaceFileOpenPreferenceModel {
+    static func titles(language: String) -> [String] {
+        [
+            L10n.translate("在新标签页中打开", language: language),
+            L10n.translate("在当前标签中打开", language: language),
+        ]
+    }
+
+    static func selectedIndex(opensInNewTab: Bool) -> Int {
+        opensInNewTab ? 0 : 1
+    }
+
+    static func opensInNewTab(at index: Int) -> Bool {
+        index == 0
+    }
+}
+
+enum StartupActionMigration {
+    static func migrate(rawValue: String?) -> AppSettings.StartupAction {
+        switch rawValue {
+        case AppSettings.StartupAction.newDocument.rawValue: return .newDocument
+        case AppSettings.StartupAction.openLastWorkspace.rawValue: return .openLastWorkspace
+        case AppSettings.StartupAction.restoreSession.rawValue: return .restoreSession
+        case "openLastWorkspaceAndFiles": return .restoreSession
+        default: return .restoreSession
+        }
     }
 }
 
@@ -90,7 +122,9 @@ struct AppSettings: Codable {
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
         exportSettings.normalize()
-        startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
+        startupAction = StartupActionMigration.migrate(
+            rawValue: try container.decodeIfPresent(String.self, forKey: .startupAction)
+        )
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? false
         associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? false
         recordRecentFiles = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFiles) ?? true
@@ -101,6 +135,10 @@ struct AppSettings: Codable {
             ExternalFileOpenMode.self,
             forKey: .externalFileOpenMode
         ) ?? .newWindow
+        workspaceOpenInNewTab = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .workspaceOpenInNewTab
+        ) ?? true
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
@@ -115,6 +153,8 @@ struct AppSettings: Codable {
         recentFolders = try container.decodeIfPresent([String].self, forKey: .recentFolders) ?? []
         recentFiles = try container.decodeIfPresent([String].self, forKey: .recentFiles) ?? []
         workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 230
+        // 260 是开发期临时加宽的默认值，恢复原始宽度。
+        if workspaceWidth == 260 { workspaceWidth = 230 }
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
         outlineDetached = try container.decodeIfPresent(Bool.self, forKey: .outlineDetached) ?? false
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
@@ -177,7 +217,7 @@ struct AppSettings: Codable {
     static let defaultSourceCjkFontFamily = "PingFang SC"
 
     // 文件
-    var startupAction = StartupAction.newDocument
+    var startupAction = StartupAction.restoreSession
     // 默认不接管文件关联：只有用户主动勾选后才把 MarkLeaf 设为对应类型默认编辑器（对齐 Windows 默认 false）。
     var associateMarkdownFiles = false
     var associateTextFiles = false
@@ -187,6 +227,8 @@ struct AppSettings: Codable {
     /// 切换文档（打开另一文件）时自动保存当前文档（对齐 Windows FileSettings.SaveOnDocumentSwitch）。
     var saveOnDocumentSwitch = true
     var externalFileOpenMode = ExternalFileOpenMode.newWindow
+    /// 工作区文件默认在新标签页中打开；关闭后在当前标签中替换文档。
+    var workspaceOpenInNewTab = true
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue
@@ -213,18 +255,11 @@ struct AppSettings: Codable {
     var sidebarTab = "workspace"
     var workspaceListMode = false
     var workspaceSortOrder = WorkspaceSortOrder.modifiedTimeDescending
-
-    enum WorkspaceSortOrder: String, Codable, CaseIterable {
-        case fileNameAscending
-        case fileNameDescending
-        case modifiedTimeAscending
-        case modifiedTimeDescending
-    }
-
     enum StartupAction: String, Codable {
         case newDocument
         case openLastWorkspace
         case openLastWorkspaceAndFiles
+        case restoreSession
     }
 
     // MARK: - 数值边界（对齐 Windows PreferencesDialog NumericUpDown 范围）

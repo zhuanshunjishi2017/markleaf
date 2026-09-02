@@ -127,6 +127,7 @@ enum WorkspaceDocumentTimeFormatter {
         return formatter
     }
 
+
     private static var yearFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = locale

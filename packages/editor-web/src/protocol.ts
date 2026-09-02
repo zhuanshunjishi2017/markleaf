@@ -5,7 +5,7 @@ export const maximumMessageBytes = 16 * 1024 * 1024
 
 export type HostMessage = {
   protocolVersion: number
-  type: 'loadDocument' | 'setDocumentType' | 'requestSnapshot' | 'command' | 'applyStyles' | 'localizeFindBar' | 'unsafeEmphasisResponse'
+  type: 'loadDocument' | 'setDocumentType' | 'requestSnapshot' | 'command' | 'applyStyles' | 'localizeFindBar' | 'unsafeEmphasisResponse' | 'restoreViewport'
   requestId?: string
   documentId: string
   revision: number
@@ -92,11 +92,28 @@ export function isHostMessage(value: unknown): value is HostMessage {
       || message.type === 'command'
       || message.type === 'applyStyles'
       || message.type === 'localizeFindBar'
-      || message.type === 'unsafeEmphasisResponse')
+      || message.type === 'unsafeEmphasisResponse'
+      || message.type === 'restoreViewport')
     && typeof message.documentId === 'string'
     && message.documentId.length > 0
     && typeof message.revision === 'number'
     && Number.isSafeInteger(message.revision)
     && message.revision >= 0
     && (message.requestId === undefined || typeof message.requestId === 'string')
+}
+
+export function isRestoreViewportPayload(payload: unknown): payload is {
+  scrollTop?: number
+  selection?: { from: number; to: number }
+} {
+  if (!payload || typeof payload !== 'object') return false
+  const record = payload as Record<string, unknown>
+  if ('scrollTop' in record && typeof record.scrollTop !== 'number') return false
+  if ('selection' in record) {
+    const selection = record.selection
+    if (!selection || typeof selection !== 'object') return false
+    const value = selection as Record<string, unknown>
+    if (typeof value.from !== 'number' || typeof value.to !== 'number') return false
+  }
+  return true
 }

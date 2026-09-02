@@ -1,4 +1,6 @@
 import AppKit
+import UniformTypeIdentifiers
+import WebKit
 
 /// 主窗口控制器：侧边栏（工作区/大纲）+ WKWebView 编辑器 + 原生状态栏。
 /// 对应 Windows 端 MainForm（含 SidebarTabBar + WorkspaceTreeView + OutlineTreeView）。
@@ -17,10 +19,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var sidebarContainerView: NSView?
     private var detachedOutlineView: DetachedOutlineView?
     private var detachedOutlineContainerView: NSView?
-    private var editorView: EditorWebContainerView?
+    private var editorHostView: EditorHostView?
+    private var tabBarController: TabBarController?
+    private weak var rightColumnView: NSView?
+    private var editorHostTopConstraint: NSLayoutConstraint?
     private var splitView: NSSplitView?
     private var outerSplitView: NSSplitView?
     private var statusBar: NSStackView?
+    private var statusSpacer: NSView?
     private var statusDivider: NSBox?
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var isAnimatingSidebar = false
@@ -42,6 +48,433 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var pendingCloseAfterSheetEnds = false
 
     var onWindowClose: ((EditorWindowController) -> Void)?
+    var windowSession: WindowSession? {
+        didSet {
+            guard windowSession != nil, tabBarController == nil else { return }
+            installMultiTabUI()
+        }
+    }
+
+    /// 当前活动标签会话（多标签下跟随活动标签；单标签回退到初始会话）。
+    private var activeSession: EditorSession {
+        windowSession?.activeTabSession ?? session
+    }
+
+    /// 注入 `windowSession` 后搭建标签栏并把初始标签挂到编辑器宿主。
+    private func installMultiTabUI() {
+        guard let windowSession, let rightColumn = rightColumnView, let editorHost = editorHostView else { return }
+        let tabBar = TabBarController(tabStore: windowSession.tabStore)
+        tabBar.onActivate = { [weak self] id in self?.activateTab(id, animated: true) }
+        tabBar.onClose = { [weak self] id in self?.closeTab(id, reason: .closeTab) }
+        tabBar.onNewTab = { [weak self] in self?.newUntitledTab() }
+        tabBar.onContextAction = { [weak self] action, id in
+            self?.handleTabContextAction(action, for: id)
+        }
+        tabBar.onReorder = { [weak self] from, to in
+            guard let self else { return }
+            self.windowSession?.tabStore.move(from: from, to: to)
+            self.tabBarController?.reload()
+        }
+        self.tabBarController = tabBar
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        rightColumn.addSubview(tabBar)
+        editorHostTopConstraint?.isActive = false
+        NSLayoutConstraint.activate([
+            tabBar.topAnchor.constraint(equalTo: rightColumn.topAnchor),
+            tabBar.leadingAnchor.constraint(equalTo: rightColumn.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: rightColumn.trailingAnchor),
+            editorHost.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+        ])
+
+        // 把窗口首个（初始）标签的编辑器挂到宿主并展示。
+        if let initialTab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first {
+            _ = ensureEditor(for: initialTab)
+            editorHost.show(tabID: initialTab.tabID, animated: false, reduceMotion: true)
+        }
+        tabBar.reload()
+    }
+
+    /// 为标签创建（或复用）会话与编辑器视图；懒加载的唯一入口。
+    private func ensureEditor(for tab: DocumentTab, prepared: PreparedDocument? = nil) -> EditorSession {
+        guard let windowSession else { fatalError("windowSession must exist before creating editors") }
+
+        let session: EditorSession
+        if let existing = windowSession.session(for: tab.tabID) {
+            session = existing
+            configureTabSession(existing, in: windowSession)
+        } else {
+            session = EditorSession(workspace: windowSession.workspace)
+            configureTabSession(session, in: windowSession)
+            windowSession.attach(session: session, to: tab.tabID)
+        }
+
+        // The initial tab is registered before the tab bar is installed. In that
+        // path the session exists, but its WebView container does not yet exist.
+        // Always reconcile the session/container pair before returning.
+        if EditorAttachmentPolicy.needsContainer(
+            existingSession: windowSession.session(for: tab.tabID) != nil,
+            hasAttachedContainer: editorHostView?.attachedView(for: tab.tabID) != nil
+        ) {
+            let container = EditorWebContainerView(session: session)
+            editorHostView?.attach(tabID: tab.tabID, view: container)
+        }
+        if let prepared, windowSession.session(for: tab.tabID) === session,
+           editorHostView?.attachedView(for: tab.tabID) != nil,
+           session.documentURL == nil {
+            session.openInitialDocument(prepared: prepared)
+        }
+        return session
+    }
+
+    func reloadTabBar() { tabBarController?.reload() }
+
+    func saveAllTabs() {
+        guard let windowSession else { return }
+        let targets = SaveAllPolicy.targets(tabs: windowSession.tabStore.tabs)
+        func saveNext(_ index: Int) {
+            guard index < targets.count else {
+                self.reloadTabBar()
+                return
+            }
+            let id = targets[index]
+            guard let tab = windowSession.tabStore.tab(withID: id),
+                  let session = windowSession.session(for: id) else {
+                saveNext(index + 1)
+                return
+            }
+            tab.lastError = nil
+            session.saveDocument { [weak self, weak tab] success in
+                guard let self else { return }
+                if !success {
+                    tab?.lastError = L10n.t("保存失败")
+                } else if let tab {
+                    TabStateSync.apply(
+                        tab: tab,
+                        fileName: session.documentURL?.path,
+                        isDirty: session.isDirty,
+                        revision: session.currentRevision,
+                        encoding: session.documentEncoding,
+                        newLine: session.documentNewLine,
+                        untitledLabel: L10n.t("未命名")
+                    )
+                }
+                self.reloadTabBar()
+                saveNext(index + 1)
+            }
+        }
+        saveNext(0)
+    }
+
+    func restoreInitialTabIfNeeded() {
+        guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
+        let session = ensureEditor(for: tab)
+        if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
+            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty)
+        } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
+            session.openInitialDocument(prepared: prepared)
+        } else {
+            session.newDocument()
+        }
+        editorHostView?.show(tabID: tab.tabID, animated: false, reduceMotion: true)
+        tabBarController?.reload()
+    }
+
+    /// 打开文件为标签：去重命中则激活，未命中则建标签并加载。
+    /// 空标签状态下由菜单触发的「打开…」：面板挂在窗口上，选择后按标签去重打开。
+    func openDocumentPanel() {
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("打开 Markdown 文档")
+        panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard let window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.openFileInTab(url)
+        }
+    }
+
+    func openFileInTab(_ url: URL) {
+        guard let windowSession else { return }
+        let resolution = TabOpenResolution.resolve(
+            store: windowSession.tabStore,
+            url: url,
+            untitledLabel: L10n.t("未命名")
+        )
+        handleOpenResolution(resolution, url: url)
+    }
+
+    /// 使用窗口去重结果打开文件（避免二次去重造成已建标签不加载文档）。
+    func handleOpenResolution(_ resolution: TabOpenResolution.Result, url: URL) {
+        guard let windowSession else { return }
+        let prepared: PreparedDocument
+        do {
+            prepared = try PreparedDocument.read(from: url)
+        } catch {
+            windowSession.activeTabSession?.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+            return
+        }
+        switch resolution {
+        case .activateExisting(let id):
+            activateTab(id, animated: true)
+        case .created(let tab):
+            _ = ensureEditor(for: tab, prepared: prepared)
+            activateTab(tab.tabID, animated: true)
+        }
+        tabBarController?.reload()
+    }
+
+    func newUntitledTab(kind: NewDocumentKind = .markdown) {
+        guard let windowSession else { return }
+        let settings = SettingsService.shared.settings
+        let tab = DocumentTab(
+            path: nil,
+            title: "",
+            encoding: settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        tab.title = "\(L10n.t("未命名")) \(tab.untitledSequence ?? 1)"
+        windowSession.tabStore.append(tab)
+        let session = ensureEditor(for: tab)
+        session.newDocument(kind: kind)
+        activateTab(tab.tabID, animated: true)
+        tabBarController?.reload()
+    }
+
+    func activateTab(_ id: DocumentTabID, animated: Bool) {
+        guard let windowSession, windowSession.tabStore.tab(withID: id) != nil else { return }
+        let previous = windowSession.tabStore.activeTabID
+        if previous != id {
+            performTabSwitchSave(of: previous)
+            windowSession.tabStore.activate(id)
+        }
+        if windowSession.session(for: id) == nil {
+            if let tab = windowSession.tabStore.tab(withID: id) {
+                rebuildSuspendedTab(tab)
+            }
+        }
+        editorHostView?.show(
+            tabID: id,
+            animated: animated,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+        rebindActiveSessionUI()
+        tabBarController?.reload()
+        applyStatusBarContents()
+    }
+
+    func suspendBackgroundTabsIfNeeded() {
+        guard let windowSession else { return }
+        let order = TabMemoryPressurePolicy.suspensionOrder(
+            tabs: windowSession.tabStore.tabs,
+            activeTabID: windowSession.tabStore.activeTabID
+        )
+        for id in order {
+            guard let tab = windowSession.tabStore.tab(withID: id), !tab.isDirty,
+                  let session = windowSession.session(for: id) else { continue }
+            session.cleanupForClose()
+            windowSession.detach(id)
+            editorHostView?.detach(tabID: id)
+            tab.isSuspended = true
+        }
+        tabBarController?.reload()
+    }
+
+    private func rebuildSuspendedTab(_ tab: DocumentTab) {
+        let session = ensureEditor(for: tab)
+        tab.isSuspended = false
+        if let path = tab.path {
+            session.openDocument(at: URL(fileURLWithPath: path))
+        } else {
+            session.newDocument()
+        }
+    }
+
+    enum TabCloseReason {
+        case closeTab
+        case closeWindow
+        case terminate
+    }
+
+    func closeTab(_ id: DocumentTabID, reason: TabCloseReason) {
+        guard let windowSession, windowSession.tabStore.tab(withID: id) != nil else { return }
+        let session = windowSession.session(for: id)
+        let finish: (DocumentDispositionResult) -> Void = { [weak self] result in
+            guard result == .proceed, let self, let windowSession = self.windowSession else { return }
+            let next = windowSession.tabStore.close(id)
+            windowSession.detach(id)
+            self.editorHostView?.detach(tabID: id)
+            if let next {
+                self.activateTab(next, animated: true)
+            } else if WindowClosePolicy.keepsWindowAfterClosingAllTabs {
+                self.applyStatusBarContents()
+            } else {
+                self.closeWindowForReal()
+            }
+            self.tabBarController?.reload()
+        }
+        if let session {
+            // 关闭标签与关闭窗口都必须走显式保存确认；不能套用“切换文档”的自动保存规则。
+            _ = session.requestDisposition(for: .closeWindow, completion: finish)
+        } else {
+            finish(.proceed)
+        }
+    }
+
+    private func handleTabContextAction(_ action: TabContextAction, for id: DocumentTabID) {
+        guard let windowSession, let index = windowSession.tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
+        switch action {
+        case .close:
+            closeTab(id, reason: .closeTab)
+        case .closeOthers:
+            closeOtherTabs(keeping: id)
+        case .closeToRight:
+            closeTabsToRight(of: index)
+        }
+    }
+
+    private func closeOtherTabs(keeping id: DocumentTabID) {
+        guard let windowSession else { return }
+        closeTabs(windowSession.tabStore.tabs.map(\.tabID).filter { $0 != id })
+    }
+
+    private func closeTabsToRight(of index: Int) {
+        guard let windowSession else { return }
+        let ids = windowSession.tabStore.tabs.dropFirst(index + 1).map(\.tabID)
+        closeTabs(ids)
+    }
+
+    private func closeTabs(_ ids: [DocumentTabID]) {
+        guard let windowSession, !ids.isEmpty else { return }
+        let requests: [SequentialDocumentDispositionQueue.Request] = ids.compactMap { id in
+            guard let session = windowSession.session(for: id) else { return nil }
+            return { completion in
+                _ = session.requestDisposition(for: .closeWindow, completion: completion)
+            }
+        }
+        SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
+            guard result == .proceed, let self, let windowSession = self.windowSession else { return }
+            for id in ids where windowSession.tabStore.tab(withID: id) != nil {
+                _ = windowSession.tabStore.close(id)
+                windowSession.detach(id)
+                self.editorHostView?.detach(tabID: id)
+            }
+            if let active = windowSession.tabStore.activeTabID {
+                self.activateTab(active, animated: true)
+            } else if WindowClosePolicy.keepsWindowAfterClosingAllTabs {
+                self.applyStatusBarContents()
+            }
+            self.tabBarController?.reload()
+        }
+    }
+
+    /// 切换前处理旧标签；切换不弹保存确认，失败只在标签上留痕。
+    private func performTabSwitchSave(of tabID: DocumentTabID?) {
+        guard let windowSession, let tabID,
+              let tab = windowSession.tabStore.tab(withID: tabID),
+              let session = windowSession.session(for: tabID) else { return }
+        let action = TabSwitchSavePolicy.action(
+            isDirty: session.isDirty,
+            hasPath: session.documentURL != nil,
+            autoSaveOnSwitch: SettingsService.shared.settings.saveOnDocumentSwitch
+        )
+        switch action {
+        case .nothing:
+            break
+        case .save:
+            tab.lastError = nil
+            session.saveDocument { [weak self, weak tab] success in
+                guard let self, let tab else { return }
+                if !success {
+                    tab.lastError = L10n.t("自动保存失败")
+                    self.tabBarController?.reload()
+                }
+            }
+        case .snapshotOnly:
+            session.flushRecoverySnapshotNow()
+        }
+    }
+
+    /// 状态栏、侧栏、大纲、查找面板全部跟随活动标签会话。
+    private func rebindActiveSessionUI() {
+        guard let session = windowSession?.activeTabSession else { return }
+        if let windowSession {
+            configureTabSession(session, in: windowSession)
+        }
+        bindSessionCallbacks(session)
+        sidebarView?.rebind(to: session)
+        detachedOutlineView?.rebind(to: session)
+        applyStatusBarContents()
+        window?.title = "MarkLeaf"
+        window?.isDocumentEdited = session.isDirty
+        if let findPanel = AppWindowManager.shared.currentFindPanel {
+            findPanel.updateSession(session)
+        }
+    }
+
+    private func configureTabSession(_ session: EditorSession, in windowSession: WindowSession) {
+        session.openViaWindow = { [weak windowSession] url in windowSession?.requestOpenFile(url) }
+        session.newTabRequest = { [weak self] kind in self?.newUntitledTab(kind: kind) }
+        session.saveAllRequest = { [weak self] in self?.saveAllTabs() }
+        session.onAcquiredFileURL = { [weak self, weak windowSession, weak session] url in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return }
+            tab.path = url.path
+            tab.fileIdentity = FileIdentityPolicy.identity(forPath: url.path)
+            tab.title = url.lastPathComponent
+            tab.lastError = nil
+            self.reloadTabBar()
+        }
+        session.onRecoveryWriteFailure = { [weak self, weak windowSession, weak session] in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return }
+            tab.recoveryUnavailable = true
+            self.reloadTabBar()
+            if windowSession.tabStore.activeTabID == tab.tabID {
+                session.statusText = L10n.t("恢复保护暂时不可用")
+            }
+        }
+        session.onRecoveryWriteSuccess = { [weak self, weak windowSession, weak session] in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return }
+            tab.recoveryUnavailable = false
+            self.reloadTabBar()
+        }
+        session.exportLeaseProvider = { [weak self, weak windowSession, weak session] in
+            guard let self, let windowSession, let session,
+                  let tab = windowSession.tabStore.tabs.first(where: { windowSession.session(for: $0.tabID) === session }) else { return nil }
+            let container = self.editorHostView?.attachedView(for: tab.tabID) as? EditorWebContainerView
+            return ExportSessionLease(tabID: tab.tabID, session: session, container: container)
+        }
+    }
+
+    /// 把会话的观察回调绑定到窗口 UI（状态/大纲/视图状态），并同步到标签模型。
+    private func bindSessionCallbacks(_ session: EditorSession) {
+        session.onStateChanged = { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.title = "MarkLeaf"
+            window.isDocumentEdited = session.isDirty
+            self.applyStatusBarContents()
+            self.windowSession?.syncActiveTab(from: session, untitledLabel: L10n.t("未命名"))
+            self.tabBarController?.reload()
+        }
+        session.onViewStateChanged = { [weak self] in
+            DispatchQueue.main.async { self?.applyViewState() }
+        }
+        session.onOutlineChanged = { [weak self] in
+            DispatchQueue.main.async {
+                self?.sidebarView?.outlineChanged()
+                self?.detachedOutlineView?.reload()
+            }
+        }
+        session.onOutlineSelectionChanged = { [weak self] in
+            DispatchQueue.main.async {
+                self?.sidebarView?.outlineSelectionChanged()
+                self?.detachedOutlineView?.synchronizeSelection()
+            }
+        }
+    }
 
     init(session: EditorSession) {
         self.session = session
@@ -99,20 +532,25 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             self.applyViewState()
             // 窗口首次出现时把焦点交给编辑器，避免状态栏按钮成为 first responder 并显示蓝色 focus ring。
-            if let editorView = self.editorView {
-                self.window?.makeFirstResponder(editorView.webView)
+            if let webView = self.activeEditorWebView {
+                self.window?.makeFirstResponder(webView)
             }
         }
+    }
+
+    private var activeEditorWebView: WKWebView? {
+        guard let host = editorHostView,
+              let id = windowSession?.tabStore.activeTabID,
+              let container = host.attachedView(for: id) else { return nil }
+        return container.webView
     }
 
     private func buildContent() {
         guard let window else { return }
 
         let rootView = NSView()
-        let editorView = EditorWebContainerView(session: session)
         let sidebarView = SidebarView(session: session)
         let detachedOutlineView = DetachedOutlineView(session: session)
-        self.editorView = editorView
         self.sidebarView = sidebarView
         self.detachedOutlineView = detachedOutlineView
 
@@ -159,14 +597,24 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         // 右栏：编辑器 + 状态栏
         let rightColumn = NSView()
-        editorView.translatesAutoresizingMaskIntoConstraints = false
+        self.rightColumnView = rightColumn
+        let editorHost = EditorHostView()
+        self.editorHostView = editorHost
+        editorHost.translatesAutoresizingMaskIntoConstraints = false
 
         let statusBar = NSStackView()
         statusBar.orientation = .horizontal
         statusBar.alignment = .centerY
+        // .fill + 弹性占位：多余宽度由占位视图吸收；fillProportionally 会在
+        // 仅剩单个控件（如空标签时只剩侧栏按钮）时把它拉伸满整条状态栏。
         statusBar.distribution = .fill
         statusBar.spacing = 8
         statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+
+        let statusSpacer = NSView()
+        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        statusSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        self.statusSpacer = statusSpacer
 
         configureStatusLabel(statusLabel)
         configureStatusLabel(blockTypeLabel)
@@ -217,6 +665,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         statusBar.addView(viewToggleButton, in: .leading)
         statusBar.addView(statusLabel, in: .leading)
+        statusBar.addView(statusSpacer, in: .leading)
         statusBar.addView(characterCountButton, in: .trailing)
         statusBar.addView(blockTypeLabel, in: .trailing)
         statusBar.addView(positionLabel, in: .trailing)
@@ -243,24 +692,26 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         self.statusDivider = divider
         outerSplitView.translatesAutoresizingMaskIntoConstraints = false
         rightColumn.translatesAutoresizingMaskIntoConstraints = false
-        editorView.translatesAutoresizingMaskIntoConstraints = false
+        editorHost.translatesAutoresizingMaskIntoConstraints = false
         divider.translatesAutoresizingMaskIntoConstraints = false
         statusBar.translatesAutoresizingMaskIntoConstraints = false
 
         rootView.addSubview(outerSplitView)
-        rightColumn.addSubview(editorView)
+        rightColumn.addSubview(editorHost)
         rightColumn.addSubview(divider)
         rightColumn.addSubview(statusBar)
+        let editorHostTop = editorHost.topAnchor.constraint(equalTo: rightColumn.topAnchor)
+        self.editorHostTopConstraint = editorHostTop
         NSLayoutConstraint.activate([
             outerSplitView.topAnchor.constraint(equalTo: rootView.topAnchor),
             outerSplitView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             outerSplitView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             outerSplitView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
 
-            editorView.topAnchor.constraint(equalTo: rightColumn.topAnchor),
-            editorView.leadingAnchor.constraint(equalTo: rightColumn.leadingAnchor),
-            editorView.trailingAnchor.constraint(equalTo: rightColumn.trailingAnchor),
-            divider.topAnchor.constraint(equalTo: editorView.bottomAnchor),
+            editorHostTop,
+            editorHost.leadingAnchor.constraint(equalTo: rightColumn.leadingAnchor),
+            editorHost.trailingAnchor.constraint(equalTo: rightColumn.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: editorHost.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: rightColumn.leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: rightColumn.trailingAnchor),
             statusBar.topAnchor.constraint(equalTo: divider.bottomAnchor),
@@ -273,6 +724,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         statusBarHeight.isActive = true
 
         window.contentView = rootView
+        // 首帧前完成一次布局，避免状态栏 trailing 重力在首次显示时短暂靠左。
+        rootView.layoutSubtreeIfNeeded()
         let sidebarWidth = SidebarLayout.clampedWorkspaceWidth(
             SettingsService.shared.settings.workspaceWidth
         )
@@ -316,31 +769,29 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func bindState() {
-        session.onStateChanged = { [weak self] in
-            guard let self, let window = self.window else { return }
-            window.title = self.session.windowTitle
-            window.isDocumentEdited = self.session.isDirty
-            self.applyStatusBarContents()
-        }
+        bindSessionCallbacks(session)
         session.onStateChanged?()
-        session.onViewStateChanged = { [weak self] in
-            DispatchQueue.main.async { self?.applyViewState() }
-        }
-        session.onOutlineChanged = { [weak self] in
-            DispatchQueue.main.async {
-                self?.sidebarView?.outlineChanged()
-                self?.detachedOutlineView?.reload()
-            }
-        }
-        session.onOutlineSelectionChanged = { [weak self] in
-            DispatchQueue.main.async {
-                self?.sidebarView?.outlineSelectionChanged()
-                self?.detachedOutlineView?.synchronizeSelection()
-            }
-        }
     }
 
     private func applyStatusBarContents() {
+        let hasActiveTab = windowSession?.activeTabSession != nil
+        guard StatusBarEmptyStatePolicy.shouldShowDocumentItems(hasActiveTab: hasActiveTab) else {
+            // 全部标签已关闭：清空并隐藏文档相关项，仅保留窗口级控件。
+            statusLabel.stringValue = ""
+            statusLabel.isHidden = true
+            statusClearTimer?.invalidate()
+            characterCountButton.isHidden = true
+            blockTypeLabel.isHidden = true
+            positionLabel.isHidden = true
+            encodingButton.isHidden = true
+            newLineButton.isHidden = true
+            modeButton.isHidden = true
+            zoomButton.isHidden = true
+            viewToggleButton.isHidden = !SettingsService.shared.settings.statusBar.sidebarToggleVisible
+            statusBar?.needsLayout = true
+            return
+        }
+        let session = activeSession
         let settings = SettingsService.shared.settings
         let status = settings.statusBar
         let stats = session.documentStatistics
@@ -386,6 +837,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func scheduleStatusClearIfNeeded() {
+        let session = activeSession
         guard SettingsService.shared.settings.statusBar.commandDisplayMode == .temporary,
               !session.statusText.isEmpty else { return }
         statusClearTimer?.invalidate()
@@ -532,8 +984,23 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func installFocusModeKeyMonitor() {
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window else { return event }
-            return self.handleFocusModeKey(keyCode: event.keyCode) ? nil : event
+            return self.handleTabCycleKey(event: event) || self.handleFocusModeKey(keyCode: event.keyCode) ? nil : event
         }
+    }
+
+    /// Control-Tab / Control-Shift-Tab 在当前窗口内循环切换标签。
+    @discardableResult
+    func handleTabCycleKey(event: NSEvent) -> Bool {
+        guard event.modifierFlags.contains(.control), event.keyCode == 48,
+              let windowSession,
+              let target = TabShortcutPolicy.cycleTarget(
+                in: windowSession.tabStore,
+                reverse: event.modifierFlags.contains(.shift)
+              ) else {
+            return false
+        }
+        activateTab(target, animated: true)
+        return true
     }
 
     /// 返回是否消费按键。专注模式下 Escape=53 退出。
@@ -658,8 +1125,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
         }
 
-        sidebarView.selectTab(session.sidebarTabIndex, persist: false)
-        sidebarView.setWorkspaceMode(listMode: session.workspaceListMode)
+        // Sidebar content follows the active tab session. The controller's
+        // session is the window bootstrap session and may no longer be the
+        // session currently bound to the sidebar after a tab switch.
+        let sidebarSession = sidebarView.session
+        let selectedTabIndex = SidebarStateSourcePolicy.selectedTabIndex(
+            activeSessionIndex: sidebarSession.sidebarTabIndex,
+            bootstrapSessionIndex: session.sidebarTabIndex
+        )
+        sidebarView.selectTab(selectedTabIndex, persist: false)
+        sidebarView.setWorkspaceMode(listMode: sidebarSession.workspaceListMode)
         applyDetachedOutlineState()
 
         // 状态栏：高度平滑过渡
@@ -782,23 +1257,32 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             allowsNextClose = false
             return true
         }
-        guard !session.isDocumentDispositionInProgress else { return false }
-        // 延迟到关闭握手之后呈现保存提示，避免 beginSheet 与窗口关闭流程重入冲突。
-        DispatchQueue.main.async { [weak self, weak sender] in
-            guard let self, let sender else { return }
-            _ = self.session.requestDisposition(for: .closeWindow) { result in
-                guard result == .proceed else { return }
-                if sender.attachedSheet != nil {
-                    // NSAlert 的完成回调在 sheet 收起动画结束前触发，此时窗口仍挂着 sheet，
-                    // 直接 performClose 会被忽略；等 windowDidEndSheet 后再关闭。
-                    self.pendingCloseAfterSheetEnds = true
-                } else {
-                    self.allowsNextClose = true
-                    sender.performClose(nil)
+        guard let windowSession, !windowSession.tabStore.tabs.isEmpty else { return true }
+        // 红绿灯 = 关闭窗口本身；先对所有标签走保存确认，再真正关窗。
+        guard WindowClosePolicy.closesWindowOnTrafficLight else { return true }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let windowSession = self.windowSession else { return }
+            let requests: [SequentialDocumentDispositionQueue.Request] = windowSession.tabStore.tabs.compactMap { tab in
+                guard let session = windowSession.session(for: tab.tabID) else { return nil }
+                return { completion in
+                    _ = session.requestDisposition(for: .closeWindow, completion: completion)
                 }
+            }
+            SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
+                guard result == .proceed else { return }
+                self?.closeWindowForReal()
             }
         }
         return false
+    }
+
+    private func closeWindowForReal() {
+        if window?.attachedSheet != nil {
+            pendingCloseAfterSheetEnds = true
+        } else {
+            allowsNextClose = true
+            window?.performClose(nil)
+        }
     }
     func windowDidEndSheet(_ notification: Notification) {
         guard pendingCloseAfterSheetEnds else { return }
@@ -811,6 +1295,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         exitFocusMode()
         session.cleanupForClose()
         onWindowClose?(self)
+        if TerminationTransactionPolicy.windowCloseMayMutateSession(isTerminationCommitted: AppWindowManager.shared.isTerminationCommitted) {
+            do { try SessionStore.shared.commit(manifest: AppWindowManager.shared.buildSessionManifest()) }
+            catch { AppLog.warning("关窗会话提交失败: \(error.localizedDescription)") }
+        }
     }
 
     func windowDidResize(_ notification: Notification) {

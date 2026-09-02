@@ -68,6 +68,9 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
 
         let editorWebView = EditorWebView(frame: .zero, configuration: configuration)
         editorWebView.editorSession = session
+        // 主题 CSS 生效前的兜底底色，避免任何早揭示路径闪白。
+        let initialDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        editorWebView.underPageBackgroundColor = initialDark ? .black : .white
         webView = editorWebView
         super.init(frame: .zero)
 
