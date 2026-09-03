@@ -22,6 +22,11 @@ struct PersistedExportSettings: Codable, Equatable {
     var footerFontFamily = ""
     var keepTablesTogether = true
     var keepHeadingsWithNextBlock = true
+    var imageMaxHeight = 12000.0
+    var imageContentWidth = 1200.0
+    var imageScale = 2.0
+    var imageFormat = "png"
+    var imageJpegQuality = 90.0
 
     private enum CodingKeys: String, CodingKey {
         case format, paperSize, landscape, marginTop, marginBottom, marginLeft, marginRight
@@ -30,10 +35,11 @@ struct PersistedExportSettings: Codable, Equatable {
         case footerPreset, footerCustom, footerAlignment
         case headerFontFamily, footerFontFamily
         case keepTablesTogether, keepHeadingsWithNextBlock
+        case imageMaxHeight, imageContentWidth, imageScale, imageFormat, imageJpegQuality
     }
 
     mutating func normalize() {
-        format = format.lowercased() == "html" ? "html" : "pdf"
+        format = ["html", "image"].contains(format.lowercased()) ? format.lowercased() : "pdf"
         paperSize = ["A4", "A3", "A5", "Letter", "Legal", "B4", "B5"].contains(paperSize) ? paperSize : "A4"
         marginTop = Self.normalizedMargin(marginTop, fallback: 18)
         marginBottom = Self.normalizedMargin(marginBottom, fallback: 18)
@@ -44,10 +50,19 @@ struct PersistedExportSettings: Codable, Equatable {
         footerPreset = PDFHeaderFooterPolicy.normalizePreset(footerPreset)
         headerAlignment = PDFHeaderFooterPolicy.normalizeAlignment(headerAlignment)
         footerAlignment = PDFHeaderFooterPolicy.normalizeAlignment(footerAlignment)
+        imageMaxHeight = Self.normalizedImageDimension(imageMaxHeight, fallback: 12000, range: 1000...30000)
+        imageContentWidth = Self.normalizedImageDimension(imageContentWidth, fallback: 1200, range: 320...4000)
+        imageScale = Self.normalizedImageDimension(imageScale, fallback: 2, range: 1...4)
+        imageFormat = imageFormat.lowercased() == "jpg" ? "jpg" : "png"
+        imageJpegQuality = Self.normalizedImageDimension(imageJpegQuality, fallback: 90, range: 1...100)
     }
 
     private static func normalizedMargin(_ value: Double, fallback: Double) -> Double {
         value.isFinite && value >= 0 && value <= 1000 ? value : fallback
+    }
+
+    private static func normalizedImageDimension(_ value: Double, fallback: Double, range: ClosedRange<Double>) -> Double {
+        value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : fallback
     }
 }
 
@@ -75,6 +90,11 @@ extension PersistedExportSettings {
         footerFontFamily = try container.decodeIfPresent(String.self, forKey: .footerFontFamily) ?? ""
         keepTablesTogether = try container.decodeIfPresent(Bool.self, forKey: .keepTablesTogether) ?? true
         keepHeadingsWithNextBlock = try container.decodeIfPresent(Bool.self, forKey: .keepHeadingsWithNextBlock) ?? true
+        imageMaxHeight = try container.decodeIfPresent(Double.self, forKey: .imageMaxHeight) ?? 12000
+        imageContentWidth = try container.decodeIfPresent(Double.self, forKey: .imageContentWidth) ?? 1200
+        imageScale = try container.decodeIfPresent(Double.self, forKey: .imageScale) ?? 2
+        imageFormat = try container.decodeIfPresent(String.self, forKey: .imageFormat) ?? "png"
+        imageJpegQuality = try container.decodeIfPresent(Double.self, forKey: .imageJpegQuality) ?? 90
         normalize()
     }
 }

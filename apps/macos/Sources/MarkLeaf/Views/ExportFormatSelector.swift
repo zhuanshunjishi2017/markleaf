@@ -6,11 +6,12 @@ enum ExportFormatSelector {
         selector.segmentStyle = .texturedRounded
         selector.controlSize = .large
         selector.trackingMode = .selectOne
-        selector.segmentCount = 2
+        selector.segmentCount = 3
 
         let formats = [
             (title: "PDF", symbol: "doc.richtext"),
             (title: "HTML", symbol: "curlybraces"),
+            (title: L10n.t("图像"), symbol: "photo"),
         ]
         for (index, format) in formats.enumerated() {
             selector.setLabel(format.title, forSegment: index)
@@ -27,10 +28,18 @@ enum ExportFormatSelector {
     }
 
     static func selectedFormat(in selector: NSSegmentedControl) -> String {
-        selector.selectedSegment == 1 ? "html" : "pdf"
+        switch selector.selectedSegment {
+        case 1: return "html"
+        case 2: return "image"
+        default: return "pdf"
+        }
     }
 
     static func select(format: String, in selector: NSSegmentedControl) {
-        selector.selectedSegment = format == "html" ? 1 : 0
+        selector.selectedSegment = switch format {
+        case "html": 1
+        case "image": 2
+        default: 0
+        }
     }
 }

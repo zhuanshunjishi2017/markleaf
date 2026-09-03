@@ -32,6 +32,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let pdfPreviewView = PDFView()
     private let htmlPreviewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
+    private let imageMaxHeightField = NSTextField(string: "12000")
+    private let imageContentWidthField = NSTextField(string: "1200")
+    private let imageScalePopup = NSPopUpButton()
+    private let imagePNGButton = NSButton(radioButtonWithTitle: "PNG", target: nil, action: nil)
+    private let imageJPGButton = NSButton(radioButtonWithTitle: "JPG", target: nil, action: nil)
+    private let imageQualitySlider = NSSlider(value: 90, minValue: 1, maxValue: 100, target: nil, action: nil)
+    private let imageQualityLabel = NSTextField(labelWithString: "90")
+    private let imageExportWebView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
 
     private var paperSettingsRow: NSView?
     private var directionRow: NSView?
@@ -39,6 +47,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private var headerPresetRow: NSView?
     private var footerPresetRow: NSView?
     private var pageBehaviorRow: NSView?
+    private var imageSettingsRow: NSView?
     private var headerFieldRowHeight: NSLayoutConstraint?
     private var footerFieldRowHeight: NSLayoutConstraint?
     private var themeIDs: [String] = []
@@ -104,6 +113,18 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         keepTablesCheck.action = #selector(optionChanged)
         keepHeadingsCheck.target = self
         keepHeadingsCheck.action = #selector(optionChanged)
+        imageMaxHeightField.target = self
+        imageMaxHeightField.action = #selector(optionChanged)
+        imageContentWidthField.target = self
+        imageContentWidthField.action = #selector(optionChanged)
+        imageScalePopup.target = self
+        imageScalePopup.action = #selector(optionChanged)
+        for button in [imagePNGButton, imageJPGButton] {
+            button.target = self
+            button.action = #selector(optionChanged)
+        }
+        imageQualitySlider.target = self
+        imageQualitySlider.action = #selector(imageQualityChanged)
         formatSelector.target = self
         formatSelector.action = #selector(formatChanged(_:))
         for check in [keepTablesCheck, keepHeadingsCheck] {
@@ -111,6 +132,18 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             check.cell?.wraps = true
             check.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
+        imageScalePopup.addItems(withTitles: ["1x", "2x", "3x", "4x"])
+        imageScalePopup.selectItem(withTitle: "2x")
+        imagePNGButton.state = .on
+        imageQualityLabel.font = .systemFont(ofSize: 11)
+        imageQualityLabel.textColor = .secondaryLabelColor
+        imageMaxHeightField.bezelStyle = .roundedBezel
+        imageContentWidthField.bezelStyle = .roundedBezel
+        imageMaxHeightField.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        imageContentWidthField.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        imageScalePopup.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        imageQualitySlider.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        imageExportWebView.underPageBackgroundColor = .white
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
@@ -210,6 +243,26 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let pageBehaviorRowStack = pageBehaviorRow as? NSStackView {
             pageBehaviorRowStack.alignment = .top
         }
+        let imageQualityStack = NSStackView(views: [imageQualitySlider, imageQualityLabel])
+        imageQualityStack.orientation = .horizontal
+        imageQualityStack.spacing = 6
+        let imageFormatStack = NSStackView(views: [imagePNGButton, imageJPGButton])
+        imageFormatStack.orientation = .horizontal
+        imageFormatStack.spacing = 12
+        let imageSettingsStack = NSStackView(views: [
+            labeled(L10n.t("单张最大高度"), imageMaxHeightField),
+            labeled(L10n.t("内容宽度"), imageContentWidthField),
+            labeled(L10n.t("输出倍率"), imageScalePopup),
+            labeled(L10n.t("格式"), imageFormatStack),
+            labeled(L10n.t("JPEG 质量"), imageQualityStack),
+        ])
+        imageSettingsStack.orientation = .vertical
+        imageSettingsStack.alignment = .leading
+        imageSettingsStack.spacing = 6
+        imageSettingsRow = labeled(L10n.t("图像设置"), imageSettingsStack)
+        if let imageSettingsRowStack = imageSettingsRow as? NSStackView {
+            imageSettingsRowStack.alignment = .top
+        }
         headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         headerFieldRowHeight?.isActive = true
@@ -237,6 +290,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             footerPresetRow!,
             footerFieldRow,
             pageBehaviorRow!,
+            imageSettingsRow!,
         ])
         optionsStack.orientation = .vertical
         optionsStack.alignment = .leading
@@ -368,6 +422,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         selectHeaderFooterPreset(saved.footerPreset, in: footerPresetPopup)
         keepTablesCheck.state = saved.keepTablesTogether ? .on : .off
         keepHeadingsCheck.state = saved.keepHeadingsWithNextBlock ? .on : .off
+        imageMaxHeightField.stringValue = String(Int(saved.imageMaxHeight))
+        imageContentWidthField.stringValue = String(Int(saved.imageContentWidth))
+        imageScalePopup.selectItem(withTitle: "\(Int(saved.imageScale))x")
+        (saved.imageFormat == "jpg" ? imageJPGButton : imagePNGButton).state = .on
+        imageQualitySlider.doubleValue = saved.imageJpegQuality
+        imageQualityLabel.stringValue = String(Int(saved.imageJpegQuality))
         marginPopup.addItem(withTitle: L10n.t("自定义"))
         customMarginItemIndex = marginPopup.numberOfItems - 1
         if let presetIndex = Self.marginPresets.firstIndex(where: { preset in
@@ -417,9 +477,17 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             options.pdfHeaderAlignment = PDFHeaderFooterPolicy.alignment(for: headerPreset)
             options.pdfFooter = PDFHeaderFooterPolicy.text(for: footerPreset, custom: footerField.stringValue)
             options.pdfFooterAlignment = PDFHeaderFooterPolicy.alignment(for: footerPreset)
-        options.headerFooterFontFamily = selectedHeaderFooterFontFamily
-        options.keepTablesTogether = keepTablesCheck.state == .on
-        options.keepHeadingsWithNextBlock = keepHeadingsCheck.state == .on
+            options.headerFooterFontFamily = selectedHeaderFooterFontFamily
+            options.keepTablesTogether = keepTablesCheck.state == .on
+            options.keepHeadingsWithNextBlock = keepHeadingsCheck.state == .on
+        }
+        if selectedFormat == "image" {
+            options.imageMaxHeight = Double(imageMaxHeightField.stringValue) ?? 12000
+            options.imageContentWidth = Double(imageContentWidthField.stringValue) ?? 1200
+            let scaleText = imageScalePopup.titleOfSelectedItem?.replacingOccurrences(of: "x", with: "") ?? "2"
+            options.imageScale = Double(scaleText) ?? 2
+            options.imageFormat = imageJPGButton.state == .on ? "jpg" : "png"
+            options.imageJpegQuality = imageQualitySlider.doubleValue
         }
         return options
     }
@@ -448,7 +516,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func formatChanged(_ sender: NSSegmentedControl) {
         updatePDFVisibility()
-        if selectedFormat == "pdf" {
+        if selectedFormat != "image" && selectedFormat != "html" {
             pdfPreviewView.isHidden = false
             htmlPreviewView.isHidden = true
         } else {
@@ -460,12 +528,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     private func updatePDFVisibility() {
         let isPDF = selectedFormat == "pdf"
+        let isImage = selectedFormat == "image"
         paperSettingsRow?.isHidden = !isPDF
         directionRow?.isHidden = !isPDF
         marginRow?.isHidden = !isPDF
         headerPresetRow?.isHidden = !isPDF
         footerPresetRow?.isHidden = !isPDF
         pageBehaviorRow?.isHidden = !isPDF
+        imageSettingsRow?.isHidden = !isImage
         headerFieldLabel.stringValue = isPDF ? L10n.t("页眉") : ""
         footerFieldLabel.stringValue = isPDF ? L10n.t("页脚") : ""
         updateHeaderFooterFieldState(animated: false)
@@ -510,6 +580,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func optionChanged() {
         schedulePreview()
+    }
+
+    @objc private func imageQualityChanged() {
+        imageQualityLabel.stringValue = String(Int(imageQualitySlider.doubleValue))
     }
 
     @objc private func marginPresetChanged() {
@@ -717,7 +791,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let options = currentOptions()
         presentSavePanel(options: options, title: L10n.t("导出文档")) { [weak self] url in
             guard let self else { return }
-            let targetURL = EditorSession.fixExportExtension(url, format: options.format)
+            let targetURL = EditorSession.fixExportExtension(
+                url, format: options.format, fallbackExtension: options.imageFormat
+            )
             self.persist(options: options)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
@@ -740,7 +816,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let panel = NSSavePanel()
         panel.title = title
         let baseName = session.documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + "." + (options.format == "pdf" ? "pdf" : "html")
+        let ext = switch options.format {
+        case "pdf": "pdf"
+        case "image": options.imageFormat
+        default: "html"
+        }
+        panel.nameFieldStringValue = baseName + "." + ext
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             onSave(url)
@@ -772,7 +853,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
                 headerFontFamily: options.headerFooterFontFamily,
                 footerFontFamily: options.headerFooterFontFamily,
                 keepTablesTogether: options.keepTablesTogether,
-                keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock
+                keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock,
+                imageMaxHeight: options.imageMaxHeight,
+                imageContentWidth: options.imageContentWidth,
+                imageScale: options.imageScale,
+                imageFormat: options.imageFormat,
+                imageJpegQuality: options.imageJpegQuality
             )
         }
     }

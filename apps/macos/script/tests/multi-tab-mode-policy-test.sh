@@ -42,6 +42,8 @@ if grep -Fq '.field("", multiTabCheck)' <<<"$PREFS_FILE_BODY"; then
 fi
 require "$WINDOW" 'func applyMultiTabMode(animated: Bool)' 'editor windows must apply the multi-tab mode'
 require "$WINDOW" 'applyWindowTitle()' 'single-document windows must update the filename title'
+require "$WINDOW" 'L10n.t("最简模式已开启")' 'minimal mode status must use the renamed state'
+require "$WINDOW" 'L10n.t("最简模式已关闭")' 'minimal mode exit status must use the renamed state'
 
 cp "$ROOT_DIR/script/tests/MultiTabModePolicyTest.swift" "$BUILD_DIR/main.swift"
 swiftc -module-cache-path "$BUILD_DIR/module-cache" \

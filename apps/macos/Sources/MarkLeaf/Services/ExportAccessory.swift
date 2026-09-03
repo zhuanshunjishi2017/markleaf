@@ -17,6 +17,11 @@ struct ExportOptions {
     var headerFooterFontFamily = ""
     var keepTablesTogether = true
     var keepHeadingsWithNextBlock = true
+    var imageMaxHeight: Double = 12000
+    var imageContentWidth: Double = 1200
+    var imageScale: Double = 2
+    var imageFormat = "png"
+    var imageJpegQuality: Double = 90
 }
 
 /// 保存面板附属视图：格式/纸张/方向/边距/样式/页眉页脚（对应 Windows ExportDialog）。

@@ -997,7 +997,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.sidebarVisible = false
         session.outlineDetached = false
         session.statusBarVisible = false
-        session.statusText = L10n.t("专注模式已开启")
+        session.statusText = L10n.t("最简模式已开启")
         NSApp.presentationOptions.insert(.autoHideMenuBar)
         session.onViewStateChanged?()
         session.onStateChanged?()
@@ -1011,7 +1011,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         session.sidebarVisible = sidebarVisibleBeforeFocus
         session.outlineDetached = outlineDetachedBeforeFocus
         session.statusBarVisible = statusBarVisibleBeforeFocus
-        session.statusText = L10n.t("专注模式已关闭")
+        session.statusText = L10n.t("最简模式已关闭")
         NSApp.presentationOptions = presentationOptionsBeforeFocus
         session.onViewStateChanged?()
         session.onStateChanged?()

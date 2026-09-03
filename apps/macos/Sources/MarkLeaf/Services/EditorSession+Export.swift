@@ -93,8 +93,13 @@ extension EditorSession {
         runExport(options: options, saveURL: tempURL, forPrint: true)
     }
 
-    static func fixExportExtension(_ url: URL, format: String) -> URL {
-        let ext = format == "pdf" ? "pdf" : "html"
+    static func fixExportExtension(_ url: URL, format: String, fallbackExtension: String? = nil) -> URL {
+        let ext: String
+        switch format {
+        case "pdf": ext = "pdf"
+        case "image": ext = fallbackExtension ?? "png"
+        default: ext = "html"
+        }
         if url.pathExtension.lowercased() == ext {
             return url
         }
@@ -224,6 +229,27 @@ extension EditorSession {
                     case .failure(let error):
                         self?.presentError("PDF 导出失败：\(error.localizedDescription)")
                         self?.onExportComplete?(false)
+                    }
+                }
+            }
+        } else if context.options.format == "image" {
+            statusText = L10n.t("正在生成图像…")
+            ImageHTMLExporter().export(
+                html: html,
+                options: context.options,
+                saveBaseURL: context.saveURL
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.isExportingOrPrinting = false
+                    switch result {
+                    case .success(let urls):
+                        self.statusText = L10n.t("已导出图像")
+                        AppLog.info("图像已导出: \(urls.map(\.path).joined(separator: ", "))")
+                        self.onExportComplete?(true)
+                    case .failure(let error):
+                        self.presentError("图像导出失败：\(error.localizedDescription)")
+                        self.onExportComplete?(false)
                     }
                 }
             }
