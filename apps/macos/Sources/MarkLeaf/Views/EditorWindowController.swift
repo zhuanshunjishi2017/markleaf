@@ -21,6 +21,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var detachedOutlineContainerView: NSView?
     private var editorHostView: EditorHostView?
     private var tabBarController: TabBarController?
+    private var isAnimatingTabBar = false
     private weak var rightColumnView: NSView?
     private var editorHostTopConstraint: NSLayoutConstraint?
     private var splitView: NSSplitView?
@@ -92,6 +93,29 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             editorHost.show(tabID: initialTab.tabID, animated: false, reduceMotion: true)
         }
         tabBar.reload()
+        applyMultiTabMode(animated: false)
+    }
+
+    func applyMultiTabMode(animated: Bool) {
+        guard let tabBar = tabBarController, !isAnimatingTabBar else { return }
+        let enabled = SettingsService.shared.settings.multiTabEnabled
+        isAnimatingTabBar = animated
+        tabBar.setVisible(
+            MultiTabModePolicy.showsTabBar(isEnabled: enabled),
+            animated: animated
+        ) { [weak self] in
+            self?.isAnimatingTabBar = false
+        }
+        applyWindowTitle()
+        reloadTabBar()
+    }
+
+    private func applyWindowTitle() {
+        guard SettingsService.shared.settings.multiTabEnabled else {
+            window?.title = activeSession.documentURL?.lastPathComponent ?? L10n.t("未命名")
+            return
+        }
+        window?.title = "MarkLeaf"
     }
 
     /// 为标签创建（或复用）会话与编辑器视图；懒加载的唯一入口。
@@ -207,6 +231,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// 使用窗口去重结果打开文件（避免二次去重造成已建标签不加载文档）。
     func handleOpenResolution(_ resolution: TabOpenResolution.Result, url: URL) {
         guard let windowSession else { return }
+        guard MultiTabModePolicy.allowsTabCreation(isEnabled: SettingsService.shared.settings.multiTabEnabled) else {
+            windowSession.activeTabSession?.openDocumentBypassingRouter(at: url)
+            return
+        }
         let prepared: PreparedDocument
         do {
             prepared = try PreparedDocument.read(from: url)
@@ -226,6 +254,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func newUntitledTab(kind: NewDocumentKind = .markdown) {
         guard let windowSession else { return }
+        guard MultiTabModePolicy.allowsTabCreation(isEnabled: SettingsService.shared.settings.multiTabEnabled) else {
+            let target = activeSession
+            target.requestDisposition(for: .replaceDocument) { result in
+                guard result == .proceed else { return }
+                target.newDocument(kind: kind)
+            }
+            return
+        }
         let settings = SettingsService.shared.settings
         let tab = DocumentTab(
             path: nil,
@@ -262,6 +298,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         rebindActiveSessionUI()
         tabBarController?.reload()
         applyStatusBarContents()
+        applyWindowTitle()
     }
 
     func suspendBackgroundTabsIfNeeded() {
@@ -453,7 +490,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func bindSessionCallbacks(_ session: EditorSession) {
         session.onStateChanged = { [weak self] in
             guard let self, let window = self.window else { return }
-            window.title = "MarkLeaf"
+            applyWindowTitle()
             window.isDocumentEdited = session.isDirty
             self.applyStatusBarContents()
             self.windowSession?.syncActiveTab(from: session, untitledLabel: L10n.t("未命名"))

@@ -405,6 +405,7 @@ final class AppWindowManager {
         for controller in windowControllers {
             (controller.windowSession?.activeTabSession ?? controller.session).applyPreferences()
             controller.window?.level = topMost ? .floating : .normal
+            controller.applyMultiTabMode(animated: true)
             controller.applyViewState()
         }
     }
@@ -671,7 +672,10 @@ final class AppWindowManager {
         }
         IncomingFileRouter.route(
             urls: urls,
-            mode: SettingsService.shared.settings.externalFileOpenMode,
+            mode: MultiTabModePolicy.externalFileMode(
+                SettingsService.shared.settings.externalFileOpenMode,
+                multiTabEnabled: SettingsService.shared.settings.multiTabEnabled
+            ),
             activeEditor: activeWindowController != nil,
             openDocuments: openDocuments,
             activateExisting: { [weak self] url in

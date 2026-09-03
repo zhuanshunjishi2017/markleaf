@@ -2215,12 +2215,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func toggleEditorFocusMode() {
+        guard !isReadOnly, !isPlainText else { return }
         isEditorFocusMode.toggle()
         execute("setEditorFocusMode", text: isEditorFocusMode ? "1" : "0")
         NativeMenuBuilder.refreshIfNeeded()
     }
 
     func toggleTypewriterMode() {
+        guard !isReadOnly, !isPlainText else { return }
         isTypewriterMode.toggle()
         execute("setEditorTypewriterMode", text: isTypewriterMode ? "1" : "0")
         NativeMenuBuilder.refreshIfNeeded()

@@ -149,6 +149,16 @@ enum PreferencesWindowLayout {
         return true
     }
 
+    static func editorCentersMultiTabCheckbox(for language: String) -> Bool {
+        _ = language
+        return true
+    }
+
+    static func editorCentersBlockHandleCheckbox(for language: String) -> Bool {
+        _ = language
+        return true
+    }
+
     static func resolvedFieldLabelColumnWidth(
         fittingWidths: [CGFloat],
         metrics: Metrics,

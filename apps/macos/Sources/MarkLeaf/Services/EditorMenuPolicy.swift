@@ -66,7 +66,7 @@ enum EditorMenuPolicy {
         switch command {
         case "cut":
             return !isReadOnly && hasSelection
-        case "copy", "copyAs", "copyMarkdown", "copyPlain", "copyHtml":
+        case "copy", "copyAs", "copyMarkdown", "copyPlain":
             return hasSelection
         case "paste", "pastePlainText":
             return !isReadOnly && clipboardHasContent
@@ -133,6 +133,37 @@ enum EditorMenuPolicy {
     /// 状态栏模式按钮仅在 Markdown 文档中可用；纯文本固定为可视化编辑器的源码内容。
     static func isModeToggleEnabled(isPlainText: Bool) -> Bool {
         !isPlainText
+    }
+
+    /// 段间公式编号只在可视化、可写且选中块级公式时可用。
+    static func isMathNumberCommandEnabled(
+        mathBlock: Bool,
+        isSourceMode: Bool,
+        isReadOnly: Bool
+    ) -> Bool {
+        mathBlock && !isSourceMode && !isReadOnly
+    }
+
+    /// Copy HTML is a selection-scoped export: source mode cannot provide the
+    /// shared editor's rendered HTML, but read-only Markdown still can.
+    static func isCopyHtmlEnabled(
+        hasSelection: Bool,
+        isSourceMode: Bool,
+        isReadOnly: Bool
+    ) -> Bool {
+        _ = isReadOnly
+        return hasSelection && !isSourceMode
+    }
+
+    /// Session-level editor modes may switch in source mode; their visual
+    /// effects are disabled by the shared editor until visual mode returns.
+    static func isEditorModeCommandEnabled(
+        isSourceMode: Bool,
+        isReadOnly: Bool,
+        isPlainText: Bool
+    ) -> Bool {
+        _ = isSourceMode
+        return !isReadOnly && !isPlainText
     }
 
     static func semanticContext(for state: EditorContextMenuState) -> EditorSemanticContext {

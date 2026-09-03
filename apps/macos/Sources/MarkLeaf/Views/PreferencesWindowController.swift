@@ -41,6 +41,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let startupPopup = NSPopUpButton()
     private let externalFileOpenModePopup = NSPopUpButton()
     private let workspaceOpenModePopup = NSPopUpButton()
+    private let multiTabCheck = NSButton(checkboxWithTitle: L10n.t("启用多标签页"), target: nil, action: nil)
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
     private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
@@ -132,6 +133,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         externalFileOpenModePopup.selectItem(at: ExternalFileOpenPreferenceModel.selectedIndex(for: settings.externalFileOpenMode))
         workspaceOpenModePopup.addItems(withTitles: WorkspaceFileOpenPreferenceModel.titles(language: settings.displayLanguage))
         workspaceOpenModePopup.selectItem(at: WorkspaceFileOpenPreferenceModel.selectedIndex(opensInNewTab: settings.workspaceOpenInNewTab))
+        multiTabCheck.state = settings.multiTabEnabled ? .on : .off
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
@@ -243,7 +245,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         imageDirectoryField.bezelStyle = .roundedBezel
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
-            autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
+            multiTabCheck, autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
                       blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
             visualCjkAutoSpacingCheck,
             autoHideScrollbarsCheck, followSystemCheck, codeHighlightCheck, associateMDCheck, associateTextCheck,
@@ -278,7 +280,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         )
 
         // 绑定
-        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceOpenModePopup, multiTabCheck, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, visualCjkAutoSpacingCheck, topMostCheck, autoHideScrollbarsCheck,
@@ -487,6 +489,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     private func editorPage() -> NSView {
+        let centersMultiTab = PreferencesWindowLayout.editorCentersMultiTabCheckbox(for: displayLanguage)
+        let centersBlockHandle = PreferencesWindowLayout.editorCentersBlockHandleCheckbox(for: displayLanguage)
+        var editorCenteredCheckboxes: Set<NSButton> = []
+        if centersMultiTab { editorCenteredCheckboxes.insert(multiTabCheck) }
+        if centersBlockHandle { editorCenteredCheckboxes.insert(blockHandleCheck) }
         let primaryLabelWidth = ceil((L10n.t("基础行高") as NSString).size(
             withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
         ).width)
@@ -498,6 +505,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             )
             : nil
         return formPage(rows: [
+            .header(L10n.t("文档与标签")),
+            .field("", multiTabCheck),
             .header(L10n.t("可视化")),
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
@@ -512,7 +521,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", ctrlWheelZoomCheck),
             .centeredHint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。")),
         ], labeledFieldLeadingInset: labeledFieldLeadingInset,
-           intrinsicallyCenteredCheckboxes: displayLanguage == "zh-Hans" ? [blockHandleCheck] : [])
+           intrinsicallyCenteredCheckboxes: editorCenteredCheckboxes)
     }
 
     private func appearancePage() -> NSView {
@@ -612,6 +621,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.workspaceOpenInNewTab = WorkspaceFileOpenPreferenceModel.opensInNewTab(
             at: workspaceOpenModePopup.indexOfSelectedItem
         )
+        settings.multiTabEnabled = multiTabCheck.state == .on
         settings.snapshotIntervalSeconds = Int(snapshotIntervalField.stringValue) ?? 30
         settings.defaultEncoding = DocumentEncodingPolicy.defaultEncoding(
             rawValue: defaultEncodingPopup.titleOfSelectedItem ?? DocumentEncodingPolicy.utf8.rawValue

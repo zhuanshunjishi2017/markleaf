@@ -42,7 +42,7 @@ extension EditorSession {
                         if !selection.html.isEmpty {
                             pasteboard.setString(selection.html, forType: .html)
                         }
-                        self.statusText = L10n.t("已复制 HTML 源码")
+                        self.statusText = L10n.t("已复制 HTML")
                     } else {
                         self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
                     }

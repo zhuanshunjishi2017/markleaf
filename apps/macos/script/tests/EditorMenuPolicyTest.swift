@@ -46,6 +46,39 @@ expect(!EditorMenuPolicy.isEnabled(command: "paste", hasSelection: true, clipboa
        "paste should be disabled in read-only documents")
 expect(EditorMenuPolicy.isEnabled(command: "selectAll", hasSelection: false, clipboardHasContent: false, isReadOnly: true),
        "select all should stay available in read-only documents")
+expect(EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: false,
+    isReadOnly: false
+), "copy HTML should be available for selected Markdown in visual mode")
+expect(EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: false,
+    isReadOnly: true
+), "copy HTML should remain available for selected read-only documents")
+expect(!EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: false,
+    isSourceMode: false,
+    isReadOnly: false
+), "copy HTML should require a selection")
+expect(!EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: true,
+    isReadOnly: false
+), "copy HTML must be disabled in source mode")
+
+expect(EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: false, isPlainText: false
+), "editor focus and typewriter modes should be available in editable visual Markdown")
+expect(EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: true, isReadOnly: false, isPlainText: false
+), "editor modes may switch in source mode even though their visual behavior is disabled")
+expect(!EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: true, isPlainText: false
+), "editor modes must be disabled in read-only documents")
+expect(!EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: false, isPlainText: true
+), "editor modes must be disabled for plain-text documents")
 
 final class MenuActionTarget: NSObject {
     @objc func performAction(_ sender: NSMenuItem) {}

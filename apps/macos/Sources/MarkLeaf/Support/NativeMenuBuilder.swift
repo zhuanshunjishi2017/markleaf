@@ -95,7 +95,7 @@ final class NativeMenuBuilder {
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
-        copyAs.addItem(commandItem(L10n.t("HTML 源码"), "copyHtml"))
+        copyAs.addItem(commandItem(L10n.t("HTML"), "copyHtml"))
         let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true)
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
@@ -159,11 +159,11 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         let alerts = NSMenu(title: L10n.t("提示框"))
-        alerts.addItem(commandItem(L10n.t("Note"), "insertAlertNote"))
-        alerts.addItem(commandItem(L10n.t("Tip"), "insertAlertTip"))
-        alerts.addItem(commandItem(L10n.t("Important"), "insertAlertImportant"))
-        alerts.addItem(commandItem(L10n.t("Warning"), "insertAlertWarning"))
-        alerts.addItem(commandItem(L10n.t("Caution"), "insertAlertCaution"))
+        alerts.addItem(commandItem(L10n.t("备注"), "insertAlertNote"))
+        alerts.addItem(commandItem(L10n.t("提示"), "insertAlertTip"))
+        alerts.addItem(commandItem(L10n.t("重要"), "insertAlertImportant"))
+        alerts.addItem(commandItem(L10n.t("警告"), "insertAlertWarning"))
+        alerts.addItem(commandItem(L10n.t("注意"), "insertAlertCaution"))
         menu.addItem(popup(L10n.t("提示框"), alerts, requiresDocument: true))
         let lists = NSMenu(title: L10n.t("列表"))
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
@@ -174,7 +174,7 @@ final class NativeMenuBuilder {
         lists.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
         menu.addItem(popup(L10n.t("列表"), lists))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("前置元数据"), "showFrontMatter"))
+        menu.addItem(commandItem(L10n.t("YAML 前置元数据"), "showFrontMatter"))
         return menu
     }
 
@@ -242,7 +242,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("编辑器专注模式"), "toggleEditorFocusMode"))
         menu.addItem(commandItem(L10n.t("打字机模式"), "toggleTypewriterMode"))
         menu.addItem(commandItem(
-            L10n.t("专注模式"),
+            L10n.t("最简模式"),
             "toggleFocusMode",
             key: "f",
             mask: [.command, .shift]
@@ -502,8 +502,18 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleEditorFocusMode":
             menuItem.state = s?.isEditorFocusMode == true ? .on : .off
+            return EditorMenuPolicy.isEditorModeCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
+            )
         case "toggleTypewriterMode":
             menuItem.state = s?.isTypewriterMode == true ? .on : .off
+            return EditorMenuPolicy.isEditorModeCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
+            )
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "toggleCodeHighlight":
@@ -547,7 +557,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
-        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "copyHtml", "paste", "pastePlainText":
+        case "copyHtml":
+            return EditorMenuPolicy.isCopyHtmlEnabled(
+                hasSelection: s?.hasSelection ?? false,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
+        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
             return EditorMenuPolicy.isEnabled(
                 command: command,
                 hasSelection: s?.hasSelection ?? false,
@@ -586,7 +602,11 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                   let nativeCommand = EditorMenuPolicy.nativeCommand(for: command) else { return false }
             return EditorMenuPolicy.allows(nativeCommand, state: state)
         case "setMathNumber":
-            return s?.mathBlock == true && s?.isSourceMode == false && s?.isReadOnly == false
+            return EditorMenuPolicy.isMathNumberCommandEnabled(
+                mathBlock: s?.mathBlock == true,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
         default: break
         }
         return true

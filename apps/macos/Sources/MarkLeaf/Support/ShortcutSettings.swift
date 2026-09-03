@@ -66,7 +66,7 @@ enum ShortcutCatalog {
         ShortcutEntry(command: "toggleEditorFocusMode", titleKey: "编辑器专注模式", defaultKey: "\u{F708}", defaultMask: []),
         ShortcutEntry(command: "toggleTypewriterMode", titleKey: "打字机模式", defaultKey: "\u{F709}", defaultMask: []),
         ShortcutEntry(command: "sourceMode", titleKey: "源码模式", defaultKey: "u", defaultMask: [.command, .option]),
-        ShortcutEntry(command: "toggleFocusMode", titleKey: "专注模式", defaultKey: "f", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "toggleFocusMode", titleKey: "最简模式", defaultKey: "f", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "zoomIn", titleKey: "放大", defaultKey: "=", defaultMask: [.command]),
         ShortcutEntry(command: "zoomOut", titleKey: "缩小", defaultKey: "-", defaultMask: [.command]),
         ShortcutEntry(command: "resetZoom", titleKey: "重置为100%", defaultKey: "0", defaultMask: [.command]),

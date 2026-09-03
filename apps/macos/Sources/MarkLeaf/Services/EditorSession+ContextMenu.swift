@@ -471,7 +471,7 @@ extension EditorSession {
         let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
         markdown.isEnabled = canCopyAs
         copyAsMenu.addItem(markdown)
-        let html = menuItem(L10n.t("HTML 源码"), #selector(handleCommand(_:)))
+        let html = menuItem(L10n.t("HTML"), #selector(handleCommand(_:)))
         html.representedObject = "copyHtml"
         html.isEnabled = canCopyAs && !isSourceMode
         copyAsMenu.addItem(html)

@@ -10,6 +10,7 @@ enum TabContextAction {
 /// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
 /// 单击激活；关闭按钮关闭；完整路径走悬停提示；支持拖拽重排、溢出菜单与横向滚动。
 final class TabBarController: NSView {
+    static let preferredHeight: CGFloat = 32
     var onActivate: ((DocumentTabID) -> Void)?
     var onClose: ((DocumentTabID) -> Void)?
     var onNewTab: (() -> Void)?
@@ -33,6 +34,7 @@ final class TabBarController: NSView {
     private var dragSourceIndex: Int?
     private var dragStartOffset = NSPoint.zero
     private var dragEventMonitor: Any?
+    private var heightConstraint: NSLayoutConstraint!
 
     init(tabStore: TabStore) {
         self.tabStore = tabStore
@@ -40,7 +42,8 @@ final class TabBarController: NSView {
         wantsLayer = true
         layer?.masksToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
-        heightAnchor.constraint(equalToConstant: 32).isActive = true
+        heightConstraint = heightAnchor.constraint(equalToConstant: Self.preferredHeight)
+        heightConstraint.isActive = true
 
         stack.orientation = .horizontal
         stack.alignment = .centerY
@@ -166,6 +169,32 @@ final class TabBarController: NSView {
             removed: removedCells,
             generation: generation
         )
+    }
+
+    /// 切换标签栏可见性时同步动画高度与透明度，编辑区跟随约束平滑上移/下移。
+    func setVisible(_ visible: Bool, animated: Bool, completion: (() -> Void)? = nil) {
+        let targetHeight: CGFloat = visible ? Self.preferredHeight : 0
+        let targetAlpha: CGFloat = visible ? 1 : 0
+        guard animated, !reduceMotion else {
+            heightConstraint.constant = targetHeight
+            alphaValue = targetAlpha
+            isHidden = !visible
+            completion?()
+            return
+        }
+
+        isHidden = false
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.24
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            heightConstraint.animator().constant = targetHeight
+            self.animator().alphaValue = targetAlpha
+        }, completionHandler: {
+            self.heightConstraint.constant = targetHeight
+            self.alphaValue = targetAlpha
+            self.isHidden = !visible
+            completion?()
+        })
     }
 
     private func animateTabChanges(

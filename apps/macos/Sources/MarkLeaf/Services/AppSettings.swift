@@ -9,12 +9,6 @@ enum CJKLanguageTag: String, Codable, CaseIterable {
 
 /// 应用设置：镜像 C# AppSettings 的核心子集，JSON 持久化到
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
-enum ExternalFileOpenMode: String, Codable, CaseIterable {
-    case newWindow
-    case newTab
-    case currentWindow
-}
-
 /// 状态栏命令反馈显示模式（对应 Windows StatusBarCommandDisplayMode）。
 enum StatusBarCommandDisplayMode: String, Codable, CaseIterable {
     case always
@@ -139,6 +133,7 @@ struct AppSettings: Codable {
             Bool.self,
             forKey: .workspaceOpenInNewTab
         ) ?? true
+        multiTabEnabled = try container.decodeIfPresent(Bool.self, forKey: .multiTabEnabled) ?? true
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
@@ -229,6 +224,8 @@ struct AppSettings: Codable {
     var externalFileOpenMode = ExternalFileOpenMode.newWindow
     /// 工作区文件默认在新标签页中打开；关闭后在当前标签中替换文档。
     var workspaceOpenInNewTab = true
+    /// 多标签页默认启用；关闭后窗口退化为单文档模式。
+    var multiTabEnabled = true
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue

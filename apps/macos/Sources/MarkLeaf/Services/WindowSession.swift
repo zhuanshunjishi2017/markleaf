@@ -43,7 +43,10 @@ final class WindowSession {
     func openWorkspaceDocument(_ url: URL) {
         let route = WorkspaceOpenRoutingPolicy.route(
             hasActiveTab: activeTabSession != nil,
-            prefersNewTab: SettingsService.shared.settings.workspaceOpenInNewTab
+            prefersNewTab: MultiTabModePolicy.workspacePrefersNewTab(
+                workspacePreference: SettingsService.shared.settings.workspaceOpenInNewTab,
+                multiTabEnabled: SettingsService.shared.settings.multiTabEnabled
+            )
         )
         switch route {
         case .newTab:
