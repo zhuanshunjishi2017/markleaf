@@ -22,6 +22,10 @@ internal static class NativeMethods
     internal const uint TpmReturnCommand = 0x0100;
     internal const uint WmNull = 0x0000;
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool EndMenu();
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint CreateMenu();
 

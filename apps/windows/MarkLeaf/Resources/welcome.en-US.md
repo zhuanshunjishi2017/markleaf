@@ -167,7 +167,7 @@ Hover over a paragraph and you will see a small rectangular button near its uppe
 
 ### Minimal mode
 
-Press `F11` to switch to Minimal Mode. In this mode, only the article itself is shown, without any other distractions, so you can focus your thoughts on writing. Press `F11` again or `Esc` to exit.
+Press `Shift+F11` to switch to Minimal Mode. In this mode, only the article itself is shown, without any other distractions, so you can focus your thoughts on writing. Press `Shift+F11` again or `Esc` to exit. Press `F11` to make the editor full screen; press `F11` again or `Esc` to leave full screen.
 
 ### Focus mode and typewriter mode
 

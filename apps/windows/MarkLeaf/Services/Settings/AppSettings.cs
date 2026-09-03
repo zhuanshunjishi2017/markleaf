@@ -17,14 +17,12 @@ public enum ClipboardImageHandling
 {
     SaveToDefaultDirectory,
     CopyToAssets,
-    Upload,
 }
 
 public enum FileImageHandling
 {
     ReferenceOriginal,
     CopyToAssets,
-    Upload,
 }
 
 public enum MenuBarStyle
@@ -32,6 +30,7 @@ public enum MenuBarStyle
     DarkThemeOnly,
     Always,
     System,
+    TabBar,
 }
 
 public enum CjkLanguageTag
@@ -278,6 +277,10 @@ public sealed class EditorSettings
 
     public bool AutoConvertUnsafeEmphasis { get; set; } = true;
 
+    public bool EscapeLiteralSymbols { get; set; }
+
+    public bool EscapeMarkdownLiteralSymbols { get; set; } = true;
+
     public string MarkdownCodeFence { get; set; } = "backtick";
 
     public string MarkdownEmphasisMarker { get; set; } = "asterisk";
@@ -331,9 +334,20 @@ public sealed class WorkspaceSettings
 
     public bool LastFileReadOnly { get; set; }
 
+    public List<OpenDocumentSetting> OpenDocuments { get; set; } = [];
+
+    public int ActiveDocumentIndex { get; set; } = -1;
+
     public List<string> RecentFolders { get; set; } = [];
 
     public List<string> RecentFiles { get; set; } = [];
+}
+
+public sealed class OpenDocumentSetting
+{
+    public string Path { get; set; } = string.Empty;
+
+    public bool ReadOnly { get; set; }
 }
 
 public sealed class WindowSettings

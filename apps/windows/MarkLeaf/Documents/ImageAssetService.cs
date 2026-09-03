@@ -499,11 +499,17 @@ public sealed partial class ImageAssetService
         var docDir = Path.GetDirectoryName(Path.GetFullPath(documentPath));
         if (docDir is null) return null;
 
-        var relative = Path.GetRelativePath(docDir, absolutePhysicalPath);
-        if (relative.StartsWith('.') && relative != ".") return null; // can't go above doc dir
+        var relative = Path.GetRelativePath(docDir, Path.GetFullPath(absolutePhysicalPath));
+        if (Path.IsPathFullyQualified(relative)) return null;
         if (relative == ".") return null;
+        if (relative.Equals("..", StringComparison.Ordinal)
+            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            return null;
+        }
 
-        var markdownPath = relative.Replace('\\', '/');
+        var markdownPath = EncodeMarkdownPathSpaces(relative.Replace('\\', '/'));
         if (prefixDotSlash) markdownPath = "./" + markdownPath;
         return markdownPath;
     }
@@ -511,12 +517,11 @@ public sealed partial class ImageAssetService
     public static string ToMarkdownPath(string path)
     {
         var fullPath = Path.GetFullPath(path).Replace('\\', '/');
-        return string.Join(
-            "/",
-            fullPath.Split('/').Select(segment => segment.EndsWith(':')
-                ? segment
-                : Uri.EscapeDataString(segment)));
+        return EncodeMarkdownPathSpaces(fullPath);
     }
+
+    private static string EncodeMarkdownPathSpaces(string path)
+        => path.Replace(" ", "%20", StringComparison.Ordinal);
 
     public static bool IsSupportedImagePath(string path)
     {
@@ -596,7 +601,10 @@ public sealed partial class ImageAssetService
         }
     }
 
-    [GeneratedRegex("""!\[[^\]]*\]\(\s*(?:<(?<path>[^>]+)>|(?<path>[^\s)]+))""")]
+    // Accept spaces in the common unbracketed destination as well as in the
+    // angle-bracket form. The optional title is matched as a whole so a
+    // filename such as "my photo.png" is not truncated at its first space.
+    [GeneratedRegex("""!\[[^\]]*\]\(\s*(?:<(?<path>[^>]+)>|(?<path>[^)\r\n]+?))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)""")]
     private static partial Regex MarkdownImageReference();
 }
 

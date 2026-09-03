@@ -377,7 +377,7 @@ internal sealed class WorkspaceTreeView : Control
             }
             var iconAdvance = this.ScaleForDpi(18);
             var iconBounds = new Rectangle(expanderBounds.Right, bounds.Top, iconAdvance, bounds.Height);
-            DrawText(eventArgs.Graphics, GetIconChar(node), iconBounds, _icon, _iconFont);
+            DrawIcon(eventArgs.Graphics, GetIconChar(node), iconBounds, _icon);
             var textBounds = new Rectangle(
                 iconBounds.Right,
                 bounds.Top,
@@ -880,14 +880,30 @@ internal sealed class WorkspaceTreeView : Control
 
     private void DrawExpander(Graphics graphics, Rectangle bounds, bool expanded)
     {
+        var drawBounds = bounds;
+        drawBounds.Inflate(this.ScaleForDpi(1), this.ScaleForDpi(1));
         TextRenderer.DrawText(
             graphics,
             expanded ? SystemIconProvider.DownArrow : SystemIconProvider.RightArrow,
             _arrowFont,
-            bounds,
+            drawBounds,
             _iconSecondary,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
-                | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+    }
+
+    private void DrawIcon(Graphics graphics, string text, Rectangle bounds, Color color)
+    {
+        var drawBounds = bounds;
+        drawBounds.Inflate(this.ScaleForDpi(1), this.ScaleForDpi(1));
+        TextRenderer.DrawText(
+            graphics,
+            text,
+            _iconFont,
+            drawBounds,
+            color,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
     }
 
     private void DrawText(Graphics graphics, string text, Rectangle bounds, Color color, Font? font = null)

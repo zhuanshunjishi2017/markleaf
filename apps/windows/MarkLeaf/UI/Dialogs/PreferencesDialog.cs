@@ -61,6 +61,8 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualMaxWidth;
     private readonly CheckBox _visualCjkAutoSpacingCheck;
     private readonly CheckBox _autoConvertUnsafeEmphasisOnNormalizeCheck;
+    private readonly CheckBox _escapeLiteralSymbolsCheck;
+    private readonly CheckBox _escapeMarkdownLiteralSymbolsCheck;
     private readonly RadioButton _unsafeEmphasisPromptRadio;
     private readonly RadioButton _unsafeEmphasisLiteralRadio;
     private readonly RadioButton _unsafeEmphasisAutoConvertRadio;
@@ -160,10 +162,6 @@ internal sealed class PreferencesDialog : Form
 
     private static readonly string[] StartupActionItems = [];
 
-    private static readonly string[] ClipboardImageHandlingItems = [];
-
-    private static readonly string[] FileImageHandlingItems = [];
-
     public PreferencesDialog(
         AppSettings settings,
         Action? onRecover = null,
@@ -217,6 +215,7 @@ internal sealed class PreferencesDialog : Form
         _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.darkOnly"));
         _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.alwaysOwnerDraw"));
         _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.system"));
+        _menuStyleCombo.Items.Add(Loc.Get("prefs.appearance.menuStyle.tabBar"));
 
         _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.newFile"));
         _startupAction.Items.Add(Loc.Get("prefs.file.startupAction.lastWorkspace"));
@@ -229,10 +228,8 @@ internal sealed class PreferencesDialog : Form
 
         _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.saveToDefault"));
         _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssets"));
-        _clipboardImageCombo.Items.Add(Loc.Get("prefs.images.clipboard.copyToAssetsUpload"));
         _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.referenceOriginal"));
         _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.copyToAssets"));
-        _fileImageCombo.Items.Add(Loc.Get("prefs.images.file.copyToAssetsUpload"));
 
         _useRelativePathsCheck = new CheckBox
         { Text = Loc.Get("prefs.images.useRelativePaths"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -270,6 +267,10 @@ internal sealed class PreferencesDialog : Form
         { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
         _autoConvertUnsafeEmphasisOnNormalizeCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.autoConvertUnsafeEmphasis.normalize"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _escapeLiteralSymbolsCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.markdown.escapeLiteralSymbols"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _escapeMarkdownLiteralSymbolsCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.markdown.escapeMarkdownLiteralSymbols"), AutoSize = true, FlatStyle = FlatStyle.System };
         _unsafeEmphasisPromptRadio = new RadioButton
         { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.prompt"), AutoSize = true, FlatStyle = FlatStyle.System };
         _unsafeEmphasisLiteralRadio = new RadioButton
@@ -401,7 +402,6 @@ internal sealed class PreferencesDialog : Form
             "MarkLeaf",
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
-
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
@@ -629,7 +629,7 @@ internal sealed class PreferencesDialog : Form
         markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         markdown.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        markdown.Controls.Add(NewLabel(Loc.Get("prefs.editor.markdown.asterisk.label")), 0, 0);
+        markdown.Controls.Add(NewLabel(Loc.Get("prefs.editor.markdown.symbolEscape.label")), 0, 0);
         markdown.Controls.Add(BuildMarkdownAsteriskPanel(), 1, 0);
         markdown.Controls.Add(Gap(), 0, 1);
         markdown.Controls.Add(Gap(), 1, 1);
@@ -732,6 +732,10 @@ internal sealed class PreferencesDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
         };
         panel.Controls.Add(_autoConvertUnsafeEmphasisOnNormalizeCheck, 0, 0);
+        panel.Controls.Add(Gap(), 0, 1);
+        panel.Controls.Add(_escapeLiteralSymbolsCheck, 0, 2);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(_escapeMarkdownLiteralSymbolsCheck, 0, 4);
         return panel;
     }
 
@@ -1265,6 +1269,8 @@ internal sealed class PreferencesDialog : Form
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
         _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked = editor.AutoConvertUnsafeEmphasis;
+        _escapeLiteralSymbolsCheck.Checked = editor.EscapeLiteralSymbols;
+        _escapeMarkdownLiteralSymbolsCheck.Checked = editor.EscapeMarkdownLiteralSymbols;
         _exitBlockOnEmptyEnterCheck.Checked = editor.ExitBlockOnEmptyEnter;
         _useShiftEnterHardBreakCheck.Checked = editor.UseShiftEnterHardBreak;
         _unsafeEmphasisPromptRadio.Checked = editor.UnsafeEmphasisPreference is null;
@@ -1415,6 +1421,8 @@ internal sealed class PreferencesDialog : Form
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
         editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked;
+        editor.EscapeLiteralSymbols = _escapeLiteralSymbolsCheck.Checked;
+        editor.EscapeMarkdownLiteralSymbols = _escapeMarkdownLiteralSymbolsCheck.Checked;
         editor.ExitBlockOnEmptyEnter = _exitBlockOnEmptyEnterCheck.Checked;
         editor.UseShiftEnterHardBreak = _useShiftEnterHardBreakCheck.Checked;
         editor.UnsafeEmphasisPreference = _unsafeEmphasisAutoConvertRadio.Checked

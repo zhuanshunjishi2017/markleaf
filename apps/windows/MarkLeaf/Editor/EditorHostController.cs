@@ -43,6 +43,7 @@ internal sealed class EditorHostController : IDisposable
     private string _lastDocumentMarkdown = string.Empty;
     private bool _lastDocumentReadOnly;
     private string? _lastDocumentType;
+    private string? _lastDocumentPath;
     private bool _replayDocumentAfterNavigation;
 
     public event EventHandler? Ready;
@@ -204,24 +205,36 @@ internal sealed class EditorHostController : IDisposable
         LoadDocument(Guid.NewGuid(), 0, markdown);
     }
 
-    public void LoadDocument(Guid documentId, long revision, string markdown, bool readOnly = false, string? documentType = null)
+    public void LoadDocument(
+        Guid documentId,
+        long revision,
+        string markdown,
+        bool readOnly = false,
+        string? documentType = null,
+        string? documentPath = null)
     {
         _lastDocumentId = documentId;
         _lastDocumentRevision = revision;
         _lastDocumentMarkdown = markdown;
         _lastDocumentReadOnly = readOnly;
         _lastDocumentType = documentType;
+        _lastDocumentPath = documentPath;
         EnqueueOrRun(() =>
         {
             _session.StartDocument(documentId, revision);
             _documentLoaded = false;
-            Post("loadDocument", new { markdown, readOnly, documentType });
+            Post("loadDocument", new { markdown, readOnly, documentType, documentPath });
         });
     }
 
     public void SetDocumentType(string documentType)
     {
         EnqueueOrRun(() => Post("setDocumentType", new { documentType }));
+    }
+
+    public void SetDocumentPath(string? documentPath)
+    {
+        _lastDocumentPath = documentPath;
     }
 
     public string RequestSnapshot()
@@ -330,6 +343,8 @@ internal sealed class EditorHostController : IDisposable
             codeFence = settings.MarkdownCodeFence,
             emphasisMarker = settings.MarkdownEmphasisMarker,
             bulletMarker = settings.MarkdownBulletMarker,
+            escapeLiteralSymbols = settings.EscapeLiteralSymbols,
+            escapeMarkdownLiteralSymbols = settings.EscapeMarkdownLiteralSymbols,
         });
         EnqueueOrRun(() => Post("command", new { command = "setMarkdownEditingSettings", text = payload }));
     }
@@ -1102,10 +1117,12 @@ internal sealed class EditorHostController : IDisposable
         var encodedPath = uri.Query.StartsWith("?path=", StringComparison.Ordinal)
             ? uri.Query[6..]
             : string.Empty;
-        string path;
+        string? path;
         try
         {
-            path = Path.GetFullPath(Uri.UnescapeDataString(encodedPath).Replace('/', Path.DirectorySeparatorChar));
+            path = ImageAssetService.ResolveLocalImagePath(
+                Uri.UnescapeDataString(encodedPath),
+                _lastDocumentPath);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
         {
@@ -1114,7 +1131,7 @@ internal sealed class EditorHostController : IDisposable
             return;
         }
 
-        if (!ImageAssetService.IsSupportedImagePath(path) || !File.Exists(path))
+        if (path is null || !ImageAssetService.IsSupportedImagePath(path) || !File.Exists(path))
         {
             eventArgs.Response = core.Environment.CreateWebResourceResponse(
                 Stream.Null, 404, "Not Found", "Content-Type: text/plain");
@@ -1432,6 +1449,7 @@ internal sealed class EditorHostController : IDisposable
                 markdown = _lastDocumentMarkdown,
                 readOnly = _lastDocumentReadOnly,
                 documentType = _lastDocumentType,
+                documentPath = _lastDocumentPath,
             });
         }
     }

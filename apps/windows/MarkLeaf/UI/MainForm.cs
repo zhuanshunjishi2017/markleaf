@@ -38,6 +38,7 @@ internal sealed partial class MainForm : Form
     private TableLayoutPanel _sidebarLayout = default!;
     private Panel _sidebarContentHost = default!;
     private Panel _editorPanel = default!;
+    private Panel _editorAreaPanel = default!;
     private Panel _workspaceContentPanel = default!;
     private EditorLoadingView _editorLoadingView = default!;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
@@ -52,6 +53,11 @@ internal sealed partial class MainForm : Form
     private FindReplaceDialog? _findReplaceDialog;
     private WebView2? _webView;
     private MarkdownDocument? _document;
+    private readonly DocumentTabBar _documentTabBar = new();
+    private readonly List<MarkdownDocument> _openDocuments = [];
+    private int _activeDocumentIndex = -1;
+    private bool _documentTabOperationInProgress;
+    private bool _documentTabCloseOperationInProgress;
     private FileSystemWatcher? _documentWatcher;
     private FileSystemWatcher? _workspaceWatcher;
     private readonly RecoveryService _recoveryService;
@@ -137,10 +143,15 @@ internal sealed partial class MainForm : Form
         GraphicsUnit.Point);
     private bool _menuDarkMode;
     private bool _focusMode;
+    private bool _editorFullScreen;
+    private FormWindowState _windowStateBeforeEditorFullScreen;
+    private Rectangle _boundsBeforeEditorFullScreen;
+    private FormBorderStyle _borderStyleBeforeEditorFullScreen;
     private bool _editorFocusMode;
     private bool _editorTypewriterMode;
     private bool _sidebarVisibleBeforeFocus = true;
     private bool _outlineDetachedBeforeFocus;
+    private bool _documentTabBarVisibleBeforeFocus;
     private bool _restoreDetachedOutlineAfterSidebarExpand;
     private bool _editorSmokeStarted;
     private bool _editorCommandSmokeStarted;
@@ -179,7 +190,9 @@ internal sealed partial class MainForm : Form
         _zoomPercent = NearestZoom(settings.Appearance.ZoomPercent);
         _settingsService = settingsService;
         _logger = logger;
-        if (string.IsNullOrWhiteSpace(_settings.Image.DefaultDirectory))
+        var legacyDefaultImageDirectory = Path.Combine(_paths.DataDirectory, "Cache");
+        if (string.IsNullOrWhiteSpace(_settings.Image.DefaultDirectory)
+            || PathEquals(_settings.Image.DefaultDirectory, legacyDefaultImageDirectory))
         {
             _settings.Image.DefaultDirectory = _paths.DefaultImageDirectory;
         }
@@ -214,7 +227,9 @@ internal sealed partial class MainForm : Form
             () => _settings.Appearance.FollowSystemColorMode,
             () => _settings.Appearance.ShowMenuKeyboardShortcuts,
             () => _settings.Appearance.ShowMenuMnemonics,
-            () => _settings.General.UiLanguage);
+            () => _settings.General.UiLanguage,
+            () => _openDocuments.Select(document => document.DisplayName).ToArray(),
+            () => _activeDocumentIndex);
         _shortcutManager.Changed += () =>
         {
             _menuService.RebuildMenu();
@@ -235,6 +250,16 @@ internal sealed partial class MainForm : Form
         _outlineTree.ConfigureTypography(_effectiveDpi);
         _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
         _workspaceTree.ConfigureTypography(_effectiveDpi);
+        _documentTabBar.ConfigureTypography(_effectiveDpi);
+        _documentTabBar.TabSelected += async (_, index) => await SwitchDocumentTabAsync(index);
+        _documentTabBar.TabCloseRequested += async (_, index) => await CloseDocumentTabAsync(index);
+        _documentTabBar.TabContextRequested += (_, request) => ShowDocumentTabContextMenu(request.Index, request.ScreenLocation);
+        _documentTabBar.TabsReordered += (_, documents) => ReorderOpenDocuments(documents);
+        _documentTabBar.TabDetached += (_, request) => DetachDocumentToNewWindow(request.Index, request.ScreenLocation);
+        _documentTabBar.FullScreenMenuRequested += (_, location) => ShowFullScreenMainMenu(location);
+        _documentTabBar.TopLevelMenuRequested += (_, request) =>
+            ShowTopLevelMainMenu(request.MenuIndex, request.ScreenLocation);
+        _documentTabBar.NewDocumentRequested += (_, _) => _ = NewDocumentAsync(NewDocumentKind.Markdown);
 
         Text = "MarkLeaf";
         ShowIcon = true;
@@ -262,6 +287,23 @@ internal sealed partial class MainForm : Form
                     screen.WorkingArea.Height))
                 .ToArray());
 
+        // A detached document is a standalone window. Do not restore the
+        // source window's workspace or sidebar state in the new process.
+        if (_options.DocumentStatePath is not null)
+        {
+            placement.SidebarCollapsed = true;
+            placement.OutlineDetached = false;
+            placement.IsMaximized = false;
+            if (_options.InitialWindowLeft is { } left)
+                placement.Left = left;
+            if (_options.InitialWindowTop is { } top)
+                placement.Top = top;
+            if (_options.InitialWindowWidth is { } width)
+                placement.Width = width;
+            if (_options.InitialWindowHeight is { } height)
+                placement.Height = height;
+        }
+
         if (placement.SidebarCollapsed)
         {
             MinimumSize = new Size(
@@ -282,8 +324,9 @@ internal sealed partial class MainForm : Form
         {
             DetachOutlineSidebar(resizeWindow: false);
         }
-        if (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
-            || !Directory.Exists(settings.Workspace.LastFolder))
+        if (_options.DocumentStatePath is null
+            && (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
+            || !Directory.Exists(settings.Workspace.LastFolder)))
         {
             if (!_sidebarSplit.Panel1Collapsed)
                 ShowNoWorkspacePlaceholder();
@@ -298,8 +341,6 @@ internal sealed partial class MainForm : Form
         Deactivate += (_, _) =>
         {
             _editorHost?.SetWindowActive(false);
-            _sidebarSearchBar.DismissFocusVisual();
-            _detachedOutlineSearchBar.DismissFocusVisual();
         };
         FormClosing += OnMainFormClosing;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
@@ -319,6 +360,7 @@ internal sealed partial class MainForm : Form
             _workspaceTree.ConfigureTypography(_effectiveDpi);
             _workspaceDocumentList.ConfigureTypography(_effectiveDpi);
             _outlineTree.ConfigureTypography(_effectiveDpi);
+            _documentTabBar.ConfigureTypography(_effectiveDpi);
             _searchResultsView.ConfigureTypography(_effectiveDpi);
         };
     }
@@ -326,7 +368,7 @@ internal sealed partial class MainForm : Form
     protected override void OnHandleCreated(EventArgs eventArgs)
     {
         base.OnHandleCreated(eventArgs);
-        _menuService.Attach(Handle);
+        ApplyMenuPresentation();
     }
 
     protected override void OnHandleDestroyed(EventArgs eventArgs)
@@ -387,6 +429,12 @@ internal sealed partial class MainForm : Form
                 {
                     SetColorTheme(colorThemeId);
                 }
+                return;
+            }
+
+            if (_menuService.TryGetDocumentTabByCommandId((uint)commandId, out var documentTabIndex))
+            {
+                _ = SwitchDocumentTabAsync(documentTabIndex);
                 return;
             }
 
@@ -463,6 +511,11 @@ internal sealed partial class MainForm : Form
             _ = CheckForUpdatesAsync(silent: true);
         }
 
+        if (_options.DocumentStatePath is not null)
+        {
+            ShowNoWorkspacePlaceholder();
+        }
+
         if (!string.IsNullOrWhiteSpace(_options.SmokeCommand))
         {
             BeginInvoke(RunSmokeCommand);
@@ -484,6 +537,12 @@ internal sealed partial class MainForm : Form
 
     private async Task InitializeStartupContentAsync()
     {
+        if (!string.IsNullOrWhiteSpace(_options.DocumentStatePath)
+            && File.Exists(_options.DocumentStatePath))
+        {
+            await OpenTransferredDocumentAsync(_options.DocumentStatePath);
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(_options.InitialDocumentPath))
         {
             _initialDocumentOpened = true;
@@ -502,11 +561,25 @@ internal sealed partial class MainForm : Form
         }
 
         if (_settings.File.StartupAction == StartupAction.OpenLastWorkspaceAndFiles
-            && !string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)
-            && File.Exists(_settings.Workspace.LastFile)
             && !_initialDocumentOpened)
         {
-            await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
+            foreach (var item in _settings.Workspace.OpenDocuments
+                .Where(item => !string.IsNullOrWhiteSpace(item.Path) && File.Exists(item.Path)))
+            {
+                await OpenDocumentPathAsync(item.Path, readOnly: item.ReadOnly);
+            }
+
+            if (_openDocuments.Count > 0)
+            {
+                var activeIndex = Math.Clamp(_settings.Workspace.ActiveDocumentIndex, 0, _openDocuments.Count - 1);
+                _activeDocumentIndex = -1;
+                await SwitchDocumentTabAsync(activeIndex);
+            }
+            else if (!string.IsNullOrWhiteSpace(_settings.Workspace.LastFile)
+                && File.Exists(_settings.Workspace.LastFile))
+            {
+                await OpenDocumentPathAsync(_settings.Workspace.LastFile, readOnly: _settings.Workspace.LastFileReadOnly);
+            }
         }
 
     }

@@ -12,7 +12,6 @@ public static class ShortcutCatalog
     public static readonly Entry[] Entries =
     [
         new(AppCommand.NewDocument, "shortcut.new", Keys.Control | Keys.N),
-        new(AppCommand.NewPlainTextDocument, "shortcut.newText", Keys.Control | Keys.Alt | Keys.N),
         new(AppCommand.OpenDocument, "shortcut.open", Keys.Control | Keys.O),
         new(AppCommand.SaveDocument, "shortcut.save", Keys.Control | Keys.S),
         new(AppCommand.SaveDocumentAs, "shortcut.saveAs", Keys.Control | Keys.Shift | Keys.S),
@@ -67,7 +66,20 @@ public static class ShortcutCatalog
         new(AppCommand.InsertFootnote, "shortcut.insertFootnote", Keys.Control | Keys.Shift | Keys.F),
         new(AppCommand.PromoteHeading, "shortcut.promoteHeading", Keys.Control | Keys.OemPeriod),
         new(AppCommand.DemoteHeading, "shortcut.demoteHeading", Keys.Control | Keys.Oemcomma),
-        new(AppCommand.ToggleFocusMode, "shortcut.toggleFocusMode", Keys.F11),
+        new(AppCommand.ToggleFocusMode, "shortcut.toggleFocusMode", Keys.Shift | Keys.F11),
+        new(AppCommand.ToggleEditorFullScreen, "shortcut.toggleEditorFullScreen", Keys.F11),
+        new(AppCommand.SwitchDocumentTab1, "shortcut.switchDocumentTab1", Keys.Alt | Keys.D1),
+        new(AppCommand.SwitchDocumentTab2, "shortcut.switchDocumentTab2", Keys.Alt | Keys.D2),
+        new(AppCommand.SwitchDocumentTab3, "shortcut.switchDocumentTab3", Keys.Alt | Keys.D3),
+        new(AppCommand.SwitchDocumentTab4, "shortcut.switchDocumentTab4", Keys.Alt | Keys.D4),
+        new(AppCommand.SwitchDocumentTab5, "shortcut.switchDocumentTab5", Keys.Alt | Keys.D5),
+        new(AppCommand.SwitchDocumentTab6, "shortcut.switchDocumentTab6", Keys.Alt | Keys.D6),
+        new(AppCommand.SwitchDocumentTab7, "shortcut.switchDocumentTab7", Keys.Alt | Keys.D7),
+        new(AppCommand.SwitchDocumentTab8, "shortcut.switchDocumentTab8", Keys.Alt | Keys.D8),
+        new(AppCommand.SwitchDocumentTab9, "shortcut.switchDocumentTab9", Keys.Alt | Keys.D9),
+        new(AppCommand.SwitchToNextDocumentTab, "shortcut.switchToNextDocumentTab", Keys.Control | Keys.Tab),
+        new(AppCommand.CloseCurrentDocumentTab, "shortcut.closeCurrentDocumentTab", Keys.Control | Keys.W),
+        new(AppCommand.CloseOtherDocumentTabs, "shortcut.closeOtherDocumentTabs", Keys.Control | Keys.Shift | Keys.W),
     ];
 
     public static Entry? Find(AppCommand command)

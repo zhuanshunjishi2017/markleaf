@@ -95,9 +95,12 @@ public sealed class JsonSettingsService : ISettingsService
         window.OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(window.OutlineWidth, window.Dpi);
         settings.MainWindow = window;
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
+        NormalizeShortcuts(settings.Shortcut);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -105,9 +108,12 @@ public sealed class JsonSettingsService : ISettingsService
     private static AppSettings MigrateVersion2(AppSettings settings)
     {
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
+        NormalizeShortcuts(settings.Shortcut);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -118,6 +124,7 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Workspace ??= new WorkspaceSettings();
         settings.Workspace.RecentFolders ??= [];
         settings.Workspace.RecentFiles ??= [];
+        settings.Workspace.OpenDocuments ??= [];
         settings.File ??= new FileSettings();
         settings.Editor ??= new EditorSettings();
         NormalizeEditor(settings.Editor);
@@ -126,12 +133,33 @@ public sealed class JsonSettingsService : ISettingsService
         NormalizeStatusBar(settings.Appearance.StatusBar);
         settings.General ??= new GeneralSettings();
         settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
         settings.Shortcut.Overrides ??= [];
         settings.Shortcut.Cleared ??= [];
+        NormalizeShortcuts(settings.Shortcut);
         return settings;
+    }
+
+    private static void NormalizeShortcuts(ShortcutSettings shortcuts)
+    {
+        shortcuts.Overrides ??= [];
+        shortcuts.Cleared ??= [];
+        if (shortcuts.Overrides.TryGetValue(nameof(Commands.AppCommand.ToggleFocusMode), out var shortcut)
+            && string.Equals(shortcut, "F11", StringComparison.OrdinalIgnoreCase))
+        {
+            shortcuts.Overrides[nameof(Commands.AppCommand.ToggleFocusMode)] = "Shift+F11";
+        }
+    }
+
+    private static void NormalizeImage(ImageSettings image)
+    {
+        if (!Enum.IsDefined(image.ClipboardHandling))
+            image.ClipboardHandling = ClipboardImageHandling.SaveToDefaultDirectory;
+        if (!Enum.IsDefined(image.FileHandling))
+            image.FileHandling = FileImageHandling.ReferenceOriginal;
     }
 
     private static void NormalizeEditor(EditorSettings editor)

@@ -70,7 +70,7 @@ internal sealed partial class MainForm
         _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
         ApplySidebarAutoHideScrollbar();
         RefreshPersistentStatusBar();
-        _menuService.RebuildMenu();
+        ApplyMenuPresentation();
 
         // 仅在文件关联设置实际变化时才修改注册表。
         if (_settings.General.AssociateMarkdownFiles != previousAssociateMarkdown
@@ -105,7 +105,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "changelog.md");
+        var cachePath = Path.Combine(_paths.DataDirectory, "Cache", "changelog.md");
         try
         {
             File.Copy(changelogPath, cachePath, overwrite: true);
@@ -145,7 +145,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        var cachePath = Path.Combine(_paths.DefaultImageDirectory, "welcome.md");
+        var cachePath = Path.Combine(_paths.DataDirectory, "Cache", "welcome.md");
         try
         {
             File.Copy(welcomePath, cachePath, overwrite: true);
@@ -1081,11 +1081,7 @@ internal sealed partial class MainForm
 
             StopWatchingDocument();
             var opened = await _documentFileService.OpenAsync(targetPath);
-            _document = opened;
-            _workspaceTree.SelectedPath = opened.FilePath;
-            _workspaceDocumentList.SelectedPath = opened.FilePath;
-            LoadDocumentIntoEditor(opened);
-            StartWatchingDocument(opened.FilePath!);
+            await AddAndActivateDocumentAsync(opened);
             _logger.Info($"Recovery snapshot saved and opened: {targetPath}.");
             SetStatus(Loc.Get("status.recoveredUnsaved"));
         }

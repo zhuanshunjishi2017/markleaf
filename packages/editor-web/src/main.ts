@@ -1084,6 +1084,7 @@ const formatButtons: Array<{ command: string; glyph: string; label: string }> = 
   { command: 'toggleBold', glyph: '', label: 'Bold' },
   { command: 'toggleItalic', glyph: '', label: 'Italic' },
   { command: 'toggleUnderline', glyph: '', label: 'Underline' },
+  { command: 'toggleStrike', glyph: '\uEDE0', label: 'Strikethrough' },
   { command: 'toggleHighlight', glyph: '\uE7E6', label: 'Text highlight' },
 ]
 const formatButtonElements: HTMLButtonElement[] = []
@@ -1100,7 +1101,18 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     if (sourceMode) {
       return
     }
-    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline' || command === 'toggleHighlight'
+    if (command === 'formatPainter') {
+      if (contextMenuSelection) editor.commands.setTextSelection(contextMenuSelection)
+      if (formatPainter.isArmed) formatPainter.cancel()
+      else formatPainter.arm(editor)
+      contextMenuSelection = null
+      updateFormatPainterCursor()
+      hideFormatMenu()
+      sendEditorState()
+      return
+    }
+    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline'
+      || command === 'toggleStrike' || command === 'toggleHighlight'
     executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
     hideFormatMenu()
     sendEditorState()
@@ -1142,6 +1154,16 @@ const headingButtonElements = [promoteHeadingButton, demoteHeadingButton]
 const clearFormatSeparator = document.createElement('div')
 clearFormatSeparator.className = 'format-menu-separator'
 formatMenu.appendChild(clearFormatSeparator)
+
+const formatPainterButton = document.createElement('button')
+formatPainterButton.type = 'button'
+formatPainterButton.className = 'format-menu-button'
+formatPainterButton.dataset.command = 'formatPainter'
+formatPainterButton.textContent = '\uEC34'
+formatPainterButton.setAttribute('aria-label', 'Format painter')
+formatPainterButton.title = 'Format painter'
+attachFormatCommand(formatPainterButton, 'formatPainter')
+formatMenu.appendChild(formatPainterButton)
 
 const clearFormatButton = document.createElement('button')
 clearFormatButton.type = 'button'
@@ -1206,6 +1228,7 @@ function showFormatMenu(
     toggleBold: state.bold,
     toggleItalic: state.italic,
     toggleUnderline: state.underline,
+    toggleStrike: state.strike,
     toggleHighlight: state.highlight,
   }
   for (const button of formatButtonElements) {
@@ -2037,6 +2060,7 @@ function renderEditorHtmlForExport(
   preserveEmptyParagraphs = false,
   keepTablesTogether = false,
   keepHeadingsWithNextBlock = false,
+  visualCjkAutoSpacing = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
@@ -2092,7 +2116,56 @@ function renderEditorHtmlForExport(
     }
   }
 
+  if (visualCjkAutoSpacing) {
+    applyCjkAutoSpacingToExport(parsed)
+  }
+
   return parsed.body.innerHTML.replace(/\u2060/g, '')
+}
+
+function applyCjkAutoSpacingToExport(parsed: Document): void {
+  const textNodes: Text[] = []
+  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    if (walker.currentNode instanceof Text) textNodes.push(walker.currentNode)
+  }
+
+  for (const textNode of textNodes) {
+    const parent = textNode.parentElement
+    if (!parent || parent.closest('pre, code, .katex, .markleaf-mermaid')) continue
+    const text = textNode.data
+    const boundaries: number[] = []
+    for (let index = 1; index < text.length; index += 1) {
+      const previous = text[index - 1]!
+      const current = text[index]!
+      if ((isCjkAutoSpacingCharacter(previous) && isWesternAutoSpacingCharacter(current))
+        || (isWesternAutoSpacingCharacter(previous) && isCjkAutoSpacingCharacter(current))) {
+        boundaries.push(index)
+      }
+    }
+    if (boundaries.length === 0) continue
+
+    const fragment = parsed.createDocumentFragment()
+    let start = 0
+    for (const boundary of boundaries) {
+      fragment.append(parsed.createTextNode(text.slice(start, boundary)))
+      const spacer = parsed.createElement('span')
+      spacer.className = 'markleaf-cjk-autospace-widget'
+      spacer.setAttribute('aria-hidden', 'true')
+      fragment.append(spacer)
+      start = boundary
+    }
+    fragment.append(parsed.createTextNode(text.slice(start)))
+    textNode.replaceWith(fragment)
+  }
+}
+
+function isCjkAutoSpacingCharacter(character: string): boolean {
+  return /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
+}
+
+function isWesternAutoSpacingCharacter(character: string): boolean {
+  return /[A-Za-z0-9]/.test(character)
 }
 
 function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
@@ -2210,6 +2283,7 @@ async function generateExportHtml(
     isPdf,
     keepTablesTogether,
     keepHeadingsWithNextBlock,
+    visualCjkAutoSpacing,
   ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {

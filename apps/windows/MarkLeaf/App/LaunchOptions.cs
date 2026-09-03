@@ -16,6 +16,11 @@ internal sealed record LaunchOptions(
     string? DocumentSmokeOutputPath,
     string? DocumentSmokeReportPath,
     string? InitialDocumentPath,
+    string? DocumentStatePath,
+    int? InitialWindowLeft,
+    int? InitialWindowTop,
+    int? InitialWindowWidth,
+    int? InitialWindowHeight,
     bool SmokeCrashExit)
 {
     public static LaunchOptions Parse(string[] args)
@@ -35,6 +40,11 @@ internal sealed record LaunchOptions(
         string? documentSmokeOutputPath = null;
         string? documentSmokeReportPath = null;
         string? initialDocumentPath = null;
+        string? documentStatePath = null;
+        int? initialWindowLeft = null;
+        int? initialWindowTop = null;
+        int? initialWindowWidth = null;
+        int? initialWindowHeight = null;
         bool smokeCrashExit = false;
 
         for (var index = 0; index < args.Length - 1; index++)
@@ -88,6 +98,25 @@ internal sealed record LaunchOptions(
                 case "--open-document":
                     initialDocumentPath = Path.GetFullPath(args[++index]);
                     break;
+                case "--open-document-state":
+                    documentStatePath = Path.GetFullPath(args[++index]);
+                    break;
+                case "--window-left" when int.TryParse(args[index + 1], out var windowLeft):
+                    initialWindowLeft = windowLeft;
+                    index++;
+                    break;
+                case "--window-top" when int.TryParse(args[index + 1], out var windowTop):
+                    initialWindowTop = windowTop;
+                    index++;
+                    break;
+                case "--window-width" when int.TryParse(args[index + 1], out var windowWidth):
+                    initialWindowWidth = windowWidth;
+                    index++;
+                    break;
+                case "--window-height" when int.TryParse(args[index + 1], out var windowHeight):
+                    initialWindowHeight = windowHeight;
+                    index++;
+                    break;
                 case "--smoke-crash-exit":
                     smokeCrashExit = true;
                     break;
@@ -110,6 +139,11 @@ internal sealed record LaunchOptions(
             documentSmokeOutputPath,
             documentSmokeReportPath,
             initialDocumentPath,
+            documentStatePath,
+            initialWindowLeft,
+            initialWindowTop,
+            initialWindowWidth,
+            initialWindowHeight,
             smokeCrashExit);
     }
 }

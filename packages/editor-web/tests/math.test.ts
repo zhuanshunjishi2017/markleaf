@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, executeEditorCommand, expandSourceEditor, getEditorCommandState, getMarkdown } from '../src/editor'
+import { createEditor, executeEditorCommand, expandSourceEditor, getEditorCommandState, getMarkdown, setMarkdownEditingSettings } from '../src/editor'
 import { renderMathInHtml } from '../src/math'
 
 const editors: ReturnType<typeof createEditor>[] = []
@@ -29,11 +29,42 @@ function selectMathNode(editor: ReturnType<typeof createEditor>, name: string): 
 }
 
 describe('math formulas', () => {
+  it('keeps display math after a list as a separate block', () => {
+    for (const markdown of ['- item\n$$x^2$$', '1. item\n$$x^2$$']) {
+      const editor = makeEditor(markdown)
+
+      expect(editor.getHTML()).toContain('<div data-math-block="1">x^2</div>')
+      expect(editor.getJSON().content?.map((node: any) => node.type)).toEqual([
+        markdown.startsWith('-') ? 'bulletList' : 'orderedList',
+        'mathBlock',
+      ])
+      expect(getMarkdown(editor)).toContain('$$x^2$$')
+    }
+  })
+
   it('round-trips inline and block math markdown', () => {
     const editor = makeEditor('a $x^2$ b\n\n$$y^2$$\n')
 
     expect(getMarkdown(editor)).toContain('$x^2$')
     expect(getMarkdown(editor)).toContain('$$y^2$$')
+  })
+
+  it('does not decode literal symbols inside formula source', () => {
+    const editor = makeEditor('a $x < y & z$ b\n\n$$p > q & r$$')
+
+    expect(getMarkdown(editor)).toContain('$x < y & z$')
+    expect(getMarkdown(editor)).toContain('$$p > q & r$$')
+
+    setMarkdownEditingSettings({ escapeLiteralSymbols: true })
+    expect(getMarkdown(editor)).toContain('$x < y & z$')
+    expect(getMarkdown(editor)).toContain('$$p > q & r$$')
+  })
+
+  it('does not decode literal symbols inside LaTeX delimiter variants', () => {
+    const editor = makeEditor('\\(x < y & z\\)\n\n\\[p > q & r\\]')
+
+    expect(getMarkdown(editor)).toContain('$x < y & z$')
+    expect(getMarkdown(editor)).toContain('$$p > q & r$$')
   })
 
   it('parses LaTeX parenthesis and bracket math delimiters', () => {

@@ -15,6 +15,9 @@ import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
 import CodeBlock from '@tiptap/extension-code-block'
 import { getListMarker, ListItem } from '@tiptap/extension-list'
+import { markdown as codeMirrorMarkdown } from '@codemirror/lang-markdown'
+import { syntaxTree } from '@codemirror/language'
+import { EditorState as CodeMirrorEditorState } from '@codemirror/state'
 import { parseDocument } from 'yaml'
 import { MathBlock, MathInline, mathNumberFromLatex } from './math'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
@@ -2373,9 +2376,12 @@ function createExpandedSourceEditor(
   }
   code.addEventListener('compositionstart', () => { composing = true })
   code.addEventListener('compositionend', () => {
+    // IME compositionend may fire before the browser commits the final
+    // caret position (especially for full-width punctuation). Rebuilding
+    // the highlighted DOM here can therefore move the caret to the end.
+    // The following input event reads the committed position and refreshes
+    // the highlight without losing it.
     composing = false
-    const source = code.textContent ?? ''
-    refreshHighlight(source, source.length)
   })
   code.addEventListener('input', () => {
     if (!editable) return
@@ -2846,7 +2852,7 @@ export function createEditor(
     extensions: options.themedVisualSelection
       ? [...editorExtensions, ThemedSelection]
       : editorExtensions,
-    content: protectFootnoteDefinitionsForVisualMarkdown(content),
+    content: protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
     contentType: 'markdown',
     autofocus: false,
     editable: !readOnly,
@@ -2870,6 +2876,16 @@ export function createEditor(
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
   return editor
+}
+
+// A display formula after a list must be separated by a blank line. Without
+// it Markdown treats the unprefixed formula line as continuation content of
+// the preceding list item, rather than as a block following the list.
+function normalizeDisplayMathAfterList(markdown: string): string {
+  return markdown.replace(
+    /(^[ \t]*(?:[-+*]|\d+[.)])[ \t]+[^\r\n]*\r?\n)(?=[ \t]*(?:\$\$|\\\[))/gm,
+    '$1\n',
+  )
 }
 
 export function replaceEditorDocument(
@@ -2911,7 +2927,62 @@ export function getMarkdown(editor: Editor): string {
   const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
   // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
   // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
-  return stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
+  const output = stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
+  const markerSafeOutput = escapeMarkdownLiteralSymbols
+    ? output
+    : removeMarkdownLiteralEscapes(output)
+  return escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+}
+
+function removeMarkdownLiteralEscapes(markdown: string): string {
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-marker-protected-${index}\u0000`
+  }
+
+  // Only remove escapes from ordinary Markdown text. Code, formulas and
+  // link destinations are syntax-owned regions and must remain byte-for-byte.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
+    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
+    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+
+  return protectedMarkdown
+    .replace(/\\([*_\\])/g, '$1')
+    .replace(/\u0000markleaf-marker-protected-(\d+)\u0000/g, (_, index: string) => protectedParts[Number(index)] ?? '')
+}
+
+function decodeLiteralSymbols(markdown: string): string {
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-protected-${index}\u0000`
+  }
+
+  // Tiptap deliberately leaves code content untouched. Protect it before
+  // decoding the entities generated for ordinary text, otherwise a literal
+  // `&amp;` or `&lt;` inside code would be changed by this compatibility mode.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    // Formula source is Markdown syntax too. Keep literal symbols inside
+    // all supported math delimiters untouched while decoding ordinary text.
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
+    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
+    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+
+  return protectedMarkdown
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\u0000markleaf-protected-(\d+)\u0000/g, (_, index: string) => protectedParts[Number(index)] ?? '')
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
@@ -2955,6 +3026,8 @@ let useShiftEnterHardBreak = true
 let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
 let markdownEmphasisMarker: 'asterisk' | 'underscore' = 'asterisk'
 let markdownBulletMarker: 'dash' | 'asterisk' | 'plus' = 'dash'
+let escapeLiteralSymbols = false
+let escapeMarkdownLiteralSymbols = true
 
 export function setAutoConvertUnsafeEmphasis(enabled: boolean): void {
   autoConvertUnsafeEmphasis = enabled
@@ -2966,6 +3039,8 @@ export type MarkdownEditingSettings = {
   codeFence?: 'backtick' | 'tilde'
   emphasisMarker?: 'asterisk' | 'underscore'
   bulletMarker?: 'dash' | 'asterisk' | 'plus'
+  escapeLiteralSymbols?: boolean
+  escapeMarkdownLiteralSymbols?: boolean
 }
 
 export function setMarkdownEditingSettings(settings: MarkdownEditingSettings): void {
@@ -2977,6 +3052,8 @@ export function setMarkdownEditingSettings(settings: MarkdownEditingSettings): v
   markdownBulletMarker = settings.bulletMarker === 'asterisk'
     ? 'asterisk'
     : settings.bulletMarker === 'plus' ? 'plus' : 'dash'
+  escapeLiteralSymbols = settings.escapeLiteralSymbols === true
+  escapeMarkdownLiteralSymbols = settings.escapeMarkdownLiteralSymbols !== false
 }
 
 export function getVisualCursorLineNumber(editor: Editor): number {
@@ -3190,6 +3267,7 @@ function countVisualLinesBetweenPositions(editor: Editor, from: number, to: numb
 }
 
 function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
+  const emphasisRanges = collectParsedEmphasisRanges(markdown)
   // 按行识别围栏，只有行首（可带 0–3 空格）的 ``` / ~~~ 才是真正的代码围栏。
   // 旧的正则分割会被行内文本里的 ``` 干扰（例如 “` ```mermaid `” 说明文字），
   // 导致围栏内容被当成内联 Markdown 处理，把 mermaid 源码里的 `[*]` 误判为斜体、
@@ -3233,15 +3311,82 @@ function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
   flushInline()
   flushFence()
 
+  let partOffset = 0
   return parts
-    .map(part => isFencedCodeBlock(part) ? part : stabilizeUnsafeEmphasisInInlineMarkdown(part))
+    .map(part => {
+      const stabilized = isFencedCodeBlock(part)
+        ? part
+        : stabilizeUnsafeEmphasisInInlineMarkdown(part, partOffset, emphasisRanges)
+      partOffset += part.length + 1
+      return stabilized
+    })
     .join('\n')
 }
 
-function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
+type ParsedEmphasisRange = {
+  from: number
+  to: number
+  kind: 'strong' | 'em'
+}
+
+function collectParsedEmphasisRanges(markdown: string): ParsedEmphasisRange[] {
+  const ranges: ParsedEmphasisRange[] = []
+  collectParsedEmphasisRangesFromText(markdown, 0, ranges)
+
+  // CodeMirror's base Markdown parser treats a footnote definition as a
+  // LinkReference and therefore does not parse inline formatting in its body.
+  // Parse that body separately, then map the syntax-tree ranges back to the
+  // complete serialized Markdown document.
+  let lineStart = 0
+  for (const line of markdown.split('\n')) {
+    const definition = /^ {0,3}\[\^[^\]\r\n]+\]:[ \t]*/.exec(line)
+    if (definition) {
+      const bodyOffset = definition[0].length
+      collectParsedEmphasisRangesFromText(line.slice(bodyOffset), lineStart + bodyOffset, ranges)
+    }
+    lineStart += line.length + 1
+  }
+
+  return ranges
+}
+
+function collectParsedEmphasisRangesFromText(
+  markdown: string,
+  offset: number,
+  ranges: ParsedEmphasisRange[],
+): void {
+  const state = CodeMirrorEditorState.create({ doc: markdown, extensions: [codeMirrorMarkdown()] })
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'StrongEmphasis') {
+        ranges.push({ from: offset + node.from, to: offset + node.to, kind: 'strong' })
+      } else if (node.name === 'Emphasis') {
+        ranges.push({ from: offset + node.from, to: offset + node.to, kind: 'em' })
+      }
+    },
+  })
+}
+
+function stabilizeUnsafeEmphasisInInlineMarkdown(
+  markdown: string,
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
+): string {
   let result = ''
   let index = 0
   while (index < markdown.length) {
+    const parsedEmphasis = findParsedEmphasisStartingAt(
+      emphasisRanges,
+      markdownOffset + index,
+      markdownOffset + markdown.length,
+    )
+    if (parsedEmphasis) {
+      const end = parsedEmphasis.to - markdownOffset
+      result += markdown.slice(index, end)
+      index = end
+      continue
+    }
+
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       result += codeSpan
@@ -3256,21 +3401,21 @@ function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
       continue
     }
 
-    const boldItalic = readPotentialBoldItalicEmphasis(markdown, index)
+    const boldItalic = readPotentialBoldItalicEmphasis(markdown, index, markdownOffset, emphasisRanges)
     if (boldItalic) {
       result += boldItalic.text
       index = boldItalic.end
       continue
     }
 
-    const strong = readPotentialEmphasis(markdown, index, '**', 'strong')
+    const strong = readPotentialEmphasis(markdown, index, '**', 'strong', markdownOffset, emphasisRanges)
     if (strong) {
       result += strong.text
       index = strong.end
       continue
     }
 
-    const italic = readPotentialEmphasis(markdown, index, '*', 'em')
+    const italic = readPotentialEmphasis(markdown, index, '*', 'em', markdownOffset, emphasisRanges)
     if (italic) {
       result += italic.text
       index = italic.end
@@ -3281,6 +3426,19 @@ function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
     index += 1
   }
   return result
+}
+
+function findParsedEmphasisStartingAt(
+  ranges: readonly ParsedEmphasisRange[],
+  from: number,
+  partEnd: number,
+): ParsedEmphasisRange | null {
+  let match: ParsedEmphasisRange | null = null
+  for (const range of ranges) {
+    if (range.from !== from || range.to > partEnd) continue
+    if (!match || range.to > match.to) match = range
+  }
+  return match
 }
 
 function readLinkDestination(markdown: string, start: number): string | null {
@@ -3335,6 +3493,8 @@ function readPotentialEmphasis(
   start: number,
   marker: '*' | '**',
   tag: 'em' | 'strong',
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
 ): { text: string; end: number } | null {
   if (!markdown.startsWith(marker, start) || isEscaped(markdown, start)) return null
   if (marker === '*' && isAsteriskListMarker(markdown, start)) return null
@@ -3346,9 +3506,7 @@ function readPotentialEmphasis(
 
   const end = close + marker.length
   const content = markdown.slice(contentStart, close)
-  const opening = getDelimiterRun(markdown, start, marker.length)
-  const closing = getDelimiterRun(markdown, close, marker.length)
-  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+  if (hasParsedEmphasisBoundary(emphasisRanges, markdownOffset + start, markdownOffset + end, tag)) {
     return { text: markdown.slice(start, end), end }
   }
 
@@ -3369,6 +3527,8 @@ function isAsteriskListMarker(markdown: string, start: number): boolean {
 function readPotentialBoldItalicEmphasis(
   markdown: string,
   start: number,
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
 ): { text: string; end: number } | null {
   if (!markdown.startsWith('***', start) || isEscaped(markdown, start)) return null
   // 4 个及以上星号交给普通加粗/斜体逻辑处理，避免抢占边界（如 `****a****`）。
@@ -3382,18 +3542,31 @@ function readPotentialBoldItalicEmphasis(
   const content = markdown.slice(contentStart, close)
   if (content.length === 0) return null
 
-  const opening = getDelimiterRun(markdown, start, 3)
-  const closing = getDelimiterRun(markdown, close, 3)
-  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+  const absoluteStart = markdownOffset + start
+  const absoluteEnd = markdownOffset + end
+  const outer = emphasisRanges.find(range => range.from === absoluteStart && range.to === absoluteEnd)
+  const nestedKind = outer?.kind === 'strong' ? 'em' : 'strong'
+  if (outer && emphasisRanges.some(range => range.kind === nestedKind
+    && range.from === absoluteStart + 1 && range.to === absoluteEnd - 1)) {
     return { text: markdown.slice(start, end), end }
   }
 
   return { text: `<strong><em>${markdownInlineToHtmlText(content)}</em></strong>`, end }
 }
 
+function hasParsedEmphasisBoundary(
+  ranges: readonly ParsedEmphasisRange[],
+  from: number,
+  to: number,
+  kind: 'strong' | 'em',
+): boolean {
+  return ranges.some(range => range.kind === kind && range.from === from && range.to === to)
+}
+
 function findClosingBoldItalicMarker(markdown: string, start: number): number {
   let index = start
   while (index < markdown.length) {
+    if (isParagraphBreakAt(markdown, index)) return -1
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       index += codeSpan.length
@@ -3419,6 +3592,7 @@ function countDelimiterRun(markdown: string, start: number, delimiter: string): 
 function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' | '**'): number {
   let index = start
   while (index < markdown.length) {
+    if (isParagraphBreakAt(markdown, index)) return -1
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       index += codeSpan.length
@@ -3436,45 +3610,13 @@ function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' 
   return -1
 }
 
-type DelimiterRun = {
-  before: string | null
-  after: string | null
-  leftFlanking: boolean
-  rightFlanking: boolean
-}
-
-function getDelimiterRun(markdown: string, markerStart: number, markerLength: number): DelimiterRun {
-  const before = previousCodePoint(markdown, markerStart)
-  const after = nextCodePoint(markdown, markerStart + markerLength)
-  const beforeWhitespace = before === null || /\s/u.test(before)
-  const afterWhitespace = after === null || /\s/u.test(after)
-  const beforePunctuation = before !== null && isUnicodePunctuation(before)
-  const afterPunctuation = after !== null && isUnicodePunctuation(after)
-  const leftFlanking = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
-  const rightFlanking = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
-  return { before, after, leftFlanking, rightFlanking }
-}
-
-function canOpenEmphasis(run: DelimiterRun): boolean {
-  return run.leftFlanking && (!run.rightFlanking || !isUnicodePunctuation(run.before))
-}
-
-function canCloseEmphasis(run: DelimiterRun): boolean {
-  return run.rightFlanking && (!run.leftFlanking || !isUnicodePunctuation(run.after))
-}
-
-function isUnicodePunctuation(character: string | null): boolean {
-  return character !== null && /\p{P}/u.test(character)
+function isParagraphBreakAt(markdown: string, index: number): boolean {
+  return /^(?:\r?\n)[ \t]*(?:\r?\n)/.test(markdown.slice(index))
 }
 
 function previousCodePoint(text: string, index: number): string | null {
   if (index <= 0) return null
   return Array.from(text.slice(0, index)).at(-1) ?? null
-}
-
-function nextCodePoint(text: string, index: number): string | null {
-  if (index >= text.length) return null
-  return Array.from(text.slice(index))[0] ?? null
 }
 
 function isEscaped(text: string, index: number): boolean {
@@ -3861,6 +4003,8 @@ export function executeEditorCommand(
     clearFormat: () => clearParagraphFormat(editor),
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
+    duplicateParagraph: () => duplicateCurrentParagraph(editor),
+    deleteParagraph: () => deleteCurrentParagraph(editor),
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
     insertMermaid: () => insertMermaid(editor),
@@ -4223,6 +4367,35 @@ function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): bo
   const blockNode = $from.node($from.depth)
   const insertPos = position === 'before' ? blockStart : blockStart + blockNode.nodeSize
   return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
+}
+
+function duplicateCurrentParagraph(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  if (!$from.parent.isTextblock || $from.depth === 0) return false
+  let blockDepth = $from.depth
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    const type = $from.node(depth).type.name
+    if (type === 'listItem' || type === 'taskItem') {
+      blockDepth = depth
+      break
+    }
+  }
+  const blockStart = $from.before(blockDepth)
+  const blockNode = $from.node(blockDepth)
+  const insertPos = blockStart + blockNode.nodeSize
+  const transaction = editor.state.tr.insert(insertPos, blockNode.copy(blockNode.content))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+function deleteCurrentParagraph(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  if (!$from.parent.isTextblock || $from.depth === 0) return false
+  const blockStart = $from.before($from.depth)
+  const blockNode = $from.node($from.depth)
+  const transaction = editor.state.tr.delete(blockStart, blockStart + blockNode.nodeSize)
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
 }
 
 function setAlertType(editor: Editor, type: AlertType): boolean {

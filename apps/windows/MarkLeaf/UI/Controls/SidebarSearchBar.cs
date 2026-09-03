@@ -3,14 +3,13 @@ using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
 
-internal sealed class SidebarSearchBar : Control, IMessageFilter
+internal sealed class SidebarSearchBar : Control
 {
     private readonly TextBox _textBox;
     private Color _bgPrimary = Color.White;
     private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
     private Color _textPrimary = Color.Black;
     private Color _themeLight = Color.FromArgb(0x66, 0x99, 0xFF);
-    private bool _focused;
     private bool _outlineMode;
     private Rectangle _clearIconBounds;
     private string _workspaceName = string.Empty;
@@ -41,8 +40,8 @@ internal sealed class SidebarSearchBar : Control, IMessageFilter
             Invalidate();
             SearchTextChanged?.Invoke(this, _textBox.Text);
         };
-        _textBox.Enter += (_, _) => { _focused = true; Invalidate(); };
-        _textBox.Leave += (_, _) => { _focused = false; Invalidate(); };
+        _textBox.GotFocus += (_, _) => Invalidate();
+        _textBox.LostFocus += (_, _) => Invalidate();
         Controls.Add(_textBox);
         UpdatePlaceholder();
     }
@@ -84,17 +83,6 @@ internal sealed class SidebarSearchBar : Control, IMessageFilter
     public void ClearSearch()
     {
         _textBox.Text = string.Empty;
-    }
-
-    public void DismissFocusVisual()
-    {
-        if (!_focused)
-        {
-            return;
-        }
-
-        _focused = false;
-        Invalidate();
     }
 
     public void ReloadTexts()
@@ -146,7 +134,7 @@ internal sealed class SidebarSearchBar : Control, IMessageFilter
         using (var brush = new SolidBrush(_bgHover))
             SidebarGdi.FillRoundedRect(e.Graphics, fieldBounds, radius, brush);
 
-        if (Enabled && _focused)
+        if (Enabled && _textBox.Focused)
         {
             using var pen = new Pen(_themeLight, Math.Max(1, this.ScaleForDpi(2)));
             SidebarGdi.DrawRoundedRect(e.Graphics, fieldBounds, radius, pen);
@@ -216,44 +204,6 @@ internal sealed class SidebarSearchBar : Control, IMessageFilter
     {
         base.OnResize(e);
         Invalidate();
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        Application.AddMessageFilter(this);
-    }
-
-    protected override void OnHandleDestroyed(EventArgs e)
-    {
-        Application.RemoveMessageFilter(this);
-        base.OnHandleDestroyed(e);
-    }
-
-    public bool PreFilterMessage(ref Message m)
-    {
-        const int WmLButtonDown = 0x0201;
-        const int WmRButtonDown = 0x0204;
-        const int WmMButtonDown = 0x0207;
-        if (m.Msg is not (WmLButtonDown or WmRButtonDown or WmMButtonDown)
-            || (!_focused && !_textBox.Focused))
-        {
-            return false;
-        }
-
-        if (RectangleToScreen(ClientRectangle).Contains(Cursor.Position))
-        {
-            if (!_focused)
-            {
-                _focused = true;
-                Invalidate();
-            }
-        }
-        else
-        {
-            DismissFocusVisual();
-        }
-        return false;
     }
 
     protected override void Dispose(bool disposing)

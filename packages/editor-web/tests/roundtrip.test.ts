@@ -590,6 +590,18 @@ describe('editing history', () => {
     expect(reloaded.getHTML()).toContain('<strong>文本"</strong>a')
   })
 
+  it('does not convert emphasis markers spanning two paragraphs to HTML', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '**第一段\n\n第二段**')
+    editors.push(editor)
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).not.toContain('<strong>')
+    expect(markdown).toContain('\\*\\*第一段')
+    expect(markdown).toContain('第二段\\*\\*')
+  })
+
   it('serializes unsafe italic opening boundaries as HTML', () => {
     const element = document.createElement('div')
     document.body.append(element)
@@ -617,6 +629,26 @@ describe('editing history', () => {
     editor.commands.toggleBold()
 
     expect(getMarkdown(editor)).toBe('**文本"** 后文')
+  })
+
+  it('keeps adjacent bold and italic boundaries when the Markdown tree parses both', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent('<p><strong>粗体</strong><em>斜体</em></p>')
+
+    expect(getMarkdown(editor)).toBe('**粗体***斜体*')
+  })
+
+  it('keeps a partially italicized span inside bold when the Markdown tree parses it', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '***粗斜体*粗体**')
+    editors.push(editor)
+
+    expect(getMarkdown(editor)).toBe('***粗斜体*粗体**')
+    expect(editor.getHTML()).toContain('<strong><em>粗斜体</em>粗体</strong>')
   })
 
   it('keeps bold-italic asterisk runs intact even when adjacent to CJK text', () => {
@@ -737,6 +769,37 @@ describe('editing history', () => {
     expect(markdown).toContain('`*code*`')
     expect(markdown).toContain('$*x*$')
     expect(markdown).toContain('(https://example.com/*path*)')
+  })
+
+  it('can disable backslash escapes in ordinary text without changing code, formulas, or links', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '*literal* _name_ \\path' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '\\*code\\* \\\\path', marks: [{ type: 'code' }] }] },
+        { type: 'codeBlock', content: [{ type: 'text', text: '\\*block code\\* \\\\path' }] },
+        { type: 'paragraph', content: [{ type: 'mathInline', content: [{ type: 'text', text: '\\*x\\* \\\\ y' }] }] },
+        { type: 'mathBlock', content: [{ type: 'text', text: '\\_z\\_ \\\\ w' }] },
+        { type: 'paragraph', content: [{
+          type: 'text',
+          text: 'link',
+          marks: [{ type: 'link', attrs: { href: 'https://example.com/\\*path\\*' } }],
+        }] },
+      ],
+    })
+    setMarkdownEditingSettings({ escapeMarkdownLiteralSymbols: false })
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toContain('*literal* _name_ \\path')
+    expect(markdown).toContain('`\\*code\\* \\\\path`')
+    expect(markdown).toContain('```\n\\*block code\\* \\\\path\n```')
+    expect(markdown).toContain('$\\*x\\* \\\\ y$')
+    expect(markdown).toContain('$$\\_z\\_ \\\\ w$$')
+    expect(markdown).toContain('(https://example.com/\\*path\\*)')
   })
 })
 
@@ -1394,7 +1457,7 @@ describe('paste safety', () => {
     expect(output).not.toMatch(/script|iframe|img|onclick|style=|javascript:/i)
   })
 
-  it('pastes multiline Unicode text as literal text', () => {
+  it('keeps pasted symbols literal by default and preserves code content', () => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '前文')
@@ -1403,8 +1466,23 @@ describe('paste safety', () => {
 
     expect(executeEditorCommand(editor, 'pasteText', '<b>不是 HTML</b>\n中文 😀')).toBe(true)
     const markdown = getMarkdown(editor)
-    expect(markdown).toContain('&lt;b&gt;不是 HTML&lt;/b&gt;')
+    expect(markdown).toContain('<b>不是 HTML</b>')
     expect(markdown).toContain('中文 😀')
+  })
+
+  it('can escape literal symbols without changing inline or fenced code', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent('<p>普通 &lt;文本&gt; <code>&lt;代码&gt; &amp;</code></p><pre><code>if (a &lt; b &amp;&amp; b &gt; c) {}</code></pre>')
+    setMarkdownEditingSettings({ escapeLiteralSymbols: true })
+
+    const markdown = getMarkdown(editor)
+    expect(markdown).toContain('&lt;文本&gt;')
+    expect(markdown).toContain('`<代码> &`')
+    expect(markdown).toContain('if (a < b && b > c) {}')
+    expect(markdown).not.toContain('&lt;代码&gt;')
   })
 })
 

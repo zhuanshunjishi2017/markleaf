@@ -27,14 +27,12 @@ internal sealed partial class MainForm
         _webView = webView;
         webView.Enter += (_, _) =>
         {
-            _sidebarSearchBar.DismissFocusVisual();
-            _detachedOutlineSearchBar.DismissFocusVisual();
         };
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);
         _editorPanel.Controls.Add(loadingView);
-        _editorPanel.Visible = false;
+        _editorPanel.Visible = _document is not null;
         _editorHost = new EditorHostController(
             webView,
             loadingView,
@@ -61,7 +59,7 @@ internal sealed partial class MainForm
             ApplySidebarColors();
         };
         _editorHost.Ready += (_, _) => BeginEditorSmokeIfRequested();
-        _editorHost.Ready += (_, _) => LoadInitialDocumentIfNeeded();
+        _editorHost.Ready += async (_, _) => await LoadInitialDocumentIfNeededAsync();
         _editorHost.Ready += async (_, _) => await BeginDocumentSmokeIfRequestedAsync();
         _editorHost.Ready += (_, _) => HandleSmokeCrashExit();
         _editorHost.DocumentLoaded += (_, _) => ContinueEditorSmokeAfterLoad();
@@ -111,7 +109,7 @@ internal sealed partial class MainForm
     {
         if (_editorPanel is { IsDisposed: false })
         {
-            _editorPanel.Visible = true;
+            _editorPanel.Visible = _document is not null;
         }
     }
 
@@ -269,22 +267,17 @@ internal sealed partial class MainForm
         _editorHost?.LoadDocument("# 阶段 3 通信检查\n\n初始内容。\n");
     }
 
-    private void LoadInitialDocumentIfNeeded()
+    private async Task LoadInitialDocumentIfNeededAsync()
     {
         if (_editorSmokeStarted
             || !string.IsNullOrWhiteSpace(_options.DocumentSmokeInputPath)
-            || _initialDocumentOpened
-            || _editorHost?.IsDocumentLoaded != false)
+            || _initialDocumentOpened)
         {
             return;
         }
 
-        _document ??= _documentFileService.CreateNew(DefaultNewLine);
-        if (!string.IsNullOrWhiteSpace(_options.EditorCommandSmoke))
-        {
-            _document.Markdown = "段落命令";
-        }
-        LoadDocumentIntoEditor(_document);
+        // 编辑器就绪只代表 WebView 可用，不应隐式创建文档；保持空标签栏状态。
+        await Task.CompletedTask;
     }
 
     private void BeginEditorCommandSmokeIfRequested()

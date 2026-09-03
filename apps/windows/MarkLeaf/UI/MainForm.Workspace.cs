@@ -35,6 +35,7 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation?.Dispose();
         _workspaceLoadCancellation = new CancellationTokenSource();
         _workspaceRoot = fullPath;
+        _documentTabBar.SetWorkspaceRoot(fullPath);
         _workspaceService.ResetPreviewCache();
         AddRecentWorkspace(fullPath);
         UpdateSidebarSearchEnabled();
@@ -66,6 +67,7 @@ internal sealed partial class MainForm
         StopWatchingWorkspace();
         _workspaceService.ResetPreviewCache();
         _workspaceRoot = null;
+        _documentTabBar.SetWorkspaceRoot(null);
         _settings.Workspace.LastFolder = null;
         _sidebarSearchBar.WorkspaceName = string.Empty;
         _sidebarSearchBar.ClearSearch();

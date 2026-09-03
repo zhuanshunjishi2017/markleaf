@@ -58,6 +58,12 @@ internal sealed partial class MainForm
             return true;
         }
 
+        if (_editorFullScreen && keyData == Keys.Escape)
+        {
+            ToggleEditorFullScreen();
+            return true;
+        }
+
         // Tab / Shift+Tab（不含 Ctrl/Alt）：焦点在 WebView2 内时转发到
         // 编辑器执行缩进，WebView2 Runtime 120+ 的 AreBrowserAcceleratorKeysEnabled
         // 存在已知 bug（设置 false 仍会消费加速键），统一在此拦截最可靠。
@@ -103,6 +109,34 @@ internal sealed partial class MainForm
         if (command == AppCommand.CloseFolder)
         {
             return new CommandState(_workspaceRoot is not null);
+        }
+
+        if (command is >= AppCommand.SwitchDocumentTab1 and <= AppCommand.SwitchDocumentTab9)
+        {
+            var index = (int)command - (int)AppCommand.SwitchDocumentTab1;
+            return new CommandState(index < _openDocuments.Count, index == _activeDocumentIndex);
+        }
+
+        if (command == AppCommand.CloseCurrentDocumentTab)
+        {
+            return new CommandState(_activeDocumentIndex >= 0);
+        }
+
+        if (command == AppCommand.CloseOtherDocumentTabs)
+        {
+            return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
+        }
+
+        if (command == AppCommand.SwitchToNextDocumentTab)
+        {
+            return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
+        }
+
+        if (command == AppCommand.LocateCurrentDocumentInWorkspace)
+        {
+            return new CommandState(
+                _activeDocumentIndex >= 0
+                && CanLocateDocumentInWorkspace(_openDocuments[_activeDocumentIndex]));
         }
 
         if (command is AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow)
@@ -152,8 +186,9 @@ internal sealed partial class MainForm
              ImageSelected: _editorCommandStatus.ImageSelected,
              MermaidSelected: _editorCommandStatus.MermaidSelected,
              MermaidCount: _editorCommandStatus.MermaidCount,
-             MathInline: _editorCommandStatus.MathInline,
-             MathBlock: _editorCommandStatus.MathBlock,
+            MathInline: _editorCommandStatus.MathInline,
+            MathBlock: _editorCommandStatus.MathBlock,
+            EditorFullScreen: _editorFullScreen,
              CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
             FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
             DocumentSaved: _document?.FilePath is not null,
@@ -249,9 +284,6 @@ internal sealed partial class MainForm
             case AppCommand.NewDocument:
                 _ = NewDocumentAsync(NewDocumentKind.Markdown);
                 break;
-            case AppCommand.NewPlainTextDocument:
-                _ = NewDocumentAsync(NewDocumentKind.PlainText);
-                break;
             case AppCommand.NewWindow:
                 StartNewWindow();
                 break;
@@ -326,6 +358,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ToggleFocusMode:
                 ToggleFocusMode();
+                break;
+            case AppCommand.ToggleEditorFullScreen:
+                ToggleEditorFullScreen();
                 break;
             case AppCommand.ToggleEditorFocusMode:
                 ToggleEditorFocusMode();
@@ -470,6 +505,25 @@ internal sealed partial class MainForm
             case AppCommand.RestartEditor:
                 _ = RestartEditorAsync();
                 break;
+            case >= AppCommand.SwitchDocumentTab1 and <= AppCommand.SwitchDocumentTab9:
+                _ = SwitchDocumentTabAsync((int)command - (int)AppCommand.SwitchDocumentTab1);
+                break;
+            case AppCommand.CloseCurrentDocumentTab:
+                if (_activeDocumentIndex >= 0)
+                    _ = CloseDocumentTabAsync(_activeDocumentIndex);
+                break;
+            case AppCommand.CloseOtherDocumentTabs:
+                if (_activeDocumentIndex >= 0)
+                    _ = CloseOtherDocumentTabsAsync(_activeDocumentIndex);
+                break;
+            case AppCommand.SwitchToNextDocumentTab:
+                if (_activeDocumentIndex >= 0 && _openDocuments.Count > 1)
+                    _ = SwitchDocumentTabAsync((_activeDocumentIndex + 1) % _openDocuments.Count);
+                break;
+            case AppCommand.LocateCurrentDocumentInWorkspace:
+                if (_activeDocumentIndex >= 0)
+                    _ = LocateDocumentInWorkspaceAsync(_activeDocumentIndex);
+                break;
             case AppCommand.Exit:
                 Close();
                 break;
@@ -501,6 +555,74 @@ internal sealed partial class MainForm
 
         _logger.Info($"Command executed: {command}.");
         _menuService.RefreshStates();
+    }
+
+    private void ShowFullScreenMainMenu(Point screenLocation)
+    {
+        var commandId = _menuService.ShowFullScreenMainMenu(Handle, screenLocation);
+        HandlePopupMenuCommand(commandId);
+    }
+
+    private void ShowTopLevelMainMenu(int menuIndex, Point screenLocation)
+    {
+        var bounds = _documentTabBar.GetTopLevelMenuScreenBounds();
+        var currentIndex = menuIndex;
+        try
+        {
+            while (currentIndex >= 0 && currentIndex < bounds.Count)
+            {
+                _documentTabBar.SetOpenTopLevelMenuIndex(currentIndex);
+                var commandId = _menuService.ShowTopLevelMainMenu(
+                    Handle,
+                    screenLocation,
+                    currentIndex,
+                    bounds,
+                    out var nextMenuIndex);
+                if (commandId is not null)
+                {
+                    HandlePopupMenuCommand(commandId);
+                    return;
+                }
+                if (nextMenuIndex < 0 || nextMenuIndex == currentIndex) return;
+                currentIndex = nextMenuIndex;
+                screenLocation = _documentTabBar.GetTopLevelMenuScreenLocation(currentIndex);
+            }
+        }
+        finally
+        {
+            _documentTabBar.SetOpenTopLevelMenuIndex(-1);
+        }
+    }
+
+    private void HandlePopupMenuCommand(int? commandId)
+    {
+        if (commandId is null)
+        {
+            return;
+        }
+
+        if (_menuService.TryGetStyleByCommandId((uint)commandId.Value, out var styleId))
+        {
+            SetMarkdownStyle(styleId);
+            return;
+        }
+        if (_menuService.TryGetZoomByCommandId((uint)commandId.Value, out var zoomPercent))
+        {
+            SetZoomPercent(zoomPercent);
+            return;
+        }
+        if (_menuService.TryGetColorThemeByCommandId((uint)commandId.Value, out var colorThemeId))
+        {
+            if (!_settings.Appearance.FollowSystemColorMode)
+                SetColorTheme(colorThemeId);
+            return;
+        }
+        if (_menuService.TryGetDocumentTabByCommandId((uint)commandId.Value, out var documentTabIndex))
+        {
+            _ = SwitchDocumentTabAsync(documentTabIndex);
+            return;
+        }
+        _commandRouter.TryExecuteById(commandId.Value);
     }
 
     private void OpenFindReplaceDialog(bool replace, string? query = null)
@@ -558,6 +680,8 @@ internal sealed partial class MainForm
             AppCommand.DeleteTable => "deleteTable",
             AppCommand.InsertLineBefore => "insertLineBefore",
             AppCommand.InsertLineAfter => "insertLineAfter",
+            AppCommand.DuplicateParagraph => "duplicateParagraph",
+            AppCommand.DeleteParagraph => "deleteParagraph",
             AppCommand.InsertMathInline => "insertMathInline",
             AppCommand.InsertMathBlock => "insertMathBlock",
             AppCommand.InsertMermaid => "insertMermaid",
@@ -596,6 +720,7 @@ internal sealed partial class MainForm
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+                or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
                 or AppCommand.ShowFrontMatter
                 or AppCommand.InsertAlertNote or AppCommand.InsertAlertTip or AppCommand.InsertAlertImportant

@@ -131,6 +131,8 @@ internal sealed partial class MainForm
         _outlineSplit.Panel1.BackColor = primaryBg;
         _outlineSplit.Panel2.BackColor = sidebarBg;
         _editorPanel.BackColor = primaryBg;
+        UpdateEditorAreaBackground(colors);
+        _documentTabBar.ApplyThemeColors(colors);
         if (_editorLoadingView is not null)
         {
             _editorLoadingView.BackColor = primaryBg;
@@ -206,6 +208,18 @@ internal sealed partial class MainForm
             Services.Settings.MenuBarStyle.System => false,
             _ => ColorThemeService.IsActiveThemeDark(),
         };
+    }
+
+    private void UpdateEditorAreaBackground(IReadOnlyDictionary<string, Color>? colors = null)
+    {
+        colors ??= ColorThemeService.GetActiveColors();
+        var primaryBg = colors.TryGetValue("bg-primary", out var primary)
+            ? primary
+            : SystemColors.Window;
+        var emptyBg = colors.TryGetValue("bg-secondary", out var secondary)
+            ? secondary
+            : primaryBg;
+        _editorAreaPanel.BackColor = _openDocuments.Count == 0 ? emptyBg : primaryBg;
     }
 
     private void AddThemeFromFile()
@@ -400,20 +414,74 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
+    private bool UseTabBarMenu => _editorFullScreen
+        || _settings.Appearance.MenuBarStyle == Services.Settings.MenuBarStyle.TabBar;
+
+    private void ApplyMenuPresentation()
+    {
+        var showTabBarMenu = !_focusMode && UseTabBarMenu;
+        _documentTabBar.SetFullScreenMenuVisible(showTabBarMenu);
+        if (!IsHandleCreated || IsDisposed)
+        {
+            return;
+        }
+
+        if (_focusMode || UseTabBarMenu)
+        {
+            _menuService.Detach();
+            MainMenuStrip = null;
+        }
+        else
+        {
+            _menuService.Attach(Handle);
+        }
+    }
+
+    private void ToggleEditorFullScreen()
+    {
+        if (!_editorFullScreen)
+        {
+            _boundsBeforeEditorFullScreen = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            _windowStateBeforeEditorFullScreen = WindowState;
+            _borderStyleBeforeEditorFullScreen = FormBorderStyle;
+
+            _editorFullScreen = true;
+            ApplyMenuPresentation();
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = FormBorderStyle.None;
+            Bounds = Screen.FromControl(this).Bounds;
+            _webView?.Focus();
+            return;
+        }
+
+        _editorFullScreen = false;
+        WindowState = FormWindowState.Normal;
+        FormBorderStyle = _borderStyleBeforeEditorFullScreen;
+        Bounds = _boundsBeforeEditorFullScreen;
+        ApplyMenuPresentation();
+        if (_windowStateBeforeEditorFullScreen == FormWindowState.Maximized)
+        {
+            WindowState = FormWindowState.Maximized;
+        }
+        _webView?.Focus();
+        _menuService.RefreshStates();
+    }
+
     private void ToggleFocusMode()
     {
         if (!_focusMode)
         {
             _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
             _outlineDetachedBeforeFocus = _outlineDetached;
+            _documentTabBarVisibleBeforeFocus = _documentTabBar.Visible;
             if (_outlineDetachedBeforeFocus)
                 MergeOutlineSidebarImmediately();
             if (_sidebarVisibleBeforeFocus)
                 CollapseSidebar();
-            _menuService.Detach();
-            MainMenuStrip = null;
+            _documentTabBar.SetDisplaySuppressed(true);
             if (_statusStrip is not null) _statusStrip.Visible = false;
             _focusMode = true;
+            ApplyMenuPresentation();
             ApplyBlockHandleVisibility();
             SetStatus(Loc.Get("status.focusModeOn"));
             return;
@@ -421,11 +489,13 @@ internal sealed partial class MainForm
 
         _focusMode = false;
         ApplyBlockHandleVisibility();
+        ApplyMenuPresentation();
         if (!IsDisposed)
         {
-            _menuService.Attach(Handle);
             if (_statusStrip is not null) _statusStrip.Visible = true;
         }
+        _documentTabBar.SetDisplaySuppressed(false);
+        _documentTabBar.Visible = _documentTabBarVisibleBeforeFocus && _openDocuments.Count > 0;
 
         if (_sidebarVisibleBeforeFocus)
         {

@@ -33,8 +33,6 @@ public enum AppCommand
     OpenRecentFile7,
     OpenRecentFile8,
     RecoverUnsavedFiles,
-    NewPlainTextDocument = 0x1020,
-
     Undo = 0x1101,
     Redo,
     Cut,
@@ -153,6 +151,22 @@ public enum AppCommand
     SetMathNumber = 0x1337,
     RestartEditor = 0x1338,
     ExportImage = 0x1339,
+    SwitchDocumentTab1 = 0x133A,
+    SwitchDocumentTab2,
+    SwitchDocumentTab3,
+    SwitchDocumentTab4,
+    SwitchDocumentTab5,
+    SwitchDocumentTab6,
+    SwitchDocumentTab7,
+    SwitchDocumentTab8,
+    SwitchDocumentTab9,
+    CloseCurrentDocumentTab,
+    CloseOtherDocumentTabs,
+    SwitchToNextDocumentTab,
+    ToggleEditorFullScreen,
+    DuplicateParagraph,
+    DeleteParagraph,
+    LocateCurrentDocumentInWorkspace,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);
@@ -203,4 +217,5 @@ public readonly record struct CommandContext(
     bool EditorFocusMode = false,
     bool EditorTypewriterMode = false,
     bool MathInline = false,
-    bool MathBlock = false);
+    bool MathBlock = false,
+    bool EditorFullScreen = false);

@@ -1,5 +1,7 @@
 using System.Drawing.Imaging;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Native;
@@ -25,6 +27,7 @@ internal sealed partial class MainForm
 
         _document.IsDirty = dirtyElement.GetBoolean();
         _document.Revision = message.Revision;
+        _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
         UpdateDocumentChrome();
 
         if (_document.IsDirty
@@ -39,25 +42,22 @@ internal sealed partial class MainForm
 
     private async Task NewDocumentAsync(NewDocumentKind kind = NewDocumentKind.Markdown)
     {
-        if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
+        if (_documentOperationInProgress || _documentTabOperationInProgress)
         {
             return;
         }
 
-        StopWatchingDocument();
-        _document = _documentFileService.CreateNew(
+        var document = _documentFileService.CreateNew(
             DefaultNewLine,
             kind,
             DocumentEncodingPolicy.FromId(_settings.File.DefaultEncoding));
-        _workspaceTree.SelectedPath = null;
-        _workspaceDocumentList.SelectedPath = null;
-        LoadDocumentIntoEditor(_document);
+        await AddAndActivateDocumentAsync(document);
         SetStatus(Loc.Get("document.newDocument"));
     }
 
     private async Task OpenDocumentAsync()
     {
-        if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
+        if (_documentOperationInProgress || _documentTabOperationInProgress)
         {
             return;
         }
@@ -81,7 +81,7 @@ internal sealed partial class MainForm
 
     private async Task OpenDocumentReadOnlyAsync()
     {
-        if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
+        if (_documentOperationInProgress || _documentTabOperationInProgress)
         {
             return;
         }
@@ -121,12 +121,7 @@ internal sealed partial class MainForm
                 _settings.Image.PrefixRelativeWithDotSlash);
             await ResolveMissingImagesAsync(opened);
             opened.IsDirty = !string.Equals(originalMarkdown, opened.Markdown, StringComparison.Ordinal);
-            StopWatchingDocument();
-            _document = opened;
-            _workspaceTree.SelectedPath = opened.FilePath;
-            _workspaceDocumentList.SelectedPath = opened.FilePath;
-            LoadDocumentIntoEditor(opened);
-            StartWatchingDocument(opened.FilePath!);
+            await AddAndActivateDocumentAsync(opened);
             _logger.Info($"Document opened: {DescribePath(opened.FilePath)}; encoding={opened.Encoding.WebName}; bom={opened.HasBom}; newline={DescribeNewLine(opened.NewLine)}.");
             if (opened.IsDirty)
             {
@@ -154,6 +149,429 @@ internal sealed partial class MainForm
             _documentOperationInProgress = false;
             _menuService.RefreshStates();
         }
+    }
+
+    private async Task AddAndActivateDocumentAsync(MarkdownDocument document)
+    {
+        int? existing = document.FilePath is null
+            ? null
+            : _openDocuments.FindIndex(item => item.FilePath is not null
+                && PathEquals(item.FilePath, document.FilePath));
+        if (existing is >= 0)
+        {
+            await SwitchDocumentTabAsync(existing.Value);
+            return;
+        }
+
+        if (_document is not null && _editorHost?.IsDocumentLoaded == true)
+        {
+            var snapshot = await _editorHost.RequestSnapshotAsync();
+            _document.Markdown = snapshot.Markdown;
+            _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
+        }
+
+        StopWatchingDocument();
+        _openDocuments.Add(document);
+        _activeDocumentIndex = _openDocuments.Count - 1;
+        _document = document;
+        _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+        _workspaceTree.SelectedPath = document.FilePath;
+        _workspaceDocumentList.SelectedPath = document.FilePath;
+        LoadDocumentIntoEditor(document);
+        if (document.FilePath is not null) StartWatchingDocument(document.FilePath);
+    }
+
+    private async Task OpenTransferredDocumentAsync(string statePath)
+    {
+        var state = JsonSerializer.Deserialize<TransferredDocumentState>(
+            await File.ReadAllTextAsync(statePath));
+        if (state is null) return;
+        var document = _documentFileService.CreateNew(
+            state.NewLine,
+            Enum.TryParse<NewDocumentKind>(state.Kind, out var kind) ? kind : NewDocumentKind.Markdown,
+            DocumentEncodingPolicy.FromId(state.EncodingPolicyId));
+        document.FilePath = state.FilePath;
+        document.Markdown = state.Markdown;
+        document.HasBom = state.HasBom;
+        document.IsReadOnly = state.IsReadOnly;
+        document.IsDirty = state.IsDirty;
+        document.Revision = state.Revision;
+        await AddAndActivateDocumentAsync(document);
+        try { File.Delete(statePath); } catch { }
+    }
+
+    private sealed record TransferredDocumentState(
+        string? FilePath,
+        string Markdown,
+        string Kind,
+        string EncodingPolicyId,
+        bool HasBom,
+        bool IsReadOnly,
+        bool IsDirty,
+        long Revision,
+        string NewLine);
+
+    private void ReorderOpenDocuments(IReadOnlyList<MarkdownDocument> documents)
+    {
+        if (documents.Count != _openDocuments.Count) return;
+        var activeDocument = _document;
+        _openDocuments.Clear();
+        _openDocuments.AddRange(documents);
+        _activeDocumentIndex = activeDocument is null ? -1 : _openDocuments.IndexOf(activeDocument);
+        _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+        SaveSettings();
+    }
+
+    private async void DetachDocumentToNewWindow(int index, Point screenLocation)
+    {
+        if (index < 0 || index >= _openDocuments.Count) return;
+        var document = _openDocuments[index];
+        if (ReferenceEquals(document, _document) && _editorHost?.IsDocumentLoaded == true)
+        {
+            var snapshot = await _editorHost.RequestSnapshotAsync();
+            document.Markdown = snapshot.Markdown;
+            document.Revision = Math.Max(document.Revision, snapshot.Revision);
+        }
+
+        var statePath = Path.Combine(_paths.DataDirectory, "Cache",
+            $"detached-{document.Id:N}-{Guid.NewGuid():N}.json");
+        var state = new TransferredDocumentState(
+            document.FilePath,
+            document.Markdown,
+            document.Kind.ToString(),
+            document.EncodingPolicyId,
+            document.HasBom,
+            document.IsReadOnly,
+            document.IsDirty,
+            document.Revision,
+            document.NewLine);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
+            await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(state));
+            var editorBounds = _editorAreaPanel.Bounds;
+            var frameWidth = Math.Max(0, Bounds.Width - ClientSize.Width);
+            var frameHeight = Math.Max(0, Bounds.Height - ClientSize.Height);
+            var detachedWindowSize = new Size(
+                editorBounds.Width + frameWidth,
+                editorBounds.Height + frameHeight);
+            if (StartNewWindow(
+                documentPath: null,
+                documentStatePath: statePath,
+                location: screenLocation,
+                size: detachedWindowSize))
+            {
+                RemoveTransferredDocument(index);
+            }
+            else
+            {
+                try { File.Delete(statePath); } catch { }
+            }
+        }
+        catch (IOException exception)
+        {
+            _logger.Error("Could not transfer document to a new window.", exception);
+            try { File.Delete(statePath); } catch { }
+        }
+    }
+
+    private void RemoveTransferredDocument(int index)
+    {
+        if (index < 0 || index >= _openDocuments.Count) return;
+        var wasActive = index == _activeDocumentIndex;
+        _openDocuments.RemoveAt(index);
+        if (_openDocuments.Count == 0)
+        {
+            StopWatchingDocument();
+            _document = null;
+            _activeDocumentIndex = -1;
+            ClearDocumentOutline();
+            _workspaceTree.SelectedPath = null;
+            _workspaceDocumentList.SelectedPath = null;
+            _documentTabBar.SetDocuments(_openDocuments, -1);
+            _editorPanel.Visible = false;
+            RefreshPersistentStatusBar();
+            UpdateDocumentChrome();
+            return;
+        }
+
+        if (index < _activeDocumentIndex) _activeDocumentIndex--;
+        if (wasActive)
+        {
+            StopWatchingDocument();
+            _activeDocumentIndex = Math.Min(index, _openDocuments.Count - 1);
+            _document = _openDocuments[_activeDocumentIndex];
+            LoadDocumentIntoEditor(_document);
+            if (_document.FilePath is not null) StartWatchingDocument(_document.FilePath);
+        }
+        _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+        SaveSettings();
+    }
+
+    private async Task SwitchDocumentTabAsync(int index)
+    {
+        if (_documentTabOperationInProgress || index < 0 || index >= _openDocuments.Count
+            || index == _activeDocumentIndex)
+        {
+            return;
+        }
+
+        _documentTabOperationInProgress = true;
+        try
+        {
+            if (_document is not null && _editorHost?.IsDocumentLoaded == true)
+            {
+                var snapshot = await _editorHost.RequestSnapshotAsync();
+                _document.Markdown = snapshot.Markdown;
+                _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
+            }
+
+            StopWatchingDocument();
+            _activeDocumentIndex = index;
+            _document = _openDocuments[index];
+            _documentTabBar.SetDocuments(_openDocuments, index);
+            _workspaceTree.SelectedPath = _document.FilePath;
+            _workspaceDocumentList.SelectedPath = _document.FilePath;
+            LoadDocumentIntoEditor(_document);
+            if (_document.FilePath is not null) StartWatchingDocument(_document.FilePath);
+        }
+        finally
+        {
+            _documentTabOperationInProgress = false;
+        }
+    }
+
+    private async Task CloseDocumentTabAsync(int index)
+    {
+        if (_documentTabOperationInProgress || _documentTabCloseOperationInProgress
+            || index < 0 || index >= _openDocuments.Count) return;
+
+        _documentTabCloseOperationInProgress = true;
+        try
+        {
+            var target = _openDocuments[index];
+            if (index == _activeDocumentIndex && _editorHost?.IsDocumentLoaded == true)
+            {
+                var snapshot = await _editorHost.RequestSnapshotAsync();
+                target.Markdown = snapshot.Markdown;
+                target.Revision = Math.Max(target.Revision, snapshot.Revision);
+            }
+            if (target.IsDirty)
+            {
+                var choice = ShowMessage(
+                    this,
+                    Loc.Format("document.confirmDiscard", target.DisplayName),
+                    "MarkLeaf",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button1);
+                if (choice == DialogResult.Cancel) return;
+                if (choice == DialogResult.Yes)
+                {
+                    if (index != _activeDocumentIndex)
+                    {
+                        await SwitchDocumentTabAsync(index);
+                        index = _activeDocumentIndex;
+                        target = _document!;
+                    }
+                    if (!await SaveDocumentAsync(saveAs: false)) return;
+                }
+            }
+
+            _openDocuments.RemoveAt(index);
+            if (_openDocuments.Count == 0)
+            {
+                StopWatchingDocument();
+                _document = null;
+                _activeDocumentIndex = -1;
+                ClearDocumentOutline();
+                _workspaceTree.SelectedPath = null;
+                _workspaceDocumentList.SelectedPath = null;
+                _documentTabBar.SetDocuments(_openDocuments, -1);
+                _editorPanel.Visible = false;
+                RefreshPersistentStatusBar();
+                UpdateDocumentChrome();
+                return;
+            }
+
+            if (index < _activeDocumentIndex)
+            {
+                _activeDocumentIndex--;
+                _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+                return;
+            }
+
+            if (index == _activeDocumentIndex)
+            {
+                var nextIndex = Math.Min(index, _openDocuments.Count - 1);
+                _activeDocumentIndex = -1;
+                await SwitchDocumentTabAsync(nextIndex);
+                return;
+            }
+
+            // A tab to the right of the active tab does not change the active
+            // document, so it does not enter either branch above. Still push
+            // the new collection to the tab bar immediately after removal.
+            _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+        }
+        finally
+        {
+            _documentTabCloseOperationInProgress = false;
+        }
+    }
+
+    private async void ShowDocumentTabContextMenu(int index, Point screenLocation)
+    {
+        if (index < 0 || index >= _openDocuments.Count) return;
+        var document = _openDocuments[index];
+        var command = _menuService.ShowDocumentTabContextMenu(
+            Handle,
+            screenLocation,
+            CanLocateDocumentInWorkspace(document),
+            _openDocuments.Count > 1,
+            index < _openDocuments.Count - 1,
+            !string.IsNullOrWhiteSpace(document.FilePath));
+        switch (command)
+        {
+            case Native.DocumentTabPopupCommand.Close:
+                await CloseDocumentTabAsync(index);
+                break;
+            case Native.DocumentTabPopupCommand.CloseOthers:
+                await CloseOtherDocumentTabsAsync(index);
+                break;
+            case Native.DocumentTabPopupCommand.CloseRight:
+                await CloseRightDocumentTabsAsync(index);
+                break;
+            case Native.DocumentTabPopupCommand.Locate:
+                await LocateDocumentInWorkspaceAsync(index);
+                break;
+            case Native.DocumentTabPopupCommand.CopyPath:
+                if (!string.IsNullOrWhiteSpace(document.FilePath))
+                    Clipboard.SetText(document.FilePath);
+                break;
+            case Native.DocumentTabPopupCommand.ShowInExplorer:
+                if (!string.IsNullOrWhiteSpace(document.FilePath))
+                    ShowDocumentInExplorer(document.FilePath);
+                break;
+        }
+    }
+
+    private async Task CloseRightDocumentTabsAsync(int index)
+    {
+        if (index < 0 || index >= _openDocuments.Count - 1) return;
+        var documents = _openDocuments.Skip(index + 1).ToList();
+        var dirtyDocuments = documents.Where(document => document.IsDirty).ToList();
+        if (dirtyDocuments.Count > 0)
+        {
+            var choice = ShowMessage(this,
+                Loc.Format("document.confirmDiscardMultiple", dirtyDocuments.Count),
+                "MarkLeaf", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+            if (choice == DialogResult.Cancel) return;
+            if (choice == DialogResult.Yes)
+            {
+                foreach (var document in dirtyDocuments)
+                {
+                    var documentIndex = _openDocuments.IndexOf(document);
+                    if (documentIndex != _activeDocumentIndex)
+                        await SwitchDocumentTabAsync(documentIndex);
+                    if (!await SaveDocumentAsync(saveAs: false)) return;
+                }
+            }
+        }
+
+        foreach (var document in documents.ToList())
+        {
+            var documentIndex = _openDocuments.IndexOf(document);
+            if (documentIndex >= 0)
+                await CloseDocumentTabAsync(documentIndex);
+        }
+    }
+
+    private void ShowDocumentInExplorer(string filePath)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true,
+            };
+            startInfo.ArgumentList.Add("/select,");
+            startInfo.ArgumentList.Add(filePath);
+            Process.Start(startInfo);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            ShowMessage(this, exception.Message, "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private async Task CloseOtherDocumentTabsAsync(int keepIndex)
+    {
+        var dirtyDocuments = _openDocuments.Where((document, index) => index != keepIndex && document.IsDirty).ToList();
+        if (dirtyDocuments.Count > 1)
+        {
+            var choice = ShowMessage(this,
+                Loc.Format("document.confirmDiscardMultiple", dirtyDocuments.Count),
+                "MarkLeaf", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+            if (choice == DialogResult.Cancel) return;
+            if (choice == DialogResult.Yes)
+            {
+                foreach (var document in dirtyDocuments.ToList())
+                {
+                    var index = _openDocuments.IndexOf(document);
+                    if (index != _activeDocumentIndex) await SwitchDocumentTabAsync(index);
+                    if (!await SaveDocumentAsync(false)) return;
+                }
+            }
+        }
+        else if (dirtyDocuments.Count == 1)
+        {
+            var index = _openDocuments.IndexOf(dirtyDocuments[0]);
+            if (index != _activeDocumentIndex) await SwitchDocumentTabAsync(index);
+            if (!await ConfirmDiscardOrSaveAsync(false)) return;
+        }
+
+        var keepDocument = _openDocuments[keepIndex];
+        StopWatchingDocument();
+        _openDocuments.RemoveAll(document => !ReferenceEquals(document, keepDocument));
+        _activeDocumentIndex = 0;
+        _document = keepDocument;
+        LoadDocumentIntoEditor(_document);
+        if (_document.FilePath is not null) StartWatchingDocument(_document.FilePath);
+        _documentTabBar.SetDocuments(_openDocuments, 0);
+    }
+
+    private bool IsExternalDocument(MarkdownDocument document)
+    {
+        if (_workspaceRoot is null || document.FilePath is null) return false;
+        var relative = Path.GetRelativePath(Path.GetFullPath(_workspaceRoot), Path.GetFullPath(document.FilePath));
+        return relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.IsPathRooted(relative);
+    }
+
+    private bool CanLocateDocumentInWorkspace(MarkdownDocument document)
+    {
+        return _workspaceRoot is not null
+            && document.FilePath is { Length: > 0 } filePath
+            && Path.IsPathFullyQualified(filePath)
+            && File.Exists(filePath)
+            && !IsExternalDocument(document);
+    }
+
+    private async Task LocateDocumentInWorkspaceAsync(int index)
+    {
+        if (index < 0 || index >= _openDocuments.Count) return;
+        var document = _openDocuments[index];
+        if (!CanLocateDocumentInWorkspace(document)) return;
+
+        if (index != _activeDocumentIndex)
+        {
+            await SwitchDocumentTabAsync(index);
+        }
+
+        await RevealPathInTreeAsync(document.FilePath!);
     }
 
     private void RecordRecentFile(string path)
@@ -332,11 +750,13 @@ internal sealed partial class MainForm
             {
                 _editorHost?.SetDocumentType(_document.Kind.EditorDocumentType());
             }
+            _editorHost?.SetDocumentPath(_document.FilePath);
 
             _document.Revision = Math.Max(snapshot.Revision, _editorSession.ConfirmedRevision);
             _document.IsDirty = _document.Revision > snapshot.Revision;
             StopWatchingDocument();
             StartWatchingDocument(_document.FilePath!);
+            _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
             UpdateDocumentChrome();
             _logger.Info($"Document saved safely: {DescribePath(_document.FilePath)}; revision={snapshot.Revision}.");
             _recoveryService.Delete(_document.Id);
@@ -460,6 +880,11 @@ internal sealed partial class MainForm
 
     private async void OnMainFormClosing(object? sender, FormClosingEventArgs eventArgs)
     {
+        if (_editorFullScreen)
+        {
+            ToggleEditorFullScreen();
+        }
+
         if (_closeApproved)
         {
             CleanOldLogs();
@@ -473,9 +898,48 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (_document?.IsDirty == true && !await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+        await SyncActiveDocumentAsync();
+        var dirtyDocuments = _openDocuments.Where(document => document.IsDirty).ToList();
+        if (dirtyDocuments.Count > 1)
         {
-            return;
+            var choice = ShowMessage(
+                this,
+                Loc.Format("document.confirmDiscardMultiple", dirtyDocuments.Count),
+                "MarkLeaf",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+            if (choice == DialogResult.Cancel)
+            {
+                return;
+            }
+
+            if (choice == DialogResult.Yes)
+            {
+                var activeIndex = _activeDocumentIndex;
+                if (!await SaveDocumentsAsync(dirtyDocuments))
+                {
+                    if (activeIndex >= 0 && activeIndex < _openDocuments.Count)
+                        await SwitchDocumentTabAsync(activeIndex);
+                    return;
+                }
+
+                if (activeIndex >= 0 && activeIndex < _openDocuments.Count)
+                    await SwitchDocumentTabAsync(activeIndex);
+            }
+        }
+        else if (dirtyDocuments.Count == 1)
+        {
+            var dirtyIndex = _openDocuments.IndexOf(dirtyDocuments[0]);
+            if (dirtyIndex >= 0 && dirtyIndex != _activeDocumentIndex)
+            {
+                await SwitchDocumentTabAsync(dirtyIndex);
+            }
+
+            if (!await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+            {
+                return;
+            }
         }
 
         _closeApproved = true;
@@ -488,7 +952,57 @@ internal sealed partial class MainForm
         {
             _recoveryService.DeleteOwnFiles();
         }
-        BeginInvoke(Close);
+        Close();
+    }
+
+    private async Task<bool> SaveDocumentsAsync(IEnumerable<MarkdownDocument> documents)
+    {
+        foreach (var document in documents.ToList())
+        {
+            var index = _openDocuments.IndexOf(document);
+            if (index < 0) continue;
+            if (!ReferenceEquals(_document, document))
+            {
+                await SwitchDocumentTabAsync(index);
+            }
+            if (!ReferenceEquals(_document, document))
+            {
+                return false;
+            }
+            if (!await WaitForActiveDocumentLoadedAsync(document))
+            {
+                return false;
+            }
+            if (!await SaveDocumentAsync(saveAs: false))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private async Task<bool> WaitForActiveDocumentLoadedAsync(MarkdownDocument document)
+    {
+        if (_editorHost?.IsDocumentLoaded == true) return ReferenceEquals(_document, document);
+        if (_editorHost is null) return false;
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnDocumentLoaded(object? sender, EditorMessage message) => completion.TrySetResult();
+        _editorHost.DocumentLoaded += OnDocumentLoaded;
+        try
+        {
+            if (_editorHost.IsDocumentLoaded) return ReferenceEquals(_document, document);
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            return _editorHost.IsDocumentLoaded && ReferenceEquals(_document, document);
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        finally
+        {
+            _editorHost.DocumentLoaded -= OnDocumentLoaded;
+        }
     }
 
     private void LoadDocumentIntoEditor(MarkdownDocument document)
@@ -500,11 +1014,25 @@ internal sealed partial class MainForm
             document.Revision,
             document.Markdown,
             document.IsReadOnly,
-            document.FilePath is null ? document.Kind.EditorDocumentType() : GetDocumentType(document.FilePath));
+            document.FilePath is null ? document.Kind.EditorDocumentType() : GetDocumentType(document.FilePath),
+            document.FilePath);
+        _editorPanel.Visible = true;
+        if (_activeDocumentIndex >= 0)
+        {
+            _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
+        }
         RefreshPersistentStatusBar();
         UpdateDocumentChrome();
         ApplyBlockHandleVisibility();
         _recoveryTimer.Start();
+    }
+
+    private async Task SyncActiveDocumentAsync()
+    {
+        if (_document is null || _editorHost?.IsDocumentLoaded != true) return;
+        var snapshot = await _editorHost.RequestSnapshotAsync();
+        _document.Markdown = snapshot.Markdown;
+        _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
     }
 
     private void ShowEncodingMenu()
@@ -655,7 +1183,12 @@ internal sealed partial class MainForm
             {
                 StopWatchingDocument();
                 var reopened = await _documentFileService.OpenAsync(_document.FilePath, target);
+                if (_activeDocumentIndex >= 0 && _activeDocumentIndex < _openDocuments.Count)
+                {
+                    _openDocuments[_activeDocumentIndex] = reopened;
+                }
                 _document = reopened;
+                _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
                 LoadDocumentIntoEditor(reopened);
                 StartWatchingDocument(reopened.FilePath!);
                 SetStatus(Loc.Get("status.documentReloaded"));
@@ -727,6 +1260,7 @@ internal sealed partial class MainForm
 
     private void UpdateDocumentChrome()
     {
+        UpdateEditorAreaBackground();
         var name = _document?.DisplayName ?? "MarkLeaf";
         if (_document?.IsReadOnly == true)
         {
@@ -878,8 +1412,7 @@ internal sealed partial class MainForm
 
         _documentSmokeStarted = true;
         var opened = await _documentFileService.OpenAsync(_options.DocumentSmokeInputPath);
-        _document = opened;
-        LoadDocumentIntoEditor(opened);
+        await AddAndActivateDocumentAsync(opened);
     }
 
     private async Task ContinueDocumentSmokeAfterLoadAsync()
@@ -1092,11 +1625,6 @@ internal sealed partial class MainForm
 
                 SetStatus(Loc.Get("document.imageNotSaved"));
                 return GetDefaultImageDirectory();
-            case ClipboardImageHandling.Upload:
-                if (GetDocumentAssetsDirectory() is { } dir)
-                    return dir;
-                SetStatus(Loc.Get("document.imageNotSavedUpload"));
-                return GetDefaultImageDirectory();
             default:
                 return GetDefaultImageDirectory();
         }
@@ -1113,11 +1641,6 @@ internal sealed partial class MainForm
                 }
 
                 SetStatus(Loc.Get("document.imageNotSavedRef"));
-                break;
-            case FileImageHandling.Upload:
-                if (GetDocumentAssetsDirectory() is { } dir)
-                    return await _imageAssetService.CopyFileIntoAsync(sourcePath, dir);
-                SetStatus(Loc.Get("document.imageNotSavedRefUpload"));
                 break;
         }
 

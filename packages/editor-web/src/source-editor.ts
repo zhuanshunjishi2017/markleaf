@@ -11,7 +11,7 @@ import {
   undoDepth,
 } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import { EditorState, RangeSetBuilder, StateEffect, type Transaction } from '@codemirror/state'
 import {
@@ -694,16 +694,32 @@ function findUnsafeEmphasisInLineForMarker(
       if (content.length === 0) continue
       const from = lineFrom + openOffset
       const to = lineFrom + closeOffset + markerLength
-      const opening = getDelimiterRun(state, from, markerLength)
-      const closing = getDelimiterRun(state, lineFrom + closeOffset, markerLength)
-      if (!canOpenEmphasis(opening) || !canCloseEmphasis(closing)) {
-        return { from, to, content, kind, marker }
+      const closingFrom = lineFrom + closeOffset
+      if (isParsedEmphasisMarker(state, from, markerLength)
+        || isParsedEmphasisMarker(state, closingFrom, markerLength)) {
+        openOffset = closeOffset + markerLength - 1
+        break
       }
-      openOffset = closeOffset + markerLength - 1
-      break
+      return { from, to, content, kind, marker }
     }
   }
   return null
+}
+
+function isParsedEmphasisMarker(state: EditorState, from: number, length: number): boolean {
+  let parsed = false
+  syntaxTree(state).iterate({
+    from,
+    to: from + length,
+    enter(node) {
+      if (node.name === 'EmphasisMark' && node.from <= from && node.to >= from + length) {
+        parsed = true
+        return false
+      }
+      return !parsed
+    },
+  })
+  return parsed
 }
 
 function isEmphasisMarkerAt(lineText: string, offset: number, marker: '*' | '**'): boolean {
@@ -711,47 +727,6 @@ function isEmphasisMarkerAt(lineText: string, offset: number, marker: '*' | '**'
   return marker === '**'
     ? lineText[offset + 2] !== '*'
     : lineText[offset - 1] !== '*' && lineText[offset + 1] !== '*'
-}
-
-type DelimiterRun = {
-  before: string | null
-  after: string | null
-  leftFlanking: boolean
-  rightFlanking: boolean
-}
-
-function getDelimiterRun(state: EditorState, markerStart: number, markerLength: number): DelimiterRun {
-  const before = previousCodePoint(state, markerStart)
-  const after = nextCodePoint(state, markerStart + markerLength)
-  const beforeWhitespace = before === null || /\s/u.test(before)
-  const afterWhitespace = after === null || /\s/u.test(after)
-  const beforePunctuation = before !== null && isUnicodePunctuation(before)
-  const afterPunctuation = after !== null && isUnicodePunctuation(after)
-  const leftFlanking = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
-  const rightFlanking = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
-  return { before, after, leftFlanking, rightFlanking }
-}
-
-function canOpenEmphasis(run: DelimiterRun): boolean {
-  return run.leftFlanking && (!run.rightFlanking || !isUnicodePunctuation(run.before))
-}
-
-function canCloseEmphasis(run: DelimiterRun): boolean {
-  return run.rightFlanking && (!run.leftFlanking || !isUnicodePunctuation(run.after))
-}
-
-function previousCodePoint(state: EditorState, index: number): string | null {
-  if (index <= 0) return null
-  return Array.from(state.sliceDoc(Math.max(0, index - 2), index)).at(-1) ?? null
-}
-
-function nextCodePoint(state: EditorState, index: number): string | null {
-  if (index >= state.doc.length) return null
-  return Array.from(state.sliceDoc(index, Math.min(state.doc.length, index + 2)))[0] ?? null
-}
-
-function isUnicodePunctuation(character: string | null): boolean {
-  return character !== null && /\p{P}/u.test(character)
 }
 
 function isEscaped(text: string, index: number): boolean {

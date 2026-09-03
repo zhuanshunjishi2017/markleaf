@@ -19,6 +19,7 @@ public static class CommandStateResolver
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
+            AppCommand.ToggleEditorFullScreen => new(true, context.EditorFullScreen),
             AppCommand.ToggleEditorFocusMode => new(
                 context.EditorReady && !context.SourceMode,
                 context.EditorFocusMode),
@@ -121,13 +122,23 @@ public static class CommandStateResolver
             AppCommand.AlignTableCenter => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.InTable, context.TableAlign == "center"),
             AppCommand.AlignTableRight => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.InTable, context.TableAlign == "right"),
 
-            AppCommand.InsertLineBefore or AppCommand.InsertLineAfter =>
+            AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+                or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph =>
                 new(context.EditorReady && !context.ReadOnly && !context.SourceMode),
 
             AppCommand.ZoomIn or AppCommand.ZoomOut or AppCommand.ZoomReset => new(context.EditorReady),
             AppCommand.RestartEditor => new(context.EditorReady),
 
-            AppCommand.NewDocument or AppCommand.NewPlainTextDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
+            AppCommand.SwitchDocumentTab1 or AppCommand.SwitchDocumentTab2
+                or AppCommand.SwitchDocumentTab3 or AppCommand.SwitchDocumentTab4
+                or AppCommand.SwitchDocumentTab5 or AppCommand.SwitchDocumentTab6
+                or AppCommand.SwitchDocumentTab7 or AppCommand.SwitchDocumentTab8
+                or AppCommand.SwitchDocumentTab9 or AppCommand.CloseCurrentDocumentTab
+                or AppCommand.CloseOtherDocumentTabs or AppCommand.SwitchToNextDocumentTab
+                or AppCommand.LocateCurrentDocumentInWorkspace
+                => new(context.DocumentAvailable),
+
+            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
             _ => new(context.EditorReady),
         };
     }

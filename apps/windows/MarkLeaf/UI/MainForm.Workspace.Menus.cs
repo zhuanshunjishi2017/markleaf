@@ -9,8 +9,7 @@ internal sealed partial class MainForm
 {
     private enum WorkspacePopupCommand : uint
     {
-        NewMarkdownFile = 0x7001,
-        NewTextFile,
+        NewFile = 0x7001,
         NewFolder,
         ShowInExplorer,
         Refresh,
@@ -37,8 +36,7 @@ internal sealed partial class MainForm
         {
             switch (ShowNativeWorkspaceMenu(menu, screenPoint))
             {
-                case WorkspacePopupCommand.NewMarkdownFile: await CreateUntitledWorkspaceDocumentAsync(_workspaceRoot, NewDocumentKind.Markdown); break;
-                case WorkspacePopupCommand.NewTextFile: await CreateUntitledWorkspaceDocumentAsync(_workspaceRoot, NewDocumentKind.PlainText); break;
+                case WorkspacePopupCommand.NewFile: await CreateUntitledWorkspaceDocumentAsync(_workspaceRoot, NewDocumentKind.Markdown); break;
                 case WorkspacePopupCommand.NewFolder: await CreateUntitledWorkspaceFolderAsync(_workspaceRoot); break;
                 case WorkspacePopupCommand.ShowInExplorer: ShowWorkspaceInExplorer(_workspaceRoot); break;
                 case WorkspacePopupCommand.ViewList: if (!_workspaceListViewActive) ToggleWorkspaceView(); break;
@@ -60,7 +58,7 @@ internal sealed partial class MainForm
         var menu = CreateNativePopupMenu();
         try
         {
-            AppendNativePopup(menu, Loc.Get("workspaceMenu.newFile"), BuildWorkspaceNewFileMenu());
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceMenu.newFile"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceMenu.newFolder"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.ShowInExplorer, Loc.Get("workspaceMenu.showInExplorer"));
             AppendNativeMenuSeparator(menu);
@@ -123,7 +121,7 @@ internal sealed partial class MainForm
                 AppendNativeMenuCommand(menu, WorkspacePopupCommand.OpenInNewWindow, Loc.Get("workspaceEntry.openInNewWindow"));
             }
             AppendNativeMenuSeparator(menu);
-            AppendNativePopup(menu, Loc.Get("workspaceEntry.newFile"), BuildWorkspaceNewFileMenu());
+            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFile, Loc.Get("workspaceEntry.newFile"));
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewFolder, Loc.Get("workspaceEntry.newFolder"));
             AppendNativeMenuSeparator(menu);
             AppendNativeMenuCommand(menu, WorkspacePopupCommand.CopyPath, Loc.Get("workspaceEntry.copyPath"));
@@ -141,11 +139,8 @@ internal sealed partial class MainForm
                 case WorkspacePopupCommand.OpenInNewWindow:
                     StartNewWindow(entry.FullPath);
                     break;
-                case WorkspacePopupCommand.NewMarkdownFile:
+                case WorkspacePopupCommand.NewFile:
                     await CreateUntitledWorkspaceDocumentAsync(targetDirectory, NewDocumentKind.Markdown);
-                    break;
-                case WorkspacePopupCommand.NewTextFile:
-                    await CreateUntitledWorkspaceDocumentAsync(targetDirectory, NewDocumentKind.PlainText);
                     break;
                 case WorkspacePopupCommand.NewFolder:
                     await CreateUntitledWorkspaceFolderAsync(targetDirectory);
@@ -168,22 +163,6 @@ internal sealed partial class MainForm
         finally
         {
             NativeMethods.DestroyMenu(menu);
-        }
-    }
-
-    private nint BuildWorkspaceNewFileMenu()
-    {
-        var menu = CreateNativePopupMenu();
-        try
-        {
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewMarkdownFile, Loc.Get("workspaceMenu.newMarkdownFile"));
-            AppendNativeMenuCommand(menu, WorkspacePopupCommand.NewTextFile, Loc.Get("workspaceMenu.newTextFile"));
-            return menu;
-        }
-        catch
-        {
-            NativeMethods.DestroyMenu(menu);
-            throw;
         }
     }
 

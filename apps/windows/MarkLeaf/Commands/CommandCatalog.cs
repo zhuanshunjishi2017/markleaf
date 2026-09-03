@@ -26,6 +26,10 @@ public static class CommandCatalog
 
     public const int ColorCommandMax = 0x17FF;
 
+    public const int DocumentTabCommandBase = 0x1800;
+
+    public const int DocumentTabCommandMax = 0x18FF;
+
     public static bool TryGetById(int commandId, out AppCommand command)
     {
         command = (AppCommand)commandId;
