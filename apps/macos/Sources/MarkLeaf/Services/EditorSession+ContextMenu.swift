@@ -27,6 +27,8 @@ extension EditorSession {
             addMermaidCommands(to: menu, state: state)
         case .codeBlock:
             addCodeBlockCommands(to: menu, state: state)
+        case .frontMatter:
+            addCodeBlockCommands(to: menu, state: state)
         case .image, .math:
             break
         case .ordinaryBlock:
@@ -121,6 +123,10 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if semanticContext == .footnoteDefinition {
             addFootnoteCommands(to: menu, state: state)
+        } else if semanticContext == .frontMatter {
+            addCodeBlockCommands(to: menu, state: state)
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            addClipboardCommands(menu)
         } else if semanticContext == .table {
             addTableCommands(to: menu, state: state)
         } else if semanticContext == .mermaid {
@@ -150,7 +156,8 @@ extension EditorSession {
         } else if semanticContext == .math {
             // 公式：编辑 / 行内块级互转 / 删除
             guard !state.isReadOnly else { return }
-            addFormatCommand(menu, L10n.t("编辑公式"), "editMath")
+            addFormatCommand(menu, L10n.t("编辑公式源码"), "editMath")
+            addFormatCommand(menu, L10n.t("公式编号…"), "setMathNumber")
             addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除公式"), "deleteMath")
@@ -222,6 +229,8 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
+            addFormatCommand(menu, L10n.t("行内公式"), "insertMathInline")
+            addFormatCommand(menu, L10n.t("段间公式"), "insertMathBlock")
             menu.addItem(tableSizePickerSubmenu { [weak self] size in
                 self?.insertTable(rows: size.rows, columns: size.columns)
             })
@@ -346,7 +355,8 @@ extension EditorSession {
             mathInline: mathInline,
             mathBlock: mathBlock,
             codeBlock: codeBlock,
-            codeBlockText: codeBlockText
+            codeBlockText: codeBlockText,
+            frontMatterActive: frontMatterActive
         )
     }
 
@@ -461,6 +471,10 @@ extension EditorSession {
         let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
         markdown.isEnabled = canCopyAs
         copyAsMenu.addItem(markdown)
+        let html = menuItem(L10n.t("HTML 源码"), #selector(handleCommand(_:)))
+        html.representedObject = "copyHtml"
+        html.isEnabled = canCopyAs && !isSourceMode
+        copyAsMenu.addItem(html)
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)
     }
@@ -475,6 +489,7 @@ extension EditorSession {
     @objc func copyFormatted(_ sender: Any?) { copySelectionAs(.formatted) }
     @objc func copyPlain(_ sender: Any?) { copySelectionAs(.plainText) }
     @objc func copyMarkdown(_ sender: Any?) { copySelectionAs(.markdown) }
+    @objc func copyHtml(_ sender: Any?) { copySelectionAs(.html) }
     @objc func pasteFromClipboardAction(_ sender: Any?) { pasteFromClipboard() }
     @objc func pastePlainTextFromClipboardAction(_ sender: Any?) { pastePlainTextFromClipboard() }
 }

@@ -578,7 +578,7 @@ final class AppWindowManager {
             }
             try FileManager.default.copyItem(at: source, to: target)
             let markdown = try String(contentsOf: target, encoding: .utf8)
-            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: false)
+            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self else { return }
                 let controller = self.newWindow(preparedDocument: prepared)
@@ -587,6 +587,35 @@ final class AppWindowManager {
             }
         } catch {
             activeSession?.statusText = L10n.t("无法打开欢迎文档")
+        }
+    }
+
+    /// 打开内置示例文档；每次从 bundle 刷新缓存副本，用户编辑不会污染资源。
+    func openSample(_ sample: SampleDocumentResource) {
+        guard let source = sample.bundledURL(in: Bundle.main) else {
+            activeSession?.statusText = L10n.t("未找到示例文档")
+            return
+        }
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let cacheDir = base.appendingPathComponent("MarkLeaf/SampleDocuments", isDirectory: true)
+        let target = sample.cachedURL(cacheDirectory: cacheDir)
+        do {
+            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: target.path) {
+                try FileManager.default.removeItem(at: target)
+            }
+            try FileManager.default.copyItem(at: source, to: target)
+            let markdown = try String(contentsOf: target, encoding: .utf8)
+            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self else { return }
+                let controller = self.newWindow(preparedDocument: prepared)
+                controller.window?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        } catch {
+            activeSession?.statusText = L10n.t("无法打开示例文档")
         }
     }
 

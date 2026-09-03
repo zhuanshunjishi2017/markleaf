@@ -148,7 +148,8 @@ func contextState(
     mathInline: Bool = false,
     mathBlock: Bool = false,
     codeBlock: Bool = false,
-    codeBlockText: String? = nil
+    codeBlockText: String? = nil,
+    frontMatterActive: Bool = false
 ) -> EditorContextMenuState {
     EditorContextMenuState(
         isSourceMode: sourceMode,
@@ -162,7 +163,8 @@ func contextState(
         mathInline: mathInline,
         mathBlock: mathBlock,
         codeBlock: codeBlock,
-        codeBlockText: codeBlockText
+        codeBlockText: codeBlockText,
+        frontMatterActive: frontMatterActive
     )
 }
 
@@ -176,6 +178,12 @@ expect(EditorMenuPolicy.semanticContext(for: contextState(
 expect(EditorMenuPolicy.semanticContext(for: contextState(
     mermaidSelected: true, imageSelected: true, mathBlock: true, codeBlock: true
 )) == .mermaid, "Mermaid should not fall through to the generic code-block context")
+expect(EditorMenuPolicy.semanticContext(for: contextState(
+    codeBlock: true, frontMatterActive: true
+)) == .frontMatter, "YAML front matter should use its code-like context")
+expect(EditorMenuPolicy.allows(.copyCodeBlock, state: contextState(
+    codeBlockText: "title: MarkLeaf", frontMatterActive: true
+)), "YAML front matter should expose its source through the code-like copy command")
 expect(EditorMenuPolicy.semanticContext(for: contextState(imageSelected: true, mathBlock: true, codeBlock: true)) == .image,
        "images should win over math and code blocks")
 expect(EditorMenuPolicy.semanticContext(for: contextState(mathInline: true, codeBlock: true)) == .math,

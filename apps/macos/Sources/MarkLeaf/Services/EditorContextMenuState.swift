@@ -13,6 +13,7 @@ struct EditorContextMenuState: Equatable {
     let mathBlock: Bool
     let codeBlock: Bool
     let codeBlockText: String?
+    let frontMatterActive: Bool
 
     init(
         isSourceMode: Bool,
@@ -26,7 +27,8 @@ struct EditorContextMenuState: Equatable {
         mathInline: Bool,
         mathBlock: Bool,
         codeBlock: Bool,
-        codeBlockText: String?
+        codeBlockText: String?,
+        frontMatterActive: Bool = false
     ) {
         self.isSourceMode = isSourceMode
         self.isReadOnly = isReadOnly
@@ -40,6 +42,7 @@ struct EditorContextMenuState: Equatable {
         self.mathBlock = mathBlock
         self.codeBlock = codeBlock
         self.codeBlockText = codeBlockText
+        self.frontMatterActive = frontMatterActive
     }
 
     /// 右键菜单的启用状态由当前编辑器选区显式计算，避免 AppKit 根据 action target

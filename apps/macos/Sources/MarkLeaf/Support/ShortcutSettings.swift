@@ -26,14 +26,45 @@ enum ShortcutCatalog {
         ShortcutEntry(command: "copy", titleKey: "拷贝", defaultKey: "c", defaultMask: [.command]),
         ShortcutEntry(command: "paste", titleKey: "粘贴", defaultKey: "v", defaultMask: [.command]),
         ShortcutEntry(command: "find", titleKey: "查找与替换", defaultKey: "f", defaultMask: [.command]),
+        ShortcutEntry(command: "pastePlainText", titleKey: "粘贴为纯文本", defaultKey: "V", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "selectAll", titleKey: "全选", defaultKey: "a", defaultMask: [.command]),
         ShortcutEntry(command: "toggleBold", titleKey: "加粗", defaultKey: "b", defaultMask: [.command]),
         ShortcutEntry(command: "toggleItalic", titleKey: "斜体", defaultKey: "i", defaultMask: [.command]),
         ShortcutEntry(command: "toggleUnderline", titleKey: "下划线", defaultKey: "u", defaultMask: [.command]),
+        ShortcutEntry(command: "toggleStrike", titleKey: "删除线", defaultKey: "d", defaultMask: [.command]),
+        ShortcutEntry(command: "toggleCode", titleKey: "行内代码", defaultKey: "`", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "toggleHighlight", titleKey: "高亮", defaultKey: "h", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "clearFormat", titleKey: "清除格式", defaultKey: "\\", defaultMask: [.command]),
         ShortcutEntry(command: "formatPainter", titleKey: "格式刷", defaultKey: "c", defaultMask: [.command, .shift]),
-        ShortcutEntry(command: "formatPainterApply", titleKey: "应用格式刷", defaultKey: "v", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "formatPainterApply", titleKey: "应用格式刷", defaultKey: "v", defaultMask: [.command, .control]),
         ShortcutEntry(command: "insertLink", titleKey: "插入超链接…", defaultKey: "k", defaultMask: [.command]),
+        ShortcutEntry(command: "insertMathInline", titleKey: "行内公式", defaultKey: "m", defaultMask: [.control, .option]),
+        ShortcutEntry(command: "insertMathBlock", titleKey: "段间公式", defaultKey: "m", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "insertHorizontalRule", titleKey: "水平线", defaultKey: "l", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "insertFootnote", titleKey: "插入注释…", defaultKey: "f", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "insertTable", titleKey: "插入表格", defaultKey: "t", defaultMask: [.command]),
         ShortcutEntry(command: "promoteHeading", titleKey: "提升标题级别", defaultKey: ".", defaultMask: [.command, .option]),
         ShortcutEntry(command: "demoteHeading", titleKey: "降低标题级别", defaultKey: ",", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "setParagraph", titleKey: "正文", defaultKey: "0", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "setHeading1", titleKey: "1级标题", defaultKey: "1", defaultMask: [.command]),
+        ShortcutEntry(command: "setHeading2", titleKey: "2级标题", defaultKey: "2", defaultMask: [.command]),
+        ShortcutEntry(command: "setHeading3", titleKey: "3级标题", defaultKey: "3", defaultMask: [.command]),
+        ShortcutEntry(command: "setHeading4", titleKey: "4级标题", defaultKey: "4", defaultMask: [.command]),
+        ShortcutEntry(command: "setHeading5", titleKey: "5级标题", defaultKey: "5", defaultMask: [.command]),
+        ShortcutEntry(command: "setHeading6", titleKey: "6级标题", defaultKey: "6", defaultMask: [.command]),
+        ShortcutEntry(command: "toggleBlockquote", titleKey: "引用", defaultKey: "q", defaultMask: [.command, .control]),
+        ShortcutEntry(command: "toggleCodeBlock", titleKey: "代码块", defaultKey: "k", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "toggleBulletList", titleKey: "无序列表", defaultKey: "]", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "toggleOrderedList", titleKey: "有序列表", defaultKey: "[", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "toggleTaskList", titleKey: "任务列表", defaultKey: "t", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "indentListItem", titleKey: "增加列表缩进", defaultKey: "]", defaultMask: [.command]),
+        ShortcutEntry(command: "outdentListItem", titleKey: "减少列表缩进", defaultKey: "[", defaultMask: [.command]),
+        ShortcutEntry(command: "openFolder", titleKey: "打开文件夹…", defaultKey: "o", defaultMask: [.command, .shift]),
+        ShortcutEntry(command: "closeFolder", titleKey: "关闭文件夹", defaultKey: "q", defaultMask: [.control, .option]),
+        ShortcutEntry(command: "toggleSidebar", titleKey: "显示侧栏", defaultKey: "z", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "toggleStatusBar", titleKey: "显示状态栏", defaultKey: "x", defaultMask: [.command, .option]),
+        ShortcutEntry(command: "toggleEditorFocusMode", titleKey: "编辑器专注模式", defaultKey: "\u{F708}", defaultMask: []),
+        ShortcutEntry(command: "toggleTypewriterMode", titleKey: "打字机模式", defaultKey: "\u{F709}", defaultMask: []),
         ShortcutEntry(command: "sourceMode", titleKey: "源码模式", defaultKey: "u", defaultMask: [.command, .option]),
         ShortcutEntry(command: "toggleFocusMode", titleKey: "专注模式", defaultKey: "f", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "zoomIn", titleKey: "放大", defaultKey: "=", defaultMask: [.command]),
@@ -136,27 +167,51 @@ final class ShortcutSettings {
         }
     }
 
-    /// 校验新组合。key 为 `charactersIgnoringModifiers` 的小写单字符，mask 为取交集后的修饰键。
+    /// 规范按键：普通字符转为小写；功能键的 Unicode 事件字符转为 `f1`–`f24`。
+    static func canonicalKey(_ key: String) -> String? {
+        guard let scalar = key.unicodeScalars.first, key.unicodeScalars.count == 1 else { return nil }
+        if (0xF704...0xF71B).contains(scalar.value) {
+            return "f\(scalar.value - 0xF703)"
+        }
+        let lowered = key.lowercased()
+        if lowered.hasPrefix("f"),
+           let number = Int(lowered.dropFirst()), (1...24).contains(number) {
+            return lowered
+        }
+        return lowered
+    }
+
+    /// 校验新组合。key 为 `charactersIgnoringModifiers` 产生的字符或功能键 Unicode 字符。
     static func validate(key: String, mask: NSEvent.ModifierFlags, for command: String) -> ShortcutConflict {
         let required: NSEvent.ModifierFlags = [.command, .option, .control]
-        guard mask.intersection(required) != [] else { return .invalid }
-        guard key.count == 1, let scalar = key.unicodeScalars.first, scalar.value < 0xF700,
-              (scalar.value >= 0x30 && scalar.value <= 0x39) ||   // 0-9
-                (scalar.value >= 0x41 && scalar.value <= 0x5A) || // A-Z
-                (scalar.value >= 0x61 && scalar.value <= 0x7A) || // a-z
-                scalar.value == 0x20 || "=,-.".contains(Character(scalar)) else {
-            return .invalid
+        guard let canonical = canonicalKey(key),
+              let scalar = canonical.unicodeScalars.first else { return .invalid }
+        var isFunctionKey = false
+        if canonical.hasPrefix("f"),
+           let functionNumber = Int(canonical.dropFirst()),
+           (1...24).contains(functionNumber) {
+            isFunctionKey = true
         }
-        // 系统高风险组合：⌘Space、⌃⌘F（全屏），以及会被系统菜单抢占的 ⌘Q/⌘W/⌘H/⌥⌘H/⌘M/⌘,。
+        if !isFunctionKey {
+            guard mask.intersection(required) != [] else { return .invalid }
+            guard (scalar.value >= 0x30 && scalar.value <= 0x39) ||   // 0-9
+                  (scalar.value >= 0x41 && scalar.value <= 0x5A) || // A-Z
+                  (scalar.value >= 0x61 && scalar.value <= 0x7A) || // a-z
+                scalar.value == 0x20 || "=,-.`\\/[]".contains(String(scalar)) else {
+                return .invalid
+            }
+        }
+        // 系统高风险组合：⌘Space、⌃⌘F（全屏），以及 macOS 精确占用的 ⌘Q/⌘W/⌘H/⌥⌘H/⌘M/⌘,。
         let systemCmdKeys: Set<String> = ["q", "w", "h", "m", ","]
-        if (key == " " && mask.contains(.command)) ||
-            (key.lowercased() == "f" && mask.contains(.control) && mask.contains(.command)) ||
-            (mask.contains(.command) && systemCmdKeys.contains(key)) {
+        let isHideOthers = canonical == "h" && mask == [.command, .option]
+        if (canonical == " " && mask.contains(.command)) ||
+            (canonical == "f" && mask.contains(.control) && mask.contains(.command)) ||
+            (mask.contains(.command) && systemCmdKeys.contains(canonical) && (mask == [.command] || isHideOthers)) {
             return .systemReserved
         }
         for entry in ShortcutCatalog.entries where entry.command != command {
             guard let (ek, em) = ShortcutSettings.shared.effectiveKey(for: entry) else { continue }
-            if ek == key && em == mask {
+            if canonicalKey(ek) == canonical && em == mask {
                 return .duplicate(command: entry.command)
             }
         }
@@ -179,7 +234,15 @@ enum ShortcutDisplay {
         if mask.contains(.option) { parts.append("⌥") }
         if mask.contains(.shift) { parts.append("⇧") }
         if mask.contains(.command) { parts.append("⌘") }
-        parts.append(key.uppercased())
+        if let scalar = key.unicodeScalars.first, key.unicodeScalars.count == 1,
+           (0xF704...0xF71B).contains(scalar.value) {
+            parts.append("F\(scalar.value - 0xF703)")
+            return parts.joined()
+        }
+        let specialKeyNames: [String: String] = [
+            "`": "`", "\\": "\\", "/": "/", "[": "[", "]": "]",
+        ]
+        parts.append(specialKeyNames[key] ?? key.uppercased())
         return parts.joined()
     }
 }

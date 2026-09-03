@@ -142,6 +142,20 @@ describe('math formulas', () => {
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
+  it('inserts empty formulas and opens the floating source editor', () => {
+    const inline = makeEditor('')
+    expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
+    expect((inline.state.selection as any).node.type.name).toBe('mathInline')
+    expect(getMarkdown(inline)).toBe('$$')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
+
+    const block = makeEditor('')
+    expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
+    expect((block.state.selection as any).node.type.name).toBe('mathBlock')
+    expect(getMarkdown(block)).toBe('$$$$\n\n')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
+  })
+
   it('converts and deletes a selected math node', () => {
     const editor = makeEditor('$a$')
     selectMathNode(editor, 'mathInline')
@@ -177,7 +191,38 @@ describe('math formulas', () => {
     expect(computed.boxShadow).not.toContain('var(--theme-dark)')
   })
 
-  it('expands a block formula into an editable source area without removing its render', () => {
+  it('opens the floating source editor from a selected formula', () => {
+    const inline = makeEditor('before $x^2$ after')
+    selectMathNode(inline, 'mathInline')
+
+    expect(executeEditorCommand(inline, 'editMath')).toBe(true)
+    expect(document.querySelector('.markleaf-expanded-source-mathInline')).not.toBeNull()
+
+    const block = makeEditor('$$y^2$$')
+    selectMathNode(block, 'mathBlock')
+    expect(executeEditorCommand(block, 'editMath')).toBe(true)
+    expect(document.querySelector('.markleaf-expanded-source-mathBlock')).not.toBeNull()
+  })
+
+  it('animates the floating source editor with a native popover motion', () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
+    document.head.append(style)
+
+    const overlay = document.createElement('div')
+    overlay.className = 'editor-tooltip markleaf-expanded-source markleaf-expanded-source-mathBlock'
+    document.body.append(overlay)
+
+    // jsdom does not resolve shorthand animation properties, so assert the
+    // cascade that browsers and reduced-motion users will actually receive.
+    expect(style.textContent).toContain('animation: markleaf-expanded-source-in 0.24s')
+    expect(style.textContent).toContain('animation: markleaf-expanded-source-out 0.2s')
+    expect(style.textContent).toContain('translateY(14px) scale(0.94)')
+    expect(style.textContent).toContain('@keyframes markleaf-expanded-source-in')
+    expect(style.textContent).toContain('@keyframes markleaf-expanded-source-out')
+  })
+
+  it('expands a block formula into an editable source area without removing its render', async () => {
     const editor = makeEditor('$$x^2$$')
     expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
 
@@ -192,6 +237,7 @@ describe('math formulas', () => {
     expect(getMarkdown(editor)).toContain('$$y^2$$')
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await new Promise(resolve => setTimeout(resolve, 210))
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
     expect(editor.view.dom.querySelector('.markleaf-math-block')).not.toBeNull()
   })
@@ -236,6 +282,7 @@ describe('math formulas', () => {
   })
 
   it('keeps the floating source editor open on blur and closes it on outside click', () => {
+    vi.useFakeTimers()
     const editor = makeEditor('$$x^2$$')
     expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
     const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
@@ -244,7 +291,13 @@ describe('math formulas', () => {
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    const closing = document.querySelector('.markleaf-expanded-source')
+    expect(closing?.classList.contains('markleaf-expanded-source-closing')).toBe(true)
+    expect(closing).not.toBeNull()
+
+    vi.advanceTimersByTime(200)
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
+    vi.useRealTimers()
   })
 
   it('does not close the floating editor when clicking highlighted content inside it', async () => {

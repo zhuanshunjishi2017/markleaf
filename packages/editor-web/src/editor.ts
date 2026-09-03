@@ -2131,7 +2131,7 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   const width = Math.min(documentRect.width, availableWidth)
   overlay.style.width = `${width}px`
   overlay.hidden = false
-  const overlayWidth = overlay.getBoundingClientRect().width || width
+  const overlayWidth = overlay.offsetWidth || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
   const top = anchorRect.bottom + gap
   overlay.style.left = `${left}px`
@@ -2156,14 +2156,27 @@ const ExpandedSourceEditor = Extension.create({
       view: () => {
         let overlay: HTMLElement | null = null
         let current: ExpandedSourceEditor | null = null
+        let exitTimer: number | null = null
         const collapse = () => {
           if (expandedSourceEditorKey.getState(editor.state) === null) return
           editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
         }
+        const clearExitTimer = () => {
+          if (exitTimer === null) return
+          window.clearTimeout(exitTimer)
+          exitTimer = null
+        }
         const removeOverlay = () => {
+          clearExitTimer()
           overlay?.remove()
           overlay = null
           current = null
+        }
+        const beginExitAnimation = () => {
+          if (!overlay || exitTimer !== null) return
+          current = null
+          overlay.classList.add('markleaf-expanded-source-closing')
+          exitTimer = window.setTimeout(removeOverlay, 200)
         }
         const reposition = () => {
           if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
@@ -2180,9 +2193,10 @@ const ExpandedSourceEditor = Extension.create({
           update: (view) => {
             const expanded = expandedSourceEditorKey.getState(view.state)
             if (!expanded) {
-              removeOverlay()
+              beginExitAnimation()
               return
             }
+            clearExitTimer()
             const node = view.state.doc.nodeAt(expanded.position)
             if (!node || node.type.name !== expanded.kind) {
               collapse()

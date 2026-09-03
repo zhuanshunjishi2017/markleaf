@@ -33,7 +33,7 @@ require "$EXPORT_FILE" 'BoundedTextFieldMonitor(field: $0, fractionDigits: 1, up
 refuse "$EXPORT_FILE" '.formatter =' 'custom margin fields must not reformat via NumberFormatter'
 require "$EXPORT_FILE" 'okButton?.isEnabled = currentMarginFields.allSatisfy' 'custom margin OK must stay disabled while invalid'
 require "$SESSION_FILE" 'isValidMathNumberTag' 'math number tags must be validated'
-require "$SESSION_FILE" 'object: numberField,' 'math number field must participate in live validation'
+require "$SESSION_FILE" 'bindAlertInputValidation(field: numberField, button: okButton)' 'math number field must participate in live validation'
 require "$FOOTNOTE_FILE" 'bindAlertInputValidation(field: field, button: okButton)' 'footnote reset must disable OK while the label is empty'
 
 # 遗留的死代码与旧实现不得回流。

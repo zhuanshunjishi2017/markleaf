@@ -95,6 +95,7 @@ final class NativeMenuBuilder {
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
+        copyAs.addItem(commandItem(L10n.t("HTML 源码"), "copyHtml"))
         let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true)
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
@@ -157,6 +158,13 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
+        let alerts = NSMenu(title: L10n.t("提示框"))
+        alerts.addItem(commandItem(L10n.t("Note"), "insertAlertNote"))
+        alerts.addItem(commandItem(L10n.t("Tip"), "insertAlertTip"))
+        alerts.addItem(commandItem(L10n.t("Important"), "insertAlertImportant"))
+        alerts.addItem(commandItem(L10n.t("Warning"), "insertAlertWarning"))
+        alerts.addItem(commandItem(L10n.t("Caution"), "insertAlertCaution"))
+        menu.addItem(popup(L10n.t("提示框"), alerts, requiresDocument: true))
         let lists = NSMenu(title: L10n.t("列表"))
         lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
         lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
@@ -165,6 +173,8 @@ final class NativeMenuBuilder {
         lists.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
         lists.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
         menu.addItem(popup(L10n.t("列表"), lists))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("前置元数据"), "showFrontMatter"))
         return menu
     }
 
@@ -194,6 +204,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("斜体"), "toggleItalic", key: "i"))
         menu.addItem(commandItem(L10n.t("下划线"), "toggleUnderline", key: "u"))
         menu.addItem(commandItem(L10n.t("删除线"), "toggleStrike"))
+        menu.addItem(commandItem(L10n.t("高亮"), "toggleHighlight"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
         menu.addItem(.separator())
@@ -228,6 +239,8 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("编辑器专注模式"), "toggleEditorFocusMode"))
+        menu.addItem(commandItem(L10n.t("打字机模式"), "toggleTypewriterMode"))
         menu.addItem(commandItem(
             L10n.t("专注模式"),
             "toggleFocusMode",
@@ -284,6 +297,8 @@ final class NativeMenuBuilder {
         themeMenu.addItem(.separator())
         themeMenu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
         menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("重启编辑器"), "restartEditor"))
         return menu
     }
 
@@ -295,8 +310,15 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
         menu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))
+        let samples = NSMenu(title: L10n.t("示例文档"))
+        for sample in SampleDocumentResource.allCases {
+            samples.addItem(commandItem(L10n.t(sample.titleKey), sample.command))
+        }
+        menu.addItem(popup(L10n.t("示例文档"), samples))
         menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("学习 Markdown…"), "learnMarkdown"))
         menu.addItem(commandItem(L10n.t("检查更新…"), "checkForUpdates"))
+        menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))
         return menu
     }
@@ -369,6 +391,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         "new", "newPlainText", "newWindow", "open", "openInNewWindow", "openFolder",
         "recoverUnsavedFiles", "showPreferences", "showAbout",
         "openWelcome", "openChangelog", "showShortcuts", "checkForUpdates", "openHelp",
+        "learnMarkdown",
+        "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced",
         "toggleFollowSystemTheme", "toggleCodeHighlight",
         "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
         "treeView", "listView", "toggleDetachedOutline",
@@ -476,6 +500,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return viewStateSession != nil
         case "toggleFocusMode":
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
+        case "toggleEditorFocusMode":
+            menuItem.state = s?.isEditorFocusMode == true ? .on : .off
+        case "toggleTypewriterMode":
+            menuItem.state = s?.isTypewriterMode == true ? .on : .off
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "toggleCodeHighlight":
@@ -519,7 +547,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
-        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
+        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "copyHtml", "paste", "pastePlainText":
             return EditorMenuPolicy.isEnabled(
                 command: command,
                 hasSelection: s?.hasSelection ?? false,
@@ -557,6 +585,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             guard let state = s?.editorMenuState,
                   let nativeCommand = EditorMenuPolicy.nativeCommand(for: command) else { return false }
             return EditorMenuPolicy.allows(nativeCommand, state: state)
+        case "setMathNumber":
+            return s?.mathBlock == true && s?.isSourceMode == false && s?.isReadOnly == false
         default: break
         }
         return true
@@ -625,6 +655,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             NativeMenuBuilder.refreshIfNeeded()
         case "toggleFocusMode":
             AppWindowManager.shared.activeWindowController?.toggleFocusMode()
+        case "learnMarkdown":
+            if let url = URL(string: "https://www.runoob.com/markdown/md-tutorial.html") {
+                NSWorkspace.shared.open(url)
+            }
+        case "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced":
+            guard let sample = SampleDocumentResource(command: command) else { return }
+            AppWindowManager.shared.openSample(sample)
         case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "treeView", "listView", "toggleDetachedOutline":
             viewStateSession?.performMenuCommand(command)
         case "openHelp":
@@ -801,11 +838,13 @@ extension EditorSession {
         case "copy": copySelectionAs(.formatted)
         case "copyMarkdown": copySelectionAs(.markdown)
         case "copyPlain": copySelectionAs(.plainText)
+        case "copyHtml": copySelectionAs(.html)
         case "paste": pasteFromClipboard()
         case "pastePlainText": pastePlainTextFromClipboard()
         case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike":
             guard hasSelection else { return }
             executeInlineFormat(command)
+        case "toggleHighlight": executeInlineFormat("toggleHighlight")
         case "find": showFind()
         case "toggleSidebar": toggleSidebar()
         case "workspaceTab": showWorkspaceTab()
@@ -855,6 +894,7 @@ extension EditorSession {
         case "declareCodeLanguage": declareCodeBlockLanguage()
         case "copyCodeBlock": copyEntireCodeBlock()
         case "editMath": editMath()
+        case "setMathNumber": setMathNumber()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")
         case "editTableCaption": editTableCaption()
@@ -862,6 +902,12 @@ extension EditorSession {
         case "selectAll": execute("selectAll")
         case "exitCode": execute("exitCode")
         case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)
+        case "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+             "insertAlertWarning", "insertAlertCaution", "showFrontMatter":
+            execute(command)
+        case "toggleEditorFocusMode": toggleEditorFocusMode()
+        case "toggleTypewriterMode": toggleTypewriterMode()
+        case "restartEditor": restartEditor()
         case "toggleBlockquote": execute("toggleBlockquote")
         case "toggleCodeBlock": execute("toggleCodeBlock")
         case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)

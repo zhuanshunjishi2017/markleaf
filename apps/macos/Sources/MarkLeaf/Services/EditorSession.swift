@@ -90,11 +90,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var mathBlock = false
     private(set) var mathLatex: String?
     private(set) var mathNumber: String?
+    private(set) var isEditorFocusMode = false
+    private(set) var isTypewriterMode = false
     private(set) var caption: String?
     private(set) var footnoteDefinitionLabel: String?
     private(set) var codeBlock = false
     private(set) var codeBlockLanguage: String?
     private(set) var codeBlockText: String?
+    private(set) var frontMatterActive = false
     private(set) var mermaidSelected = false
     private(set) var mermaidSource: String?
     private(set) var mermaidCount = 0
@@ -115,7 +118,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "setParagraph", "setHeading1", "setHeading2", "setHeading3",
         "setHeading4", "setHeading5", "setHeading6",
         "promoteHeading", "demoteHeading",
-        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode",
+        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode", "toggleHighlight",
         "toggleBlockquote", "toggleCodeBlock", "toggleBulletList", "toggleOrderedList", "toggleTaskList",
         "indentListItem", "outdentListItem",
         "insertLink", "insertImage", "insertImageFromUrl", "insertHorizontalRule",
@@ -126,7 +129,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
         "changeImage", "clearFormat",
         "formatPainter", "formatPainterArm", "formatPainterApply",
-        "insertMathInline", "insertMathBlock", "editMath", "convertMath", "deleteMath", "exitCode",
+        "insertMathInline", "insertMathBlock", "editMath", "setMathNumber", "convertMath", "deleteMath", "exitCode",
+        "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+        "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
         "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "declareCodeLanguage",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
         "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
@@ -245,6 +250,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var isDocumentDispositionInProgress: Bool { documentDisposition.isInProgress }
     private(set) var dispositionRequestCount = 0
     private var pendingInitialPreparedDocument: PreparedDocument?
+    private struct RestartDocument {
+        let markdown: String
+        let fileURL: URL?
+        let readOnly: Bool
+        let encoding: String?
+        let kind: NewDocumentKind?
+        let initialDirty: Bool
+    }
+    private var pendingRestartDocument: RestartDocument?
 
     private func notify() {
         DispatchQueue.main.async { [weak self] in
@@ -301,6 +315,17 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true
                 loadInitialDocument()
+            } else if let restart = pendingRestartDocument {
+                pendingRestartDocument = nil
+                loadDocument(
+                    markdown: restart.markdown,
+                    fileURL: restart.fileURL,
+                    readOnly: restart.readOnly,
+                    encoding: restart.encoding,
+                    documentKind: restart.kind,
+                    initialDirty: restart.initialDirty
+                )
+                statusText = L10n.t("编辑器已重启")
             }
 
         case "documentLoaded":
@@ -351,6 +376,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             codeBlock = decoded.codeBlock
             codeBlockLanguage = decoded.codeBlockLanguage
             codeBlockText = decoded.codeBlockText
+            frontMatterActive = decoded.frontMatter
             mermaidSelected = decoded.mermaidSelected
             mermaidSource = decoded.mermaidSource
             mermaidCount = decoded.mermaidCount
@@ -1222,6 +1248,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applySourceIndent()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
         setCodeHighlightVisible(settings.showCodeHighlight)
+        if isEditorFocusMode {
+            execute("setEditorFocusMode", text: "1")
+        }
+        if isTypewriterMode {
+            execute("setEditorTypewriterMode", text: "1")
+        }
     }
 
     /// 源码模式缩进宽度（对应偏好设置「源码模式 > 默认缩进宽度」，前端 CodeMirror indentUnit/tabSize）。
@@ -2113,39 +2145,85 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
-    /// 插入数学公式：有选区时直接套 $...$ / $$...$$，否则弹框输入 LaTeX。
+    /// 插入数学公式：交给共享编辑器创建节点并直接打开浮层。
     func insertMath(isBlock: Bool) {
         let command = isBlock ? "insertMathBlock" : "insertMathInline"
-        if hasSelection {
-            execute(command)
-            statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
-            return
+        execute(command)
+        statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
+    }
+
+    /// 编辑选中的公式：复用共享编辑器的节点浮层。
+    func editMath() {
+        execute("editMath")
+        statusText = L10n.t("公式浮层已打开")
+    }
+
+    /// 只修改段间公式编号，不重新编辑 LaTeX（对应 Windows SetMathNumber）。
+    func setMathNumber() {
+        guard mathBlock, !isSourceMode, !isReadOnly, let window = webView?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.t("公式编号")
+        alert.addButton(withTitle: L10n.t("确定"))
+        alert.addButton(withTitle: L10n.t("取消"))
+        let numberField = NSTextField(string: mathNumber ?? "")
+        numberField.placeholderString = "1 或 1.1"
+        numberField.bezelStyle = .roundedBezel
+        DialogTextFieldStyle.apply(to: numberField)
+        alert.accessoryView = numberField
+        alert.window.initialFirstResponder = numberField
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        let validationToken = bindAlertInputValidation(field: numberField, button: okButton) {
+            Self.isValidMathNumberTag($0)
         }
-        presentMathInputDialog(
-            title: isBlock ? L10n.t("插入段间公式") : L10n.t("插入行内公式"),
-            initialLatex: "",
-            initialNumber: "",
-            showNumber: isBlock
-        ) { [weak self] latex, number in
-            guard let self, let latex else { return }
-            self.execute(command, text: Self.mathPayload(latex: latex, number: number, isBlock: isBlock))
-            self.statusText = isBlock ? L10n.t("已插入段间公式") : L10n.t("已插入行内公式")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            NotificationCenter.default.removeObserver(validationToken)
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let number = numberField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard Self.isValidMathNumberTag(number) else {
+                self.statusText = L10n.t("公式编号必须是 1 或 1.1 格式")
+                return
+            }
+            self.execute("setMathNumber", text: number)
+            self.statusText = L10n.t("公式编号已更新")
         }
     }
 
-    /// 编辑选中的公式（对应 Windows EditMath）。
-    func editMath() {
-        let isBlock = mathBlock
-        presentMathInputDialog(
-            title: L10n.t("编辑公式"),
-            initialLatex: mathLatex ?? "",
-            initialNumber: mathNumber ?? "",
-            showNumber: isBlock
-        ) { [weak self] latex, number in
-            guard let self, let latex else { return }
-            self.execute("updateMath", text: Self.mathPayload(latex: latex, number: number, isBlock: isBlock))
-            self.statusText = L10n.t("公式已更新")
+    /// 重新加载共享编辑器 WebView，并回放快照中的当前 Markdown。
+    func restartEditor() {
+        guard isReady, webView != nil else { return }
+        requestSnapshot { [weak self] result in
+            guard let self else { return }
+            guard case .success(let markdown) = result else {
+                self.statusText = L10n.t("编辑器重启失败")
+                return
+            }
+            self.pendingRestartDocument = RestartDocument(
+                markdown: markdown,
+                fileURL: self.documentURL,
+                readOnly: self.isReadOnly,
+                encoding: self.documentEncoding,
+                kind: self.newDocumentKind,
+                initialDirty: self.isDirty
+            )
+            self.isReady = false
+            // 保持“初始文档已处理”状态，让 ready 后进入快照回放分支，
+            // 而不是把重启误解为一次新的启动动作。
+            self.didLoadInitialDocument = true
+            self.webView?.reload()
         }
+    }
+
+    func toggleEditorFocusMode() {
+        isEditorFocusMode.toggle()
+        execute("setEditorFocusMode", text: isEditorFocusMode ? "1" : "0")
+        NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    func toggleTypewriterMode() {
+        isTypewriterMode.toggle()
+        execute("setEditorTypewriterMode", text: isTypewriterMode ? "1" : "0")
+        NativeMenuBuilder.refreshIfNeeded()
     }
 
     /// 公式编号合法性：留空合法；否则必须是 1 / 1.1 式的分级 ASCII 数字编号。
@@ -2155,105 +2233,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let parts = trimmed.split(separator: ".", omittingEmptySubsequences: false)
         return !parts.isEmpty && parts.allSatisfy { part in
             !part.isEmpty && part.allSatisfy { $0.isASCII && $0.isNumber }
-        }
-    }
-
-    /// 段间公式编号以 `\tag{编号}` 追加到 LaTeX，前端渲染为右对齐编号并可随 Markdown 往返。
-    private static func mathPayload(latex: String, number: String?, isBlock: Bool) -> String {
-        let tag = (number ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isBlock, !tag.isEmpty else { return latex }
-        return "\(latex) \\tag{\(tag)}"
-    }
-
-    private func presentMathInputDialog(
-        title: String,
-        initialLatex: String,
-        initialNumber: String,
-        showNumber: Bool,
-        completion: @escaping (String?, String?) -> Void
-    ) {
-        guard let window = webView?.window else {
-            completion(nil, nil)
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = L10n.t("输入 LaTeX 公式：")
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: L10n.t("确定"))
-        alert.addButton(withTitle: L10n.t("取消"))
-
-        let latexField = NSTextField(string: initialLatex)
-        latexField.placeholderString = "x^2 + y^2"
-        latexField.bezelStyle = .roundedBezel
-        DialogTextFieldStyle.apply(to: latexField)
-        let numberField = NSTextField(string: initialNumber)
-        numberField.placeholderString = "1 或 1.1"
-        numberField.bezelStyle = .roundedBezel
-        DialogTextFieldStyle.apply(to: numberField)
-
-        let fieldHeight = latexField.frame.height
-        let accessory = NSView(frame: NSRect(
-            x: 0,
-            y: 0,
-            width: 360,
-            height: MathInputDialogLayout.accessoryHeight(showNumber: showNumber, fieldHeight: fieldHeight)
-        ))
-        latexField.frame = NSRect(
-            x: 0,
-            y: MathInputDialogLayout.latexFieldY(showNumber: showNumber),
-            width: 360,
-            height: fieldHeight
-        )
-        accessory.addSubview(latexField)
-        if showNumber {
-            let label = NSTextField(labelWithString: L10n.t("公式编号"))
-            label.font = .systemFont(ofSize: 12)
-            let numberGrid = NSGridView(views: [[label, numberField]])
-            numberGrid.columnSpacing = MathInputDialogLayout.numberColumnSpacing
-            numberGrid.row(at: 0).yPlacement = .center
-            numberGrid.column(at: 0).width = MathInputDialogLayout.numberLabelColumnWidth(for: label)
-            numberGrid.frame = NSRect(
-                x: 0,
-                y: MathInputDialogLayout.verticalInset,
-                width: 360,
-                height: MathInputDialogLayout.numberRowHeight
-            )
-            accessory.addSubview(numberGrid)
-        }
-        alert.accessoryView = accessory
-        alert.window.initialFirstResponder = latexField
-        let okButton = alert.buttons.first
-        okButton?.isEnabled = false
-        // 与其他输入弹窗一致：LaTeX 非空且公式编号合法（留空或 1 / 1.1 式分级编号）时才允许「确定」。
-        func refreshOK() {
-            let latex = latexField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            let number = numberField.stringValue
-            okButton?.isEnabled = !latex.isEmpty && EditorSession.isValidMathNumberTag(number)
-        }
-        refreshOK()
-        var validationTokens: [NSObjectProtocol] = [
-            NotificationCenter.default.addObserver(
-                forName: NSControl.textDidChangeNotification,
-                object: latexField,
-                queue: .main
-            ) { _ in refreshOK() },
-        ]
-        if showNumber {
-            validationTokens.append(NotificationCenter.default.addObserver(
-                forName: NSControl.textDidChangeNotification,
-                object: numberField,
-                queue: .main
-            ) { _ in refreshOK() })
-        }
-        alert.beginSheetModal(for: window) { response in
-            validationTokens.forEach { NotificationCenter.default.removeObserver($0) }
-            guard response == .alertFirstButtonReturn else {
-                completion(nil, nil)
-                return
-            }
-            let latex = latexField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            completion(latex.isEmpty ? nil : latex, showNumber ? numberField.stringValue : "")
         }
     }
 

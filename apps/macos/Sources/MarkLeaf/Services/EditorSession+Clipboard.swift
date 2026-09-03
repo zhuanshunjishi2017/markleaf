@@ -6,6 +6,7 @@ extension EditorSession {
         case formatted
         case markdown
         case plainText
+        case html
     }
 
     /// 剪贴板中是否有可粘贴内容（文本/富文本/图片/Finder 文件），用于菜单置灰。
@@ -37,7 +38,14 @@ extension EditorSession {
                         // macOS 剪贴板 HTML 类型（对应 Windows CF_HTML）
                         pasteboard.setString(selection.html, forType: .html)
                     }
-                    self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
+                    if mode == .html {
+                        if !selection.html.isEmpty {
+                            pasteboard.setString(selection.html, forType: .html)
+                        }
+                        self.statusText = L10n.t("已复制 HTML 源码")
+                    } else {
+                        self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
+                    }
                 case .failure:
                     self.statusText = L10n.t("剪贴板操作失败")
                 }

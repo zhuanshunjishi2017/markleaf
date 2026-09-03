@@ -59,6 +59,9 @@ fi
 if [ -d "$MACOS_DIR/Welcome" ]; then
     ditto "$MACOS_DIR/Welcome" "$APP_STAGE/Contents/Resources/Welcome"
 fi
+if [ -d "$MACOS_DIR/Samples" ]; then
+    ditto "$MACOS_DIR/Samples" "$APP_STAGE/Contents/Resources/Samples"
+fi
 for icon in AppIcon.icns FileIcon.icns; do
     if [ -f "$MACOS_DIR/Resources/$icon" ]; then
         cp "$MACOS_DIR/Resources/$icon" "$APP_STAGE/Contents/Resources/$icon"
