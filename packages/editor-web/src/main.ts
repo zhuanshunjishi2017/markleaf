@@ -11,6 +11,7 @@ import {
   getEditorStatus,
   getBlockHandleInfo,
   expandSourceEditor,
+  hasExpandedSourceEditor,
   isSourceEditorExpanded,
   collapseSourceEditor,
   setEditorFocusMode,
@@ -536,6 +537,7 @@ function sendCommandState(): void {
   const visualState = getEditorCommandState(editor)
   send('commandStateChanged', {
     ...visualState,
+    expandedSource: hasExpandedSourceEditor(editor),
     canUndo: sourceEditor?.canUndo() ?? visualState.canUndo,
     canRedo: sourceEditor?.canRedo() ?? visualState.canRedo,
     hasSelection: sourceSelection ? !sourceSelection.empty : visualState.hasSelection,

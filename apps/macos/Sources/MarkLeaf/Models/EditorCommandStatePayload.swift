@@ -5,6 +5,7 @@ struct EditorCommandStatePayload: Equatable {
     let readOnly: Bool
     let frontMatter: Bool
     let mathBlock: Bool
+    let expandedSource: Bool
     let codeBlock: Bool
     let codeBlockLanguage: String?
     let codeBlockText: String?
@@ -19,6 +20,7 @@ struct EditorCommandStatePayload: Equatable {
             readOnly: payload?["readOnly"] as? Bool ?? false,
             frontMatter: payload?["frontMatter"] as? Bool ?? false,
             mathBlock: payload?["mathBlock"] as? Bool ?? false,
+            expandedSource: payload?["expandedSource"] as? Bool ?? false,
             codeBlock: payload?["codeBlock"] as? Bool ?? false,
             codeBlockLanguage: payload?["codeBlockLanguage"] as? String,
             codeBlockText: payload?["codeBlockText"] as? String,

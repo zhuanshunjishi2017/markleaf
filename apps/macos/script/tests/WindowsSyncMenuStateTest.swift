@@ -20,7 +20,8 @@ func contextState(
     mathBlock: Bool = false,
     codeBlock: Bool = false,
     codeBlockText: String? = nil,
-    frontMatterActive: Bool = false
+    frontMatterActive: Bool = false,
+    expandedSource: Bool = false
 ) -> EditorContextMenuState {
     EditorContextMenuState(
         isSourceMode: sourceMode,
@@ -35,7 +36,8 @@ func contextState(
         mathBlock: mathBlock,
         codeBlock: codeBlock,
         codeBlockText: codeBlockText,
-        frontMatterActive: frontMatterActive
+        frontMatterActive: frontMatterActive,
+        expandedSource: expandedSource
     )
 }
 
@@ -108,11 +110,14 @@ let payload = EditorCommandStatePayload.decode([
     "readOnly": false,
     "frontMatter": true,
     "mathBlock": true,
+    "expandedSource": true,
 ])
 expect(payload.sourceMode, "payload source mode should decode")
 expect(!payload.readOnly, "payload read-only should decode")
 expect(payload.frontMatter, "payload front matter should decode")
 expect(payload.mathBlock, "payload math block should decode")
+expect(payload.expandedSource, "payload expanded source should decode")
 expect(EditorCommandStatePayload.decode(nil).frontMatter == false, "missing front matter defaults to false")
+expect(EditorCommandStatePayload.decode(nil).expandedSource == false, "missing expanded source defaults to false")
 
 print("PASS")

@@ -142,17 +142,57 @@ describe('math formulas', () => {
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
+  it('renders empty formulas with a visual placeholder and persists the placeholder syntax', () => {
+    const inline = makeEditor('')
+    expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
+    expect(inline.view.dom.querySelector('.markleaf-math-placeholder')?.textContent).toBe('...')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('')
+    expect(getMarkdown(inline)).toContain('$...$')
+
+    const block = makeEditor('')
+    expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
+    expect(block.view.dom.querySelector('.markleaf-math-placeholder')?.textContent).toBe('...')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('')
+    expect(getMarkdown(block)).toContain('$$...$$')
+  })
+
+  it('reads placeholder syntax as empty formulas and toggles the placeholder while editing', () => {
+    const editor = makeEditor('$...$\n\n$$...$$')
+    const formulas: Array<{ node: any; position: number }> = []
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
+        formulas.push({ node, position })
+      }
+    })
+
+    expect(formulas).toHaveLength(2)
+    expect(formulas.every(({ node }) => node.textContent === '')).toBe(true)
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(2)
+
+    const block = formulas[1]!
+    expect(expandSourceEditor(editor, block.position, 'mathBlock')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    source.textContent = 'x+1'
+    source.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(1)
+
+    source.textContent = ''
+    source.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(editor.view.dom.querySelectorAll('.markleaf-math-placeholder')).toHaveLength(2)
+    expect(getMarkdown(editor)).toContain('$$...$$')
+  })
+
   it('inserts empty formulas and opens the floating source editor', () => {
     const inline = makeEditor('')
     expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
     expect((inline.state.selection as any).node.type.name).toBe('mathInline')
-    expect(getMarkdown(inline)).toBe('$$')
+    expect(getMarkdown(inline)).toBe('$...$')
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
 
     const block = makeEditor('')
     expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
     expect((block.state.selection as any).node.type.name).toBe('mathBlock')
-    expect(getMarkdown(block)).toBe('$$$$\n\n')
+    expect(getMarkdown(block)).toBe('$$...$$\n\n')
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
   })
 
@@ -166,6 +206,27 @@ describe('math formulas', () => {
     selectMathNode(editor, 'mathBlock')
     expect(executeEditorCommand(editor, 'deleteMath')).toBe(true)
     expect(getMarkdown(editor)).not.toContain('$')
+  })
+
+  it('opens or converts the selected formula through the inline and block commands', () => {
+    const inline = makeEditor('before $x$ after')
+    selectMathNode(inline, 'mathInline')
+    expect(executeEditorCommand(inline, 'insertMathInline')).toBe(true)
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('x')
+
+    expect(executeEditorCommand(inline, 'insertMathBlock')).toBe(true)
+    expect((inline.state.selection as any).node.type.name).toBe('mathBlock')
+    expect(document.querySelector('.markleaf-expanded-source-editor')?.textContent).toBe('x')
+    expect(getMarkdown(inline)).toContain('$$x$$')
+
+    const block = makeEditor('$$y$$')
+    selectMathNode(block, 'mathBlock')
+    expect(executeEditorCommand(block, 'insertMathBlock')).toBe(true)
+    expect(document.querySelectorAll('.markleaf-expanded-source-editor')[1]?.textContent).toBe('y')
+
+    expect(executeEditorCommand(block, 'insertMathInline')).toBe(true)
+    expect((block.state.selection as any).node.type.name).toBe('mathInline')
+    expect(getMarkdown(block)).toContain('$y$')
   })
 
   it('uses node selection for a formula', () => {
@@ -298,6 +359,45 @@ describe('math formulas', () => {
     vi.advanceTimersByTime(200)
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
     vi.useRealTimers()
+  })
+
+  it('closes the floating editor with Escape and restores focus after the formula', async () => {
+    const editor = makeEditor('a $x$ b')
+    selectMathNode(editor, 'mathInline')
+    expect(expandSourceEditor(editor, editor.state.selection.from, 'mathInline')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    source.focus()
+    // jsdom cannot compute client rects for ProseMirror's scroll-to-selection.
+    const originalCoordsAtPos = editor.view.coordsAtPos.bind(editor.view)
+    editor.view.coordsAtPos = () => ({ left: 0, top: 0, right: 0, bottom: 0 })
+
+    source.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true,
+    }))
+
+    // 消失动画会延迟移除浮层；等动画完成后再断言 DOM 清理。
+    await new Promise(resolve => setTimeout(resolve, 220))
+    expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
+    await new Promise(resolve => setTimeout(resolve, 220))
+    expect((editor.state.selection as any).from).toBe(6)
+    expect(editor.isFocused).toBe(true)
+    editor.view.coordsAtPos = originalCoordsAtPos
+  })
+
+  it('selects only floating source contents for Command/Control+A', () => {
+    const editor = makeEditor('$$abcdef$$')
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    source.focus()
+
+    source.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'a', metaKey: true, bubbles: true, cancelable: true,
+    }))
+
+    const selection = window.getSelection()!
+    expect(selection.rangeCount).toBe(1)
+    expect(selection.toString()).toBe('abcdef')
+    expect((editor.state.selection as any).node.type.name).toBe('mathBlock')
   })
 
   it('does not close the floating editor when clicking highlighted content inside it', async () => {

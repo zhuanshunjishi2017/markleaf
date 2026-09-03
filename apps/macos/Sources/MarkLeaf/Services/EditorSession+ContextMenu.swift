@@ -98,6 +98,10 @@ extension EditorSession {
         formatPainterArmed: Bool? = nil
     ) {
         guard let webView, let window = webView.window else { return }
+        if editorMenuState.expandedSource {
+            showExpandedSourceContextMenu(clientX: clientX, clientY: clientY)
+            return
+        }
         // WKWebView 是 flipped 视图（原点在左上），因此 JS clientY 可直接映射到
         // webView 局部坐标；这里统一换算到屏幕坐标后以 in: nil 弹出，避免依赖
         // WKWebView 内部子视图的翻转语义。
@@ -356,8 +360,37 @@ extension EditorSession {
             mathBlock: mathBlock,
             codeBlock: codeBlock,
             codeBlockText: codeBlockText,
-            frontMatterActive: frontMatterActive
+            frontMatterActive: frontMatterActive,
+            expandedSource: expandedSourceActive
         )
+    }
+
+    /// 公式/Mermaid 浮层中的右键菜单只作用于浮层源码。
+    private func showExpandedSourceContextMenu(clientX: Double, clientY: Double) {
+        guard let webView, let window = webView.window else { return }
+        let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
+        let commands: [(String, String)] = [
+            (L10n.t("撤销"), "undo:"),
+            (L10n.t("重做"), "redo:"),
+            (L10n.t("剪切"), "cut:"),
+            (L10n.t("拷贝"), "copy:"),
+            (L10n.t("粘贴"), "paste:"),
+            (L10n.t("全选"), "selectAll:"),
+        ]
+        for (title, action) in commands {
+            menu.addItem(NSMenuItem(title: title, action: NSSelectorFromString(action), keyEquivalent: ""))
+        }
+
+        let pointInView = Self.editorContextMenuPoint(
+            clientX: clientX,
+            clientY: clientY,
+            viewHeight: webView.bounds.height,
+            isFlipped: webView.isFlipped
+        )
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
 
     private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {

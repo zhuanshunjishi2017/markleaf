@@ -98,6 +98,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var codeBlockLanguage: String?
     private(set) var codeBlockText: String?
     private(set) var frontMatterActive = false
+    private(set) var expandedSourceActive = false
     private(set) var mermaidSelected = false
     private(set) var mermaidSource: String?
     private(set) var mermaidCount = 0
@@ -377,6 +378,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             codeBlockLanguage = decoded.codeBlockLanguage
             codeBlockText = decoded.codeBlockText
             frontMatterActive = decoded.frontMatter
+            expandedSourceActive = decoded.expandedSource
             mermaidSelected = decoded.mermaidSelected
             mermaidSource = decoded.mermaidSource
             mermaidCount = decoded.mermaidCount
