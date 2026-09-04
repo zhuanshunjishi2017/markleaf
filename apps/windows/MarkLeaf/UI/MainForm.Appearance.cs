@@ -477,7 +477,6 @@ internal sealed partial class MainForm
         {
             _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
             _outlineDetachedBeforeFocus = _outlineDetached;
-            _documentTabBarVisibleBeforeFocus = _documentTabBar.Visible;
             if (_outlineDetachedBeforeFocus)
                 MergeOutlineSidebarImmediately();
             if (_sidebarVisibleBeforeFocus)
@@ -499,7 +498,10 @@ internal sealed partial class MainForm
             if (_statusStrip is not null) _statusStrip.Visible = true;
         }
         _documentTabBar.SetDisplaySuppressed(false);
-        _documentTabBar.Visible = _documentTabBarVisibleBeforeFocus && _openDocuments.Count > 0;
+        // With the tab-bar menu style, the tab bar also hosts the menu when
+        // there are no documents. A separate top menu must remain visible in
+        // that state, so do not restore the stale pre-focus Visible value.
+        _documentTabBar.Visible = _openDocuments.Count > 0 || UseTabBarMenu;
 
         if (_sidebarVisibleBeforeFocus)
         {

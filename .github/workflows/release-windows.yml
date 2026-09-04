@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.version }}' } else { '${{ github.ref_name }}' }
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Release tag must be a semantic version without a v prefix: $version" }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$') { throw "Release tag must be a semantic version without a v prefix: $version" }
           $project = [xml](Get-Content apps/windows/MarkLeaf/MarkLeaf.csproj)
           $projectVersion = $project.SelectSingleNode('/Project/PropertyGroup/Version')?.InnerText
           if (!$projectVersion) { throw 'Version was not found in MarkLeaf.csproj' }

@@ -22,7 +22,7 @@ public sealed class CommandStateResolverTests
         var editorReady = CreateContext(editorReady: true);
         var documentReady = CreateContext(editorReady: true, documentAvailable: true, documentSaved: true);
 
-        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.NewDocument, unavailable).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.NewDocument, unavailable).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.NewDocument, editorReady).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.OpenDocument, editorReady).IsEnabled);
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SaveDocument, editorReady).IsEnabled);

@@ -152,7 +152,6 @@ internal sealed partial class MainForm : Form
     private bool _editorTypewriterMode;
     private bool _sidebarVisibleBeforeFocus = true;
     private bool _outlineDetachedBeforeFocus;
-    private bool _documentTabBarVisibleBeforeFocus;
     private bool _restoreDetachedOutlineAfterSidebarExpand;
     private bool _editorSmokeStarted;
     private bool _editorCommandSmokeStarted;

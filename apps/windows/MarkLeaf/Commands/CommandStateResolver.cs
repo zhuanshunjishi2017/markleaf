@@ -4,6 +4,14 @@ public static class CommandStateResolver
 {
     public static CommandState Resolve(AppCommand command, CommandContext context)
     {
+        // The editor host can remain initialized briefly after the last tab is
+        // closed. Do not let its stale selection/status re-enable editing
+        // commands when there is no document to edit.
+        if (!context.DocumentAvailable && IsDocumentEditingCommand(command))
+        {
+            return new(false);
+        }
+
         return command switch
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowPreferences
@@ -138,9 +146,35 @@ public static class CommandStateResolver
                 or AppCommand.LocateCurrentDocumentInWorkspace
                 => new(context.DocumentAvailable),
 
-            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
+            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(true),
             _ => new(context.EditorReady),
         };
     }
+
+    private static bool IsDocumentEditingCommand(AppCommand command) =>
+        command is >= AppCommand.Undo and <= AppCommand.Replace
+            or >= AppCommand.SetParagraph and <= AppCommand.DeleteTable
+            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight
+            or AppCommand.ToggleInlineCode or AppCommand.PromoteHeading or AppCommand.DemoteHeading
+            or AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+            or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph
+            or AppCommand.InsertMathInline or AppCommand.InsertMathBlock
+            or AppCommand.InsertMermaid or AppCommand.InsertFootnote
+            or AppCommand.CopyHtml or AppCommand.SelectAll or AppCommand.ToggleSourceMode
+            or AppCommand.ShowFrontMatter
+            or AppCommand.InsertAlertNote or AppCommand.InsertAlertTip
+            or AppCommand.InsertAlertImportant or AppCommand.InsertAlertWarning
+            or AppCommand.InsertAlertCaution
+            or AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
+            or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote
+            or AppCommand.ClearFormat or AppCommand.FormatPainter
+            or AppCommand.EditMath or AppCommand.ConvertMath or AppCommand.DeleteMath
+            or AppCommand.SetMathNumber or AppCommand.EditMermaid
+            or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid
+            or AppCommand.RerenderAllMermaid or AppCommand.DeclareCodeLanguage
+            or AppCommand.CopyCodeBlock or AppCommand.ExitCode
+            or AppCommand.ChangeImage or AppCommand.SaveImageAs
+            or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
+            or AppCommand.ResizeImage75 or AppCommand.ResizeImage90;
 
 }
