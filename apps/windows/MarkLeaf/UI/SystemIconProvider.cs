@@ -36,7 +36,7 @@ internal static class SystemIconProvider
     public static string NewFileIcon => IsWindows11 ? "\uECC8" : "\uE710";
     public static string MergeIcon => IsWindows11 ? "\uE8A0" : "\uE8AB";
     public static string DetachIcon => IsWindows11 ? "\uE89F" : "\uE89F";
-    public static string FullScreenMenuIcon => IsWindows11 ? "\uE8FD" : "\uE700";
+    public const string FullScreenMenuIcon = "\uE700";
     public const string NewTabIcon = "\uE710";
 
     public static string PreferencesFileIcon => IsWindows11 ? "" : "\uE8A5";

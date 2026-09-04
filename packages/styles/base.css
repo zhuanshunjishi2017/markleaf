@@ -106,7 +106,7 @@
   --markleaf-alert-content-spacing-x: 0.85em;
   --markleaf-alert-content-spacing-y: 0.25em;
   margin: 1em 0;
-  padding: 0.35em 0 0.35em var(--markleaf-alert-content-spacing-x);
+  padding: 0.35em 0 1em var(--markleaf-alert-content-spacing-x);
   border: 0;
   border-left: 4px solid var(--markleaf-alert-color);
   border-radius: 0;
@@ -229,6 +229,7 @@
 }
 
 .markleaf-document pre {
+  position: relative;
   overflow-x: auto;
   padding: 16px 18px;
   border: 1px solid var(--bg-selected);
@@ -239,7 +240,22 @@
   overflow-wrap: break-word;
 }
 
+.markleaf-document pre > code[data-language]::after {
+  content: attr(data-language);
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  color: var(--text-secondary);
+  pointer-events: none;
+  user-select: none;
+}
+
 .markleaf-document pre code {
+  display: block;
   padding: 0;
   background: transparent;
   white-space: pre-wrap;

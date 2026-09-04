@@ -50,7 +50,6 @@ ArchitecturesAllowed={#AppArchitectureAllowed}
 ArchitecturesInstallIn64BitMode={#AppArchitectureAllowed}
 OutputDir=.
 OutputBaseFilename=MarkLeaf-{#MyAppVersion}-{#AppArchitectureLabel}{#RuntimeSuffix}
-SetupIconFile=..\MarkLeaf\Resources\App\App.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 LicenseFile=License.rtf
 Compression=lzma2/max

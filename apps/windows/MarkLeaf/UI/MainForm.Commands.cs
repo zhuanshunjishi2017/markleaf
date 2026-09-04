@@ -16,6 +16,37 @@ internal sealed partial class MainForm
 {
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        var keyCode = keyData & Keys.KeyCode;
+        if ((keyData & (Keys.Control | Keys.Alt | Keys.Shift)) == Keys.None
+            && keyCode is Keys.Left or Keys.Right or Keys.Enter or Keys.Escape
+            && _documentTabBar.HandleKeyboardMenuKey(keyCode))
+        {
+            return true;
+        }
+
+        if ((keyData & Keys.KeyCode) == Keys.Menu
+            && (keyData & (Keys.Control | Keys.Shift)) == Keys.None
+            && !_focusMode
+            && UseTabBarMenu)
+        {
+            _documentTabBar.ToggleKeyboardMenuMode();
+            return true;
+        }
+
+        if ((keyData & Keys.Alt) != Keys.None
+            && (keyData & (Keys.Control | Keys.Shift)) == Keys.None
+            && !_focusMode
+            && UseTabBarMenu
+            && _settings.Appearance.ShowMenuMnemonics
+            && _documentTabBar.TryGetMnemonicMenuIndex(keyCode, out var mnemonicMenuIndex)
+            && _documentTabBar.ActivateTopLevelMenu(mnemonicMenuIndex))
+        {
+            ShowTopLevelMainMenu(
+                mnemonicMenuIndex,
+                _documentTabBar.GetTopLevelMenuScreenLocation(mnemonicMenuIndex));
+            return true;
+        }
+
         if (_editorCommandStatus.ExpandedSource
             && (keyData & Keys.Control) != Keys.None
             && (keyData & Keys.Alt) == Keys.None
@@ -86,6 +117,22 @@ internal sealed partial class MainForm
             || base.ProcessCmdKey(ref message, keyData);
     }
 
+    private void ActivateTabBarMenuFromKeyboard()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ActivateTabBarMenuFromKeyboard);
+            return;
+        }
+
+        if (_focusMode || !UseTabBarMenu)
+        {
+            return;
+        }
+
+        _documentTabBar.SelectFirstTopLevelMenu();
+    }
+
     private CommandState GetCommandState(AppCommand command)
     {
         if (command == AppCommand.UseIndependentOutlineSidebar
@@ -146,7 +193,8 @@ internal sealed partial class MainForm
 
         if (command is AppCommand.Paste or AppCommand.PastePlainText)
         {
-            return new CommandState(_editorHost?.IsDocumentLoaded == true
+            return new CommandState(_document is not null
+                && _editorHost?.IsDocumentLoaded == true
                 && _document?.IsReadOnly != true
                 && HasClipboardContent());
         }
@@ -201,6 +249,7 @@ internal sealed partial class MainForm
             FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
+            && context.DocumentAvailable
             && context.EditorReady
             && IsEditorCommand(command)
             && command != AppCommand.InsertImage
@@ -771,6 +820,15 @@ internal sealed partial class MainForm
         }
 
         var screenPoint = _editorHost.EditorPointToScreen(request);
+        if (request.OutsideDocument)
+        {
+            if (!_editorFullScreen)
+            {
+                return;
+            }
+            ShowExitFullScreenMenu(screenPoint);
+            return;
+        }
         try
         {
             var status = request.ExpandedSource

@@ -620,6 +620,17 @@ body.markleaf-theme-dark {
   position: relative;
 }
 
+/* The editor mount is height-constrained by the host.  Put the extra space
+   inside the ProseMirror content flow so it contributes to scrollHeight and
+   lets the final line be centered in the viewport. */
+#editor .ProseMirror::after {
+  content: '';
+  display: block;
+  height: 50vh;
+  min-height: 0;
+  pointer-events: none;
+}
+
 /* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
 .markleaf-document {
   position: relative;
@@ -721,7 +732,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   z-index: 9999;
   display: flex;
   gap: 0;
-  padding: 2px;
+  padding: 2px 8px;
   background: #F9F9F9;
   border: 1.5px solid #E5E5E5;
   border-radius: 5px;
@@ -877,11 +888,35 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   box-shadow: none;
 }
 
+/* 浮层从公式下方快速进入并在终点减速；收起时反向播放同一条曲线。 */
+@keyframes markleaf-expanded-source-motion {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.editor-tooltip.markleaf-expanded-source-enter {
+  animation: markleaf-expanded-source-motion 180ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.editor-tooltip.markleaf-expanded-source-exit {
+  animation: markleaf-expanded-source-motion 180ms cubic-bezier(.22, 1, .36, 1) reverse both;
+  pointer-events: none;
+}
+
 .editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-theme {
   box-sizing: border-box;
   width: 100%;
   min-height: 0 !important;
   height: auto !important;
+  /* 该节点复用了 .markleaf-document，仅用于继承主题字体和变量；
+     不能让文档主题背景把辅助栏下方整块区域铺满。 */
+  background: transparent !important;
   border-radius: var(--markleaf-expanded-source-radius);
 }
 
@@ -894,7 +929,185 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   border-radius: var(--markleaf-expanded-source-radius);
   overflow: auto;
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.16);
+    0 3px 4px rgba(0, 0, 0, 0.08);
   max-height: min(45vh, 360px);
+}
+
+body.markleaf-theme-dark .editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.25);
+}
+
+.markleaf-formula-symbol-toolbar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 30px;
+  margin: 4px 0 0;
+  padding: 2px 8px;
+  background: #F9F9F9;
+  border: 1.5px solid #E5E5E5;
+  border-radius: 5px;
+  color: #24292f;
+  font-family: inherit;
+  box-sizing: border-box;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.08);
+}
+
+.markleaf-formula-symbol-toolbar-label {
+  flex: 0 0 auto;
+  margin: 0 6px 0 2px;
+  color: #808080;
+  font-family: "Microsoft YaHei", "PingFang SC", "PingFangSC", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 28px;
+  white-space: nowrap;
+}
+
+body.markleaf-theme-dark .markleaf-formula-symbol-toolbar {
+  background: #2b2b2b;
+  border-color: #3E3E3E;
+  color: #FFFFFF;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.25);
+}
+
+.markleaf-formula-symbol-groups {
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.markleaf-formula-symbol-group-button,
+.markleaf-formula-symbol-button {
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #24292f;
+  cursor: default;
+  font: inherit;
+}
+
+body.markleaf-theme-dark .markleaf-formula-symbol-group-button,
+body.markleaf-theme-dark .markleaf-formula-symbol-button {
+  color: #FFFFFF;
+}
+
+.markleaf-formula-symbol-group-button {
+  height: 28px;
+  width: auto;
+  min-width: 28px;
+  padding: 0 5px;
+  font-family: KaTeX_Main, Cambria Math, serif;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.markleaf-formula-symbol-panel-5 .markleaf-formula-symbol-button {
+  height: auto;
+  min-height: 28px;
+  line-height: 1.25;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.markleaf-formula-symbol-group-button:hover,
+.markleaf-formula-symbol-group-button:focus-visible,
+.markleaf-formula-symbol-group-button.markleaf-formula-symbol-group-active,
+.markleaf-formula-symbol-button:hover,
+.markleaf-formula-symbol-button:focus-visible {
+  background: #95CDFB;
+}
+
+body.markleaf-theme-dark .markleaf-formula-symbol-group-button:hover,
+body.markleaf-theme-dark .markleaf-formula-symbol-group-button:focus-visible,
+body.markleaf-theme-dark .markleaf-formula-symbol-group-button.markleaf-formula-symbol-group-active,
+body.markleaf-theme-dark .markleaf-formula-symbol-button:hover,
+body.markleaf-theme-dark .markleaf-formula-symbol-button:focus-visible {
+  background: #1165AA;
+}
+
+.markleaf-formula-symbol-panel {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: calc(100% + 5px);
+  bottom: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 2px;
+  width: max-content;
+  max-width: 400px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 2px;
+  background: #F9F9F9;
+  border: 1.5px solid #E5E5E5;
+  border-radius: 5px;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+}
+
+body.markleaf-theme-dark .markleaf-formula-symbol-panel {
+  background: #2b2b2b;
+  border-color: #3E3E3E;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.25);
+}
+
+.markleaf-formula-symbol-panel[hidden] {
+  display: none;
+}
+
+.markleaf-formula-symbol-button {
+  height: 28px;
+  width: auto;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 5px;
+  font-family: KaTeX_Main, Cambria Math, serif;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.markleaf-formula-symbol-separator {
+  flex: 0 0 100%;
+  height: 1px;
+  margin: 2px 0;
+  background: #E5E5E5;
+}
+
+.markleaf-formula-symbol-section {
+  box-sizing: border-box;
+  padding: 1px 4px 0;
+  color: #808080;
+  font-family: "Microsoft YaHei", "PingFang SC", "PingFangSC", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.markleaf-formula-symbol-section-group {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+}
+
+.markleaf-formula-symbol-section-group > .markleaf-formula-symbol-section {
+  flex: 0 0 100%;
+}
+
+body.markleaf-theme-dark .markleaf-formula-symbol-separator {
+  background: #3E3E3E;
+}
+
+.markleaf-formula-symbol-group-button:disabled,
+.markleaf-formula-symbol-button:disabled {
+  opacity: 0.38;
+  pointer-events: none;
 }

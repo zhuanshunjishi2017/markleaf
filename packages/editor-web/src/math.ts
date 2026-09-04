@@ -1,7 +1,7 @@
 import { InputRule, Node } from '@tiptap/core'
-import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import katexSelfContainedCss from 'virtual:katex-css'
+import katex from 'katex'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
 
@@ -97,7 +97,9 @@ export const MathInline = Node.create({
   },
 
   renderMarkdown(node) {
-    const latex = nodeLatex(node)
+    // Inline math must remain on one Markdown line; a newline would make the
+    // closing delimiter fail to parse as an inline formula.
+    const latex = nodeLatex(node).replace(/\r?\n/g, '')
     return `$${latex || '...'}$`
   },
 

@@ -140,7 +140,7 @@
 .markleaf-style-print .markleaf-document code,
 .markleaf-style-print .markleaf-document pre code {
   font-family: "Courier New", monospace;
-  line-height: 1.0;
+  line-height: 1.3;
   color: var(--text-primary);
 }
 /* 代码块 */
@@ -194,7 +194,7 @@
 
 .markleaf-style-print .markleaf-document blockquote {
   margin: 0.5em 0;
-  padding: 0.5em;
+  padding: 0.5em 1em;
   color: var(--text-primary);
   border: 1px solid var(--text-primary);
   background: transparent;

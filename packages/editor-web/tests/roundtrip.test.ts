@@ -801,6 +801,34 @@ describe('editing history', () => {
     expect(markdown).toContain('$$\\_z\\_ \\\\ w$$')
     expect(markdown).toContain('(https://example.com/\\*path\\*)')
   })
+
+  it('fully restores protected inline code that contains formula delimiters', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+    editor.commands.setContent({
+      type: 'doc',
+      content: [{
+        type: 'paragraph',
+        content: [{
+          type: 'text',
+          text: '$\\*x\\* &amp; y$',
+          marks: [{ type: 'code' }],
+        }],
+      }],
+    })
+    setMarkdownEditingSettings({
+      escapeLiteralSymbols: false,
+      escapeMarkdownLiteralSymbols: false,
+    })
+
+    const markdown = getMarkdown(editor)
+
+    expect(markdown).toBe('`$\\*x\\* &amp; y$`')
+    expect(markdown).not.toContain('markleaf-protected')
+    expect(markdown).not.toContain('\u0000')
+  })
 })
 
 describe('find and replace', () => {

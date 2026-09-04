@@ -65,8 +65,15 @@ internal sealed partial class MainForm
         _editorHost.DocumentLoaded += (_, _) => ContinueEditorSmokeAfterLoad();
         _editorHost.DocumentLoaded += (_, _) => BeginEditorCommandSmokeIfRequested();
         _editorHost.DocumentLoaded += async (_, _) => await ContinueDocumentSmokeAfterLoadAsync();
-        _editorHost.DocumentLoaded += (_, _) =>
+        _editorHost.DocumentLoaded += (_, message) =>
         {
+            if (_pendingEditorRevealDocumentId is { } pendingId
+                && Guid.TryParse(message.DocumentId, out var loadedId)
+                && loadedId == pendingId)
+            {
+                _pendingEditorRevealDocumentId = null;
+                _editorPanel.Visible = true;
+            }
             SetMarkdownStyle(_markdownStyle);
             if (_pendingWorkspaceSearchQuery is { } query)
             {

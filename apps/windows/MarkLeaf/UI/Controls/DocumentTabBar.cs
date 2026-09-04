@@ -1,4 +1,5 @@
 using MarkLeaf.Documents;
+using MarkLeaf.Native;
 using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
@@ -29,6 +30,8 @@ internal sealed class DocumentTabBar : Control
     private int _scrollOffset;
     private int _heldTabWidth;
     private bool _holdTabWidth;
+    private bool _menuLayoutLocked;
+    private bool _lockedUseExpandedMenu;
     private bool _pointerInside;
     private bool _dragging;
     private int _dragIndex = -1;
@@ -55,6 +58,10 @@ internal sealed class DocumentTabBar : Control
     private bool _newTabHovered;
     private bool _newTabPressed;
     private Rectangle _newTabBounds;
+    private bool _showMenuKeyboardShortcuts = true;
+    private bool _showMenuMnemonics = true;
+    private string _uiLanguage = string.Empty;
+    private bool _keyboardMenuActive;
 
     public void SetDisplaySuppressed(bool suppressed)
     {
@@ -100,6 +107,170 @@ internal sealed class DocumentTabBar : Control
         Update();
     }
 
+    public void SetMenuTextOptions(
+        bool showKeyboardShortcuts,
+        bool showMnemonics,
+        string? uiLanguage)
+    {
+        var language = uiLanguage ?? string.Empty;
+        if (_showMenuKeyboardShortcuts == showKeyboardShortcuts
+            && _showMenuMnemonics == showMnemonics
+            && string.Equals(_uiLanguage, language, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _showMenuKeyboardShortcuts = showKeyboardShortcuts;
+        _showMenuMnemonics = showMnemonics;
+        _uiLanguage = language;
+        ReflowWithAnimation();
+        Invalidate();
+    }
+
+    public void SelectFirstTopLevelMenu()
+    {
+        if (!_fullScreenMenuVisible)
+        {
+            return;
+        }
+
+        UpdateMenuButtonBounds();
+        _keyboardMenuActive = true;
+        if (UseExpandedMenu && _expandedMenuBounds.Count > 0)
+        {
+            _fullScreenMenuHovered = false;
+            _hoveredExpandedMenuIndex = 0;
+        }
+        else
+        {
+            _hoveredExpandedMenuIndex = -1;
+            _fullScreenMenuHovered = true;
+        }
+        Invalidate();
+        Update();
+    }
+
+    public void ToggleKeyboardMenuMode()
+    {
+        if (!_fullScreenMenuVisible)
+            return;
+
+        if (_keyboardMenuActive)
+        {
+            ClearKeyboardMenuSelection();
+            return;
+        }
+
+        SelectFirstTopLevelMenu();
+    }
+
+    public bool TryGetMnemonicMenuIndex(Keys keyCode, out int menuIndex)
+    {
+        menuIndex = -1;
+        if (!_fullScreenMenuVisible || !_showMenuMnemonics)
+            return false;
+
+        var pressed = keyCode.ToString();
+        if (string.IsNullOrEmpty(pressed) || pressed.Length != 1)
+            return false;
+
+        var labels = GetRawExpandedMenuLabels();
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var mnemonicIndex = labels[index].IndexOf('&');
+            while (mnemonicIndex >= 0 && mnemonicIndex + 1 < labels[index].Length
+                && labels[index][mnemonicIndex + 1] == '&')
+            {
+                mnemonicIndex = labels[index].IndexOf('&', mnemonicIndex + 2);
+            }
+
+            if (mnemonicIndex >= 0
+                && mnemonicIndex + 1 < labels[index].Length
+                && char.ToUpperInvariant(labels[index][mnemonicIndex + 1])
+                    == char.ToUpperInvariant(pressed[0]))
+            {
+                menuIndex = index;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool ActivateTopLevelMenu(int menuIndex)
+    {
+        if (!_fullScreenMenuVisible || !UseExpandedMenu
+            || menuIndex < 0 || menuIndex >= _expandedMenuBounds.Count)
+            return false;
+
+        _keyboardMenuActive = true;
+        _fullScreenMenuHovered = false;
+        _hoveredExpandedMenuIndex = menuIndex;
+        Invalidate();
+        Update();
+        return true;
+    }
+
+    public bool HandleKeyboardMenuKey(Keys keyCode)
+    {
+        if (!_keyboardMenuActive || !_fullScreenMenuVisible)
+        {
+            return false;
+        }
+
+        UpdateMenuButtonBounds();
+        if (keyCode == Keys.Escape)
+        {
+            ClearKeyboardMenuSelection();
+            return true;
+        }
+
+        if (keyCode is Keys.Left or Keys.Right)
+        {
+            if (UseExpandedMenu && _expandedMenuBounds.Count > 0)
+            {
+                var direction = keyCode == Keys.Right ? 1 : -1;
+                var current = Math.Max(0, _hoveredExpandedMenuIndex);
+                _hoveredExpandedMenuIndex =
+                    (current + direction + _expandedMenuBounds.Count) % _expandedMenuBounds.Count;
+                _fullScreenMenuHovered = false;
+                Invalidate();
+                Update();
+            }
+            return true;
+        }
+
+        if (keyCode != Keys.Enter)
+        {
+            return false;
+        }
+
+        if (UseExpandedMenu && _expandedMenuBounds.Count > 0)
+        {
+            var index = Math.Clamp(_hoveredExpandedMenuIndex, 0, _expandedMenuBounds.Count - 1);
+            var bounds = _expandedMenuBounds[index];
+            TopLevelMenuRequested?.Invoke(
+                this,
+                (index, PointToScreen(new Point(bounds.Left, bounds.Bottom))));
+        }
+        else
+        {
+            var bounds = _fullScreenMenuBounds;
+            FullScreenMenuRequested?.Invoke(
+                this,
+                PointToScreen(new Point(bounds.Left, bounds.Bottom)));
+        }
+        return true;
+    }
+
+    private void ClearKeyboardMenuSelection()
+    {
+        _keyboardMenuActive = false;
+        _hoveredExpandedMenuIndex = -1;
+        _fullScreenMenuHovered = false;
+        Invalidate();
+    }
+
     public void SetFullScreenMenuVisible(bool visible)
     {
         if (_fullScreenMenuVisible == visible) return;
@@ -110,6 +281,7 @@ internal sealed class DocumentTabBar : Control
         _pressedExpandedMenuIndex = -1;
         _newTabHovered = false;
         _newTabPressed = false;
+        _keyboardMenuActive = false;
         Visible = !_displaySuppressed && (_documents.Count > 0 || _animationActive || visible);
         ReflowWithAnimation();
         Invalidate();
@@ -144,6 +316,22 @@ internal sealed class DocumentTabBar : Control
 
         var oldDocuments = _layoutDocuments.ToArray();
         var oldBounds = new Dictionary<MarkdownDocument, Rectangle>(_layoutBounds);
+        var tabWasAdded = nextDocuments.Length > oldDocuments.Length;
+
+        // Adding a tab must be allowed to recalculate the available width even
+        // when the pointer is still inside the tab bar. The width hold is only
+        // retained for removals, so closing tabs can keep its existing behavior.
+        if (tabWasAdded)
+        {
+            _holdTabWidth = false;
+            _heldTabWidth = 0;
+            _menuLayoutLocked = false;
+        }
+        else if (_pointerInside && !_menuLayoutLocked)
+        {
+            _lockedUseExpandedMenu = CalculateUseExpandedMenu();
+            _menuLayoutLocked = true;
+        }
 
         if (_animationActive)
         {
@@ -342,14 +530,9 @@ internal sealed class DocumentTabBar : Control
                 var progress = _animationActive ? Ease(GetAnimationProgress()) : 1F;
                 var renderDocuments = _animationActive ? _animationDocuments : _layoutDocuments;
                 if (_dragging)
-                {
-                    // Draw the dragged tab last so it is always visually above the
-                    // tabs it crosses while being moved.
                     renderDocuments = _dragDocuments
                         .Where(document => !IsDraggedDocument(document))
-                        .Append(_dragDocuments[_dragIndex])
                         .ToArray();
-                }
                 foreach (var document in renderDocuments)
                 {
                     var bounds = _dragging
@@ -358,51 +541,19 @@ internal sealed class DocumentTabBar : Control
                         ? Interpolate(_animationFromBounds[document], _animationToBounds[document], progress)
                         : _layoutBounds.GetValueOrDefault(document);
                     if (bounds.Width <= 0 || bounds.Height <= 0) continue;
-
-                    var actualIndex = IndexOfDocument(document);
-                    var selected = actualIndex == _selectedIndex;
-                    var hovered = actualIndex == _hoveredIndex;
-                    var isDraggedDocument = _dragging && _dragIndex >= 0
-                        && _dragIndex < _dragDocuments.Count
-                        && ReferenceEquals(document, _dragDocuments[_dragIndex]);
-                    using (var brush = new SolidBrush(isDraggedDocument
-                        ? _bgSelected : selected || hovered ? _bgHover : _bgSecondary))
-                        SidebarGdi.FillRoundedRect(e.Graphics, bounds, this.ScaleForDpi(6), brush);
-
-                    var closeSize = this.ScaleForDpi(18);
-                    var close = new Rectangle(bounds.Right - closeSize - this.ScaleForDpi(5),
-                        bounds.Top + (bounds.Height - closeSize) / 2, closeSize, closeSize);
-                    var markerText = GetMarkerText(document);
-                    var markerWidth = string.IsNullOrEmpty(markerText) ? 0
-                        : TextRenderer.MeasureText(e.Graphics, markerText, _markerFont, Size.Empty,
-                            TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-                    var markerGap = markerWidth == 0 ? 0 : this.ScaleForDpi(5);
-                    var markerBounds = new Rectangle(close.Left - markerGap - markerWidth, bounds.Top,
-                        markerWidth, bounds.Height);
-                    var textBounds = new Rectangle(bounds.Left + this.ScaleForDpi(8), bounds.Top,
-                        Math.Max(1, markerBounds.Left - bounds.Left - this.ScaleForDpi(4)), bounds.Height);
-                    var color = selected ? _textPrimary : _textSecondary;
-                    TextRenderer.DrawText(e.Graphics, document.DisplayName,
-                        selected ? _selectedFont : _font, textBounds, color,
-                        TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter
-                            | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-                    if (markerWidth > 0)
-                        TextRenderer.DrawText(e.Graphics, markerText, _markerFont, markerBounds,
-                            document.IsReadOnly || selected ? _textSecondary : _textTertiary,
-                            TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter
-                                | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-                    var closeHovered = actualIndex == _hoveredCloseIndex;
-                    var closeIcon = document.IsDirty && !closeHovered ? "●" : "";
-                    TextRenderer.DrawText(e.Graphics, closeIcon,
-                        document.IsDirty && !closeHovered ? _font : _iconFont, close, color,
-                        TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter
-                            | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                    DrawTab(e.Graphics, document, bounds);
                 }
             }
             finally
             {
                 e.Graphics.Restore(graphicsState);
             }
+
+            // Keep the dragged tab above the menu/new-tab controls as well as the
+            // other tabs, so its rounded rectangle is never clipped at an edge.
+            if (_dragging && _dragIndex >= 0 && _dragIndex < _dragDocuments.Count)
+                DrawTab(e.Graphics, _dragDocuments[_dragIndex],
+                    GetDragBounds(_dragDocuments[_dragIndex]), isDragged: true);
         }
 
         using (var newTabBrush = new SolidBrush(_newTabPressed
@@ -421,6 +572,46 @@ internal sealed class DocumentTabBar : Control
             _textPrimary,
             TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter
                         | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+    }
+
+    private void DrawTab(Graphics graphics, MarkdownDocument document, Rectangle bounds,
+        bool isDragged = false)
+    {
+        var actualIndex = IndexOfDocument(document);
+        var selected = actualIndex == _selectedIndex;
+        var hovered = actualIndex == _hoveredIndex;
+        using (var brush = new SolidBrush(isDragged
+            ? _bgSelected : selected || hovered ? _bgHover : _bgSecondary))
+            SidebarGdi.FillRoundedRect(graphics, bounds, this.ScaleForDpi(6), brush);
+
+        var closeSize = this.ScaleForDpi(18);
+        var close = new Rectangle(bounds.Right - closeSize - this.ScaleForDpi(5),
+            bounds.Top + (bounds.Height - closeSize) / 2, closeSize, closeSize);
+        var markerText = GetMarkerText(document);
+        var markerWidth = string.IsNullOrEmpty(markerText) ? 0
+            : TextRenderer.MeasureText(graphics, markerText, _markerFont, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+        var markerGap = markerWidth == 0 ? 0 : this.ScaleForDpi(5);
+        var markerBounds = new Rectangle(close.Left - markerGap - markerWidth, bounds.Top,
+            markerWidth, bounds.Height);
+        var textBounds = new Rectangle(bounds.Left + this.ScaleForDpi(8), bounds.Top,
+            Math.Max(1, markerBounds.Left - bounds.Left - this.ScaleForDpi(4)), bounds.Height);
+        var color = selected ? _textPrimary : _textSecondary;
+        TextRenderer.DrawText(graphics, document.DisplayName,
+            selected ? _selectedFont : _font, textBounds, color,
+            TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+        if (markerWidth > 0)
+            TextRenderer.DrawText(graphics, markerText, _markerFont, markerBounds,
+                document.IsReadOnly || selected ? _textSecondary : _textTertiary,
+                TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter
+                    | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        var closeHovered = actualIndex == _hoveredCloseIndex;
+        var closeIcon = document.IsDirty && !closeHovered ? "●" : "";
+        TextRenderer.DrawText(graphics, closeIcon,
+            document.IsDirty && !closeHovered ? _font : _iconFont, close, color,
+            TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter
+                | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -507,6 +698,7 @@ internal sealed class DocumentTabBar : Control
         _fullScreenMenuHovered = false;
         _hoveredExpandedMenuIndex = -1;
         _newTabHovered = false;
+        _menuLayoutLocked = false;
         if (_holdTabWidth)
         {
             _holdTabWidth = false;
@@ -520,6 +712,8 @@ internal sealed class DocumentTabBar : Control
     {
         base.OnMouseEnter(e);
         _pointerInside = true;
+        _lockedUseExpandedMenu = CalculateUseExpandedMenu();
+        _menuLayoutLocked = true;
         LockWidthForPointer();
     }
 
@@ -904,7 +1098,7 @@ internal sealed class DocumentTabBar : Control
         _fullScreenMenuBounds = Rectangle.Empty;
         var x = outerPadding;
         var gap = this.ScaleForDpi(2);
-        var horizontalPadding = this.ScaleForDpi(6);
+        var horizontalPadding = this.ScaleForDpi(_showMenuMnemonics ? 6 : 7);
         foreach (var label in GetExpandedMenuLabels())
         {
             var textWidth = TextRenderer.MeasureText(
@@ -920,27 +1114,53 @@ internal sealed class DocumentTabBar : Control
 
     private bool UseExpandedMenu
     {
-        get
-        {
-            if (_documents.Count == 0) return true;
-
-            var outerPadding = this.ScaleForDpi(4);
-            var tabWidth = this.ScaleForDpi(180);
-            var tabGap = this.ScaleForDpi(4);
-            return ClientSize.Width >= outerPadding * 2 + tabWidth * 4 + tabGap * 3;
-        }
+        get => _menuLayoutLocked ? _lockedUseExpandedMenu : CalculateUseExpandedMenu();
     }
 
-    private static string[] GetExpandedMenuLabels()
+    private bool CalculateUseExpandedMenu()
+    {
+        if (_documents.Count == 0) return true;
+
+        // Keep the complete menu only while every open tab can retain at
+        // least two thirds of its normal width. This also makes the choice
+        // follow the actual localized menu text instead of a fixed tab count.
+        var minimumTabWidth = this.ScaleForDpi(180 * 2 / 3);
+        var expandedAvailable = GetAvailableTabWidth(_documents.Count, expanded: true);
+        var expandedWidth = GetTabWidth(_documents.Count, expandedAvailable);
+        return expandedWidth >= minimumTabWidth;
+    }
+
+    private string[] GetExpandedMenuLabels()
         =>
         [
-            Loc.Get("menu.file.label").Replace("&", string.Empty, StringComparison.Ordinal),
-            Loc.Get("menu.edit.label").Replace("&", string.Empty, StringComparison.Ordinal),
-            Loc.Get("menu.paragraph.label").Replace("&", string.Empty, StringComparison.Ordinal),
-            Loc.Get("menu.format.label").Replace("&", string.Empty, StringComparison.Ordinal),
-            Loc.Get("menu.view.label").Replace("&", string.Empty, StringComparison.Ordinal),
-            Loc.Get("menu.help.label").Replace("&", string.Empty, StringComparison.Ordinal),
+            FormatExpandedMenuLabel("menu.file.label"),
+            FormatExpandedMenuLabel("menu.edit.label"),
+            FormatExpandedMenuLabel("menu.paragraph.label"),
+            FormatExpandedMenuLabel("menu.format.label"),
+            FormatExpandedMenuLabel("menu.view.label"),
+            FormatExpandedMenuLabel("menu.help.label"),
         ];
+
+    private string[] GetRawExpandedMenuLabels()
+        =>
+        [
+            Loc.Get("menu.file.label"),
+            Loc.Get("menu.edit.label"),
+            Loc.Get("menu.paragraph.label"),
+            Loc.Get("menu.format.label"),
+            Loc.Get("menu.view.label"),
+            Loc.Get("menu.help.label"),
+        ];
+
+    private string FormatExpandedMenuLabel(string localizationKey)
+    {
+        var text = MenuTextFormatter.Format(
+            Loc.Get(localizationKey),
+            _showMenuKeyboardShortcuts,
+            _showMenuMnemonics,
+            _uiLanguage);
+        return text.Replace("&", string.Empty, StringComparison.Ordinal);
+    }
 
     private int GetMaximumScrollOffset()
     {
@@ -952,18 +1172,52 @@ internal sealed class DocumentTabBar : Control
     private int GetTabWidth(int count)
     {
         if (count == 0) return 0;
-        UpdateMenuButtonBounds();
-        var reserved = !_fullScreenMenuVisible
-            ? 0
-            : (UseExpandedMenu ? _expandedMenuBounds[^1].Right : _fullScreenMenuBounds.Right);
-        var newTabReserved = _newTabBounds.Width + this.ScaleForDpi(4);
-        var available = Math.Max(0, ClientSize.Width - this.ScaleForDpi(8) - reserved - newTabReserved);
+        var available = GetAvailableTabWidth(count, UseExpandedMenu);
+        return GetTabWidth(count, available);
+    }
+
+    private int GetTabWidth(int count, int available)
+    {
         var width = this.ScaleForDpi(180);
         var gap = this.ScaleForDpi(4);
         var total = width * count + gap * Math.Max(0, count - 1);
         return total > available
             ? Math.Max(this.ScaleForDpi(80), (available - gap * (count - 1)) / count)
             : width;
+    }
+
+    private int GetAvailableTabWidth(int count, bool expanded)
+    {
+        if (count == 0) return 0;
+
+        var outerPadding = this.ScaleForDpi(4);
+        var newTabWidth = Math.Max(
+            outerPadding,
+            ClientSize.Height - this.ScaleForDpi(5) - this.ScaleForDpi(5));
+        var menuWidth = !_fullScreenMenuVisible
+            ? 0
+            : expanded ? GetExpandedMenuWidth() : newTabWidth;
+        var menuReserved = menuWidth > 0 ? menuWidth + outerPadding : 0;
+        var newTabReserved = newTabWidth + outerPadding;
+        return Math.Max(0, ClientSize.Width - this.ScaleForDpi(8)
+            - menuReserved - newTabReserved);
+    }
+
+    private int GetExpandedMenuWidth()
+    {
+        var x = this.ScaleForDpi(4);
+        var gap = this.ScaleForDpi(2);
+        var horizontalPadding = this.ScaleForDpi(_showMenuMnemonics ? 6 : 7);
+        foreach (var label in GetExpandedMenuLabels())
+        {
+            var textWidth = TextRenderer.MeasureText(
+                label,
+                _font,
+                Size.Empty,
+                TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+            x += textWidth + horizontalPadding * 2 + gap;
+        }
+        return Math.Max(0, x - gap);
     }
 
     private void UpdateInteractionBounds(Dictionary<MarkdownDocument, Rectangle> bounds)

@@ -21,7 +21,8 @@ internal sealed record LaunchOptions(
     int? InitialWindowTop,
     int? InitialWindowWidth,
     int? InitialWindowHeight,
-    bool SmokeCrashExit)
+    bool SmokeCrashExit,
+    bool IsolatedFileWindow)
 {
     public static LaunchOptions Parse(string[] args)
     {
@@ -46,6 +47,7 @@ internal sealed record LaunchOptions(
         int? initialWindowWidth = null;
         int? initialWindowHeight = null;
         bool smokeCrashExit = false;
+        bool isolatedFileWindow = false;
 
         for (var index = 0; index < args.Length - 1; index++)
         {
@@ -120,6 +122,9 @@ internal sealed record LaunchOptions(
                 case "--smoke-crash-exit":
                     smokeCrashExit = true;
                     break;
+                case "--isolated-file-window":
+                    isolatedFileWindow = true;
+                    break;
             }
         }
 
@@ -144,6 +149,7 @@ internal sealed record LaunchOptions(
             initialWindowTop,
             initialWindowWidth,
             initialWindowHeight,
-            smokeCrashExit);
+            smokeCrashExit,
+            isolatedFileWindow);
     }
 }

@@ -44,7 +44,6 @@ artifacts/
 .superpowers/
 .codex-build/
 /.worktrees/
-docs/
 CLAUDE.md
 AGENTS.md
 .cursor/
@@ -89,3 +88,6 @@ release/
 # Keep the macOS release tooling versioned; only generated release output is ignored.
 !apps/macos/script/release/
 !apps/macos/script/release/**
+
+# Local project notes (not part of the public documentation)
+/project-notes/

@@ -20,6 +20,7 @@ import { syntaxTree } from '@codemirror/language'
 import { EditorState as CodeMirrorEditorState } from '@codemirror/state'
 import { parseDocument } from 'yaml'
 import { MathBlock, MathInline, mathNumberFromLatex } from './math'
+import katex from 'katex'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
@@ -51,6 +52,7 @@ const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
 let frontMatterStrings = sharedEditorStrings('zh-Hans', 'ctrl')
+let formulaInputAssistantText = frontMatterStrings.formulaInputAssistant
 let codeHighlightVisible = false
 
 const markdownEmojiAliases: Record<string, string> = {
@@ -184,10 +186,11 @@ const CjkAutoSpacing = Extension.create({
 })
 
 export function setEditorSharedStrings(
-  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
+  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'formulaInputAssistant' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
 ): void {
   mermaidRenderButtonText = strings.mermaidRender
   frontMatterStrings = { ...frontMatterStrings, ...strings }
+  formulaInputAssistantText = strings.formulaInputAssistant
   for (const container of document.querySelectorAll<HTMLElement>('.markleaf-front-matter')) {
     const toggle = container.querySelector<HTMLButtonElement>('.markleaf-front-matter-toggle')
     const toggleError = container.querySelector<HTMLElement>('.markleaf-front-matter-toggle-error')
@@ -496,6 +499,18 @@ const MarkdownItalic = Italic.extend({
 })
 
 const MarkdownCodeBlock = CodeBlock.extend({
+  renderHTML({ node, HTMLAttributes }: any) {
+    const language = typeof node.attrs?.language === 'string'
+      ? node.attrs.language.trim()
+      : ''
+    const attributes = language.length > 0
+      ? { ...HTMLAttributes, 'data-language': language }
+      : HTMLAttributes
+    const codeAttributes = language.length > 0
+      ? { 'data-language': language }
+      : {}
+    return ['pre', attributes, ['code', codeAttributes, 0]]
+  },
   renderMarkdown(node: any, helpers: any) {
     const markerCharacter = markdownCodeFence === 'tilde' ? '~' : '`'
     const content = node.content ? helpers.renderChildren(node.content) : ''
@@ -2277,7 +2292,310 @@ type ExpandedSourceEditor = {
   kind: 'mathInline' | 'mathBlock' | 'mermaid'
 }
 
+type FormulaSymbol = {
+  preview: string
+  latex: string
+  previewLatex?: string
+  plainPreview?: boolean
+  separatorBefore?: boolean
+  sectionBefore?: string
+  wrap?: { before: string; after: string; caretOffset: number }
+}
+type FormulaSymbolGroup = { label: string; symbols: FormulaSymbol[] }
+
+function renderFormulaSymbolPreview(latex: string): string {
+  return katex.renderToString(latex, {
+    throwOnError: false,
+    displayMode: false,
+    output: 'html',
+  })
+}
+
+const formulaSymbolGroups: FormulaSymbolGroup[] = [
+  {
+    label: '希腊字母',
+    symbols: [
+      { preview: 'α', latex: '\\alpha' },
+      ...[
+        ['β', '\\beta'], ['γ', '\\gamma'], ['δ', '\\delta'],
+      ['ϵ', '\\epsilon'], ['ζ', '\\zeta'], ['η', '\\eta'], ['θ', '\\theta'],
+      ['ι', '\\iota'], ['κ', '\\kappa'], ['λ', '\\lambda'], ['μ', '\\mu'],
+      ['ν', '\\nu'], ['ξ', '\\xi'], ['ο', '\\omicron'], ['π', '\\pi'], ['ρ', '\\rho'],
+      ['σ', '\\sigma'], ['τ', '\\tau'], ['υ', '\\upsilon'], ['ϕ', '\\phi'],
+      ['χ', '\\chi'], ['ψ', '\\psi'], ['ω', '\\omega'], ['Γ', '\\Gamma'],
+      ['Δ', '\\Delta'], ['Θ', '\\Theta'], ['Λ', '\\Lambda'], ['Ξ', '\\Xi'],
+      ['Π', '\\Pi'], ['Σ', '\\Sigma'], ['Υ', '\\Upsilon'], ['Φ', '\\Phi'],
+      ['Ψ', '\\Psi'], ['Ω', '\\Omega'],
+      ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+    ],
+  },
+  {
+    label: '运算符',
+    symbols: [
+      ['×', '\\times'], ['÷', '\\div'], ['±', '\\pm'], ['∓', '\\mp'],
+      ['∗', '\\ast'], ['★', '\\star'], ['○', '\\circ'], ['●', '\\bullet'],
+      ['⊕', '\\oplus'], ['⊖', '\\ominus'], ['⊘', '\\oslash'],
+      ['⊗', '\\otimes'], ['⊙', '\\odot'], ['†', '\\dagger'], ['‡', '\\ddagger'],
+      ['∨', '\\vee'], ['∧', '\\wedge'], ['∩', '\\cap'], ['∪', '\\cup'],
+      ['⊻', '\\veebar'], ['⊼', '\\barwedge'], ['≀', '\\wr'],
+      ['ℜ', '\\Re'], ['ℑ', '\\Im'], ['⊥', '\\perp'], ['⊤', '\\top'],
+      ['∞', '\\infty'], ['∂', '\\partial'], ['∇', '\\nabla'],
+      ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
+      ['ℵ', '\\aleph'],
+      ['∅', '\\emptyset'], ['∖', '\\setminus'], ['△', '\\triangle'],
+      ['◇', '\\diamond'], ['∠', '\\angle'], ['⌞', '\\lrcorner'],
+      ['⌝', '\\urcorner'], ['⌟', '\\llcorner'], ['⌜', '\\ulcorner'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '关系符号',
+    symbols: [
+      ['≤', '\\le'], ['≥', '\\ge'], ['≺', '\\prec'], ['≻', '\\succ'],
+      ['⊂', '\\subset'], ['⊃', '\\supset'], ['≪', '\\ll'], ['≫', '\\gg'],
+      ['≡', '\\equiv'], ['∼', '\\sim'], ['≃', '\\simeq'], ['≈', '\\approx'],
+      ['≠', '\\ne'], ['⊄', '\\nsubseteq'], ['⊆', '\\subseteq'], ['⊇', '\\supseteq'],
+      ['⊈', '\\nsubseteq'], ['⊉', '\\nsupseteq'], ['∝', '\\propto'], ['∣', '\\mid'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '结构',
+    symbols: [
+      ['xₐ', 'x_{a}'], ['xᵇ', 'x^{b}'], ['xᵇₐ', 'x_{a}^{b}'], ['x̄', '\\bar{x}'],
+      ['x̃', '\\tilde{x}'], ['a/b', '\\frac{a}{b}'], ['√x', '\\sqrt{x}'],
+      ['ⁿ√x', '\\sqrt[n]{x}'],
+      ['(x)', '\\left(x\\right)'], ['[x]', '\\left[x\\right]'],
+      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],
+      ['∫', '\\int_{a}^{b}'], ['∫∫', '\\iint_{a}^{b}'], ['∫∫∫', '\\iiint_{a}^{b}'],
+      ['∮', '\\oint_{a}^{b}'], ['∯', '\\oiint_{a}^{b}'], ['∰', '\\oiiint_{a}^{b}'],
+      ['∏', '\\prod_{a}^{b}'], ['∑', '\\sum_{a}^{b}'], ['lim', '\\lim_{a\\to b}'],
+      ['x', '\\vec{}'], ['AB', '\\overrightarrow{}'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '字体',
+    symbols: [
+      { preview: '\\mathrm{}', previewLatex: '\\mathrm{x}', latex: '\\mathrm{}', plainPreview: true, sectionBefore: '正体', wrap: { before: '\\mathrm{', after: '}', caretOffset: '\\mathrm{'.length } },
+      { preview: 'e', latex: '\\mathrm{e}' },
+      { preview: 'i', latex: '\\mathrm{i}' },
+      { preview: 'dx', latex: '\\,\\mathrm{d}x' },
+      { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: '黑板体', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
+      { preview: 'C', latex: '\\mathbb{C}' },
+      { preview: 'N', latex: '\\mathbb{N}' },
+      { preview: 'Q', latex: '\\mathbb{Q}' },
+      { preview: 'R', latex: '\\mathbb{R}' },
+      { preview: 'Z', latex: '\\mathbb{Z}' },
+      { preview: '\\mathcal{}', previewLatex: '\\mathcal{A}', latex: '\\mathcal{}', plainPreview: true, sectionBefore: '花体', separatorBefore: true, wrap: { before: '\\mathcal{', after: '}', caretOffset: '\\mathcal{'.length } },
+      { preview: 'A', latex: '\\mathcal{A}' },
+      { preview: 'F', latex: '\\mathcal{F}' },
+      { preview: 'L', latex: '\\mathcal{L}' },
+      { preview: 'R', latex: '\\mathcal{R}' },
+      { preview: '\\mathscr{}', previewLatex: '\\mathscr{A}', latex: '\\mathscr{}', plainPreview: true, sectionBefore: '手写体', separatorBefore: true, wrap: { before: '\\mathscr{', after: '}', caretOffset: '\\mathscr{'.length } },
+      { preview: 'B', latex: '\\mathscr{B}' },
+      { preview: 'E', latex: '\\mathscr{E}' },
+      { preview: 'F', latex: '\\mathscr{F}' },
+      { preview: 'H', latex: '\\mathscr{H}' },
+      { preview: 'L', latex: '\\mathscr{L}' },
+      { preview: 'M', latex: '\\mathscr{M}' },
+      { preview: 'R', latex: '\\mathscr{R}' },
+    ],
+  },
+  {
+    label: '结构块',
+    symbols: [
+      { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: '对齐环境', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
+      { preview: 'cases', previewLatex: '\\begin{cases}a\\\\b\\end{cases}', latex: '\\begin{cases}\n  \n\\end{cases}', wrap: { before: '\\begin{cases}\n  ', after: '\n\\end{cases}', caretOffset: '\\begin{cases}\n  '.length } },
+      { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: '包裹结构', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
+      { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: '矩阵与行列式', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
+      { preview: '( )', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{pmatrix}\n  \n\\end{pmatrix}', wrap: { before: '\\begin{pmatrix}\n  ', after: '\n\\end{pmatrix}', caretOffset: '\\begin{pmatrix}\n  '.length } },
+      { preview: '[ ]', previewLatex: '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', latex: '\\begin{bmatrix}\n  \n\\end{bmatrix}', wrap: { before: '\\begin{bmatrix}\n  ', after: '\n\\end{bmatrix}', caretOffset: '\\begin{bmatrix}\n  '.length } },
+      { preview: '| |', previewLatex: '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', latex: '\\begin{vmatrix}\n  \n\\end{vmatrix}', wrap: { before: '\\begin{vmatrix}\n  ', after: '\n\\end{vmatrix}', caretOffset: '\\begin{vmatrix}\n  '.length } },
+      { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },
+    ],
+  },
+  {
+    label: '箭头',
+    symbols: [
+      ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
+      ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
+      ['↑', '\\uparrow'], ['↓', '\\downarrow'], ['⇑', '\\Uparrow'],
+      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+]
+
+formulaSymbolGroups[0]!.symbols.push(
+  { preview: 'ε', latex: '\\varepsilon', separatorBefore: true, sectionBefore: '变体' },
+  { preview: 'ϑ', latex: '\\vartheta' },
+  { preview: 'ϰ', latex: '\\varkappa' },
+  { preview: 'ϖ', latex: '\\varpi' },
+  { preview: 'ϱ', latex: '\\varrho' },
+  { preview: 'ς', latex: '\\varsigma' },
+  { preview: 'φ', latex: '\\varphi' },
+  { preview: '𝛤', latex: '\\varGamma', separatorBefore: true },
+  { preview: '𝛥', latex: '\\varDelta' },
+  { preview: '𝛩', latex: '\\varTheta' },
+  { preview: '𝛬', latex: '\\varLambda' },
+  { preview: '𝛯', latex: '\\varXi' },
+  { preview: '𝛱', latex: '\\varPi' },
+  { preview: '𝛴', latex: '\\varSigma' },
+  { preview: '𝛶', latex: '\\varUpsilon' },
+  { preview: '𝛷', latex: '\\varPhi' },
+  { preview: '𝛹', latex: '\\varPsi' },
+  { preview: '𝛺', latex: '\\varOmega' },
+)
+
+const structureSymbols = formulaSymbolGroups[3]!.symbols
+const markStructureSection = (latex: string, section: string, separatorBefore = true) => {
+  const symbol = structureSymbols.find((item) => item.latex === latex)
+  if (symbol) {
+    symbol.sectionBefore = section
+    symbol.separatorBefore = separatorBefore
+  }
+}
+markStructureSection('x_{a}', '上下标与修饰', false)
+markStructureSection('\\frac{a}{b}', '分式与根式')
+markStructureSection('\\left(x\\right)', '括号')
+markStructureSection('\\int_{a}^{b}', '积分与运算')
+const vectorSymbol = structureSymbols.find((symbol) => symbol.latex === '\\vec{}')
+if (vectorSymbol) {
+  vectorSymbol.sectionBefore = '向量'
+  vectorSymbol.separatorBefore = true
+  vectorSymbol.previewLatex = '\\vec{x}'
+  vectorSymbol.wrap = { before: '\\vec{', after: '}', caretOffset: '\\vec{'.length }
+}
+const overVectorSymbol = structureSymbols.find((symbol) => symbol.latex === '\\overrightarrow{}')
+if (overVectorSymbol) {
+  overVectorSymbol.previewLatex = '\\overrightarrow{AB}'
+  overVectorSymbol.wrap = { before: '\\overrightarrow{', after: '}', caretOffset: '\\overrightarrow{'.length }
+}
+
 const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
+
+function createFormulaSymbolToolbar(
+  code: HTMLElement,
+  editor: Editor,
+  position: number,
+): HTMLElement {
+  const toolbar = document.createElement('div')
+  toolbar.className = 'markleaf-formula-symbol-toolbar'
+  toolbar.addEventListener('pointerdown', (event) => event.stopPropagation())
+  toolbar.addEventListener('click', (event) => event.stopPropagation())
+
+  const groups = document.createElement('div')
+  groups.className = 'markleaf-formula-symbol-groups'
+  const label = document.createElement('span')
+  label.className = 'markleaf-formula-symbol-toolbar-label'
+  label.textContent = formulaInputAssistantText
+  toolbar.append(label)
+  const panels: HTMLElement[] = []
+  const buttons: HTMLButtonElement[] = []
+
+  const insertSymbol = (symbol: FormulaSymbol) => {
+    if (!editor.isEditable) return
+    const current = editor.state.doc.nodeAt(position)
+    if (!current || (current.type.name !== 'mathInline' && current.type.name !== 'mathBlock')) return
+    const source = current.textContent
+    const selection = getCodeSelectionOffsets(code)
+    let nextSource: string
+    let nextCaret: number
+    if (symbol.wrap) {
+      const selectedText = source.slice(selection.from, selection.to)
+      nextSource = source.slice(0, selection.from)
+        + symbol.wrap.before + selectedText + symbol.wrap.after
+        + source.slice(selection.to)
+      nextCaret = selection.from + symbol.wrap.before.length
+        + (selectedText.length > 0 ? selectedText.length + symbol.wrap.after.length : 0)
+    } else {
+      nextSource = source.slice(0, selection.to) + symbol.latex + source.slice(selection.to)
+      nextCaret = selection.to + symbol.latex.length
+    }
+    const replacement = current.type.create(
+      current.attrs,
+      nextSource.length > 0 ? editor.state.schema.text(nextSource) : undefined,
+    )
+    editor.view.dispatch(editor.state.tr
+      .replaceWith(position, position + current.nodeSize, replacement)
+      .setMeta(expandedSourceEditorKey, {
+        position,
+        kind: current.type.name,
+      }))
+    code.textContent = nextSource
+    renderEditableCodeHighlight(code, nextSource, 'latex')
+    code.focus()
+    setCaretOffset(code, nextCaret)
+  }
+
+  for (const [groupIndex, group] of formulaSymbolGroups.entries()) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'markleaf-formula-symbol-group-button'
+    button.textContent = ['αβΔ', '×÷±', '≤≠', '√()', '𝔸', '{&=', '←↑'][groupIndex] ?? group.label
+    button.title = group.label
+    button.setAttribute('aria-label', group.label)
+    button.disabled = !editor.isEditable
+
+    const panel = document.createElement('div')
+    panel.className = `markleaf-formula-symbol-panel markleaf-formula-symbol-panel-${groupIndex}`
+    panel.hidden = true
+    let sectionGroup: HTMLDivElement | null = null
+    for (const symbol of group.symbols) {
+      if (symbol.sectionBefore) {
+        if (symbol.separatorBefore) {
+          const separator = document.createElement('div')
+          separator.className = 'markleaf-formula-symbol-separator'
+          panel.append(separator)
+        }
+        sectionGroup = document.createElement('div')
+        sectionGroup.className = 'markleaf-formula-symbol-section-group'
+        const section = document.createElement('div')
+        section.className = 'markleaf-formula-symbol-section'
+        section.textContent = symbol.sectionBefore
+        sectionGroup.append(section)
+        panel.append(sectionGroup)
+      } else if (symbol.separatorBefore) {
+        const separator = document.createElement('div')
+        separator.className = 'markleaf-formula-symbol-separator'
+        panel.append(separator)
+        sectionGroup = null
+      }
+      const symbolButton = document.createElement('button')
+      symbolButton.type = 'button'
+      symbolButton.className = 'markleaf-formula-symbol-button'
+      if (symbol.plainPreview) {
+        symbolButton.textContent = symbol.preview
+      } else {
+        symbolButton.innerHTML = renderFormulaSymbolPreview(symbol.previewLatex ?? symbol.latex)
+      }
+      symbolButton.title = symbol.latex
+      symbolButton.setAttribute('aria-label', `${symbol.preview} ${symbol.latex}`)
+      symbolButton.disabled = !editor.isEditable
+      symbolButton.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        insertSymbol(symbol)
+      })
+      ;(sectionGroup ?? panel).append(symbolButton)
+    }
+
+    button.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      for (const [index, other] of panels.entries()) {
+        other.hidden = index !== groupIndex || !other.hidden
+        buttons[index]?.classList.toggle('markleaf-formula-symbol-group-active', !other.hidden)
+      }
+    })
+    groups.append(button)
+    toolbar.append(panel)
+    panels.push(panel)
+    buttons.push(button)
+  }
+
+  toolbar.append(groups)
+  return toolbar
+}
 
 function createExpandedSourceEditor(
   editor: Editor,
@@ -2285,7 +2603,7 @@ function createExpandedSourceEditor(
   kind: ExpandedSourceEditor['kind'],
 ): { dom: HTMLElement; code: HTMLElement } {
   const wrapper = document.createElement('div')
-  wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind}`
+  wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind} markleaf-expanded-source-enter`
   wrapper.contentEditable = 'false'
 
   const themeContext = document.createElement('div')
@@ -2303,6 +2621,9 @@ function createExpandedSourceEditor(
   code.textContent = initialSource
   pre.append(code)
   themeContext.append(pre)
+  if (kind === 'mathInline' || kind === 'mathBlock') {
+    themeContext.append(createFormulaSymbolToolbar(code, editor, position))
+  }
   wrapper.append(themeContext)
 
   wrapper.addEventListener('pointerdown', (event) => event.stopPropagation())
@@ -2445,6 +2766,7 @@ const ExpandedSourceEditor = Extension.create({
       view: () => {
         let overlay: HTMLElement | null = null
         let current: ExpandedSourceEditor | null = null
+        let closing = false
         const collapse = () => {
           if (expandedSourceEditorKey.getState(editor.state) === null) return
           editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
@@ -2453,12 +2775,40 @@ const ExpandedSourceEditor = Extension.create({
           overlay?.remove()
           overlay = null
           current = null
+          closing = false
+        }
+        const animateOverlayOut = () => {
+          if (!overlay || closing) return
+          closing = true
+          const target = overlay
+          target.classList.remove('markleaf-expanded-source-enter')
+          // Force a new animation cycle after the enter animation has finished.
+          // Without a reflow, Chromium may keep the previous animation state
+          // and skip the reverse animation entirely.
+          void target.offsetWidth
+          target.classList.add('markleaf-expanded-source-exit')
+          let finished = false
+          const finish = () => {
+            if (finished) return
+            finished = true
+            if (overlay === target) removeOverlay()
+          }
+          target.addEventListener('animationend', finish, { once: true })
+          window.setTimeout(finish, 240)
         }
         const reposition = () => {
           if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
         }
         const handleOutsidePointer = (event: PointerEvent) => {
           if (overlay && event.composedPath().includes(overlay)) return
+          // Clicking the formula that owns the open editor is the toggle-off
+          // gesture. Let the click handler collapse it directly; otherwise
+          // this document-level listener collapses first and the click handler
+          // immediately opens it again, producing a visible flash.
+          if (overlay && current) {
+            const anchor = editor.view.nodeDOM(current.position)
+            if (anchor && event.composedPath().includes(anchor)) return
+          }
           collapse()
         }
         const handleViewportChange = () => reposition()
@@ -2471,7 +2821,7 @@ const ExpandedSourceEditor = Extension.create({
           update: (view) => {
             const expanded = expandedSourceEditorKey.getState(view.state)
             if (!expanded) {
-              removeOverlay()
+              animateOverlayOut()
               return
             }
             const node = view.state.doc.nodeAt(expanded.position)
@@ -2481,6 +2831,11 @@ const ExpandedSourceEditor = Extension.create({
             }
             if (overlay && current?.position === expanded.position && current.kind === expanded.kind) {
               current = expanded
+              if (closing) {
+                closing = false
+                overlay.classList.remove('markleaf-expanded-source-exit')
+                overlay.classList.add('markleaf-expanded-source-enter')
+              }
               const node = view.state.doc.nodeAt(expanded.position)
               if (node && node.type.name === expanded.kind
                 && overlay.querySelector('.markleaf-expanded-source-editor') instanceof HTMLElement) {
@@ -2649,6 +3004,23 @@ function getCaretOffset(root: HTMLElement): number {
   range.selectNodeContents(root)
   range.setEnd(selection.focusNode!, selection.focusOffset)
   return range.toString().length
+}
+
+function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number } {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0
+    || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) {
+    const offset = root.textContent?.length ?? 0
+    return { from: offset, to: offset }
+  }
+
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.setEnd(selection.anchorNode!, selection.anchorOffset)
+  const anchor = range.toString().length
+  range.setEnd(selection.focusNode!, selection.focusOffset)
+  const focus = range.toString().length
+  return anchor <= focus ? { from: anchor, to: focus } : { from: focus, to: anchor }
 }
 
 function setCaretOffset(root: HTMLElement, offset: number): void {
@@ -2952,9 +3324,12 @@ function removeMarkdownLiteralEscapes(markdown: string): string {
     .replace(/\\\([\s\S]*?\\\)/g, placeholder)
     .replace(/(`+)([\s\S]*?)\1/g, placeholder)
 
-  return protectedMarkdown
-    .replace(/\\([*_\\])/g, '$1')
-    .replace(/\u0000markleaf-marker-protected-(\d+)\u0000/g, (_, index: string) => protectedParts[Number(index)] ?? '')
+  const unescaped = protectedMarkdown.replace(/\\([*_\\])/g, '$1')
+  return restoreProtectedMarkdownParts(
+    unescaped,
+    /\u0000markleaf-marker-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
 }
 
 function decodeLiteralSymbols(markdown: string): string {
@@ -2978,11 +3353,33 @@ function decodeLiteralSymbols(markdown: string): string {
     .replace(/\\\([\s\S]*?\\\)/g, placeholder)
     .replace(/(`+)([\s\S]*?)\1/g, placeholder)
 
-  return protectedMarkdown
+  const decoded = protectedMarkdown
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
-    .replace(/\u0000markleaf-protected-(\d+)\u0000/g, (_, index: string) => protectedParts[Number(index)] ?? '')
+  return restoreProtectedMarkdownParts(
+    decoded,
+    /\u0000markleaf-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
+}
+
+function restoreProtectedMarkdownParts(
+  markdown: string,
+  placeholderPattern: RegExp,
+  protectedParts: readonly string[],
+): string {
+  let restored = markdown
+  for (let pass = 0; pass <= protectedParts.length; pass += 1) {
+    let replaced = false
+    const next = restored.replace(placeholderPattern, (_, index: string) => {
+      replaced = true
+      return protectedParts[Number(index)] ?? ''
+    })
+    restored = next
+    if (!replaced) break
+  }
+  return restored
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()

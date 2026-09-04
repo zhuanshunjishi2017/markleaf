@@ -71,6 +71,16 @@
   padding-left: var(--markleaf-alert-content-spacing-x);
 }
 
+.markleaf-style-latex .markleaf-alert > h1,
+.markleaf-style-latex .markleaf-alert > h2,
+.markleaf-style-latex .markleaf-alert > h3,
+.markleaf-style-latex .markleaf-alert > h4,
+.markleaf-style-latex .markleaf-alert > h5,
+.markleaf-style-latex .markleaf-alert > h6 {
+  padding-right: var(--markleaf-alert-content-spacing-x);
+  padding-left: var(--markleaf-alert-content-spacing-x);
+}
+
 .markleaf-style-latex .markleaf-alert * {
   text-indent: 0 !important;
 }

@@ -1278,6 +1278,24 @@ function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): 
 
 editorMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
+  const documentBounds = editor.view.dom.getBoundingClientRect()
+  const outsideDocument = event.clientX < documentBounds.left
+    || event.clientX > documentBounds.right
+    || event.clientY < documentBounds.top
+    || event.clientY > documentBounds.bottom
+  if (outsideDocument) {
+    hideFormatMenu()
+    send('contextMenuRequested', {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      menuHeight: 0,
+      canStartFormatPainter: false,
+      formatPainterArmed: false,
+      readOnly,
+      outsideDocument: true,
+    })
+    return
+  }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
   if (resolved) {
     const mathPos = findMathNodeAt(resolved.pos)
@@ -2308,6 +2326,15 @@ async function generateExportHtml(
 ${katexCss}
 ${baseCss}
 .markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
+.markleaf-document .markleaf-cjk-autospace-widget {
+  display: inline-block;
+  width: 0.35em;
+  min-width: 0.35em;
+  height: 1px;
+  overflow: hidden;
+  vertical-align: baseline;
+  pointer-events: none;
+}
 ${colorSchemeCss}
 ${resolved.css}
 .markleaf-document .markleaf-keep-together,

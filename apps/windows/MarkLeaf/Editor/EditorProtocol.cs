@@ -172,7 +172,8 @@ public static class EditorProtocol
                 && HasOptionalBooleanProperty(payload, "formatPainterArmed")
                 && HasOptionalBooleanProperty(payload, "readOnly")
                 && HasOptionalBooleanProperty(payload, "sourceMode")
-                && HasOptionalBooleanProperty(payload, "expandedSource"),
+                && HasOptionalBooleanProperty(payload, "expandedSource")
+                && HasOptionalBooleanProperty(payload, "outsideDocument"),
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),

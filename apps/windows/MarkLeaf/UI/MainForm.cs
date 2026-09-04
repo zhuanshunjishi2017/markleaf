@@ -41,6 +41,7 @@ internal sealed partial class MainForm : Form
     private Panel _editorAreaPanel = default!;
     private Panel _workspaceContentPanel = default!;
     private EditorLoadingView _editorLoadingView = default!;
+    private Guid? _pendingEditorRevealDocumentId;
     private IReadOnlyList<WorkspaceDocumentEntry> _workspaceDocuments = [];
     private readonly OutlineTreeView _outlineTree;
     private readonly SidebarTabBar _sidebarTabBar = new();
@@ -289,7 +290,7 @@ internal sealed partial class MainForm : Form
 
         // A detached document is a standalone window. Do not restore the
         // source window's workspace or sidebar state in the new process.
-        if (_options.DocumentStatePath is not null)
+        if (_options.DocumentStatePath is not null || _options.IsolatedFileWindow)
         {
             placement.SidebarCollapsed = true;
             placement.OutlineDetached = false;
@@ -325,6 +326,7 @@ internal sealed partial class MainForm : Form
             DetachOutlineSidebar(resizeWindow: false);
         }
         if (_options.DocumentStatePath is null
+            && !_options.IsolatedFileWindow
             && (string.IsNullOrWhiteSpace(settings.Workspace.LastFolder)
             || !Directory.Exists(settings.Workspace.LastFolder)))
         {
@@ -382,6 +384,17 @@ internal sealed partial class MainForm : Form
         const int wmCommand = 0x0111;
         const int wmInitMenu = 0x0116;
         const int wmInitMenuPopup = 0x0117;
+        const int wmSysKeyDown = 0x0104;
+        const int vkMenu = 0x12;
+
+        if (message.Msg == wmSysKeyDown
+            && message.WParam.ToInt32() == vkMenu
+            && !_focusMode
+            && UseTabBarMenu)
+        {
+            _documentTabBar.ToggleKeyboardMenuMode();
+            return;
+        }
 
         if (_menuDarkMode && IsHandleCreated && !IsDisposed)
         {
@@ -511,7 +524,7 @@ internal sealed partial class MainForm : Form
             _ = CheckForUpdatesAsync(silent: true);
         }
 
-        if (_options.DocumentStatePath is not null)
+        if (_options.DocumentStatePath is not null || _options.IsolatedFileWindow)
         {
             ShowNoWorkspacePlaceholder();
         }
@@ -548,6 +561,9 @@ internal sealed partial class MainForm : Form
             _initialDocumentOpened = true;
             await OpenDocumentPathAsync(_options.InitialDocumentPath);
         }
+
+        if (_options.IsolatedFileWindow)
+            return;
 
         if (_settings.File.StartupAction == StartupAction.NewDocument)
         {

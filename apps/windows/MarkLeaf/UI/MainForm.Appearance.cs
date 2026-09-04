@@ -340,7 +340,7 @@ internal sealed partial class MainForm
                     | (percent == _zoomPercent
                         ? NativeMethods.MfChecked | NativeMethods.MfGrayed
                         : NativeMethods.MfUnchecked);
-                NativeMethods.AppendMenu(menu, flags, (nuint)(index + 1), $"{percent}%");
+                AppendStatusBarMenuItem(menu, flags, (nuint)(index + 1), $"{percent}%");
             }
 
             var selected = ShowStatusBarPopupMenu(menu, _zoomLabel);
@@ -420,6 +420,10 @@ internal sealed partial class MainForm
     private void ApplyMenuPresentation()
     {
         var showTabBarMenu = !_focusMode && UseTabBarMenu;
+        _documentTabBar.SetMenuTextOptions(
+            _settings.Appearance.ShowMenuKeyboardShortcuts,
+            _settings.Appearance.ShowMenuMnemonics,
+            _settings.General.UiLanguage);
         _documentTabBar.SetFullScreenMenuVisible(showTabBarMenu);
         if (!IsHandleCreated || IsDisposed)
         {

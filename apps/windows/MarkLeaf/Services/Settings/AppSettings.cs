@@ -86,7 +86,7 @@ public sealed class AppSettings
 
     public string MarkdownStyle { get; set; } = "serif";
 
-    public string ColorTheme { get; set; } = "white";
+    public string ColorTheme { get; set; } = "apple-blue";
 
     public static AppSettings CreateDefaults()
     {
@@ -103,6 +103,7 @@ public sealed class AppSettings
             Export = new ExportSettings(),
             Shortcut = new ShortcutSettings(),
             MarkdownStyle = "serif",
+            ColorTheme = "apple-blue",
         };
     }
 }
@@ -176,9 +177,12 @@ public sealed class ExportSettings
 
 public sealed class GeneralSettings
 {
-    public bool AssociateMarkdownFiles { get; set; }
+    public bool AssociateMarkdownFiles { get; set; } =
+        FileAssociationService.IsMachineAssociated(".md")
+        || FileAssociationService.IsMachineAssociated(".markdown");
 
-    public bool AssociateTextFiles { get; set; }
+    public bool AssociateTextFiles { get; set; } =
+        FileAssociationService.IsMachineAssociated(".txt");
 
     public string UiLanguage { get; set; } = "";
 
@@ -197,17 +201,17 @@ public sealed class AppearanceSettings
 
     public bool TopMostWindow { get; set; }
 
-    public bool AutoHideScrollbars { get; set; }
+    public bool AutoHideScrollbars { get; set; } = true;
 
-    public bool ShowCodeHighlight { get; set; }
+    public bool ShowCodeHighlight { get; set; } = true;
 
     public bool FollowSystemColorMode { get; set; }
 
-    public string DefaultLightThemeId { get; set; } = "white-only";
+    public string DefaultLightThemeId { get; set; } = "apple-blue";
 
-    public string DefaultDarkThemeId { get; set; } = "dark";
+    public string DefaultDarkThemeId { get; set; } = "apple-dark";
 
-    public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.DarkThemeOnly;
+    public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.Always;
 
     public bool ShowMenuKeyboardShortcuts { get; set; } = true;
 
@@ -218,7 +222,7 @@ public sealed class AppearanceSettings
 
 public sealed class StatusBarSettings
 {
-    public bool SidebarToggleVisible { get; set; } = true;
+    public bool SidebarToggleVisible { get; set; } = false;
 
     public bool CommandStatusVisible { get; set; } = true;
 
@@ -255,7 +259,7 @@ public sealed class StatusBarSettings
 
 public sealed class EditorSettings
 {
-    public float VisualLineHeight { get; set; } = 1.6f;
+    public float VisualLineHeight { get; set; } = 1.75f;
 
     public int VisualFontSize { get; set; } = 16;
 
@@ -279,7 +283,7 @@ public sealed class EditorSettings
 
     public bool EscapeLiteralSymbols { get; set; }
 
-    public bool EscapeMarkdownLiteralSymbols { get; set; } = true;
+    public bool EscapeMarkdownLiteralSymbols { get; set; }
 
     public string MarkdownCodeFence { get; set; } = "backtick";
 
@@ -315,9 +319,9 @@ public sealed class FileSettings
 
 public sealed class ImageSettings
 {
-    public ClipboardImageHandling ClipboardHandling { get; set; } = ClipboardImageHandling.SaveToDefaultDirectory;
+    public ClipboardImageHandling ClipboardHandling { get; set; } = ClipboardImageHandling.CopyToAssets;
 
-    public FileImageHandling FileHandling { get; set; } = FileImageHandling.ReferenceOriginal;
+    public FileImageHandling FileHandling { get; set; } = FileImageHandling.CopyToAssets;
 
     public string DefaultDirectory { get; set; } = string.Empty;
 

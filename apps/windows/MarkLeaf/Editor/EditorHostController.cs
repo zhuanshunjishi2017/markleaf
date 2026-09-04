@@ -1274,7 +1274,9 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("sourceMode", out var sourceMode)
                             && sourceMode.ValueKind == System.Text.Json.JsonValueKind.True,
                         message.Payload.TryGetProperty("expandedSource", out var expandedSource)
-                            && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True));
+                            && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("outsideDocument", out var outsideDocument)
+                            && outsideDocument.ValueKind == System.Text.Json.JsonValueKind.True));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(

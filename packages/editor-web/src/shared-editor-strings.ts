@@ -7,6 +7,7 @@ export type SharedEditorStrings = {
   mermaidEmpty: string
   mermaidError: string
   mermaidTimeout: string
+  formulaInputAssistant: string
   frontMatterTitle: string
   frontMatterHide: string
   frontMatterValid: string
@@ -29,6 +30,7 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 图表',
     mermaidError: 'Mermaid 图表文本格式错误',
     mermaidTimeout: 'Mermaid 图表渲染超时',
+    formulaInputAssistant: '公式键入辅助',
     frontMatterTitle: '文档信息',
     frontMatterHide: '隐藏',
     frontMatterValid: 'YAML 格式有效',
@@ -43,6 +45,7 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 圖表',
     mermaidError: 'Mermaid 圖表文字格式錯誤',
     mermaidTimeout: 'Mermaid 圖表算繪逾時',
+    formulaInputAssistant: '公式鍵入輔助',
     frontMatterTitle: '文件資訊',
     frontMatterHide: '隱藏',
     frontMatterValid: 'YAML 格式有效',
@@ -57,6 +60,7 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: 'Empty Mermaid diagram',
     mermaidError: 'Invalid Mermaid diagram text',
     mermaidTimeout: 'Mermaid diagram rendering timed out',
+    formulaInputAssistant: 'Formula input assistant',
     frontMatterTitle: 'Document Information',
     frontMatterHide: 'Hide',
     frontMatterValid: 'Valid YAML',
@@ -71,6 +75,7 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空の Mermaid 図表',
     mermaidError: 'Mermaid 図表のテキスト形式が正しくありません',
     mermaidTimeout: 'Mermaid 図表の描画がタイムアウトしました',
+    formulaInputAssistant: '数式入力補助',
     frontMatterTitle: '文書情報',
     frontMatterHide: '非表示',
     frontMatterValid: '有効な YAML',

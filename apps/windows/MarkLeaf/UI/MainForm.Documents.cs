@@ -151,6 +151,12 @@ internal sealed partial class MainForm
         }
     }
 
+    internal async Task OpenDocumentFromExternalRequestAsync(string path)
+    {
+        await OpenDocumentPathAsync(path);
+        RecordRecentFile(path);
+    }
+
     private async Task AddAndActivateDocumentAsync(MarkdownDocument document)
     {
         int? existing = document.FilePath is null
@@ -289,6 +295,7 @@ internal sealed partial class MainForm
             _workspaceTree.SelectedPath = null;
             _workspaceDocumentList.SelectedPath = null;
             _documentTabBar.SetDocuments(_openDocuments, -1);
+            _pendingEditorRevealDocumentId = null;
             _editorPanel.Visible = false;
             RefreshPersistentStatusBar();
             UpdateDocumentChrome();
@@ -388,6 +395,7 @@ internal sealed partial class MainForm
                 _workspaceTree.SelectedPath = null;
                 _workspaceDocumentList.SelectedPath = null;
                 _documentTabBar.SetDocuments(_openDocuments, -1);
+                _pendingEditorRevealDocumentId = null;
                 _editorPanel.Visible = false;
                 RefreshPersistentStatusBar();
                 UpdateDocumentChrome();
@@ -1009,6 +1017,12 @@ internal sealed partial class MainForm
     {
         _editorCommandStatus = EditorCommandStatus.Empty;
         _editorStatus = EditorStatus.Empty;
+        if (!_editorPanel.Visible)
+        {
+            // Do not expose the previous document still held by WebView2 while
+            // the newly selected document is being loaded.
+            _pendingEditorRevealDocumentId = document.Id;
+        }
         _editorHost?.LoadDocument(
             document.Id,
             document.Revision,
@@ -1016,7 +1030,10 @@ internal sealed partial class MainForm
             document.IsReadOnly,
             document.FilePath is null ? document.Kind.EditorDocumentType() : GetDocumentType(document.FilePath),
             document.FilePath);
-        _editorPanel.Visible = true;
+        if (_pendingEditorRevealDocumentId is null)
+        {
+            _editorPanel.Visible = true;
+        }
         if (_activeDocumentIndex >= 0)
         {
             _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
@@ -1057,7 +1074,7 @@ internal sealed partial class MainForm
                 var isCurrent = string.Equals(current.Id, encoding.Id, StringComparison.Ordinal);
                 var flags = NativeMethods.MfString
                     | (isCurrent ? NativeMethods.MfChecked | NativeMethods.MfGrayed : NativeMethods.MfUnchecked);
-                NativeMethods.AppendMenu(menu, flags, (nuint)(index + 1), encoding.DisplayName);
+                AppendStatusBarMenuItem(menu, flags, (nuint)(index + 1), encoding.DisplayName);
             }
 
             var owner = _encodingLabel.GetCurrentParent();
@@ -1129,11 +1146,11 @@ internal sealed partial class MainForm
         }
     }
 
-    private static void AppendNewLineMenuItem(nint menu, uint command, string text, bool isCurrent)
+    private void AppendNewLineMenuItem(nint menu, uint command, string text, bool isCurrent)
     {
         var flags = NativeMethods.MfString
             | (isCurrent ? NativeMethods.MfChecked | NativeMethods.MfGrayed : NativeMethods.MfUnchecked);
-        NativeMethods.AppendMenu(menu, flags, command, text);
+        AppendStatusBarMenuItem(menu, flags, command, text);
     }
 
     private async Task ChangeDocumentEncodingAsync(DocumentEncodingPolicy target)
@@ -1474,6 +1491,28 @@ internal sealed partial class MainForm
         if (imagePaths.Length > 0)
         {
             await ImportImageFilesAsync(imagePaths, droppedFiles.ClientX, droppedFiles.ClientY);
+        }
+    }
+
+    private void OnEmptyEditorAreaDragEnter(object? sender, DragEventArgs eventArgs)
+    {
+        eventArgs.Effect = eventArgs.Data?.GetDataPresent(DataFormats.FileDrop) == true
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    private async void OnEmptyEditorAreaDragDrop(object? sender, DragEventArgs eventArgs)
+    {
+        if (eventArgs.Data?.GetData(DataFormats.FileDrop) is not string[] paths)
+            return;
+
+        var documentPaths = paths
+            .Where(WorkspaceTreeView.IsDroppableFile)
+            .ToArray();
+        foreach (var path in documentPaths)
+        {
+            await OpenDocumentPathAsync(path);
+            RecordRecentFile(path);
         }
     }
 

@@ -142,4 +142,5 @@ public static class CommandStateResolver
             _ => new(context.EditorReady),
         };
     }
+
 }

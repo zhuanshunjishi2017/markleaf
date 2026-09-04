@@ -58,7 +58,10 @@ internal sealed partial class MainForm
                 ? secondary
                 : _editorPanel.BackColor,
             Padding = Padding.Empty,
+            AllowDrop = true,
         };
+        _editorAreaPanel.DragEnter += OnEmptyEditorAreaDragEnter;
+        _editorAreaPanel.DragDrop += OnEmptyEditorAreaDragDrop;
         _editorAreaPanel.Controls.Add(_editorPanel);
         _editorAreaPanel.Controls.Add(_documentTabBar);
         split.Panel1.Controls.Add(_editorAreaPanel);
@@ -362,6 +365,51 @@ internal sealed partial class MainForm
             0);
         NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
         return selected;
+    }
+
+    private bool AppendStatusBarMenuItem(nint menu, uint flags, nuint command, string text)
+    {
+        var formattedText = MenuTextFormatter.Format(
+            text,
+            _settings.Appearance.ShowMenuKeyboardShortcuts,
+            _settings.Appearance.ShowMenuMnemonics,
+            _settings.General.UiLanguage);
+        return NativeMethods.AppendMenu(menu, flags, command, formattedText);
+    }
+
+    private void ShowExitFullScreenMenu(Point screenPoint)
+    {
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AppendStatusBarMenuItem(
+                menu,
+                NativeMethods.MfString,
+                1,
+                Loc.Get("menu.view.exitEditorFullScreen"));
+            NativeMethods.SetForegroundWindow(Handle);
+            var selected = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                Handle,
+                0);
+            NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
+            if (selected == 1)
+            {
+                ToggleEditorFullScreen();
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
     }
 
     private void ApplyStatusBarItemVisibility()
