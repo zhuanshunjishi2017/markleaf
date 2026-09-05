@@ -1,5 +1,6 @@
 export type SharedEditorStrings = {
   linkTooltip: string
+  fileLinkTooltip: string
   footnoteTooltip: string
   footnoteNotFound: string
   blockHandleAria: string
@@ -15,14 +16,16 @@ export type SharedEditorStrings = {
 }
 
 type PrimaryModifier = 'meta' | 'ctrl'
-type LocalizedStrings = Omit<SharedEditorStrings, 'linkTooltip' | 'footnoteTooltip'> & {
+type LocalizedStrings = Omit<SharedEditorStrings, 'linkTooltip' | 'fileLinkTooltip' | 'footnoteTooltip'> & {
   linkTooltip: (modifier: string) => string
+  fileLinkTooltip: (modifier: string) => string
   footnoteTooltip: (modifier: string) => string
 }
 
 const tables: Record<string, LocalizedStrings> = {
   'zh-Hans': {
     linkTooltip: modifier => `按住 ${modifier} 并单击以打开链接`,
+    fileLinkTooltip: modifier => `按住 ${modifier} 并单击以打开文件`,
     footnoteTooltip: modifier => `按住 ${modifier} 并单击以转到注释定义`,
     footnoteNotFound: '找不到定义',
     blockHandleAria: '段落操作',
@@ -38,6 +41,7 @@ const tables: Record<string, LocalizedStrings> = {
   },
   'zh-Hant': {
     linkTooltip: modifier => `按住 ${modifier} 並按一下以開啟連結`,
+    fileLinkTooltip: modifier => `按住 ${modifier} 並按一下以開啟檔案`,
     footnoteTooltip: modifier => `按住 ${modifier} 並按一下以前往註解定義`,
     footnoteNotFound: '找不到定義',
     blockHandleAria: '段落操作',
@@ -53,6 +57,7 @@ const tables: Record<string, LocalizedStrings> = {
   },
   en: {
     linkTooltip: modifier => `Hold ${modifier} and click to open link`,
+    fileLinkTooltip: modifier => `Hold ${modifier} and click to open file`,
     footnoteTooltip: modifier => `Hold ${modifier} and click to go to the footnote definition`,
     footnoteNotFound: 'Definition not found',
     blockHandleAria: 'Paragraph actions',
@@ -68,6 +73,7 @@ const tables: Record<string, LocalizedStrings> = {
   },
   ja: {
     linkTooltip: modifier => `${modifier}を押しながらクリックしてリンクを開きます`,
+    fileLinkTooltip: modifier => `${modifier}を押しながらクリックしてファイルを開きます`,
     footnoteTooltip: modifier => `${modifier}を押しながらクリックして脚注の定義に移動します`,
     footnoteNotFound: '定義が見つかりません',
     blockHandleAria: '段落操作',
@@ -92,6 +98,7 @@ export function sharedEditorStrings(
   return {
     ...table,
     linkTooltip: table.linkTooltip(modifierName),
+    fileLinkTooltip: table.fileLinkTooltip(modifierName),
     footnoteTooltip: table.footnoteTooltip(modifierName),
   }
 }

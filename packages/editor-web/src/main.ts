@@ -22,6 +22,7 @@ import {
   collapseVisualSelection,
   getSourceModeJumpTarget,
   isAllowedLink,
+  isLocalFileLink,
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
@@ -634,6 +635,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
       send('selectionChanged', {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
+        sourceMode: false,
       })
       updateBlockHandleOverlay()
       sendEditorState()
@@ -675,6 +677,10 @@ function markSourceChanged(documentChanged: boolean): void {
   sendEditorState()
 }
 
+function sendSourceSelection(from: number, to: number): void {
+  send('selectionChanged', { from, to, sourceMode: true })
+}
+
 function requestUnsafeEmphasisResolution(request: UnsafeEmphasisRequest): void {
   send('unsafeEmphasisRequested', request, request.id)
 }
@@ -699,7 +705,7 @@ function setSourceMode(enabled: boolean): void {
   if (enabled) {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
     const jumpTarget = getSourceModeJumpTarget(editor)
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown')
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown', sendSourceSelection)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -890,15 +896,17 @@ editorTooltip.hidden = true
 document.body.appendChild(editorTooltip)
 
 let tooltipKind: 'link' | 'footnote' | null = null
+let tooltipIsLocalFile = false
 let tooltipHideTimer = 0
 
-function editorTooltipTexts(): { link: string; footnote: string; footnoteNotFound: string } {
+function editorTooltipTexts(): { link: string; file: string; footnote: string; footnoteNotFound: string } {
   const strings = sharedEditorStrings(
     markleafLanguage,
     hostCapabilities.primaryActivationModifier,
   )
   return {
     link: strings.linkTooltip,
+    file: strings.fileLinkTooltip,
     footnote: strings.footnoteTooltip,
     footnoteNotFound: strings.footnoteNotFound,
   }
@@ -926,7 +934,7 @@ function positionEditorTooltip(event: MouseEvent): void {
   editorTooltip.style.top = `${top}px`
 }
 
-function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null): void {
+function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null, isLocalFile = false): void {
   const texts = editorTooltipTexts()
   editorTooltip.textContent = ''
 
@@ -942,7 +950,9 @@ function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null): v
 
   const hint = document.createElement('div')
   hint.className = 'editor-tooltip-hint'
-  hint.textContent = kind === 'link' ? texts.link : texts.footnote
+  hint.textContent = kind === 'link'
+    ? (isLocalFile ? texts.file : texts.link)
+    : texts.footnote
   editorTooltip.appendChild(hint)
 }
 
@@ -957,12 +967,14 @@ function updateEditorTooltip(event: MouseEvent): void {
   const anchorEl = target.closest<HTMLAnchorElement>('a[href]')
   const kind = footnoteEl ? 'footnote' : anchorEl ? 'link' : null
   if (kind) {
+    const localFile = kind === 'link' && isLocalFileLink(anchorEl?.getAttribute('href') ?? '')
     const detail = kind === 'footnote'
       ? findFootnoteDefinitionBody(editor, footnoteEl!.getAttribute('data-footnote-ref') ?? '')
       : (anchorEl?.getAttribute('href') ?? '')
-    if (tooltipKind !== kind) {
+    if (tooltipKind !== kind || tooltipIsLocalFile !== localFile) {
       tooltipKind = kind
-      buildEditorTooltip(kind, detail)
+      tooltipIsLocalFile = localFile
+      buildEditorTooltip(kind, detail, localFile)
     }
     positionEditorTooltip(event)
   } else {
@@ -1540,7 +1552,13 @@ async function handleMessage(value: unknown): Promise<void> {
     case 'loadDocument': {
       formatPainter.cancel()
       updateFormatPainterCursor()
-      const payload = message.payload as { markdown?: unknown; documentType?: unknown; readOnly?: unknown }
+      const payload = message.payload as {
+        markdown?: unknown
+        documentType?: unknown
+        readOnly?: unknown
+        visualSelection?: { from?: unknown; to?: unknown }
+        sourceSelection?: { from?: unknown; to?: unknown }
+      }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
         return
@@ -1557,11 +1575,18 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
+        if (typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
+          sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
+        }
       } else {
         sourceMode = false
         sourceMount.hidden = true
         editorMount.hidden = false
+        const visualSelection = typeof payload.visualSelection?.from === 'number'
+          && typeof payload.visualSelection?.to === 'number'
+          ? { from: payload.visualSelection.from, to: payload.visualSelection.to }
+          : null
         editor = replaceEditorDocument(
           editor,
           editorMount,
@@ -1574,7 +1599,14 @@ async function handleMessage(value: unknown): Promise<void> {
         updateEditorTypewriterMode()
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
-        resetEditorViewport(editor, editorMount)
+        if (visualSelection) {
+          // resetEditorViewport also resets the selection. Reset the scroll first,
+          // then restore the saved selection and center it in the viewport.
+          editorMount.scrollTop = 0
+          restoreVisualSelection(editor, visualSelection, true)
+        } else {
+          resetEditorViewport(editor, editorMount)
+        }
         lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
@@ -1601,7 +1633,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
+        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
       } else {
         sourceMode = false
         sourceMount.hidden = true

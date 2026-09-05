@@ -118,6 +118,7 @@ export class SourceEditor {
   private readonly readOnly: boolean
   private readonly onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void
   private readonly detectUnsafeEmphasisEnabled: boolean
+  private readonly onSelectionChanged?: (from: number, to: number) => void
   private readonly pendingUnsafeEmphasis = new Map<string, UnsafeEmphasisMatch>()
 
   constructor(
@@ -128,11 +129,13 @@ export class SourceEditor {
     readOnly = false,
     onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void,
     detectUnsafeEmphasis = true,
+    onSelectionChanged?: (from: number, to: number) => void,
   ) {
     this.onChange = onChange
     this.readOnly = readOnly
     this.onUnsafeEmphasis = onUnsafeEmphasis
     this.detectUnsafeEmphasisEnabled = detectUnsafeEmphasis
+    this.onSelectionChanged = onSelectionChanged
     this.view = new EditorView({
       parent,
       state: EditorState.create({
@@ -176,6 +179,10 @@ export class SourceEditor {
       indentUnit.of(' '.repeat(width)),
       EditorView.updateListener.of(update => {
         if (update.docChanged || update.selectionSet) this.onChange(update.docChanged)
+        if (update.docChanged || update.selectionSet) {
+          const selection = update.state.selection.main
+          this.onSelectionChanged?.(selection.from, selection.to)
+        }
         if (update.docChanged) this.detectUnsafeEmphasis(update)
       }),
       EditorView.theme({
@@ -220,7 +227,10 @@ export class SourceEditor {
 
   /// 精确放置光标/选区（供宿主命令与大纲联动使用）。
   setSelection(from: number, to?: number): void {
-    this.view.dispatch({ selection: { anchor: from, head: to ?? from }, scrollIntoView: true })
+    const length = this.view.state.doc.length
+    const anchor = Math.max(0, Math.min(length, Math.trunc(from)))
+    const head = Math.max(0, Math.min(length, Math.trunc(to ?? from)))
+    this.view.dispatch({ selection: { anchor, head }, scrollIntoView: true })
     this.focus()
   }
 

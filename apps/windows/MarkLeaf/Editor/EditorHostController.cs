@@ -50,6 +50,8 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorMessage>? DocumentLoaded;
 
+    public event EventHandler<EditorSelectionChanged>? SelectionChanged;
+
     public event EventHandler<EditorMessage>? SnapshotReceived;
 
     public event EventHandler<EditorMessage>? DirtyChanged;
@@ -211,7 +213,11 @@ internal sealed class EditorHostController : IDisposable
         string markdown,
         bool readOnly = false,
         string? documentType = null,
-        string? documentPath = null)
+        string? documentPath = null,
+        int? visualSelectionFrom = null,
+        int? visualSelectionTo = null,
+        int? sourceSelectionFrom = null,
+        int? sourceSelectionTo = null)
     {
         _lastDocumentId = documentId;
         _lastDocumentRevision = revision;
@@ -223,7 +229,21 @@ internal sealed class EditorHostController : IDisposable
         {
             _session.StartDocument(documentId, revision);
             _documentLoaded = false;
-            Post("loadDocument", new { markdown, readOnly, documentType, documentPath });
+            Post("loadDocument", new
+            {
+                markdown,
+                readOnly,
+                documentType,
+                documentPath,
+                visualSelection = visualSelectionFrom is { } visualFrom
+                    && visualSelectionTo is { } visualTo
+                    ? new { from = visualFrom, to = visualTo }
+                    : null,
+                sourceSelection = sourceSelectionFrom is { } sourceFrom
+                    && sourceSelectionTo is { } sourceTo
+                    ? new { from = sourceFrom, to = sourceTo }
+                    : null,
+            });
         });
     }
 
@@ -1245,6 +1265,16 @@ internal sealed class EditorHostController : IDisposable
                 _logger.Info($"Editor document loaded at revision {message.Revision}.");
                 NotifyStateChanged();
                 DocumentLoaded?.Invoke(this, message);
+                break;
+            case "selectionChanged":
+                SelectionChanged?.Invoke(
+                    this,
+                    new EditorSelectionChanged(
+                        Guid.Parse(message.DocumentId),
+                        message.Payload.GetProperty("from").GetInt32(),
+                        message.Payload.GetProperty("to").GetInt32(),
+                        message.Payload.TryGetProperty("sourceMode", out var selectionSourceMode)
+                            && selectionSourceMode.ValueKind == JsonValueKind.True));
                 break;
             case "dirtyChanged":
                 DirtyChanged?.Invoke(this, message);

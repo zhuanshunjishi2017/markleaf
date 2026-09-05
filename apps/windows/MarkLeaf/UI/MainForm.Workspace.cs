@@ -18,11 +18,11 @@ internal sealed partial class MainForm
         };
         if (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
-            await OpenWorkspaceAsync(dialog.SelectedPath);
+            await OpenWorkspaceAsync(dialog.SelectedPath, revealSidebar: true);
         }
     }
 
-    private async Task OpenWorkspaceAsync(string path)
+    private async Task OpenWorkspaceAsync(string path, bool revealSidebar = false)
     {
         var fullPath = Path.GetFullPath(path);
         if (!Directory.Exists(fullPath))
@@ -30,6 +30,9 @@ internal sealed partial class MainForm
             ShowMessage(this, Loc.Get("workspace.directoryNotExist"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
+
+        var hadNoWorkspace = _workspaceRoot is null;
+        var sidebarWasCollapsed = _sidebarAnimationTargetCollapsed ?? _sidebarSplit.Panel1Collapsed;
 
         _workspaceLoadCancellation?.Cancel();
         _workspaceLoadCancellation?.Dispose();
@@ -55,6 +58,11 @@ internal sealed partial class MainForm
         }
         _workspaceTree.Expand(fullPath);
         TryStartWatchingWorkspace(fullPath);
+        if (revealSidebar && hadNoWorkspace && sidebarWasCollapsed)
+        {
+            ExpandSidebar();
+            ShowSidebarView(outline: false);
+        }
         SetStatus(Loc.Format("status.workspaceOpened", Path.GetFileName(fullPath)));
         _menuService.RefreshStates();
     }

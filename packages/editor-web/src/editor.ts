@@ -4356,7 +4356,9 @@ export function sanitizePastedHtml(html: string): string {
       if (element.tagName.toLowerCase() === 'img' && attributeName === 'src' && getMarkLeafImagePath(element)) {
         continue
       }
-      if (value && !/^(https?:|mailto:|#|\.\.?\/)/i.test(value.trim())) {
+      if (value
+        && !value.trim().startsWith('#')
+        && !isAllowedLink(value)) {
         element.removeAttribute(attributeName)
       }
     }
@@ -5459,10 +5461,29 @@ function changeTableCaption(editor: Editor, caption?: string): boolean {
 }
 
 export function isAllowedLink(value: string): boolean {
+  const trimmed = value.trim()
+  if (isLocalFileLink(trimmed)) {
+    return true
+  }
+
   try {
-    const url = new URL(value)
+    const url = new URL(trimmed)
     return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:'
   } catch {
     return false
   }
+}
+
+export function isLocalFileLink(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.startsWith('#') || /^mailto:/i.test(trimmed)) {
+    return false
+  }
+  if (/^file:/i.test(trimmed)) {
+    return true
+  }
+  if (/^(?:\.\.?[\\/]|[\\/]{1,2}|[a-z]:[\\/])/i.test(trimmed)) {
+    return true
+  }
+  return !/^[a-z][a-z\d+.-]*:/i.test(trimmed)
 }

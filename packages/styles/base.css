@@ -11,6 +11,8 @@
   width: min(100%, var(--ml-max-width));
   margin: 0 auto;
   outline: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: serif, "Source Han Serif CN", "Noto Serif CJK CN";
   font-size: var(--ml-font-size);
   line-height: var(--ml-line-height);
@@ -46,6 +48,20 @@
 .cm-editor.cm-focused .cm-selectionBackground {
   background-color: var(--theme-light) !important;
   color: var(--text-selected) !important;
+}
+
+.markleaf-find-match {
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  background: var(--highlight);
+  box-shadow: 0 0 0 1px var(--highlight);
+}
+
+.markleaf-find-match-current {
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  background: var(--highlight);
+  box-shadow: 0 0 0 2px var(--highlight-current);
 }
 
 /* 源码模式选区：真实 DOM 装饰 span（替代 drawSelection 图层，WKWebView 几何更稳） */
@@ -204,6 +220,17 @@
   margin: calc(var(--ml-line-height) * 0.53em) 0;
 }
 
+/* 列表项内部的段落沿用正文行高，不再叠加段前段后距。 */
+.markleaf-document li > p {
+  margin: 0;
+}
+
+.markleaf-document li > ul,
+.markleaf-document li > ol {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 .markleaf-document blockquote {
   margin-left: 0;
   padding-left: 1em;
@@ -219,7 +246,7 @@
 }
 
 .markleaf-document code {
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family:  Consolas, monospace;
   font-size: calc(var(--ml-font-size) * 0.9);
   padding: 0.12em 0.35em;
   border-radius: 3px;
@@ -234,7 +261,7 @@
   padding: 16px 18px;
   border: 1px solid var(--bg-selected);
   border-radius: 4px;
-  background: var(--bg-hover);
+  background: var(--bg-secondary);
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -263,9 +290,15 @@
   overflow-wrap: break-word;
 }
 
+.markleaf-document pre ::selection,
+.markleaf-document blockquote ::selection {
+  color: var(--text-tertiary-selected);
+}
+
 .markleaf-document table {
   width: 100%;
   border-collapse: collapse;
+  border-color: var(--bg-selected-hover);
   line-height: calc(var(--ml-line-height) * 0.8875);
 }
 
@@ -334,6 +367,7 @@
 
 .markleaf-document th {
   font-weight: 600;
+  border-color: var(--bg-selected-hover);
   background: var(--bg-hover);
 }
 
@@ -440,4 +474,32 @@
 .markleaf-image-resize-handle[data-resize-handle='top-right'],
 .markleaf-image-resize-handle[data-resize-handle='bottom-right'] {
   --markleaf-handle-x: 50%;
+}
+
+/* 颜色由颜色主题提供，滚动条行为在所有主题中保持一致。 */
+::-webkit-scrollbar {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-idle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-active);
+}
+
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
+html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-active);
 }

@@ -226,7 +226,7 @@ public sealed class StatusBarSettings
 
     public bool CommandStatusVisible { get; set; } = true;
 
-    public StatusBarCommandDisplayMode CommandDisplayMode { get; set; } = StatusBarCommandDisplayMode.Always;
+    public StatusBarCommandDisplayMode CommandDisplayMode { get; set; } = StatusBarCommandDisplayMode.Temporary;
 
     public bool WordCountVisible { get; set; } = true;
 

@@ -103,7 +103,7 @@ internal sealed partial class MainForm
         RecordRecentFile(dialog.FileName);
     }
 
-    private async Task OpenDocumentPathAsync(string path, bool readOnly = false)
+    private async Task OpenDocumentPathAsync(string path, bool readOnly = false, bool forceNewTab = false)
     {
         _documentOperationInProgress = true;
         try
@@ -121,7 +121,7 @@ internal sealed partial class MainForm
                 _settings.Image.PrefixRelativeWithDotSlash);
             await ResolveMissingImagesAsync(opened);
             opened.IsDirty = !string.Equals(originalMarkdown, opened.Markdown, StringComparison.Ordinal);
-            await AddAndActivateDocumentAsync(opened);
+            await AddAndActivateDocumentAsync(opened, forceNewTab);
             _logger.Info($"Document opened: {DescribePath(opened.FilePath)}; encoding={opened.Encoding.WebName}; bom={opened.HasBom}; newline={DescribeNewLine(opened.NewLine)}.");
             if (opened.IsDirty)
             {
@@ -157,9 +157,9 @@ internal sealed partial class MainForm
         RecordRecentFile(path);
     }
 
-    private async Task AddAndActivateDocumentAsync(MarkdownDocument document)
+    private async Task AddAndActivateDocumentAsync(MarkdownDocument document, bool forceNewTab = false)
     {
-        int? existing = document.FilePath is null
+        int? existing = forceNewTab || document.FilePath is null
             ? null
             : _openDocuments.FindIndex(item => item.FilePath is not null
                 && PathEquals(item.FilePath, document.FilePath));
@@ -1029,7 +1029,11 @@ internal sealed partial class MainForm
             document.Markdown,
             document.IsReadOnly,
             document.FilePath is null ? document.Kind.EditorDocumentType() : GetDocumentType(document.FilePath),
-            document.FilePath);
+            document.FilePath,
+            document.VisualSelectionFrom,
+            document.VisualSelectionTo,
+            document.SourceSelectionFrom,
+            document.SourceSelectionTo);
         if (_pendingEditorRevealDocumentId is null)
         {
             _editorPanel.Visible = true;

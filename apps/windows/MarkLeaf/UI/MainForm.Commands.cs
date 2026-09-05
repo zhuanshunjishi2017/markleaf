@@ -585,7 +585,7 @@ internal sealed partial class MainForm
 
                 if (TryGetRecentWorkspace(command, out var workspacePath))
                 {
-                    _ = OpenWorkspaceAsync(workspacePath);
+                    _ = OpenWorkspaceAsync(workspacePath, revealSidebar: true);
                     break;
                 }
 
@@ -928,11 +928,22 @@ internal sealed partial class MainForm
         EditMermaid();
     }
 
-    private void OnOpenLinkRequested(object? sender, string url)
+    private async void OnOpenLinkRequested(object? sender, string url)
     {
         try
         {
-            ExternalLinkService.Open(url);
+            if (!ExternalLinkService.IsAllowed(url))
+            {
+                var localPath = ExternalLinkService.TryResolveLocalPath(url, _document?.FilePath);
+                if (localPath is not null && File.Exists(localPath))
+                {
+                    await OpenDocumentPathAsync(localPath, forceNewTab: true);
+                    RecordRecentFile(localPath);
+                    return;
+                }
+            }
+
+            ExternalLinkService.Open(url, _document?.FilePath);
             SetStatus(Loc.Get("status.linkOpened"));
         }
         catch (Exception exception)

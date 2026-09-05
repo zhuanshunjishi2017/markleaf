@@ -1,5 +1,5 @@
 /* @type: typography
    @name: 网页(无衬线字体) */
 .markleaf-style-sans .markleaf-document {
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif, "Source Han Sans CN", "Noto Sans CJK CN";
+    font-family: "SF Pro Display","Microsoft YaHei","苹方","苹方-简","PingFang SC" ,"Segoe UI", sans-serif, "Source Han Sans CN", "Noto Sans CJK CN";
 }

@@ -162,7 +162,9 @@ public static class EditorProtocol
             "ready" or "documentLoaded" => IsMissingOrObject(payload),
             "dirtyChanged" => HasProperty(payload, "dirty", JsonValueKind.True, JsonValueKind.False),
             "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String),
-            "selectionChanged" => HasIntegerProperty(payload, "from") && HasIntegerProperty(payload, "to"),
+            "selectionChanged" => HasIntegerProperty(payload, "from")
+                && HasIntegerProperty(payload, "to")
+                && HasOptionalBooleanProperty(payload, "sourceMode"),
             "commandStateChanged" => HasCommandStatePayload(payload),
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
@@ -368,8 +370,26 @@ public static class EditorProtocol
         }
 
         var value = payload.GetProperty("url").GetString();
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            && uri.Scheme is "http" or "https" or "mailto";
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" or "mailto")
+        {
+            return true;
+        }
+
+        return value.StartsWith(".", StringComparison.Ordinal)
+            || value.StartsWith('\\')
+            || value.StartsWith('/')
+            || (value.Length >= 3
+                && char.IsLetter(value[0])
+                && value[1] == ':'
+                && value[2] is '\\' or '/')
+            || value.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+            || !value.Contains(':');
     }
 
     private static bool HasStringArray(JsonElement payload, string name)

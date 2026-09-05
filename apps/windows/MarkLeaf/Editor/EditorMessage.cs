@@ -9,3 +9,5 @@ public sealed record EditorMessage(
     string DocumentId,
     long Revision,
     JsonElement Payload);
+
+public sealed record EditorSelectionChanged(Guid DocumentId, int From, int To, bool SourceMode);

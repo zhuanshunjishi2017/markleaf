@@ -101,7 +101,11 @@ public static class CommandStateResolver
             AppCommand.IncreaseListIndent or AppCommand.DecreaseListIndent => new(
                 context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable
                 && (context.BulletListActive || context.OrderedListActive || context.TaskListActive)),
-            AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertHorizontalRule =>
+            // Inline formulas are valid inline content in table cells. Only
+            // block-level insertion remains unavailable inside a table.
+            AppCommand.InsertMathInline =>
+                new(context.EditorReady && !context.ReadOnly && !context.SourceMode),
+            AppCommand.InsertMathBlock or AppCommand.InsertHorizontalRule =>
                 new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
             AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
             AppCommand.InsertMermaid => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
