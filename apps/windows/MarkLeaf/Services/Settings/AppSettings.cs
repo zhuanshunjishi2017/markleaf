@@ -300,7 +300,7 @@ public sealed class EditorSettings
 
 public sealed class FileSettings
 {
-    public StartupAction StartupAction { get; set; } = StartupAction.NewDocument;
+    public StartupAction StartupAction { get; set; } = StartupAction.OpenLastWorkspaceAndFiles;
 
     public bool AutoSaveEnabled { get; set; }
 
