@@ -408,8 +408,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             onOutlineChanged?()
 
         case "openLink":
-            if let urlString = payload?["url"] as? String, let url = URL(string: urlString), url.scheme != nil {
+            guard let urlString = payload?["url"] as? String else { break }
+            if let url = URL(string: urlString), let scheme = url.scheme?.lowercased(),
+               ["http", "https", "mailto"].contains(scheme) {
                 NSWorkspace.shared.open(url)
+            } else if let localPath = LocalLinkPolicy.resolve(urlString, documentPath: documentURL?.path),
+                      FileManager.default.fileExists(atPath: localPath) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: localPath))
             }
 
         case "requestSave":
