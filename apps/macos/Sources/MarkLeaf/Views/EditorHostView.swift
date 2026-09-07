@@ -6,6 +6,24 @@ final class EditorHostView: NSView {
     private var viewsByTab: [DocumentTabID: EditorWebContainerView] = [:]
     private(set) var visibleTabID: DocumentTabID?
     private var transitionGeneration = 0
+    var onDropURLs: (([URL]) -> Void)?
+    let emptyDropTarget = EmptyEditorDropTarget()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        emptyDropTarget.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(emptyDropTarget)
+        NSLayoutConstraint.activate([
+            emptyDropTarget.topAnchor.constraint(equalTo: topAnchor),
+            emptyDropTarget.leadingAnchor.constraint(equalTo: leadingAnchor),
+            emptyDropTarget.trailingAnchor.constraint(equalTo: trailingAnchor),
+            emptyDropTarget.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
 
     func attach(tabID: DocumentTabID, view: EditorWebContainerView) {
         guard viewsByTab[tabID] == nil else { return }
@@ -78,5 +96,33 @@ final class EditorHostView: NSView {
         guard let view = viewsByTab.removeValue(forKey: tabID) else { return }
         if visibleTabID == tabID { visibleTabID = nil }
         view.removeFromSuperview()
+    }
+}
+
+/// 关闭全部标签后仍保留一个拖放目标；普通标签存在时 WebView 在其上方接收拖放。
+final class EmptyEditorDropTarget: NSView {
+    var onDropURLs: (([URL]) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL], !urls.isEmpty else { return false }
+        onDropURLs?(urls)
+        return true
     }
 }

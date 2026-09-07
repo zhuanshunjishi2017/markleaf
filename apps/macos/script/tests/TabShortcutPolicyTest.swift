@@ -44,4 +44,20 @@ expect(
     "a one-tab window should not consume tab cycling"
 )
 
+expect(
+    TabShortcutPolicy.numberedTarget(in: store, digit: 1) == first.tabID,
+    "Option-1 should select the first tab"
+)
+expect(
+    TabShortcutPolicy.numberedTarget(in: store, digit: 3) == third.tabID,
+    "Option-3 should select the third tab"
+)
+expect(
+    TabShortcutPolicy.numberedTarget(in: store, digit: 4) == nil,
+    "an out-of-range tab number should not switch tabs"
+)
+expect(TabShortcutPolicy.digit(forKeyCode: 18) == 1, "key code 18 should map to digit 1")
+expect(TabShortcutPolicy.digit(forKeyCode: 25) == 9, "key code 25 should map to digit 9")
+expect(TabShortcutPolicy.digit(forKeyCode: 51) == nil, "non-digit keys should not map to tabs")
+
 print("PASS")

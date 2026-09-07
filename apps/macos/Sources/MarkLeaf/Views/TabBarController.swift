@@ -5,6 +5,9 @@ enum TabContextAction {
     case close
     case closeOthers
     case closeToRight
+    case locate
+    case copyPath
+    case revealInFinder
 }
 
 /// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
@@ -436,6 +439,12 @@ final class TabBarController: NSView {
         let closeToRight = contextMenuItem(L10n.t("关闭右侧标签"), action: .closeToRight, tabID: tabID)
         closeToRight.isEnabled = index < tabStore.tabs.count - 1
         menu.addItem(closeToRight)
+        if let tab = tabStore.tab(withID: tabID), tab.path != nil {
+            menu.addItem(.separator())
+            menu.addItem(contextMenuItem(L10n.t("在工作区定位"), action: .locate, tabID: tabID))
+            menu.addItem(contextMenuItem(L10n.t("复制文件路径"), action: .copyPath, tabID: tabID))
+            menu.addItem(contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID))
+        }
         NSMenu.popUpContextMenu(menu, with: event, for: cell)
     }
 

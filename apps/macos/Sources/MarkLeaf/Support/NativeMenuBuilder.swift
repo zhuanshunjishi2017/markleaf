@@ -239,6 +239,15 @@ final class NativeMenuBuilder {
         sidebarSettings.addItem(.separator())
         sidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))
         menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))
+        let tabManagement = NSMenu(title: L10n.t("标签页管理"))
+        tabManagement.addItem(commandItem(L10n.t("下一个标签"), "tabNext", key: "\t", mask: [.control]))
+        tabManagement.addItem(commandItem(L10n.t("关闭当前标签"), "closeCurrentTab"))
+        tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
+        tabManagement.addItem(.separator())
+        tabManagement.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
+        tabManagement.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
+        tabManagement.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
+        menu.addItem(popup(L10n.t("标签页管理"), tabManagement))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
@@ -399,6 +408,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         "toggleFollowSystemTheme", "toggleCodeHighlight",
         "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
         "treeView", "listView", "toggleDetachedOutline",
+        "tabNext", "closeCurrentTab", "closeOtherTabs",
+        "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder",
     ]
 
     /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
@@ -688,6 +699,18 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.openSample(sample)
         case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "treeView", "listView", "toggleDetachedOutline":
             viewStateSession?.performMenuCommand(command)
+        case "tabNext":
+            AppWindowManager.shared.activeWindowController?.selectNextTab()
+        case "closeCurrentTab":
+            AppWindowManager.shared.activeWindowController?.closeCurrentTab()
+        case "closeOtherTabs":
+            AppWindowManager.shared.activeWindowController?.closeOtherActiveTabs()
+        case "revealActiveTabInWorkspace":
+            AppWindowManager.shared.activeWindowController?.revealActiveTabInWorkspace()
+        case "copyActiveTabPath":
+            AppWindowManager.shared.activeWindowController?.copyActiveTabPath()
+        case "revealActiveTabInFinder":
+            AppWindowManager.shared.activeWindowController?.revealActiveTabInFinder()
         case "openHelp":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md") {
                 NSWorkspace.shared.open(url)

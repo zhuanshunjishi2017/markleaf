@@ -303,6 +303,17 @@ final class SidebarView: NSView {
         }
     }
 
+    func revealWorkspacePath(_ filePath: String) {
+        if session.sidebarTabIndex != 0 {
+            session.showWorkspaceTab()
+        }
+        if session.workspaceListMode {
+            session.setWorkspaceListMode(false)
+        }
+        session.onViewStateChanged?()
+        workspaceTree.revealPath(filePath)
+    }
+
     private func workspaceChanged() {
         updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
         workspaceTree.reloadData(activePath: session.documentURL?.path)

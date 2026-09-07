@@ -152,6 +152,75 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func reloadTabBar() { tabBarController?.reload() }
 
+    @discardableResult
+    func selectNextTab(reverse: Bool = false) -> Bool {
+        guard let windowSession,
+              let target = TabShortcutPolicy.cycleTarget(in: windowSession.tabStore, reverse: reverse) else { return false }
+        activateTab(target, animated: true)
+        return true
+    }
+
+    func closeCurrentTab() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        closeTab(id, reason: .closeTab)
+    }
+
+    func closeOtherActiveTabs() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        closeOtherTabs(keeping: id)
+    }
+
+    func revealActiveTabInWorkspace() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        revealTabInWorkspace(id)
+    }
+
+    func copyActiveTabPath() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        copyTabPath(id)
+    }
+
+    func revealActiveTabInFinder() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        revealTabInFinder(id)
+    }
+
+    private func revealTabInWorkspace(_ id: DocumentTabID) {
+        guard let windowSession,
+              let tab = windowSession.tabStore.tab(withID: id),
+              let path = tab.path,
+              let root = session.workspaceRoot,
+              URL(fileURLWithPath: path).standardizedFileURL.path.hasPrefix(
+                URL(fileURLWithPath: root).standardizedFileURL.path + "/"
+              ) else { return }
+        session.sidebarVisible = true
+        session.showWorkspaceTab()
+        session.setWorkspaceListMode(false)
+        applyViewState()
+        sidebarView?.revealWorkspacePath(path)
+    }
+
+    private func copyTabPath(_ id: DocumentTabID) {
+        guard let path = windowSession?.tabStore.tab(withID: id)?.path else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+    }
+
+    private func revealTabInFinder(_ id: DocumentTabID) {
+        guard let path = windowSession?.tabStore.tab(withID: id)?.path else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    private func handleEditorHostDrop(_ urls: [URL]) {
+        let drop = EditorDropPolicy.classify(urls)
+        for url in drop.images {
+            activeSession.insertImageFile(at: url)
+        }
+        for url in drop.documents {
+            openFileInTab(url)
+        }
+    }
+
     func saveAllTabs() {
         guard let windowSession else { return }
         let targets = SaveAllPolicy.targets(tabs: windowSession.tabStore.tabs)
@@ -384,6 +453,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             closeOtherTabs(keeping: id)
         case .closeToRight:
             closeTabsToRight(of: index)
+        case .locate:
+            activateTab(id, animated: true)
+            revealTabInWorkspace(id)
+        case .copyPath:
+            copyTabPath(id)
+        case .revealInFinder:
+            revealTabInFinder(id)
         }
     }
 
@@ -656,6 +732,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let rightColumn = NSView()
         self.rightColumnView = rightColumn
         let editorHost = EditorHostView()
+        editorHost.emptyDropTarget.onDropURLs = { [weak self] urls in
+            self?.handleEditorHostDrop(urls)
+        }
         self.editorHostView = editorHost
         editorHost.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1048,6 +1127,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// Control-Tab / Control-Shift-Tab 在当前窗口内循环切换标签。
     @discardableResult
     func handleTabCycleKey(event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.option),
+           let digit = TabShortcutPolicy.digit(forKeyCode: event.keyCode),
+           let windowSession,
+           let target = TabShortcutPolicy.numberedTarget(in: windowSession.tabStore, digit: digit) {
+            activateTab(target, animated: true)
+            return true
+        }
         guard event.modifierFlags.contains(.control), event.keyCode == 48,
               let windowSession,
               let target = TabShortcutPolicy.cycleTarget(
