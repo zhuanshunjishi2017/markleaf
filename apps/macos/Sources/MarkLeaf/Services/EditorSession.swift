@@ -30,6 +30,14 @@ struct PreparedDocument: Equatable {
     }
 }
 
+/// 初始装载时恢复的编辑器坐标；视觉与源码模式坐标系不同，必须分别保存。
+struct PendingDocumentSelection {
+    var visualFrom: Int?
+    var visualTo: Int?
+    var sourceFrom: Int?
+    var sourceTo: Int?
+}
+
 /// 文档统计（对齐 Windows EditorStatus / DocumentStatisticsDialog 展示的字段）。
 struct DocumentStatistics {
     var characterCount = 0
@@ -255,6 +263,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var isDocumentDispositionInProgress: Bool { documentDisposition.isInProgress }
     private(set) var dispositionRequestCount = 0
     private var pendingInitialPreparedDocument: PreparedDocument?
+    private var pendingInitialSelection: PendingDocumentSelection?
     private struct RestartDocument {
         let markdown: String
         let fileURL: URL?
@@ -785,14 +794,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             startRecoveryTimer()
         }
         isPlainText = newDocumentKind == .plainText
-        send("loadDocument", payload: [
+        var loadPayload: [String: Any] = [
             "markdown": markdown,
             "documentType": newDocumentKind.editorDocumentType,
             "readOnly": readOnly,
             "initialDirty": initialDirty,
-            "visualSelection": visualSelectionFrom.map { ["from": $0, "to": visualSelectionTo ?? $0] },
-            "sourceSelection": sourceSelectionFrom.map { ["from": $0, "to": sourceSelectionTo ?? $0] },
-        ])
+        ]
+        if let visualSelectionFrom {
+            loadPayload["visualSelection"] = ["from": visualSelectionFrom, "to": visualSelectionTo ?? visualSelectionFrom]
+        }
+        if let sourceSelectionFrom {
+            loadPayload["sourceSelection"] = ["from": sourceSelectionFrom, "to": sourceSelectionTo ?? sourceSelectionFrom]
+        }
+        send("loadDocument", payload: loadPayload)
     }
 
     func sendRestoreViewport(scrollTop: Double?, selectionFrom: Int?, selectionTo: Int?) {
@@ -1574,12 +1588,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// “保存全部”菜单命令交由窗口层遍历所有标签。
     var saveAllRequest: (() -> Void)?
 
-    private func loadPreparedDocument(_ prepared: PreparedDocument) {
+    private func loadPreparedDocument(_ prepared: PreparedDocument, selection: PendingDocumentSelection? = nil) {
         loadDocument(
             markdown: prepared.markdown,
             fileURL: prepared.url,
             readOnly: prepared.isReadOnly,
-            encoding: prepared.encoding
+            encoding: prepared.encoding,
+            visualSelectionFrom: selection?.visualFrom,
+            visualSelectionTo: selection?.visualTo,
+            sourceSelectionFrom: selection?.sourceFrom,
+            sourceSelectionTo: selection?.sourceTo
         )
         guard !prepared.isReadOnly else { return }
         SettingsService.shared.addRecentFile(prepared.url.path)
@@ -2514,9 +2532,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 供窗口控制器在展示后调用：直接装载已预读的文档（绕过一次性启动解析器）。
-    func openInitialDocument(prepared: PreparedDocument) {
+    func openInitialDocument(prepared: PreparedDocument, selection: PendingDocumentSelection? = nil) {
         startFollowingSystemAppearance()
         pendingInitialPreparedDocument = prepared
+        pendingInitialSelection = selection
         if isReady {
             runInitialLoad()
         }
@@ -2531,7 +2550,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         didRunInitialLoad = true
 
         if let prepared = pendingInitialPreparedDocument {
-            loadPreparedDocument(prepared)
+            loadPreparedDocument(prepared, selection: pendingInitialSelection)
             return
         }
 

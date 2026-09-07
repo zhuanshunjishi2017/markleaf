@@ -199,7 +199,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
             session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo)
         } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
-            session.openInitialDocument(prepared: prepared)
+            let selection = PendingDocumentSelection(
+                visualFrom: tab.visualSelectionFrom,
+                visualTo: tab.visualSelectionTo,
+                sourceFrom: tab.sourceSelectionFrom,
+                sourceTo: tab.sourceSelectionTo
+            )
+            session.openInitialDocument(prepared: prepared, selection: selection)
         } else {
             session.newDocument()
         }
@@ -562,8 +568,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// 窗口展示后直接装载已预读的文档。
-    func openInitialDocument(prepared: PreparedDocument) {
-        session.openInitialDocument(prepared: prepared)
+    func openInitialDocument(prepared: PreparedDocument, selection: PendingDocumentSelection? = nil) {
+        session.openInitialDocument(prepared: prepared, selection: selection)
     }
 
     override func showWindow(_ sender: Any?) {
