@@ -33,12 +33,15 @@ import {
   setBlockTypeLabels,
   setEditorSharedStrings,
   restoreVisualSelection,
+  restoreEditorScroll,
   renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
 import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
+import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
+import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -1375,6 +1378,12 @@ editorMount.addEventListener('mousedown', (event) => {
     return
   }
 
+  // Atom NodeViews are not editable text. If a previous text selection is
+  // still owned by WebKit, its native highlight can survive beside the
+  // ProseMirror NodeSelection and paint unrelated formula content blue.
+  event.preventDefault()
+  window.getSelection()?.removeAllRanges()
+
   const selected = editor.state.selection
   pendingSpecialClick = {
     kind: mathPosition !== null ? 'math' : 'mermaid',
@@ -1556,6 +1565,7 @@ async function handleMessage(value: unknown): Promise<void> {
         markdown?: unknown
         documentType?: unknown
         readOnly?: unknown
+        initialDirty?: unknown
         visualSelection?: { from?: unknown; to?: unknown }
         sourceSelection?: { from?: unknown; to?: unknown }
       }
@@ -1612,10 +1622,24 @@ async function handleMessage(value: unknown): Promise<void> {
       suppressUpdate = false
       updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
+      if (payload.initialDirty === true) send('dirtyChanged', { dirty: true })
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
       sendOutlineSelectionFromCursor()
+      break
+    }
+    case 'restoreViewport': {
+      if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break
+      const payload = message.payload
+      if (payload.selection) {
+        if (sourceMode) sourceEditor?.setSelection(payload.selection.from, payload.selection.to)
+        else if (editor) restoreVisualSelection(editor, payload.selection)
+      }
+      if (typeof payload.scrollTop === 'number' && payload.scrollTop >= 0) {
+        if (sourceMode) sourceEditor?.setScrollTop(payload.scrollTop)
+        else restoreEditorScroll(editorMount, payload.scrollTop)
+      }
       break
     }
     case 'setDocumentType': {
@@ -1867,8 +1891,10 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const keepTablesTogether = options.keepTablesTogether === true
-            const keepHeadingsWithNextBlock = options.keepHeadingsWithNextBlock === true
+            const pagination: ExportPaginationOptions = {
+              keepTablesTogether: options.keepTablesTogether === true,
+              keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
+            }
             const html = await generateExportHtml(
               style,
               format,
@@ -1880,8 +1906,7 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing,
               colorSchemeCss,
               title,
-              keepTablesTogether,
-              keepHeadingsWithNextBlock,
+              pagination,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -2108,8 +2133,7 @@ function escapeHtml(text: string): string {
 function renderEditorHtmlForExport(
   html: string,
   preserveEmptyParagraphs = false,
-  keepTablesTogether = false,
-  keepHeadingsWithNextBlock = false,
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
   visualCjkAutoSpacing = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
@@ -2144,33 +2168,11 @@ function renderEditorHtmlForExport(
     paragraph.insertBefore(labelElement, paragraph.firstChild)
   }
 
-  if (keepTablesTogether) {
-    for (const table of Array.from(parsed.body.querySelectorAll<HTMLTableElement>('table'))) {
-      const figure = table.parentElement?.matches('figure.markleaf-figure') === true
-        ? table.parentElement
-        : null
-      ;(figure ?? table).classList.add('markleaf-keep-together')
-    }
-  }
-
-  if (keepHeadingsWithNextBlock) {
-    const headings = Array.from(parsed.body.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'))
-    for (const heading of headings) {
-      const next = heading.nextElementSibling
-      const parent = heading.parentElement
-      if (!next || !parent || next.matches('h1, h2, h3, h4, h5, h6')) continue
-      const group = parsed.createElement('div')
-      group.className = 'markleaf-heading-with-next'
-      parent.insertBefore(group, heading)
-      group.append(heading, next)
-    }
-  }
-
   if (visualCjkAutoSpacing) {
     applyCjkAutoSpacingToExport(parsed)
   }
 
-  return parsed.body.innerHTML.replace(/\u2060/g, '')
+  return applyExportPagination(parsed.body.innerHTML, pagination)
 }
 
 function applyCjkAutoSpacingToExport(parsed: Document): void {
@@ -2320,8 +2322,7 @@ async function generateExportHtml(
   visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
-  keepTablesTogether = false,
-  keepHeadingsWithNextBlock = false,
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
 ): Promise<string> {
   const isPdf = format === 'pdf'
   const isImage = format === 'image'
@@ -2331,8 +2332,7 @@ async function generateExportHtml(
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
     renderMathInHtml(rawBodyHtml),
     isPdf,
-    keepTablesTogether,
-    keepHeadingsWithNextBlock,
+    pagination,
     visualCjkAutoSpacing,
   ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
@@ -2369,20 +2369,7 @@ ${baseCss}
 }
 ${colorSchemeCss}
 ${resolved.css}
-.markleaf-document .markleaf-keep-together,
-.markleaf-document .markleaf-heading-with-next {
-  break-inside: avoid-page !important;
-  page-break-inside: avoid !important;
-}
-.markleaf-document .markleaf-heading-with-next > h1,
-.markleaf-document .markleaf-heading-with-next > h2,
-.markleaf-document .markleaf-heading-with-next > h3,
-.markleaf-document .markleaf-heading-with-next > h4,
-.markleaf-document .markleaf-heading-with-next > h5,
-.markleaf-document .markleaf-heading-with-next > h6 {
-  break-after: avoid-page !important;
-  page-break-after: avoid !important;
-}
+${exportPaginationCss}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;

@@ -2741,7 +2741,7 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   const width = Math.min(documentRect.width, availableWidth)
   overlay.style.width = `${width}px`
   overlay.hidden = false
-  const overlayWidth = overlay.getBoundingClientRect().width || width
+  const overlayWidth = overlay.offsetWidth || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
   const top = anchorRect.bottom + gap
   overlay.style.left = `${left}px`
@@ -4579,6 +4579,12 @@ export function resetEditorViewport(editor: Editor, editorMount: HTMLElement): v
 
   reset()
   window.requestAnimationFrame(() => window.requestAnimationFrame(reset))
+}
+
+export function restoreEditorScroll(editorMount: HTMLElement, top: number): void {
+  const value = Math.max(0, top)
+  editorMount.scrollTop = value
+  scrollPageTo(value)
 }
 
 function scrollPageTo(top: number): void {

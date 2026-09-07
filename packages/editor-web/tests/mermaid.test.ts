@@ -173,24 +173,21 @@ describe('Mermaid chart support', () => {
     expect(failedExport).not.toContain('Mermaid图表文本格式错误')
   })
 
-  it('edits mermaid source as a regular code block and renders it back', async () => {
+  it('edits Mermaid source directly and keeps the diagram node', () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     editor.commands.setNodeSelection(0)
 
     expect(executeEditorCommand(editor, 'editMermaid')).toBe(true)
-    expect(editor.state.doc.firstChild?.type.name).toBe('codeBlock')
-    expect(editor.state.doc.firstChild?.attrs.language).toBe('mermaid')
-    expect(editor.view.dom.querySelector('pre code')?.textContent).toContain('A-->B')
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')
+    expect(source?.textContent).toContain('A-->B')
 
-    Array.from(editor.view.dom.querySelectorAll<HTMLButtonElement>('button'))
-      .find(button => button.textContent === '渲染为图表')
-      ?.click()
-
+    source!.textContent = 'graph TD\n  A-->C'
+    source!.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(getMarkdown(editor)).toContain('A-->C')
     expect(editor.state.doc.firstChild?.type.name).toBe('mermaid')
-    expect(getMarkdown(editor)).toContain('```mermaid\ngraph TD\n  A-->B\n```')
   })
 
-  it('edits Mermaid source below the rendered diagram and collapses on blur', () => {
+  it('edits Mermaid source below the rendered diagram and collapses on blur', async () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     expect(expandSourceEditor(editor, 0, 'mermaid')).toBe(true)
 
@@ -205,6 +202,7 @@ describe('Mermaid chart support', () => {
     expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await new Promise(resolve => setTimeout(resolve, 260))
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
     expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
   })

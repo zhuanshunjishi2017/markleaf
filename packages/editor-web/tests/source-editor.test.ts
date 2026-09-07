@@ -166,6 +166,20 @@ describe('source editor', () => {
     expect(source.getText()).toBe('**文本"** 后文')
   })
 
+  it('does not prompt when adjacent bold and italic markers are parsed by Markdown', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const requests: Array<{ id: string; kind: string }> = []
+    const source = new SourceEditor(parent, '**粗体***斜体', () => {}, 2, false, request => requests.push(request))
+    sources.push(source)
+
+    source.setSelection(source.getText().length)
+    source.replaceSelection('*')
+
+    expect(requests).toHaveLength(0)
+    expect(source.getText()).toBe('**粗体***斜体*')
+  })
+
   it('checks a changed source line when surrounding text makes existing emphasis unsafe', () => {
     const parent = document.createElement('div')
     document.body.append(parent)
