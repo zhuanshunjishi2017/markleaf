@@ -794,6 +794,19 @@ enum L10n {
         "未找到示例文档": "サンプル文書が見つかりません",
         "无法打开示例文档": "サンプル文書を開けません",
         "公式编号必须是 1 或 1.1 格式": "数式番号は 1 または 1.1 の形式で入力してください",
+        "Markdown 行为": "Markdown の動作",
+        "空行回车退出块": "空行で Enter を押すとブロックを抜ける",
+        "Shift+Enter 插入硬换行": "Shift+Enter でハードブレイクを挿入",
+        "转义文本中的 Markdown 符号": "本文中の Markdown 記号をエスケープする",
+        "代码围栏": "コードフェンス",
+        "反引号 `": "バッククォート `",
+        "波浪号 ~": "チルダ ~",
+        "强调标记": "強調マーカー",
+        "星号 *": "アスタリスク *",
+        "下划线 _": "アンダースコア _",
+        "列表标记": "リストマーカー",
+        "短横线 -": "ハイフン -",
+        "加号 +": "プラス +",
     ]
 
     // MARK: - 繁体中文
@@ -1529,6 +1542,19 @@ enum L10n {
         "无法打开示例文档": "無法開啟範例文件",
         "公式编号必须是 1 或 1.1 格式": "公式編號必須是 1 或 1.1 格式",
 
+        "Markdown 行为": "Markdown 行為",
+        "空行回车退出块": "空行按 Enter 離開區塊",
+        "Shift+Enter 插入硬换行": "Shift+Enter 插入硬換行",
+        "转义文本中的 Markdown 符号": "轉義文字中的 Markdown 符號",
+        "代码围栏": "程式碼圍欄",
+        "反引号 `": "反引號 `",
+        "波浪号 ~": "波浪號 ~",
+        "强调标记": "強調標記",
+        "星号 *": "星號 *",
+        "下划线 _": "底線 _",
+        "列表标记": "清單標記",
+        "短横线 -": "短橫線 -",
+        "加号 +": "加號 +",
     ]
 
     // MARK: - English
@@ -2252,5 +2278,18 @@ enum L10n {
         "无法打开示例文档": "Unable to open sample document",
         "公式编号必须是 1 或 1.1 格式": "Equation number must use 1 or 1.1 format",
 
+        "Markdown 行为": "Markdown Behavior",
+        "空行回车退出块": "Exit Block on Empty Enter",
+        "Shift+Enter 插入硬换行": "Insert Hard Break with Shift+Enter",
+        "转义文本中的 Markdown 符号": "Escape Markdown Symbols in Text",
+        "代码围栏": "Code Fence",
+        "反引号 `": "Backtick `",
+        "波浪号 ~": "Tilde ~",
+        "强调标记": "Emphasis Marker",
+        "星号 *": "Asterisk *",
+        "下划线 _": "Underscore _",
+        "列表标记": "List Marker",
+        "短横线 -": "Hyphen -",
+        "加号 +": "Plus +",
     ]
 }
