@@ -17,10 +17,12 @@ import {
   setEditorFocusMode,
   getMarkdown,
   setAutoConvertUnsafeEmphasis,
+  setMarkdownEditingSettings,
   captureVisualSelection,
   collapseVisualSelection,
   getSourceModeJumpTarget,
   isAllowedLink,
+  isLocalFileLink,
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
@@ -31,15 +33,12 @@ import {
   setBlockTypeLabels,
   setEditorSharedStrings,
   restoreVisualSelection,
-  restoreEditorScroll,
   renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
 import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
-import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
-import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -636,6 +635,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
       send('selectionChanged', {
         from: targetEditor.state.selection.from,
         to: targetEditor.state.selection.to,
+        sourceMode: false,
       })
       updateBlockHandleOverlay()
       sendEditorState()
@@ -677,6 +677,10 @@ function markSourceChanged(documentChanged: boolean): void {
   sendEditorState()
 }
 
+function sendSourceSelection(from: number, to: number): void {
+  send('selectionChanged', { from, to, sourceMode: true })
+}
+
 function requestUnsafeEmphasisResolution(request: UnsafeEmphasisRequest): void {
   send('unsafeEmphasisRequested', request, request.id)
 }
@@ -701,7 +705,7 @@ function setSourceMode(enabled: boolean): void {
   if (enabled) {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
     const jumpTarget = getSourceModeJumpTarget(editor)
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown')
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown', sendSourceSelection)
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -892,15 +896,17 @@ editorTooltip.hidden = true
 document.body.appendChild(editorTooltip)
 
 let tooltipKind: 'link' | 'footnote' | null = null
+let tooltipIsLocalFile = false
 let tooltipHideTimer = 0
 
-function editorTooltipTexts(): { link: string; footnote: string; footnoteNotFound: string } {
+function editorTooltipTexts(): { link: string; file: string; footnote: string; footnoteNotFound: string } {
   const strings = sharedEditorStrings(
     markleafLanguage,
     hostCapabilities.primaryActivationModifier,
   )
   return {
     link: strings.linkTooltip,
+    file: strings.fileLinkTooltip,
     footnote: strings.footnoteTooltip,
     footnoteNotFound: strings.footnoteNotFound,
   }
@@ -928,7 +934,7 @@ function positionEditorTooltip(event: MouseEvent): void {
   editorTooltip.style.top = `${top}px`
 }
 
-function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null): void {
+function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null, isLocalFile = false): void {
   const texts = editorTooltipTexts()
   editorTooltip.textContent = ''
 
@@ -944,7 +950,9 @@ function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null): v
 
   const hint = document.createElement('div')
   hint.className = 'editor-tooltip-hint'
-  hint.textContent = kind === 'link' ? texts.link : texts.footnote
+  hint.textContent = kind === 'link'
+    ? (isLocalFile ? texts.file : texts.link)
+    : texts.footnote
   editorTooltip.appendChild(hint)
 }
 
@@ -959,12 +967,14 @@ function updateEditorTooltip(event: MouseEvent): void {
   const anchorEl = target.closest<HTMLAnchorElement>('a[href]')
   const kind = footnoteEl ? 'footnote' : anchorEl ? 'link' : null
   if (kind) {
+    const localFile = kind === 'link' && isLocalFileLink(anchorEl?.getAttribute('href') ?? '')
     const detail = kind === 'footnote'
       ? findFootnoteDefinitionBody(editor, footnoteEl!.getAttribute('data-footnote-ref') ?? '')
       : (anchorEl?.getAttribute('href') ?? '')
-    if (tooltipKind !== kind) {
+    if (tooltipKind !== kind || tooltipIsLocalFile !== localFile) {
       tooltipKind = kind
-      buildEditorTooltip(kind, detail)
+      tooltipIsLocalFile = localFile
+      buildEditorTooltip(kind, detail, localFile)
     }
     positionEditorTooltip(event)
   } else {
@@ -1047,6 +1057,37 @@ function findMermaidNodeAt(pos: number): number | null {
   return null
 }
 
+function findHorizontalRuleAtY(clientY: number): number | null {
+  let closestPosition: number | null = null
+  let closestDistance = Number.POSITIVE_INFINITY
+
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'horizontalRule') return true
+
+    const nodeDom = editor.view.nodeDOM(position)
+    if (!(nodeDom instanceof HTMLElement)) return false
+
+    const rect = nodeDom.getBoundingClientRect()
+    const computed = window.getComputedStyle(nodeDom)
+    const marginTop = Number.parseFloat(computed.marginTop)
+    const marginBottom = Number.parseFloat(computed.marginBottom)
+    const lineHeight = Number.parseFloat(computed.lineHeight)
+    const fallbackPadding = Number.isFinite(lineHeight) ? lineHeight / 2 : 8
+    const rowTop = rect.top - (Number.isFinite(marginTop) ? marginTop : fallbackPadding)
+    const rowBottom = rect.bottom + (Number.isFinite(marginBottom) ? marginBottom : fallbackPadding)
+    if (clientY < rowTop || clientY > rowBottom) return false
+
+    const distance = Math.abs(clientY - (rect.top + rect.bottom) / 2)
+    if (distance < closestDistance) {
+      closestDistance = distance
+      closestPosition = position
+    }
+    return false
+  })
+
+  return closestPosition
+}
+
 const formatMenu = document.createElement('div')
 formatMenu.id = 'format-menu'
 formatMenu.className = 'format-menu'
@@ -1055,6 +1096,7 @@ const formatButtons: Array<{ command: string; glyph: string; label: string }> = 
   { command: 'toggleBold', glyph: '', label: 'Bold' },
   { command: 'toggleItalic', glyph: '', label: 'Italic' },
   { command: 'toggleUnderline', glyph: '', label: 'Underline' },
+  { command: 'toggleStrike', glyph: '\uEDE0', label: 'Strikethrough' },
   { command: 'toggleHighlight', glyph: '\uE7E6', label: 'Text highlight' },
 ]
 const formatButtonElements: HTMLButtonElement[] = []
@@ -1071,7 +1113,18 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     if (sourceMode) {
       return
     }
-    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline' || command === 'toggleHighlight'
+    if (command === 'formatPainter') {
+      if (contextMenuSelection) editor.commands.setTextSelection(contextMenuSelection)
+      if (formatPainter.isArmed) formatPainter.cancel()
+      else formatPainter.arm(editor)
+      contextMenuSelection = null
+      updateFormatPainterCursor()
+      hideFormatMenu()
+      sendEditorState()
+      return
+    }
+    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline'
+      || command === 'toggleStrike' || command === 'toggleHighlight'
     executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
     hideFormatMenu()
     sendEditorState()
@@ -1113,6 +1166,16 @@ const headingButtonElements = [promoteHeadingButton, demoteHeadingButton]
 const clearFormatSeparator = document.createElement('div')
 clearFormatSeparator.className = 'format-menu-separator'
 formatMenu.appendChild(clearFormatSeparator)
+
+const formatPainterButton = document.createElement('button')
+formatPainterButton.type = 'button'
+formatPainterButton.className = 'format-menu-button'
+formatPainterButton.dataset.command = 'formatPainter'
+formatPainterButton.textContent = '\uEC34'
+formatPainterButton.setAttribute('aria-label', 'Format painter')
+formatPainterButton.title = 'Format painter'
+attachFormatCommand(formatPainterButton, 'formatPainter')
+formatMenu.appendChild(formatPainterButton)
 
 const clearFormatButton = document.createElement('button')
 clearFormatButton.type = 'button'
@@ -1177,6 +1240,7 @@ function showFormatMenu(
     toggleBold: state.bold,
     toggleItalic: state.italic,
     toggleUnderline: state.underline,
+    toggleStrike: state.strike,
     toggleHighlight: state.highlight,
   }
   for (const button of formatButtonElements) {
@@ -1226,6 +1290,24 @@ function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): 
 
 editorMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
+  const documentBounds = editor.view.dom.getBoundingClientRect()
+  const outsideDocument = event.clientX < documentBounds.left
+    || event.clientX > documentBounds.right
+    || event.clientY < documentBounds.top
+    || event.clientY > documentBounds.bottom
+  if (outsideDocument) {
+    hideFormatMenu()
+    send('contextMenuRequested', {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      menuHeight: 0,
+      canStartFormatPainter: false,
+      formatPainterArmed: false,
+      readOnly,
+      outsideDocument: true,
+    })
+    return
+  }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
   if (resolved) {
     const mathPos = findMathNodeAt(resolved.pos)
@@ -1293,12 +1375,6 @@ editorMount.addEventListener('mousedown', (event) => {
     return
   }
 
-  // Atom NodeViews are not editable text. If a previous text selection is
-  // still owned by WebKit, its native highlight can survive beside the
-  // ProseMirror NodeSelection and paint unrelated formula content blue.
-  event.preventDefault()
-  window.getSelection()?.removeAllRanges()
-
   const selected = editor.state.selection
   pendingSpecialClick = {
     kind: mathPosition !== null ? 'math' : 'mermaid',
@@ -1315,6 +1391,14 @@ editorMount.addEventListener('click', (event) => {
     return
   }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  const horizontalRulePosition = findHorizontalRuleAtY(event.clientY)
+  if (horizontalRulePosition !== null) {
+    event.preventDefault()
+    pendingSpecialClick = null
+    editor.commands.setNodeSelection(horizontalRulePosition)
+    sendEditorState()
+    return
+  }
   const mathPosition = findMathNodeFromTarget(event.target)
     ?? (resolved ? findMathNodeAt(resolved.pos) : null)
   const mermaidPosition = mathPosition === null
@@ -1468,7 +1552,13 @@ async function handleMessage(value: unknown): Promise<void> {
     case 'loadDocument': {
       formatPainter.cancel()
       updateFormatPainterCursor()
-      const payload = message.payload as { markdown?: unknown; documentType?: unknown; readOnly?: unknown; initialDirty?: unknown }
+      const payload = message.payload as {
+        markdown?: unknown
+        documentType?: unknown
+        readOnly?: unknown
+        visualSelection?: { from?: unknown; to?: unknown }
+        sourceSelection?: { from?: unknown; to?: unknown }
+      }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
         return
@@ -1485,11 +1575,18 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
+        if (typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
+          sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
+        }
       } else {
         sourceMode = false
         sourceMount.hidden = true
         editorMount.hidden = false
+        const visualSelection = typeof payload.visualSelection?.from === 'number'
+          && typeof payload.visualSelection?.to === 'number'
+          ? { from: payload.visualSelection.from, to: payload.visualSelection.to }
+          : null
         editor = replaceEditorDocument(
           editor,
           editorMount,
@@ -1502,30 +1599,23 @@ async function handleMessage(value: unknown): Promise<void> {
         updateEditorTypewriterMode()
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
-        resetEditorViewport(editor, editorMount)
+        if (visualSelection) {
+          // resetEditorViewport also resets the selection. Reset the scroll first,
+          // then restore the saved selection and center it in the viewport.
+          editorMount.scrollTop = 0
+          restoreVisualSelection(editor, visualSelection, true)
+        } else {
+          resetEditorViewport(editor, editorMount)
+        }
         lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
       updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
-      if (payload.initialDirty === true) send('dirtyChanged', { dirty: true })
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
       sendOutlineSelectionFromCursor()
-      break
-    }
-    case 'restoreViewport': {
-      if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break
-      const payload = message.payload
-      if (payload.selection) {
-        if (sourceMode) sourceEditor?.setSelection(payload.selection.from, payload.selection.to)
-        else if (editor) restoreVisualSelection(editor, payload.selection)
-      }
-      if (typeof payload.scrollTop === 'number' && payload.scrollTop >= 0) {
-        if (sourceMode) sourceEditor?.setScrollTop(payload.scrollTop)
-        else restoreEditorScroll(editorMount, payload.scrollTop)
-      }
       break
     }
     case 'setDocumentType': {
@@ -1543,7 +1633,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false)
+        sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
       } else {
         sourceMode = false
         sourceMount.hidden = true
@@ -1686,6 +1776,16 @@ async function handleMessage(value: unknown): Promise<void> {
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
+        if (payload.command === 'setMarkdownEditingSettings') {
+          try {
+            setMarkdownEditingSettings(JSON.parse(String(payload.text ?? '{}')))
+          }
+          catch {
+            setMarkdownEditingSettings({})
+          }
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
         if (payload.command === 'setAutoHideScrollbar') {
           applyAutoHideScrollbar(payload.text === '1')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1767,10 +1867,8 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const pagination: ExportPaginationOptions = {
-              keepTablesTogether: options.keepTablesTogether === true,
-              keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
-            }
+            const keepTablesTogether = options.keepTablesTogether === true
+            const keepHeadingsWithNextBlock = options.keepHeadingsWithNextBlock === true
             const html = await generateExportHtml(
               style,
               format,
@@ -1782,7 +1880,8 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing,
               colorSchemeCss,
               title,
-              pagination,
+              keepTablesTogether,
+              keepHeadingsWithNextBlock,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -2009,7 +2108,9 @@ function escapeHtml(text: string): string {
 function renderEditorHtmlForExport(
   html: string,
   preserveEmptyParagraphs = false,
-  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
+  keepTablesTogether = false,
+  keepHeadingsWithNextBlock = false,
+  visualCjkAutoSpacing = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
 
@@ -2043,7 +2144,78 @@ function renderEditorHtmlForExport(
     paragraph.insertBefore(labelElement, paragraph.firstChild)
   }
 
-  return applyExportPagination(parsed.body.innerHTML, pagination)
+  if (keepTablesTogether) {
+    for (const table of Array.from(parsed.body.querySelectorAll<HTMLTableElement>('table'))) {
+      const figure = table.parentElement?.matches('figure.markleaf-figure') === true
+        ? table.parentElement
+        : null
+      ;(figure ?? table).classList.add('markleaf-keep-together')
+    }
+  }
+
+  if (keepHeadingsWithNextBlock) {
+    const headings = Array.from(parsed.body.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'))
+    for (const heading of headings) {
+      const next = heading.nextElementSibling
+      const parent = heading.parentElement
+      if (!next || !parent || next.matches('h1, h2, h3, h4, h5, h6')) continue
+      const group = parsed.createElement('div')
+      group.className = 'markleaf-heading-with-next'
+      parent.insertBefore(group, heading)
+      group.append(heading, next)
+    }
+  }
+
+  if (visualCjkAutoSpacing) {
+    applyCjkAutoSpacingToExport(parsed)
+  }
+
+  return parsed.body.innerHTML.replace(/\u2060/g, '')
+}
+
+function applyCjkAutoSpacingToExport(parsed: Document): void {
+  const textNodes: Text[] = []
+  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    if (walker.currentNode instanceof Text) textNodes.push(walker.currentNode)
+  }
+
+  for (const textNode of textNodes) {
+    const parent = textNode.parentElement
+    if (!parent || parent.closest('pre, code, .katex, .markleaf-mermaid')) continue
+    const text = textNode.data
+    const boundaries: number[] = []
+    for (let index = 1; index < text.length; index += 1) {
+      const previous = text[index - 1]!
+      const current = text[index]!
+      if ((isCjkAutoSpacingCharacter(previous) && isWesternAutoSpacingCharacter(current))
+        || (isWesternAutoSpacingCharacter(previous) && isCjkAutoSpacingCharacter(current))) {
+        boundaries.push(index)
+      }
+    }
+    if (boundaries.length === 0) continue
+
+    const fragment = parsed.createDocumentFragment()
+    let start = 0
+    for (const boundary of boundaries) {
+      fragment.append(parsed.createTextNode(text.slice(start, boundary)))
+      const spacer = parsed.createElement('span')
+      spacer.className = 'markleaf-cjk-autospace-widget'
+      spacer.setAttribute('aria-hidden', 'true')
+      fragment.append(spacer)
+      start = boundary
+    }
+    fragment.append(parsed.createTextNode(text.slice(start)))
+    textNode.replaceWith(fragment)
+  }
+}
+
+function isCjkAutoSpacingCharacter(character: string): boolean {
+  return /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
+}
+
+function isWesternAutoSpacingCharacter(character: string): boolean {
+  return /[A-Za-z0-9]/.test(character)
 }
 
 function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
@@ -2148,16 +2320,20 @@ async function generateExportHtml(
   visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
-  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
+  keepTablesTogether = false,
+  keepHeadingsWithNextBlock = false,
 ): Promise<string> {
   const isPdf = format === 'pdf'
+  const isImage = format === 'image'
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
     renderMathInHtml(rawBodyHtml),
     isPdf,
-    pagination,
+    keepTablesTogether,
+    keepHeadingsWithNextBlock,
+    visualCjkAutoSpacing,
   ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
     (_, encoded: string) => {
@@ -2168,6 +2344,7 @@ async function generateExportHtml(
   const rootClass = [
     resolved.rootClass,
     isPdf ? 'markleaf-export-pdf' : '',
+    isImage ? 'markleaf-export-image' : '',
   ].filter(Boolean).join(' ')
 
   return `<!DOCTYPE html>
@@ -2181,9 +2358,31 @@ async function generateExportHtml(
 ${katexCss}
 ${baseCss}
 .markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
+.markleaf-document .markleaf-cjk-autospace-widget {
+  display: inline-block;
+  width: 0.35em;
+  min-width: 0.35em;
+  height: 1px;
+  overflow: hidden;
+  vertical-align: baseline;
+  pointer-events: none;
+}
 ${colorSchemeCss}
 ${resolved.css}
-${exportPaginationCss}
+.markleaf-document .markleaf-keep-together,
+.markleaf-document .markleaf-heading-with-next {
+  break-inside: avoid-page !important;
+  page-break-inside: avoid !important;
+}
+.markleaf-document .markleaf-heading-with-next > h1,
+.markleaf-document .markleaf-heading-with-next > h2,
+.markleaf-document .markleaf-heading-with-next > h3,
+.markleaf-document .markleaf-heading-with-next > h4,
+.markleaf-document .markleaf-heading-with-next > h5,
+.markleaf-document .markleaf-heading-with-next > h6 {
+  break-after: avoid-page !important;
+  page-break-after: avoid !important;
+}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;
@@ -2200,6 +2399,16 @@ ${exportPaginationCss}
 }
 html { font-size: var(--ml-font-size); }
 body { margin: 0; background: var(--bg-primary); }
+.markleaf-export-image,
+.markleaf-export-image .markleaf-document {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-image {
+  overflow: hidden;
+}
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
   padding-left: 5px;
@@ -2241,6 +2450,12 @@ body { margin: 0; background: var(--bg-primary); }
 }
 .markleaf-export-pdf .markleaf-document blockquote {
   box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document .markleaf-alert {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  overflow: visible;
 }
 .markleaf-export-pdf .markleaf-document table {
   width: auto;

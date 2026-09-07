@@ -1,7 +1,7 @@
 import { InputRule, Node } from '@tiptap/core'
-import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import katexSelfContainedCss from 'virtual:katex-css'
+import katex from 'katex'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
 
@@ -9,13 +9,6 @@ export function mathNumberFromLatex(latex: string): string | null {
   const match = /\\tag\{([^{}]*)\}\s*$/.exec(latex)
   return match?.[1]?.trim() || null
 }
-
-// Input rules must not treat the second `$` of `$$` as an inline closing
-// delimiter; otherwise `$$x$` converts before block math can complete.
-export const mathInputPatterns = {
-  inline: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
-  block: /\$\$([^$]+?)\$\$$/,
-} as const
 
 function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
@@ -104,7 +97,9 @@ export const MathInline = Node.create({
   },
 
   renderMarkdown(node) {
-    const latex = nodeLatex(node)
+    // Inline math must remain on one Markdown line; a newline would make the
+    // closing delimiter fail to parse as an inline formula.
+    const latex = nodeLatex(node).replace(/\r?\n/g, '')
     return `$${latex || '...'}$`
   },
 
@@ -131,7 +126,7 @@ export const MathInline = Node.create({
         // The first `$` must not be the second half of a display-math opener.
         // Otherwise `$$x$` is incorrectly converted to inline math before the
         // second closing `$` can complete the block formula.
-        find: mathInputPatterns.inline,
+        find: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
         handler: ({ state, range, match }) => {
           const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathInline
@@ -146,7 +141,7 @@ export const MathInline = Node.create({
       new InputRule({
         find: /\\\(((?:\\(?!\))|[^\\\n])*?)\\\)$/,
         handler: ({ state, range, match }) => {
-          const latex = normalizeMathSource(match[1] ?? '')
+          const latex = match[1]!
           const mathType = state.schema.nodes.mathInline
           if (!mathType) return null
           state.tr.replaceWith(
@@ -236,7 +231,7 @@ export const MathBlock = Node.create({
   addInputRules() {
     return [
       new InputRule({
-        find: mathInputPatterns.block,
+        find: /\$\$([^$]+?)\$\$$/,
         handler: ({ state, range, match }) => {
           const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathBlock

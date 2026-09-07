@@ -1,4 +1,4 @@
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -11,9 +11,17 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
+import Bold from '@tiptap/extension-bold'
+import Italic from '@tiptap/extension-italic'
+import CodeBlock from '@tiptap/extension-code-block'
+import { getListMarker, ListItem } from '@tiptap/extension-list'
+import { markdown as codeMirrorMarkdown } from '@codemirror/lang-markdown'
+import { syntaxTree } from '@codemirror/language'
+import { EditorState as CodeMirrorEditorState } from '@codemirror/state'
 import { parseDocument } from 'yaml'
 import { MathBlock, MathInline, mathNumberFromLatex } from './math'
-import { Mermaid, rerenderMermaidElement, rerenderMermaidElements } from './mermaid'
+import katex from 'katex'
+import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 
 const imageMetadataPrefix = 'markleaf:'
@@ -44,6 +52,7 @@ const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
 let frontMatterStrings = sharedEditorStrings('zh-Hans', 'ctrl')
+let formulaInputAssistantText = frontMatterStrings.formulaInputAssistant
 let codeHighlightVisible = false
 
 const markdownEmojiAliases: Record<string, string> = {
@@ -113,6 +122,45 @@ function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
   return DecorationSet.create(doc, decorations)
 }
 
+function buildCjkAutoSpacingDecorations(doc: any): DecorationSet {
+  const decorations: Decoration[] = []
+  const isCjk = (character: string): boolean => /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
+  const isLatinOrNumber = (character: string): boolean => /[A-Za-z0-9]/.test(character)
+
+  const visit = (node: any, position: number, insideCode: boolean, isDocument = false): void => {
+    const nodeIsCode = insideCode || node.type.name === 'codeBlock' || node.type.name === 'code'
+    const textIsCode = node.marks?.some((mark: any) => mark.type.name === 'code') === true
+    if (node.isText && !nodeIsCode && !textIsCode && node.text) {
+      const text = node.text as string
+      for (let index = 1; index < text.length; index += 1) {
+        const previous = text[index - 1]!
+        const current = text[index]!
+        if (!((isCjk(previous) && isLatinOrNumber(current))
+          || (isLatinOrNumber(previous) && isCjk(current)))) continue
+        decorations.push(Decoration.widget(
+          position + index,
+          () => {
+            const spacer = document.createElement('span')
+            spacer.className = 'markleaf-cjk-autospace-widget'
+            spacer.setAttribute('aria-hidden', 'true')
+            return spacer
+          },
+          { side: 0, ignoreSelection: true, key: `cjk-space-${position + index}` },
+        ))
+      }
+      return
+    }
+
+    if (!node.content) return
+    node.forEach((child: any, offset: number) => {
+      visit(child, position + offset + (isDocument ? 0 : 1), nodeIsCode)
+    })
+  }
+
+  visit(doc, 0, false, true)
+  return DecorationSet.create(doc, decorations)
+}
+
 const MarkdownEmoji = Extension.create({
   name: 'markleafMarkdownEmoji',
   addProseMirrorPlugins() {
@@ -125,11 +173,24 @@ const MarkdownEmoji = Extension.create({
   },
 })
 
+const CjkAutoSpacing = Extension.create({
+  name: 'markleafCjkAutoSpacing',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('markleaf-cjk-auto-spacing'),
+      props: {
+        decorations: state => buildCjkAutoSpacingDecorations(state.doc),
+      },
+    })]
+  },
+})
+
 export function setEditorSharedStrings(
-  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
+  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'formulaInputAssistant' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
 ): void {
   mermaidRenderButtonText = strings.mermaidRender
   frontMatterStrings = { ...frontMatterStrings, ...strings }
+  formulaInputAssistantText = strings.formulaInputAssistant
   for (const container of document.querySelectorAll<HTMLElement>('.markleaf-front-matter')) {
     const toggle = container.querySelector<HTMLButtonElement>('.markleaf-front-matter-toggle')
     const toggleError = container.querySelector<HTMLElement>('.markleaf-front-matter-toggle-error')
@@ -315,12 +376,36 @@ const MarkdownFrontMatter = Node.create({
 
 const MarkdownShortcuts = Extension.create({
   name: 'markleafMarkdownShortcuts',
+  priority: 120,
   addKeyboardShortcuts() {
     return {
       // Shift+Enter 在同一段落中插入硬换行，Markdown 序列化为单个换行
       // （带 Markdown 硬换行所需的行尾空格），不会生成空段落。
-      'Shift-Enter': () => this.editor.commands.setHardBreak(),
+      'Shift-Enter': () => useShiftEnterHardBreak
+        ? this.editor.commands.setHardBreak()
+        : this.editor.commands.splitBlock(),
     }
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        handleTextInput: (view, _from, to, text) => {
+          if (text === '*' || text === '_') {
+            const tr = convertClosedEmphasis(view.state, to, text)
+            if (tr) {
+              view.dispatch(tr)
+              return true
+            }
+          }
+          if (text !== '=' && text !== '-') return false
+          const level = text === '=' ? 1 : 2
+          const tr = convertSetextHeading(view.state, to, text, level, text)
+          if (!tr) return false
+          view.dispatch(tr)
+          return true
+        },
+      },
+    })]
   },
   addInputRules() {
     const reverseMark = (
@@ -352,6 +437,18 @@ const MarkdownShortcuts = Extension.create({
         handler: ({ state, range }) => reverseMark(state, range, ['italic'], '*'),
       }),
       new InputRule({
+        find: /(?<!_)___$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold', 'italic'], '___'),
+      }),
+      new InputRule({
+        find: /(?<!_)__$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['bold'], '__'),
+      }),
+      new InputRule({
+        find: /(?<!_)_$/,
+        handler: ({ state, range }) => reverseMark(state, range, ['italic'], '_'),
+      }),
+      new InputRule({
         find: /(?<!~)~~$/,
         handler: ({ state, range }) => reverseMark(state, range, ['strike'], '~~'),
       }),
@@ -360,66 +457,16 @@ const MarkdownShortcuts = Extension.create({
         handler: ({ state, range }) => reverseMark(state, range, ['highlight'], '=='),
       }),
       new InputRule({
-        find: /(?<!\*)\*\*\*([^*\n]+)\*\*\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const bold = state.schema.marks.bold
-          const italic = state.schema.marks.italic
-          if (!bold || !italic) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 3
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
+        find: /^ {4}$/,
+        handler: ({ state, range }) => {
+          const $from = state.doc.resolve(range.to)
+          const codeBlock = state.schema.nodes.codeBlock
+          if (!codeBlock || $from.parent.type.name !== 'paragraph' || range.from !== $from.start()) {
+            return null
+          }
           state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, bold.create())
-            .addMark(range.from, textEnd - markerLength, italic.create())
-            .removeStoredMark(bold)
-            .removeStoredMark(italic)
-        },
-      }),
-      new InputRule({
-        find: /(?<!\*)\*\*([^*\n]+)\*\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const bold = state.schema.marks.bold
-          if (!bold) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 2
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
-          state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, bold.create())
-            .removeStoredMark(bold)
-        },
-      }),
-      new InputRule({
-        find: /(?<!\*)\*([^*\n]+)\*$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const italic = state.schema.marks.italic
-          if (!italic) return null
-          const text = match[1]
-          if (!text) return null
-          const markerLength = 1
-          const textStart = range.from + markerLength
-          const closingMarkerInDocument = Math.max(0, markerLength - (match[0].length - (range.to - range.from)))
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= textStart) return null
-          state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, textStart)
-            .addMark(range.from, textEnd - markerLength, italic.create())
-            .removeStoredMark(italic)
+            .delete(range.from, range.to)
+            .setBlockType(range.from, range.from, codeBlock)
         },
       }),
       new InputRule({
@@ -437,6 +484,114 @@ const MarkdownShortcuts = Extension.create({
   },
 })
 
+const MarkdownBold = Bold.extend({
+  renderMarkdown(node: any, helpers: any) {
+    const marker = markdownEmphasisMarker === 'underscore' ? '__' : '**'
+    return `${marker}${helpers.renderChildren(node)}${marker}`
+  },
+})
+
+const MarkdownItalic = Italic.extend({
+  renderMarkdown(node: any, helpers: any) {
+    const marker = markdownEmphasisMarker === 'underscore' ? '_' : '*'
+    return `${marker}${helpers.renderChildren(node)}${marker}`
+  },
+})
+
+const MarkdownCodeBlock = CodeBlock.extend({
+  renderHTML({ node, HTMLAttributes }: any) {
+    const language = typeof node.attrs?.language === 'string'
+      ? node.attrs.language.trim()
+      : ''
+    const attributes = language.length > 0
+      ? { ...HTMLAttributes, 'data-language': language }
+      : HTMLAttributes
+    const codeAttributes = language.length > 0
+      ? { 'data-language': language }
+      : {}
+    return ['pre', attributes, ['code', codeAttributes, 0]]
+  },
+  renderMarkdown(node: any, helpers: any) {
+    const markerCharacter = markdownCodeFence === 'tilde' ? '~' : '`'
+    const content = node.content ? helpers.renderChildren(node.content) : ''
+    const runs = content.match(markerCharacter === '`' ? /`+/g : /~+/g) ?? []
+    const fenceLength = Math.max(3, ...runs.map((run: string) => run.length + 1))
+    const fence = markerCharacter.repeat(fenceLength)
+    const language = node.attrs?.language || ''
+    return `${fence}${language}\n${content}\n${fence}`
+  },
+})
+
+const MarkdownListItem = ListItem.extend({
+  renderMarkdown(node: any, helpers: any, context: any) {
+    return renderNestedMarkdownContent(node, helpers, (current: any) => {
+      if (current.parentType === 'bulletList') {
+        const marker = markdownBulletMarker === 'asterisk'
+          ? '*' : markdownBulletMarker === 'plus' ? '+' : '-'
+        return `${marker} `
+      }
+      if (current.parentType === 'orderedList') {
+        const start = current.meta?.parentAttrs?.start || 1
+        const type = current.meta?.parentAttrs?.type as string | undefined
+        const index = start - 1 + (current.index || 0)
+        return getListMarker(type, index, '. ')
+      }
+      return '- '
+    }, context)
+  },
+})
+
+function convertClosedEmphasis(
+  state: any,
+  insertionPosition: number,
+  markerCharacter: '*' | '_',
+): any | null {
+  const $from = state.doc.resolve(insertionPosition)
+  if (!$from.parent.isTextblock || !state.selection.empty) return null
+  const blockStart = $from.start()
+  const before = state.doc.textBetween(blockStart, insertionPosition, '\n', '\n') + markerCharacter
+  let marker = ''
+  let content = ''
+  let openingOffset = -1
+  for (const markerLength of [3, 2, 1]) {
+    const candidate = markerCharacter.repeat(markerLength)
+    if (!before.endsWith(candidate)) continue
+    const closingOffset = before.length - markerLength
+    const candidateOpening = before.lastIndexOf(candidate, closingOffset - 1)
+    if (candidateOpening < 0) continue
+    const candidateContent = before.slice(candidateOpening + markerLength, closingOffset)
+    if (!candidateContent || candidateContent.includes(markerCharacter) || candidateContent.includes('\n')) continue
+    const beforeOpening = candidateOpening > 0 ? before[candidateOpening - 1] ?? '' : ''
+    if (beforeOpening === markerCharacter) continue
+    if (markerCharacter === '_' && /[A-Za-z0-9_]/.test(beforeOpening)) continue
+    marker = candidate
+    content = candidateContent
+    openingOffset = candidateOpening
+    break
+  }
+  if (!marker || !content || openingOffset < 0) return null
+
+  const markNames: Array<'bold' | 'italic'> = marker.length === 3
+    ? ['bold', 'italic']
+    : marker.length === 2 ? ['bold'] : ['italic']
+  const marks = markNames.map(name => state.schema.marks[name]).filter(Boolean)
+  if (marks.length !== markNames.length) return null
+
+  const openingFrom = blockStart + openingOffset
+  const closingFrom = openingFrom + marker.length + content.length
+  const transaction = state.tr.insertText(markerCharacter, insertionPosition)
+  transaction.delete(closingFrom, closingFrom + marker.length)
+  transaction.delete(openingFrom, openingFrom + marker.length)
+  const contentTo = openingFrom + content.length
+  for (const mark of marks) {
+    transaction.addMark(openingFrom, contentTo, mark.create())
+    transaction.removeStoredMark(mark)
+  }
+  transaction.setSelection(TextSelection.create(transaction.doc, contentTo))
+  transaction.setStoredMarks([])
+  return transaction
+}
+
 function convertReverseInlineMark(
   state: any,
   range: { from: number; to: number },
@@ -450,24 +605,93 @@ function convertReverseInlineMark(
   const blockStart = $from.start()
   const blockEnd = blockStart + parent.content.size
   const afterOpening = state.doc.textBetween(range.to, blockEnd, '\n', '\n')
-  const closingOffset = afterOpening.indexOf(marker)
+  const closingOffset = findExactClosingMarker(afterOpening, marker)
   if (closingOffset < 1) return false
 
   const closeFrom = range.to + closingOffset
   const content = afterOpening.slice(0, closingOffset)
   if (!content.trim() || content.includes('\n')) return false
 
-  // 不把已经存在的公式、图片等原子节点误当成可加格式的普通文本。
   const tr = state.tr
-  tr.delete(closeFrom, closeFrom + marker.length)
-  tr.delete(tr.mapping.map(range.from), tr.mapping.map(range.to))
-  const contentFrom = tr.mapping.map(range.from)
-  const contentTo = tr.mapping.map(closeFrom)
+  const openingLengthInDocument = range.to - range.from
+  if (openingLengthInDocument < 0 || openingLengthInDocument >= marker.length) return false
+
+  // InputRule 在最后一个输入字符写入文档前运行。先补入尚未落盘的标记字符，
+  // 再删除两侧标记，避免事务映射把正文或光标移动到错误的位置。
+  const missingOpening = marker.slice(openingLengthInDocument)
+  if (missingOpening) tr.insertText(missingOpening, range.to)
+  const mappedCloseFrom = tr.mapping.map(closeFrom, 1)
+  tr.delete(mappedCloseFrom, mappedCloseFrom + marker.length)
+  tr.delete(range.from, range.from + marker.length)
+
+  const contentFrom = range.from
+  const contentTo = contentFrom + (closeFrom - range.to)
   for (const mark of marks) {
-    addMarkToTextNodes(tr, contentFrom, contentTo, mark)
+    addMarkToTextNodes(tr, contentFrom, contentTo, mark.create())
     tr.removeStoredMark(mark)
   }
+  tr.setSelection(TextSelection.create(tr.doc, contentTo))
   return true
+}
+
+function findExactClosingMarker(text: string, marker: string): number {
+  const markerCharacter = marker[0]
+  let offset = text.indexOf(marker)
+  while (offset >= 0) {
+    const before = offset > 0 ? text[offset - 1] : ''
+    const after = text[offset + marker.length] ?? ''
+    if (before !== markerCharacter && after !== markerCharacter) return offset
+    offset = text.indexOf(marker, offset + 1)
+  }
+  return -1
+}
+
+function convertSetextHeading(
+  state: any,
+  insertionPosition: number,
+  marker: '=' | '-',
+  level: 1 | 2,
+  pendingText = '',
+): any | null {
+  const $from = state.doc.resolve(insertionPosition)
+  const parent = $from.parent
+  const heading = state.schema.nodes.heading
+  if (!heading || parent.type.name !== 'paragraph') return null
+
+  let offset = 0
+  let hardBreakOffset = -1
+  let markerText = ''
+  parent.forEach((node: any) => {
+    if (node.type.name === 'hardBreak') {
+      hardBreakOffset = offset
+      markerText = ''
+    }
+    else if (hardBreakOffset >= 0) {
+      if (!node.isText) {
+        markerText = ''
+        hardBreakOffset = -1
+      }
+      else {
+        markerText += node.text ?? ''
+      }
+    }
+    offset += node.nodeSize
+  })
+
+  const completeMarker = markerText + pendingText
+  if (hardBreakOffset <= 0 || completeMarker.length < 3
+    || [...completeMarker].some(character => character !== marker)) {
+    return null
+  }
+
+  const blockStart = $from.start()
+  const hardBreakPosition = blockStart + hardBreakOffset
+  const tr = state.tr
+  tr
+    .delete(hardBreakPosition, insertionPosition)
+    .setBlockType(blockStart, blockStart, heading, { level })
+    .setSelection(TextSelection.create(tr.doc, hardBreakPosition))
+  return tr
 }
 
 function addMarkToTextNodes(tr: any, from: number, to: number, mark: any): void {
@@ -663,6 +887,7 @@ export function outdentListItem(editor: Editor): boolean {
 }
 
 function splitEmptyListItem(editor: Editor): boolean {
+  if (exitBlockOnEmptyEnter) return false
   if (!editor.isEditable) return false
 
   const { selection } = editor.state
@@ -699,13 +924,57 @@ function splitEmptyListItem(editor: Editor): boolean {
   return true
 }
 
-// Tiptap 默认会在空列表项回车时退出列表。这里优先保留当前空项，并创建同级新项。
-const EmptyListItemEnter = Extension.create({
-  name: 'markleafEmptyListItemEnter',
+function preserveTrailingEmptyBlock(editor: Editor): boolean {
+  if (exitBlockOnEmptyEnter || !editor.isEditable) return false
+
+  const { selection } = editor.state
+  if (!selection.empty) return false
+  const { $from } = selection
+
+  // Tiptap 的代码块在末尾连续回车时会调用 exitCode。未启用退出选项时，
+  // 始终优先插入代码换行，保留当前代码块。
+  if ($from.parent.type.name === 'codeBlock'
+    && $from.parentOffset === $from.parent.content.size
+    && $from.parent.textContent.endsWith('\n\n')) {
+    return editor.commands.command(({ state, dispatch }) => {
+      const transaction = state.tr.insertText('\n')
+      dispatch?.(transaction.scrollIntoView())
+      return true
+    })
+  }
+
+  if ($from.parent.type.name !== 'paragraph' || $from.parent.content.size !== 0) return false
+
+  let containerDepth = -1
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    if (['blockquote', 'alert'].includes($from.node(depth).type.name)) {
+      containerDepth = depth
+      break
+    }
+  }
+  if (containerDepth < 1) return false
+
+  const paragraphDepth = $from.depth
+  const paragraphIndex = $from.index(containerDepth)
+  const container = $from.node(containerDepth)
+  if (paragraphIndex !== container.childCount - 1) return false
+
+  const paragraph = editor.state.schema.nodes.paragraph?.createAndFill()
+  if (!paragraph) return false
+  const insertPosition = $from.after(paragraphDepth)
+  const transaction = editor.state.tr.insert(insertPosition, paragraph)
+  transaction.setSelection(TextSelection.near(transaction.doc.resolve(insertPosition + 1)))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+// Tiptap 默认会在末尾空块回车时退出。未启用该行为时，保留当前空块并继续创建内容。
+const EmptyBlockEnter = Extension.create({
+  name: 'markleafEmptyBlockEnter',
   priority: 110,
   addKeyboardShortcuts() {
     return {
-      Enter: () => splitEmptyListItem(this.editor),
+      Enter: () => splitEmptyListItem(this.editor) || preserveTrailingEmptyBlock(this.editor),
     }
   },
 })
@@ -729,6 +998,11 @@ const VisualIndent = Extension.create({
         }
         if ($from.parent.type.name !== 'paragraph' && $from.parent.type.name !== 'heading') {
           return false
+        }
+        if (this.editor.state.selection.empty
+          && $from.parent.type.name === 'paragraph'
+          && $from.parentOffset === 0) {
+          return this.editor.chain().focus().setNode('codeBlock').run()
         }
         const blockStart = $from.start($from.depth)
         return this.editor.chain()
@@ -2018,7 +2292,310 @@ type ExpandedSourceEditor = {
   kind: 'mathInline' | 'mathBlock' | 'mermaid'
 }
 
+type FormulaSymbol = {
+  preview: string
+  latex: string
+  previewLatex?: string
+  plainPreview?: boolean
+  separatorBefore?: boolean
+  sectionBefore?: string
+  wrap?: { before: string; after: string; caretOffset: number }
+}
+type FormulaSymbolGroup = { label: string; symbols: FormulaSymbol[] }
+
+function renderFormulaSymbolPreview(latex: string): string {
+  return katex.renderToString(latex, {
+    throwOnError: false,
+    displayMode: false,
+    output: 'html',
+  })
+}
+
+const formulaSymbolGroups: FormulaSymbolGroup[] = [
+  {
+    label: '希腊字母',
+    symbols: [
+      { preview: 'α', latex: '\\alpha' },
+      ...[
+        ['β', '\\beta'], ['γ', '\\gamma'], ['δ', '\\delta'],
+      ['ϵ', '\\epsilon'], ['ζ', '\\zeta'], ['η', '\\eta'], ['θ', '\\theta'],
+      ['ι', '\\iota'], ['κ', '\\kappa'], ['λ', '\\lambda'], ['μ', '\\mu'],
+      ['ν', '\\nu'], ['ξ', '\\xi'], ['ο', '\\omicron'], ['π', '\\pi'], ['ρ', '\\rho'],
+      ['σ', '\\sigma'], ['τ', '\\tau'], ['υ', '\\upsilon'], ['ϕ', '\\phi'],
+      ['χ', '\\chi'], ['ψ', '\\psi'], ['ω', '\\omega'], ['Γ', '\\Gamma'],
+      ['Δ', '\\Delta'], ['Θ', '\\Theta'], ['Λ', '\\Lambda'], ['Ξ', '\\Xi'],
+      ['Π', '\\Pi'], ['Σ', '\\Sigma'], ['Υ', '\\Upsilon'], ['Φ', '\\Phi'],
+      ['Ψ', '\\Psi'], ['Ω', '\\Omega'],
+      ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+    ],
+  },
+  {
+    label: '运算符',
+    symbols: [
+      ['×', '\\times'], ['÷', '\\div'], ['±', '\\pm'], ['∓', '\\mp'],
+      ['∗', '\\ast'], ['★', '\\star'], ['○', '\\circ'], ['●', '\\bullet'],
+      ['⊕', '\\oplus'], ['⊖', '\\ominus'], ['⊘', '\\oslash'],
+      ['⊗', '\\otimes'], ['⊙', '\\odot'], ['†', '\\dagger'], ['‡', '\\ddagger'],
+      ['∨', '\\vee'], ['∧', '\\wedge'], ['∩', '\\cap'], ['∪', '\\cup'],
+      ['⊻', '\\veebar'], ['⊼', '\\barwedge'], ['≀', '\\wr'],
+      ['ℜ', '\\Re'], ['ℑ', '\\Im'], ['⊥', '\\perp'], ['⊤', '\\top'],
+      ['∞', '\\infty'], ['∂', '\\partial'], ['∇', '\\nabla'],
+      ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
+      ['ℵ', '\\aleph'],
+      ['∅', '\\emptyset'], ['∖', '\\setminus'], ['△', '\\triangle'],
+      ['◇', '\\diamond'], ['∠', '\\angle'], ['⌞', '\\lrcorner'],
+      ['⌝', '\\urcorner'], ['⌟', '\\llcorner'], ['⌜', '\\ulcorner'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '关系符号',
+    symbols: [
+      ['≤', '\\le'], ['≥', '\\ge'], ['≺', '\\prec'], ['≻', '\\succ'],
+      ['⊂', '\\subset'], ['⊃', '\\supset'], ['≪', '\\ll'], ['≫', '\\gg'],
+      ['≡', '\\equiv'], ['∼', '\\sim'], ['≃', '\\simeq'], ['≈', '\\approx'],
+      ['≠', '\\ne'], ['⊄', '\\nsubseteq'], ['⊆', '\\subseteq'], ['⊇', '\\supseteq'],
+      ['⊈', '\\nsubseteq'], ['⊉', '\\nsupseteq'], ['∝', '\\propto'], ['∣', '\\mid'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '结构',
+    symbols: [
+      ['xₐ', 'x_{a}'], ['xᵇ', 'x^{b}'], ['xᵇₐ', 'x_{a}^{b}'], ['x̄', '\\bar{x}'],
+      ['x̃', '\\tilde{x}'], ['a/b', '\\frac{a}{b}'], ['√x', '\\sqrt{x}'],
+      ['ⁿ√x', '\\sqrt[n]{x}'],
+      ['(x)', '\\left(x\\right)'], ['[x]', '\\left[x\\right]'],
+      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],
+      ['∫', '\\int_{a}^{b}'], ['∫∫', '\\iint_{a}^{b}'], ['∫∫∫', '\\iiint_{a}^{b}'],
+      ['∮', '\\oint_{a}^{b}'], ['∯', '\\oiint_{a}^{b}'], ['∰', '\\oiiint_{a}^{b}'],
+      ['∏', '\\prod_{a}^{b}'], ['∑', '\\sum_{a}^{b}'], ['lim', '\\lim_{a\\to b}'],
+      ['x', '\\vec{}'], ['AB', '\\overrightarrow{}'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+  {
+    label: '字体',
+    symbols: [
+      { preview: '\\mathrm{}', previewLatex: '\\mathrm{x}', latex: '\\mathrm{}', plainPreview: true, sectionBefore: '正体', wrap: { before: '\\mathrm{', after: '}', caretOffset: '\\mathrm{'.length } },
+      { preview: 'e', latex: '\\mathrm{e}' },
+      { preview: 'i', latex: '\\mathrm{i}' },
+      { preview: 'dx', latex: '\\,\\mathrm{d}x' },
+      { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: '黑板体', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
+      { preview: 'C', latex: '\\mathbb{C}' },
+      { preview: 'N', latex: '\\mathbb{N}' },
+      { preview: 'Q', latex: '\\mathbb{Q}' },
+      { preview: 'R', latex: '\\mathbb{R}' },
+      { preview: 'Z', latex: '\\mathbb{Z}' },
+      { preview: '\\mathcal{}', previewLatex: '\\mathcal{A}', latex: '\\mathcal{}', plainPreview: true, sectionBefore: '花体', separatorBefore: true, wrap: { before: '\\mathcal{', after: '}', caretOffset: '\\mathcal{'.length } },
+      { preview: 'A', latex: '\\mathcal{A}' },
+      { preview: 'F', latex: '\\mathcal{F}' },
+      { preview: 'L', latex: '\\mathcal{L}' },
+      { preview: 'R', latex: '\\mathcal{R}' },
+      { preview: '\\mathscr{}', previewLatex: '\\mathscr{A}', latex: '\\mathscr{}', plainPreview: true, sectionBefore: '手写体', separatorBefore: true, wrap: { before: '\\mathscr{', after: '}', caretOffset: '\\mathscr{'.length } },
+      { preview: 'B', latex: '\\mathscr{B}' },
+      { preview: 'E', latex: '\\mathscr{E}' },
+      { preview: 'F', latex: '\\mathscr{F}' },
+      { preview: 'H', latex: '\\mathscr{H}' },
+      { preview: 'L', latex: '\\mathscr{L}' },
+      { preview: 'M', latex: '\\mathscr{M}' },
+      { preview: 'R', latex: '\\mathscr{R}' },
+    ],
+  },
+  {
+    label: '结构块',
+    symbols: [
+      { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: '对齐环境', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
+      { preview: 'cases', previewLatex: '\\begin{cases}a\\\\b\\end{cases}', latex: '\\begin{cases}\n  \n\\end{cases}', wrap: { before: '\\begin{cases}\n  ', after: '\n\\end{cases}', caretOffset: '\\begin{cases}\n  '.length } },
+      { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: '包裹结构', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
+      { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: '矩阵与行列式', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
+      { preview: '( )', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{pmatrix}\n  \n\\end{pmatrix}', wrap: { before: '\\begin{pmatrix}\n  ', after: '\n\\end{pmatrix}', caretOffset: '\\begin{pmatrix}\n  '.length } },
+      { preview: '[ ]', previewLatex: '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', latex: '\\begin{bmatrix}\n  \n\\end{bmatrix}', wrap: { before: '\\begin{bmatrix}\n  ', after: '\n\\end{bmatrix}', caretOffset: '\\begin{bmatrix}\n  '.length } },
+      { preview: '| |', previewLatex: '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', latex: '\\begin{vmatrix}\n  \n\\end{vmatrix}', wrap: { before: '\\begin{vmatrix}\n  ', after: '\n\\end{vmatrix}', caretOffset: '\\begin{vmatrix}\n  '.length } },
+      { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },
+    ],
+  },
+  {
+    label: '箭头',
+    symbols: [
+      ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
+      ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
+      ['↑', '\\uparrow'], ['↓', '\\downarrow'], ['⇑', '\\Uparrow'],
+      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'],
+    ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
+  },
+]
+
+formulaSymbolGroups[0]!.symbols.push(
+  { preview: 'ε', latex: '\\varepsilon', separatorBefore: true, sectionBefore: '变体' },
+  { preview: 'ϑ', latex: '\\vartheta' },
+  { preview: 'ϰ', latex: '\\varkappa' },
+  { preview: 'ϖ', latex: '\\varpi' },
+  { preview: 'ϱ', latex: '\\varrho' },
+  { preview: 'ς', latex: '\\varsigma' },
+  { preview: 'φ', latex: '\\varphi' },
+  { preview: '𝛤', latex: '\\varGamma', separatorBefore: true },
+  { preview: '𝛥', latex: '\\varDelta' },
+  { preview: '𝛩', latex: '\\varTheta' },
+  { preview: '𝛬', latex: '\\varLambda' },
+  { preview: '𝛯', latex: '\\varXi' },
+  { preview: '𝛱', latex: '\\varPi' },
+  { preview: '𝛴', latex: '\\varSigma' },
+  { preview: '𝛶', latex: '\\varUpsilon' },
+  { preview: '𝛷', latex: '\\varPhi' },
+  { preview: '𝛹', latex: '\\varPsi' },
+  { preview: '𝛺', latex: '\\varOmega' },
+)
+
+const structureSymbols = formulaSymbolGroups[3]!.symbols
+const markStructureSection = (latex: string, section: string, separatorBefore = true) => {
+  const symbol = structureSymbols.find((item) => item.latex === latex)
+  if (symbol) {
+    symbol.sectionBefore = section
+    symbol.separatorBefore = separatorBefore
+  }
+}
+markStructureSection('x_{a}', '上下标与修饰', false)
+markStructureSection('\\frac{a}{b}', '分式与根式')
+markStructureSection('\\left(x\\right)', '括号')
+markStructureSection('\\int_{a}^{b}', '积分与运算')
+const vectorSymbol = structureSymbols.find((symbol) => symbol.latex === '\\vec{}')
+if (vectorSymbol) {
+  vectorSymbol.sectionBefore = '向量'
+  vectorSymbol.separatorBefore = true
+  vectorSymbol.previewLatex = '\\vec{x}'
+  vectorSymbol.wrap = { before: '\\vec{', after: '}', caretOffset: '\\vec{'.length }
+}
+const overVectorSymbol = structureSymbols.find((symbol) => symbol.latex === '\\overrightarrow{}')
+if (overVectorSymbol) {
+  overVectorSymbol.previewLatex = '\\overrightarrow{AB}'
+  overVectorSymbol.wrap = { before: '\\overrightarrow{', after: '}', caretOffset: '\\overrightarrow{'.length }
+}
+
 const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
+
+function createFormulaSymbolToolbar(
+  code: HTMLElement,
+  editor: Editor,
+  position: number,
+): HTMLElement {
+  const toolbar = document.createElement('div')
+  toolbar.className = 'markleaf-formula-symbol-toolbar'
+  toolbar.addEventListener('pointerdown', (event) => event.stopPropagation())
+  toolbar.addEventListener('click', (event) => event.stopPropagation())
+
+  const groups = document.createElement('div')
+  groups.className = 'markleaf-formula-symbol-groups'
+  const label = document.createElement('span')
+  label.className = 'markleaf-formula-symbol-toolbar-label'
+  label.textContent = formulaInputAssistantText
+  toolbar.append(label)
+  const panels: HTMLElement[] = []
+  const buttons: HTMLButtonElement[] = []
+
+  const insertSymbol = (symbol: FormulaSymbol) => {
+    if (!editor.isEditable) return
+    const current = editor.state.doc.nodeAt(position)
+    if (!current || (current.type.name !== 'mathInline' && current.type.name !== 'mathBlock')) return
+    const source = current.textContent
+    const selection = getCodeSelectionOffsets(code)
+    let nextSource: string
+    let nextCaret: number
+    if (symbol.wrap) {
+      const selectedText = source.slice(selection.from, selection.to)
+      nextSource = source.slice(0, selection.from)
+        + symbol.wrap.before + selectedText + symbol.wrap.after
+        + source.slice(selection.to)
+      nextCaret = selection.from + symbol.wrap.before.length
+        + (selectedText.length > 0 ? selectedText.length + symbol.wrap.after.length : 0)
+    } else {
+      nextSource = source.slice(0, selection.to) + symbol.latex + source.slice(selection.to)
+      nextCaret = selection.to + symbol.latex.length
+    }
+    const replacement = current.type.create(
+      current.attrs,
+      nextSource.length > 0 ? editor.state.schema.text(nextSource) : undefined,
+    )
+    editor.view.dispatch(editor.state.tr
+      .replaceWith(position, position + current.nodeSize, replacement)
+      .setMeta(expandedSourceEditorKey, {
+        position,
+        kind: current.type.name,
+      }))
+    code.textContent = nextSource
+    renderEditableCodeHighlight(code, nextSource, 'latex')
+    code.focus()
+    setCaretOffset(code, nextCaret)
+  }
+
+  for (const [groupIndex, group] of formulaSymbolGroups.entries()) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'markleaf-formula-symbol-group-button'
+    button.textContent = ['αβΔ', '×÷±', '≤≠', '√()', '𝔸', '{&=', '←↑'][groupIndex] ?? group.label
+    button.title = group.label
+    button.setAttribute('aria-label', group.label)
+    button.disabled = !editor.isEditable
+
+    const panel = document.createElement('div')
+    panel.className = `markleaf-formula-symbol-panel markleaf-formula-symbol-panel-${groupIndex}`
+    panel.hidden = true
+    let sectionGroup: HTMLDivElement | null = null
+    for (const symbol of group.symbols) {
+      if (symbol.sectionBefore) {
+        if (symbol.separatorBefore) {
+          const separator = document.createElement('div')
+          separator.className = 'markleaf-formula-symbol-separator'
+          panel.append(separator)
+        }
+        sectionGroup = document.createElement('div')
+        sectionGroup.className = 'markleaf-formula-symbol-section-group'
+        const section = document.createElement('div')
+        section.className = 'markleaf-formula-symbol-section'
+        section.textContent = symbol.sectionBefore
+        sectionGroup.append(section)
+        panel.append(sectionGroup)
+      } else if (symbol.separatorBefore) {
+        const separator = document.createElement('div')
+        separator.className = 'markleaf-formula-symbol-separator'
+        panel.append(separator)
+        sectionGroup = null
+      }
+      const symbolButton = document.createElement('button')
+      symbolButton.type = 'button'
+      symbolButton.className = 'markleaf-formula-symbol-button'
+      if (symbol.plainPreview) {
+        symbolButton.textContent = symbol.preview
+      } else {
+        symbolButton.innerHTML = renderFormulaSymbolPreview(symbol.previewLatex ?? symbol.latex)
+      }
+      symbolButton.title = symbol.latex
+      symbolButton.setAttribute('aria-label', `${symbol.preview} ${symbol.latex}`)
+      symbolButton.disabled = !editor.isEditable
+      symbolButton.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        insertSymbol(symbol)
+      })
+      ;(sectionGroup ?? panel).append(symbolButton)
+    }
+
+    button.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      for (const [index, other] of panels.entries()) {
+        other.hidden = index !== groupIndex || !other.hidden
+        buttons[index]?.classList.toggle('markleaf-formula-symbol-group-active', !other.hidden)
+      }
+    })
+    groups.append(button)
+    toolbar.append(panel)
+    panels.push(panel)
+    buttons.push(button)
+  }
+
+  toolbar.append(groups)
+  return toolbar
+}
 
 function createExpandedSourceEditor(
   editor: Editor,
@@ -2026,7 +2603,7 @@ function createExpandedSourceEditor(
   kind: ExpandedSourceEditor['kind'],
 ): { dom: HTMLElement; code: HTMLElement } {
   const wrapper = document.createElement('div')
-  wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind}`
+  wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind} markleaf-expanded-source-enter`
   wrapper.contentEditable = 'false'
 
   const themeContext = document.createElement('div')
@@ -2044,6 +2621,9 @@ function createExpandedSourceEditor(
   code.textContent = initialSource
   pre.append(code)
   themeContext.append(pre)
+  if (kind === 'mathInline' || kind === 'mathBlock') {
+    themeContext.append(createFormulaSymbolToolbar(code, editor, position))
+  }
   wrapper.append(themeContext)
 
   wrapper.addEventListener('pointerdown', (event) => event.stopPropagation())
@@ -2117,9 +2697,12 @@ function createExpandedSourceEditor(
   }
   code.addEventListener('compositionstart', () => { composing = true })
   code.addEventListener('compositionend', () => {
+    // IME compositionend may fire before the browser commits the final
+    // caret position (especially for full-width punctuation). Rebuilding
+    // the highlighted DOM here can therefore move the caret to the end.
+    // The following input event reads the committed position and refreshes
+    // the highlight without losing it.
     composing = false
-    const source = code.textContent ?? ''
-    refreshHighlight(source, source.length)
   })
   code.addEventListener('input', () => {
     if (!editable) return
@@ -2158,7 +2741,7 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   const width = Math.min(documentRect.width, availableWidth)
   overlay.style.width = `${width}px`
   overlay.hidden = false
-  const overlayWidth = overlay.offsetWidth || width
+  const overlayWidth = overlay.getBoundingClientRect().width || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
   const top = anchorRect.bottom + gap
   overlay.style.left = `${left}px`
@@ -2183,33 +2766,49 @@ const ExpandedSourceEditor = Extension.create({
       view: () => {
         let overlay: HTMLElement | null = null
         let current: ExpandedSourceEditor | null = null
-        let exitTimer: number | null = null
+        let closing = false
         const collapse = () => {
           if (expandedSourceEditorKey.getState(editor.state) === null) return
           editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
         }
-        const clearExitTimer = () => {
-          if (exitTimer === null) return
-          window.clearTimeout(exitTimer)
-          exitTimer = null
-        }
         const removeOverlay = () => {
-          clearExitTimer()
           overlay?.remove()
           overlay = null
           current = null
+          closing = false
         }
-        const beginExitAnimation = () => {
-          if (!overlay || exitTimer !== null) return
-          current = null
-          overlay.classList.add('markleaf-expanded-source-closing')
-          exitTimer = window.setTimeout(removeOverlay, 200)
+        const animateOverlayOut = () => {
+          if (!overlay || closing) return
+          closing = true
+          const target = overlay
+          target.classList.remove('markleaf-expanded-source-enter')
+          // Force a new animation cycle after the enter animation has finished.
+          // Without a reflow, Chromium may keep the previous animation state
+          // and skip the reverse animation entirely.
+          void target.offsetWidth
+          target.classList.add('markleaf-expanded-source-exit')
+          let finished = false
+          const finish = () => {
+            if (finished) return
+            finished = true
+            if (overlay === target) removeOverlay()
+          }
+          target.addEventListener('animationend', finish, { once: true })
+          window.setTimeout(finish, 240)
         }
         const reposition = () => {
           if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
         }
         const handleOutsidePointer = (event: PointerEvent) => {
           if (overlay && event.composedPath().includes(overlay)) return
+          // Clicking the formula that owns the open editor is the toggle-off
+          // gesture. Let the click handler collapse it directly; otherwise
+          // this document-level listener collapses first and the click handler
+          // immediately opens it again, producing a visible flash.
+          if (overlay && current) {
+            const anchor = editor.view.nodeDOM(current.position)
+            if (anchor && event.composedPath().includes(anchor)) return
+          }
           collapse()
         }
         const handleViewportChange = () => reposition()
@@ -2222,10 +2821,9 @@ const ExpandedSourceEditor = Extension.create({
           update: (view) => {
             const expanded = expandedSourceEditorKey.getState(view.state)
             if (!expanded) {
-              beginExitAnimation()
+              animateOverlayOut()
               return
             }
-            clearExitTimer()
             const node = view.state.doc.nodeAt(expanded.position)
             if (!node || node.type.name !== expanded.kind) {
               collapse()
@@ -2233,6 +2831,11 @@ const ExpandedSourceEditor = Extension.create({
             }
             if (overlay && current?.position === expanded.position && current.kind === expanded.kind) {
               current = expanded
+              if (closing) {
+                closing = false
+                overlay.classList.remove('markleaf-expanded-source-exit')
+                overlay.classList.add('markleaf-expanded-source-enter')
+              }
               const node = view.state.doc.nodeAt(expanded.position)
               if (node && node.type.name === expanded.kind
                 && overlay.querySelector('.markleaf-expanded-source-editor') instanceof HTMLElement) {
@@ -2403,6 +3006,23 @@ function getCaretOffset(root: HTMLElement): number {
   return range.toString().length
 }
 
+function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number } {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0
+    || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) {
+    const offset = root.textContent?.length ?? 0
+    return { from: offset, to: offset }
+  }
+
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.setEnd(selection.anchorNode!, selection.anchorOffset)
+  const anchor = range.toString().length
+  range.setEnd(selection.focusNode!, selection.focusOffset)
+  const focus = range.toString().length
+  return anchor <= focus ? { from: anchor, to: focus } : { from: focus, to: anchor }
+}
+
 function setCaretOffset(root: HTMLElement, offset: number): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let remaining = Math.max(0, offset)
@@ -2501,6 +3121,16 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
   if (language === 'markdown') {
     return [{ pattern: /^#{1,6}.*/gm, className: 'ml-code-keyword' }, { pattern: /`[^`]+`/g, className: 'ml-code-string' }, { pattern: /\[[^\]]+\]\([^)]+\)/g, className: 'ml-code-function' }]
   }
+  if (language === 'mermaid') {
+    return [
+      { pattern: /%%.*$/gm, className: 'ml-code-comment' },
+      { pattern: /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, className: 'ml-code-string' },
+      { pattern: /\b(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart-beta|sankey-beta|block-beta|architecture-beta)\b/g, className: 'ml-code-keyword' },
+      { pattern: /\b(?:direction|subgraph|end|participant|actor|note|over|loop|alt|else|opt|par|and|rect|class|classDef|style|click|link|linkStyle|title|section|dateFormat|axisFormat|todayMarker|accTitle|accDescr)\b/g, className: 'ml-code-type' },
+      { pattern: /\b\d+(?:\.\d+)?\b/g, className: 'ml-code-number' },
+      { pattern: /(?:-->>|->>|-->|---|-.->|==>|===|~~~|--|->|\+\+|--)/g, className: 'ml-code-operator' },
+    ]
+  }
   if (language === 'latex') {
     return [
       { pattern: /%.*/g, className: 'ml-code-comment' },
@@ -2526,13 +3156,22 @@ export const editorExtensions = [
   MarkdownFrontMatter,
   MarkdownShortcuts,
   MarkdownEmoji,
+  CjkAutoSpacing,
   MarkdownHighlight,
   MarkdownAlert,
-  EmptyListItemEnter,
+  EmptyBlockEnter,
   StarterKit.configure({
+    bold: false,
+    italic: false,
+    codeBlock: false,
+    listItem: false,
     link: false,
     paragraph: false,
   }),
+  MarkdownBold,
+  MarkdownItalic,
+  MarkdownCodeBlock,
+  MarkdownListItem,
   MarkLeafParagraph,
   Link.configure({
     openOnClick: false,
@@ -2585,7 +3224,7 @@ export function createEditor(
     extensions: options.themedVisualSelection
       ? [...editorExtensions, ThemedSelection]
       : editorExtensions,
-    content: protectFootnoteDefinitionsForVisualMarkdown(content),
+    content: protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
     contentType: 'markdown',
     autofocus: false,
     editable: !readOnly,
@@ -2609,6 +3248,16 @@ export function createEditor(
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
   return editor
+}
+
+// A display formula after a list must be separated by a blank line. Without
+// it Markdown treats the unprefixed formula line as continuation content of
+// the preceding list item, rather than as a block following the list.
+function normalizeDisplayMathAfterList(markdown: string): string {
+  return markdown.replace(
+    /(^[ \t]*(?:[-+*]|\d+[.)])[ \t]+[^\r\n]*\r?\n)(?=[ \t]*(?:\$\$|\\\[))/gm,
+    '$1\n',
+  )
 }
 
 export function replaceEditorDocument(
@@ -2647,7 +3296,90 @@ export function getMarkdown(editor: Editor): string {
     return original.markdown
   }
   const markdown = editor.getMarkdown()
-  return autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
+  // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
+  const output = stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
+  const markerSafeOutput = escapeMarkdownLiteralSymbols
+    ? output
+    : removeMarkdownLiteralEscapes(output)
+  return escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+}
+
+function removeMarkdownLiteralEscapes(markdown: string): string {
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-marker-protected-${index}\u0000`
+  }
+
+  // Only remove escapes from ordinary Markdown text. Code, formulas and
+  // link destinations are syntax-owned regions and must remain byte-for-byte.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
+    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
+    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+
+  const unescaped = protectedMarkdown.replace(/\\([*_\\])/g, '$1')
+  return restoreProtectedMarkdownParts(
+    unescaped,
+    /\u0000markleaf-marker-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
+}
+
+function decodeLiteralSymbols(markdown: string): string {
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-protected-${index}\u0000`
+  }
+
+  // Tiptap deliberately leaves code content untouched. Protect it before
+  // decoding the entities generated for ordinary text, otherwise a literal
+  // `&amp;` or `&lt;` inside code would be changed by this compatibility mode.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    // Formula source is Markdown syntax too. Keep literal symbols inside
+    // all supported math delimiters untouched while decoding ordinary text.
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
+    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
+    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+
+  const decoded = protectedMarkdown
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+  return restoreProtectedMarkdownParts(
+    decoded,
+    /\u0000markleaf-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
+}
+
+function restoreProtectedMarkdownParts(
+  markdown: string,
+  placeholderPattern: RegExp,
+  protectedParts: readonly string[],
+): string {
+  let restored = markdown
+  for (let pass = 0; pass <= protectedParts.length; pass += 1) {
+    let replaced = false
+    const next = restored.replace(placeholderPattern, (_, index: string) => {
+      replaced = true
+      return protectedParts[Number(index)] ?? ''
+    })
+    restored = next
+    if (!replaced) break
+  }
+  return restored
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
@@ -2686,9 +3418,39 @@ function hasListFormattingThatNeedsPreservation(markdown: string): boolean {
 }
 
 let autoConvertUnsafeEmphasis = true
+let exitBlockOnEmptyEnter = false
+let useShiftEnterHardBreak = true
+let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
+let markdownEmphasisMarker: 'asterisk' | 'underscore' = 'asterisk'
+let markdownBulletMarker: 'dash' | 'asterisk' | 'plus' = 'dash'
+let escapeLiteralSymbols = false
+let escapeMarkdownLiteralSymbols = true
 
 export function setAutoConvertUnsafeEmphasis(enabled: boolean): void {
   autoConvertUnsafeEmphasis = enabled
+}
+
+export type MarkdownEditingSettings = {
+  exitBlockOnEmptyEnter?: boolean
+  useShiftEnterHardBreak?: boolean
+  codeFence?: 'backtick' | 'tilde'
+  emphasisMarker?: 'asterisk' | 'underscore'
+  bulletMarker?: 'dash' | 'asterisk' | 'plus'
+  escapeLiteralSymbols?: boolean
+  escapeMarkdownLiteralSymbols?: boolean
+}
+
+export function setMarkdownEditingSettings(settings: MarkdownEditingSettings): void {
+  exitBlockOnEmptyEnter = settings.exitBlockOnEmptyEnter === true
+  useShiftEnterHardBreak = settings.useShiftEnterHardBreak !== false
+  markdownCodeFence = settings.codeFence === 'tilde' ? 'tilde' : 'backtick'
+  setMermaidMarkdownCodeFence(markdownCodeFence)
+  markdownEmphasisMarker = settings.emphasisMarker === 'underscore' ? 'underscore' : 'asterisk'
+  markdownBulletMarker = settings.bulletMarker === 'asterisk'
+    ? 'asterisk'
+    : settings.bulletMarker === 'plus' ? 'plus' : 'dash'
+  escapeLiteralSymbols = settings.escapeLiteralSymbols === true
+  escapeMarkdownLiteralSymbols = settings.escapeMarkdownLiteralSymbols !== false
 }
 
 export function getVisualCursorLineNumber(editor: Editor): number {
@@ -2902,6 +3664,7 @@ function countVisualLinesBetweenPositions(editor: Editor, from: number, to: numb
 }
 
 function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
+  const emphasisRanges = collectParsedEmphasisRanges(markdown)
   // 按行识别围栏，只有行首（可带 0–3 空格）的 ``` / ~~~ 才是真正的代码围栏。
   // 旧的正则分割会被行内文本里的 ``` 干扰（例如 “` ```mermaid `” 说明文字），
   // 导致围栏内容被当成内联 Markdown 处理，把 mermaid 源码里的 `[*]` 误判为斜体、
@@ -2945,15 +3708,82 @@ function stabilizeUnsafeEmphasisMarkdown(markdown: string): string {
   flushInline()
   flushFence()
 
+  let partOffset = 0
   return parts
-    .map(part => isFencedCodeBlock(part) ? part : stabilizeUnsafeEmphasisInInlineMarkdown(part))
+    .map(part => {
+      const stabilized = isFencedCodeBlock(part)
+        ? part
+        : stabilizeUnsafeEmphasisInInlineMarkdown(part, partOffset, emphasisRanges)
+      partOffset += part.length + 1
+      return stabilized
+    })
     .join('\n')
 }
 
-function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
+type ParsedEmphasisRange = {
+  from: number
+  to: number
+  kind: 'strong' | 'em'
+}
+
+function collectParsedEmphasisRanges(markdown: string): ParsedEmphasisRange[] {
+  const ranges: ParsedEmphasisRange[] = []
+  collectParsedEmphasisRangesFromText(markdown, 0, ranges)
+
+  // CodeMirror's base Markdown parser treats a footnote definition as a
+  // LinkReference and therefore does not parse inline formatting in its body.
+  // Parse that body separately, then map the syntax-tree ranges back to the
+  // complete serialized Markdown document.
+  let lineStart = 0
+  for (const line of markdown.split('\n')) {
+    const definition = /^ {0,3}\[\^[^\]\r\n]+\]:[ \t]*/.exec(line)
+    if (definition) {
+      const bodyOffset = definition[0].length
+      collectParsedEmphasisRangesFromText(line.slice(bodyOffset), lineStart + bodyOffset, ranges)
+    }
+    lineStart += line.length + 1
+  }
+
+  return ranges
+}
+
+function collectParsedEmphasisRangesFromText(
+  markdown: string,
+  offset: number,
+  ranges: ParsedEmphasisRange[],
+): void {
+  const state = CodeMirrorEditorState.create({ doc: markdown, extensions: [codeMirrorMarkdown()] })
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'StrongEmphasis') {
+        ranges.push({ from: offset + node.from, to: offset + node.to, kind: 'strong' })
+      } else if (node.name === 'Emphasis') {
+        ranges.push({ from: offset + node.from, to: offset + node.to, kind: 'em' })
+      }
+    },
+  })
+}
+
+function stabilizeUnsafeEmphasisInInlineMarkdown(
+  markdown: string,
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
+): string {
   let result = ''
   let index = 0
   while (index < markdown.length) {
+    const parsedEmphasis = findParsedEmphasisStartingAt(
+      emphasisRanges,
+      markdownOffset + index,
+      markdownOffset + markdown.length,
+    )
+    if (parsedEmphasis) {
+      const end = parsedEmphasis.to - markdownOffset
+      result += markdown.slice(index, end)
+      index = end
+      continue
+    }
+
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       result += codeSpan
@@ -2968,21 +3798,21 @@ function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
       continue
     }
 
-    const boldItalic = readPotentialBoldItalicEmphasis(markdown, index)
+    const boldItalic = readPotentialBoldItalicEmphasis(markdown, index, markdownOffset, emphasisRanges)
     if (boldItalic) {
       result += boldItalic.text
       index = boldItalic.end
       continue
     }
 
-    const strong = readPotentialEmphasis(markdown, index, '**', 'strong')
+    const strong = readPotentialEmphasis(markdown, index, '**', 'strong', markdownOffset, emphasisRanges)
     if (strong) {
       result += strong.text
       index = strong.end
       continue
     }
 
-    const italic = readPotentialEmphasis(markdown, index, '*', 'em')
+    const italic = readPotentialEmphasis(markdown, index, '*', 'em', markdownOffset, emphasisRanges)
     if (italic) {
       result += italic.text
       index = italic.end
@@ -2993,6 +3823,19 @@ function stabilizeUnsafeEmphasisInInlineMarkdown(markdown: string): string {
     index += 1
   }
   return result
+}
+
+function findParsedEmphasisStartingAt(
+  ranges: readonly ParsedEmphasisRange[],
+  from: number,
+  partEnd: number,
+): ParsedEmphasisRange | null {
+  let match: ParsedEmphasisRange | null = null
+  for (const range of ranges) {
+    if (range.from !== from || range.to > partEnd) continue
+    if (!match || range.to > match.to) match = range
+  }
+  return match
 }
 
 function readLinkDestination(markdown: string, start: number): string | null {
@@ -3047,8 +3890,11 @@ function readPotentialEmphasis(
   start: number,
   marker: '*' | '**',
   tag: 'em' | 'strong',
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
 ): { text: string; end: number } | null {
   if (!markdown.startsWith(marker, start) || isEscaped(markdown, start)) return null
+  if (marker === '*' && isAsteriskListMarker(markdown, start)) return null
   if (marker === '*' && markdown.startsWith('**', start)) return null
   if (marker === '**' && markdown.startsWith('***', start)) return null
   const contentStart = start + marker.length
@@ -3057,13 +3903,18 @@ function readPotentialEmphasis(
 
   const end = close + marker.length
   const content = markdown.slice(contentStart, close)
-  const opening = getDelimiterRun(markdown, start, marker.length)
-  const closing = getDelimiterRun(markdown, close, marker.length)
-  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+  if (hasParsedEmphasisBoundary(emphasisRanges, markdownOffset + start, markdownOffset + end, tag)) {
     return { text: markdown.slice(start, end), end }
   }
 
   return { text: `<${tag}>${markdownInlineToHtmlText(content)}</${tag}>`, end }
+}
+
+function isAsteriskListMarker(markdown: string, start: number): boolean {
+  const lineStart = markdown.lastIndexOf('\n', start - 1) + 1
+  const indentation = markdown.slice(lineStart, start)
+  if (!/^ {0,3}$/.test(indentation)) return false
+  return markdown[start + 1] === ' '
 }
 
 /// 识别 `<delimiter>***…***</delimiter>` 的粗斜体（既有加粗又有斜体）。
@@ -3073,6 +3924,8 @@ function readPotentialEmphasis(
 function readPotentialBoldItalicEmphasis(
   markdown: string,
   start: number,
+  markdownOffset: number,
+  emphasisRanges: readonly ParsedEmphasisRange[],
 ): { text: string; end: number } | null {
   if (!markdown.startsWith('***', start) || isEscaped(markdown, start)) return null
   // 4 个及以上星号交给普通加粗/斜体逻辑处理，避免抢占边界（如 `****a****`）。
@@ -3086,18 +3939,31 @@ function readPotentialBoldItalicEmphasis(
   const content = markdown.slice(contentStart, close)
   if (content.length === 0) return null
 
-  const opening = getDelimiterRun(markdown, start, 3)
-  const closing = getDelimiterRun(markdown, close, 3)
-  if (canOpenEmphasis(opening) && canCloseEmphasis(closing)) {
+  const absoluteStart = markdownOffset + start
+  const absoluteEnd = markdownOffset + end
+  const outer = emphasisRanges.find(range => range.from === absoluteStart && range.to === absoluteEnd)
+  const nestedKind = outer?.kind === 'strong' ? 'em' : 'strong'
+  if (outer && emphasisRanges.some(range => range.kind === nestedKind
+    && range.from === absoluteStart + 1 && range.to === absoluteEnd - 1)) {
     return { text: markdown.slice(start, end), end }
   }
 
   return { text: `<strong><em>${markdownInlineToHtmlText(content)}</em></strong>`, end }
 }
 
+function hasParsedEmphasisBoundary(
+  ranges: readonly ParsedEmphasisRange[],
+  from: number,
+  to: number,
+  kind: 'strong' | 'em',
+): boolean {
+  return ranges.some(range => range.kind === kind && range.from === from && range.to === to)
+}
+
 function findClosingBoldItalicMarker(markdown: string, start: number): number {
   let index = start
   while (index < markdown.length) {
+    if (isParagraphBreakAt(markdown, index)) return -1
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       index += codeSpan.length
@@ -3123,6 +3989,7 @@ function countDelimiterRun(markdown: string, start: number, delimiter: string): 
 function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' | '**'): number {
   let index = start
   while (index < markdown.length) {
+    if (isParagraphBreakAt(markdown, index)) return -1
     const codeSpan = readCodeSpan(markdown, index)
     if (codeSpan) {
       index += codeSpan.length
@@ -3140,45 +4007,13 @@ function findClosingEmphasisMarker(markdown: string, start: number, marker: '*' 
   return -1
 }
 
-type DelimiterRun = {
-  before: string | null
-  after: string | null
-  leftFlanking: boolean
-  rightFlanking: boolean
-}
-
-function getDelimiterRun(markdown: string, markerStart: number, markerLength: number): DelimiterRun {
-  const before = previousCodePoint(markdown, markerStart)
-  const after = nextCodePoint(markdown, markerStart + markerLength)
-  const beforeWhitespace = before === null || /\s/u.test(before)
-  const afterWhitespace = after === null || /\s/u.test(after)
-  const beforePunctuation = before !== null && isUnicodePunctuation(before)
-  const afterPunctuation = after !== null && isUnicodePunctuation(after)
-  const leftFlanking = !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
-  const rightFlanking = !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
-  return { before, after, leftFlanking, rightFlanking }
-}
-
-function canOpenEmphasis(run: DelimiterRun): boolean {
-  return run.leftFlanking && (!run.rightFlanking || !isUnicodePunctuation(run.before))
-}
-
-function canCloseEmphasis(run: DelimiterRun): boolean {
-  return run.rightFlanking && (!run.leftFlanking || !isUnicodePunctuation(run.after))
-}
-
-function isUnicodePunctuation(character: string | null): boolean {
-  return character !== null && /\p{P}/u.test(character)
+function isParagraphBreakAt(markdown: string, index: number): boolean {
+  return /^(?:\r?\n)[ \t]*(?:\r?\n)/.test(markdown.slice(index))
 }
 
 function previousCodePoint(text: string, index: number): string | null {
   if (index <= 0) return null
   return Array.from(text.slice(0, index)).at(-1) ?? null
-}
-
-function nextCodePoint(text: string, index: number): string | null {
-  if (index >= text.length) return null
-  return Array.from(text.slice(index))[0] ?? null
 }
 
 function isEscaped(text: string, index: number): boolean {
@@ -3521,7 +4356,9 @@ export function sanitizePastedHtml(html: string): string {
       if (element.tagName.toLowerCase() === 'img' && attributeName === 'src' && getMarkLeafImagePath(element)) {
         continue
       }
-      if (value && !/^(https?:|mailto:|#|\.\.?\/)/i.test(value.trim())) {
+      if (value
+        && !value.trim().startsWith('#')
+        && !isAllowedLink(value)) {
         element.removeAttribute(attributeName)
       }
     }
@@ -3565,6 +4402,8 @@ export function executeEditorCommand(
     clearFormat: () => clearParagraphFormat(editor),
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
+    duplicateParagraph: () => duplicateCurrentParagraph(editor),
+    deleteParagraph: () => deleteCurrentParagraph(editor),
     insertMathInline: () => insertMath(editor, 'inline', text),
     insertMathBlock: () => insertMath(editor, 'block', text),
     insertMermaid: () => insertMermaid(editor),
@@ -3740,12 +4579,6 @@ export function resetEditorViewport(editor: Editor, editorMount: HTMLElement): v
 
   reset()
   window.requestAnimationFrame(() => window.requestAnimationFrame(reset))
-}
-
-export function restoreEditorScroll(editorMount: HTMLElement, top: number): void {
-  const value = Math.max(0, top)
-  editorMount.scrollTop = value
-  scrollPageTo(value)
 }
 
 function scrollPageTo(top: number): void {
@@ -3933,6 +4766,35 @@ function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): bo
   const blockNode = $from.node($from.depth)
   const insertPos = position === 'before' ? blockStart : blockStart + blockNode.nodeSize
   return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
+}
+
+function duplicateCurrentParagraph(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  if (!$from.parent.isTextblock || $from.depth === 0) return false
+  let blockDepth = $from.depth
+  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
+    const type = $from.node(depth).type.name
+    if (type === 'listItem' || type === 'taskItem') {
+      blockDepth = depth
+      break
+    }
+  }
+  const blockStart = $from.before(blockDepth)
+  const blockNode = $from.node(blockDepth)
+  const insertPos = blockStart + blockNode.nodeSize
+  const transaction = editor.state.tr.insert(insertPos, blockNode.copy(blockNode.content))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+function deleteCurrentParagraph(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  if (!$from.parent.isTextblock || $from.depth === 0) return false
+  const blockStart = $from.before($from.depth)
+  const blockNode = $from.node($from.depth)
+  const transaction = editor.state.tr.delete(blockStart, blockStart + blockNode.nodeSize)
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
 }
 
 function setAlertType(editor: Editor, type: AlertType): boolean {
@@ -4599,10 +5461,29 @@ function changeTableCaption(editor: Editor, caption?: string): boolean {
 }
 
 export function isAllowedLink(value: string): boolean {
+  const trimmed = value.trim()
+  if (isLocalFileLink(trimmed)) {
+    return true
+  }
+
   try {
-    const url = new URL(value)
+    const url = new URL(trimmed)
     return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:'
   } catch {
     return false
   }
+}
+
+export function isLocalFileLink(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.startsWith('#') || /^mailto:/i.test(trimmed)) {
+    return false
+  }
+  if (/^file:/i.test(trimmed)) {
+    return true
+  }
+  if (/^(?:\.\.?[\\/]|[\\/]{1,2}|[a-z]:[\\/])/i.test(trimmed)) {
+    return true
+  }
+  return !/^[a-z][a-z\d+.-]*:/i.test(trimmed)
 }
