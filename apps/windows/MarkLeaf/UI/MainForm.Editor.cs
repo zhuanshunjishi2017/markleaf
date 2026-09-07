@@ -47,7 +47,7 @@ internal sealed partial class MainForm
             _editorHost?.SendFindBarLocalization();
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
-            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing);
+            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing, e.VisualIgnoreMaxContentWidth);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             _editorHost?.ApplyAutoConvertUnsafeEmphasis(e.AutoConvertUnsafeEmphasis);
             _editorHost?.ApplyMarkdownEditingSettings(e);

@@ -443,6 +443,9 @@ internal sealed partial class MainForm
             case AppCommand.ShowShortcuts:
                 ShowShortcutHelp();
                 break;
+            case AppCommand.InstallOptionalFonts:
+                ShowOptionalFonts();
+                break;
             case AppCommand.ShowChangelog:
                 ShowChangelog();
                 break;

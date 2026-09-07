@@ -34,6 +34,9 @@ public sealed class MarkdownDocument
 
     public int? SourceSelectionTo { get; set; }
 
+    // Scroll offset of the document's active editor view, restored when the tab is activated again.
+    public double ScrollTop { get; set; }
+
     public long Revision { get; set; }
 
     public DateTimeOffset? LastKnownWriteTime { get; set; }

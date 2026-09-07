@@ -4,11 +4,21 @@ import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-s
 type MermaidModule = typeof import('mermaid')
 
 let mermaidPromise: Promise<MermaidModule> | null = null
-let mermaidInitialized = false
+let mermaidInitializedFontFamily: string | null = null
 let mermaidSequence = 0
 const MERMAID_RENDER_TIMEOUT_MS = 1000
 let mermaidStrings = sharedEditorStrings('zh-Hans', 'ctrl')
 let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
+// Mermaid measures labels with this font. Keep measurement and display stable
+// instead of inheriting the document's wider serif typography.
+function getActiveMermaidFontFamily(): string {
+  const documentRoot = document.querySelector<HTMLElement>('.markleaf-document')
+  if (documentRoot) {
+    const fontFamily = window.getComputedStyle(documentRoot).fontFamily.trim()
+    if (fontFamily) return fontFamily
+  }
+  return 'sans-serif'
+}
 
 export function setMermaidMarkdownCodeFence(preference: 'backtick' | 'tilde'): void {
   markdownCodeFence = preference
@@ -28,17 +38,17 @@ async function loadMermaid(): Promise<MermaidModule> {
   return mermaidPromise
 }
 
-async function ensureMermaidInitialized(module: MermaidModule): Promise<void> {
-  if (mermaidInitialized) return
+async function ensureMermaidInitialized(module: MermaidModule, fontFamily: string): Promise<void> {
+  if (mermaidInitializedFontFamily === fontFamily) return
   module.default.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
     suppressErrorRendering: true,
     themeVariables: {
-      fontFamily: 'inherit',
+      fontFamily,
     },
   })
-  mermaidInitialized = true
+  mermaidInitializedFontFamily = fontFamily
 }
 
 function nextMermaidId(prefix: string): string {
@@ -55,7 +65,8 @@ async function renderMermaidSvgInto(
     return 'empty'
   }
   const module = await loadMermaid()
-  await ensureMermaidInitialized(module)
+  const fontFamily = getActiveMermaidFontFamily()
+  await ensureMermaidInitialized(module, fontFamily)
   const id = nextMermaidId('markleaf-mermaid')
   return withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS).then(({ svg }) => {
     host.innerHTML = svg
@@ -106,7 +117,14 @@ function normalizeMermaidSvg(root: ParentNode): void {
   root.querySelectorAll<HTMLElement | SVGElement>('svg, svg *, foreignObject, foreignObject *')
     .forEach((element) => {
       ;(element as HTMLElement | SVGElement).style.textIndent = '0px'
-      ;(element as HTMLElement | SVGElement).style.fontFamily = 'inherit'
+      // The shared style sheet intentionally uses !important so diagram text
+      // does not inherit unrelated node rules. Match that priority here, or
+      // the browser can render with a different font than Mermaid measured.
+      ;(element as HTMLElement | SVGElement).style.setProperty(
+        'font-family',
+        getActiveMermaidFontFamily(),
+        'important',
+      )
     })
 }
 
@@ -221,7 +239,7 @@ export async function renderMermaidInHtml(html: string): Promise<string> {
   if (placeholders.length === 0) return html
 
   const module = await loadMermaid()
-  await ensureMermaidInitialized(module)
+  await ensureMermaidInitialized(module, getActiveMermaidFontFamily())
   await Promise.all(placeholders.map(async (placeholder) => {
     const source = placeholder.textContent ?? ''
       if (!source.trim()) {

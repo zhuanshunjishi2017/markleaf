@@ -1,5 +1,5 @@
 import './styles.css'
-import { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection } from '@tiptap/pm/state'
 import {
   createEditor,
   clearFindHighlights,
@@ -37,7 +37,7 @@ import {
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
-import { renderMermaidInHtml, setMermaidStrings } from './mermaid'
+import { renderMermaidInHtml, rerenderMermaidElements, setMermaidStrings } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -96,6 +96,7 @@ document.documentElement.classList.toggle(
 
 let documentId: string = crypto.randomUUID()
 let documentLoaded = false
+let scrollRestoreGeneration = 0
 let revision = 0
 let compositionActive = false
 let compositionChanged = false
@@ -166,9 +167,9 @@ function scrollEditorCursorToCenter(): void {
   animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
 }
 
-function updateEditorTypewriterMode(): void {
+function updateEditorTypewriterMode(scrollToCursor = true): void {
   editorMount.classList.toggle('markleaf-editor-typewriter', editorTypewriterMode && !sourceMode && !readOnly)
-  if (editorTypewriterMode && !sourceMode && !readOnly) {
+  if (scrollToCursor && editorTypewriterMode && !sourceMode && !readOnly) {
     window.requestAnimationFrame(scrollEditorCursorToCenter)
   }
 }
@@ -304,6 +305,7 @@ type VisualVariablePayload = {
   sourceFontFamily: string
   cjkLanguage: string
   visualCjkAutoSpacing: boolean
+  ignoreMaxWidth: boolean
   usePointerAnchor?: boolean
   anchorX?: number | null
   anchorY?: number | null
@@ -423,6 +425,7 @@ window.__markleafApplyVisualVariables = (payload) => {
     document.documentElement.setAttribute('lang', payload.cjkLanguage)
     document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage)
     document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing)
+    document.documentElement.classList.toggle('markleaf-ignore-max-width', payload.ignoreMaxWidth === true)
   }, anchorReader)
 }
 
@@ -469,6 +472,47 @@ function send(type: Parameters<typeof postToHost>[0]['type'], payload?: unknown,
     revision,
     payload,
   })
+}
+
+function getEditorScrollTop(): number {
+  const value = sourceMode && sourceEditor
+    ? sourceEditor.view.scrollDOM.scrollTop
+    : Math.max(
+      document.scrollingElement?.scrollTop ?? 0,
+      document.documentElement.scrollTop ?? 0,
+      document.body.scrollTop ?? 0,
+      editorMount.scrollTop ?? 0,
+    )
+  return Number.isFinite(value) && value >= 0 ? value : 0
+}
+
+function restoreEditorScrollTop(value: unknown): void {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return
+  const top = Math.max(0, value)
+  if (sourceMode && sourceEditor) {
+    sourceEditor.view.scrollDOM.scrollTop = top
+    return
+  }
+  const scrollingElement = document.scrollingElement ?? document.documentElement
+  scrollingElement.scrollTop = top
+  document.documentElement.scrollTop = top
+  document.body.scrollTop = top
+}
+
+function restoreEditorScrollTopAfterLayout(value: unknown): void {
+  const generation = ++scrollRestoreGeneration
+  const restore = () => {
+    if (generation === scrollRestoreGeneration) restoreEditorScrollTop(value)
+  }
+  restore()
+  window.requestAnimationFrame(() => window.requestAnimationFrame(restore))
+  window.setTimeout(restore, 50)
+  window.setTimeout(restore, 150)
+  window.setTimeout(restore, 300)
+  void document.fonts.ready.then(restore)
+  for (const image of Array.from(editorMount.querySelectorAll<HTMLImageElement>('img'))) {
+    if (!image.complete) image.addEventListener('load', restore, { once: true })
+  }
 }
 
 function sendWithAdditionalObjects(
@@ -629,7 +673,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 
   targetEditor.on('selectionUpdate', () => {
     updateEditorFocusLine()
-    if (targetEditor === editor) scrollEditorCursorToCenter()
+    if (!suppressUpdate && targetEditor === editor) scrollEditorCursorToCenter()
     if (!compositionActive) {
       lastVisualSelection = captureVisualSelection(targetEditor)
       send('selectionChanged', {
@@ -1558,6 +1602,8 @@ async function handleMessage(value: unknown): Promise<void> {
         readOnly?: unknown
         visualSelection?: { from?: unknown; to?: unknown }
         sourceSelection?: { from?: unknown; to?: unknown }
+        scrollTop?: unknown
+        restoreViewState?: unknown
       }
       if (typeof payload?.markdown !== 'string') {
         send('error', { message: 'loadDocument requires a markdown string.' }, message.requestId)
@@ -1568,7 +1614,9 @@ async function handleMessage(value: unknown): Promise<void> {
       revision = message.revision
       documentType = isPlainTextDocumentType(payload?.documentType) ? 'plainText' : 'markdown'
       readOnly = payload?.readOnly === true
+      const restoreViewState = payload?.restoreViewState !== false
       suppressUpdate = true
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       sourceEditor?.destroy()
       sourceEditor = null
       if (documentType === 'plainText') {
@@ -1576,8 +1624,10 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMount.hidden = false
         editorMount.hidden = true
         sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
-        if (typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
+        if (restoreViewState && typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
           sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
+        } else {
+          sourceEditor.setSelection(0, 0)
         }
       } else {
         sourceMode = false
@@ -1596,22 +1646,25 @@ async function handleMessage(value: unknown): Promise<void> {
         )
         bindEditorEvents(editor)
         if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
-        updateEditorTypewriterMode()
+        updateEditorTypewriterMode(false)
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
-        if (visualSelection) {
-          // resetEditorViewport also resets the selection. Reset the scroll first,
-          // then restore the saved selection and center it in the viewport.
-          editorMount.scrollTop = 0
-          restoreVisualSelection(editor, visualSelection, true)
+        if (restoreViewState && visualSelection) {
+          // Restore the logical selection without focusing or scrolling it into
+          // view. The document's saved scroll position is independent from the
+          // caret and remains authoritative when switching tabs.
+          const from = Math.max(0, Math.min(visualSelection.from, editor.state.doc.content.size))
+          const to = Math.max(0, Math.min(visualSelection.to, editor.state.doc.content.size))
+          editor.commands.setTextSelection({ from, to })
         } else {
-          resetEditorViewport(editor, editorMount)
+          editor.view.dispatch(editor.state.tr.setSelection(Selection.atStart(editor.state.doc)))
         }
         lastVisualSelection = captureVisualSelection(editor)
       }
       suppressUpdate = false
       updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
+      restoreEditorScrollTopAfterLayout(restoreViewState ? payload.scrollTop : 0)
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
@@ -1662,7 +1715,7 @@ async function handleMessage(value: unknown): Promise<void> {
       break
     }
     case 'requestSnapshot':
-      send('snapshot', { markdown: getActiveMarkdown() }, message.requestId)
+      send('snapshot', { markdown: getActiveMarkdown(), scrollTop: getEditorScrollTop() }, message.requestId)
       break
     case 'unsafeEmphasisResponse': {
       const payload = message.payload as { action?: unknown }
@@ -2307,6 +2360,9 @@ function applyMarkleafStyle(styleId: string): void {
       editorMount.classList.add(cls)
     }
   }
+  // Mermaid measures text while rendering. Re-render after a typography
+  // switch so its SVG dimensions use the newly active document font.
+  rerenderMermaidElements(editorMount)
 }
 
 async function generateExportHtml(

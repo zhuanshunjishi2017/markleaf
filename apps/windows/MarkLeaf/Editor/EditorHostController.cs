@@ -217,7 +217,9 @@ internal sealed class EditorHostController : IDisposable
         int? visualSelectionFrom = null,
         int? visualSelectionTo = null,
         int? sourceSelectionFrom = null,
-        int? sourceSelectionTo = null)
+        int? sourceSelectionTo = null,
+        double scrollTop = 0,
+        bool restoreViewState = true)
     {
         _lastDocumentId = documentId;
         _lastDocumentRevision = revision;
@@ -243,6 +245,8 @@ internal sealed class EditorHostController : IDisposable
                     && sourceSelectionTo is { } sourceTo
                     ? new { from = sourceFrom, to = sourceTo }
                     : null,
+                scrollTop = double.IsFinite(scrollTop) && scrollTop >= 0 ? scrollTop : 0,
+                restoreViewState,
             });
         });
     }
@@ -298,7 +302,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -316,6 +320,7 @@ internal sealed class EditorHostController : IDisposable
             sourceFontFamily = fontFamilyValue,
             cjkLanguage = cjkLang,
             visualCjkAutoSpacing,
+            ignoreMaxWidth,
             usePointerAnchor = false,
             anchorX = (double?)null,
             anchorY = (double?)null,
@@ -334,6 +339,7 @@ internal sealed class EditorHostController : IDisposable
                 document.documentElement.setAttribute('lang', payload.cjkLanguage);
                 document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage);
                 document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing);
+                document.documentElement.classList.toggle('markleaf-ignore-max-width', payload.ignoreMaxWidth === true);
               }
             })();
             """;
@@ -766,20 +772,30 @@ internal sealed class EditorHostController : IDisposable
                 // 非致命：公式缩放脚本执行失败时仍继续打印，不阻断导出。
             }
 
-            var settings = core.Environment.CreatePrintSettings();
-            settings.PageWidth = widthIn;
-            settings.PageHeight = heightIn;
-            settings.MarginTop = 0;
-            settings.MarginBottom = 0;
-            settings.MarginLeft = 0;
-            settings.MarginRight = 0;
-            settings.ShouldPrintBackgrounds = true;
-
-            var pdfTempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.pdf");
-            await core.PrintToPdfAsync(pdfTempPath, settings);
-            var pdfBytes = await File.ReadAllBytesAsync(pdfTempPath, cancellationToken);
-            try { File.Delete(pdfTempPath); } catch { }
-            return pdfBytes;
+            // Use the DevTools print endpoint so Chromium emits a PDF document
+            // outline from the h1-h6 structure. CoreWebView2.PrintToPdfAsync
+            // has no equivalent outline option.
+            var printParameters = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                landscape,
+                paperWidth = widthIn,
+                paperHeight = heightIn,
+                marginTop = 0,
+                marginBottom = 0,
+                marginLeft = 0,
+                marginRight = 0,
+                printBackground = true,
+                preferCSSPageSize = false,
+                generateDocumentOutline = true,
+            });
+            var printResult = await core.CallDevToolsProtocolMethodAsync(
+                "Page.printToPDF",
+                printParameters);
+            using var printDocument = JsonDocument.Parse(printResult);
+            var base64 = printDocument.RootElement.GetProperty("data").GetString();
+            if (string.IsNullOrWhiteSpace(base64))
+                throw new InvalidOperationException("PDF export returned no data.");
+            return Convert.FromBase64String(base64);
         }
         finally
         {
@@ -1393,8 +1409,15 @@ internal sealed class EditorHostController : IDisposable
                         && _snapshotRequests.TryGetValue(message.RequestId, out var completion)
                         && message.Payload.TryGetProperty("markdown", out var markdownElement))
                     {
+                        var scrollTop = message.Payload.TryGetProperty("scrollTop", out var scrollElement)
+                            && scrollElement.ValueKind == JsonValueKind.Number
+                            && scrollElement.TryGetDouble(out var parsedScrollTop)
+                            && double.IsFinite(parsedScrollTop)
+                            && parsedScrollTop >= 0
+                            ? parsedScrollTop
+                            : 0;
                         completion.TrySetResult(
-                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision));
+                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision, scrollTop));
                     }
                     SnapshotReceived?.Invoke(this, message);
                 }

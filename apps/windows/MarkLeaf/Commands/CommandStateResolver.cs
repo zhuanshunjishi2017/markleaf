@@ -20,7 +20,7 @@ public static class CommandStateResolver
                 or AppCommand.CheckForUpdates
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
-                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
+                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow or AppCommand.InstallOptionalFonts
                 or AppCommand.RecoverUnsavedFiles
                 or AppCommand.FollowSystemColorMode => new(true),
             AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
@@ -90,8 +90,7 @@ public static class CommandStateResolver
             AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable, context.CodeBlockActive),
             AppCommand.DeclareCodeLanguage => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.CodeBlockActive),
             AppCommand.CopyCodeBlock => new(
-                context.EditorReady && (context.CodeBlockActive || context.FrontMatterActive)
-                && !string.IsNullOrEmpty(context.CodeBlockText)),
+                context.EditorReady && !string.IsNullOrEmpty(context.CodeBlockText)),
             AppCommand.ExitCode => new(
                 context.EditorReady && !context.ReadOnly && !context.SourceMode
                 && (context.CodeBlockActive || context.FrontMatterActive)),

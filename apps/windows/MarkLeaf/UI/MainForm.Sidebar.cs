@@ -417,7 +417,7 @@ internal sealed partial class MainForm
         var statusBar = _settings.Appearance.StatusBar;
         var hasDocument = _openDocuments.Count > 0;
         _viewToggleButton.Visible = statusBar.SidebarToggleVisible;
-        _statusLabel.Visible = hasDocument;
+        _statusLabel.Visible = true;
         if (statusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Hidden)
         {
             _statusMessageTimer.Stop();

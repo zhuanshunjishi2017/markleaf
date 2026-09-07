@@ -2,9 +2,6 @@
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
   --bg-primary: #FFFFFF;
   --text-primary: #24292f;
-  --ml-line-height: 1.6;
-  --ml-font-size: 16px;
-  --ml-max-width: 820px;
 }
 
 * {
@@ -90,12 +87,6 @@ body,
   word-spacing: 0 !important;
   text-indent: 0 !important;
   vertical-align: baseline;
-}
-
-.markleaf-document mark {
-  background-color: var(--highlight);
-  color: inherit;
-  padding: 0 0.08em;
 }
 
 .markleaf-front-matter {
@@ -240,46 +231,6 @@ body.markleaf-theme-dark {
   position: relative;
 }
 
-.ml-block-handle {
-  position: absolute;
-  left: -36px;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: var(--bg-hover, #f0f0f0);
-  color: var(--text-secondary, #555555);
-  font-family: "Microsoft YaHei", sans-serif;
-  font-weight: bold;
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
-  pointer-events: auto;
-  z-index: 5;
-}
-
-.ml-block-handle-overlay {
-  left: calc(50% - min(var(--ml-max-width), 100%) / 2 - 36px);
-}
-
-.markleaf-document:hover .ml-block-handle,
-#editor:hover .ml-block-handle-overlay,
-.ml-block-handle:hover,
-.ml-block-handle-active {
-  opacity: 1;
-}
-
-.ml-block-handle-active {
-  background: var(--bg-selected, #e0e0e0);
-}
-
 /* 点击加号后整个段落的 bg-hover 高亮 */
 .markleaf-block-active {
   background: var(--bg-hover, #f0f0f0);
@@ -346,42 +297,6 @@ body.markleaf-theme-dark {
   outline: none;
   cursor: text;
   user-select: text;
-}
-
-/* Mermaid 图表 */
-.markleaf-mermaid {
-  margin: 1em 0;
-  display: flex;
-  justify-content: center;
-  overflow-x: auto;
-  background: var(--bg-hover, #f0f0f0);
-  border: 1px solid var(--bg-selected, #e0e0e0);
-  border-radius: 0;
-  padding: 12px;
-  user-select: none;
-  font-family: inherit;
-  text-indent: 0;
-}
-
-.markleaf-mermaid-view {
-  width: 100%;
-  min-height: 2em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-indent: 0;
-}
-
-.markleaf-mermaid svg {
-  max-width: 100%;
-  height: auto;
-  font-family: inherit;
-  text-indent: 0;
-}
-
-.markleaf-mermaid svg * {
-  font-family: inherit !important;
-  text-indent: 0;
 }
 
 .markleaf-mermaid-fallback {
@@ -541,14 +456,18 @@ body.markleaf-theme-dark {
 }
 
 .markleaf-find-match {
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
   border-radius: 2px;
-  background: var(--theme-light);
-  box-shadow: 0 0 0 1px var(--theme-light);
+  background: var(--highlight);
+  box-shadow: 0 0 0 1px var(--highlight);
 }
 
 .markleaf-find-match-current {
-  background: var(--theme-light);
-  box-shadow: 0 0 0 2px var(--theme-dark);
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  background: var(--highlight);
+  box-shadow: 0 0 0 2px var(--highlight-current, var(--theme-dark));
 }
 
 #source-editor {
@@ -635,6 +554,45 @@ body.markleaf-theme-dark {
 .markleaf-document {
   position: relative;
   min-height: calc(100vh - 140px);
+}
+
+.ml-block-handle {
+  position: absolute;
+  left: -36px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-secondary, #555555);
+  font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.ml-block-handle-overlay {
+  left: calc(50% - min(var(--ml-max-width), 100%) / 2 - 36px);
+}
+
+.markleaf-document:hover .ml-block-handle,
+#editor:hover .ml-block-handle-overlay,
+.ml-block-handle:hover,
+.ml-block-handle-active {
+  opacity: 1;
+}
+
+.ml-block-handle-active {
+  background: var(--bg-selected, #e0e0e0);
 }
 
 .ml-block-handle {

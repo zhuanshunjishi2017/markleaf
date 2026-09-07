@@ -174,6 +174,7 @@ internal sealed partial class MainForm
             var snapshot = await _editorHost.RequestSnapshotAsync();
             _document.Markdown = snapshot.Markdown;
             _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
+            _document.ScrollTop = snapshot.ScrollTop;
         }
 
         StopWatchingDocument();
@@ -183,7 +184,7 @@ internal sealed partial class MainForm
         _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
         _workspaceTree.SelectedPath = document.FilePath;
         _workspaceDocumentList.SelectedPath = document.FilePath;
-        LoadDocumentIntoEditor(document);
+        LoadDocumentIntoEditor(document, restoreScrollPosition: false);
         if (document.FilePath is not null) StartWatchingDocument(document.FilePath);
     }
 
@@ -237,6 +238,7 @@ internal sealed partial class MainForm
             var snapshot = await _editorHost.RequestSnapshotAsync();
             document.Markdown = snapshot.Markdown;
             document.Revision = Math.Max(document.Revision, snapshot.Revision);
+            document.ScrollTop = snapshot.ScrollTop;
         }
 
         var statePath = Path.Combine(_paths.DataDirectory, "Cache",
@@ -331,6 +333,7 @@ internal sealed partial class MainForm
                 var snapshot = await _editorHost.RequestSnapshotAsync();
                 _document.Markdown = snapshot.Markdown;
                 _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
+                _document.ScrollTop = snapshot.ScrollTop;
             }
 
             StopWatchingDocument();
@@ -362,6 +365,7 @@ internal sealed partial class MainForm
                 var snapshot = await _editorHost.RequestSnapshotAsync();
                 target.Markdown = snapshot.Markdown;
                 target.Revision = Math.Max(target.Revision, snapshot.Revision);
+                target.ScrollTop = snapshot.ScrollTop;
             }
             if (target.IsDirty)
             {
@@ -1013,7 +1017,7 @@ internal sealed partial class MainForm
         }
     }
 
-    private void LoadDocumentIntoEditor(MarkdownDocument document)
+    private void LoadDocumentIntoEditor(MarkdownDocument document, bool restoreScrollPosition = true)
     {
         _editorCommandStatus = EditorCommandStatus.Empty;
         _editorStatus = EditorStatus.Empty;
@@ -1023,6 +1027,8 @@ internal sealed partial class MainForm
             // the newly selected document is being loaded.
             _pendingEditorRevealDocumentId = document.Id;
         }
+        // New files start at the top; reactivated tabs restore their own offset.
+        var restoreScrollTop = restoreScrollPosition ? document.ScrollTop : 0;
         _editorHost?.LoadDocument(
             document.Id,
             document.Revision,
@@ -1033,7 +1039,9 @@ internal sealed partial class MainForm
             document.VisualSelectionFrom,
             document.VisualSelectionTo,
             document.SourceSelectionFrom,
-            document.SourceSelectionTo);
+            document.SourceSelectionTo,
+            restoreScrollTop,
+            restoreScrollPosition);
         if (_pendingEditorRevealDocumentId is null)
         {
             _editorPanel.Visible = true;
@@ -1054,6 +1062,7 @@ internal sealed partial class MainForm
         var snapshot = await _editorHost.RequestSnapshotAsync();
         _document.Markdown = snapshot.Markdown;
         _document.Revision = Math.Max(_document.Revision, snapshot.Revision);
+        _document.ScrollTop = snapshot.ScrollTop;
     }
 
     private void ShowEncodingMenu()

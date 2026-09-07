@@ -141,6 +141,7 @@ public enum AppCommand
     CheckForUpdates = 0x140C,
     ShowWelcome = 0x140D,
     LearnMarkdown = 0x140E,
+    InstallOptionalFonts = 0x140F,
 
     InsertAlertNote = 0x1331,
     InsertAlertTip = 0x1332,

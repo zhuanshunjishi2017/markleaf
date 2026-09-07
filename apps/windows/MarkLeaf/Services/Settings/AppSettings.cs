@@ -265,6 +265,8 @@ public sealed class EditorSettings
 
     public int VisualMaxContentWidth { get; set; } = 820;
 
+    public bool VisualIgnoreMaxContentWidth { get; set; }
+
     public int SourceFontSize { get; set; } = 14;
 
     public string SourceFontFamily { get; set; } = "Cascadia Mono";

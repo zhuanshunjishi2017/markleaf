@@ -1356,6 +1356,7 @@ internal sealed class NativeMenuService : IDisposable
         try
         {
             AppendCommand(menu, AppCommand.CheckForUpdates, Loc.Get("menu.help.checkForUpdates"));
+            AppendCommand(menu, AppCommand.InstallOptionalFonts, Loc.Get("menu.help.installOptionalFonts"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.LearnMarkdown, Loc.Get("menu.help.learnMarkdown"));
             AppendSeparator(menu);

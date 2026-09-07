@@ -161,7 +161,8 @@ public static class EditorProtocol
         {
             "ready" or "documentLoaded" => IsMissingOrObject(payload),
             "dirtyChanged" => HasProperty(payload, "dirty", JsonValueKind.True, JsonValueKind.False),
-            "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String),
+            "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String)
+                && HasOptionalNonNegativeNumber(payload, "scrollTop"),
             "selectionChanged" => HasIntegerProperty(payload, "from")
                 && HasIntegerProperty(payload, "to")
                 && HasOptionalBooleanProperty(payload, "sourceMode"),

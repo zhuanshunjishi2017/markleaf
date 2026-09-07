@@ -4,6 +4,8 @@ namespace MarkLeaf.Native;
 
 internal static class NativeMethods
 {
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int AddFontResourceEx(string fileName, uint flags, nint reserved);
     internal const uint ShgfiIcon = 0x000000100;
     internal const uint ShgfiSmallIcon = 0x000000001;
     internal const uint ShgfiLargeIcon = 0x000000000;
