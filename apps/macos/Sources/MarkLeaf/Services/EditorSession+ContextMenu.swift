@@ -81,6 +81,9 @@ extension EditorSession {
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
         addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("重复该段"), "duplicateParagraph")
+        addFormatCommand(menu, L10n.t("删除该段"), "deleteParagraph")
     }
 
     private static func headingLevelName(_ level: Int) -> String {

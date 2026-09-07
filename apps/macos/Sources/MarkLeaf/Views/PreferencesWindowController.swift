@@ -61,6 +61,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let exitBlockOnEmptyEnterCheck = NSButton(checkboxWithTitle: L10n.t("空行回车退出块"), target: nil, action: nil)
     private let useShiftEnterHardBreakCheck = NSButton(checkboxWithTitle: L10n.t("Shift+Enter 插入硬换行"), target: nil, action: nil)
     private let escapeLiteralSymbolsCheck = NSButton(checkboxWithTitle: L10n.t("转义文本中的 Markdown 符号"), target: nil, action: nil)
+    private let escapeMarkdownLiteralSymbolsCheck = NSButton(checkboxWithTitle: L10n.t("转义 Markdown 字面量符号"), target: nil, action: nil)
     private let markdownCodeFencePopup = NSPopUpButton()
     private let markdownEmphasisMarkerPopup = NSPopUpButton()
     private let markdownBulletMarkerPopup = NSPopUpButton()
@@ -166,6 +167,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         exitBlockOnEmptyEnterCheck.state = settings.exitBlockOnEmptyEnter ? .on : .off
         useShiftEnterHardBreakCheck.state = settings.useShiftEnterHardBreak ? .on : .off
         escapeLiteralSymbolsCheck.state = settings.escapeLiteralSymbols ? .on : .off
+        escapeMarkdownLiteralSymbolsCheck.state = settings.escapeMarkdownLiteralSymbols ? .on : .off
         markdownCodeFencePopup.addItems(withTitles: [L10n.t("反引号 `"), L10n.t("波浪号 ~")])
         markdownCodeFencePopup.selectItem(at: settings.markdownCodeFence == "tilde" ? 1 : 0)
         markdownEmphasisMarkerPopup.addItems(withTitles: [L10n.t("星号 *"), L10n.t("下划线 _")])
@@ -533,6 +535,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
             .header(L10n.t("Markdown 行为")),
             .field("", escapeLiteralSymbolsCheck),
+            .field("", escapeMarkdownLiteralSymbolsCheck),
             .field("", exitBlockOnEmptyEnterCheck),
             .field("", useShiftEnterHardBreakCheck),
             .field(L10n.t("代码围栏"), markdownCodeFencePopup),
@@ -664,6 +667,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.exitBlockOnEmptyEnter = exitBlockOnEmptyEnterCheck.state == .on
         settings.useShiftEnterHardBreak = useShiftEnterHardBreakCheck.state == .on
         settings.escapeLiteralSymbols = escapeLiteralSymbolsCheck.state == .on
+        settings.escapeMarkdownLiteralSymbols = escapeMarkdownLiteralSymbolsCheck.state == .on
         settings.markdownCodeFence = markdownCodeFencePopup.indexOfSelectedItem == 1 ? "tilde" : "backtick"
         settings.markdownEmphasisMarker = markdownEmphasisMarkerPopup.indexOfSelectedItem == 1 ? "underscore" : "asterisk"
         settings.markdownBulletMarker = ["dash", "asterisk", "plus"][

@@ -91,17 +91,17 @@ struct AppSettings: Codable {
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 3
         displayLanguage = try container.decodeIfPresent(String.self, forKey: .displayLanguage) ?? Self.detectSystemLanguage()
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
-        let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "colors-white-only"
+        let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "apple-blue"
         // colors-white.css 已被 Windows 版移除（由 colors-white-only.css 替代），旧配置迁移
         colorTheme = decodedTheme == "colors-white" ? "colors-white-only" : decodedTheme
         zoomPercent = try container.decodeIfPresent(Int.self, forKey: .zoomPercent) ?? 100
         restoreZoomOnOpen = try container.decodeIfPresent(Bool.self, forKey: .restoreZoomOnOpen) ?? true
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
-        autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? false
+        autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? true
         followSystemTheme = try container.decodeIfPresent(Bool.self, forKey: .followSystemTheme) ?? true
-        defaultLightThemeID = try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "colors-white-only"
-        defaultDarkThemeID = try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "colors-dark"
-        visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.6
+        defaultLightThemeID = try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "apple-blue"
+        defaultDarkThemeID = try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "apple-dark"
+        visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.75
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
         sourceFontSize = try container.decodeIfPresent(Int.self, forKey: .sourceFontSize) ?? 14
@@ -113,12 +113,12 @@ struct AppSettings: Codable {
         exitBlockOnEmptyEnter = try container.decodeIfPresent(Bool.self, forKey: .exitBlockOnEmptyEnter) ?? false
         useShiftEnterHardBreak = try container.decodeIfPresent(Bool.self, forKey: .useShiftEnterHardBreak) ?? true
         escapeLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeLiteralSymbols) ?? false
-        escapeMarkdownLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeMarkdownLiteralSymbols) ?? true
+        escapeMarkdownLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeMarkdownLiteralSymbols) ?? false
         markdownCodeFence = try container.decodeIfPresent(String.self, forKey: .markdownCodeFence) ?? "backtick"
         markdownEmphasisMarker = try container.decodeIfPresent(String.self, forKey: .markdownEmphasisMarker) ?? "asterisk"
         markdownBulletMarker = try container.decodeIfPresent(String.self, forKey: .markdownBulletMarker) ?? "dash"
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
-        showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? false
+        showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? true
         suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
@@ -145,8 +145,8 @@ struct AppSettings: Codable {
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
         topMostWindow = try container.decodeIfPresent(Bool.self, forKey: .topMostWindow) ?? false
-        clipboardImageHandling = try container.decodeIfPresent(String.self, forKey: .clipboardImageHandling) ?? "saveToDefault"
-        fileImageHandling = try container.decodeIfPresent(String.self, forKey: .fileImageHandling) ?? "referenceOriginal"
+        clipboardImageHandling = try container.decodeIfPresent(String.self, forKey: .clipboardImageHandling) ?? "copyToAssets"
+        fileImageHandling = try container.decodeIfPresent(String.self, forKey: .fileImageHandling) ?? "copyToAssets"
         imageDefaultDirectory = try container.decodeIfPresent(String.self, forKey: .imageDefaultDirectory) ?? ""
         useRelativePaths = try container.decodeIfPresent(Bool.self, forKey: .useRelativePaths) ?? true
         prefixRelativeWithDotSlash = try container.decodeIfPresent(Bool.self, forKey: .prefixRelativeWithDotSlash) ?? true
@@ -186,19 +186,19 @@ struct AppSettings: Codable {
 
     // 外观
     var markdownStyle = "serif"
-    var colorTheme = "colors-white-only"
+    var colorTheme = "apple-blue"
     var zoomPercent = 100
     var restoreZoomOnOpen = true
     // 是否启用 ⌘ + 滚轮缩放（触控板捏合始终可用，不受此开关控制）
     var ctrlWheelZoom = true
-    var autoHideScrollbars = false
+    var autoHideScrollbars = true
     /// 与操作系统同步：系统浅色/深色自动使用默认浅色/深色主题（对齐 Windows「跟随系统颜色模式」）。
     var followSystemTheme = true
-    var defaultLightThemeID = "colors-white-only"
-    var defaultDarkThemeID = "colors-dark"
+    var defaultLightThemeID = "apple-blue"
+    var defaultDarkThemeID = "apple-dark"
 
     // 编辑器
-    var visualLineHeight: Double = 1.6
+    var visualLineHeight: Double = 1.75
     var visualFontSize = 16
     var visualMaxContentWidth = 820
     var sourceFontSize = 14
@@ -213,12 +213,12 @@ struct AppSettings: Codable {
     var exitBlockOnEmptyEnter = false
     var useShiftEnterHardBreak = true
     var escapeLiteralSymbols = false
-    var escapeMarkdownLiteralSymbols = true
+    var escapeMarkdownLiteralSymbols = false
     var markdownCodeFence = "backtick"
     var markdownEmphasisMarker = "asterisk"
     var markdownBulletMarker = "dash"
     var showParagraphBlockHandle = true
-    var showCodeHighlight = false
+    var showCodeHighlight = true
     var suppressUnsafeEmphasisPrompt = false
     var unsafeEmphasisAction = UnsafeEmphasisAction.literal.rawValue
     var exportSettings = PersistedExportSettings()
@@ -245,8 +245,8 @@ struct AppSettings: Codable {
     var newLineStyle = "lf"
     var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue
     var topMostWindow = false
-    var clipboardImageHandling = "saveToDefault"
-    var fileImageHandling = "referenceOriginal"
+    var clipboardImageHandling = "copyToAssets"
+    var fileImageHandling = "copyToAssets"
     var imageDefaultDirectory = ""
     var useRelativePaths = true
     var prefixRelativeWithDotSlash = true

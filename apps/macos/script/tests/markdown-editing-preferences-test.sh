@@ -10,9 +10,11 @@ require_text() {
 }
 
 require_text "$SETTINGS_TEST" 'markdownCodeFence == "tilde"'
+require_text "$PREFS" 'private let escapeMarkdownLiteralSymbolsCheck'
 require_text "$PREFS" 'private let exitBlockOnEmptyEnterCheck'
 require_text "$PREFS" 'private let useShiftEnterHardBreakCheck'
 require_text "$PREFS" 'private let markdownCodeFencePopup'
+require_text "$PREFS" 'settings.escapeMarkdownLiteralSymbols = escapeMarkdownLiteralSymbolsCheck.state == .on'
 require_text "$PREFS" 'settings.exitBlockOnEmptyEnter = exitBlockOnEmptyEnterCheck.state == .on'
 require_text "$PREFS" 'settings.markdownBulletMarker = ["dash", "asterisk", "plus"]'
 require_text "$PREFS" 'L10n.t("Markdown 行为")'

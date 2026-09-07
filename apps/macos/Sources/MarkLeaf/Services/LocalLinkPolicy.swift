@@ -1,6 +1,10 @@
 import Foundation
 
 enum LocalLinkPolicy {
+    static func isOpenableFile(_ path: String) -> Bool {
+        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
+    }
+
     static func resolve(_ value: String, documentPath: String?) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

@@ -424,7 +424,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                ["http", "https", "mailto"].contains(scheme) {
                 NSWorkspace.shared.open(url)
             } else if let localPath = LocalLinkPolicy.resolve(urlString, documentPath: documentURL?.path),
-                      FileManager.default.fileExists(atPath: localPath) {
+                      LocalLinkPolicy.isOpenableFile(localPath) {
                 NSWorkspace.shared.open(URL(fileURLWithPath: localPath))
             }
 

@@ -43,6 +43,7 @@ enum EditorMenuPolicy {
         "toggleCodeBlock", "insertHorizontalRule", "insertFootnote",
         "insertLineBefore", "insertLineAfter", "toggleBulletList",
         "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
+        "duplicateParagraph", "deleteParagraph",
         "insertAlertNote", "insertAlertTip", "insertAlertImportant",
         "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
     ]
@@ -117,7 +118,8 @@ enum EditorMenuPolicy {
         inTable: Bool = false,
         isPlainText: Bool = false
     ) -> Bool {
-        guard paragraphCommands.contains(command), !isSourceMode, !isReadOnly, !inTable else { return false }
+        guard paragraphCommands.contains(command), !isSourceMode, !isReadOnly else { return false }
+        if inTable, command != "duplicateParagraph", command != "deleteParagraph" { return false }
         return command != "showFrontMatter" || !isPlainText
     }
 

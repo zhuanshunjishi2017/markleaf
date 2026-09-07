@@ -127,6 +127,9 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
         menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
         menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("重复该段"), "duplicateParagraph"))
+        menu.addItem(commandItem(L10n.t("删除该段"), "deleteParagraph"))
+        menu.addItem(.separator())
         menu.addItem(tableSizePickerSubmenu { size in
             AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
         })
@@ -581,7 +584,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
              "setHeading4", "setHeading5", "setHeading6",
              "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
              "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
-             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat":
+             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
+             "duplicateParagraph", "deleteParagraph":
             return EditorMenuPolicy.isParagraphCommandEnabled(
                 command: command,
                 isSourceMode: s?.isSourceMode ?? true,
@@ -936,6 +940,8 @@ extension EditorSession {
         case "insertTable": execute("insertTable")
         case "insertLineBefore": execute("insertLineBefore")
         case "insertLineAfter": execute("insertLineAfter")
+        case "duplicateParagraph": execute("duplicateParagraph")
+        case "deleteParagraph": execute("deleteParagraph")
         case "addRowBefore": execute("addRowBefore")
         case "addRowAfter": execute("addRowAfter")
         case "deleteRow": execute("deleteRow")
