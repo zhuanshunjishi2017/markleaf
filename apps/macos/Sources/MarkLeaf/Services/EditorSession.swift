@@ -647,6 +647,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         payload["visualCjkAutoSpacing"] = saved.visualCjkAutoSpacing
         send("applyStyles", payload: payload)
+        applyMarkdownEditingSettings()
         // 下发界面语言（前端查找栏等文案本地化）
         execute("setLanguage", text: SettingsService.shared.settings.displayLanguage)
         onStylesReady?()
@@ -668,6 +669,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applyStyles()
         applyVisualVariables(fontSize: nil, maxWidth: nil)
         applySourceIndent()
+        applyMarkdownEditingSettings()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
         setCodeHighlightVisible(settings.showCodeHighlight)
         if settings.restoreZoomOnOpen {
@@ -675,6 +677,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         setAutoHideScrollbar(settings.autoHideScrollbars)
         applyScrollbarAppearance(dark: currentThemeIsDark)
+    }
+
+    /// 将 Markdown 编辑行为设置同步到共享 Web 编辑器。
+    private func applyMarkdownEditingSettings() {
+        var settings = SettingsService.shared.settings
+        settings.clampSettingRanges()
+        execute("setMarkdownEditingSettings", text: """
+        {"exitBlockOnEmptyEnter":\(settings.exitBlockOnEmptyEnter ? "true" : "false"),"useShiftEnterHardBreak":\(settings.useShiftEnterHardBreak ? "true" : "false"),"codeFence":"\(settings.markdownCodeFence)","emphasisMarker":"\(settings.markdownEmphasisMarker)","bulletMarker":"\(settings.markdownBulletMarker)","escapeLiteralSymbols":\(settings.escapeLiteralSymbols ? "true" : "false"),"escapeMarkdownLiteralSymbols":\(settings.escapeMarkdownLiteralSymbols ? "true" : "false")}
+        """)
     }
 
     private var currentThemeIsDark: Bool {

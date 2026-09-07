@@ -202,6 +202,14 @@ struct AppSettings: Codable {
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var visualCjkAutoSpacing = true
     var sourceIndentWidth = 2
+    // Markdown 编辑行为（与 Windows 1.7.2 EditorSettings 对齐）。
+    var exitBlockOnEmptyEnter = false
+    var useShiftEnterHardBreak = true
+    var escapeLiteralSymbols = false
+    var escapeMarkdownLiteralSymbols = true
+    var markdownCodeFence = "backtick"
+    var markdownEmphasisMarker = "asterisk"
+    var markdownBulletMarker = "dash"
     var showParagraphBlockHandle = true
     var showCodeHighlight = false
     var suppressUnsafeEmphasisPrompt = false
@@ -276,6 +284,9 @@ struct AppSettings: Codable {
         visualMaxContentWidth = Self.clamp(visualMaxContentWidth, to: Self.visualMaxContentWidthRange)
         sourceFontSize = Self.clamp(sourceFontSize, to: Self.sourceFontSizeRange)
         sourceIndentWidth = Self.clamp(sourceIndentWidth, to: Self.sourceIndentWidthRange)
+        markdownCodeFence = markdownCodeFence == "tilde" ? "tilde" : "backtick"
+        markdownEmphasisMarker = markdownEmphasisMarker == "underscore" ? "underscore" : "asterisk"
+        markdownBulletMarker = ["dash", "asterisk", "plus"].contains(markdownBulletMarker) ? markdownBulletMarker : "dash"
     }
 
     private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
