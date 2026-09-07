@@ -348,6 +348,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             AppLog.info("文档加载完成")
             statusText = L10n.t("已加载")
             applyPostLoadSettings()
+            if let query = pendingWorkspaceSearchQuery {
+                pendingWorkspaceSearchQuery = nil
+                DispatchQueue.main.async { [weak self] in
+                    self?.showFind()
+                    self?.execute("findText", text: "\(query)\t0\t0")
+                }
+            }
             if let notice = startupRecoveryNotice(for: message) {
                 statusText = notice
             }
@@ -1290,6 +1297,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func toggleSourceMode() { execute("toggleSourceMode") }
     var onFindResult: ((Int, Int) -> Void)?
+    /// 搜索结果打开新文档后，等待 documentLoaded 再自动打开查找。
+    var pendingWorkspaceSearchQuery: String?
 
     func showFind() {
         AppWindowManager.shared.showFindPanel(for: self, showingReplace: false)
@@ -1771,8 +1780,22 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: - 工作区（对应 C# MainForm.Workspace）
 
     func loadWorkspace(_ path: String) {
+        let hadWorkspace = workspace.root != nil
+        let sidebarWasVisible = sidebarVisible
         workspace.load(path)
         guard workspace.root != nil else { return }
+        if WorkspaceOpenRoutingPolicy.shouldRevealSidebarOnWorkspaceOpen(
+            hadWorkspace: hadWorkspace,
+            sidebarWasVisible: sidebarWasVisible
+        ) {
+            sidebarVisible = true
+            sidebarTabIndex = 0
+            SettingsService.shared.update {
+                $0.sidebarVisible = true
+                $0.sidebarTab = "workspace"
+            }
+            onViewStateChanged?()
+        }
         SettingsService.shared.addRecentFolder(path)
         SettingsService.shared.update { $0.lastFolder = path }
         AppLog.info("打开工作区: \(path)")

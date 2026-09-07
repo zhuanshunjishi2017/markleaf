@@ -139,6 +139,16 @@ final class SidebarView: NSView {
             guard let self else { return }
             // 对齐 Windows：先退出搜索模式，再打开文件，并在工作区树中定位到该文件。
             self.endSearch()
+            let documentPath = self.session.documentURL?.standardizedFileURL.path
+            let targetPath = URL(fileURLWithPath: result.entry.path).standardizedFileURL.path
+            if result.isContentMatch {
+                if documentPath == targetPath {
+                    self.session.showFind()
+                    self.session.execute("findText", text: "\(result.query)\t0\t0")
+                } else {
+                    self.session.pendingWorkspaceSearchQuery = result.query
+                }
+            }
             self.session.openWorkspaceEntry(result.entry)
             self.workspaceTree.revealPath(result.entry.path)
         }
@@ -591,7 +601,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     func setListMode(_ listMode: Bool) {
         self.listMode = listMode
-        rowHeight = listMode ? 54 : 26
+        rowHeight = listMode ? 70 : 26
         reloadData()
     }
 
@@ -996,6 +1006,8 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         cell.timeLabel.stringValue = WorkspaceDocumentTimeFormatter.format(
             Self.modificationDate(of: entry.path)
         )
+        cell.previewLabel.stringValue = entry.preview ?? ""
+        cell.previewLabel.isHidden = (entry.preview ?? "").isEmpty
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.path)
         return cell
     }
@@ -1303,6 +1315,7 @@ final class WorkspaceListCellView: NSTableCellView {
     let nameLabel = NSTextField(labelWithString: "")
     let folderLabel = NSTextField(labelWithString: "")
     let timeLabel = NSTextField(labelWithString: "")
+    let previewLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1317,7 +1330,7 @@ final class WorkspaceListCellView: NSTableCellView {
         let imageView = NSImageView()
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.imageScaling = .scaleProportionallyDown
-        for label in [nameLabel, folderLabel, timeLabel] {
+        for label in [nameLabel, folderLabel, timeLabel, previewLabel] {
             label.translatesAutoresizingMaskIntoConstraints = false
             label.lineBreakMode = .byTruncatingTail
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -1329,10 +1342,16 @@ final class WorkspaceListCellView: NSTableCellView {
         timeLabel.textColor = .secondaryLabelColor
         timeLabel.alignment = .right
         timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        previewLabel.font = .systemFont(ofSize: 11)
+        previewLabel.textColor = .secondaryLabelColor
+        previewLabel.lineBreakMode = .byTruncatingTail
+        previewLabel.cell?.truncatesLastVisibleLine = true
+        previewLabel.isHidden = true
         addSubview(imageView)
         addSubview(nameLabel)
         addSubview(folderLabel)
         addSubview(timeLabel)
+        addSubview(previewLabel)
         self.imageView = imageView
         textField = nameLabel
         NSLayoutConstraint.activate([
@@ -1345,10 +1364,12 @@ final class WorkspaceListCellView: NSTableCellView {
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
             folderLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
             folderLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 1),
-            folderLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
             folderLabel.trailingAnchor.constraint(lessThanOrEqualTo: timeLabel.leadingAnchor, constant: -6),
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            previewLabel.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
+            previewLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            previewLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
         ])
     }
 }

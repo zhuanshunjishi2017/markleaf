@@ -21,6 +21,7 @@ final class WorkspaceContext {
 
     private var scanner: WorkspaceScanner?
     private var watcher: WorkspaceWatcher?
+    let previewCache = WorkspacePreviewCache()
 
     func load(_ path: String) {
         let fm = FileManager.default
@@ -45,7 +46,7 @@ final class WorkspaceContext {
         scanner?.cancel()
         tree = []
         onChanged?()
-        let scanner = WorkspaceScanner(root: root) { [weak self] entries in
+        let scanner = WorkspaceScanner(root: root, previewCache: previewCache) { [weak self] entries in
             self?.tree = entries
             self?.onChanged?()
         }
@@ -86,7 +87,7 @@ final class WorkspaceContext {
         guard let root else { return }
         // 存入属性保持 scanner 存活（局部变量会提前释放导致异步扫描不回调）。
         scanner?.cancel()
-        let scanner = WorkspaceScanner(root: root) { _ in }
+        let scanner = WorkspaceScanner(root: root, previewCache: previewCache) { _ in }
         self.scanner = scanner
         scanner.scanDocuments { [weak self] docs in
             guard let self else { return }

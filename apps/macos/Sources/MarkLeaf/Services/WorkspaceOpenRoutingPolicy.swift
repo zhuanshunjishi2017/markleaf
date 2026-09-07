@@ -12,3 +12,10 @@ enum WorkspaceOpenRoutingPolicy {
         return prefersNewTab ? .newTab : .currentTab
     }
 }
+
+/// Windows 1.7.2：只有原本没有工作区且侧栏收起时，显式打开工作区才自动展开侧栏并切回文件树。
+extension WorkspaceOpenRoutingPolicy {
+    static func shouldRevealSidebarOnWorkspaceOpen(hadWorkspace: Bool, sidebarWasVisible: Bool) -> Bool {
+        !hadWorkspace && !sidebarWasVisible
+    }
+}
