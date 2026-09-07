@@ -22,6 +22,14 @@ struct ExportOptions {
     var imageScale: Double = 2
     var imageFormat = "png"
     var imageJpegQuality: Double = 90
+
+    var fileExtension: String {
+        switch format {
+        case "pdf": "pdf"
+        case "image": imageFormat
+        default: "html"
+        }
+    }
 }
 
 /// 保存面板附属视图：格式/纸张/方向/边距/样式/页眉页脚（对应 Windows ExportDialog）。

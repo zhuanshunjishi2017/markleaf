@@ -67,6 +67,19 @@ enum L10n {
     // MARK: - 日本語
 
     private static let japaneseTable: [String: String] = [
+        "图像": "画像",
+        "图像设置": "画像設定",
+        "单张最大高度": "最大画像高さ",
+        "内容宽度": "コンテンツ幅",
+        "输出倍率": "出力倍率",
+        "JPEG 质量": "JPEG 品質",
+        "输出宽度 %d px · 单张最高 %d px": "出力幅 %d px · 最大高さ %d px",
+        "共 %d 张 · 宽 %d px": "%d 枚 · 幅 %d px",
+        "正在生成图像预览…": "画像プレビューを生成中…",
+        "图像导出参数无效": "画像の書き出し設定が無効です",
+        "图像导出超时": "画像の書き出しがタイムアウトしました",
+        "无法生成图像内容": "画像を生成できません",
+        "已取消图像预览": "画像プレビューをキャンセルしました",
         "HTML": "HTML",
         "PDF": "PDF",
         "偏好设置": "環境設定",
@@ -786,6 +799,19 @@ enum L10n {
     // MARK: - 繁体中文
 
     private static let zhHantTable: [String: String] = [
+        "图像": "圖像",
+        "图像设置": "圖像設定",
+        "单张最大高度": "單張最大高度",
+        "内容宽度": "內容寬度",
+        "输出倍率": "輸出倍率",
+        "JPEG 质量": "JPEG 品質",
+        "输出宽度 %d px · 单张最高 %d px": "輸出寬度 %d px · 單張最高 %d px",
+        "共 %d 张 · 宽 %d px": "共 %d 張 · 寬 %d px",
+        "正在生成图像预览…": "正在產生圖像預覽…",
+        "图像导出参数无效": "圖像匯出參數無效",
+        "图像导出超时": "圖像匯出逾時",
+        "无法生成图像内容": "無法產生圖像內容",
+        "已取消图像预览": "已取消圖像預覽",
         "HTML": "HTML",
         "PDF": "PDF",
         "偏好设置": "偏好設定",
@@ -1508,6 +1534,19 @@ enum L10n {
     // MARK: - English
 
     private static let englishTable: [String: String] = [
+        "图像": "Image",
+        "图像设置": "Image Settings",
+        "单张最大高度": "Max Height",
+        "内容宽度": "Content Width",
+        "输出倍率": "Scale",
+        "JPEG 质量": "JPEG Quality",
+        "输出宽度 %d px · 单张最高 %d px": "Output width %d px · Max height %d px",
+        "共 %d 张 · 宽 %d px": "%d images · Width %d px",
+        "正在生成图像预览…": "Generating image preview…",
+        "图像导出参数无效": "Invalid image export settings",
+        "图像导出超时": "Image export timed out",
+        "无法生成图像内容": "Unable to generate image content",
+        "已取消图像预览": "Image preview cancelled",
         "HTML": "HTML",
         "PDF": "PDF",
         "偏好设置": "Preferences",

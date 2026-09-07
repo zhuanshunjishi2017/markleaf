@@ -20,10 +20,10 @@ extension EditorSession {
         let options = exportOptions(from: SettingsService.shared.settings.exportSettings)
         let panel = NSSavePanel()
         panel.title = L10n.t("按上次设置导出")
-        panel.nameFieldStringValue = exportTitle + "." + (options.format == "pdf" ? "pdf" : "html")
+        panel.nameFieldStringValue = exportTitle + "." + options.fileExtension
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            self.runExport(options: options, saveURL: Self.fixExportExtension(url, format: options.format))
+            self.runExport(options: options, saveURL: Self.fixExportExtension(url, format: options.format, fallbackExtension: options.imageFormat))
         }
     }
 
@@ -53,6 +53,13 @@ extension EditorSession {
         options.pdfFooterAlignment = saved.footerAlignment.isEmpty
             ? PDFHeaderFooterPolicy.alignment(for: saved.footerPreset) : saved.footerAlignment
         options.headerFooterFontFamily = saved.headerFontFamily.isEmpty ? "serif" : saved.headerFontFamily
+        options.keepTablesTogether = saved.keepTablesTogether
+        options.keepHeadingsWithNextBlock = saved.keepHeadingsWithNextBlock
+        options.imageMaxHeight = saved.imageMaxHeight
+        options.imageContentWidth = saved.imageContentWidth
+        options.imageScale = saved.imageScale
+        options.imageFormat = saved.imageFormat
+        options.imageJpegQuality = saved.imageJpegQuality
         return options
     }
 
@@ -62,14 +69,14 @@ extension EditorSession {
         let colorSchemeCss = options.colorScheme.flatMap { id in
             colorThemes.first(where: { $0.id == id })?.css
         } ?? ""
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "format": options.format,
             "style": options.style,
             "header": options.format == "html" ? options.header : "",
             "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
-            "maxWidth": settings.visualMaxContentWidth,
+            "maxWidth": options.format == "image" ? options.imageContentWidth : Double(settings.visualMaxContentWidth),
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "title": exportTitle,
@@ -108,6 +115,10 @@ extension EditorSession {
 
     /// 核心导出/打印流程：请求前端生成导出 HTML，再按模式落盘或弹出打印面板。
     func runExport(options: ExportOptions, saveURL: URL, forPrint: Bool = false) {
+        guard options.format != "image" || ImageExportPolicy.isValid(options) else {
+            presentError(L10n.t("图像导出参数无效"))
+            return
+        }
         guard !isExportingOrPrinting else {
             NSSound.beep()
             statusText = L10n.t("正在打印/导出中…")
@@ -126,7 +137,7 @@ extension EditorSession {
             "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
-            "maxWidth": settings.visualMaxContentWidth,
+            "maxWidth": options.format == "image" ? options.imageContentWidth : Double(settings.visualMaxContentWidth),
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "keepTablesTogether": forPrint || options.format == "pdf" ? options.keepTablesTogether : false,

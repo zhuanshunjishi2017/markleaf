@@ -6,6 +6,7 @@ enum ExportFormatSelector {
         selector.segmentStyle = .texturedRounded
         selector.controlSize = .large
         selector.trackingMode = .selectOne
+        selector.segmentDistribution = .fillEqually
         selector.segmentCount = 3
 
         let formats = [
@@ -20,7 +21,6 @@ enum ExportFormatSelector {
                 forSegment: index
             )
             selector.setImageScaling(.scaleProportionallyDown, forSegment: index)
-            selector.setWidth(92, forSegment: index)
         }
         selector.selectedSegment = 0
         selector.identifier = NSUserInterfaceItemIdentifier("exportFormatSelector")

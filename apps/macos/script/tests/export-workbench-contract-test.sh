@@ -13,7 +13,7 @@ refuse() {
 
 require "$CONTROLLER" 'ExportFormatSelector.make()' 'export formats must use a native in-content segmented selector'
 require "$CONTROLLER" 'formatHost,' 'the compact format selector must be the first options row'
-require "$CONTROLLER" 'formatSelector.centerXAnchor.constraint(equalTo: formatHost.centerXAnchor)' 'the compact format selector must be centered in the left column'
+require "$CONTROLLER" 'formatSelector.trailingAnchor.constraint(equalTo: formatHost.trailingAnchor)' 'the selector must use available width'
 require "$CONTROLLER" 'formatChanged(_ sender: NSSegmentedControl)' 'format changes must follow the native selector'
 require "$CONTROLLER" 'labeled(L10n.t("纸张设置"), paperPopup)' 'paper settings must live in the shared label column'
 require "$CONTROLLER" 'labeled(L10n.t("方向"), directionPopup)' 'orientation must live in the shared label column'
@@ -28,7 +28,7 @@ require "$CONTROLLER" 'BoundedTextFieldMonitor(field: $0, fractionDigits: 1, upp
 require "$CONTROLLER" 'alert.beginSheetModal(for: window)' 'custom margin settings must present as a sheet'
 require "$CONTROLLER" 'previewContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor)' 'the right preview must reach the bottom edge'
 require "$CONTROLLER" 'pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12)' 'the page count label must not touch the window edge'
-require "$CONTROLLER" 'let leftStack = NSStackView(views: [optionsStack, buttonRow])' 'bottom action buttons must live in the left column'
+require "$CONTROLLER" 'leftStack.addSubview(buttonRow)' 'bottom action buttons must live in the left column'
 refuse "$CONTROLLER" 'ExportFormatToolbar.make()' 'format selection must not use a window toolbar tab controller'
 refuse "$CONTROLLER" 'formatToolbarHost' 'format selection must not use a window toolbar host'
 refuse "$CONTROLLER" 'selectedTabViewItemIndex' 'format selection must not use a window toolbar tab controller'
