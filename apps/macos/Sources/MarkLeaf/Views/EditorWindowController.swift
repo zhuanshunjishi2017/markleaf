@@ -331,8 +331,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func rebuildSuspendedTab(_ tab: DocumentTab) {
         let session = ensureEditor(for: tab)
         tab.isSuspended = false
-        if let path = tab.path {
-            session.openDocument(at: URL(fileURLWithPath: path))
+        if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
+            let selection = PendingDocumentSelection(
+                visualFrom: tab.visualSelectionFrom,
+                visualTo: tab.visualSelectionTo,
+                sourceFrom: tab.sourceSelectionFrom,
+                sourceTo: tab.sourceSelectionTo
+            )
+            session.openInitialDocument(prepared: prepared, selection: selection)
         } else {
             session.newDocument()
         }
@@ -498,6 +504,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     /// 把会话的观察回调绑定到窗口 UI（状态/大纲/视图状态），并同步到标签模型。
     private func bindSessionCallbacks(_ session: EditorSession) {
+        session.onSelectionStateChanged = { [weak self] in
+            guard let self, let windowSession = self.windowSession else { return }
+            windowSession.syncActiveTab(from: session, untitledLabel: L10n.t("未命名"))
+        }
         session.onStateChanged = { [weak self] in
             guard let self, let window = self.window else { return }
             applyWindowTitle()

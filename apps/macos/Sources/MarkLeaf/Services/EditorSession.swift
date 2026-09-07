@@ -193,6 +193,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// UI 状态变化回调（主线程）
     var onStateChanged: (() -> Void)?
+    /// 选区变化只同步轻量标签状态，不触发窗口/标签栏完整刷新。
+    var onSelectionStateChanged: (() -> Void)?
     var snapshotModePath: String?
 
     weak var webView: WKWebView?
@@ -523,14 +525,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "selectionChanged":
             guard let from = payload?["from"] as? Int, let to = payload?["to"] as? Int else { break }
-            if payload?["sourceMode"] as? Bool == true {
+            let isSourceMode = payload?["sourceMode"] as? Bool == true
+            let oldFrom = isSourceMode ? sourceSelectionFrom : visualSelectionFrom
+            let oldTo = isSourceMode ? sourceSelectionTo : visualSelectionTo
+            if oldFrom == from && oldTo == to { break }
+            if isSourceMode {
                 sourceSelectionFrom = from
                 sourceSelectionTo = to
             } else {
                 visualSelectionFrom = from
                 visualSelectionTo = to
             }
-            onStateChanged?()
+            onSelectionStateChanged?()
 
         case "dropFiles", "commandResult":
             break

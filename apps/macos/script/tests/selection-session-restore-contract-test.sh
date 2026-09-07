@@ -9,6 +9,12 @@ require_text() {
   grep -Fq "$2" "$1" || { echo "FAIL: $1 missing: $2" >&2; exit 1; }
 }
 
+require_text "$SESSION" 'var onSelectionStateChanged: (() -> Void)?'
+require_text "$SESSION" 'onSelectionStateChanged?()'
+require_text "$SESSION" 'loadDocument(
+            markdown: prepared.markdown,
+            fileURL: prepared.url,
+            visualSelectionFrom: selection?.visualFrom'
 require_text "$SESSION" 'private var pendingInitialSelection: PendingDocumentSelection?'
 require_text "$SESSION" 'func openInitialDocument(prepared: PreparedDocument, selection: PendingDocumentSelection? = nil)'
 require_text "$SESSION" 'loadPreparedDocument(prepared, selection: pendingInitialSelection)'
