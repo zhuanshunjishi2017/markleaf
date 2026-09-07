@@ -86,6 +86,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isSourceMode = false
     private(set) var isPlainText = false
     private(set) var hasSelection = false
+    private(set) var visualSelectionFrom: Int?
+    private(set) var visualSelectionTo: Int?
+    private(set) var sourceSelectionFrom: Int?
+    private(set) var sourceSelectionTo: Int?
     private(set) var mathInline = false
     private(set) var mathBlock = false
     private(set) var mathLatex: String?
@@ -503,7 +507,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 onFindResult?(current, total)
             }
 
-        case "dropFiles", "commandResult", "selectionChanged":
+        case "selectionChanged":
+            guard let from = payload?["from"] as? Int, let to = payload?["to"] as? Int else { break }
+            if payload?["sourceMode"] as? Bool == true {
+                sourceSelectionFrom = from
+                sourceSelectionTo = to
+            } else {
+                visualSelectionFrom = from
+                visualSelectionTo = to
+            }
+            onStateChanged?()
+
+        case "dropFiles", "commandResult":
             break
 
         default:
@@ -723,7 +738,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         readOnly: Bool = false,
         encoding: String? = nil,
         documentKind: NewDocumentKind? = nil,
-        initialDirty: Bool = false
+        initialDirty: Bool = false,
+        visualSelectionFrom: Int? = nil,
+        visualSelectionTo: Int? = nil,
+        sourceSelectionFrom: Int? = nil,
+        sourceSelectionTo: Int? = nil
     ) {
         // 替换文档时清理上一个文档的快照
         RecoveryService.shared.delete(documentId: documentId)
@@ -745,6 +764,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 : DocumentEncodingPolicy.utf8.rawValue)
         ).rawValue
         documentStatistics = DocumentStatistics()
+        self.visualSelectionFrom = visualSelectionFrom
+        self.visualSelectionTo = visualSelectionTo
+        self.sourceSelectionFrom = sourceSelectionFrom
+        self.sourceSelectionTo = sourceSelectionTo
         statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
         if readOnly {
             stopExternalChangeWatch()
@@ -762,6 +785,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             "documentType": newDocumentKind.editorDocumentType,
             "readOnly": readOnly,
             "initialDirty": initialDirty,
+            "visualSelection": visualSelectionFrom.map { ["from": $0, "to": visualSelectionTo ?? $0] },
+            "sourceSelection": sourceSelectionFrom.map { ["from": $0, "to": sourceSelectionTo ?? $0] },
         ])
     }
 

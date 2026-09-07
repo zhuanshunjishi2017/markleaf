@@ -84,6 +84,10 @@ final class WindowSession {
             revision: session.currentRevision,
             encoding: session.documentEncoding,
             newLine: session.documentNewLine,
+            visualSelectionFrom: session.visualSelectionFrom,
+            visualSelectionTo: session.visualSelectionTo,
+            sourceSelectionFrom: session.sourceSelectionFrom,
+            sourceSelectionTo: session.sourceSelectionTo,
             untitledLabel: untitledLabel
         )
     }

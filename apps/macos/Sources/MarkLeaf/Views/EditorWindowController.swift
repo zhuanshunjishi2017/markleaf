@@ -179,6 +179,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                         revision: session.currentRevision,
                         encoding: session.documentEncoding,
                         newLine: session.documentNewLine,
+                        visualSelectionFrom: session.visualSelectionFrom,
+                        visualSelectionTo: session.visualSelectionTo,
+                        sourceSelectionFrom: session.sourceSelectionFrom,
+                        sourceSelectionTo: session.sourceSelectionTo,
                         untitledLabel: L10n.t("未命名")
                     )
                 }
@@ -193,7 +197,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
         let session = ensureEditor(for: tab)
         if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
-            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty)
+            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo)
         } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
             session.openInitialDocument(prepared: prepared)
         } else {

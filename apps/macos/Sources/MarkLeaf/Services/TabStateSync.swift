@@ -9,12 +9,20 @@ enum TabStateSync {
         revision: Int64,
         encoding: String,
         newLine: String,
+        visualSelectionFrom: Int? = nil,
+        visualSelectionTo: Int? = nil,
+        sourceSelectionFrom: Int? = nil,
+        sourceSelectionTo: Int? = nil,
         untitledLabel: String
     ) {
         tab.isDirty = isDirty
         tab.contentRevision = revision
         tab.encoding = encoding
         tab.newLine = newLine
+        tab.visualSelectionFrom = visualSelectionFrom
+        tab.visualSelectionTo = visualSelectionTo
+        tab.sourceSelectionFrom = sourceSelectionFrom
+        tab.sourceSelectionTo = sourceSelectionTo
         if let fileName {
             tab.path = fileName
             tab.fileIdentity = FileIdentityPolicy.identity(forPath: fileName)

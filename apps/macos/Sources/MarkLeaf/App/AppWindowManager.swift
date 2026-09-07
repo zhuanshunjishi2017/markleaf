@@ -172,7 +172,7 @@ final class AppWindowManager {
         let windows = windowControllers.compactMap { controller -> SessionWindowRecord? in
             guard let session = windowSessions[controller] else { return nil }
             let tabs = session.tabStore.tabs.map { tab in
-                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, scrollTop: tab.scrollTop, snapshotFileName: tab.snapshotFileName)
+                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo, scrollTop: tab.scrollTop, snapshotFileName: tab.snapshotFileName)
             }
             let frame = controller.window?.frame
             return SessionWindowRecord(windowID: session.windowID, frameX: frame.map { Double($0.origin.x) }, frameY: frame.map { Double($0.origin.y) }, frameWidth: frame.map { Double($0.size.width) }, frameHeight: frame.map { Double($0.size.height) }, workspacePath: session.workspace.root, sidebarVisible: controller.session.sidebarVisible, sidebarTab: controller.session.sidebarTabIndex == 1 ? "outline" : "workspace", sidebarWidth: SettingsService.shared.settings.workspaceWidth, outlineDetached: controller.session.outlineDetached, outlineWidth: SettingsService.shared.settings.outlineWidth, statusBarVisible: controller.session.statusBarVisible, tabOrder: tabs.map(\.tabID), activeTabID: session.tabStore.activeTabID?.rawValue, tabs: tabs)
@@ -233,6 +233,8 @@ final class AppWindowManager {
                 tab.isDirty = item.isDirty; tab.contentRevision = item.revision
                 tab.fingerprintModificationSeconds = item.fingerprintModificationSeconds; tab.fingerprintSize = item.fingerprintSize
                 tab.cursorPosition = item.cursorPosition; tab.selectionAnchor = item.selectionAnchor; tab.selectionHead = item.selectionHead
+                tab.visualSelectionFrom = item.visualSelectionFrom; tab.visualSelectionTo = item.visualSelectionTo
+                tab.sourceSelectionFrom = item.sourceSelectionFrom; tab.sourceSelectionTo = item.sourceSelectionTo
                 tab.scrollTop = item.scrollTop; tab.snapshotFileName = item.snapshotFileName
                 windowSession.tabStore.append(tab, activate: false)
             }

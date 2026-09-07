@@ -24,6 +24,10 @@ final class DocumentTab {
     var cursorPosition: Int?
     var selectionAnchor: Int?
     var selectionHead: Int?
+    var visualSelectionFrom: Int?
+    var visualSelectionTo: Int?
+    var sourceSelectionFrom: Int?
+    var sourceSelectionTo: Int?
     var scrollTop: Double?
     var snapshotFileName: String?
     var lastActivatedAt = Date()

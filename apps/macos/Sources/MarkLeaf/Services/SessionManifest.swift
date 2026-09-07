@@ -14,6 +14,10 @@ struct SessionTabRecord: Codable, Equatable {
     var cursorPosition: Int?
     var selectionAnchor: Int?
     var selectionHead: Int?
+    var visualSelectionFrom: Int? = nil
+    var visualSelectionTo: Int? = nil
+    var sourceSelectionFrom: Int? = nil
+    var sourceSelectionTo: Int? = nil
     var scrollTop: Double?
     var snapshotFileName: String?
 }
