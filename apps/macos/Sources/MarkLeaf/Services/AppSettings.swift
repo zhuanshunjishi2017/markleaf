@@ -110,6 +110,13 @@ struct AppSettings: Codable {
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         visualCjkAutoSpacing = try container.decodeIfPresent(Bool.self, forKey: .visualCjkAutoSpacing) ?? true
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
+        exitBlockOnEmptyEnter = try container.decodeIfPresent(Bool.self, forKey: .exitBlockOnEmptyEnter) ?? false
+        useShiftEnterHardBreak = try container.decodeIfPresent(Bool.self, forKey: .useShiftEnterHardBreak) ?? true
+        escapeLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeLiteralSymbols) ?? false
+        escapeMarkdownLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeMarkdownLiteralSymbols) ?? true
+        markdownCodeFence = try container.decodeIfPresent(String.self, forKey: .markdownCodeFence) ?? "backtick"
+        markdownEmphasisMarker = try container.decodeIfPresent(String.self, forKey: .markdownEmphasisMarker) ?? "asterisk"
+        markdownBulletMarker = try container.decodeIfPresent(String.self, forKey: .markdownBulletMarker) ?? "dash"
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
         showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? false
         suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false

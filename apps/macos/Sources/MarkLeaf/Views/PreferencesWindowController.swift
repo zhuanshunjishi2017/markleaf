@@ -58,6 +58,12 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var sourceFontField: FontField!
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
+    private let exitBlockOnEmptyEnterCheck = NSButton(checkboxWithTitle: L10n.t("空行回车退出块"), target: nil, action: nil)
+    private let useShiftEnterHardBreakCheck = NSButton(checkboxWithTitle: L10n.t("Shift+Enter 插入硬换行"), target: nil, action: nil)
+    private let escapeLiteralSymbolsCheck = NSButton(checkboxWithTitle: L10n.t("转义文本中的 Markdown 符号"), target: nil, action: nil)
+    private let markdownCodeFencePopup = NSPopUpButton()
+    private let markdownEmphasisMarkerPopup = NSPopUpButton()
+    private let markdownBulletMarkerPopup = NSPopUpButton()
     private var cjkLanguageTag: CJKLanguageTag
     private let visualCjkAutoSpacingCheck = NSButton(checkboxWithTitle: L10n.t("中西文与数字之间自动添加空格"), target: nil, action: nil)
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
@@ -157,6 +163,15 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
+        exitBlockOnEmptyEnterCheck.state = settings.exitBlockOnEmptyEnter ? .on : .off
+        useShiftEnterHardBreakCheck.state = settings.useShiftEnterHardBreak ? .on : .off
+        escapeLiteralSymbolsCheck.state = settings.escapeLiteralSymbols ? .on : .off
+        markdownCodeFencePopup.addItems(withTitles: [L10n.t("反引号 `"), L10n.t("波浪号 ~")])
+        markdownCodeFencePopup.selectItem(at: settings.markdownCodeFence == "tilde" ? 1 : 0)
+        markdownEmphasisMarkerPopup.addItems(withTitles: [L10n.t("星号 *"), L10n.t("下划线 _")])
+        markdownEmphasisMarkerPopup.selectItem(at: settings.markdownEmphasisMarker == "underscore" ? 1 : 0)
+        markdownBulletMarkerPopup.addItems(withTitles: [L10n.t("短横线 -"), L10n.t("星号 *"), L10n.t("加号 +")])
+        markdownBulletMarkerPopup.selectItem(at: ["dash", "asterisk", "plus"].firstIndex(of: settings.markdownBulletMarker) ?? 0)
         visualCjkAutoSpacingCheck.state = settings.visualCjkAutoSpacing ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
@@ -516,6 +531,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .header(L10n.t("源码模式")),
             .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
+            .header(L10n.t("Markdown 行为")),
+            .field("", escapeLiteralSymbolsCheck),
+            .field("", exitBlockOnEmptyEnterCheck),
+            .field("", useShiftEnterHardBreakCheck),
+            .field(L10n.t("代码围栏"), markdownCodeFencePopup),
+            .field(L10n.t("强调标记"), markdownEmphasisMarkerPopup),
+            .field(L10n.t("列表标记"), markdownBulletMarkerPopup),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
@@ -639,6 +661,14 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.cjkLanguageTag = cjkLanguageTag
         settings.visualCjkAutoSpacing = visualCjkAutoSpacingCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
+        settings.exitBlockOnEmptyEnter = exitBlockOnEmptyEnterCheck.state == .on
+        settings.useShiftEnterHardBreak = useShiftEnterHardBreakCheck.state == .on
+        settings.escapeLiteralSymbols = escapeLiteralSymbolsCheck.state == .on
+        settings.markdownCodeFence = markdownCodeFencePopup.indexOfSelectedItem == 1 ? "tilde" : "backtick"
+        settings.markdownEmphasisMarker = markdownEmphasisMarkerPopup.indexOfSelectedItem == 1 ? "underscore" : "asterisk"
+        settings.markdownBulletMarker = ["dash", "asterisk", "plus"][
+            max(0, min(2, markdownBulletMarkerPopup.indexOfSelectedItem))
+        ]
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 
         if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {

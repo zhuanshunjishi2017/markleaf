@@ -47,6 +47,24 @@ expect(roundTrip.showCodeHighlight, "an explicit true value should survive an en
 expect(!roundTrip.visualCjkAutoSpacing, "an explicit CJK auto spacing value should survive round trip")
 expect(roundTrip.visualFontSize == 19, "round-tripping code highlighting must not alter unrelated settings")
 
+var editing = legacy
+editing.exitBlockOnEmptyEnter = true
+editing.useShiftEnterHardBreak = false
+editing.escapeLiteralSymbols = true
+editing.escapeMarkdownLiteralSymbols = false
+editing.markdownCodeFence = "tilde"
+editing.markdownEmphasisMarker = "underscore"
+editing.markdownBulletMarker = "plus"
+let editingEncoded = try JSONEncoder().encode(editing)
+let editingRoundTrip = try decoder.decode(AppSettings.self, from: editingEncoded)
+expect(editingRoundTrip.exitBlockOnEmptyEnter, "exit-block setting should survive persistence")
+expect(!editingRoundTrip.useShiftEnterHardBreak, "Shift+Enter behavior should survive persistence")
+expect(editingRoundTrip.escapeLiteralSymbols, "literal symbol escaping should survive persistence")
+expect(!editingRoundTrip.escapeMarkdownLiteralSymbols, "Markdown literal escaping should survive persistence")
+expect(editingRoundTrip.markdownCodeFence == "tilde", "code fence preference should survive persistence")
+expect(editingRoundTrip.markdownEmphasisMarker == "underscore", "emphasis preference should survive persistence")
+expect(editingRoundTrip.markdownBulletMarker == "plus", "bullet preference should survive persistence")
+
 let explicitFalse = try decoder.decode(AppSettings.self, from: Data(#"{"showCodeHighlight":false}"#.utf8))
 expect(!explicitFalse.showCodeHighlight, "an explicit false value should remain false")
 
