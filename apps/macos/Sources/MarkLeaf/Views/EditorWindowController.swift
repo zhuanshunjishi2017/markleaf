@@ -68,6 +68,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         tabBar.onActivate = { [weak self] id in self?.activateTab(id, animated: true) }
         tabBar.onClose = { [weak self] id in self?.closeTab(id, reason: .closeTab) }
         tabBar.onNewTab = { [weak self] in self?.newUntitledTab() }
+        tabBar.statusProvider = { [weak self] id in
+            guard let self,
+                  let session = self.windowSession?.session(for: id) else {
+                return (false, false)
+            }
+            return (session.isReadOnly, session.hasPendingExternalChange)
+        }
         tabBar.onContextAction = { [weak self] action, id in
             self?.handleTabContextAction(action, for: id)
         }

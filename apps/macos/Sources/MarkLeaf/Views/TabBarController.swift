@@ -19,6 +19,7 @@ final class TabBarController: NSView {
     var onNewTab: (() -> Void)?
     var onContextAction: ((TabContextAction, DocumentTabID) -> Void)?
     var onReorder: ((Int, Int) -> Void)?
+    var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
 
     private let stack = NSStackView()
     private let newTabButton = NSButton()
@@ -252,10 +253,13 @@ final class TabBarController: NSView {
         let duration = tab.recoveryUnavailable
             ? TabAnimationPolicy.duration(for: .statusMark, reduceMotion: reduceMotion)
             : TabAnimationPolicy.duration(for: .activeState, reduceMotion: reduceMotion)
+        let status = statusProvider?(tab.tabID) ?? (isReadOnly: false, hasExternalChange: false)
         cell.configure(
             title: tab.title,
             isActive: isActive,
             isDirty: tab.isDirty,
+            isReadOnly: status.isReadOnly,
+            hasExternalChange: status.hasExternalChange,
             isSuspended: tab.isSuspended,
             recoveryUnavailable: tab.recoveryUnavailable,
             toolTip: [tab.path ?? tab.title, tab.lastError].compactMap { $0 }.joined(separator: "\n"),
@@ -471,6 +475,7 @@ final class TabCellView: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let dirtyDot = NSView()
+    private let statusLabel = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
     private var isActive = false
     private var downPoint: NSPoint?
@@ -493,6 +498,11 @@ final class TabCellView: NSView {
         dirtyDot.translatesAutoresizingMaskIntoConstraints = false
         dirtyDot.isHidden = true
 
+        statusLabel.font = .systemFont(ofSize: 10)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.isHidden = true
+
         closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
         closeButton.bezelStyle = .inline
         closeButton.isBordered = false
@@ -505,6 +515,7 @@ final class TabCellView: NSView {
 
         addSubview(titleLabel)
         addSubview(dirtyDot)
+        addSubview(statusLabel)
         addSubview(closeButton)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 24),
@@ -515,7 +526,9 @@ final class TabCellView: NSView {
             dirtyDot.widthAnchor.constraint(equalToConstant: 6),
             dirtyDot.heightAnchor.constraint(equalToConstant: 6),
             dirtyDot.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dirtyDot.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -6),
+            dirtyDot.trailingAnchor.constraint(equalTo: statusLabel.leadingAnchor, constant: -4),
+            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            statusLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
 
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -620,6 +633,8 @@ final class TabCellView: NSView {
         title: String,
         isActive: Bool,
         isDirty: Bool,
+        isReadOnly: Bool,
+        hasExternalChange: Bool,
         isSuspended: Bool,
         recoveryUnavailable: Bool,
         toolTip: String,
@@ -630,9 +645,15 @@ final class TabCellView: NSView {
         titleLabel.stringValue = recoveryUnavailable ? "\(title) ⚠︎" : title
         self.toolTip = toolTip
         dirtyDot.isHidden = !isDirty
+        let statusText = isReadOnly ? L10n.t("只读") : (hasExternalChange ? L10n.t("外部") : "")
+        statusLabel.stringValue = statusText
+        statusLabel.isHidden = statusText.isEmpty
+        statusLabel.textColor = hasExternalChange ? .systemOrange : .secondaryLabelColor
         setAccessibilityLabel(
             accessibilityTitle
             + (isDirty ? "，" + L10n.t("已修改") : "")
+            + (isReadOnly ? "，" + L10n.t("只读") : "")
+            + (hasExternalChange ? "，" + L10n.t("外部") : "")
             + (isSuspended ? "，" + L10n.t("已暂停") : "")
             + (recoveryUnavailable ? "，" + L10n.t("恢复保护不可用") : "")
         )

@@ -6,6 +6,8 @@ enum TabStateSync {
         tab: DocumentTab,
         fileName: String?,
         isDirty: Bool,
+        isReadOnly: Bool = false,
+        hasPendingExternalChange: Bool = false,
         revision: Int64,
         encoding: String,
         newLine: String,
@@ -16,6 +18,8 @@ enum TabStateSync {
         untitledLabel: String
     ) {
         tab.isDirty = isDirty
+        tab.isReadOnly = isReadOnly
+        tab.hasPendingExternalChange = hasPendingExternalChange
         tab.contentRevision = revision
         tab.encoding = encoding
         tab.newLine = newLine

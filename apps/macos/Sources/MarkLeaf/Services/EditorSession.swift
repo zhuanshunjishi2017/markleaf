@@ -247,6 +247,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var useStartupAction = false
     private let documentDisposition = DocumentDispositionCoordinator()
     private(set) var isReady = false
+    /// 外部修改提示被用户忽略后保留标记，直到重新加载或自写完成。
+    private(set) var hasPendingExternalChange = false {
+        didSet {
+            guard oldValue != hasPendingExternalChange else { return }
+            notify()
+        }
+    }
 
     var windowTitle: String {
         DocumentWindowTitle.format(
@@ -777,6 +784,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         documentId = UUID().uuidString.lowercased()
         revision = 0
         isDirty = false
+        hasPendingExternalChange = false
         documentURL = fileURL
         isReadOnly = readOnly
         newDocumentKind = fileURL.map { NewDocumentKind.from(fileExtension: $0.pathExtension) }
@@ -1093,6 +1101,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         switch TabExternalChangePolicy.action(isDirty: isDirty, fileExists: fileExists, fingerprintChanged: fingerprintChanged) {
         case .ignore:
             return
+        case .keepPending, .showMissing, .reloadPreservingPosition, .presentConflict:
+            hasPendingExternalChange = true
+        }
+        switch TabExternalChangePolicy.action(isDirty: isDirty, fileExists: fileExists, fingerprintChanged: fingerprintChanged) {
+        case .ignore:
+            return
         case .keepPending:
             statusText = L10n.t("文件已被外部删除，当前内容未保存")
             return
@@ -1130,6 +1144,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 }
             } else {
                 try? self.externalChangeTracker.acceptCurrentVersion(at: url)
+                self.hasPendingExternalChange = false
             }
         }
     }

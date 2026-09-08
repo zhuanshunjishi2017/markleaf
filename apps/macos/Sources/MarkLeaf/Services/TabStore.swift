@@ -16,6 +16,8 @@ final class DocumentTab {
     var title: String
     var untitledSequence: Int?
     var isDirty = false
+    var isReadOnly = false
+    var hasPendingExternalChange = false
     var contentRevision: Int64 = 0
     var encoding: String
     var newLine: String
