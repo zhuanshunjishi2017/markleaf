@@ -104,14 +104,14 @@ internal static partial class ColorThemeService
         }
     }
 
-    public static string DefaultLightThemeId { get; set; } = "white-only";
+    public static string DefaultLightThemeId { get; set; } = "default-light";
 
     public static string DefaultDarkThemeId { get; set; } = "dark";
 
     public static string GetDefaultLightThemeId()
     {
         return TryGetTheme(DefaultLightThemeId) is not null ? DefaultLightThemeId
-            : TryGetTheme("white-only") is not null ? "white-only" : "white";
+            : TryGetTheme("default-light") is not null ? "default-light" : "white";
     }
 
     public static string GetDefaultDarkThemeId()

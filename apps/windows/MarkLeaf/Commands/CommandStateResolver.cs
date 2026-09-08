@@ -21,6 +21,9 @@ public static class CommandStateResolver
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
                 or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow or AppCommand.InstallOptionalFonts
+                or AppCommand.ShowColorThemes
+                or AppCommand.ShowTypographyStyles
+                or AppCommand.ShowThemeSettings
                 or AppCommand.RecoverUnsavedFiles
                 or AppCommand.FollowSystemColorMode => new(true),
             AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
@@ -89,8 +92,10 @@ public static class CommandStateResolver
             AppCommand.ToggleQuote => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable, context.QuoteActive),
             AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable, context.CodeBlockActive),
             AppCommand.DeclareCodeLanguage => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.CodeBlockActive),
-            AppCommand.CopyCodeBlock => new(
-                context.EditorReady && !string.IsNullOrEmpty(context.CodeBlockText)),
+            // Keep this command enabled at all times. The context menu is only
+            // offered from code-like blocks, and the command itself safely
+            // copies an empty string when no block text is available.
+            AppCommand.CopyCodeBlock => new(true),
             AppCommand.ExitCode => new(
                 context.EditorReady && !context.ReadOnly && !context.SourceMode
                 && (context.CodeBlockActive || context.FrontMatterActive)),
@@ -175,7 +180,7 @@ public static class CommandStateResolver
             or AppCommand.SetMathNumber or AppCommand.EditMermaid
             or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid
             or AppCommand.RerenderAllMermaid or AppCommand.DeclareCodeLanguage
-            or AppCommand.CopyCodeBlock or AppCommand.ExitCode
+            or AppCommand.ExitCode
             or AppCommand.ChangeImage or AppCommand.SaveImageAs
             or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
             or AppCommand.ResizeImage75 or AppCommand.ResizeImage90;

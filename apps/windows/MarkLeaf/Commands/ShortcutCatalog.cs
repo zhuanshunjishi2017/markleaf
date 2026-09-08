@@ -67,6 +67,7 @@ public static class ShortcutCatalog
         new(AppCommand.PromoteHeading, "shortcut.promoteHeading", Keys.Control | Keys.OemPeriod),
         new(AppCommand.DemoteHeading, "shortcut.demoteHeading", Keys.Control | Keys.Oemcomma),
         new(AppCommand.ToggleFocusMode, "shortcut.toggleFocusMode", Keys.Shift | Keys.F11),
+        new(AppCommand.ShowThemeSettings, "shortcut.themeSettings", Keys.Shift | Keys.Alt | Keys.T),
         new(AppCommand.ToggleEditorFullScreen, "shortcut.toggleEditorFullScreen", Keys.F11),
         new(AppCommand.SwitchDocumentTab1, "shortcut.switchDocumentTab1", Keys.Alt | Keys.D1),
         new(AppCommand.SwitchDocumentTab2, "shortcut.switchDocumentTab2", Keys.Alt | Keys.D2),

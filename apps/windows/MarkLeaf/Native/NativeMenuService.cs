@@ -846,15 +846,12 @@ internal sealed class NativeMenuService : IDisposable
         var menu = CreateMenu(true);
         try
         {
-            AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
-            AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
-            AppendSeparator(menu);
             AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
             AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
             AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-            return (menu, [AppCommand.Undo, AppCommand.Redo, AppCommand.Copy, AppCommand.Paste, AppCommand.Cut, AppCommand.SelectAll]);
+            return (menu, [AppCommand.Copy, AppCommand.Paste, AppCommand.Cut, AppCommand.SelectAll]);
         }
         catch
         {
@@ -1327,12 +1324,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.ToggleEditorTypewriterMode, Loc.Get("menu.view.editorTypewriterMode"));
             AppendSeparator(menu);
             _zoomMenu = CreateMenu(true);
-            _styleMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.view.style"), _styleMenu);
-            RefreshStyleMenu();
-            _colorMenu = CreateMenu(true);
-            AppendPopup(menu, Loc.Get("menu.view.colorTheme"), _colorMenu);
-            RefreshColorMenu();
+            AppendMainMenuCommand(menu, AppCommand.ShowThemeSettings, Loc.Get("menu.view.theme"));
             AppendSeparator(menu);
             AppendPopup(menu, Loc.Get("menu.view.zoom"), _zoomMenu);
             RefreshZoomMenu();

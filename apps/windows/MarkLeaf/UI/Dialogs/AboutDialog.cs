@@ -35,7 +35,7 @@ internal sealed class AboutDialog : Form
     public AboutDialog()
     {
         Text = Loc.Get("dialog.aboutTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;

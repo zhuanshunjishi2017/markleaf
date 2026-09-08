@@ -26,6 +26,8 @@ import {
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
+  pasteMarkdownText,
+  shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
   scrollToFootnoteDefinition,
   setBlockHighlight,
@@ -117,6 +119,7 @@ let autoConvertUnsafeEmphasis = true
 
 const editorCreationOptions = {
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
+  handlePaste: handleVisualEditorPaste,
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
 const formatPainter = new FormatPainterController()
@@ -1534,12 +1537,18 @@ editorMount.addEventListener('drop', (event) => {
   }
 })
 
-editorMount.addEventListener('paste', (event) => {
-  if (Array.from(event.clipboardData?.items ?? []).some((item) => item.type.startsWith('image/'))) {
-    event.preventDefault()
+function handleVisualEditorPaste(event: ClipboardEvent): boolean {
+  const clipboard = event.clipboardData
+  if (Array.from(clipboard?.items ?? []).some((item) => item.type.startsWith('image/'))) {
     send('pasteImage', {})
+    return true
   }
-})
+  if (readOnly || sourceMode || !clipboard) return false
+  const plainText = clipboard.getData('text/plain')
+  const html = clipboard.getData('text/html')
+  if (!shouldParsePastedTextAsMarkdown(editor, plainText, html)) return false
+  return pasteMarkdownText(editor, plainText)
+}
 
 async function handleMessage(value: unknown): Promise<void> {
   if (!isHostMessage(value)) {
@@ -1728,6 +1737,7 @@ async function handleMessage(value: unknown): Promise<void> {
       const payload = message.payload as {
         command?: unknown
         text?: unknown
+        html?: unknown
         clientX?: unknown
         clientY?: unknown
         applyToCurrentTextBlockWhenEmpty?: unknown
@@ -1944,6 +1954,7 @@ async function handleMessage(value: unknown): Promise<void> {
           ? { left: payload.clientX, top: payload.clientY }
           : undefined
         const commandText = typeof payload.text === 'string' ? payload.text : undefined
+        const commandHtml = typeof payload.html === 'string' ? payload.html : undefined
         if (!sourceMode
           && (payload.command === 'indentListItem' || payload.command === 'outdentListItem')) {
           restoreVisualSelection(editor, lastVisualSelection)
@@ -1962,13 +1973,21 @@ async function handleMessage(value: unknown): Promise<void> {
             : payload.command === 'selectAll'
                 ? sourceEditor?.selectAll() ?? false
                 : false
-          : executeEditorCommand(
-            editor,
-            payload.command,
-            commandText,
-            coordinates,
-            payload.applyToCurrentTextBlockWhenEmpty === true,
-          )
+          : payload.command === 'pasteMarkdown' && commandText !== undefined
+            ? pasteMarkdownText(editor, commandText)
+            : payload.command === 'pasteClipboard' && commandText !== undefined
+              ? shouldParsePastedTextAsMarkdown(editor, commandText, commandHtml ?? '')
+                ? pasteMarkdownText(editor, commandText)
+                : commandHtml !== undefined
+                  ? editor.view.pasteHTML(commandHtml)
+                  : editor.view.pasteText(commandText)
+              : executeEditorCommand(
+                editor,
+                payload.command,
+                commandText,
+                coordinates,
+                payload.applyToCurrentTextBlockWhenEmpty === true,
+              )
         if (message.requestId) {
           send('commandResult', { success }, message.requestId)
         }

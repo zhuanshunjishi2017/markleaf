@@ -9,7 +9,7 @@ internal sealed class TextInputDialog : Form
     public TextInputDialog(string title, string prompt, string initialValue = "")
     {
         Text = title;
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

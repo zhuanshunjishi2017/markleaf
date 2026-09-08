@@ -25,7 +25,7 @@ internal sealed class ExportDialog : Form
         Dock = DockStyle.Fill,
         AutoScroll = true,
         Margin = Padding.Empty,
-        BackColor = SystemColors.ControlLightLight,
+        BackColor = DialogColors.Primary,
     };
 
     private readonly ComboBox _pageSize = new()
@@ -219,7 +219,7 @@ internal sealed class ExportDialog : Form
         _generateHtmlAsync = generateHtmlAsync;
         var initialStyleIndex = Math.Max(0, IndexOfStyle(currentStyle));
         Text = Loc.Format("export.title", documentFileName);
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Primary;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterParent;
@@ -281,7 +281,7 @@ internal sealed class ExportDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Anchor = AnchorStyles.Right,
             Margin = new Padding(this.ScaleForDpi(23), this.ScaleForDpi(11), this.ScaleForDpi(23), 0),
-            BackColor = SystemColors.ControlLightLight,
+            BackColor = DialogColors.Primary,
         };
         buttons.Controls.Add(_cancelButton);
         buttons.Controls.Add(_exportButton);
@@ -292,7 +292,7 @@ internal sealed class ExportDialog : Form
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
             Padding = new Padding(0, 0, 0, this.ScaleForDpi(23)),
-            BackColor = SystemColors.ControlLightLight,
+            BackColor = DialogColors.Primary,
             ColumnCount = 2,
             RowCount = 3,
         };
@@ -322,7 +322,7 @@ internal sealed class ExportDialog : Form
             ColumnCount = 2,
             RowCount = 1,
             Padding = Padding.Empty,
-            BackColor = SystemColors.ControlLightLight,
+            BackColor = DialogColors.Primary,
         };
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(300)));
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));

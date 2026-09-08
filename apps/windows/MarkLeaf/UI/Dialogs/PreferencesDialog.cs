@@ -33,7 +33,7 @@ internal sealed class PreferencesDialog : Form
         Dock = DockStyle.Fill,
         AutoScroll = true,
         Margin = Padding.Empty,
-        BackColor = SystemColors.ControlLightLight,
+        BackColor = DialogColors.Primary,
     };
     private Control[] _tabContents = [];
 
@@ -332,7 +332,7 @@ internal sealed class PreferencesDialog : Form
         ApplyDpiSizes();
 
         Text = Loc.Get("prefs.title");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Primary;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
@@ -416,7 +416,7 @@ internal sealed class PreferencesDialog : Form
                 this.ScaleForDpi(5),
                 this.ScaleForDpi(18),
                 this.ScaleForDpi(21)),
-            BackColor = SystemColors.ControlLightLight,
+            BackColor = DialogColors.Primary,
         };
         buttons.Controls.Add(_cancelButton);
         buttons.Controls.Add(_okButton);
@@ -424,7 +424,7 @@ internal sealed class PreferencesDialog : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = SystemColors.ControlLightLight,
+            BackColor = DialogColors.Primary,
             ColumnCount = 1,
             RowCount = 3,
         };

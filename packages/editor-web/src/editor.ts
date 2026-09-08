@@ -2341,7 +2341,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['ℜ', '\\Re'], ['ℑ', '\\Im'], ['⊥', '\\perp'], ['⊤', '\\top'],
       ['∞', '\\infty'], ['∂', '\\partial'], ['∇', '\\nabla'],
       ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
-      ['ℵ', '\\aleph'],
+      ['ℵ', '\\aleph'], ['ℵ', '\\hbar'],
       ['∅', '\\emptyset'], ['∖', '\\setminus'], ['△', '\\triangle'],
       ['◇', '\\diamond'], ['∠', '\\angle'], ['⌞', '\\lrcorner'],
       ['⌝', '\\urcorner'], ['⌟', '\\llcorner'], ['⌜', '\\ulcorner'],
@@ -2364,8 +2364,8 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['x̃', '\\tilde{x}'], ['a/b', '\\frac{a}{b}'], ['√x', '\\sqrt{x}'],
       ['ⁿ√x', '\\sqrt[n]{x}'],
       ['(x)', '\\left(x\\right)'], ['[x]', '\\left[x\\right]'],
-      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],
-      ['∫', '\\int_{a}^{b}'], ['∫∫', '\\iint'], ['∫∫∫', '\\iiint'],
+      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],['|x|', '\\langle x \\rangle'],
+      ['∫', '\\int_{a}^{b}'],['∫', '\\int_{-\\infty}^{+\\infty}'], ['∫∫', '\\iint'], ['∫∫∫', '\\iiint'],
       ['∮', '\\oint'], ['∯', '\\oiint'], ['∰', '\\oiiint'],
       ['∏', '\\prod_{a}^{b}'], ['∑', '\\sum_{a}^{b}'], ['lim', '\\lim_{a\\to b}'],
       ['x', '\\vec{}'], ['AB', '\\overrightarrow{}'],
@@ -2378,6 +2378,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       { preview: 'e', latex: '\\mathrm{e}' },
       { preview: 'i', latex: '\\mathrm{i}' },
       { preview: 'dx', latex: '\\,\\mathrm{d}x' },
+      { preview: '\\mathrm{e}^{\\mathrm{i}x}', previewLatex: '\\mathrm{e}^{\\mathrm{i}x}', latex: '\\mathrm{e}^{\\mathrm{i}}', wrap: { before: '\\mathrm{e}^{\\mathrm{i}', after: '}',caretOffset: '\\mathrm{e}^{\\mathrm{i}'.length } },
       { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: '黑板体', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
       { preview: 'C', latex: '\\mathbb{C}' },
       { preview: 'N', latex: '\\mathbb{N}' },
@@ -2405,19 +2406,22 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: '对齐环境', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
       { preview: 'cases', previewLatex: '\\begin{cases}a\\\\b\\end{cases}', latex: '\\begin{cases}\n  \n\\end{cases}', wrap: { before: '\\begin{cases}\n  ', after: '\n\\end{cases}', caretOffset: '\\begin{cases}\n  '.length } },
       { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: '包裹结构', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
+      { preview: 'overbrace', previewLatex: '\\overbrace{\\cdots}^{\\cdots}', latex: '\\overbrace{}^{}',  wrap: { before: '\\overbrace{', after: '}^{}', caretOffset: '\\overbrace{'.length } },
+      { preview: 'underbrace', previewLatex: '\\underbrace{\\cdots}_{\\cdots}', latex: '\\underbrace{}_{}',  wrap: { before: '\\underbrace{', after: '}_{}', caretOffset: '\\underbrace{'.length } },
       { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: '矩阵与行列式', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
       { preview: '[ ]', previewLatex: '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', latex: '\\begin{bmatrix}\n  \n\\end{bmatrix}', wrap: { before: '\\begin{bmatrix}\n  ', after: '\n\\end{bmatrix}', caretOffset: '\\begin{bmatrix}\n  '.length } },
       { preview: '| |', previewLatex: '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', latex: '\\begin{vmatrix}\n  \n\\end{vmatrix}', wrap: { before: '\\begin{vmatrix}\n  ', after: '\n\\end{vmatrix}', caretOffset: '\\begin{vmatrix}\n  '.length } },
-      { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },
+      { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },  
+    
     ],
   },
   {
-    label: '箭头',
+    label: '箭头与点号',
     symbols: [
       ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
       ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
       ['↑', '\\uparrow'], ['↓', '\\downarrow'], ['⇑', '\\Uparrow'],
-      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'],
+      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'], ['⇕', '\\cdots'], ['⇕', '\\vdots'], ['⇕', '\\ddots'], ['⇕', '\\cdot'],
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
 ]
@@ -2659,6 +2663,18 @@ function createExpandedSourceEditor(
         .setMeta(expandedSourceEditorKey, null)
         .scrollIntoView())
       editor.commands.focus()
+      return
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey
+      && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault()
+      event.stopPropagation()
+      const selection = window.getSelection()
+      const boundary = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
+      const anchor = event.shiftKey && selection && selection.rangeCount > 0
+        ? getTextOffset(code, selection.anchorNode as globalThis.Node | null, selection.anchorOffset)
+        : boundary
+      setCodeSelectionOffsets(code, anchor, boundary)
       return
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !event.altKey) {
@@ -3005,6 +3021,48 @@ function getCaretOffset(root: HTMLElement): number {
   return range.toString().length
 }
 
+function getTextOffset(root: HTMLElement, node: globalThis.Node | null, offset: number): number {
+  if (!node || !root.contains(node)) return root.textContent?.length ?? 0
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.setEnd(node, offset)
+  return range.toString().length
+}
+
+function setCodeSelectionOffsets(root: HTMLElement, anchorOffset: number, focusOffset: number): void {
+  const pointAt = (offset: number): { node: globalThis.Node; offset: number } => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let remaining = Math.max(0, offset)
+    let textNode = walker.nextNode()
+    let last: globalThis.Node = root
+    while (textNode) {
+      last = textNode
+      const length = textNode.textContent?.length ?? 0
+      if (remaining <= length) return { node: textNode, offset: remaining }
+      remaining -= length
+      textNode = walker.nextNode()
+    }
+    return { node: last, offset: last.nodeType === globalThis.Node.TEXT_NODE ? last.textContent?.length ?? 0 : root.childNodes.length }
+  }
+  const anchor = pointAt(anchorOffset)
+  const focus = pointAt(focusOffset)
+  const range = document.createRange()
+  if (anchorOffset <= focusOffset) {
+    range.setStart(anchor.node, anchor.offset)
+    range.setEnd(focus.node, focus.offset)
+  } else {
+    range.setStart(focus.node, focus.offset)
+    range.setEnd(anchor.node, anchor.offset)
+  }
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  if (anchorOffset > focusOffset) {
+    selection?.collapse(focus.node, focus.offset)
+    selection?.extend(anchor.node, anchor.offset)
+  }
+}
+
 function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number } {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0
@@ -3210,6 +3268,7 @@ export const editorExtensions = [
 
 export type EditorCreationOptions = {
   themedVisualSelection?: boolean
+  handlePaste?: (event: ClipboardEvent) => boolean
 }
 
 export function createEditor(
@@ -3239,6 +3298,12 @@ export function createEditor(
           return true
         },
       } : undefined,
+      // ProseMirror owns the editor's paste event pipeline. Handling custom
+      // clipboard formats here guarantees that the callback runs before its
+      // default HTML/text insertion and survives editor recreation.
+      handlePaste: options.handlePaste
+        ? (_view, event) => options.handlePaste?.(event) ?? false
+        : undefined,
       transformPastedHTML: sanitizePastedHtml,
     },
   })
@@ -3270,6 +3335,61 @@ export function replaceEditorDocument(
   return createEditor(element, content, readOnly, options)
 }
 
+/** Parse clipboard plain text through the same complete Markdown pipeline used
+ * when source mode is switched back to visual mode, then replace the current
+ * visual selection with the resulting ProseMirror content. */
+export function pasteMarkdownText(editor: Editor, markdown: string): boolean {
+  // The Markdown extension overrides insertContentAt when contentType is
+  // explicitly "markdown". This invokes the same MarkdownManager used by
+  // source-mode loading, preserving block syntax (headings/lists/formulas)
+  // and inline syntax (marks/math) while adapting the parsed content to the
+  // current selection.
+  return editor.commands.insertContentAt(editor.state.selection, markdown, {
+    contentType: 'markdown',
+    applyInputRules: false,
+    applyPasteRules: false,
+    updateSelection: true,
+  })
+}
+
+/** Decide whether clipboard text should use the Markdown parser instead of
+ * ProseMirror's HTML-first paste path. Many source editors attach syntax-
+ * highlighted HTML even when the copied payload is Markdown source, so the
+ * mere presence of text/html does not make the content rich text. */
+export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: string, html: string): boolean {
+  if (!plainText) return false
+  if (!html) return true
+
+  const parsed = editor.markdown?.parse(plainText)
+  const hasMarkdownStructure = (node: any): boolean => {
+    if (Array.isArray(node?.marks) && node.marks.length > 0) return true
+    if (typeof node?.type === 'string' && !['doc', 'paragraph', 'text'].includes(node.type)) return true
+    return Array.isArray(node?.content) && node.content.some(hasMarkdownStructure)
+  }
+  if (parsed && hasMarkdownStructure(parsed)) return true
+
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  const htmlText = (document.body.textContent ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+  const normalizedPlainText = plainText
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+
+  if (htmlText.trimEnd() !== normalizedPlainText.trimEnd()) return false
+
+  // Source editors commonly wrap plain source in pre/code and styled spans.
+  // In that case HTML describes highlighting, not intended rich-text content.
+  if (document.body.querySelector('pre, code')) return true
+
+  // Wrapper-only HTML carries no formatting semantics and is plain text for
+  // paste purposes. Preserve genuinely rich HTML such as links, lists, tables,
+  // headings, images, and explicit emphasis.
+  return !document.body.querySelector(
+    'a,img,table,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,hr,strong,b,em,i,del,s,u,figure,svg,math',
+  )
+}
+
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
   codeHighlightVisible = visible
   editor.view.dispatch(editor.state.tr)
@@ -3295,14 +3415,30 @@ export function getMarkdown(editor: Editor): string {
     return original.markdown
   }
   const markdown = editor.getMarkdown()
-  const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  // Formula payloads are opaque: protect complete delimiters before any
+  // compatibility pass (emphasis conversion, literal escaping, entity
+  // decoding) so no setting can modify characters inside a formula.
+  const formulaParts: string[] = []
+  const formulaPlaceholder = (value: string): string => {
+    const index = formulaParts.push(value) - 1
+    return `\u0000markleaf-formula-${index}\u0000`
+  }
+  const protectedMarkdown = markdown
+    .replace(/\$\$[\s\S]*?\$\$/g, formulaPlaceholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, formulaPlaceholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, formulaPlaceholder)
+    .replace(/\\\([\s\S]*?\\\)/g, formulaPlaceholder)
+  const stabilized = autoConvertUnsafeEmphasis
+    ? stabilizeUnsafeEmphasisMarkdown(protectedMarkdown)
+    : protectedMarkdown
   // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
   // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
   const output = stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
   const markerSafeOutput = escapeMarkdownLiteralSymbols
     ? output
     : removeMarkdownLiteralEscapes(output)
-  return escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+  const finalOutput = escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+  return finalOutput.replace(/\u0000markleaf-formula-(\d+)\u0000/g, (_, index: string) => formulaParts[Number(index)] ?? '')
 }
 
 function removeMarkdownLiteralEscapes(markdown: string): string {

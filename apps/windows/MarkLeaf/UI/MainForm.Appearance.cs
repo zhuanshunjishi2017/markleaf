@@ -33,6 +33,42 @@ internal sealed partial class MainForm
         ApplyColorTheme(themeId, persistManualChoice: true);
     }
 
+    private void ShowColorThemes()
+    {
+        _colorThemeDialog ??= new Dialogs.ColorThemeDialog(
+            _settings.ColorTheme,
+            _settings.Appearance.FollowSystemColorMode,
+            _settings.Appearance.DefaultLightThemeId,
+            _settings.Appearance.DefaultDarkThemeId,
+            (themeId, followSystem, defaultLight, defaultDark) =>
+            {
+                _settings.ColorTheme = themeId;
+                _settings.Appearance.FollowSystemColorMode = followSystem;
+                _settings.Appearance.DefaultLightThemeId = defaultLight;
+                _settings.Appearance.DefaultDarkThemeId = defaultDark;
+                ColorThemeService.DefaultLightThemeId = defaultLight;
+                ColorThemeService.DefaultDarkThemeId = defaultDark;
+                if (followSystem) ApplyEffectiveColorTheme();
+                else ApplyColorTheme(themeId, persistManualChoice: false);
+                SaveSettings();
+            },
+            AddThemeFromFile,
+            OpenThemeFolder,
+            _markdownStyle,
+            styleId =>
+            {
+                SetMarkdownStyle(styleId);
+                SaveSettings();
+            });
+        _colorThemeDialog.Open(this);
+    }
+
+    private void ShowTypographyStyles()
+    {
+        ShowColorThemes();
+        _colorThemeDialog?.Open(this, 1);
+    }
+
     private void ToggleCodeHighlight()
     {
         _settings.Appearance.ShowCodeHighlight = !_settings.Appearance.ShowCodeHighlight;
@@ -454,7 +490,7 @@ internal sealed partial class MainForm
             WindowState = FormWindowState.Normal;
             FormBorderStyle = FormBorderStyle.None;
             Bounds = Screen.FromControl(this).Bounds;
-            _webView?.Focus();
+            FocusEditorAfterWindowModeChange();
             return;
         }
 
@@ -467,8 +503,16 @@ internal sealed partial class MainForm
         {
             WindowState = FormWindowState.Maximized;
         }
-        _webView?.Focus();
+        FocusEditorAfterWindowModeChange();
         _menuService.RefreshStates();
+    }
+
+    private void FocusEditorAfterWindowModeChange()
+    {
+        if (_webView is null || _webView.IsDisposed) return;
+        _webView.Focus();
+        if (IsHandleCreated)
+            BeginInvoke(() => { if (!_webView.IsDisposed) _webView.Focus(); });
     }
 
     private void ToggleFocusMode()

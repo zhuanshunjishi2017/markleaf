@@ -15,7 +15,9 @@ function nodeLatex(node: MathNodeContent): string {
 }
 
 function normalizeMathSource(source: string): string {
-  return source.trim() === '...' ? '' : source
+  // Formula source is opaque user data. Do not trim, normalize whitespace, or
+  // otherwise alter any character while parsing/serializing Markdown.
+  return source === '...' ? '' : source
 }
 
 function renderMathNode(element: HTMLElement, latex: string, displayMode: boolean): void {
@@ -88,7 +90,7 @@ export const MathInline = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    const latex = normalizeMathSource((token.text ?? '').trim())
+    const latex = normalizeMathSource(token.text ?? '')
     return helpers.createNode(
       'mathInline',
       null,
@@ -97,8 +99,9 @@ export const MathInline = Node.create({
   },
 
   renderMarkdown(node) {
-    // Inline math must remain on one Markdown line; a newline would make the
-    // closing delimiter fail to parse as an inline formula.
+    // Inline math must remain on one Markdown line; otherwise the closing
+    // delimiter no longer parses as part of the inline formula. This is the
+    // sole normalization allowed for inline formulas. Block math remains raw.
     const latex = nodeLatex(node).replace(/\r?\n/g, '')
     return `$${latex || '...'}$`
   },
@@ -194,7 +197,7 @@ export const MathBlock = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    const latex = normalizeMathSource((token.text ?? '').trim())
+    const latex = normalizeMathSource(token.text ?? '')
     return helpers.createNode(
       'mathBlock',
       { number: null },
@@ -223,7 +226,7 @@ export const MathBlock = Node.create({
       return {
         type: 'mathBlock',
         raw: match[0],
-        text: normalizeMathSource((match[1] ?? match[2] ?? '').trim()),
+        text: normalizeMathSource(match[1] ?? match[2] ?? ''),
       }
     },
   },
@@ -246,7 +249,7 @@ export const MathBlock = Node.create({
       new InputRule({
         find: /\\\[([\s\S]+?)\\\]$/,
         handler: ({ state, range, match }) => {
-          const latex = normalizeMathSource(match[1]!.trim())
+          const latex = normalizeMathSource(match[1]!)
           const mathType = state.schema.nodes.mathBlock
           if (!mathType) return null
           state.tr.replaceRangeWith(

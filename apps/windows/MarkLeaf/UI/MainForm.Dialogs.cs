@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Net;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
@@ -353,6 +354,12 @@ internal sealed partial class MainForm
                 SetStatus(Loc.Get("export.noContent"));
                 return;
             }
+
+            // Export HTML is rendered in a separate WebView/file context where
+            // the in-app assets.local virtual host does not exist. Resolve
+            // relative image references against the source document and embed
+            // local files as data URIs so both HTML and PDF exports retain them.
+            html = EmbedExportImages(html, _document?.FilePath);
 
             var outputPath = options.OutputPath;
             if (!Path.HasExtension(outputPath))
@@ -767,7 +774,7 @@ internal sealed partial class MainForm
         {
             SetStatus(Loc.Get("export.noContent"));
         }
-        return html;
+        return EmbedExportImages(html, _document.FilePath);
     }
 
     private void ShowExportCompleteDialog(string fileName, string filePath, string folderPath)
@@ -950,6 +957,54 @@ internal sealed partial class MainForm
         _editorHost.ExecuteCommand("editMath");
     }
 
+    private static string EmbedExportImages(string html, string? documentPath)
+    {
+        return Regex.Replace(
+            html,
+            "(?<prefix>\\bsrc\\s*=\\s*[\\\"'])(?<src>[^\\\"']+)(?<suffix>[\\\"'])",
+            match =>
+            {
+                var source = WebUtility.HtmlDecode(match.Groups["src"].Value);
+                if (Uri.TryCreate(source, UriKind.Absolute, out var virtualUri)
+                    && string.Equals(virtualUri.Host, "assets.local", StringComparison.OrdinalIgnoreCase)
+                    && virtualUri.AbsolutePath.Equals("/image", StringComparison.OrdinalIgnoreCase))
+                {
+                    var query = virtualUri.Query;
+                    source = query.StartsWith("?path=", StringComparison.Ordinal)
+                        ? Uri.UnescapeDataString(query[6..])
+                        : source;
+                }
+                var path = ImageAssetService.ResolveLocalImagePath(source, documentPath);
+                if (path is null || !File.Exists(path) || !ImageAssetService.IsSupportedImagePath(path))
+                    return match.Value;
+                try
+                {
+                    var bytes = File.ReadAllBytes(path);
+                    var mime = Path.GetExtension(path).ToLowerInvariant() switch
+                    {
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        ".gif" => "image/gif",
+                        ".webp" => "image/webp",
+                        ".bmp" => "image/bmp",
+                        _ => "application/octet-stream",
+                    };
+                    return match.Groups["prefix"].Value
+                        + $"data:{mime};base64,{Convert.ToBase64String(bytes)}"
+                        + match.Groups["suffix"].Value;
+                }
+                catch (IOException)
+                {
+                    return match.Value;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return match.Value;
+                }
+            },
+            RegexOptions.IgnoreCase);
+    }
+
     private void SetMathNumber()
     {
         if (_editorHost?.IsDocumentLoaded != true || !_editorCommandStatus.MathBlock)
@@ -1116,13 +1171,17 @@ internal sealed partial class MainForm
         using var dialog = new Form
         {
             Text = Loc.Get("dialog.documentStatisticsTitle"),
+            BackColor = DialogColors.Secondary,
+            ForeColor = ColorThemeService.GetActiveColors().TryGetValue("text-primary", out var statisticsTextColor)
+                ? statisticsTextColor
+                : SystemColors.ControlText,
             AutoScaleMode = AutoScaleMode.Dpi,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             StartPosition = FormStartPosition.CenterParent,
             MinimizeBox = false,
             MaximizeBox = false,
             ShowInTaskbar = false,
-            ClientSize = new Size(this.ScaleForDpi(320), this.ScaleForDpi(280)),
+            ClientSize = new Size(this.ScaleForDpi(320), this.ScaleForDpi(230)),
         };
 
         var grid = new TableLayoutPanel

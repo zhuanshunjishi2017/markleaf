@@ -27,7 +27,9 @@ internal sealed partial class MainForm
         _webView = webView;
         webView.Enter += (_, _) =>
         {
+            _documentTabBar.ClearKeyboardMenuMode();
         };
+        webView.MouseDown += (_, _) => _documentTabBar.ClearKeyboardMenuMode();
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);

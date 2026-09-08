@@ -14,7 +14,7 @@ internal sealed class LinkInputDialog : Form
     public LinkInputDialog()
     {
         Text = Loc.Get("dialog.insertLinkTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

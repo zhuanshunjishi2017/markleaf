@@ -164,6 +164,12 @@ internal sealed class DocumentTabBar : Control
         SelectFirstTopLevelMenu();
     }
 
+    public void ClearKeyboardMenuMode()
+    {
+        if (!_keyboardMenuActive) return;
+        ClearKeyboardMenuSelection();
+    }
+
     public bool TryGetMnemonicMenuIndex(Keys keyCode, out int menuIndex)
     {
         menuIndex = -1;

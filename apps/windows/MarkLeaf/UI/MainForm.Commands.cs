@@ -50,9 +50,13 @@ internal sealed partial class MainForm
         if (_editorCommandStatus.ExpandedSource
             && (keyData & Keys.Control) != Keys.None
             && (keyData & Keys.Alt) == Keys.None
-            && (keyData & Keys.KeyCode) is Keys.V or Keys.X)
+            && (keyData & Keys.KeyCode) is Keys.C or Keys.V or Keys.X)
         {
-            if ((keyData & Keys.KeyCode) == Keys.V)
+            if ((keyData & Keys.KeyCode) == Keys.C)
+            {
+                _editorHost?.ExecuteExpandedSourceCommand("copy");
+            }
+            else if ((keyData & Keys.KeyCode) == Keys.V)
             {
                 try
                 {
@@ -267,6 +271,7 @@ internal sealed partial class MainForm
                 and not AppCommand.CopyMarkdown
                 and not AppCommand.CopyPlainText
                 and not AppCommand.CopyHtml
+                and not AppCommand.CopyCodeBlock
                 and not AppCommand.Paste
             && command is not AppCommand.Find and not AppCommand.Replace and not AppCommand.ToggleSourceMode
             && !TryMapEditorCommand(command, out _))
@@ -445,6 +450,15 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.InstallOptionalFonts:
                 ShowOptionalFonts();
+                break;
+            case AppCommand.ShowColorThemes:
+                ShowColorThemes();
+                break;
+            case AppCommand.ShowTypographyStyles:
+                ShowTypographyStyles();
+                break;
+            case AppCommand.ShowThemeSettings:
+                ShowColorThemes();
                 break;
             case AppCommand.ShowChangelog:
                 ShowChangelog();
@@ -993,15 +1007,13 @@ internal sealed partial class MainForm
 
     private void CopyCodeBlock()
     {
-        if ((!_editorCommandStatus.CodeBlock && !_editorCommandStatus.FrontMatter)
-            || string.IsNullOrEmpty(_editorCommandStatus.CodeBlockText))
-        {
-            return;
-        }
-
         try
         {
-            Clipboard.SetText(_editorCommandStatus.CodeBlockText, TextDataFormat.UnicodeText);
+            Clipboard.SetText(
+                (_editorCommandStatus.CodeBlock || _editorCommandStatus.FrontMatter)
+                    ? _editorCommandStatus.CodeBlockText ?? string.Empty
+                    : string.Empty,
+                TextDataFormat.UnicodeText);
             SetStatus(Loc.Get("status.copied"));
         }
         catch (Exception exception)
@@ -1118,14 +1130,22 @@ internal sealed partial class MainForm
             }
 
             if (!_editorCommandStatus.SourceMode
-                && Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml))
+                && TryGetClipboardPlainTextForSourceMode(clipboardData, out var visualPlainText))
             {
-                if (!string.IsNullOrWhiteSpace(clipboardHtml))
+                if (Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml)
+                    && !string.IsNullOrWhiteSpace(clipboardHtml))
                 {
-                    _editorHost.ExecuteCommand("pasteHtml", ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
+                    _editorHost.ExecuteCommand(
+                        "pasteClipboard",
+                        visualPlainText,
+                        html: ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
                     SetStatus(Loc.Get("status.pastedFormatted"));
                     return;
                 }
+
+                _editorHost.ExecuteCommand("pasteMarkdown", visualPlainText);
+                SetStatus(Loc.Get("status.pastedPlainText"));
+                return;
             }
 
             if (!Clipboard.ContainsText())
@@ -1134,7 +1154,9 @@ internal sealed partial class MainForm
                 return;
             }
 
-            _editorHost.ExecuteCommand("pasteText", Clipboard.GetText(TextDataFormat.UnicodeText));
+            _editorHost.ExecuteCommand(
+                _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
+                Clipboard.GetText(TextDataFormat.UnicodeText));
             SetStatus(Loc.Get("status.pastedPlainText"));
         }
         catch (Exception exception)
@@ -1159,7 +1181,9 @@ internal sealed partial class MainForm
                 return Task.CompletedTask;
             }
 
-            _editorHost.ExecuteCommand("pasteText", plainText);
+            _editorHost.ExecuteCommand(
+                _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
+                plainText);
             SetStatus(Loc.Get("status.pastedPlainText"));
         }
         catch (Exception exception)

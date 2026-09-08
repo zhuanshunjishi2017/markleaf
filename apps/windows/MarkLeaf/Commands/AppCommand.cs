@@ -142,6 +142,9 @@ public enum AppCommand
     ShowWelcome = 0x140D,
     LearnMarkdown = 0x140E,
     InstallOptionalFonts = 0x140F,
+    ShowColorThemes = 0x1410,
+    ShowTypographyStyles = 0x1411,
+    ShowThemeSettings = 0x1412,
 
     InsertAlertNote = 0x1331,
     InsertAlertTip = 0x1332,

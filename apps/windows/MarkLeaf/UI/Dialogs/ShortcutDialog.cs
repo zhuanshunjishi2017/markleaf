@@ -23,7 +23,7 @@ internal sealed class ShortcutDialog : Form
         _shortcutManager = shortcutManager;
 
         Text = Loc.Get("dialog.shortcutsTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;

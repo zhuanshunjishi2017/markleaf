@@ -428,7 +428,10 @@ internal sealed class EditorHostController : IDisposable
 
         var script = command switch
         {
-            "copy" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('copy'); })()",
+            // Do not focus the editor before copying: focusing a contenteditable
+            // element collapses the user's current selection and would copy the
+            // entire formula instead of the selected text.
+            "copy" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); const selection = window.getSelection(); if (!target || !selection || selection.rangeCount === 0 || !target.contains(selection.anchorNode) || !target.contains(selection.focusNode)) return false; const text = selection.toString(); if (!text) return false; if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true).catch(() => document.execCommand('copy')); return document.execCommand('copy'); })()",
             "cut" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('cut'); })()",
             "paste" when text is not null => $"(() => {{ const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); return document.execCommand('insertText', false, {System.Text.Json.JsonSerializer.Serialize(text)}); }})()",
             "paste" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('paste'); })()",
@@ -546,9 +549,10 @@ internal sealed class EditorHostController : IDisposable
     public void ExecuteCommand(
         string command,
         string? text = null,
-        bool applyToCurrentTextBlockWhenEmpty = false)
+        bool applyToCurrentTextBlockWhenEmpty = false,
+        string? html = null)
     {
-        EnqueueOrRun(() => Post("command", new { command, text, applyToCurrentTextBlockWhenEmpty }));
+        EnqueueOrRun(() => Post("command", new { command, text, html, applyToCurrentTextBlockWhenEmpty }));
     }
 
     public void ClearBlockHighlight()
@@ -879,13 +883,19 @@ internal sealed class EditorHostController : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 var y = index * chunkCssHeight;
                 var height = Math.Min(chunkCssHeight, pageHeight - y);
+                // Do not capture a remote document-space clip (y > viewport).
+                // WebView2/Chromium may repeat the viewport's first pixels when
+                // captureBeyondViewport is combined with such clips. Scroll the
+                // export page to the segment and capture from viewport origin.
+                await core.ExecuteScriptAsync($"window.scrollTo(0, {y.ToString(System.Globalization.CultureInfo.InvariantCulture)});");
+                await Task.Delay(30, cancellationToken);
                 var parameters = JsonSerializer.Serialize(new
                 {
                     format,
                     quality = format == "jpeg" ? jpegQuality : (int?)null,
                     fromSurface = true,
-                    captureBeyondViewport = true,
-                    clip = new { x = 0, y, width = pageWidth, height, scale },
+                    captureBeyondViewport = false,
+                    clip = new { x = 0, y = 0, width = pageWidth, height, scale },
                 }, new JsonSerializerOptions
                 {
                     DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,

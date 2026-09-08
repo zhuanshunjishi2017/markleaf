@@ -115,6 +115,14 @@ internal sealed class OptionalFontsDialog : Form
     private static string GetStyleDisplayName(string styleId) =>
         StyleService.TryGetStyle(styleId)?.DisplayName ?? styleId;
 
+    internal static IReadOnlySet<string> GetStylesWithMissingFonts()
+    {
+        return Packs
+            .Where(pack => pack.Files.Any(font => FindInstalledFontPath(font.FileName) is null))
+            .Select(pack => pack.StyleId)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     private static string? FindInstalledFontPath(string fileName)
     {
         var userPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Fonts", fileName);

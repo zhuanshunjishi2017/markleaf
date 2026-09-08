@@ -42,7 +42,7 @@ internal sealed class FindReplaceDialog : Form
         _padding = this.ScaleForDpi(12);
 
         Text = Loc.Get("findBar.title");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.Manual;

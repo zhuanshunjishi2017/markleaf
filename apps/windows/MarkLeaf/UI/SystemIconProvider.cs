@@ -47,6 +47,7 @@ internal static class SystemIconProvider
     public static string PdfIcon => IsWindows11 ? "\uEA90" : "\uEA90";
     public static string HtmlIcon => IsWindows11 ? "\uE943" : "\uE943";
     public static string ImageIcon => IsWindows11 ? "\uE91B" : "\uE91B";
+    public static string OptionalFontWarningIcon => IsWindows11 ? "\uF736" : "\uE7BA";
 
     private static bool DetectWindows11()
     {
