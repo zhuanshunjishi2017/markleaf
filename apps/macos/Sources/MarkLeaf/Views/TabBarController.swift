@@ -19,6 +19,7 @@ final class TabBarController: NSView {
     var onNewTab: (() -> Void)?
     var onContextAction: ((TabContextAction, DocumentTabID) -> Void)?
     var onReorder: ((Int, Int) -> Void)?
+    var onDetach: ((DocumentTabID) -> Void)?
     var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
 
     private let stack = NSStackView()
@@ -314,18 +315,17 @@ final class TabBarController: NSView {
 
         // 拖拽会改变视图层级；改由窗口级监视器驱动后续事件，
         // 不再依赖被移动的 cell 继续接收 mouseDragged/mouseUp。
-        dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
-            guard let self else { return event }
+        dragEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return }
             switch event.type {
             case .leftMouseDragged:
-                guard event.window === self.window else { return event }
+                guard event.window === self.window else { return }
                 self.dragReorder(to: event.locationInWindow)
             case .leftMouseUp:
                 self.endReorder(at: event.locationInWindow)
             default:
                 break
             }
-            return nil
         }
     }
 
@@ -360,6 +360,14 @@ final class TabBarController: NSView {
             reorderingTabID = nil
             return
         }
+
+        let globalRect = window?.convertToScreen(NSRect(origin: windowPoint, size: .zero)) ?? NSRect(origin: windowPoint, size: .zero)
+        if TabDetachPolicy.action(globalPoint: globalRect.origin, windowFrame: window?.frame ?? .zero) == .detach {
+            finishDragWithoutRestore(cell: cell, placeholder: placeholder)
+            onDetach?(id)
+            return
+        }
+
         let source = dragSourceIndex ?? tabStore.tabs.firstIndex(where: { $0.tabID == id })
         let target = targetIndex(for: convert(windowPoint, from: nil))
         let placeholderIndex = stack.arrangedSubviews.firstIndex(of: placeholder) ?? target
@@ -377,6 +385,16 @@ final class TabBarController: NSView {
         if let source, source != target {
             onReorder?(source, target)
         }
+    }
+
+    private func finishDragWithoutRestore(cell: NSView, placeholder: NSView) {
+        placeholder.removeFromSuperview()
+        cell.removeFromSuperview()
+        isReordering = false
+        reorderingTabID = nil
+        draggingCell = nil
+        dragPlaceholder = nil
+        dragSourceIndex = nil
     }
 
     private func targetIndex(for localPoint: NSPoint) -> Int {

@@ -75,6 +75,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return (session.isReadOnly, session.hasPendingExternalChange)
         }
+        tabBar.onDetach = { [weak self] id in
+            self?.detachTabToNewWindow(id)
+        }
         tabBar.onContextAction = { [weak self] action, id in
             self?.handleTabContextAction(action, for: id)
         }
@@ -165,6 +168,52 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
               let target = TabShortcutPolicy.cycleTarget(in: windowSession.tabStore, reverse: reverse) else { return false }
         activateTab(target, animated: true)
         return true
+    }
+
+    func detachTabToNewWindow(_ id: DocumentTabID) {
+        guard let windowSession,
+              let tab = windowSession.tabStore.tab(withID: id),
+              let session = windowSession.session(for: id) else { return }
+
+        session.requestSnapshot { [weak self] result in
+            guard let self, case .success(let markdown) = result else { return }
+            let selection = PendingDocumentSelection(
+                visualFrom: session.visualSelectionFrom,
+                visualTo: session.visualSelectionTo,
+                sourceFrom: session.sourceSelectionFrom,
+                sourceTo: session.sourceSelectionTo
+            )
+            let document = DetachedTabDocument(
+                markdown: markdown,
+                fileURL: session.documentURL,
+                title: tab.title,
+                encoding: tab.encoding,
+                newLine: tab.newLine,
+                isDirty: session.isDirty,
+                isReadOnly: session.isReadOnly,
+                untitledSequence: tab.untitledSequence,
+                documentKind: session.isPlainText ? .plainText : .markdown,
+                selection: selection
+            )
+            let newController = AppWindowManager.shared.newWindow(detachedDocument: document)
+            newController.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            self.removeDetachedTab(id)
+        }
+    }
+
+    private func removeDetachedTab(_ id: DocumentTabID) {
+        guard let windowSession else { return }
+        if let session = windowSession.session(for: id) {
+            session.cleanupForClose()
+        }
+        _ = windowSession.tabStore.close(id)
+        windowSession.detach(id)
+        editorHostView?.detach(tabID: id)
+        if let active = windowSession.tabStore.activeTabID {
+            activateTab(active, animated: true)
+        }
+        tabBarController?.reload()
     }
 
     func closeCurrentTab() {

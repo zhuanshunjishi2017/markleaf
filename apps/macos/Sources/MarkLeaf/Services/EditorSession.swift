@@ -273,6 +273,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var dispositionRequestCount = 0
     private var pendingInitialPreparedDocument: PreparedDocument?
     private var pendingInitialSelection: PendingDocumentSelection?
+    private var pendingInitialDetachedDocument: RestartDocument?
+    private var pendingRestoreScrollTop: Double?
     private struct RestartDocument {
         let markdown: String
         let fileURL: URL?
@@ -355,6 +357,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             AppLog.info("文档加载完成")
             statusText = L10n.t("已加载")
             applyPostLoadSettings()
+            if let scrollTop = pendingRestoreScrollTop {
+                pendingRestoreScrollTop = nil
+                DispatchQueue.main.async { [weak self] in
+                    self?.sendRestoreViewport(scrollTop: scrollTop, selectionFrom: nil, selectionTo: nil)
+                }
+            }
             if let query = pendingWorkspaceSearchQuery {
                 pendingWorkspaceSearchQuery = nil
                 DispatchQueue.main.async { [weak self] in
@@ -2585,6 +2593,31 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 标签拖出新窗口时使用：保留未保存内容、脏状态、只读状态和双模式选区。
+    func openInitialDocument(
+        markdown: String,
+        fileURL: URL?,
+        readOnly: Bool,
+        encoding: String?,
+        documentKind: NewDocumentKind?,
+        initialDirty: Bool,
+        selection: PendingDocumentSelection?
+    ) {
+        startFollowingSystemAppearance()
+        pendingInitialDetachedDocument = RestartDocument(
+            markdown: markdown,
+            fileURL: fileURL,
+            readOnly: readOnly,
+            encoding: encoding,
+            kind: documentKind,
+            initialDirty: initialDirty
+        )
+        pendingInitialSelection = selection
+        if isReady {
+            runInitialLoad()
+        }
+    }
+
     private func loadInitialDocument() {
         runInitialLoad()
     }
@@ -2595,6 +2628,23 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         if let prepared = pendingInitialPreparedDocument {
             loadPreparedDocument(prepared, selection: pendingInitialSelection)
+            return
+        }
+
+        if let detached = pendingInitialDetachedDocument {
+            pendingInitialDetachedDocument = nil
+            loadDocument(
+                markdown: detached.markdown,
+                fileURL: detached.fileURL,
+                readOnly: detached.readOnly,
+                encoding: detached.encoding,
+                documentKind: detached.kind,
+                initialDirty: detached.initialDirty,
+                visualSelectionFrom: pendingInitialSelection?.visualFrom,
+                visualSelectionTo: pendingInitialSelection?.visualTo,
+                sourceSelectionFrom: pendingInitialSelection?.sourceFrom,
+                sourceSelectionTo: pendingInitialSelection?.sourceTo
+            )
             return
         }
 

@@ -110,6 +110,55 @@ final class AppWindowManager {
         return controller
     }
 
+    /// 为拖出的标签创建新窗口；新窗口装载快照前不创建占位空白文档。
+    func newWindow(detachedDocument: DetachedTabDocument) -> EditorWindowController {
+        let windowSession = WindowSession()
+        let session = EditorSession(workspace: windowSession.workspace)
+        let controller = EditorWindowController(session: session)
+        windowSession.controller = controller
+        let tab = DocumentTab(
+            path: detachedDocument.fileURL?.path,
+            title: detachedDocument.title,
+            encoding: detachedDocument.encoding,
+            newLine: detachedDocument.newLine,
+            untitledSequence: detachedDocument.untitledSequence
+        )
+        tab.isDirty = detachedDocument.isDirty
+        tab.isReadOnly = detachedDocument.isReadOnly
+        tab.visualSelectionFrom = detachedDocument.selection?.visualFrom
+        tab.visualSelectionTo = detachedDocument.selection?.visualTo
+        tab.sourceSelectionFrom = detachedDocument.selection?.sourceFrom
+        tab.sourceSelectionTo = detachedDocument.selection?.sourceTo
+        windowSession.tabStore.append(tab)
+        windowSession.attach(session: session, to: tab.tabID)
+        controller.windowSession = windowSession
+        session.openViaWindow = { [weak windowSession] url in
+            windowSession?.requestOpenFile(url)
+        }
+        session.workspace.windowProvider = { [weak controller] in controller?.window }
+        windowSession.onOpenFile = { [weak controller] resolution, url in
+            controller?.handleOpenResolution(resolution, url: url)
+        }
+        windowControllers.append(controller)
+        windowSessions[controller] = windowSession
+        controller.onWindowClose = { [weak self] closed in
+            self?.windowControllers.removeAll { $0 === closed }
+            self?.windowSessions.removeValue(forKey: closed)
+        }
+        controller.showWindow(nil)
+        session.openInitialDocument(
+            markdown: detachedDocument.markdown,
+            fileURL: detachedDocument.fileURL,
+            readOnly: detachedDocument.isReadOnly,
+            encoding: detachedDocument.encoding,
+            documentKind: detachedDocument.documentKind,
+            initialDirty: detachedDocument.isDirty,
+            selection: detachedDocument.selection
+        )
+        controller.activateTab(tab.tabID, animated: false)
+        return controller
+    }
+
     func newWindow(preparedDocument: PreparedDocument) -> EditorWindowController {
         let windowSession = WindowSession()
         let session = EditorSession(workspace: windowSession.workspace)
