@@ -275,6 +275,21 @@ final class FindPanelController: NSWindowController, NSTextFieldDelegate, NSSear
         }
     }
 
+    /// 关闭标签后，若面板仍绑定被关闭的会话，必须同步失效并收起，
+    /// 避免按钮可点但查找命令发送到已分离的编辑器。
+    func detachIfBound(to sessions: [EditorSession?]) -> Bool {
+        guard let boundSession = session,
+              sessions.contains(where: { $0 === boundSession }) else { return false }
+        boundSession.onFindResult = nil
+        if window?.isVisible == true {
+            boundSession.execute("findClose")
+        }
+        window?.close()
+        self.session = nil
+        updateResult(current: 0, total: 0)
+        return true
+    }
+
     func showPanel(showingReplace: Bool = false) {
         setReplaceExpanded(showingReplace, animated: false)
         guard let window else { return }

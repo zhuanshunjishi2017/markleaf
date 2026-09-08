@@ -118,6 +118,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var imageSelected = false
     private(set) var inTable = false
     private var newDocumentKind: NewDocumentKind = .markdown
+
+    var documentKind: NewDocumentKind {
+        newDocumentKind
+    }
     private(set) var canUndo = false
     private(set) var canRedo = false
     private(set) var canStartFormatPainter = false

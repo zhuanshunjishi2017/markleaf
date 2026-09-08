@@ -23,6 +23,7 @@ import { MathBlock, MathInline, mathNumberFromLatex } from './math'
 import katex from 'katex'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
+import { clearDomSelection } from './native-selection'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -1118,6 +1119,7 @@ const ThemedSelection = Extension.create({
                   .setMeta('addToHistory', false),
               )
             }
+            clearDomSelection(view.dom.ownerDocument)
             return false
           },
         },

@@ -243,12 +243,13 @@ final class NativeMenuBuilder {
         tabManagement.addItem(commandItem(L10n.t("下一个标签"), "tabNext", key: "\t", mask: [.control]))
         tabManagement.addItem(commandItem(L10n.t("关闭当前标签"), "closeCurrentTab"))
         tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
+        tabManagement.addItem(commandItem(L10n.t("重新打开关闭的标签"), "restoreClosedTab"))
         tabManagement.addItem(.separator())
         tabManagement.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
         tabManagement.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
         tabManagement.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
         tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
-        menu.addItem(popup(L10n.t("标签页管理"), tabManagement))
+        menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
@@ -330,6 +331,7 @@ final class NativeMenuBuilder {
         menu.addItem(popup(L10n.t("示例文档"), samples))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("学习 Markdown…"), "learnMarkdown"))
+        menu.addItem(commandItem(L10n.t("安装可选字体…"), "installOptionalFonts"))
         menu.addItem(commandItem(L10n.t("检查更新…"), "checkForUpdates"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))
@@ -402,15 +404,14 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     /// （新建/打开/打开文件夹在空标签窗口上由窗口级路由兜底，保持可用。）
     private static let documentIndependentCommands: Set<String> = [
         "new", "newPlainText", "newWindow", "open", "openInNewWindow", "openFolder",
+        "restoreClosedTab",
         "recoverUnsavedFiles", "showPreferences", "showAbout",
-        "openWelcome", "openChangelog", "showShortcuts", "checkForUpdates", "openHelp",
+        "openWelcome", "openChangelog", "showShortcuts", "installOptionalFonts", "checkForUpdates", "openHelp",
         "learnMarkdown",
         "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced",
         "toggleFollowSystemTheme", "toggleCodeHighlight",
         "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
         "treeView", "listView", "toggleDetachedOutline",
-        "tabNext", "closeCurrentTab", "closeOtherTabs",
-        "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder",
     ]
 
     /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
@@ -488,6 +489,19 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return (session ?? viewStateSession)?.workspaceRoot != nil
         case "toggleFocusMode":
             return AppWindowManager.shared.activeWindowController != nil
+        case "restoreClosedTab":
+            return AppWindowManager.shared.canRestoreClosedTab
+        case "tabNext", "closeCurrentTab", "closeOtherTabs",
+             "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder":
+            guard let windowSession = AppWindowManager.shared.activeWindowSession else { return false }
+            return MenuCommandAvailabilityPolicy.isTabCommandEnabled(
+                command: command,
+                state: MenuCommandAvailabilityState(
+                    tabCount: windowSession.tabStore.tabs.count,
+                    activeTabPath: windowSession.tabStore.activeTab?.path,
+                    workspaceRoot: windowSession.controller?.session.workspaceRoot
+                )
+            )
         default:
             break
         }
@@ -686,6 +700,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.openChangelog()
         case "openWelcome":
             AppWindowManager.shared.openWelcome()
+        case "installOptionalFonts":
+            AppWindowManager.shared.showOptionalFonts()
         case "checkForUpdates":
             AppWindowManager.shared.checkForUpdates()
         case "toggleFollowSystemTheme":
@@ -701,7 +717,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "toggleFocusMode":
             AppWindowManager.shared.activeWindowController?.toggleFocusMode()
         case "learnMarkdown":
-            if let url = URL(string: "https://www.runoob.com/markdown/md-tutorial.html") {
+            if let url = URL(string: "https://markdown.com.cn/basic-syntax/index.html") {
                 NSWorkspace.shared.open(url)
             }
         case "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced":
@@ -715,6 +731,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.activeWindowController?.closeCurrentTab()
         case "closeOtherTabs":
             AppWindowManager.shared.activeWindowController?.closeOtherActiveTabs()
+        case "restoreClosedTab":
+            AppWindowManager.shared.activeWindowController?.restoreLastClosedTab()
         case "revealActiveTabInWorkspace":
             AppWindowManager.shared.activeWindowController?.revealActiveTabInWorkspace()
         case "copyActiveTabPath":
@@ -791,9 +809,9 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
     static let shared = RecentMenuDelegate()
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        for item in menu.items where item.tag >= 100 {
-            menu.removeItem(item)
-        }
+        // NSMenu 会保留上一次动态构建的标题、分隔线和空态；必须整体重建，
+        // 否则每次打开“最近项目”都会追加一组“最近文件/最近文件夹”。
+        menu.removeAllItems()
         let settings = SettingsService.shared.settings
         let manager = AppWindowManager.shared
         // 最近文件：无标签时由窗口层兜底打开；最近文件夹：跟随窗口级会话。

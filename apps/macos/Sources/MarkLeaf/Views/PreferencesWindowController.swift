@@ -58,13 +58,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var sourceFontField: FontField!
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
-    private let exitBlockOnEmptyEnterCheck = NSButton(checkboxWithTitle: L10n.t("空行回车退出块"), target: nil, action: nil)
-    private let useShiftEnterHardBreakCheck = NSButton(checkboxWithTitle: L10n.t("Shift+Enter 插入硬换行"), target: nil, action: nil)
-    private let escapeLiteralSymbolsCheck = NSButton(checkboxWithTitle: L10n.t("转义文本中的 Markdown 符号"), target: nil, action: nil)
-    private let escapeMarkdownLiteralSymbolsCheck = NSButton(checkboxWithTitle: L10n.t("转义 Markdown 字面量符号"), target: nil, action: nil)
-    private let markdownCodeFencePopup = NSPopUpButton()
-    private let markdownEmphasisMarkerPopup = NSPopUpButton()
-    private let markdownBulletMarkerPopup = NSPopUpButton()
     private var cjkLanguageTag: CJKLanguageTag
     private let visualCjkAutoSpacingCheck = NSButton(checkboxWithTitle: L10n.t("中西文与数字之间自动添加空格"), target: nil, action: nil)
     private let ignoreMaxWidthCheck = NSButton(checkboxWithTitle: L10n.t("无视最大宽度限制"), target: nil, action: nil)
@@ -165,16 +158,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
-        exitBlockOnEmptyEnterCheck.state = settings.exitBlockOnEmptyEnter ? .on : .off
-        useShiftEnterHardBreakCheck.state = settings.useShiftEnterHardBreak ? .on : .off
-        escapeLiteralSymbolsCheck.state = settings.escapeLiteralSymbols ? .on : .off
-        escapeMarkdownLiteralSymbolsCheck.state = settings.escapeMarkdownLiteralSymbols ? .on : .off
-        markdownCodeFencePopup.addItems(withTitles: [L10n.t("反引号 `"), L10n.t("波浪号 ~")])
-        markdownCodeFencePopup.selectItem(at: settings.markdownCodeFence == "tilde" ? 1 : 0)
-        markdownEmphasisMarkerPopup.addItems(withTitles: [L10n.t("星号 *"), L10n.t("下划线 _")])
-        markdownEmphasisMarkerPopup.selectItem(at: settings.markdownEmphasisMarker == "underscore" ? 1 : 0)
-        markdownBulletMarkerPopup.addItems(withTitles: [L10n.t("短横线 -"), L10n.t("星号 *"), L10n.t("加号 +")])
-        markdownBulletMarkerPopup.selectItem(at: ["dash", "asterisk", "plus"].firstIndex(of: settings.markdownBulletMarker) ?? 0)
         visualCjkAutoSpacingCheck.state = settings.visualCjkAutoSpacing ? .on : .off
         ignoreMaxWidthCheck.state = settings.visualIgnoreMaxWidth ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
@@ -537,13 +520,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
             .header(L10n.t("Markdown 行为")),
-            .field("", escapeLiteralSymbolsCheck),
-            .field("", escapeMarkdownLiteralSymbolsCheck),
-            .field("", exitBlockOnEmptyEnterCheck),
-            .field("", useShiftEnterHardBreakCheck),
-            .field(L10n.t("代码围栏"), markdownCodeFencePopup),
-            .field(L10n.t("强调标记"), markdownEmphasisMarkerPopup),
-            .field(L10n.t("列表标记"), markdownBulletMarkerPopup),
+            .field("", linkButton(L10n.t("Markdown 行为…"), #selector(openMarkdownBehaviorSettings))),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
@@ -668,15 +645,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.visualCjkAutoSpacing = visualCjkAutoSpacingCheck.state == .on
         settings.visualIgnoreMaxWidth = ignoreMaxWidthCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
-        settings.exitBlockOnEmptyEnter = exitBlockOnEmptyEnterCheck.state == .on
-        settings.useShiftEnterHardBreak = useShiftEnterHardBreakCheck.state == .on
-        settings.escapeLiteralSymbols = escapeLiteralSymbolsCheck.state == .on
-        settings.escapeMarkdownLiteralSymbols = escapeMarkdownLiteralSymbolsCheck.state == .on
-        settings.markdownCodeFence = markdownCodeFencePopup.indexOfSelectedItem == 1 ? "tilde" : "backtick"
-        settings.markdownEmphasisMarker = markdownEmphasisMarkerPopup.indexOfSelectedItem == 1 ? "underscore" : "asterisk"
-        settings.markdownBulletMarker = ["dash", "asterisk", "plus"][
-            max(0, min(2, markdownBulletMarkerPopup.indexOfSelectedItem))
-        ]
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 
         if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {
@@ -815,6 +783,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         sourceFontSizeField.stringValue = "\(dialog.fontSize)"
         cjkLanguageTag = dialog.cjkLanguageTag
         controlChanged()
+    }
+
+    @objc private func openMarkdownBehaviorSettings() {
+        let dialog = MarkdownBehaviorSettingsWindowController(settings: SettingsService.shared.settings)
+        guard dialog.runModal(), dialog.accepted else { return }
+        SettingsService.shared.update { dialog.model.apply(to: &$0) }
+        AppWindowManager.shared.applyPreferencesToAll()
     }
 
     /// 打开独立的「自定义状态栏」窗口（对齐 Windows StatusBarSettingsDialog）。

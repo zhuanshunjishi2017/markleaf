@@ -143,6 +143,9 @@ final class TabBarController: NSView {
             guard let cell = cellsByTab.removeValue(forKey: id) else { return nil }
             cell.layer?.removeAllAnimations()
             cell.setLifted(false, animated: false)
+            // 拖出新窗口时，拖拽收尾已经把旧 cell 从 stack 移除。
+            // 如果继续把它交给 NSStackView 的动画移除，AppKit 会 abort。
+            guard stack.arrangedSubviews.contains(cell), cell.window != nil else { return nil }
             return cell
         }
         let currentOrder = stack.arrangedSubviews.compactMap { ($0 as? TabCellView)?.tabID }
@@ -208,7 +211,11 @@ final class TabBarController: NSView {
         generation: Int
     ) {
         let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
-        removed.forEach { stack.removeArrangedSubview($0) }
+        removed.forEach { view in
+            if stack.arrangedSubviews.contains(view) {
+                stack.removeArrangedSubview(view)
+            }
+        }
         for (index, tab) in tabStore.tabs.enumerated() {
             guard let cell = cellsByTab[tab.tabID] else { continue }
             if stack.arrangedSubviews.count <= index || stack.arrangedSubviews[index] !== cell {
@@ -217,7 +224,11 @@ final class TabBarController: NSView {
         }
         guard duration > 0 else {
             inserted.forEach { $0.finishInsertion() }
-            removed.forEach { $0.removeFromSuperview() }
+            removed.forEach { view in
+                if view.superview != nil {
+                    view.removeFromSuperview()
+                }
+            }
             layoutSubtreeIfNeeded()
             return
         }
@@ -315,17 +326,20 @@ final class TabBarController: NSView {
 
         // 拖拽会改变视图层级；改由窗口级监视器驱动后续事件，
         // 不再依赖被移动的 cell 继续接收 mouseDragged/mouseUp。
-        dragEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
-            guard let self else { return }
+        // 必须使用 local monitor：global monitor 不会收到本应用自己的鼠标事件，
+        // 向下拖出后收尾函数可能永远不执行，浮动标签会残留并覆盖其他标签。
+        dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            guard event.window === self.window else { return event }
             switch event.type {
             case .leftMouseDragged:
-                guard event.window === self.window else { return }
                 self.dragReorder(to: event.locationInWindow)
             case .leftMouseUp:
                 self.endReorder(at: event.locationInWindow)
             default:
                 break
             }
+            return nil
         }
     }
 
@@ -390,6 +404,9 @@ final class TabBarController: NSView {
     private func finishDragWithoutRestore(cell: NSView, placeholder: NSView) {
         placeholder.removeFromSuperview()
         cell.removeFromSuperview()
+        if let id = reorderingTabID {
+            cellsByTab.removeValue(forKey: id)
+        }
         isReordering = false
         reorderingTabID = nil
         draggingCell = nil
@@ -496,6 +513,7 @@ final class TabCellView: NSView {
     private let statusLabel = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
     private var isActive = false
+    private var colorConfiguration: (() -> Void)?
     private var downPoint: NSPoint?
     private var didDrag = false
 
@@ -554,6 +572,11 @@ final class TabCellView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        renderCurrentColors()
+    }
 
     @objc private func closeClicked() { onClose?() }
 
@@ -679,18 +702,28 @@ final class TabCellView: NSView {
 
         let applyColors = { [weak self] in
             guard let self else { return }
-            self.layer?.backgroundColor = (isActive
-                ? NSColor.controlBackgroundColor
-                : NSColor.clear).cgColor
+            var backgroundColor = NSColor.clear.cgColor
+            self.effectiveAppearance.performAsCurrentDrawingAppearance {
+                if self.isActive {
+                    backgroundColor = NSColor.controlBackgroundColor.cgColor
+                }
+            }
+            self.layer?.backgroundColor = backgroundColor
             self.titleLabel.textColor = recoveryUnavailable
                 ? .systemOrange
                 : (isActive ? .labelColor : .secondaryLabelColor)
         }
+        self.colorConfiguration = applyColors
         guard animationDuration > 0 else { applyColors(); return }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = animationDuration
             context.allowsImplicitAnimation = true
             applyColors()
         }
+    }
+
+    private func renderCurrentColors() {
+        guard let applyColors = colorConfiguration else { return }
+        applyColors()
     }
 }

@@ -25,6 +25,7 @@ final class AppWindowManager {
     private var preferencesController: PreferencesWindowController?
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
+    private var optionalFontsController: OptionalFontsWindowController?
     private var findPanelController: FindPanelController?
     private var updateCheckController: UpdateCheckController?
     private var startupActionState = StartupActionState()
@@ -32,6 +33,7 @@ final class AppWindowManager {
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private(set) var isTerminationCommitted = false
     private lazy var sessionScheduler = SessionWriteScheduler(store: .shared)
+    private var closedTabHistory: [ClosedTabRecord] = []
 
     init() {
         sessionScheduler.onWriteFailure = { [weak self] tabID in
@@ -307,8 +309,13 @@ final class AppWindowManager {
 
     /// 当前活跃（键窗口）会话 = 活动窗口的活动标签会话；无键窗口时退回第一个窗口。
     var activeSession: EditorSession? {
-        activeWindowController?.windowSession?.activeTabSession
-            ?? windowControllers.first?.windowSession?.activeTabSession
+        // 当前键/主窗口存在但还没有活动标签时，不能借用其他窗口的文档会话；
+        // 否则空窗口会启用并执行后台窗口的文档命令。
+        if let activeController = windowControllers.first(where: { $0.window?.isKeyWindow == true })
+            ?? windowControllers.first(where: { $0.window?.isMainWindow == true }) {
+            return activeController.windowSession?.activeTabSession
+        }
+        return windowControllers.first?.windowSession?.activeTabSession
     }
 
     /// Window-level state (sidebar/status bar) must remain controllable even
@@ -326,6 +333,28 @@ final class AppWindowManager {
     /// 当前活动查找面板（供窗口层右键/菜单跟随活动标签使用）。
     var currentFindPanel: FindPanelController? {
         findPanelController
+    }
+
+    func closeFindPanelIfBound(to sessions: [EditorSession?]) {
+        if findPanelController?.detachIfBound(to: sessions) == true {
+            findPanelController = nil
+        }
+    }
+
+    var canRestoreClosedTab: Bool {
+        !closedTabHistory.isEmpty
+    }
+
+    func registerClosedTab(_ record: ClosedTabRecord) {
+        closedTabHistory = ClosedTabHistoryPolicy.push(record, into: closedTabHistory)
+        NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    func takeLastClosedTab() -> ClosedTabRecord? {
+        guard !closedTabHistory.isEmpty else { return nil }
+        let record = closedTabHistory.removeLast()
+        NativeMenuBuilder.refreshIfNeeded()
+        return record
     }
 
     /// 找到一个其标签身份命中指定文件的窗口；命中则激活对应标签并前置。
@@ -372,7 +401,8 @@ final class AppWindowManager {
 
     /// 文件 > 在新窗口中打开…（对应 Windows AppCommand.OpenDocumentInNewWindow）。
     func openDocumentInNewWindow() {
-        guard let session = activeSession, let window = session.webView?.window else { return }
+        // 打开新窗口本身是窗口级动作；空标签窗口也应能选择要打开的文档。
+        guard let window = activeWindowController?.window else { return }
         let panel = NSOpenPanel()
         panel.title = L10n.t("在新窗口中打开")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
@@ -384,7 +414,11 @@ final class AppWindowManager {
                 _ = self.newWindow(preparedDocument: prepared)
             } catch {
                 AppLog.error("无法打开文档: \(url.path) \(error.localizedDescription)")
-                self.activeSession?.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                let alert = NSAlert()
+                alert.alertStyle = .critical
+                alert.messageText = L10n.f("无法打开文档：%@", error.localizedDescription)
+                alert.addButton(withTitle: L10n.t("好"))
+                alert.beginSheetModal(for: window, completionHandler: nil)
             }
         }
     }
@@ -674,6 +708,24 @@ final class AppWindowManager {
     func showShortcuts() {
         let controller = ShortcutWindowController()
         shortcutController = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func showOptionalFonts() {
+        if let controller = optionalFontsController {
+            controller.showWindow(nil)
+            controller.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let controller = OptionalFontsWindowController()
+        optionalFontsController = controller
+        controller.onClose = { [weak self, weak controller] in
+            guard let self, self.optionalFontsController === controller else { return }
+            self.optionalFontsController = nil
+        }
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
