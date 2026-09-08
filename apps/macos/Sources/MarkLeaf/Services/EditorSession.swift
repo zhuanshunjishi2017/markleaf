@@ -98,6 +98,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var visualSelectionTo: Int?
     private(set) var sourceSelectionFrom: Int?
     private(set) var sourceSelectionTo: Int?
+    private(set) var scrollTop: Double = 0
     private(set) var mathInline = false
     private(set) var mathBlock = false
     private(set) var mathLatex: String?
@@ -274,7 +275,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var pendingInitialPreparedDocument: PreparedDocument?
     private var pendingInitialSelection: PendingDocumentSelection?
     private var pendingInitialDetachedDocument: RestartDocument?
-    private var pendingRestoreScrollTop: Double?
+    var pendingRestoreScrollTop: Double?
     private struct RestartDocument {
         let markdown: String
         let fileURL: URL?
@@ -378,8 +379,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             let markdown = payload?["markdown"] as? String ?? ""
             let snapshot = EditorSnapshot(
                 markdown: markdown,
-                revision: messageRevision ?? revision
+                revision: messageRevision ?? revision,
+                scrollTop: EditorScrollSnapshotPolicy.restoreValue(rawValue: payload?["scrollTop"])
             )
+            scrollTop = snapshot.scrollTop
             if snapshotRequests.completeNext(.success(snapshot)) {
                 send("requestSnapshot")
             }
@@ -781,6 +784,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         encoding: String? = nil,
         documentKind: NewDocumentKind? = nil,
         initialDirty: Bool = false,
+        scrollTop: Double = 0,
+        restoreViewState: Bool = true,
         visualSelectionFrom: Int? = nil,
         visualSelectionTo: Int? = nil,
         sourceSelectionFrom: Int? = nil,
@@ -811,6 +816,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         self.visualSelectionTo = visualSelectionTo
         self.sourceSelectionFrom = sourceSelectionFrom
         self.sourceSelectionTo = sourceSelectionTo
+        self.scrollTop = scrollTop
         statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
         if readOnly {
             stopExternalChangeWatch()
@@ -828,6 +834,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             "documentType": newDocumentKind.editorDocumentType,
             "readOnly": readOnly,
             "initialDirty": initialDirty,
+            "scrollTop": scrollTop,
+            "restoreViewState": restoreViewState,
         ]
         if let visualSelectionFrom {
             loadPayload["visualSelection"] = ["from": visualSelectionFrom, "to": visualSelectionTo ?? visualSelectionFrom]
@@ -1208,6 +1216,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
+    /// 请求当前内容与滚动偏移，用于标签切换/会话同步。
+    func requestScrollStateSnapshot(completion: ((Result<EditorSnapshot, Error>) -> Void)? = nil) {
+        if let completion {
+            requestVersionedSnapshot(completion: completion)
+        } else {
+            requestVersionedSnapshot { _ in }
+        }
+    }
+
     /// 立即补写一次恢复快照（切换无路径脏标签等场景）。
     func flushRecoverySnapshotNow(completion: ((Bool) -> Void)? = nil) {
         guard isReady, isDirty else { completion?(false); return }
@@ -1329,7 +1346,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 行内格式命令：空选时应用到整个文本块。
     func executeInlineFormat(_ command: String) {
-        var payload: [String: Any] = ["command": command, "applyToCurrentTextBlockWhenEmpty": true]
+        let payload: [String: Any] = ["command": command, "applyToCurrentTextBlockWhenEmpty": true]
         send("command", payload: payload)
     }
 

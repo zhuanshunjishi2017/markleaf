@@ -324,7 +324,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
         let session = ensureEditor(for: tab)
         if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
-            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo)
+            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty, scrollTop: tab.scrollTop ?? 0, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo)
         } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
             let selection = PendingDocumentSelection(
                 visualFrom: tab.visualSelectionFrom,
@@ -333,6 +333,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 sourceTo: tab.sourceSelectionTo
             )
             session.openInitialDocument(prepared: prepared, selection: selection)
+            session.pendingRestoreScrollTop = tab.scrollTop
         } else {
             session.newDocument()
         }
@@ -466,6 +467,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 sourceTo: tab.sourceSelectionTo
             )
             session.openInitialDocument(prepared: prepared, selection: selection)
+            session.pendingRestoreScrollTop = tab.scrollTop
         } else {
             session.newDocument()
         }
@@ -561,6 +563,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         guard let windowSession, let tabID,
               let tab = windowSession.tabStore.tab(withID: tabID),
               let session = windowSession.session(for: tabID) else { return }
+        session.requestScrollStateSnapshot { [weak tab] _ in
+            guard let tab else { return }
+            tab.scrollTop = session.scrollTop
+        }
         let action = TabSwitchSavePolicy.action(
             isDirty: session.isDirty,
             hasPath: session.documentURL != nil,
