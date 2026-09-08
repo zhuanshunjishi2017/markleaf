@@ -1217,12 +1217,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 请求当前内容与滚动偏移，用于标签切换/会话同步。
-    func requestScrollStateSnapshot(completion: ((Result<EditorSnapshot, Error>) -> Void)? = nil) {
-        if let completion {
-            requestVersionedSnapshot(completion: completion)
-        } else {
-            requestVersionedSnapshot { _ in }
-        }
+    func requestScrollStateSnapshot(completion: @escaping (Result<EditorSnapshot, Error>) -> Void = { _ in }) {
+        requestVersionedSnapshot(completion: completion)
     }
 
     /// 立即补写一次恢复快照（切换无路径脏标签等场景）。

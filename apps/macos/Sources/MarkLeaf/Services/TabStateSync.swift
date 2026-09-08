@@ -8,6 +8,7 @@ enum TabStateSync {
         isDirty: Bool,
         isReadOnly: Bool = false,
         hasPendingExternalChange: Bool = false,
+        scrollTop: Double? = nil,
         revision: Int64,
         encoding: String,
         newLine: String,
@@ -20,6 +21,7 @@ enum TabStateSync {
         tab.isDirty = isDirty
         tab.isReadOnly = isReadOnly
         tab.hasPendingExternalChange = hasPendingExternalChange
+        if let scrollTop { tab.scrollTop = scrollTop }
         tab.contentRevision = revision
         tab.encoding = encoding
         tab.newLine = newLine
