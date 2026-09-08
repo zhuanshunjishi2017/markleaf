@@ -247,6 +247,7 @@ final class NativeMenuBuilder {
         tabManagement.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
         tabManagement.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
         tabManagement.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
+        tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
         menu.addItem(popup(L10n.t("标签页管理"), tabManagement))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
@@ -467,6 +468,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             )
         }
         // 关闭所有标签页后：仅白名单命令保持可用，其余（保存/导出/编辑/插入/格式等）全部置灰。
+        if command.hasPrefix("activateTab:") {
+            let tabID = DocumentTabID(String(command.dropFirst("activateTab:".count)))
+            return AppWindowManager.shared.activeWindowController?.windowSession?.tabStore.tab(withID: tabID) != nil
+        }
         if AppWindowManager.shared.activeSession == nil,
            !Self.documentIndependentCommands.contains(command) {
             return false
@@ -630,6 +635,11 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     @objc func performCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
         if routeNativeTextCommand(command) { return }
+        if command.hasPrefix("activateTab:") {
+            let rawID = String(command.dropFirst("activateTab:".count))
+            AppWindowManager.shared.activeWindowController?.activateTab(DocumentTabID(rawID), animated: true)
+            return
+        }
         switch command {
         case "showPreferences":
             AppWindowManager.shared.showPreferences()
@@ -717,6 +727,39 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             }
         default:
             session?.performMenuCommand(command)
+        }
+    }
+
+    /// 动态维护“标签页管理”中的打开标签列表。
+    final class TabManagementMenuDelegate: NSObject, NSMenuDelegate {
+        static let shared = TabManagementMenuDelegate()
+        private let dynamicItemKey = "tabManagement.dynamicTabs"
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            while let item = menu.items.last,
+                  item.representedObject as? String == dynamicItemKey {
+                menu.removeItem(item)
+            }
+
+            guard let controller = AppWindowManager.shared.activeWindowController,
+                  let windowSession = controller.windowSession else { return }
+
+            let separator = NSMenuItem.separator()
+            separator.representedObject = dynamicItemKey
+            menu.addItem(separator)
+
+            for tab in windowSession.tabStore.tabs {
+                let item = NSMenuItem(
+                    title: (tab.isDirty ? "● " : "") + tab.title,
+                    action: #selector(MenuRouter.performCommand(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = MenuRouter.shared
+                item.representedObject = "activateTab:\(tab.tabID.rawValue)"
+                item.state = windowSession.tabStore.activeTabID == tab.tabID ? .on : .off
+                item.isEnabled = true
+                menu.addItem(item)
+            }
         }
     }
 
