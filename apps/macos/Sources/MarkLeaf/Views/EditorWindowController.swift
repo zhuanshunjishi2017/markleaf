@@ -8,6 +8,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     let session: EditorSession
     private let viewToggleButton = NSButton()
     private let statusLabel = NSTextField(labelWithString: L10n.t("就绪"))
+    /// 无文档时仍保留窗口级命令执行状态（Windows 1.7.3）。
+    private var lastDocumentIndependentStatus = L10n.t("就绪")
     private let characterCountButton = NSButton()
     private let blockTypeLabel = NSTextField(labelWithString: "")
     private let positionLabel = NSTextField(labelWithString: "")
@@ -977,8 +979,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let hasActiveTab = windowSession?.activeTabSession != nil
         guard StatusBarEmptyStatePolicy.shouldShowDocumentItems(hasActiveTab: hasActiveTab) else {
             // 全部标签已关闭：清空并隐藏文档相关项，仅保留窗口级控件。
-            statusLabel.stringValue = ""
-            statusLabel.isHidden = true
+            statusLabel.stringValue = lastDocumentIndependentStatus
+            statusLabel.isHidden = lastDocumentIndependentStatus.isEmpty
             statusClearTimer?.invalidate()
             characterCountButton.isHidden = true
             blockTypeLabel.isHidden = true
@@ -995,6 +997,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let settings = SettingsService.shared.settings
         let status = settings.statusBar
         let stats = session.documentStatistics
+        lastDocumentIndependentStatus = statusLabel.stringValue
         statusLabel.stringValue = session.statusText
         let zoomStatus = L10n.f("缩放 %d%%", session.zoomPercent)
         let showCommandStatus = StatusBarDisplayPolicy.shouldShowCommandStatus(
