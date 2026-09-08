@@ -3213,6 +3213,7 @@ export const editorExtensions = [
 
 export type EditorCreationOptions = {
   themedVisualSelection?: boolean
+  handlePaste?: (event: ClipboardEvent) => boolean
 }
 
 export function createEditor(
@@ -3242,6 +3243,9 @@ export function createEditor(
           return true
         },
       } : undefined,
+      handlePaste: options.handlePaste
+        ? (_view, event) => options.handlePaste?.(event) ?? false
+        : undefined,
       transformPastedHTML: sanitizePastedHtml,
     },
   })
@@ -3271,6 +3275,99 @@ export function replaceEditorDocument(
 ): Editor {
   editor.destroy()
   return createEditor(element, content, readOnly, options)
+}
+
+/** Parse clipboard source through the editor's complete Markdown pipeline and
+ * replace the current visual selection with the resulting document content. */
+export function pasteMarkdownText(editor: Editor, markdown: string): boolean {
+  return editor.commands.insertContentAt(editor.state.selection, markdown, {
+    contentType: 'markdown',
+    applyInputRules: false,
+    applyPasteRules: false,
+    updateSelection: true,
+  })
+}
+
+const richPasteSelector = [
+  'a', 'img', 'table', 'ul', 'ol', 'li', 'blockquote',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
+  'strong', 'b', 'em', 'i', 'del', 's', 'u', 'figure', 'svg', 'math',
+].join(',')
+
+function normalizeClipboardText(value: string): string {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .trimEnd()
+}
+
+function htmlPlainText(root: HTMLElement): string {
+  const output: string[] = []
+  const appendBreak = () => {
+    if (output.length > 0 && output[output.length - 1] !== '\n') output.push('\n')
+  }
+  const visit = (node: globalThis.Node): void => {
+    if (node.nodeType === globalThis.Node.TEXT_NODE) {
+      output.push(node.textContent ?? '')
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    const tag = node.tagName.toLowerCase()
+    if (tag === 'br') {
+      output.push('\n')
+      return
+    }
+    const block = ['div', 'p', 'pre'].includes(tag)
+    if (block) appendBreak()
+    for (const child of Array.from(node.childNodes)) visit(child)
+    if (block) appendBreak()
+  }
+  for (const child of Array.from(root.childNodes)) visit(child)
+  return output.join('')
+}
+
+function parsedMarkdownHasStructure(editor: Editor, plainText: string): boolean {
+  const parsed = editor.markdown?.parse(plainText)
+  const hasStructure = (node: any): boolean => {
+    if (Array.isArray(node?.marks) && node.marks.length > 0) return true
+    if (typeof node?.type === 'string' && !['doc', 'paragraph', 'text'].includes(node.type)) return true
+    return Array.isArray(node?.content) && node.content.some(hasStructure)
+  }
+  return Boolean(parsed && hasStructure(parsed))
+}
+
+/**
+ * Choose Markdown only for plain clipboard text or text-equivalent source/plain
+ * wrappers. Semantic HTML elements keep the rich HTML path even when their
+ * accompanying plain text happens to contain valid Markdown punctuation.
+ */
+export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: string, html: string): boolean {
+  if (!plainText) return false
+  if (!html) return true
+
+  const clipboardDocument = new DOMParser().parseFromString(html, 'text/html')
+  if (clipboardDocument.body.querySelector(richPasteSelector)) return false
+  if (normalizeClipboardText(htmlPlainText(clipboardDocument.body)) !== normalizeClipboardText(plainText)) {
+    return false
+  }
+  if (clipboardDocument.body.querySelector('pre')) return true
+  if (clipboardDocument.body.querySelector('code')) {
+    return parsedMarkdownHasStructure(editor, plainText)
+  }
+  return true
+}
+
+/** Insert a native clipboard payload once, retaining rich HTML when Markdown
+ * parsing is not appropriate and supporting HTML-only clipboard providers. */
+export function pasteClipboardContent(editor: Editor, plainText: string, html: string): boolean {
+  if (plainText) {
+    if (shouldParsePastedTextAsMarkdown(editor, plainText, html)) {
+      return pasteMarkdownText(editor, plainText)
+    }
+    if (html) return editor.view.pasteHTML(html)
+    return editor.view.pasteText(plainText)
+  }
+  return html ? editor.view.pasteHTML(html) : false
 }
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {

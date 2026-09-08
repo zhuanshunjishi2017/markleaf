@@ -130,7 +130,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isReadOnly = false
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
-    static let readOnlyBlockedCommands: Set<String> = [
+    static let readOnlyBlockedCommands: Set<String> = Set([
         "save", "saveAll", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
         "replaceOne", "replaceAll", "pasteText", "deleteSelection",
         "setParagraph", "setHeading1", "setHeading2", "setHeading3",
@@ -153,7 +153,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "declareCodeLanguage",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
         "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
-    ]
+    ]).union(EditorPastePolicy.modifyingCommands)
 
     // 工作区 / 大纲
     /// 窗口共享工作区（构造时注入；缺省自建，等价旧行为）。
@@ -1203,14 +1203,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         execute("insertTable", text: Self.tableCommandText(rows: rows, columns: columns))
     }
 
-    func execute(_ command: String, text: String? = nil) {
+    func execute(_ command: String, text: String? = nil, html: String? = nil) {
         if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
             return
         }
-        var payload: [String: Any] = ["command": command]
-        if let text {
-            payload["text"] = text
-        }
+        let payload = EditorPastePolicy.payload(command: command, text: text, html: html)
         send("command", payload: payload)
     }
 
