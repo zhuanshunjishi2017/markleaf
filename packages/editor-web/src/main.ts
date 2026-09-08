@@ -33,6 +33,7 @@ import {
   setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
+  setCodeBlockControlHandlers,
   setEditorSharedStrings,
   restoreVisualSelection,
   renderEscapedCaptionHtml,
@@ -59,7 +60,7 @@ import {
 import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
 import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
 import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
-import { sharedEditorStrings } from './shared-editor-strings'
+import { normalizeSharedEditorLanguage, sharedEditorStrings } from './shared-editor-strings'
 import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
@@ -69,19 +70,6 @@ if (!editorElement) {
 }
 const editorMount = editorElement
 const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
-const findBar = document.querySelector<HTMLFormElement>('#find-bar')!
-const findInput = document.querySelector<HTMLInputElement>('#find-input')!
-const replaceInput = document.querySelector<HTMLInputElement>('#replace-input')!
-const caseInput = document.querySelector<HTMLInputElement>('#find-case')!
-const wholeInput = document.querySelector<HTMLInputElement>('#find-whole')!
-const caseText = document.querySelector<HTMLElement>('#find-case-text')!
-const wholeText = document.querySelector<HTMLElement>('#find-whole-text')!
-const findResult = document.querySelector<HTMLElement>('#find-result')!
-const findPrevious = document.querySelector<HTMLButtonElement>('#find-previous')!
-const findNext = document.querySelector<HTMLButtonElement>('#find-next')!
-const replaceOne = document.querySelector<HTMLButtonElement>('#replace-one')!
-const replaceAll = document.querySelector<HTMLButtonElement>('#replace-all')!
-const findClose = document.querySelector<HTMLButtonElement>('#find-close')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 bindReducedMotionPreference(
@@ -122,6 +110,10 @@ const editorCreationOptions = {
   handlePaste: handleVisualEditorPaste,
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
+setCodeBlockControlHandlers({
+  editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
+  copyCode: text => send('copyCodeBlockRequested', { text }),
+})
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
 let lastVisualSelection = captureVisualSelection(editor)
@@ -432,7 +424,7 @@ window.__markleafApplyVisualVariables = (payload) => {
   }, anchorReader)
 }
 
-let findBarLoc: Record<string, string> = {}
+let editorLoc: Record<string, string> = {}
 
 function applyAlertTitleLocalization(loc: Record<string, string>): void {
   const root = document.documentElement
@@ -444,22 +436,8 @@ function applyAlertTitleLocalization(loc: Record<string, string>): void {
 }
 
 function applyFindBarLocalization(loc: Record<string, string>): void {
-  findBarLoc = loc
-  setBlockTypeLabels(loc)
+  editorLoc = loc
   applyAlertTitleLocalization(loc)
-  findInput.placeholder = loc.find ?? 'Find'
-  findInput.ariaLabel = loc.findLabel ?? 'Find'
-  replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
-  replaceInput.ariaLabel = loc.replaceLabel ?? 'Replace with'
-  caseText.textContent = loc.caseSensitive ?? 'Case sensitive'
-  wholeText.textContent = loc.wholeWord ?? 'Whole word'
-  findPrevious.textContent = loc.previous ?? 'Previous'
-  findNext.textContent = loc.next ?? 'Next'
-  replaceOne.textContent = loc.replace ?? 'Replace'
-  replaceAll.textContent = loc.replaceAll ?? 'Replace all'
-  findClose.textContent = loc.close ?? 'Close'
-  findClose.ariaLabel = loc.closeLabel ?? 'Close find bar'
-  findResult.textContent = loc.noResults ?? '0/0'
   promoteHeadingButton.textContent = loc.formatPromoteHeading ?? '标+'
   promoteHeadingButton.ariaLabel = loc.formatPromoteHeading ?? 'Promote heading'
   demoteHeadingButton.textContent = loc.formatDemoteHeading ?? '标-'
@@ -792,15 +770,7 @@ function setSourceMode(enabled: boolean): void {
   sendEditorState()
 }
 
-function syncFindStateFromDom(): void {
-  findQuery = findInput.value
-  findReplace = replaceInput.value
-  findCaseSensitive = caseInput.checked
-  findWholeWord = wholeInput.checked
-}
-
-function closeFindBar(): void {
-  findBar.hidden = true
+function closeFind(): void {
   if (!sourceMode) clearFindHighlights(editor)
   if (sourceMode) sourceEditor?.focus()
   else editor.commands.focus()
@@ -810,7 +780,6 @@ function updateFindResult(backwards: boolean): void {
   const result = sourceMode
     ? sourceEditor?.find(findQuery, findCaseSensitive, findWholeWord, backwards) ?? { current: 0, total: 0 }
     : findInEditor(editor, findQuery, findCaseSensitive, findWholeWord, backwards)
-  findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
 }
 
@@ -819,7 +788,6 @@ function replaceCurrent(): void {
     ? sourceEditor?.replaceCurrent(findQuery, findReplace, findCaseSensitive, findWholeWord)
       ?? { current: 0, total: 0 }
     : replaceCurrentInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
-  findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
 }
 
@@ -827,35 +795,9 @@ function replaceEveryMatch(): void {
   const count = sourceMode
     ? sourceEditor?.replaceAll(findQuery, findReplace, findCaseSensitive, findWholeWord) ?? 0
     : replaceAllInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
-  findResult.textContent = count === 0 ? '0/0' : (markleafLanguage === 'zh-Hant' ? `已取代 ${count} 處` : markleafLanguage === 'en' ? `Replaced ${count} occurrence${count === 1 ? '' : 's'}` : markleafLanguage === 'ja' ? `${count} 件を置換しました` : `已替换 ${count} 处`)
   send('findResult', { current: count, total: count, replaced: count })
 }
 
-findBar.addEventListener('submit', event => {
-  event.preventDefault()
-  syncFindStateFromDom()
-  updateFindResult(false)
-})
-findInput.addEventListener('input', () => {
-  findQuery = findInput.value
-  updateFindResult(false)
-})
-caseInput.addEventListener('change', () => {
-  findCaseSensitive = caseInput.checked
-  updateFindResult(false)
-})
-wholeInput.addEventListener('change', () => {
-  findWholeWord = wholeInput.checked
-  updateFindResult(false)
-})
-replaceInput.addEventListener('input', () => {
-  findReplace = replaceInput.value
-})
-findPrevious.addEventListener('click', () => updateFindResult(true))
-findNext.addEventListener('click', () => updateFindResult(false))
-replaceOne.addEventListener('click', replaceCurrent)
-replaceAll.addEventListener('click', replaceEveryMatch)
-findClose.addEventListener('click', closeFindBar)
 sourceToggle.addEventListener('click', () => setSourceMode(!sourceMode))
 window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && formatPainter.isArmed) {
@@ -863,11 +805,6 @@ window.addEventListener('keydown', event => {
     formatPainter.cancel()
     updateFormatPainterCursor()
     sendEditorState()
-    return
-  }
-  if (event.key === 'Escape' && !findBar.hidden) {
-    event.preventDefault()
-    closeFindBar()
     return
   }
   if (event.key === 'Escape') {
@@ -1793,9 +1730,6 @@ async function handleMessage(value: unknown): Promise<void> {
             findQuery = parts[0] ?? ''
             findCaseSensitive = parts[1] === '1'
             findWholeWord = parts[2] === '1'
-            findInput.value = findQuery
-            caseInput.checked = findCaseSensitive
-            wholeInput.checked = findWholeWord
           }
           updateFindResult(payload.command === 'findPrev')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1807,17 +1741,13 @@ async function handleMessage(value: unknown): Promise<void> {
           findReplace = parts[1] ?? ''
           findCaseSensitive = parts[2] === '1'
           findWholeWord = parts[3] === '1'
-          findInput.value = findQuery
-          replaceInput.value = findReplace
-          caseInput.checked = findCaseSensitive
-          wholeInput.checked = findWholeWord
           if (payload.command === 'replaceOne') replaceCurrent()
           else replaceEveryMatch()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
         if (payload.command === 'findClose') {
-          closeFindBar()
+          closeFind()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -2096,48 +2026,6 @@ function applyAutoHideScrollbar(enabled: boolean): void {
   }
 }
 
-// ---- i18n：查找栏文案（跟随宿主语言，zh-Hans 为默认） ----
-const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
-  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockMermaid: '图表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
-  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockMermaid: '圖表', blockTable: '表', blockFootnote: '註', blockAlert: '示' },
-  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockMermaid: 'Diagram', blockTable: '▦', blockFootnote: 'Fn', blockAlert: '示' },
-  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockMermaid: '図表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
-}
-
-function applyFindBarLanguage(lang: string): void {
-  const table: Record<string, string> = FIND_BAR_STRINGS[lang] ?? FIND_BAR_STRINGS['zh-Hans'] ?? {}
-  setBlockTypeLabels(table)
-  const findInput = document.getElementById('find-input') as HTMLInputElement | null
-  const replaceInput = document.getElementById('replace-input') as HTMLInputElement | null
-  if (findInput) {
-    findInput.placeholder = table.find ?? ''
-    findInput.setAttribute('aria-label', table.find ?? '')
-  }
-  if (replaceInput) {
-    replaceInput.placeholder = table.replaceWith ?? ''
-    replaceInput.setAttribute('aria-label', table.replaceWith ?? '')
-  }
-  const setText = (id: string, text: string) => {
-    const el = document.getElementById(id)
-    if (el) el.textContent = text
-  }
-  setText('find-previous', table.prev ?? '')
-  setText('find-next', table.next ?? '')
-  setText('replace-one', table.replace ?? '')
-  setText('replace-all', table.replaceAll ?? '')
-  setText('find-close', table.close ?? '')
-  const setLabelText = (textId: string, inputId: string, text: string) => {
-    const textEl = document.getElementById(textId)
-    const input = document.getElementById(inputId)
-    if (textEl) textEl.textContent = text
-    if (input) input.setAttribute('aria-label', text)
-  }
-  setLabelText('find-case-text', 'find-case', table.case ?? '')
-  setLabelText('find-whole-text', 'find-whole', table.whole ?? '')
-  const closeBtn = document.getElementById('find-close')
-  if (closeBtn) closeBtn.setAttribute('aria-label', table.closeAria ?? '')
-}
-
 let markleafLanguage = 'zh-Hans'
 
 // 查找状态：由原生查找面板（FindPanelController）通过命令驱动
@@ -2146,9 +2034,9 @@ let findReplace = ''
 let findCaseSensitive = false
 let findWholeWord = false
 function setMarkleafLanguage(lang: string): void {
-  markleafLanguage = lang
-  applyFindBarLanguage(lang)
-  const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
+  markleafLanguage = normalizeSharedEditorLanguage(lang)
+  const strings = sharedEditorStrings(markleafLanguage, hostCapabilities.primaryActivationModifier)
+  setBlockTypeLabels(strings)
   blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
   setEditorSharedStrings(strings)
   setMermaidStrings(strings)
@@ -2466,11 +2354,11 @@ ${resolved.css}
   --ml-font-size: ${fontSize}px;
   --ml-line-height: ${lineHeight};
   --ml-max-width: ${maxWidth}px;
-  --markleaf-alert-note-title: ${JSON.stringify(findBarLoc.alertNote ?? '备注')};
-  --markleaf-alert-tip-title: ${JSON.stringify(findBarLoc.alertTip ?? '提示')};
-  --markleaf-alert-important-title: ${JSON.stringify(findBarLoc.alertImportant ?? '重要')};
-  --markleaf-alert-warning-title: ${JSON.stringify(findBarLoc.alertWarning ?? '警告')};
-  --markleaf-alert-caution-title: ${JSON.stringify(findBarLoc.alertCaution ?? '注意')};
+  --markleaf-alert-note-title: ${JSON.stringify(editorLoc.alertNote ?? '备注')};
+  --markleaf-alert-tip-title: ${JSON.stringify(editorLoc.alertTip ?? '提示')};
+  --markleaf-alert-important-title: ${JSON.stringify(editorLoc.alertImportant ?? '重要')};
+  --markleaf-alert-warning-title: ${JSON.stringify(editorLoc.alertWarning ?? '警告')};
+  --markleaf-alert-caution-title: ${JSON.stringify(editorLoc.alertCaution ?? '注意')};
 }
 html { font-size: var(--ml-font-size); }
 body { margin: 0; background: var(--bg-primary); }

@@ -47,6 +47,7 @@ internal sealed partial class MainForm
         {
             // 必须先于 loadDocument 应用样式，确保文档渲染时排版即已就绪。
             _editorHost?.SendFindBarLocalization();
+            _editorHost?.ExecuteCommand("setLanguage", GetFrontendLanguage());
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
             _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing, e.VisualIgnoreMaxContentWidth);
@@ -91,6 +92,8 @@ internal sealed partial class MainForm
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.BlockMenuRequested += OnEditorBlockMenuRequested;
+        _editorHost.CodeBlockLanguageRequested += OnCodeBlockLanguageRequested;
+        _editorHost.CopyCodeBlockRequested += OnCopyCodeBlockRequested;
         _editorHost.MermaidEditRequested += OnMermaidEditRequested;
         _editorHost.OutlineChanged += OnEditorOutlineChanged;
         _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;

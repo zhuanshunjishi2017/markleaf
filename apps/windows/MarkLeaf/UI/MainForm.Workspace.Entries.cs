@@ -80,12 +80,6 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (!await ConfirmDiscardOrSaveAsync())
-        {
-            _workspaceDocumentList.SelectedPath = _document?.FilePath;
-            return;
-        }
-
         await OpenDocumentPathAsync(path);
         _workspaceDocumentList.SelectedPath = _document?.FilePath;
     }
@@ -118,7 +112,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (!_documentOperationInProgress && await ConfirmDiscardOrSaveAsync())
+        if (!_documentOperationInProgress)
         {
             await OpenDocumentPathAsync(entry.FullPath);
         }
@@ -214,7 +208,7 @@ internal sealed partial class MainForm
         {
             var fileName = Path.GetFileName(path);
             var destination = Path.Combine(_workspaceRoot, fileName);
-            if (File.Exists(destination) && await ConfirmDiscardOrSaveAsync())
+            if (File.Exists(destination))
             {
                 await OpenDocumentPathAsync(destination);
             }
@@ -247,7 +241,7 @@ internal sealed partial class MainForm
 
             if (isOpenDocument && _document!.IsDirty)
             {
-                if (!await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+                if (!await ConfirmDiscardOrSaveAsync())
                 {
                     return;
                 }

@@ -64,6 +64,10 @@ internal sealed class EditorHostController : IDisposable
 
     public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
 
+    public event EventHandler<EditorCodeBlockLanguageRequest>? CodeBlockLanguageRequested;
+
+    public event EventHandler<string>? CopyCodeBlockRequested;
+
     public event EventHandler? MermaidEditRequested;
 
     public event EventHandler<EditorFindResult>? FindResultReceived;
@@ -506,35 +510,6 @@ internal sealed class EditorHostController : IDisposable
     {
         var payload = new
         {
-            find = Loc.Get("findBar.find"),
-            findLabel = Loc.Get("findBar.findLabel"),
-            replaceWith = Loc.Get("findBar.replaceWith"),
-            replaceLabel = Loc.Get("findBar.replaceLabel"),
-            caseSensitive = Loc.Get("findBar.caseSensitive"),
-            wholeWord = Loc.Get("findBar.wholeWord"),
-            previous = Loc.Get("findBar.previous"),
-            next = Loc.Get("findBar.next"),
-            replace = Loc.Get("findBar.replace"),
-            replaceAll = Loc.Get("findBar.replaceAll"),
-            close = Loc.Get("findBar.close"),
-            closeLabel = Loc.Get("findBar.closeLabel"),
-            replaced = Loc.Get("findBar.replaced"),
-            noResults = Loc.Get("findBar.noResults"),
-            blockParagraph = Loc.Get("blockHandle.paragraph"),
-            blockHeading1 = Loc.Get("blockHandle.heading1"),
-            blockHeading2 = Loc.Get("blockHandle.heading2"),
-            blockHeading3 = Loc.Get("blockHandle.heading3"),
-            blockHeading4 = Loc.Get("blockHandle.heading4"),
-            blockHeading5 = Loc.Get("blockHandle.heading5"),
-            blockHeading6 = Loc.Get("blockHandle.heading6"),
-            blockBulletList = Loc.Get("blockHandle.bulletList"),
-            blockOrderedList = Loc.Get("blockHandle.orderedList"),
-            blockTaskList = Loc.Get("blockHandle.taskList"),
-            blockBlockquote = Loc.Get("blockHandle.blockquote"),
-            blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
-            blockTable = Loc.Get("blockHandle.table"),
-            blockFootnote = Loc.Get("blockHandle.footnote"),
-            blockAlert = Loc.Get("blockHandle.alert"),
             alertNote = Loc.Get("menu.paragraph.alertNote"),
             alertTip = Loc.Get("menu.paragraph.alertTip"),
             alertImportant = Loc.Get("menu.paragraph.alertImportant"),
@@ -1341,6 +1316,18 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble(),
                         message.Payload.GetProperty("position").GetInt32()));
+                break;
+            case "codeBlockLanguageRequested":
+                CodeBlockLanguageRequested?.Invoke(
+                    this,
+                    new EditorCodeBlockLanguageRequest(
+                        message.Payload.GetProperty("position").GetInt32(),
+                        message.Payload.GetProperty("language").GetString() ?? string.Empty));
+                break;
+            case "copyCodeBlockRequested":
+                CopyCodeBlockRequested?.Invoke(
+                    this,
+                    message.Payload.GetProperty("text").GetString() ?? string.Empty);
                 break;
             case "mermaidEditRequested":
                 MermaidEditRequested?.Invoke(this, EventArgs.Empty);

@@ -35,7 +35,12 @@ internal sealed partial class MainForm
 
     private void ShowColorThemes()
     {
-        _colorThemeDialog ??= new Dialogs.ColorThemeDialog(
+        ShowThemeSettings();
+    }
+
+    private void ShowThemeSettings(int? pageIndex = null)
+    {
+        using var dialog = new Dialogs.ColorThemeDialog(
             _settings.ColorTheme,
             _settings.Appearance.FollowSystemColorMode,
             _settings.Appearance.DefaultLightThemeId,
@@ -60,13 +65,12 @@ internal sealed partial class MainForm
                 SetMarkdownStyle(styleId);
                 SaveSettings();
             });
-        _colorThemeDialog.Open(this);
+        dialog.Open(this, pageIndex);
     }
 
     private void ShowTypographyStyles()
     {
-        ShowColorThemes();
-        _colorThemeDialog?.Open(this, 1);
+        ShowThemeSettings(1);
     }
 
     private void ToggleCodeHighlight()

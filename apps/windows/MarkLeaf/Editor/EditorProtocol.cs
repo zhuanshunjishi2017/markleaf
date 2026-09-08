@@ -23,6 +23,8 @@ public static class EditorProtocol
         "editorStatusChanged",
         "contextMenuRequested",
         "blockMenuRequested",
+        "codeBlockLanguageRequested",
+        "copyCodeBlockRequested",
         "mermaidEditRequested",
         "outlineChanged",
         "outlineSelectionChanged",
@@ -180,6 +182,9 @@ public static class EditorProtocol
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
+            "codeBlockLanguageRequested" => HasNonNegativeInteger(payload, "position")
+                && HasProperty(payload, "language", JsonValueKind.String),
+            "copyCodeBlockRequested" => HasProperty(payload, "text", JsonValueKind.String),
             "mermaidEditRequested" => IsMissingOrObject(payload),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),

@@ -166,11 +166,6 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (!await ConfirmDiscardOrSaveAsync())
-        {
-            return;
-        }
-
         try
         {
             var path = _workspaceService.GetAvailableUntitledDocumentPath(directory, kind);

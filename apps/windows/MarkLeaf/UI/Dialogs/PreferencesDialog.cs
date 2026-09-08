@@ -41,7 +41,6 @@ internal sealed class PreferencesDialog : Form
     { DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly CheckBox _autoSaveCheck;
-    private readonly CheckBox _saveOnSwitchCheck;
     private readonly NumericUpDown _snapshotInterval;
     private readonly Button _recoverButton;
 
@@ -239,8 +238,6 @@ internal sealed class PreferencesDialog : Form
 
         _autoSaveCheck = new CheckBox
         { Text = Loc.Get("prefs.file.autoSave"), AutoSize = true, FlatStyle = FlatStyle.System };
-        _saveOnSwitchCheck = new CheckBox
-        { Text = Loc.Get("prefs.file.saveOnSwitch"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _snapshotInterval = new NumericUpDown
         { Minimum = 10, Maximum = 300, Increment = 5 };
@@ -589,17 +586,15 @@ internal sealed class PreferencesDialog : Form
 
         panel.Controls.Add(_autoSaveCheck, 0, 0);
         panel.Controls.Add(Gap(), 0, 1);
-        panel.Controls.Add(_saveOnSwitchCheck, 0, 2);
-        panel.Controls.Add(Gap(), 0, 3);
 
         var intervalRow = new FlowLayoutPanel { AutoSize = true };
         intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.snapshotInterval"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
         intervalRow.Controls.Add(_snapshotInterval);
         intervalRow.Controls.Add(new Label { Text = Loc.Get("prefs.file.seconds"), AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
-        panel.Controls.Add(intervalRow, 0, 4);
+        panel.Controls.Add(intervalRow, 0, 2);
 
-        panel.Controls.Add(Gap(), 0, 5);
-        panel.Controls.Add(_recoverButton, 0, 6);
+        panel.Controls.Add(Gap(), 0, 3);
+        panel.Controls.Add(_recoverButton, 0, 4);
 
         return panel;
     }
@@ -1255,7 +1250,6 @@ internal sealed class PreferencesDialog : Form
         var file = _settings.File;
         _startupAction.SelectedIndex = (int)file.StartupAction;
         _autoSaveCheck.Checked = file.AutoSaveEnabled;
-        _saveOnSwitchCheck.Checked = file.SaveOnDocumentSwitch;
         _snapshotInterval.Value = file.SnapshotIntervalSeconds;
         _recordRecentFilesCheck.Checked = file.RecordRecentFiles;
         _recordRecentFoldersCheck.Checked = file.RecordRecentFolders;
@@ -1406,7 +1400,6 @@ internal sealed class PreferencesDialog : Form
         var file = _settings.File;
         file.StartupAction = (StartupAction)_startupAction.SelectedIndex;
         file.AutoSaveEnabled = _autoSaveCheck.Checked;
-        file.SaveOnDocumentSwitch = _saveOnSwitchCheck.Checked;
         file.SnapshotIntervalSeconds = (int)_snapshotInterval.Value;
         file.RecordRecentFiles = _recordRecentFilesCheck.Checked;
         file.RecordRecentFolders = _recordRecentFoldersCheck.Checked;

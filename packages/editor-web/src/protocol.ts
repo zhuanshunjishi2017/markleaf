@@ -25,6 +25,8 @@ export type EditorMessage = {
     | 'editorStatusChanged'
     | 'contextMenuRequested'
     | 'blockMenuRequested'
+    | 'codeBlockLanguageRequested'
+    | 'copyCodeBlockRequested'
     | 'outlineChanged'
     | 'outlineSelectionChanged'
     | 'requestSave'

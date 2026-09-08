@@ -257,18 +257,8 @@
   overflow-wrap: break-word;
 }
 
-.markleaf-document pre > code[data-language]::after {
-  content: attr(data-language);
-  position: absolute;
-  top: 4px;
-  right: 8px;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  font-weight: inherit;
-  color: var(--text-secondary);
-  pointer-events: none;
-  user-select: none;
+.markleaf-document pre:has(.markleaf-code-block-controls) {
+  padding-top: 28px;
 }
 
 .markleaf-document pre code {

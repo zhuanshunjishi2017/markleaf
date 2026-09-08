@@ -52,8 +52,19 @@ const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
 let frontMatterStrings = sharedEditorStrings('zh-Hans', 'ctrl')
+let editorSharedStrings = frontMatterStrings
 let formulaInputAssistantText = frontMatterStrings.formulaInputAssistant
 let codeHighlightVisible = false
+let codeBlockLanguageRequested: ((position: number, language: string) => void) | null = null
+let copyCodeBlockRequested: ((text: string) => void) | null = null
+
+export function setCodeBlockControlHandlers(handlers: {
+  editLanguage?: (position: number, language: string) => void
+  copyCode?: (text: string) => void
+}): void {
+  codeBlockLanguageRequested = handlers.editLanguage ?? null
+  copyCodeBlockRequested = handlers.copyCode ?? null
+}
 
 const markdownEmojiAliases: Record<string, string> = {
   '+1': '👍',
@@ -186,8 +197,9 @@ const CjkAutoSpacing = Extension.create({
 })
 
 export function setEditorSharedStrings(
-  strings: Pick<SharedEditorStrings, 'mermaidRender' | 'formulaInputAssistant' | 'frontMatterTitle' | 'frontMatterHide' | 'frontMatterValid' | 'frontMatterInvalid'>,
+  strings: SharedEditorStrings,
 ): void {
+  editorSharedStrings = strings
   mermaidRenderButtonText = strings.mermaidRender
   frontMatterStrings = { ...frontMatterStrings, ...strings }
   formulaInputAssistantText = strings.formulaInputAssistant
@@ -2253,6 +2265,77 @@ function createMermaidRenderButton(editor: Editor, position: number): HTMLButton
   return button
 }
 
+const CodeBlockControls = Extension.create({
+  name: 'markleafCodeBlockControls',
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const decorations: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            if (node.type.name !== 'codeBlock') return
+            decorations.push(Decoration.widget(pos + 1, () => createCodeBlockControls(editor, pos), {
+              side: -1,
+              ignoreSelection: true,
+            }))
+          })
+          return decorations.length > 0
+            ? DecorationSet.create(state.doc, decorations)
+            : DecorationSet.empty
+        },
+      },
+    })]
+  },
+})
+
+function createCodeBlockControls(editor: Editor, position: number): HTMLDivElement {
+  const controls = document.createElement('div')
+  controls.className = 'markleaf-code-block-controls'
+  controls.contentEditable = 'false'
+
+  const copy = document.createElement('button')
+  copy.type = 'button'
+  copy.className = 'markleaf-code-block-copy'
+  copy.textContent = '\uE8C8'
+  copy.tabIndex = -1
+  copy.setAttribute('aria-label', 'Copy code block')
+
+  const language = document.createElement('button')
+  language.type = 'button'
+  language.className = 'markleaf-code-block-language'
+  language.tabIndex = -1
+
+  const stopMouseSelection = (event: MouseEvent): void => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  copy.addEventListener('mousedown', stopMouseSelection)
+  language.addEventListener('mousedown', stopMouseSelection)
+
+  copy.addEventListener('click', (event) => {
+    stopMouseSelection(event)
+    const node = editor.state.doc.nodeAt(position)
+    if (node?.type.name === 'codeBlock') copyCodeBlockRequested?.(node.textContent)
+  })
+  language.addEventListener('click', (event) => {
+    stopMouseSelection(event)
+    if (!editor.isEditable) return
+    const node = editor.state.doc.nodeAt(position)
+    if (node?.type.name !== 'codeBlock') return
+    const value = typeof node.attrs.language === 'string' ? node.attrs.language : ''
+    codeBlockLanguageRequested?.(position, value)
+  })
+
+  const node = editor.state.doc.nodeAt(position)
+  language.textContent = node?.type.name === 'codeBlock' && typeof node.attrs.language === 'string'
+    ? node.attrs.language
+    : ''
+  language.classList.toggle('markleaf-code-block-language-empty', language.textContent.length === 0)
+  controls.append(copy, language)
+  return controls
+}
+
 type CodeHighlightToken = { from: number; to: number; className: string }
 
 const CodeBlockHighlight = Extension.create({
@@ -2298,10 +2381,10 @@ type FormulaSymbol = {
   previewLatex?: string
   plainPreview?: boolean
   separatorBefore?: boolean
-  sectionBefore?: string
+  sectionBefore?: keyof SharedEditorStrings
   wrap?: { before: string; after: string; caretOffset: number }
 }
-type FormulaSymbolGroup = { label: string; symbols: FormulaSymbol[] }
+type FormulaSymbolGroup = { label: keyof SharedEditorStrings; symbols: FormulaSymbol[] }
 
 function renderFormulaSymbolPreview(latex: string): string {
   return katex.renderToString(latex, {
@@ -2313,7 +2396,7 @@ function renderFormulaSymbolPreview(latex: string): string {
 
 const formulaSymbolGroups: FormulaSymbolGroup[] = [
   {
-    label: '希腊字母',
+    label: 'formulaGroupGreek',
     symbols: [
       { preview: 'α', latex: '\\alpha' },
       ...[
@@ -2330,7 +2413,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ],
   },
   {
-    label: '运算符',
+    label: 'formulaGroupOperators',
     symbols: [
       ['×', '\\times'], ['÷', '\\div'], ['±', '\\pm'], ['∓', '\\mp'],
       ['∗', '\\ast'], ['★', '\\star'], ['○', '\\circ'], ['●', '\\bullet'],
@@ -2348,7 +2431,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
   {
-    label: '关系符号',
+    label: 'formulaGroupRelations',
     symbols: [
       ['≤', '\\le'], ['≥', '\\ge'], ['≺', '\\prec'], ['≻', '\\succ'],
       ['⊂', '\\subset'], ['⊃', '\\supset'], ['≪', '\\ll'], ['≫', '\\gg'],
@@ -2358,7 +2441,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
   {
-    label: '结构',
+    label: 'formulaGroupStructures',
     symbols: [
       ['xₐ', 'x_{a}'], ['xᵇ', 'x^{b}'], ['xᵇₐ', 'x_{a}^{b}'], ['x̄', '\\bar{x}'],
       ['x̃', '\\tilde{x}'], ['a/b', '\\frac{a}{b}'], ['√x', '\\sqrt{x}'],
@@ -2372,25 +2455,25 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
   {
-    label: '字体',
+    label: 'formulaGroupFonts',
     symbols: [
-      { preview: '\\mathrm{}', previewLatex: '\\mathrm{x}', latex: '\\mathrm{}', plainPreview: true, sectionBefore: '正体', wrap: { before: '\\mathrm{', after: '}', caretOffset: '\\mathrm{'.length } },
+      { preview: '\\mathrm{}', previewLatex: '\\mathrm{x}', latex: '\\mathrm{}', plainPreview: true, sectionBefore: 'formulaSectionUpright', wrap: { before: '\\mathrm{', after: '}', caretOffset: '\\mathrm{'.length } },
       { preview: 'e', latex: '\\mathrm{e}' },
       { preview: 'i', latex: '\\mathrm{i}' },
       { preview: 'dx', latex: '\\,\\mathrm{d}x' },
       { preview: '\\mathrm{e}^{\\mathrm{i}x}', previewLatex: '\\mathrm{e}^{\\mathrm{i}x}', latex: '\\mathrm{e}^{\\mathrm{i}}', wrap: { before: '\\mathrm{e}^{\\mathrm{i}', after: '}',caretOffset: '\\mathrm{e}^{\\mathrm{i}'.length } },
-      { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: '黑板体', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
+      { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: 'formulaSectionBlackboard', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
       { preview: 'C', latex: '\\mathbb{C}' },
       { preview: 'N', latex: '\\mathbb{N}' },
       { preview: 'Q', latex: '\\mathbb{Q}' },
       { preview: 'R', latex: '\\mathbb{R}' },
       { preview: 'Z', latex: '\\mathbb{Z}' },
-      { preview: '\\mathcal{}', previewLatex: '\\mathcal{A}', latex: '\\mathcal{}', plainPreview: true, sectionBefore: '花体', separatorBefore: true, wrap: { before: '\\mathcal{', after: '}', caretOffset: '\\mathcal{'.length } },
+      { preview: '\\mathcal{}', previewLatex: '\\mathcal{A}', latex: '\\mathcal{}', plainPreview: true, sectionBefore: 'formulaSectionCalligraphic', separatorBefore: true, wrap: { before: '\\mathcal{', after: '}', caretOffset: '\\mathcal{'.length } },
       { preview: 'A', latex: '\\mathcal{A}' },
       { preview: 'F', latex: '\\mathcal{F}' },
       { preview: 'L', latex: '\\mathcal{L}' },
       { preview: 'R', latex: '\\mathcal{R}' },
-      { preview: '\\mathscr{}', previewLatex: '\\mathscr{A}', latex: '\\mathscr{}', plainPreview: true, sectionBefore: '手写体', separatorBefore: true, wrap: { before: '\\mathscr{', after: '}', caretOffset: '\\mathscr{'.length } },
+      { preview: '\\mathscr{}', previewLatex: '\\mathscr{A}', latex: '\\mathscr{}', plainPreview: true, sectionBefore: 'formulaSectionScript', separatorBefore: true, wrap: { before: '\\mathscr{', after: '}', caretOffset: '\\mathscr{'.length } },
       { preview: 'B', latex: '\\mathscr{B}' },
       { preview: 'E', latex: '\\mathscr{E}' },
       { preview: 'F', latex: '\\mathscr{F}' },
@@ -2401,14 +2484,14 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ],
   },
   {
-    label: '结构块',
+    label: 'formulaGroupBlocks',
     symbols: [
-      { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: '对齐环境', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
+      { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: 'formulaSectionAlignment', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
       { preview: 'cases', previewLatex: '\\begin{cases}a\\\\b\\end{cases}', latex: '\\begin{cases}\n  \n\\end{cases}', wrap: { before: '\\begin{cases}\n  ', after: '\n\\end{cases}', caretOffset: '\\begin{cases}\n  '.length } },
-      { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: '包裹结构', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
+      { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: 'formulaSectionWrappers', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
       { preview: 'overbrace', previewLatex: '\\overbrace{\\cdots}^{\\cdots}', latex: '\\overbrace{}^{}',  wrap: { before: '\\overbrace{', after: '}^{}', caretOffset: '\\overbrace{'.length } },
       { preview: 'underbrace', previewLatex: '\\underbrace{\\cdots}_{\\cdots}', latex: '\\underbrace{}_{}',  wrap: { before: '\\underbrace{', after: '}_{}', caretOffset: '\\underbrace{'.length } },
-      { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: '矩阵与行列式', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
+      { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: 'formulaSectionMatrices', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
       { preview: '[ ]', previewLatex: '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', latex: '\\begin{bmatrix}\n  \n\\end{bmatrix}', wrap: { before: '\\begin{bmatrix}\n  ', after: '\n\\end{bmatrix}', caretOffset: '\\begin{bmatrix}\n  '.length } },
       { preview: '| |', previewLatex: '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', latex: '\\begin{vmatrix}\n  \n\\end{vmatrix}', wrap: { before: '\\begin{vmatrix}\n  ', after: '\n\\end{vmatrix}', caretOffset: '\\begin{vmatrix}\n  '.length } },
       { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },  
@@ -2416,7 +2499,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ],
   },
   {
-    label: '箭头与点号',
+    label: 'formulaGroupArrowsDots',
     symbols: [
       ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
       ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
@@ -2427,7 +2510,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
 ]
 
 formulaSymbolGroups[0]!.symbols.push(
-  { preview: 'ε', latex: '\\varepsilon', separatorBefore: true, sectionBefore: '变体' },
+  { preview: 'ε', latex: '\\varepsilon', separatorBefore: true, sectionBefore: 'formulaSectionVariants' },
   { preview: 'ϑ', latex: '\\vartheta' },
   { preview: 'ϰ', latex: '\\varkappa' },
   { preview: 'ϖ', latex: '\\varpi' },
@@ -2448,20 +2531,20 @@ formulaSymbolGroups[0]!.symbols.push(
 )
 
 const structureSymbols = formulaSymbolGroups[3]!.symbols
-const markStructureSection = (latex: string, section: string, separatorBefore = true) => {
+const markStructureSection = (latex: string, section: keyof SharedEditorStrings, separatorBefore = true) => {
   const symbol = structureSymbols.find((item) => item.latex === latex)
   if (symbol) {
     symbol.sectionBefore = section
     symbol.separatorBefore = separatorBefore
   }
 }
-markStructureSection('x_{a}', '上下标与修饰', false)
-markStructureSection('\\frac{a}{b}', '分式与根式')
-markStructureSection('\\left(x\\right)', '括号')
-markStructureSection('\\int_{a}^{b}', '积分与运算')
+markStructureSection('x_{a}', 'formulaSectionScriptsDecorations', false)
+markStructureSection('\\frac{a}{b}', 'formulaSectionFractionsRoots')
+markStructureSection('\\left(x\\right)', 'formulaSectionBrackets')
+markStructureSection('\\int_{a}^{b}', 'formulaSectionIntegrals')
 const vectorSymbol = structureSymbols.find((symbol) => symbol.latex === '\\vec{}')
 if (vectorSymbol) {
-  vectorSymbol.sectionBefore = '向量'
+  vectorSymbol.sectionBefore = 'formulaSectionVectors'
   vectorSymbol.separatorBefore = true
   vectorSymbol.previewLatex = '\\vec{x}'
   vectorSymbol.wrap = { before: '\\vec{', after: '}', caretOffset: '\\vec{'.length }
@@ -2532,9 +2615,10 @@ function createFormulaSymbolToolbar(
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'markleaf-formula-symbol-group-button'
-    button.textContent = ['αβΔ', '×÷±', '≤≠', '√()', '𝔸', '{&=', '←↑'][groupIndex] ?? group.label
-    button.title = group.label
-    button.setAttribute('aria-label', group.label)
+    const groupLabel = editorSharedStrings[group.label]
+    button.textContent = ['αβΔ', '×÷±', '≤≠', '√()', '𝔸', '{&=', '←↑'][groupIndex] ?? groupLabel
+    button.title = groupLabel
+    button.setAttribute('aria-label', groupLabel)
     button.disabled = !editor.isEditable
 
     const panel = document.createElement('div')
@@ -2552,7 +2636,7 @@ function createFormulaSymbolToolbar(
         sectionGroup.className = 'markleaf-formula-symbol-section-group'
         const section = document.createElement('div')
         section.className = 'markleaf-formula-symbol-section'
-        section.textContent = symbol.sectionBefore
+        section.textContent = editorSharedStrings[symbol.sectionBefore]
         sectionGroup.append(section)
         panel.append(sectionGroup)
       } else if (symbol.separatorBefore) {
@@ -3246,6 +3330,7 @@ export const editorExtensions = [
   TableCell,
   FootnoteDefinitionDecorations,
   Caption,
+  CodeBlockControls,
   MermaidCodeBlockControls,
   CodeBlockHighlight,
   ExpandedSourceEditor,
@@ -3426,8 +3511,6 @@ export function getMarkdown(editor: Editor): string {
   const protectedMarkdown = markdown
     .replace(/\$\$[\s\S]*?\$\$/g, formulaPlaceholder)
     .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, formulaPlaceholder)
-    .replace(/\\\[[\s\S]*?\\\]/g, formulaPlaceholder)
-    .replace(/\\\([\s\S]*?\\\)/g, formulaPlaceholder)
   const stabilized = autoConvertUnsafeEmphasis
     ? stabilizeUnsafeEmphasisMarkdown(protectedMarkdown)
     : protectedMarkdown
@@ -3455,11 +3538,28 @@ function removeMarkdownLiteralEscapes(markdown: string): string {
     .replace(/\]\([^\n]*\)/g, placeholder)
     .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
     .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
-    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
-    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
-    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+    // Only protect actual inline-code spans. Tiptap escapes literal backticks
+    // in ordinary text as ``\` ``; those delimiters must remain eligible for
+    // removal when this preference is disabled.
+    .replace(/(?<!\\)(`+)([\s\S]*?)(?<!\\)\1/g, placeholder)
 
-  const unescaped = protectedMarkdown.replace(/\\([*_\\])/g, '$1')
+  // Keep this character class in sync with Tiptap's MarkdownManager
+  // `escapeMarkdownSyntax()` implementation. When the preference is off,
+  // remove escapes for every character that Tiptap adds them to in ordinary
+  // text: backslash, backtick, asterisk, underscore, square brackets and
+  // tilde. Syntax-owned regions were replaced with placeholders above and
+  // are restored unchanged afterwards.
+  const unescaped = protectedMarkdown
+    // Square brackets may acquire more than one slash while passing through
+    // Markdown parsing and serialization. Remove the complete escape run so
+    // the disabled preference never leaves a residual `\[` or `\]`.
+    .replace(/\\+\[/g, '[')
+    .replace(/\\+\]/g, ']')
+    .replace(/\\\\/g, '\\')
+    .replace(/\\`/g, '`')
+    .replace(/\\\*/g, '*')
+    .replace(/\\_/g, '_')
+    .replace(/\\~/g, '~')
   return restoreProtectedMarkdownParts(
     unescaped,
     /\u0000markleaf-marker-protected-(\d+)\u0000/g,
@@ -4553,6 +4653,7 @@ export function executeEditorCommand(
       return true
     },
     setCodeBlockLanguage: () => setCodeBlockLanguage(editor, text),
+    setCodeBlockLanguageAt: () => setCodeBlockLanguageAt(editor, text),
     editMath: () => expandSelectedMath(editor),
     editMermaid: () => expandSelectedMermaid(editor),
     updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
@@ -5301,6 +5402,26 @@ function setCodeBlockLanguage(editor: Editor, text?: string): boolean {
   const language = (text ?? '').trim()
   editor.view.dispatch(editor.state.tr.setNodeMarkup(current.pos, undefined, {
     ...current.node.attrs,
+    language: language.length > 0 ? language : null,
+  }))
+  return true
+}
+
+function setCodeBlockLanguageAt(editor: Editor, text?: string): boolean {
+  if (!text) return false
+  let payload: { position?: unknown; language?: unknown }
+  try {
+    payload = JSON.parse(text) as { position?: unknown; language?: unknown }
+  } catch {
+    return false
+  }
+  if (!Number.isInteger(payload.position) || typeof payload.language !== 'string') return false
+  const position = payload.position as number
+  const node = editor.state.doc.nodeAt(position)
+  if (!node || node.type.name !== 'codeBlock') return false
+  const language = payload.language.trim()
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
+    ...node.attrs,
     language: language.length > 0 ? language : null,
   }))
   return true

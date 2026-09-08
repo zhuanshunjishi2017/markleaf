@@ -52,7 +52,6 @@ internal sealed partial class MainForm : Form
     private EditorHostController? _editorHost;
     private bool _expandedSourceContextMenuOpen;
     private FindReplaceDialog? _findReplaceDialog;
-    private ColorThemeDialog? _colorThemeDialog;
     private WebView2? _webView;
     private MarkdownDocument? _document;
     private readonly DocumentTabBar _documentTabBar = new();
@@ -480,11 +479,6 @@ internal sealed partial class MainForm : Form
                 _findReplaceDialog.Dispose();
             }
             _findReplaceDialog = null;
-            if (_colorThemeDialog is { IsDisposed: false })
-            {
-                _colorThemeDialog.Dispose();
-            }
-            _colorThemeDialog = null;
             _menuService.Dispose();
             _menuBgBrush.Dispose();
             _menuHighlightBrush.Dispose();

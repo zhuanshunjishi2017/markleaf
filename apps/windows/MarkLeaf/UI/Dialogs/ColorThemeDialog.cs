@@ -32,7 +32,7 @@ internal sealed class ColorThemeDialog : Form
     private readonly ToolTip _themeToolTip = new();
     private readonly bool _systemDark = ColorThemeService.IsSystemDarkMode();
     private string _manualThemeId;
-    private int _lastPageIndex;
+    private static int _lastPageIndex;
     private bool _optionalFontsChecked;
 
     public string SelectedThemeId { get; private set; }
@@ -133,28 +133,20 @@ internal sealed class ColorThemeDialog : Form
         _footer.Controls.Add(buttons); _footer.Controls.Add(_follow);
         Controls.Add(_pageHost); Controls.Add(_tabs); Controls.Add(_footerSeparator); Controls.Add(_footer);
         _follow.Checked = followSystem; UpdateSelection(); ApplyDialogColors();
-        FormClosing += (_, e) =>
-        {
-            if (e.CloseReason != CloseReason.UserClosing) return;
-            e.Cancel = true;
-            Hide();
-        };
     }
 
-    public void Open(Form owner, int? pageIndex = null)
+    public DialogResult Open(Form owner, int? pageIndex = null)
     {
         var targetPage = pageIndex ?? _lastPageIndex;
         _tabs.SelectedIndex = targetPage;
         ShowPage(targetPage);
-        if (Owner != owner) Owner = owner;
         var workingArea = Screen.FromControl(owner).WorkingArea;
         var x = owner.Left + (owner.Width - Width) / 2;
         var y = owner.Bottom - Height;
         Location = new Point(
             Math.Clamp(x, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - Width)),
             Math.Clamp(y, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - Height)));
-        if (!Visible) ShowDialog(owner);
-        else { BringToFront(); Activate(); }
+        return ShowDialog(owner);
     }
 
     private void ShowPage(int index)

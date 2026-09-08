@@ -52,4 +52,6 @@ internal sealed record EditorContextMenuRequest(
 
 internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);
 
+internal sealed record EditorCodeBlockLanguageRequest(int Position, string Language);
+
 internal sealed record UnsafeEmphasisRequest(string RequestId, string Kind);

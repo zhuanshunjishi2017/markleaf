@@ -306,8 +306,6 @@ public sealed class FileSettings
 
     public bool AutoSaveEnabled { get; set; }
 
-    public bool SaveOnDocumentSwitch { get; set; } = true;
-
     public int SnapshotIntervalSeconds { get; set; } = 30;
 
     public bool RecordRecentFiles { get; set; } = true;

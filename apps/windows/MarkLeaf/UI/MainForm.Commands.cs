@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
@@ -1005,15 +1006,56 @@ internal sealed partial class MainForm
         SetStatus(Loc.Get("status.codeLanguageUpdated"));
     }
 
+    private void OnCodeBlockLanguageRequested(object? sender, EditorCodeBlockLanguageRequest request)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnCodeBlockLanguageRequested(sender, request));
+            return;
+        }
+        if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
+        {
+            return;
+        }
+
+        using var dialog = new TextInputDialog(
+            Loc.Get("dialog.codeLanguageTitle"),
+            Loc.Get("dialog.codeLanguagePrompt"),
+            request.Language);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand(
+            "setCodeBlockLanguageAt",
+            JsonSerializer.Serialize(new { position = request.Position, language = dialog.InputText }));
+        SetStatus(Loc.Get("status.codeLanguageUpdated"));
+    }
+
+    private void OnCopyCodeBlockRequested(object? sender, string text)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnCopyCodeBlockRequested(sender, text));
+            return;
+        }
+        CopyCodeBlockText(text);
+    }
+
     private void CopyCodeBlock()
+    {
+        CopyCodeBlockText(
+            (_editorCommandStatus.CodeBlock || _editorCommandStatus.FrontMatter)
+                ? _editorCommandStatus.CodeBlockText ?? string.Empty
+                : string.Empty);
+    }
+
+    private void CopyCodeBlockText(string text)
     {
         try
         {
-            Clipboard.SetText(
-                (_editorCommandStatus.CodeBlock || _editorCommandStatus.FrontMatter)
-                    ? _editorCommandStatus.CodeBlockText ?? string.Empty
-                    : string.Empty,
-                TextDataFormat.UnicodeText);
+            Clipboard.SetText(text, TextDataFormat.UnicodeText);
             SetStatus(Loc.Get("status.copied"));
         }
         catch (Exception exception)

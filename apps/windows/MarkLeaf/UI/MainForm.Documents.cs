@@ -542,7 +542,7 @@ internal sealed partial class MainForm
         {
             var index = _openDocuments.IndexOf(dirtyDocuments[0]);
             if (index != _activeDocumentIndex) await SwitchDocumentTabAsync(index);
-            if (!await ConfirmDiscardOrSaveAsync(false)) return;
+            if (!await ConfirmDiscardOrSaveAsync()) return;
         }
 
         var keepDocument = _openDocuments[keepIndex];
@@ -608,7 +608,7 @@ internal sealed partial class MainForm
 
     private async Task OpenRecentFileAsync(string path)
     {
-        if (_documentOperationInProgress || !await ConfirmDiscardOrSaveAsync())
+        if (_documentOperationInProgress)
         {
             return;
         }
@@ -861,18 +861,11 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task<bool> ConfirmDiscardOrSaveAsync(bool isDocumentSwitch = true)
+    private async Task<bool> ConfirmDiscardOrSaveAsync()
     {
         if (_document?.IsDirty != true)
         {
             return true;
-        }
-
-        if (isDocumentSwitch
-            && _settings.File.SaveOnDocumentSwitch
-            && _document.FilePath is not null)
-        {
-            return await SaveDocumentAsync(saveAs: false);
         }
 
         var choice = ShowMessage(
@@ -948,7 +941,7 @@ internal sealed partial class MainForm
                 await SwitchDocumentTabAsync(dirtyIndex);
             }
 
-            if (!await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+            if (!await ConfirmDiscardOrSaveAsync())
             {
                 return;
             }
@@ -1493,11 +1486,8 @@ internal sealed partial class MainForm
 
         foreach (var path in documentPaths)
         {
-            if (await ConfirmDiscardOrSaveAsync())
-            {
-                await OpenDocumentPathAsync(path);
-                RecordRecentFile(path);
-            }
+            await OpenDocumentPathAsync(path);
+            RecordRecentFile(path);
             break;
         }
 
