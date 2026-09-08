@@ -25,7 +25,7 @@ internal sealed class EditorHostController : IDisposable
     private readonly Queue<Action> _readyActions = new();
     private readonly Dictionary<string, TaskCompletionSource<EditorSnapshot>> _snapshotRequests =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, TaskCompletionSource<bool>> _commandRequests =
+    private readonly Dictionary<string, TaskCompletionSource<EditorCommandResult>> _commandRequests =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, TaskCompletionSource<EditorSelectionExport>> _selectionExportRequests =
         new(StringComparer.Ordinal);
@@ -553,13 +553,27 @@ internal sealed class EditorHostController : IDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
+        var result = await ExecuteCommandResultAsync(
+            command, text, clientX, clientY, null, timeout, cancellationToken);
+        return result.Success;
+    }
+
+    public async Task<EditorCommandResult> ExecuteCommandResultAsync(
+        string command,
+        string? text = null,
+        double? clientX = null,
+        double? clientY = null,
+        string? html = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
         var requestId = Guid.NewGuid().ToString("N");
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<EditorCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _commandRequests.Add(requestId, completion);
         EnqueueOrRun(() =>
         {
             var registeredId = _session.RegisterRequest("commandResult", requestId);
-            Post("command", new { command, text, clientX, clientY }, registeredId);
+            Post("command", new { command, text, html, clientX, clientY }, registeredId);
         });
 
         using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(10));
@@ -1428,7 +1442,18 @@ internal sealed class EditorHostController : IDisposable
                     && message.RequestId is not null
                     && _commandRequests.TryGetValue(message.RequestId, out var commandCompletion))
                 {
-                    commandCompletion.TrySetResult(message.Payload.GetProperty("success").GetBoolean());
+                    var outcome = message.Payload.TryGetProperty("outcome", out var outcomeElement)
+                        && outcomeElement.ValueKind == JsonValueKind.String
+                        ? outcomeElement.GetString()
+                        : null;
+                    var commandError = message.Payload.TryGetProperty("error", out var errorElement)
+                        && errorElement.ValueKind == JsonValueKind.String
+                        ? errorElement.GetString()
+                        : null;
+                    commandCompletion.TrySetResult(new EditorCommandResult(
+                        message.Payload.GetProperty("success").GetBoolean(),
+                        outcome,
+                        commandError));
                 }
                 else
                 {

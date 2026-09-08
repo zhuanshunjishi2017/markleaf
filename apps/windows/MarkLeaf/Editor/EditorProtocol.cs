@@ -199,7 +199,12 @@ public static class EditorProtocol
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY"),
-            "commandResult" => HasProperty(payload, "success", JsonValueKind.True, JsonValueKind.False),
+            "commandResult" => HasProperty(payload, "success", JsonValueKind.True, JsonValueKind.False)
+                && (!payload.TryGetProperty("outcome", out var outcome)
+                    || outcome.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+                && (!payload.TryGetProperty("error", out var error)
+                    || error.ValueKind == JsonValueKind.Null
+                    || error.ValueKind == JsonValueKind.String && (error.GetString()?.Length ?? 0) <= 256),
             "pasteImage" => IsMissingOrObject(payload),
             "error" => HasProperty(payload, "message", JsonValueKind.String),
             _ => payload.ValueKind == JsonValueKind.Object,

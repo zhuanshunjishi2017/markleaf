@@ -2,7 +2,7 @@ import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNest
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { DOMSerializer } from '@tiptap/pm/model'
+import { DOMSerializer, type Mark as ProseMirrorMark, type NodeType } from '@tiptap/pm/model'
 import { TableMap } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
@@ -3399,12 +3399,13 @@ export function createEditor(
   return editor
 }
 
-// A display formula after a list must be separated by a blank line. Without
-// it Markdown treats the unprefixed formula line as continuation content of
-// the preceding list item, rather than as a block following the list.
+// A standalone display formula must be separated from preceding paragraph
+// text by a blank line. This is especially important in list items: without
+// that boundary Marked parses `\[` and `\]` as escaped literal brackets in
+// the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
   return markdown.replace(
-    /(^[ \t]*(?:[-+*]|\d+[.)])[ \t]+[^\r\n]*\r?\n)(?=[ \t]*(?:\$\$|\\\[))/gm,
+    /(^[^\r\n]*\S[ \t]*\r?\n)(?=[ \t]*(?:\$\$|\\\[)[ \t]*(?:\r?\n|$))/gm,
     '$1\n',
   )
 }
@@ -3424,17 +3425,108 @@ export function replaceEditorDocument(
  * when source mode is switched back to visual mode, then replace the current
  * visual selection with the resulting ProseMirror content. */
 export function pasteMarkdownText(editor: Editor, markdown: string): boolean {
-  // The Markdown extension overrides insertContentAt when contentType is
-  // explicitly "markdown". This invokes the same MarkdownManager used by
-  // source-mode loading, preserving block syntax (headings/lists/formulas)
-  // and inline syntax (marks/math) while adapting the parsed content to the
-  // current selection.
-  return editor.commands.insertContentAt(editor.state.selection, markdown, {
-    contentType: 'markdown',
-    applyInputRules: false,
-    applyPasteRules: false,
-    updateSelection: true,
-  })
+  return pasteMarkdownTextWithResult(editor, markdown).success
+}
+
+export type MarkdownPasteOutcome = 'markdown' | 'normalized' | 'plainText' | 'failed'
+
+export type MarkdownPasteResult = {
+  success: boolean
+  outcome: MarkdownPasteOutcome
+  error?: string
+}
+
+/** Parse Markdown, repair combinations rejected by the editor schema, and
+ * finally fall back to literal text so a valid clipboard payload is never
+ * discarded merely because one Markdown construct is unsupported. */
+export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): MarkdownPasteResult {
+  if (!markdown) return { success: false, outcome: 'failed', error: 'Clipboard text is empty' }
+
+  try {
+    // Keep pasted Markdown consistent with full-document loading. Without the
+    // separator inserted here, a display formula immediately following a list
+    // item can be parsed as invalid list-item content instead of a sibling
+    // block after the list.
+    const normalizedMarkdown = normalizeDisplayMathAfterList(markdown)
+    const sourceChanged = normalizedMarkdown !== markdown
+    const parsed = editor.markdown?.parse(normalizedMarkdown)
+    if (!parsed) return pasteMarkdownAsPlainText(editor, markdown, 'Markdown parser returned no content')
+    const normalized = normalizePastedMarkdownContent(editor, parsed)
+    const documentNode = editor.schema.nodeFromJSON(normalized.content)
+    documentNode.check()
+    if (documentNode.content.size === 0) {
+      return pasteMarkdownAsPlainText(editor, markdown, 'Markdown parser produced an empty document')
+    }
+
+    const success = editor.commands.insertContentAt(editor.state.selection, normalized.content, {
+      applyInputRules: false,
+      applyPasteRules: false,
+      updateSelection: true,
+    })
+    if (success) {
+      return { success: true, outcome: sourceChanged || normalized.changed ? 'normalized' : 'markdown' }
+    }
+    return pasteMarkdownAsPlainText(editor, markdown, 'Markdown insertion was rejected')
+  } catch (error) {
+    // Invalid parser output is handled by the lossless literal-text fallback.
+    return pasteMarkdownAsPlainText(editor, markdown, summarizeMarkdownPasteError(error))
+  }
+}
+
+function normalizePastedMarkdownContent(editor: Editor, value: any): { content: any; changed: boolean } {
+  let changed = false
+  const visit = (node: any, parentType?: NodeType): any => {
+    if (!node || typeof node !== 'object') return node
+    const result = { ...node }
+    if (Array.isArray(node.marks)) {
+      let legalMarks: readonly ProseMirrorMark[] = []
+      for (const markJson of node.marks) {
+        const mark = editor.schema.markFromJSON(markJson)
+        legalMarks = mark.addToSet(legalMarks)
+      }
+      if (parentType) legalMarks = parentType.allowedMarks(legalMarks)
+      result.marks = legalMarks.map(mark => mark.toJSON())
+      if (JSON.stringify(result.marks) !== JSON.stringify(node.marks)) changed = true
+    }
+    const nodeType = typeof node.type === 'string' ? editor.schema.nodes[node.type] : undefined
+    if (Array.isArray(node.content)) result.content = node.content.map((child: any) => visit(child, nodeType))
+    return result
+  }
+  return { content: visit(value), changed }
+}
+
+function summarizeMarkdownPasteError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  const singleLine = raw.replace(/\s+/g, ' ').trim()
+  const invalidMarks = /^Invalid collection of marks for node ([^:]+):\s*([^<]+?)(?:\s|$)/i.exec(singleLine)
+  if (invalidMarks) return `Invalid marks for ${invalidMarks[1]}: ${invalidMarks[2]}`
+  const invalidNode = /^Invalid content for node(?: type)? ([^:<>\s]+).*$/i.exec(singleLine)
+  if (invalidNode) return `Invalid content for node ${invalidNode[1]}`
+  if (!singleLine) return 'Unknown Markdown parsing error'
+  return singleLine.length <= 120 ? singleLine : `${singleLine.slice(0, 117)}...`
+}
+
+function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: string): MarkdownPasteResult {
+  try {
+    if (editor.view.pasteText(markdown)) return { success: true, outcome: 'plainText', error }
+  } catch {
+    // Continue with direct literal insertion when the paste parser rejects it.
+  }
+
+  try {
+    // Some valid literal payloads are rejected by ProseMirror's paste parser
+    // even though they can be inserted directly into the current text block.
+    const transaction = editor.state.tr.insertText(
+      markdown,
+      editor.state.selection.from,
+      editor.state.selection.to,
+    )
+    if (!transaction.docChanged) return { success: false, outcome: 'failed', error }
+    editor.view.dispatch(transaction)
+    return { success: true, outcome: 'plainText', error }
+  } catch {
+    return { success: false, outcome: 'failed', error }
+  }
 }
 
 /** Decide whether clipboard text should use the Markdown parser instead of

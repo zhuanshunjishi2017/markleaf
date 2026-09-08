@@ -54,4 +54,6 @@ internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, in
 
 internal sealed record EditorCodeBlockLanguageRequest(int Position, string Language);
 
+internal sealed record EditorCommandResult(bool Success, string? Outcome = null, string? Error = null);
+
 internal sealed record UnsafeEmphasisRequest(string RequestId, string Kind);

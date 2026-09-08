@@ -1154,8 +1154,8 @@ internal sealed partial class MainForm
             if (_editorCommandStatus.SourceMode
                 && TryGetClipboardPlainTextForSourceMode(clipboardData, out var sourcePlainText))
             {
-                _editorHost.ExecuteCommand("pasteText", sourcePlainText);
-                SetStatus(Loc.Get("status.pastedPlainText"));
+                var result = await _editorHost.ExecuteCommandResultAsync("pasteText", sourcePlainText);
+                SetPasteStatus(result, formattedRequested: false);
                 return;
             }
 
@@ -1177,16 +1177,16 @@ internal sealed partial class MainForm
                 if (Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml)
                     && !string.IsNullOrWhiteSpace(clipboardHtml))
                 {
-                    _editorHost.ExecuteCommand(
+                    var result = await _editorHost.ExecuteCommandResultAsync(
                         "pasteClipboard",
                         visualPlainText,
                         html: ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
-                    SetStatus(Loc.Get("status.pastedFormatted"));
+                    SetPasteStatus(result, formattedRequested: true);
                     return;
                 }
 
-                _editorHost.ExecuteCommand("pasteMarkdown", visualPlainText);
-                SetStatus(Loc.Get("status.pastedPlainText"));
+                var markdownResult = await _editorHost.ExecuteCommandResultAsync("pasteMarkdown", visualPlainText);
+                SetPasteStatus(markdownResult, formattedRequested: false);
                 return;
             }
 
@@ -1196,10 +1196,10 @@ internal sealed partial class MainForm
                 return;
             }
 
-            _editorHost.ExecuteCommand(
+            var fallbackResult = await _editorHost.ExecuteCommandResultAsync(
                 _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
                 Clipboard.GetText(TextDataFormat.UnicodeText));
-            SetStatus(Loc.Get("status.pastedPlainText"));
+            SetPasteStatus(fallbackResult, formattedRequested: false);
         }
         catch (Exception exception)
         {
@@ -1208,11 +1208,11 @@ internal sealed partial class MainForm
         }
     }
 
-    private Task PasteClipboardPlainTextAsync()
+    private async Task PasteClipboardPlainTextAsync()
     {
         if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         try
@@ -1220,13 +1220,13 @@ internal sealed partial class MainForm
             if (!TryGetClipboardPlainTextForSourceMode(Clipboard.GetDataObject(), out var plainText))
             {
                 SetStatus(Loc.Get("status.noTextToPaste"));
-                return Task.CompletedTask;
+                return;
             }
 
-            _editorHost.ExecuteCommand(
+            var result = await _editorHost.ExecuteCommandResultAsync(
                 _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
                 plainText);
-            SetStatus(Loc.Get("status.pastedPlainText"));
+            SetPasteStatus(result, formattedRequested: false);
         }
         catch (Exception exception)
         {
@@ -1234,7 +1234,27 @@ internal sealed partial class MainForm
             SetStatus(Loc.Get("status.clipboardFailed"));
         }
 
-        return Task.CompletedTask;
+    }
+
+    private void SetPasteStatus(EditorCommandResult result, bool formattedRequested)
+    {
+        if (!result.Success)
+        {
+            SetStatus(Loc.Get("status.pasteFailed"));
+            return;
+        }
+
+        SetStatus(result.Outcome switch
+        {
+            "markdown" => Loc.Get("status.pastedMarkdown"),
+            "normalized" => Loc.Get("status.pastedMarkdownNormalized"),
+            "plainText" when !_editorCommandStatus.SourceMode && !string.IsNullOrWhiteSpace(result.Error) =>
+                Loc.Format("status.pastedPlainTextFallbackReason", result.Error),
+            "plainText" when !_editorCommandStatus.SourceMode => Loc.Get("status.pastedPlainTextFallback"),
+            "formatted" => Loc.Get("status.pastedFormatted"),
+            _ when formattedRequested => Loc.Get("status.pastedFormatted"),
+            _ => Loc.Get("status.pastedPlainText"),
+        });
     }
 
     private static bool TryGetClipboardPlainTextForSourceMode(IDataObject? clipboardData, out string text)

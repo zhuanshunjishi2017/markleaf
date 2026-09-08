@@ -27,6 +27,7 @@ import {
   replaceCurrentInEditor,
   replaceEditorDocument,
   pasteMarkdownText,
+  pasteMarkdownTextWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
   scrollToFootnoteDefinition,
@@ -40,7 +41,12 @@ import {
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
-import { renderMermaidInHtml, rerenderMermaidElements, setMermaidStrings } from './mermaid'
+import {
+  renderMermaidInHtml,
+  rerenderMermaidElements,
+  setMermaidStrings,
+  type MermaidThemeName,
+} from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -1889,6 +1895,8 @@ async function handleMessage(value: unknown): Promise<void> {
           && (payload.command === 'indentListItem' || payload.command === 'outdentListItem')) {
           restoreVisualSelection(editor, lastVisualSelection)
         }
+        let commandOutcome: string | undefined
+        let commandError: string | undefined
         const success = sourceMode
           ? payload.command === 'undo'
             ? sourceEditor?.undo() ?? false
@@ -1904,13 +1912,23 @@ async function handleMessage(value: unknown): Promise<void> {
                 ? sourceEditor?.selectAll() ?? false
                 : false
           : payload.command === 'pasteMarkdown' && commandText !== undefined
-            ? pasteMarkdownText(editor, commandText)
+            ? (() => {
+                const result = pasteMarkdownTextWithResult(editor, commandText)
+                commandOutcome = result.outcome
+                commandError = result.error
+                return result.success
+              })()
             : payload.command === 'pasteClipboard' && commandText !== undefined
               ? shouldParsePastedTextAsMarkdown(editor, commandText, commandHtml ?? '')
-                ? pasteMarkdownText(editor, commandText)
+                ? (() => {
+                    const result = pasteMarkdownTextWithResult(editor, commandText)
+                    commandOutcome = result.outcome
+                    commandError = result.error
+                    return result.success
+                  })()
                 : commandHtml !== undefined
-                  ? editor.view.pasteHTML(commandHtml)
-                  : editor.view.pasteText(commandText)
+                  ? (commandOutcome = 'formatted', editor.view.pasteHTML(commandHtml))
+                  : (commandOutcome = 'plainText', editor.view.pasteText(commandText))
               : executeEditorCommand(
                 editor,
                 payload.command,
@@ -1919,7 +1937,7 @@ async function handleMessage(value: unknown): Promise<void> {
                 payload.applyToCurrentTextBlockWhenEmpty === true,
               )
         if (message.requestId) {
-          send('commandResult', { success }, message.requestId)
+          send('commandResult', { success, outcome: commandOutcome, error: commandError }, message.requestId)
         }
         sendEditorState()
       }
@@ -2258,6 +2276,13 @@ function resolveStyle(styleId: string): { rootClass: string; css: string } {
   return { rootClass: classes.join(' '), css: cssParts.join('\n') }
 }
 
+function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
+  const declarations = Array.from(css.matchAll(
+    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
+  ))
+  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
+}
+
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)
   const toRemove = Array.from(editorMount.classList).filter((cls) => cls.startsWith('markleaf-style-'))
@@ -2291,6 +2316,7 @@ async function generateExportHtml(
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
+  const resolved = resolveStyle(style)
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
     renderMathInHtml(rawBodyHtml),
     isPdf,
@@ -2302,8 +2328,7 @@ async function generateExportHtml(
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
     },
-  ))
-  const resolved = resolveStyle(style)
+  ), resolveMermaidTheme(resolved.css))
   const rootClass = [
     resolved.rootClass,
     isPdf ? 'markleaf-export-pdf' : '',
