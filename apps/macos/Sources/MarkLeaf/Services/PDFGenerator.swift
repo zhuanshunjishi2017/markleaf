@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import WebKit
 
 /// 纸张尺寸（毫米）→ 英寸，对应 C# EditorHostController.PaperSizeToInches。
@@ -47,6 +48,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var strongSelf: PDFGenerator?
 
     private struct StampContext {
+        let html: String
         let saveURL: URL
         let margins: ExportMargins
         let headerText: String
@@ -301,6 +303,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     /// completion(.success(true)) = 已打印/已保存；.success(false) = 用户取消。
     func printPDF(
         html: String,
+        headings: [PDFHeading] = [],
         paperSize: PaperSize,
         landscape: Bool,
         margins: ExportMargins,
@@ -386,6 +389,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         }
         if !showsPanel, let saveURL {
             pendingStamp = StampContext(
+                html: html,
                 saveURL: saveURL,
                 margins: margins,
                 headerText: headerText,
@@ -476,6 +480,9 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             do {
                 var data = try Data(contentsOf: stamp.saveURL)
                 data = try Self.stampPageBackground(data: data, context: stamp)
+                if let outlined = PDFOutlineBuilder.addOutline(to: data, html: stamp.html) {
+                    data = outlined
+                }
                 try data.write(to: stamp.saveURL, options: .atomic)
                 AppLog.info("PDFGenerator: 已补漆页面边距并写入 \(stamp.saveURL.path)")
             } catch {
