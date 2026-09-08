@@ -2,9 +2,6 @@
    @name: 杂志 */
 /* 杂志采用固定版心带充足留白。 */
 .markleaf-style-magazine .markleaf-document {
-  width: auto;
-  max-width: none;
-  margin: 0;
   font-family: "Georgia",  serif;
   font-size: calc(var(--ml-font-size) * 1.0625);
   line-height: calc(var(--ml-line-height) * 1.1);
@@ -27,13 +24,11 @@
   text-align: center;
   border-bottom: 1px solid var(--bg-selected);
   padding-bottom: 0.4em;
-  letter-spacing: 0.04em;
 }
 
 .markleaf-style-magazine .markleaf-document h2 {
   font-size: calc(var(--ml-font-size) * 1.4);
   font-variant: small-caps;
-  letter-spacing: 0.06em;
   border-bottom: 1px dotted var(--bg-selected-hover);
   padding-bottom: 0.2em;
 }

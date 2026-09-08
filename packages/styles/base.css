@@ -20,6 +20,10 @@
   font-synthesis: weight style;
 }
 
+:root.markleaf-ignore-max-width .markleaf-document {
+  width: 100%;
+}
+
 .markleaf-document::selection,
 .markleaf-document *::selection,
 .ProseMirror::selection,
@@ -48,20 +52,6 @@
 .cm-editor.cm-focused .cm-selectionBackground {
   background-color: var(--theme-light) !important;
   color: var(--text-selected) !important;
-}
-
-.markleaf-find-match {
-  color: var(--text-primary);
-  -webkit-text-fill-color: var(--text-primary);
-  background: var(--highlight);
-  box-shadow: 0 0 0 1px var(--highlight);
-}
-
-.markleaf-find-match-current {
-  color: var(--text-primary);
-  -webkit-text-fill-color: var(--text-primary);
-  background: var(--highlight);
-  box-shadow: 0 0 0 2px var(--highlight-current);
 }
 
 /* 源码模式选区：真实 DOM 装饰 span（替代 drawSelection 图层，WKWebView 几何更稳） */
@@ -340,7 +330,7 @@
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  background: var(--bg-hover);
+  background: var(--bg-secondary);
   border: 1px solid var(--bg-selected);
   border-radius: 0;
   padding: 12px;
