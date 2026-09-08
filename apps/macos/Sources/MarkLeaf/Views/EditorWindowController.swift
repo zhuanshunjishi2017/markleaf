@@ -252,6 +252,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                         tab: tab,
                         fileName: session.documentURL?.path,
                         isDirty: session.isDirty,
+                        isReadOnly: session.isReadOnly,
+                        hasPendingExternalChange: session.hasPendingExternalChange,
                         revision: session.currentRevision,
                         encoding: session.documentEncoding,
                         newLine: session.documentNewLine,
