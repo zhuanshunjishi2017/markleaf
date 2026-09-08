@@ -1501,6 +1501,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         // 源码字体：西文 + 中文独立选择（对齐 Windows fccc7ad）
         let sourceFontFamily = Self.quoteFont(settings.sourceFontFamily) + ", " + Self.quoteFont(settings.sourceCjkFontFamily) + ", monospace"
         let lineHeight = String(format: "%.2f", settings.visualLineHeight)
+        let ignoreMaxWidth = settings.visualIgnoreMaxWidth
         let fontSize = String(format: "%.2f", targetFont)
         let maxWidth = String(format: "%.2f", targetWidth)
         let sourceFontSize = String(format: "%.2f", sourceFont)
@@ -1520,6 +1521,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             sourceFontFamily: '\(sourceFontFamily)',
             cjkLanguage: '\(cjkLanguage)',
             visualCjkAutoSpacing: \(settings.visualCjkAutoSpacing ? "true" : "false"),
+            ignoreMaxWidth: \(ignoreMaxWidth ? "true" : "false"),
             usePointerAnchor: \(usePointerAnchor ? "true" : "false"),
             anchorX: \(anchorX),
             anchorY: \(anchorY)

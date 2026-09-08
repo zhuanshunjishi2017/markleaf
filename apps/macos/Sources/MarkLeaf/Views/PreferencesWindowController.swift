@@ -67,6 +67,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let markdownBulletMarkerPopup = NSPopUpButton()
     private var cjkLanguageTag: CJKLanguageTag
     private let visualCjkAutoSpacingCheck = NSButton(checkboxWithTitle: L10n.t("中西文与数字之间自动添加空格"), target: nil, action: nil)
+    private let ignoreMaxWidthCheck = NSButton(checkboxWithTitle: L10n.t("无视最大宽度限制"), target: nil, action: nil)
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
 
     // 外观
@@ -175,6 +176,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         markdownBulletMarkerPopup.addItems(withTitles: [L10n.t("短横线 -"), L10n.t("星号 *"), L10n.t("加号 +")])
         markdownBulletMarkerPopup.selectItem(at: ["dash", "asterisk", "plus"].firstIndex(of: settings.markdownBulletMarker) ?? 0)
         visualCjkAutoSpacingCheck.state = settings.visualCjkAutoSpacing ? .on : .off
+        ignoreMaxWidthCheck.state = settings.visualIgnoreMaxWidth ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
@@ -529,6 +531,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
             .field("", visualCjkAutoSpacingCheck),
+            .field("", ignoreMaxWidthCheck),
             .field("", blockHandleCheck),
             .header(L10n.t("源码模式")),
             .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
@@ -663,6 +666,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.sourceCjkFontFamily = sourceCjkFontField.fontName
         settings.cjkLanguageTag = cjkLanguageTag
         settings.visualCjkAutoSpacing = visualCjkAutoSpacingCheck.state == .on
+        settings.visualIgnoreMaxWidth = ignoreMaxWidthCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
         settings.exitBlockOnEmptyEnter = exitBlockOnEmptyEnterCheck.state == .on
         settings.useShiftEnterHardBreak = useShiftEnterHardBreakCheck.state == .on

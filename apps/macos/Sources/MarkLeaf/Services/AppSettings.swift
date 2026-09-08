@@ -104,6 +104,7 @@ struct AppSettings: Codable {
         visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.75
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
+        visualIgnoreMaxWidth = try container.decodeIfPresent(Bool.self, forKey: .visualIgnoreMaxWidth) ?? false
         sourceFontSize = try container.decodeIfPresent(Int.self, forKey: .sourceFontSize) ?? 14
         sourceFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceFontFamily) ?? Self.defaultSourceFontFamily
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
@@ -201,6 +202,8 @@ struct AppSettings: Codable {
     var visualLineHeight: Double = 1.75
     var visualFontSize = 16
     var visualMaxContentWidth = 820
+    /// 无视最大宽度限制（Windows 1.7.3 VisualIgnoreMaxContentWidth）。
+    var visualIgnoreMaxWidth = false
     var sourceFontSize = 14
     /// 源码模式西文（等宽）字体：对应 Windows SourceFontFamily（默认 Cascadia Mono）
     var sourceFontFamily = AppSettings.defaultSourceFontFamily
