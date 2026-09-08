@@ -197,7 +197,7 @@ enum EditorMenuPolicy {
         case .declareCodeLanguage:
             return writableMarkdown && visualMode && state.codeBlock
         case .copyCodeBlock:
-            return visualMode && (state.codeBlock || state.frontMatterActive) && state.codeBlockText != nil
+            return visualMode && state.codeBlockText != nil
         case .goToFootnoteReference, .resetFootnoteNumber, .clearFootnoteReferences, .deleteFootnote:
             return writableMarkdown && visualMode && footnoteDefinition
         case .tableCaption, .tableRows, .tableColumns, .tableAlignment, .deleteTable:
