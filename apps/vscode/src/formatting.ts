@@ -1,49 +1,86 @@
 import * as vscode from 'vscode'
+import { formatGroups, resolveShortcuts, shortcutLabel } from '../../../packages/editor-web/src/vscode-shortcuts'
+import type { ActionContext, EditorCommand } from '../../../packages/editor-web/src/vscode-protocol'
 
 type FormatItem = vscode.QuickPickItem & { command?: string }
 
-const groups: Array<{ label: string; commands: Array<[string, string]> }> = [
-  { label: '文字格式', commands: [
-    ['粗体', 'toggleBold'], ['斜体', 'toggleItalic'], ['下划线', 'toggleUnderline'],
-    ['删除线', 'toggleStrike'], ['高亮', 'toggleHighlight'], ['行内代码', 'toggleCode'],
-    ['清除格式', 'clearFormat'],
-  ] },
-  { label: '段落与标题', commands: [
-    ['正文', 'setParagraph'], ['一级标题', 'setHeading1'], ['二级标题', 'setHeading2'],
-    ['三级标题', 'setHeading3'], ['四级标题', 'setHeading4'], ['五级标题', 'setHeading5'],
-    ['六级标题', 'setHeading6'], ['提升标题级别', 'promoteHeading'], ['降低标题级别', 'demoteHeading'],
-    ['在当前段落前插入', 'insertLineBefore'], ['在当前段落后插入', 'insertLineAfter'],
-    ['复制当前段落', 'duplicateParagraph'], ['删除当前段落', 'deleteParagraph'],
-  ] },
-  { label: '列表与引用', commands: [
-    ['无序列表', 'toggleBulletList'], ['有序列表', 'toggleOrderedList'], ['任务列表', 'toggleTaskList'],
-    ['增加列表缩进', 'indentListItem'], ['减少列表缩进', 'outdentListItem'],
-    ['引用', 'toggleBlockquote'], ['代码块', 'toggleCodeBlock'], ['分隔线', 'insertHorizontalRule'],
-  ] },
-  { label: '提示框', commands: [
-    ['备注 (NOTE)', 'insertAlertNote'], ['提示 (TIP)', 'insertAlertTip'],
-    ['重要 (IMPORTANT)', 'insertAlertImportant'], ['警告 (WARNING)', 'insertAlertWarning'],
-    ['注意 (CAUTION)', 'insertAlertCaution'],
-  ] },
-  { label: '表格', commands: [
-    ['插入表格 (3 × 3)', 'insertTable'], ['上方插入行', 'addRowBefore'], ['下方插入行', 'addRowAfter'],
-    ['删除行', 'deleteRow'], ['左侧插入列', 'addColumnBefore'], ['右侧插入列', 'addColumnAfter'],
-    ['删除列', 'deleteColumn'], ['删除表格', 'deleteTable'],
-  ] },
-  { label: '公式与图表', commands: [
-    ['行内公式', 'insertMathInline'], ['独立公式', 'insertMathBlock'], ['Mermaid 图表', 'insertMermaid'],
-  ] },
-]
 
-export async function pickFormat(): Promise<string | undefined> {
-  const items: FormatItem[] = groups.flatMap(group => [
-    { label: group.label, kind: vscode.QuickPickItemKind.Separator },
-    ...group.commands.map(([label, command]) => ({ label, command, description: group.label })),
-  ])
-  const picked = await vscode.window.showQuickPick(items, {
-    title: 'MarkLeaf 格式与段落操作',
-    placeHolder: '选择操作，或输入名称搜索',
-    matchOnDescription: true,
+export function applicable(command: string, context: ActionContext): boolean {
+  if (['addRowBefore', 'addRowAfter', 'deleteRow', 'addColumnBefore', 'addColumnAfter', 'deleteColumn',
+    'alignTableLeft', 'alignTableCenter', 'alignTableRight', 'setTableCaption', 'deleteTable'].includes(command)) return context.inTable === true
+  if (['editMath', 'convertMath', 'deleteMath'].includes(command)) return context.mathInline === true || context.mathBlock === true
+  if (command === 'setMathNumber') return context.mathBlock === true
+  if (['editMermaid', 'deleteMermaid', 'rerenderMermaid'].includes(command)) return context.mermaidSelected === true
+  if (command === 'updateMermaid') return context.codeBlockLanguage?.toLowerCase() === 'mermaid'
+  if (command === 'rerenderAllMermaid') return (context.mermaidCount ?? 0) > 0
+  if (['resetFootnoteLabel', 'goToFootnoteReference', 'clearFootnoteReferences', 'deleteFootnote'].includes(command)) return !!context.footnoteDefinitionLabel
+  if (['setCodeBlockLanguage', 'exitCode'].includes(command)) return context.codeBlock === true
+  if (command === 'copyCodeBlock') return context.codeBlock === true || context.frontMatter === true
+  if (command === 'formatPainter') return context.canStartFormatPainter === true || context.formatPainterArmed === true
+  return true
+}
+
+export async function pickFormat(context: ActionContext = {}, block = false, shortcuts: unknown = {}, mac = false): Promise<EditorCommand | undefined> {
+  const resolved = resolveShortcuts(shortcuts, mac)
+  const items: FormatItem[] = formatGroups.flatMap(group => {
+    const commands = group.commands.filter(([, command]) => applicable(command, context))
+    return commands.length ? [
+      { label: group.label, kind: vscode.QuickPickItemKind.Separator },
+      ...commands.map(([label, command]) => ({ label, command, description: resolved.errors[command] ? '快捷键配置无效' : shortcutLabel(resolved.bindings[command] ?? '', mac) || '未绑定' })),
+    ] : []
   })
-  return picked?.command
+  const picked = await vscode.window.showQuickPick(items, {
+    title: block ? 'MarkLeaf 当前段落操作' : 'MarkLeaf 格式与段落操作',
+    placeHolder: '选择操作，或输入名称搜索', matchOnDescription: true,
+  })
+  if (!picked?.command) return
+  return prepareFormatCommand(picked.command, context)
+}
+
+export async function prepareFormatCommand(command: string, context: ActionContext = {}): Promise<EditorCommand | undefined> {
+  if (!formatGroups.some(group => group.commands.some(([, id]) => id === command)) || !applicable(command, context)) return
+  let text: string | undefined
+  const input = (prompt: string, value = '', validateInput?: (value: string) => string | undefined) =>
+    vscode.window.showInputBox({ prompt, value, validateInput, ignoreFocusOut: true })
+  switch (command) {
+    case 'insertTable': {
+      const size = await input('行数,列数（各 1–100，第一行为表头）', '3,3', value =>
+        /^\d+\s*[,，x×]\s*\d+$/.test(value.trim()) && value.trim().split(/\s*[,，x×]\s*/).every(n => +n >= 1 && +n <= 100)
+          ? undefined : '请输入 1–100 的整数，例如 3,4')
+      if (size === undefined) return
+      text = size.trim().split(/\s*[,，x×]\s*/).join(',')
+      break
+    }
+    case 'setTableCaption': text = await input('表格标题（留空清除）', context.caption ?? ''); break
+    case 'setMathNumber': text = await input('公式编号（留空清除）', context.mathNumber ?? ''); break
+    case 'setCodeBlockLanguage': text = await input('代码块语言（留空为纯文本）', context.codeBlockLanguage ?? ''); break
+    case 'insertFootnote': {
+      const labels = context.footnoteLabels ?? []
+      let suggested = 1
+      while (labels.includes(String(suggested))) suggested++
+      const label = await input('脚注标签', String(suggested), value => validateFootnoteLabel(value, labels))
+      if (label === undefined) return
+      const note = await input('脚注内容', '', value => value.trim() ? undefined : '请输入脚注内容')
+      if (note === undefined) return
+      text = JSON.stringify({ label: label.trim(), note })
+      break
+    }
+    case 'resetFootnoteLabel': {
+      const oldLabel = context.footnoteDefinitionLabel!
+      const newLabel = await input('新的脚注标签', oldLabel, value => validateFootnoteLabel(value, (context.footnoteLabels ?? []).filter(label => label !== oldLabel)))
+      if (newLabel === undefined) return
+      if (newLabel.trim() === oldLabel) return
+      text = JSON.stringify({ oldLabel, newLabel: newLabel.trim() })
+      break
+    }
+    case 'goToFootnoteReference': text = context.footnoteDefinitionLabel ?? undefined; break
+  }
+  if (['setTableCaption', 'setMathNumber', 'setCodeBlockLanguage'].includes(command) && text === undefined) return
+  return { command, ...(text === undefined ? {} : { text }) }
+}
+
+function validateFootnoteLabel(value: string, labels: string[]): string | undefined {
+  if (!value.trim() || /[\s\[\]:]/.test(value.trim())) return '标签不能为空，也不能含空白、方括号或冒号'
+  if (labels.includes(value.trim())) return '此标签已经存在'
+  return undefined
 }

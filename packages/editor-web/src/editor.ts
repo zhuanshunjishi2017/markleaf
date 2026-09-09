@@ -1,3 +1,5 @@
+import type { EditorCommandState, EditorStatus } from './editor-state'
+export type { EditorCommandState, EditorStatus } from './editor-state'
 import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
@@ -1149,7 +1151,7 @@ export function collapseVisualSelection(editor: Editor): boolean {
   return true
 }
 
-/// 段落左侧浮动操作按钮的状态：按钮本体由 main.ts 作为 overlay 渲染，
+/// 段落左侧浮动操作按钮的状态：按钮本体由宿主入口作为 overlay 渲染，
 /// 这里仅保留当前高亮块的 ProseMirror 状态，避免 contenteditable 内部插入 widget 干扰 IME。
 const blockHandleKey = new PluginKey('markleaf-block-handle')
 
@@ -1202,6 +1204,18 @@ function parseFootnoteDefinitionText(text: string): FootnoteDefinition | null {
     label: match[1]!.trim(),
     body: match[2] ?? '',
   }
+}
+
+export function getFootnoteLabels(editor: Editor): string[] {
+  const labels = new Set<string>()
+  editor.state.doc.descendants(node => {
+    if (node.type.name === 'footnoteReference') labels.add(String(node.attrs.label))
+    if (node.isTextblock) {
+      const definition = parseFootnoteDefinitionText(node.textContent)
+      if (definition) labels.add(definition.label)
+    }
+  })
+  return [...labels]
 }
 
 function escapeRegExp(value: string): string {
@@ -1421,16 +1435,16 @@ const EditorFocusMode = Extension.create({
 })
 
 export function setEditorFocusMode(editor: Editor, enabled: boolean): void {
-  editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled))
+  editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled).setMeta('skipTrailingNode', true))
 }
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta).setMeta('skipTrailingNode', true))
 }
 
 export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
   blockHandleVisible = visible
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta).setMeta('skipTrailingNode', true))
 }
 
 function decodeImageCaption(value: string | undefined): string | null {
@@ -1883,60 +1897,6 @@ const MarkLeafImage = Image.extend({
     }
   },
 })
-
-export type EditorCommandState = {
-  canUndo: boolean
-  canRedo: boolean
-  hasSelection: boolean
-  paragraph: boolean
-  headingLevel: number | null
-  bold: boolean
-  italic: boolean
-  underline: boolean
-  strike: boolean
-  highlight: boolean
-  code: boolean
-  link: boolean
-  blockquote: boolean
-  codeBlock: boolean
-  frontMatter: boolean
-  codeBlockLanguage: string | null
-  codeBlockText: string | null
-  mermaid: boolean
-  mermaidSelected: boolean
-  mermaidSource: string | null
-  mermaidCount: number
-  bulletList: boolean
-  orderedList: boolean
-  taskList: boolean
-  inTable: boolean
-  tableAlign: 'left' | 'center' | 'right' | null
-  imageSelected: boolean
-  mathInline: boolean
-  mathBlock: boolean
-  mathLatex: string | null
-  mathNumber: string | null
-  caption: string | null
-  footnoteDefinitionLabel: string | null
-  canStartFormatPainter: boolean
-  formatPainterArmed: boolean
-}
-
-export type EditorStatus = {
-  characterCount: number
-  selectedCharacterCount: number
-  totalCharacterCount: number
-  nonWhitespaceCharacterCount: number
-  cjkCharacterCount: number
-  westernWordCount: number
-  formulaCount: number
-  codeLineCount: number
-  paragraphCount: number
-  blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
-    | 'blockquote' | 'alert' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image' | 'footnoteDefinition'
-  line: number
-  column: number
-}
 
 const MarkLeafTable = Table.extend({
   name: 'table',
@@ -2558,6 +2518,20 @@ if (overVectorSymbol) {
 
 const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
 
+function positionFormulaSymbolPanels(toolbar: HTMLElement): void {
+  const toolbarRect = toolbar.getBoundingClientRect()
+  for (const panel of toolbar.querySelectorAll<HTMLElement>('.markleaf-formula-symbol-panel:not([hidden])')) {
+    const below = Math.max(0, window.innerHeight - toolbarRect.bottom - 13)
+    const above = Math.max(0, toolbarRect.top - 13)
+    const openAbove = below < Math.min(panel.scrollHeight, 260) && above > below
+    panel.style.top = openAbove ? 'auto' : 'calc(100% + 5px)'
+    panel.style.bottom = openAbove ? 'calc(100% + 5px)' : 'auto'
+    panel.style.maxHeight = `${Math.min(420, openAbove ? above : below)}px`
+    const width = panel.getBoundingClientRect().width
+    panel.style.left = `${Math.max(8, Math.min(toolbarRect.left, window.innerWidth - width - 8)) - toolbarRect.left}px`
+  }
+}
+
 function createFormulaSymbolToolbar(
   code: HTMLElement,
   editor: Editor,
@@ -2674,6 +2648,7 @@ function createFormulaSymbolToolbar(
         other.hidden = index !== groupIndex || !other.hidden
         buttons[index]?.classList.toggle('markleaf-formula-symbol-group-active', !other.hidden)
       }
+      positionFormulaSymbolPanels(toolbar)
     })
     groups.append(button)
     toolbar.append(panel)
@@ -2689,6 +2664,7 @@ function createExpandedSourceEditor(
   editor: Editor,
   position: number,
   kind: ExpandedSourceEditor['kind'],
+  preventScroll = false,
 ): { dom: HTMLElement; code: HTMLElement } {
   const wrapper = document.createElement('div')
   wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind} markleaf-expanded-source-enter`
@@ -2723,9 +2699,11 @@ function createExpandedSourceEditor(
     'keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy',
     'compositionstart', 'compositionupdate', 'compositionend',
   ]) {
+    if (eventName === 'contextmenu' && textDocumentHostEditors.has(editor)) continue
     code.addEventListener(eventName, stopEditorEvent)
   }
   code.addEventListener('contextmenu', (event) => {
+    if (textDocumentHostEditors.has(editor)) return
     event.preventDefault()
     event.stopPropagation()
     window.dispatchEvent(new CustomEvent('markleaf-expanded-source-contextmenu', {
@@ -2772,7 +2750,7 @@ function createExpandedSourceEditor(
       selection?.addRange(range)
       return
     }
-    if (!editable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
+    if (!editor.isEditable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
     const key = event.key.toLowerCase()
     if (key !== 'z' && key !== 'y') return
     event.preventDefault()
@@ -2805,7 +2783,7 @@ function createExpandedSourceEditor(
     composing = false
   })
   code.addEventListener('input', () => {
-    if (!editable) return
+    if (!editor.isEditable) return
     const current = editor.state.doc.nodeAt(position)
     if (!current || current.type.name !== kind) return
     const source = code.textContent ?? ''
@@ -2823,14 +2801,14 @@ function createExpandedSourceEditor(
     if (!code.isConnected) return
     refreshHighlight(initialSource)
     if (editable) {
-      code.focus()
+      code.focus({ preventScroll })
       setCaretOffset(code, initialSource.length)
     }
   })
   return { dom: wrapper, code }
 }
 
-function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement): void {
+function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement, belowNode = false): void {
   const anchor = editor.view.nodeDOM(position)
   if (!(anchor instanceof HTMLElement)) return
   const anchorRect = anchor.getBoundingClientRect()
@@ -2843,15 +2821,32 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   overlay.hidden = false
   const overlayWidth = overlay.getBoundingClientRect().width || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
-  const top = anchorRect.bottom + gap
-  overlay.style.left = `${left}px`
-  overlay.style.top = `${top}px`
+  if (belowNode) {
+    // VS Code keeps the source below its node in document coordinates. It
+    // scrolls out of view with the document, without flipping or pinning.
+    overlay.style.position = 'absolute'
+    overlay.style.left = `${left + window.scrollX}px`
+    overlay.style.top = `${anchorRect.bottom + window.scrollY + gap}px`
+  } else {
+    // Native hosts retain their viewport-aware floating editor.
+    const overlayHeight = overlay.getBoundingClientRect().height
+    const below = anchorRect.bottom + gap
+    const above = anchorRect.top - gap - overlayHeight
+    const maxTop = Math.max(viewportPadding, window.innerHeight - viewportPadding - overlayHeight)
+    const top = below <= maxTop ? below : above >= viewportPadding ? above : maxTop
+    overlay.style.left = `${left}px`
+    overlay.style.top = `${Math.max(viewportPadding, top)}px`
+  }
+  const toolbar = overlay.querySelector<HTMLElement>('.markleaf-formula-symbol-toolbar')
+  if (toolbar) positionFormulaSymbolPanels(toolbar)
 }
 
-const ExpandedSourceEditor = Extension.create({
+const ExpandedSourceEditor = Extension.create<{ placement: 'floating' | 'below' }>({
   name: 'markleafExpandedSourceEditor',
+  addOptions: () => ({ placement: 'floating' }),
   addProseMirrorPlugins() {
     const editor = this.editor
+    const belowNode = this.options.placement === 'below'
     return [new Plugin({
       key: expandedSourceEditorKey,
       state: {
@@ -2869,7 +2864,7 @@ const ExpandedSourceEditor = Extension.create({
         let closing = false
         const collapse = () => {
           if (expandedSourceEditorKey.getState(editor.state) === null) return
-          editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+          editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null).setMeta('skipTrailingNode', true))
         }
         const removeOverlay = () => {
           overlay?.remove()
@@ -2897,7 +2892,7 @@ const ExpandedSourceEditor = Extension.create({
           window.setTimeout(finish, 240)
         }
         const reposition = () => {
-          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
+          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay, belowNode)
         }
         const handleOutsidePointer = (event: PointerEvent) => {
           if (overlay && event.composedPath().includes(overlay)) return
@@ -2955,11 +2950,11 @@ const ExpandedSourceEditor = Extension.create({
             }
             removeOverlay()
             current = expanded
-            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind)
+            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind, belowNode)
             overlay = created.dom
             overlay.hidden = true
             document.body.append(overlay)
-            positionExpandedSourceEditor(editor, expanded.position, overlay)
+            positionExpandedSourceEditor(editor, expanded.position, overlay, belowNode)
           },
           destroy: () => {
             document.removeEventListener('pointerdown', handleOutsidePointer)
@@ -2983,7 +2978,7 @@ export function expandSourceEditor(
   if (!node || node.type.name !== kind) return false
   const current = expandedSourceEditorKey.getState(editor.state)
   if (current?.position === position && current.kind === kind) return true
-  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, { position, kind }))
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, { position, kind }).setMeta('skipTrailingNode', true))
   return true
 }
 
@@ -3002,7 +2997,7 @@ export function hasExpandedSourceEditor(editor: Editor): boolean {
 
 export function collapseSourceEditor(editor: Editor): boolean {
   if (expandedSourceEditorKey.getState(editor.state) === null) return false
-  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null).setMeta('skipTrailingNode', true))
   return true
 }
 
@@ -3359,7 +3354,11 @@ export type EditorCreationOptions = {
   handlePaste?: (event: ClipboardEvent) => boolean
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
+  // VS Code anchors formula/diagram source beneath the node in the document.
+  sourceEditorPlacement?: 'floating' | 'below'
 }
+
+const textDocumentHostEditors = new WeakSet<Editor>()
 
 export function createEditor(
   element: HTMLElement,
@@ -3367,11 +3366,11 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
-  const extensions = options.externalHistory
-    ? editorExtensions.map(extension => extension.name === 'starterKit'
-      ? extension.configure({ undoRedo: false })
-      : extension)
-    : editorExtensions
+  const extensions = editorExtensions.map(extension => {
+    if (options.externalHistory && extension.name === 'starterKit') return extension.configure({ undoRedo: false })
+    if (options.sourceEditorPlacement && extension.name === ExpandedSourceEditor.name) return ExpandedSourceEditor.configure({ placement: options.sourceEditorPlacement })
+    return extension
+  })
   const editor = new Editor({
     element,
     extensions: options.themedVisualSelection
@@ -3404,6 +3403,7 @@ export function createEditor(
     },
   })
   normalizeTableCaptions(editor)
+  if (options.externalHistory) textDocumentHostEditors.add(editor)
   if (hasListFormattingThatNeedsPreservation(content)) {
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
@@ -3415,10 +3415,31 @@ export function createEditor(
 // that boundary Marked parses `\[` and `\]` as escaped literal brackets in
 // the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
-  return markdown.replace(
-    /(^[^\r\n]*\S[ \t]*\r?\n)(?=[ \t]*(?:\$\$|\\\[)[ \t]*(?:\r?\n|$))/gm,
-    '$1\n',
-  )
+  const lines = markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []
+  let fence = ''
+  let mathClose = ''
+  return lines.map((line, index) => {
+    const trimmed = line.trim()
+    const codeFence = /^\s*(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})/.exec(line)?.[1]
+    if (fence) {
+      if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(trimmed)) fence = ''
+      return line
+    }
+    if (mathClose) {
+      if (line.includes(mathClose)) mathClose = ''
+      return line
+    }
+    if (codeFence) { fence = codeFence; return line }
+    const math = /^[ \t]{0,3}(\$\$|\\\[)/.exec(line)
+    if (!math) return line
+    const close = math[1] === '$$' ? '$$' : '\\]'
+    const afterOpening = line.slice(math[0].length)
+    if (!afterOpening.includes(close)) {
+      if (!lines.slice(index + 1).some(next => next.includes(close))) return line
+      mathClose = close
+    }
+    return index > 0 && lines[index - 1]!.trim() ? (line.endsWith('\r\n') ? '\r\n' : '\n') + line : line
+  }).join('')
 }
 
 export function replaceEditorDocument(
@@ -3600,7 +3621,8 @@ export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: strin
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
   codeHighlightVisible = visible
-  editor.view.dispatch(editor.state.tr)
+  // Display-only transactions must not cause StarterKit to append content.
+  editor.view.dispatch(editor.state.tr.setMeta('skipTrailingNode', true))
 }
 
 let hostImageResolver: ((markdownPath: string) => string) | undefined
@@ -4451,7 +4473,7 @@ export function replaceCurrentInEditor(
   const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
   const highlight = findHighlightKey.getState(editor.state)
   const selected = highlight?.current === undefined ? undefined : matches[highlight.current]
-  if (selected) editor.commands.insertContentAt(selected, replacement)
+  if (selected) editor.view.dispatch(editor.state.tr.insertText(replacement, selected.from, selected.to))
   return findInEditor(editor, query, caseSensitive, wholeWord)
 }
 
@@ -4476,7 +4498,7 @@ export function clearFindHighlights(editor: Editor): void {
 }
 
 function setFindHighlights(editor: Editor, matches: TextMatch[], current: number): void {
-  editor.view.dispatch(editor.state.tr.setMeta(findHighlightKey, { matches, current }))
+  editor.view.dispatch(editor.state.tr.setMeta(findHighlightKey, { matches, current }).setMeta('skipTrailingNode', true))
 }
 
 function scrollCurrentMatchIntoView(editor: Editor): void {
@@ -4494,9 +4516,20 @@ function findEditorMatches(editor: Editor, query: string, caseSensitive: boolean
   const matches: Array<{ from: number; to: number }> = []
   editor.state.doc.descendants((node, position) => {
     if (!node.isTextblock) return
-    for (const match of node.textContent.matchAll(expression)) {
-      matches.push({ from: position + 1 + match.index, to: position + 1 + match.index + match[0].length })
+    // Node.textContent omits inline atoms but positions include their nodeSize.
+    // Search contiguous text across marks, keeping each run's real position.
+    let text = ''
+    let start = position + 1
+    const collect = (): void => {
+      for (const match of text.matchAll(expression)) {
+        matches.push({ from: start + match.index, to: start + match.index + match[0].length })
+      }
     }
+    node.forEach((child, offset) => {
+      if (child.isText) text += child.text ?? ''
+      else { collect(); text = ''; start = position + 1 + offset + child.nodeSize }
+    })
+    collect()
     return false
   })
   return matches
@@ -4539,8 +4572,8 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
       })()
 
   return {
-    canUndo: editor.can().undo(),
-    canRedo: editor.can().redo(),
+    canUndo: editor.can().undo?.() ?? false,
+    canRedo: editor.can().redo?.() ?? false,
     hasSelection: !editor.state.selection.empty,
     paragraph: editor.isActive('paragraph'),
     headingLevel,

@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createEditor, getMarkdown, setHostImageResolver, updateEditorMarkdown } from '../src/editor'
 import * as editorModule from '../src/editor'
+import { defaultSettings } from '../src/vscode-settings'
 import type { ExtensionMessage, WebviewMessage } from '../src/vscode-protocol'
 
 const editors: ReturnType<typeof createEditor>[] = []
 function editor(markdown: string) {
   const mount = document.createElement('div')
   document.body.append(mount)
-  const editor = createEditor(mount, markdown, false, { externalHistory: true })
+  const editor = createEditor(mount, markdown, false, { externalHistory: true, sourceEditorPlacement: 'below' })
   editors.push(editor)
   return editor
 }
@@ -20,6 +21,44 @@ afterEach(() => {
 })
 
 describe('shared editor in a VS Code text host', () => {
+  it.each([
+    ['mermaid', '```mermaid\ngraph TD\nA-->B\n```'],
+    ['mathBlock', '$$x^2$$'],
+    ['mathInline', 'Inline $x^2$ formula.'],
+  ] as const)('keeps expanded %s source below its node as the document scrolls', (kind, markdown) => {
+    const visual = editor(markdown)
+    let position = 0
+    visual.state.doc.descendants((node, pos) => { if (node.type.name === kind) position = pos })
+    const anchor = visual.view.nodeDOM(position)
+    let scroll = 0
+    let anchorHeight = 180
+    const scrollY = Object.getOwnPropertyDescriptor(window, 'scrollY')!
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scroll })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this === anchor) return new DOMRect(30, 520 - scroll, 400, anchorHeight)
+      if (this === visual.view.dom) return new DOMRect(30, 40 - scroll, 400, 1800)
+      if (this.classList.contains('markleaf-expanded-source')) return new DOMRect(0, 0, 400, 220)
+      return new DOMRect()
+    })
+    try {
+      expect(editorModule.expandSourceEditor(visual, position, kind)).toBe(true)
+      const source = document.querySelector<HTMLElement>('.markleaf-expanded-source')!
+      expect(source.style.position).toBe('absolute')
+      expect(source.style.top).toBe('706px')
+      scroll = 900
+      window.dispatchEvent(new Event('scroll'))
+      expect(source.style.top).toBe('706px')
+      expect(Number.parseFloat(source.style.top) - scroll).toBeLessThan(0)
+      anchorHeight = 280
+      window.dispatchEvent(new Event('resize'))
+      expect(source.style.top).toBe('806px')
+      visual.destroy()
+      expect(source.isConnected).toBe(false)
+    } finally {
+      Object.defineProperty(window, 'scrollY', scrollY)
+    }
+  })
+
   it('lets the text host own history while retaining native editor history by default', () => {
     const visual = editor('hello')
     expect(visual.extensionManager.extensions.some(extension => extension.name === 'undoRedo')).toBe(false)
@@ -82,6 +121,8 @@ describe('shared editor in a VS Code text host', () => {
 
   it('runs the webview entry through editing, reading, queued undo, source actions and conflict recovery', async () => {
     document.body.innerHTML = '<div id="toolbar"><button id="mode"></button><button data-command="toggleUnderline" data-edit>U</button><button data-command="toggleHighlight" data-edit>H</button><button data-action="format" data-edit>格式</button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div><main id="editor"></main><span id="sync-status"></span><span id="word-count"></span>'
+    // jsdom does not implement the ClipboardEvent constructor used by ProseMirror.
+    vi.stubGlobal('ClipboardEvent', class extends Event {})
     const messages: WebviewMessage[] = []
     vi.stubGlobal('acquireVsCodeApi', () => ({ postMessage: (message: WebviewMessage) => messages.push(message), getState: () => undefined, setState: () => {} }))
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
@@ -93,11 +134,58 @@ describe('shared editor in a VS Code text host', () => {
     await import('../src/vscode')
     const receive = (message: ExtensionMessage) => window.dispatchEvent(new MessageEvent('message', { data: message }))
     receive({ type: 'document', markdown: '# Title\n\nHello\n', version: 1, writable: true })
-    expect(messages).toEqual([{ type: 'ready' }])
+    expect(messages).toEqual([{ type: 'ready', mac: /Mac/i.test(navigator.platform) }, { type: 'focus', target: null }])
     const instance = visual!
+    expect(create).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(String), true, expect.objectContaining({ sourceEditorPlacement: 'below' }))
     // jsdom has no text layout; this test checks editing and transport, not
     // browser scroll geometry after toolbar commands restore focus.
     instance.view.setProps({ handleScrollToSelection: () => true })
+
+    const toolbar = document.querySelector('#toolbar')!
+    toolbar.insertAdjacentHTML('beforeend', '<details><summary>编辑</summary><button>菜单操作</button></details><details><summary>视图</summary></details>')
+    const [editMenu, viewMenu] = [...toolbar.querySelectorAll('details')]
+    editMenu!.open = true
+    editMenu!.querySelector('button')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(editMenu!.open).toBe(true)
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(editMenu!.open).toBe(false)
+    editMenu!.open = true
+    viewMenu!.querySelector('summary')!.click()
+    await vi.waitFor(() => expect(editMenu!.open).toBe(false))
+    expect(viewMenu!.open).toBe(true)
+    viewMenu!.querySelector('summary')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    expect(viewMenu!.open).toBe(false)
+    editMenu!.open = true
+    window.dispatchEvent(new Event('blur'))
+    expect(editMenu!.open).toBe(false)
+    document.activeElement instanceof HTMLElement && document.activeElement.blur()
+
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    instance.view.dom.focus()
+    expect(messages.at(-1)).toEqual({ type: 'focus', target: 'document' })
+    // VS Code must receive these keys, including a former default after a user
+    // rebinds it. Only an explicit host command opens the MarkLeaf find bar.
+    for (const [key, altKey] of [['f', false], ['h', false], ['f', true], ['V', false]] as const) {
+      const keydown = new KeyboardEvent('keydown', {
+        key, altKey, shiftKey: key === 'V', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
+      })
+      const forwarded = vi.fn()
+      window.addEventListener('keydown', forwarded)
+      instance.view.dom.dispatchEvent(keydown)
+      window.removeEventListener('keydown', forwarded)
+      expect(forwarded).toHaveBeenCalledOnce()
+      expect(keydown.defaultPrevented).toBe(false)
+      expect(document.querySelector<HTMLFormElement>('#find-bar')?.hidden).toBe(true)
+    }
+    receive({ type: 'requestAction', action: 'replace' })
+    expect(document.querySelector<HTMLFormElement>('#find-bar')?.hidden).toBe(false)
+    expect(messages.at(-1)).toEqual({ type: 'focus', target: 'input' })
+    document.querySelector<HTMLButtonElement>('#find-close')!.click()
+    await vi.waitFor(() => expect(messages.at(-1)).toEqual({ type: 'focus', target: 'document' }))
+    hasFocus.mockReturnValue(false)
+    window.dispatchEvent(new Event('blur'))
+    expect(messages.at(-1)).toEqual({ type: 'focus', target: null })
+
     instance.commands.insertContent('Edited ')
     expect(messages.at(-1)).toMatchObject({ type: 'edit', baseVersion: 1, sequence: 1 })
     receive({ type: 'accepted', sequence: 1, version: 2 })
@@ -164,7 +252,7 @@ describe('shared editor in a VS Code text host', () => {
     mode.click()
 
     receive({ type: 'requestAction', action: 'format' })
-    expect(messages.at(-1)).toEqual({ type: 'action', action: 'format' })
+    expect(messages.at(-1)).toMatchObject({ type: 'action', action: 'format', context: { underline: true, highlight: true } })
     instance.commands.setTextSelection({ from: 7, to: 12 })
     receive({ type: 'command', command: 'toggleBold' })
     expect(instance.state.doc.firstChild?.firstChild?.text).toBe('hello')
@@ -180,6 +268,101 @@ describe('shared editor in a VS Code text host', () => {
     expect(instance.state.doc.textContent).toBe('Changed in source')
     expect(document.querySelector('#notice-text')?.textContent).toContain('文档已改变')
     receive({ type: 'actionFinished' })
+    // Complete settings are display-only, including Markdown marker choices.
+    receive({ type: 'document', markdown: '# Heading\n\n- first\n- second', version: 10, writable: true })
+    const beforeSettings = instance.state.doc
+    const editsBeforeSettings = messages.filter(message => message.type === 'edit').length
+    receive({ type: 'settings', settings: { ...defaultSettings, showOutline: true, typography: 'serif', fontSize: 20, bulletMarker: 'plus' } })
+    mode.click(); mode.click()
+    expect(instance.state.doc).toBe(beforeSettings)
+    expect(messages.filter(message => message.type === 'edit')).toHaveLength(editsBeforeSettings)
+    expect(document.querySelector('#outline button')?.textContent).toBe('Heading')
+
+    // Host clipboard input bypasses Markdown paste parsing.
+    receive({ type: 'document', markdown: 'target', version: 11, writable: true })
+    instance.commands.setTextSelection({ from: 1, to: 7 })
+    receive({ type: 'requestAction', action: 'pastePlainText' })
+    receive({ type: 'command', command: 'pastePlainText', text: '**literal** <b>tag</b>' })
+    expect(messages.filter(message => message.type === 'error')).toEqual([])
+    expect(instance.state.doc.textContent).toBe('**literal** <b>tag</b>')
+    expect(instance.isActive('bold')).toBe(false)
+    acknowledgeLatest(); receive({ type: 'actionFinished' })
+
+    receive({ type: 'requestAction', action: 'find' })
+    expect(document.querySelector<HTMLFormElement>('#find-bar')?.hidden).toBe(false)
+    document.querySelector<HTMLButtonElement>('#find-close')!.click()
+
+    // A pasted image reaches the host as bytes, then uses the saved target
+    // selection when the asynchronous filesystem command returns.
+    receive({ type: 'document', markdown: 'first\n\nsecond', version: 13, writable: true })
+    instance.commands.setTextSelection(1)
+    const paste = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(paste, 'clipboardData', { value: {
+      files: [new File(['image bytes'], 'pasted.png', { type: 'image/png' })], getData: () => '',
+    } })
+    instance.view.dom.dispatchEvent(paste)
+    await vi.waitFor(() => expect(messages.at(-1)).toMatchObject({ type: 'action', action: 'importImages', files: [{ name: 'pasted.png', data: btoa('image bytes') }] }))
+    instance.commands.setTextSelection(instance.state.doc.content.size - 1)
+    receive({ type: 'command', command: 'insertImages', text: JSON.stringify(['./assets/pasted.png']) })
+    expect(instance.state.doc.firstChild?.type.name).toBe('image')
+    expect(getMarkdown(instance)).toContain('./assets/pasted.png')
+    acknowledgeLatest(); receive({ type: 'actionFinished' })
+
+    receive({ type: 'requestAction', action: 'insertImage' })
+    receive({ type: 'document', markdown: 'changed externally', version: 15, writable: true })
+    receive({ type: 'command', command: 'insertImages', text: JSON.stringify(['./assets/retained.png']) })
+    expect(instance.state.doc.textContent).toBe('changed externally')
+    expect(document.querySelector('#notice-text')?.textContent).toContain('./assets/retained.png')
+    receive({ type: 'actionFinished' })
+
+    // Existing editor shortcuts still apply their formatting, but must not
+    // also reach workbench bindings such as Ctrl/Cmd+B (toggle the sidebar).
+    const primary = /Mac/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true }
+    instance.commands.setTextSelection({ from: 1, to: 8 })
+    const workbench = vi.fn()
+    window.addEventListener('keydown', workbench)
+    for (const [key, code, keyCode, altKey] of [['b', 'KeyB', 66, false], ['1', 'Digit1', 49, true]] as const) {
+      const keydown = new KeyboardEvent('keydown', { key, code, keyCode, altKey, ...primary, bubbles: true, cancelable: true })
+      instance.view.dom.dispatchEvent(keydown)
+      expect(keydown.defaultPrevented).toBe(true)
+      acknowledgeLatest()
+    }
+    window.removeEventListener('keydown', workbench)
+    expect(workbench).not.toHaveBeenCalled()
+    expect(instance.isActive('bold')).toBe(true)
+    expect(instance.isActive('heading', { level: 1 })).toBe(true)
+    expect(instance.state.doc.textContent).toBe('changed externally')
+    instance.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', altKey: true, ...primary, bubbles: true, cancelable: true }))
+    expect(instance.isActive('paragraph')).toBe(true)
+    acknowledgeLatest()
+
+    // The real entry applies settings without touching the document. A new
+    // formula key invokes the shared assistant at the current caret directly.
+    receive({ type: 'document', markdown: 'formula here', version: 20, writable: true })
+    instance.commands.setTextSelection(8)
+    const beforeShortcutConfig = instance.state.doc
+    receive({ type: 'settings', settings: defaultSettings, shortcuts: { scope: 'user', overrides: { insertMathInline: 'Mod+Alt+M', toggleBold: '' } } })
+    expect(instance.state.doc).toBe(beforeShortcutConfig)
+    const oldBold = new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', ...primary, bubbles: true, cancelable: true })
+    instance.view.dom.dispatchEvent(oldBold)
+    expect(instance.state.doc).toBe(beforeShortcutConfig)
+    expect(oldBold.defaultPrevented).toBe(true)
+    instance.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', code: 'KeyM', altKey: true, ...primary, bubbles: true, cancelable: true }))
+    expect(instance.state.doc.firstChild?.child(1).type.name).toBe('mathInline')
+    expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
+    expect(document.querySelector('.markleaf-formula-symbol-toolbar')).not.toBeNull()
+    acknowledgeLatest()
+
+    // Parameterized actions take the existing queue and preserve the selected
+    // range until the host returns its input. They do not open the format menu.
+    receive({ type: 'document', markdown: 'table here', version: 22, writable: true })
+    instance.commands.setTextSelection(1)
+    receive({ type: 'requestFormatCommand', command: 'insertTable' })
+    expect(messages.at(-1)).toMatchObject({ type: 'action', action: 'formatCommand', command: 'insertTable', context: { editable: true } })
+    receive({ type: 'command', command: 'insertTable', text: '2,3' })
+    expect(instance.state.doc.firstChild?.type.name).toBe('table')
+    acknowledgeLatest(); receive({ type: 'actionFinished' })
+
     await new Promise(resolve => setTimeout(resolve, 30))
     window.dispatchEvent(new Event('pagehide'))
   })

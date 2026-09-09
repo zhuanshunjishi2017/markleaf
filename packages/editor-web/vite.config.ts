@@ -3,6 +3,7 @@ import type { Plugin } from 'vite'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 const katexCssPath = require.resolve('katex/dist/katex.min.css')
@@ -76,6 +77,9 @@ export default defineConfig(({ mode }) => ({
     } : {}),
   },
   test: {
+    alias: { vscode: fileURLToPath(new URL('./tests/vscode-mock.ts', import.meta.url)) },
+    // Reading-view tests exercise the original typography and its @depends.
+    css: { include: [/\/styles\/[^/]+\.css\?raw(?:$|&)/] },
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
   },

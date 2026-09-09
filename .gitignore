@@ -91,3 +91,6 @@ release/
 
 # Local project notes (not part of the public documentation)
 /project-notes/
+
+# Local test change requests are reviewed separately from source history.
+[Tt][Cc][Rr]*.md

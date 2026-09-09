@@ -51,7 +51,7 @@
 
 ### 优秀的导出效果
 
-当前可导出为 PDF/HTML/长图片，PDF可自定义纸张大小、页边距、页眉页脚等。也支持禁止表格分页等高级设置。印刷品/LaTeX 等主题导出成 PDF 文件后非常适合于阅读和打印，也可满足部分学术写作的排版要求。
+原生 Windows/macOS 版可导出为 PDF/HTML/长图片，PDF可自定义纸张大小、页边距、页眉页脚等。也支持禁止表格分页等高级设置。印刷品/LaTeX 等主题导出成 PDF 文件后非常适合于阅读和打印，也可满足部分学术写作的排版要求。VS Code 扩展尚未接入导出与打印。
 
 ### 极简但完善的操作逻辑与功能
 
@@ -74,7 +74,7 @@
 | VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
 
-三个宿主共享编辑内核与排版样式。VS Code 扩展使用现有 VS Code 运行环境，不引入 Electron 依赖或独立桌面壳。安装扩展后，Markdown 文件默认以 MarkLeaf 渲染视图打开，支持阅读与可视化编辑、保存、撤销重做，以及原生源码并排编辑；详见 [扩展说明](./apps/vscode/README.md)。
+三个宿主共享编辑内核与排版样式。VS Code 扩展使用现有 VS Code 运行环境，不引入 Electron 依赖或独立桌面壳。安装扩展后，Markdown 文件默认以 MarkLeaf 渲染视图打开，支持阅读与可视化编辑、格式刷、表格、脚注、公式与图表、图片粘贴和拖放、查找替换、大纲及排版偏好。保存和撤销重做由 VS Code 管理，支持原生源码切换及并排；详见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
 
 ## 项目结构
 
@@ -118,7 +118,7 @@ apps/windows（C# WinForms）        apps/macos（Swift AppKit）
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.1.1.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.4.vsix
 ```
 
 在 VS Code 中安装生成的 VSIX 后，新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf 渲染视图。已有源码标签可通过 **Reopen Editor With… → MarkLeaf** 或 **MarkLeaf: Open Markdown** 切换；已配置其他默认编辑器时，可通过 **Configure default editor for…** 选择 MarkLeaf。使用 **Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与 MarkLeaf 渲染视图之间切换。可视化编辑允许现有序列化器规范化 Markdown 格式，阅读不会回写；详见[使用和保真边界](./apps/vscode/README.md)。
