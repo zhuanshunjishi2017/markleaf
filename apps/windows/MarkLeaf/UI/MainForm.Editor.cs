@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
@@ -14,8 +13,6 @@ namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
-    private WebViewMouseCaptureFilter? _webViewMouseCaptureFilter;
-
     private Control CreateEditorHost()
     {
         var colors = ColorThemeService.GetActiveColors();
@@ -37,8 +34,6 @@ internal sealed partial class MainForm
         {
             _documentTabBar.ClearKeyboardMenuMode();
         };
-        _webViewMouseCaptureFilter = new WebViewMouseCaptureFilter(webView);
-        Application.AddMessageFilter(_webViewMouseCaptureFilter);
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);
@@ -392,67 +387,4 @@ internal sealed partial class MainForm
         BeginInvoke(Close);
     }
 
-    private sealed class WebViewMouseCaptureFilter : IMessageFilter
-    {
-        private const int WmLButtonDown = 0x0201;
-        private const int WmLButtonUp = 0x0202;
-        private const int WmCaptureChanged = 0x0215;
-        private readonly WebView2 _webView;
-        private bool _captured;
-
-        public WebViewMouseCaptureFilter(WebView2 webView) => _webView = webView;
-
-        public bool PreFilterMessage(ref Message message)
-        {
-            if (!_webView.IsHandleCreated || _webView.IsDisposed) return false;
-
-            if (message.Msg == WmLButtonDown)
-            {
-                var point = GetCursorPosition();
-                if (_webView.RectangleToScreen(_webView.ClientRectangle).Contains(point))
-                {
-                    var target = WindowFromPoint(point);
-                    if (target != 0)
-                    {
-                        SetCapture(target);
-                        _captured = true;
-                    }
-                }
-            }
-            else if (message.Msg == WmLButtonUp && _captured)
-            {
-                ReleaseCapture();
-                _captured = false;
-            }
-            else if (message.Msg == WmCaptureChanged)
-            {
-                _captured = false;
-            }
-            return false;
-        }
-
-        public void Dispose()
-        {
-            if (_captured) ReleaseCapture();
-            _captured = false;
-        }
-
-        [DllImport("user32.dll")]
-        private static extern nint WindowFromPoint(Point point);
-
-        [DllImport("user32.dll")]
-        private static extern nint SetCapture(nint window);
-
-        [DllImport("user32.dll")]
-        private static extern bool ReleaseCapture();
-
-        [DllImport("user32.dll")]
-        private static extern bool GetCursorPos(out Point point);
-
-        private static Point GetCursorPosition()
-        {
-            GetCursorPos(out var point);
-            return point;
-        }
-    }
 }

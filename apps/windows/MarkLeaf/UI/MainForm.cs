@@ -469,12 +469,6 @@ internal sealed partial class MainForm : Form
             _recoveryService.Dispose();
             _workspaceLoadCancellation?.Dispose();
             _editorHost?.Dispose();
-            if (_webViewMouseCaptureFilter is not null)
-            {
-                Application.RemoveMessageFilter(_webViewMouseCaptureFilter);
-                _webViewMouseCaptureFilter.Dispose();
-                _webViewMouseCaptureFilter = null;
-            }
             if (_findReplaceDialog is { IsDisposed: false })
             {
                 _findReplaceDialog.Dispose();
