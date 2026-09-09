@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build",
+    "build:vscode": "tsc --noEmit && vite build --mode vscode",
     "test": "vitest run",
     "test:watch": "vitest"
   },

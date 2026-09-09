@@ -1,0 +1,62 @@
+{
+  "name": "markleaf",
+  "displayName": "MarkLeaf",
+  "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
+  "version": "0.1.0",
+  "publisher": "markleaf",
+  "license": "MIT",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["Other"],
+  "keywords": ["markdown", "wysiwyg", "preview", "mermaid", "katex"],
+  "repository": { "type": "git", "url": "https://github.com/zhuanshunjishi2017/markleaf.git" },
+  "main": "./dist/extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": { "untrustedWorkspaces": { "supported": true } },
+  "contributes": {
+    "customEditors": [{
+      "viewType": "markleaf.editor",
+      "displayName": "MarkLeaf",
+      "selector": [{ "filenamePattern": "*.md" }, { "filenamePattern": "*.markdown" }],
+      "priority": "default"
+    }],
+    "commands": [
+      { "command": "markleaf.open", "title": "MarkLeaf: Open Markdown" },
+      { "command": "markleaf.toggleEditor", "title": "MarkLeaf: Toggle Source / Rendered View" },
+      { "command": "markleaf.openSource", "title": "MarkLeaf: Open Source", "icon": "$(code)" },
+      { "command": "markleaf.openSourceBeside", "title": "MarkLeaf: Open Source to the Side", "icon": "$(split-horizontal)" }
+    ],
+    "keybindings": [{
+      "command": "markleaf.toggleEditor",
+      "key": "ctrl+shift+v",
+      "mac": "cmd+shift+v",
+      "when": "editorTextFocus && editorLangId == markdown || webviewFocus && activeCustomEditorId == markleaf.editor"
+    }],
+    "menus": {
+      "explorer/context": [{ "command": "markleaf.open", "when": "resourceExtname == .md || resourceExtname == .markdown", "group": "open@10" }],
+      "editor/title": [
+        { "command": "markleaf.open", "when": "editorLangId == markdown && activeCustomEditorId != markleaf.editor", "group": "navigation" },
+        { "command": "markleaf.openSource", "when": "activeCustomEditorId == markleaf.editor", "group": "navigation" },
+        { "command": "markleaf.openSourceBeside", "when": "activeCustomEditorId == markleaf.editor", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "MarkLeaf",
+      "properties": {
+        "markleaf.defaultMode": { "type": "string", "scope": "resource", "enum": ["edit", "read"], "default": "edit", "description": "Initial mode for newly opened MarkLeaf editors." },
+        "markleaf.fontSize": { "type": "number", "scope": "resource", "default": 16, "minimum": 10, "maximum": 32, "description": "Document font size in pixels." },
+        "markleaf.maxWidth": { "type": "number", "scope": "resource", "default": 820, "minimum": 320, "maximum": 1600, "description": "Maximum document width in pixels." }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "package": "vsce package --no-dependencies --skip-license --out ../../artifacts/markleaf-vscode-0.1.0.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/vscode": "1.95.0",
+    "@vscode/vsce": "3.6.2",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}
