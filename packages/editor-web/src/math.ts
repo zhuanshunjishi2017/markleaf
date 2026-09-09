@@ -121,8 +121,12 @@ export const MathInline = Node.create({
       return Math.min(dollar, parenthesis)
     },
     tokenize: (src: string) => {
-      const match = /^(?:(?<!\$)\$(?!\$)((?:\\[^\n]|[^$\\\n])+?)\$(?![\d$])|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
+      const match = /^(?:(?<!\$)\$(?!\$)((?:\\[^\n]|[^$\\\n])+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
       if (!match) return undefined
+      // Price pairs have an amount plus a prose/list separator between dollars.
+      // A trailing digit alone must not reject real formulas such as $x$2 or $5$2.
+      if (/^\d/.test(src.slice(match[0].length))
+        && /^\d[\d,.]*(?:,\s*|\s+and\s+)$/.test(match[1] ?? '')) return undefined
       return { type: 'mathInline', raw: match[0], text: normalizeMathSource(match[1] ?? match[2] ?? '') }
     },
   },

@@ -72,6 +72,13 @@ describe('opaque formula source', () => {
     const source = String.raw`a \$$ b`
     expect(formulas(make(`$$${source}$$`))).toEqual([source])
   })
+  it.each(['x', '5'])('round-trips formula %s immediately followed by a digit', source => {
+    const markdown = `$${source}$2`
+    const editor = make(markdown)
+    expect(formulas(editor)).toEqual([source])
+    expect(getMarkdown(editor)).toBe(markdown)
+    expect(formulas(make(getMarkdown(editor)))).toEqual([source])
+  })
   it('keeps escaped dollar payloads inside a formula', () => {
     const source = String.raw`x + \$5 + y`
     expect(formulas(make(`$${source}$`))).toEqual([source])
