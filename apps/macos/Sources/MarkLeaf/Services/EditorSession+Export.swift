@@ -85,7 +85,10 @@ extension EditorSession {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
-        pendingExportHTMLHandler = completion
+        pendingExportHTMLRequest = PendingExportHTMLRequest(
+            context: ExportHTMLRequestContext(route: .preview, documentURL: documentURL),
+            completion: completion
+        )
         execute("exportDocument", text: text)
     }
 
@@ -145,25 +148,52 @@ extension EditorSession {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
-        pendingExportContext = ExportContext(options: options, saveURL: saveURL, forPrint: forPrint)
+        let route: ExportHTMLRoute
+        if forPrint {
+            route = .print
+        } else {
+            switch options.format {
+            case "pdf": route = .pdf
+            case "image": route = .image
+            default: route = .html
+            }
+        }
+        pendingExportContext = ExportContext(
+            options: options,
+            saveURL: saveURL,
+            forPrint: forPrint,
+            htmlRequest: ExportHTMLRequestContext(route: route, documentURL: documentURL)
+        )
         pendingExport = true
         statusText = L10n.t("正在生成导出内容…")
         execute("exportDocument", text: text)
     }
 
     func handleExportedContent(_ html: String) {
-        if let handler = pendingExportHTMLHandler {
-            pendingExportHTMLHandler = nil
-            handler(html)
-            return
-        }
-        guard let context = pendingExportContext else {
+        let previewRequest = pendingExportHTMLRequest
+        let exportContext = pendingExportContext
+        guard let requestContext = previewRequest?.context ?? exportContext?.htmlRequest else {
             AppLog.warning(L10n.t("收到无上下文的导出内容"))
             return
         }
+        pendingExportHTMLRequest = nil
         pendingExportContext = nil
 
-        if context.forPrint {
+        let prepared = ExportHTMLPreparation.prepare(html: html, context: requestContext)
+        if prepared.unresolvedCount > 0 {
+            statusText = unresolvedImageStatus(prepared.unresolvedCount)
+            AppLog.warning("导出内容有 \(prepared.unresolvedCount) 张本地图片未嵌入")
+        }
+
+        if let previewRequest {
+            previewRequest.completion(prepared.html)
+            return
+        }
+        guard let context = exportContext else { return }
+        let unresolvedCount = prepared.unresolvedCount
+
+        switch prepared.route {
+        case .print:
             statusText = L10n.t("正在打开打印面板…")
             AppLog.info("开始打印（系统打印面板）")
             guard let window = webView?.window else {
@@ -173,7 +203,7 @@ extension EditorSession {
                 return
             }
             PDFGenerator().printPDF(
-                html: html,
+                html: prepared.html,
                 paperSize: .a4,
                 landscape: false,
                 margins: ExportMargins(),
@@ -188,7 +218,7 @@ extension EditorSession {
                     switch result {
                     case .success(let printed):
                         if printed {
-                            self.statusText = L10n.t("已发送到打印机")
+                            self.statusText = self.successStatus("已发送到打印机", unresolvedCount: unresolvedCount)
                             AppLog.info("打印任务已提交")
                             self.onExportComplete?(true)
                         } else {
@@ -201,7 +231,7 @@ extension EditorSession {
                     }
                 }
             }
-        } else if context.options.format == "pdf" {
+        case .pdf:
             statusText = L10n.t("正在生成 PDF…")
             AppLog.info("开始 PDF 导出（直接保存，纸张 \(context.options.paperSize.rawValue)）")
             guard let window = webView?.window else {
@@ -211,7 +241,7 @@ extension EditorSession {
                 return
             }
             PDFGenerator().printPDF(
-                html: html,
+                html: prepared.html,
                 paperSize: context.options.paperSize,
                 landscape: context.options.landscape,
                 margins: context.options.margins,
@@ -230,7 +260,7 @@ extension EditorSession {
                     switch result {
                     case .success(let printed):
                         if printed {
-                            self?.statusText = L10n.t("已导出 PDF")
+                            self?.statusText = self?.successStatus("已导出 PDF", unresolvedCount: unresolvedCount) ?? ""
                             AppLog.info("PDF 已导出: \(context.saveURL.path)")
                             self?.onExportComplete?(true)
                         } else {
@@ -243,10 +273,10 @@ extension EditorSession {
                     }
                 }
             }
-        } else if context.options.format == "image" {
+        case .image:
             statusText = L10n.t("正在生成图像…")
             ImageHTMLExporter().export(
-                html: html,
+                html: prepared.html,
                 options: context.options,
                 saveBaseURL: context.saveURL
             ) { [weak self] result in
@@ -255,7 +285,7 @@ extension EditorSession {
                     self.isExportingOrPrinting = false
                     switch result {
                     case .success(let urls):
-                        self.statusText = L10n.t("已导出图像")
+                        self.statusText = self.successStatus("已导出图像", unresolvedCount: unresolvedCount)
                         AppLog.info("图像已导出: \(urls.map(\.path).joined(separator: ", "))")
                         self.onExportComplete?(true)
                     case .failure(let error):
@@ -264,11 +294,11 @@ extension EditorSession {
                     }
                 }
             }
-        } else {
+        case .html:
             do {
-                try html.write(to: context.saveURL, atomically: true, encoding: .utf8)
+                try prepared.html.write(to: context.saveURL, atomically: true, encoding: .utf8)
                 isExportingOrPrinting = false
-                statusText = L10n.t("已导出 HTML")
+                statusText = successStatus("已导出 HTML", unresolvedCount: unresolvedCount)
                 AppLog.info("HTML 已导出: \(context.saveURL.path)")
                 onExportComplete?(true)
             } catch {
@@ -276,6 +306,17 @@ extension EditorSession {
                 presentError("导出失败：\(error.localizedDescription)")
                 onExportComplete?(false)
             }
+        case .preview:
+            AppLog.warning(L10n.t("收到无上下文的导出内容"))
         }
+    }
+
+    private func unresolvedImageStatus(_ count: Int) -> String {
+        L10n.f("%d 张本地图片未能嵌入导出内容", count)
+    }
+
+    private func successStatus(_ key: String, unresolvedCount: Int) -> String {
+        guard unresolvedCount > 0 else { return L10n.t(key) }
+        return L10n.f("%@（%d 张本地图片未嵌入）", L10n.t(key), unresolvedCount)
     }
 }

@@ -237,8 +237,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
     var pendingExportContext: ExportContext?
-    /// 导出预览：请求导出 HTML 的回调（“导出 PDF…”对话框实时预览用）。
-    var pendingExportHTMLHandler: ((String) -> Void)?
+    /// 导出预览：请求时捕获文档 URL，避免异步返回前切换标签改变图片解析基准。
+    var pendingExportHTMLRequest: PendingExportHTMLRequest?
     /// 导出预览对话框（需要强引用，否则创建后立即释放）。
     var exportController: ExportWindowController?
     /// 导出/打印互斥标志（internal：由 EditorSession+Export.swift 读写）；

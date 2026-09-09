@@ -12,4 +12,11 @@ struct ExportContext {
     var options: ExportOptions
     var saveURL: URL
     var forPrint = false
+    var htmlRequest: ExportHTMLRequestContext
+}
+
+/// A preview callback bound to the document active when HTML generation began.
+struct PendingExportHTMLRequest {
+    let context: ExportHTMLRequestContext
+    let completion: (String) -> Void
 }
