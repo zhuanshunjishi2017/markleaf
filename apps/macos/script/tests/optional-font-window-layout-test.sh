@@ -13,6 +13,7 @@ SWIFT_MODULECACHE_PATH="$BUILD_DIR/module-cache" \
 xcrun swiftc \
   "$ROOT_DIR/Sources/MarkLeaf/Services/OptionalFontCatalog.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/OptionalFontInstaller.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/CurrentStyleFontNotice.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Views/OptionalFontsWindowController.swift" \
   "$BUILD_DIR/main.swift" \
   -o "$BUILD_DIR/test"

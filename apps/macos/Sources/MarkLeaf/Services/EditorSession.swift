@@ -89,8 +89,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private(set) var styles: [StyleDefinition] = []
     private(set) var colorThemes: [ColorThemeInfo] = []
-    private(set) var currentStyleId = "serif"
-    private(set) var currentThemeId: String?
+    private(set) var currentStyleId = "serif" {
+        didSet { NotificationCenter.default.post(name: .themeSettingsDidChange, object: self) }
+    }
+    private(set) var currentThemeId: String? {
+        didSet { NotificationCenter.default.post(name: .themeSettingsDidChange, object: self) }
+    }
     private(set) var isSourceMode = false
     private(set) var isPlainText = false
     private(set) var hasSelection = false
@@ -2683,3 +2687,5 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
 }
+
+extension EditorSession: ThemeSettingsSession {}

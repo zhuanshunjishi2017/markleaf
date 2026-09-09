@@ -85,7 +85,7 @@ mac_table_edit="$(method_body "$MAC_MENU" tableEditingMenu)"
 require_text "$mac_table_edit" 'addRowBefore'
 
 mac_view="$(method_body "$MAC_MENU" viewMenu)"
-for text in 排版样式 颜色主题 设置缩放; do
+for text in 主题设置 设置缩放; do
   require_text "$mac_view" "$text"
 done
 for command in toggleCodeHighlight importTheme revealThemeFolder; do

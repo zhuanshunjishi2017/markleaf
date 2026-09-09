@@ -70,6 +70,7 @@ enum ShortcutCatalog {
         ShortcutEntry(command: "toggleFocusMode", titleKey: "最简模式", defaultKey: "f", defaultMask: [.command, .shift]),
         ShortcutEntry(command: "zoomIn", titleKey: "放大", defaultKey: "=", defaultMask: [.command]),
         ShortcutEntry(command: "zoomOut", titleKey: "缩小", defaultKey: "-", defaultMask: [.command]),
+        ShortcutEntry(command: "showThemeSettings", titleKey: "主题设置…", defaultKey: "t", defaultMask: [.option, .shift]),
         ShortcutEntry(command: "resetZoom", titleKey: "重置为100%", defaultKey: "0", defaultMask: [.command]),
     ]
 

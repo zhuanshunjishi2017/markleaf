@@ -25,6 +25,8 @@ final class AppWindowManager {
     private var preferencesController: PreferencesWindowController?
     private var recoveryController: RecoveryWindowController?
     private var shortcutController: ShortcutWindowController?
+    private var themeSettingsController: ThemeSettingsWindowController?
+    private var themeSettingsObservers: [NSObjectProtocol] = []
     private var optionalFontsController: OptionalFontsWindowController?
     private var findPanelController: FindPanelController?
     private var updateCheckController: UpdateCheckController?
@@ -36,12 +38,28 @@ final class AppWindowManager {
     private var closedTabHistory: [ClosedTabRecord] = []
 
     init() {
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification,
+                     NSWindow.didResignMainNotification, .themeSettingsDidChange] {
+            themeSettingsObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in self?.refreshThemeSettings() })
+        }
+        themeSettingsObservers.append(NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            // Wait for the editor controller to leave windowControllers before resolving context.
+            DispatchQueue.main.async { self?.refreshThemeSettings() }
+        })
         sessionScheduler.onWriteFailure = { [weak self] tabID in
             self?.markRecoveryUnavailable(tabID: DocumentTabID(tabID))
         }
         sessionScheduler.onSnapshotWritten = { [weak self] tabID, fileName in
             self?.markRecoveryAvailable(tabID: DocumentTabID(tabID), snapshotFileName: fileName)
         }
+    }
+
+    deinit {
+        themeSettingsObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     func markRecoveryUnavailable(tabID: DocumentTabID) {
@@ -594,6 +612,7 @@ final class AppWindowManager {
             }
         }
         preferencesController?.syncFollowSystemThemeState()
+        refreshThemeSettings()
     }
 
     /// 打开「更新内容」（对应 Windows ShowChangelog：按语言复制到可写缓存目录后在当前窗口打开）。
@@ -713,20 +732,49 @@ final class AppWindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func showThemeSettings() {
+        if themeSettingsController == nil {
+            let controller = ThemeSettingsWindowController(
+                sessionProvider: { [weak self] in self?.activeSession },
+                onOptionalFonts: { [weak self] in self?.showOptionalFonts() })
+            themeSettingsController = controller
+            controller.onClose = { [weak self, weak controller] in
+                guard let self, self.themeSettingsController === controller else { return }
+                self.themeSettingsController = nil
+            }
+        }
+        refreshThemeSettings()
+        themeSettingsController?.showWindow(nil)
+        themeSettingsController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func refreshThemeSettings() {
+        themeSettingsController?.refresh()
+        optionalFontsController?.refreshCurrentStyleNotice()
+    }
+
     func showOptionalFonts() {
         if let controller = optionalFontsController {
             controller.showWindow(nil)
+            controller.refreshCurrentStyleNotice(focusMissingPack: true)
             controller.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let controller = OptionalFontsWindowController()
+        let controller = OptionalFontsWindowController(currentStyleProvider: { [weak self] in
+            guard let session = self?.activeSession else { return nil }
+            let id = session.currentStyleId
+            let name = session.styles.first(where: { $0.id == id })?.displayName ?? id
+            return (id: id, displayName: L10n.t(name))
+        })
         optionalFontsController = controller
         controller.onClose = { [weak self, weak controller] in
             guard let self, self.optionalFontsController === controller else { return }
             self.optionalFontsController = nil
         }
         controller.showWindow(nil)
+        controller.refreshCurrentStyleNotice(focusMissingPack: true)
         controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

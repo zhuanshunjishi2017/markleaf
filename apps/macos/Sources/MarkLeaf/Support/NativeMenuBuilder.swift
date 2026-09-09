@@ -279,38 +279,8 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
         menu.addItem(.separator())
 
-        let styles = session?.styles ?? []
-        let themes = session?.colorThemes ?? []
-
-        // 排版样式（动态）
-        let styleMenu = NSMenu(title: L10n.t("排版样式"))
-        for style in styles {
-            let item = styleItem(L10n.t(style.displayName), #selector(MenuRouter.chooseStyle(_:)), style.id)
-            item.state = style.id == session?.currentStyleId ? .on : .off
-            styleMenu.addItem(item)
-        }
-        menu.addItem(popup(L10n.t("排版样式"), styleMenu, requiresDocument: true))
-
-        // 颜色主题（浅色 / 深色分组，对应 Windows RefreshColorMenu）
-        let themeMenu = NSMenu(title: L10n.t("颜色主题"))
-        let lightThemes = themes.filter { !$0.isDark }
-        let darkThemes = themes.filter { $0.isDark }
-        for theme in lightThemes {
-            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
-            item.state = theme.id == session?.currentThemeId ? .on : .off
-            themeMenu.addItem(item)
-        }
-        if !lightThemes.isEmpty && !darkThemes.isEmpty {
-            themeMenu.addItem(.separator())
-        }
-        for theme in darkThemes {
-            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
-            item.state = theme.id == session?.currentThemeId ? .on : .off
-            themeMenu.addItem(item)
-        }
-        themeMenu.addItem(.separator())
-        themeMenu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
-        menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
+        menu.addItem(commandItem(L10n.t("主题设置…"), "showThemeSettings", key: "t", mask: [.option, .shift]))
+        menu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("重启编辑器"), "restartEditor"))
         return menu
@@ -700,6 +670,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.openChangelog()
         case "openWelcome":
             AppWindowManager.shared.openWelcome()
+        case "showThemeSettings":
+            AppWindowManager.shared.showThemeSettings()
         case "installOptionalFonts":
             AppWindowManager.shared.showOptionalFonts()
         case "checkForUpdates":

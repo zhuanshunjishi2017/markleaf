@@ -6,6 +6,8 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
 {
     var onClose: (() -> Void)?
 
+    private let currentStyleProvider: () -> (id: String, displayName: String)?
+    private let currentStyleNotice = NSTextField(wrappingLabelWithString: "")
     private let packs = OptionalFontCatalog.packs
     private let installer: OptionalFontInstaller
     private var statuses: [OptionalFontPackStatus] = []
@@ -23,11 +25,15 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
     private let licenseButton = NSButton(
         title: L10n.t("查看许可证"), target: nil, action: nil)
 
-    init(installer: OptionalFontInstaller = OptionalFontInstaller()) {
+    init(
+        installer: OptionalFontInstaller = OptionalFontInstaller(),
+        currentStyleProvider: @escaping () -> (id: String, displayName: String)? = { nil }
+    ) {
+        self.currentStyleProvider = currentStyleProvider
         self.installer = installer
-        let window = NSWindow(
+        let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 430),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -57,7 +63,13 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
             "按需为当前 macOS 用户安装排版样式使用的字体。安装前会校验下载内容和字体内部名称。"
         ))
         description.textColor = .secondaryLabelColor
-        description.translatesAutoresizingMaskIntoConstraints = false
+        currentStyleNotice.textColor = .labelColor
+        currentStyleNotice.setAccessibilityIdentifier("current-style-font-notice")
+        let header = NSStackView(views: [description, currentStyleNotice])
+        header.orientation = .vertical
+        header.alignment = .leading
+        header.spacing = 8
+        header.translatesAutoresizingMaskIntoConstraints = false
 
         let styleColumn = NSTableColumn(identifier: .init("style"))
         styleColumn.title = L10n.t("所用排版样式")
@@ -114,7 +126,7 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
-        root.addSubview(description)
+        root.addSubview(header)
         root.addSubview(scroll)
         root.addSubview(progressIndicator)
         root.addSubview(progressLabel)
@@ -123,10 +135,10 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
         window.contentView = root
 
         NSLayoutConstraint.activate([
-            description.topAnchor.constraint(equalTo: root.topAnchor, constant: 18),
-            description.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            description.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
-            scroll.topAnchor.constraint(equalTo: description.bottomAnchor, constant: 14),
+            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
+            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
             scroll.bottomAnchor.constraint(equalTo: progressLabel.topAnchor, constant: -12),
@@ -306,6 +318,24 @@ final class OptionalFontsWindowController: NSWindowController, NSWindowDelegate,
         statuses = packs.map(installer.status(for:))
         tableView.reloadData()
         updateButtons()
+        refreshCurrentStyleNotice()
+    }
+
+    func refreshCurrentStyleNotice(focusMissingPack: Bool = false) {
+        let style = currentStyleProvider()
+        let missing = CurrentStyleFontNotice.missingPacks(
+            styleID: style?.id, packs: packs, statuses: statuses)
+        currentStyleNotice.isHidden = missing.isEmpty
+        currentStyleNotice.stringValue = missing.isEmpty ? "" : L10n.f(
+            "当前排版“%@”缺少字体包：%@。", style?.displayName ?? "",
+            missing.map(\.displayName).joined(separator: ", "))
+        currentStyleNotice.setAccessibilityLabel(currentStyleNotice.stringValue)
+        if focusMissingPack, let pack = missing.first,
+           let index = packs.firstIndex(where: { $0.id == pack.id }) {
+            tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+            tableView.scrollRowToVisible(index)
+            window?.makeFirstResponder(tableView)
+        }
     }
 
     private func updateButtons() {

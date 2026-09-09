@@ -703,6 +703,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     /// 状态栏、侧栏、大纲、查找面板全部跟随活动标签会话。
     private func rebindActiveSessionUI() {
+        defer { AppWindowManager.shared.refreshThemeSettings() }
         guard let session = windowSession?.activeTabSession else { return }
         if let windowSession {
             configureTabSession(session, in: windowSession)
@@ -1086,6 +1087,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyStatusBarContents() {
+        AppWindowManager.shared.refreshThemeSettings()
         let hasActiveTab = windowSession?.activeTabSession != nil
         guard StatusBarEmptyStatePolicy.shouldShowDocumentItems(hasActiveTab: hasActiveTab) else {
             // 全部标签已关闭：清空并隐藏文档相关项，仅保留窗口级控件。
