@@ -2,7 +2,7 @@
 
 [简体中文](../README.md) | [English](./README.en.md) | [日本語](./README.ja.md)
 
-這是一個原生輕量化 Markdown 視覺化編輯器，追求簡潔的介面與排版，提供專注於思考、閱讀與寫作的空間。
+MarkLeaf 是輕量化 Markdown 視覺化編輯器，提供 Windows/macOS 原生應用程式和 VS Code 擴充功能，追求簡潔的介面與排版，為思考、閱讀與寫作提供專注的空間。
 
 專案最初由 [fcz](https://github.com/zhuanshunjishi2017) 發起並製作，初版僅支援 Windows 平台，後由 [Na Bian](https://github.com/Na-Bian) 提供了 macOS 版本的支援。**當前，Windows 版本與 macOS 版本共同更新。**
 
@@ -25,7 +25,7 @@
 
 > [!NOTE]
 > 部分主題可能需要用到特定的字體以獲得更佳體驗，您可以前往以下頁面，或直接從 [Release](https://github.com/zhuanshunjishi2017/markleaf/releases) 中下載相關字體包並將其安裝到電腦上。
-> 
+>
 > - [Computer Modern 系列字體](https://www.fontsquirrel.com/fonts/computer-modern)（LaTeX 預設排版字體）
 > - [匯文、朝華系列字體以及京華老宋體](https://huozi.cool/) （鉛字印刷排版，由特里王製作的免費字體）
 > - [霞鶩文楷](https://github.com/lxgw/LxgwWenKai) （由 Lxgw 製作的優秀開源開源中文字體）
@@ -51,9 +51,11 @@
 
 ### 優異的匯出效果
 
-當前可匯出為 PDF/HTML/長圖片，PDF可自訂紙張大小、邊界、頁首頁尾等。也支援禁止表格分頁等進階設定。印刷品/LaTeX 等主題匯出成 PDF 文件後非常適合於閱讀和列印，也可滿足部分學術寫作的排版要求。
+原生 Windows/macOS 版可匯出為 PDF/HTML/長圖片；VS Code 擴充功能尚未接入匯出與列印。PDF可自訂紙張大小、邊界、頁首頁尾等。也支援禁止表格分頁等進階設定。印刷品/LaTeX 等主題匯出成 PDF 文件後非常適合於閱讀和列印，也可滿足部分學術寫作的排版要求。
 
 ### 極簡但完善的操作邏輯與功能
+
+下面的工作區、多視窗和內建原始碼模式介紹以原生應用程式為主。VS Code 擴充功能使用 VS Code 的檔案總管、視窗、分頁和原始碼編輯器，其功能入口見下方擴充功能說明。
 
 - **工作區管理**：支援開啟資料夾作為工作區，按樹狀檢視或清單檢視檢視檔案，依名稱/內容搜尋文件。
 - **多視窗與多標籤頁**：支援開啟多個視窗實例，也可將文件在新視窗中開啟。另外，應用支援在同一個視窗中開啟多個標籤頁，每個標籤頁獨自管理其文件內容。
@@ -66,14 +68,15 @@
 
 ## 平台支援
 
-
-| 平台      | 所用技術                             | 程式碼目錄                   |
-| ------- | -------------------------------- | ----------------------- |
+| 平台 | 所用技術 | 程式碼目錄 |
+| --- | --- | --- |
 | Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
-| macOS   | Swift + AppKit + WKWebView       | `apps/macos`            |
+| macOS | Swift + AppKit + WKWebView | `apps/macos` |
+| VS Code 擴充功能 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
+三個宿主共享編輯核心與排版樣式。VS Code 擴充功能使用現有的 VS Code 執行環境，不引入獨立 Electron 相依套件或桌面殼層。支援閱讀與視覺化編輯、格式刷、表格、註腳、公式與 Mermaid、圖片貼上和拖放、尋找取代、大綱及排版偏好。儲存、復原重做、分頁和 Markdown 原始碼由 VS Code 管理，支援原始碼切換及並排。
 
-兩個平台共享同一套編輯器前端與樣式，應用則用平台原生方法實現。
+VS Code 擴充功能 0.2.4 提供 35 項設定和 67 項可設定快速鍵的格式操作；公式與圖表原始碼展開在對應內容下方，隨文件捲動。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
 
 ## 專案結構
 
@@ -83,13 +86,14 @@ markleaf/
 │   ├── windows/                  # Windows 原生應用（C# WinForms）
 │   │   ├── MarkLeaf/             #   主程式（.NET 10 + WebView2）
 │   │   └── setup/                #   Inno Setup 安裝器
+│   ├── vscode/                   # VS Code Markdown 閱讀與編輯擴充功能（TypeScript）
 │   └── macos/                    # macOS 原生應用（Swift AppKit + WKWebView）
 │       ├── Sources/MarkLeaf/     #   主程式
 │       ├── Changelog/            #   產品更新日誌（四語言）
 │       └── script/               #   建置 / 發布腳本
 ├── packages/
 │   ├── editor-web/               # 共享編輯器前端（Tiptap/ProseMirror + CodeMirror 6）
-│   └── styles/                   # 共享排版 / 主題樣式（列印樣式，兩平台共用）
+│   └── styles/                   # 共享排版 / 主題樣式（三個宿主共用）
 ├── MarkLeaf.slnx                 # Windows 解決方案
 ├── Directory.Build.props
 ├── global.json
@@ -101,15 +105,30 @@ markleaf/
 ## 技術架構
 
 ```text
-apps/windows（C# WinForms）        apps/macos（Swift AppKit）
-  主視窗 / 選單 / 工作區 / 匯出       主視窗 / 選單 / 工作區 / 匯出
-        │                                  │
-        ├── packages/editor-web ───────────┤   共享前端（Tiptap + CodeMirror）
-        ├── packages/styles ───────────────┤   共享列印樣式
-        └── WebView2 / WKWebView ──────────┘   native-shim.js 訊息橋
+packages/editor-web（共享編輯核心）+ packages/styles（共享排版）
+├── apps/windows → WinForms + WebView2 → 原生訊息橋
+├── apps/macos   → AppKit + WKWebView  → 原生訊息橋
+└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+
+Windows/macOS：main.ts，內建 CodeMirror 6 原始碼模式
+VS Code：vscode.ts，使用 VS Code 原生 Markdown 原始碼編輯器
 ```
 
 ## 建置與執行
+
+### VS Code 擴充功能
+
+從儲存庫根目錄執行，Node.js 22.12+，使用專案指定的 pnpm：
+
+```bash
+pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir apps/vscode install --frozen-lockfile
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.4.vsix
+```
+
+在 VS Code 中使用 **Install from VSIX…** 安裝產生的擴充套件。新開啟的 `.md`、`.markdown` 檔案預設進入 MarkLeaf；既有原始碼分頁使用 **Reopen Editor With… → MarkLeaf**，既有預設關聯使用 **Configure default editor for…** 調整。**Ctrl+Shift+V**（macOS 為 **Cmd+Shift+V**）在原始碼與渲染檢視間切換。
+
+升級後先儲存文件，再執行 **Developer: Reload Window**。若設定項目缺失或提示 `markleaf.shortcuts` 未註冊，需要重新載入整個視窗。透過 **视图 → 快捷键…**（檢視 → 快速鍵）錄入格式鍵位。閱讀不會回寫；視覺化編輯可能正規化 Markdown 格式，詳見 [擴充功能使用與保真範圍](../apps/vscode/docs/README.zh-TW.md)。
 
 ### Web 前端編輯器
 
@@ -139,4 +158,4 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 
 ## 授權條款
 
-應用採用 MIT 授權條款。見 [LICENSE](./LICENSE)。
+應用採用 MIT 授權條款。見 [LICENSE](../LICENSE)。

@@ -2,7 +2,7 @@
 
 [简体中文](../README.md) | [日本語](./README.ja.md) | [繁體中文](./README.zh-TW.md)
 
-This is a native lightweight Markdown visual editor, pursuing a clean interface and typography, providing a space dedicated to thinking, reading, and writing.
+MarkLeaf is a lightweight Markdown visual editor available as native Windows/macOS applications and a VS Code extension. Its clean interface and typography provide a focused space for thinking, reading, and writing.
 
 The project was originally initiated and created by [fcz](https://github.com/zhuanshunjishi2017), with the first version supporting only Windows. Later, [Na Bian](https://github.com/Na-Bian) provided support for macOS. **Currently, the Windows version and the macOS version are updated together.**
 
@@ -25,7 +25,7 @@ The application comes with a variety of built‑in typographic styles, for examp
 
 > [!NOTE]
 > Some themes may require specific fonts for a better experience. You can visit the following pages, or download the related font packages directly from [Releases](https://github.com/zhuanshunjishi2017/markleaf/releases) and install them on your computer.
-> 
+>
 > - [Computer Modern series fonts](https://www.fontsquirrel.com/fonts/computer-modern) (default LaTeX typography font)
 > - [Huiwen, Chaohua series fonts and Jinghua Lao Song](https://huozi.cool/) (Letterpress typography, free fonts created by 特里王)
 > - [Lxgw WenKai](https://github.com/lxgw/LxgwWenKai) (excellent open‑source Chinese font created by Lxgw)
@@ -51,9 +51,11 @@ Based on the **Tiptap/ProseMirror** editor core, supports full CommonMark and Gi
 
 ### Excellent Export Quality
 
-Currently supports export to PDF/HTML/long images. PDF allows custom paper size, margins, headers/footers, etc. It also supports advanced settings such as preventing table page breaks. After exporting to PDF using themes like Print/LaTeX, the result is well‑suited for reading and printing, and can meet some academic writing layout requirements.
+The native Windows/macOS applications support export to PDF/HTML/long images. Export and printing are not available in the VS Code extension. PDF allows custom paper size, margins, headers/footers, etc. It also supports advanced settings such as preventing table page breaks. After exporting to PDF using themes like Print/LaTeX, the result is well‑suited for reading and printing, and can meet some academic writing layout requirements.
 
 ### Minimal yet Complete Operation Logic and Features
+
+The workspace, window, and built-in source-mode features below primarily describe the native applications. The VS Code extension uses VS Code Explorer, windows, tabs, and source editing; its own entry points are documented in the extension guide below.
 
 - <strong>Workspace Management</strong>: Supports opening a folder as a workspace, viewing files in tree or list view, and searching documents by name/content.
 - <strong>Multiple Windows and Tabs</strong>: Supports opening multiple window instances, and can also open a document in a new window. Additionally, the application supports opening multiple tabs in the same window, with each tab managing its document content independently.
@@ -66,14 +68,15 @@ Currently supports export to PDF/HTML/long images. PDF allows custom paper size,
 
 ## Platform Support
 
+| Platform | Technology | Code directory |
+| --- | --- | --- |
+| Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
+| macOS | Swift + AppKit + WKWebView | `apps/macos` |
+| VS Code extension | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
-| Platform | Technology Used                  | Code Directory          |
-| -------- | -------------------------------- | ----------------------- |
-| Windows  | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
-| macOS    | Swift + AppKit + WKWebView       | `apps/macos`            |
+All three hosts share the editor core and typography. The VS Code extension uses the existing VS Code runtime without adding a separate Electron dependency or desktop shell. It supports reading and visual editing, a format painter, tables, footnotes, math and Mermaid, image paste and drop, find and replace, an outline, and reading preferences. VS Code manages saving, undo/redo, tabs, and native Markdown source editing, including switching views and opening source alongside the rendered document.
 
-
-Both platforms share the same editor frontend and styles, while the application uses platform‑native methods to implement them.
+Extension 0.2.4 provides 35 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
 
 ## Project Structure
 
@@ -83,13 +86,14 @@ markleaf/
 │   ├── windows/                  # Windows native app (C# WinForms)
 │   │   ├── MarkLeaf/             #   Main program (.NET 10 + WebView2)
 │   │   └── setup/                #   Inno Setup installer
+│   ├── vscode/                   # VS Code Markdown reading and editing extension (TypeScript)
 │   └── macos/                    # macOS native app (Swift AppKit + WKWebView)
 │       ├── Sources/MarkLeaf/     #   Main program
 │       ├── Changelog/            #   Product changelog (four languages)
 │       └── script/               #   Build / release scripts
 ├── packages/
 │   ├── editor-web/               # Shared editor frontend (Tiptap/ProseMirror + CodeMirror 6)
-│   └── styles/                   # Shared typography / theme styles (print styles, shared by both platforms)
+│   └── styles/                   # Shared typography / theme styles (shared by all three hosts)
 ├── MarkLeaf.slnx                 # Windows solution
 ├── Directory.Build.props
 ├── global.json
@@ -101,15 +105,30 @@ markleaf/
 ## Technical Architecture
 
 ```text
-apps/windows (C# WinForms)        apps/macos (Swift AppKit)
-  Main Window / Menu / Workspace / Export       Main Window / Menu / Workspace / Export
-        │                                  │
-        ├── packages/editor-web ───────────┤   Shared frontend (Tiptap + CodeMirror)
-        ├── packages/styles ───────────────┤   Shared print styles
-        └── WebView2 / WKWebView ──────────┘   native-shim.js message bridge
+packages/editor-web (shared editor core) + packages/styles (shared typography)
+├── apps/windows → WinForms + WebView2 → native message bridge
+├── apps/macos   → AppKit + WKWebView  → native message bridge
+└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+
+Windows/macOS: main.ts, with built-in CodeMirror 6 source mode
+VS Code: vscode.ts, using the native VS Code Markdown source editor
 ```
 
 ## Build and Run
+
+### VS Code Extension
+
+Run from the repository root with Node.js 22.12+ and the project's specified pnpm version:
+
+```bash
+pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir apps/vscode install --frozen-lockfile
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.4.vsix
+```
+
+Install the generated package with **Install from VSIX…** in VS Code. Newly opened `.md` and `.markdown` files use MarkLeaf by default. For existing source tabs, use **Reopen Editor With… → MarkLeaf**; change an existing association with **Configure default editor for…**. **Ctrl+Shift+V** (**Cmd+Shift+V** on macOS) switches between native source and rendered views.
+
+After upgrading, save your documents and run **Developer: Reload Window**. Missing settings or an unregistered `markleaf.shortcuts` setting require a full window reload. Open **视图 → 快捷键…** (View → Shortcuts) to record formatting shortcuts. Reading does not write to the file; visual edits may normalize Markdown formatting. See the [extension guide and fidelity limits](../apps/vscode/docs/README.en.md).
 
 ### Web Frontend Editor
 

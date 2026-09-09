@@ -5,3 +5,6 @@
 !dist/webview/.vite/manifest.json
 !docs/welcome.md
 !docs/feature-parity.md
+!docs/README.en.md
+!docs/README.ja.md
+!docs/README.zh-TW.md

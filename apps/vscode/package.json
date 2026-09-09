@@ -1190,7 +1190,7 @@
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
-    "package": "vsce package --no-dependencies --skip-license --out ../../artifacts/markleaf-vscode-0.2.4.vsix"
+    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.4.vsix"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

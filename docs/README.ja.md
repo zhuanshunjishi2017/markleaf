@@ -2,7 +2,7 @@
 
 [简体中文](../README.md) | [English](./README.en.md) | [繁體中文](./README.zh-TW.md)
 
-これはネイティブな軽量Markdownビジュアルエディタであり、シンプルなインターフェースと組版を追求し、思考・読書・執筆に集中するためのスペースを提供します。
+MarkLeaf は軽量な Markdown ビジュアルエディタです。Windows/macOS のネイティブアプリと VS Code 拡張機能を提供し、シンプルなインターフェースと組版で、思考・読書・執筆に集中できる空間を目指しています。
 
 このプロジェクトは、もともと [fcz](https://github.com/zhuanshunjishi2017) によって発起・制作され、初版はWindowsのみをサポートしていました。その後、[Na Bian](https://github.com/Na-Bian) がmacOS版のサポートを提供しました。**現在、Windows版とmacOS版は共同で更新されています。**
 
@@ -25,7 +25,7 @@
 
 > [!NOTE]
 > 一部のテーマは、より良い体験のために特定のフォントが必要な場合があります。以下のページにアクセスするか、[リリース](https://github.com/zhuanshunjishi2017/markleaf/releases) から関連するフォントパッケージを直接ダウンロードしてコンピュータにインストールしてください。
-> 
+>
 > - [Computer Modern シリーズフォント](https://www.fontsquirrel.com/fonts/computer-modern)（LaTeXデフォルト組版フォント）
 > - [匯文・朝華シリーズフォントおよび京華老宋体](https://huozi.cool/)（活版印刷組版、Terry Wang制作の無料フォント）
 > - [霞鶩文楷](https://github.com/lxgw/LxgwWenKai)（Lxgw制作の優れたオープンソース中文字体）
@@ -51,9 +51,11 @@
 
 ### 優れたエクスポート品質
 
-現在、PDF/HTML/長画像へのエクスポートが可能です。PDFでは用紙サイズ、余白、ヘッダー/フッターなどをカスタマイズできます。また、表のページ分割を禁止するなどの高度な設定もサポートしています。印刷物/LaTeXなどのテーマでPDFにエクスポートすると、読書や印刷に非常に適しており、学術的な執筆の組版要件も満たすことができます。
+Windows/macOS のネイティブアプリは PDF/HTML/縦長画像へのエクスポートに対応します。VS Code 拡張機能にはエクスポートと印刷の機能はありません。PDFでは用紙サイズ、余白、ヘッダー/フッターなどをカスタマイズできます。また、表のページ分割を禁止するなどの高度な設定もサポートしています。印刷物/LaTeXなどのテーマでPDFにエクスポートすると、読書や印刷に非常に適しており、学術的な執筆の組版要件も満たすことができます。
 
 ### ミニマルでありながら完全な操作ロジックと機能
+
+以下のワークスペース、複数ウィンドウ、内蔵ソースモードの説明は主にネイティブアプリを対象としています。拡張機能では VS Code のエクスプローラー、ウィンドウ、タブ、ソースエディタを使用します。拡張機能固有の操作は下記ガイドを参照してください。
 
 - **ワークスペース管理**：フォルダをワークスペースとして開くことをサポートし、ツリービューまたはリストビューでファイルを表示し、名前/内容でドキュメントを検索します。
 - **複数ウィンドウと複数タブ**：複数のウィンドウインスタンスを開くことをサポートし、ドキュメントを新しいウィンドウで開くこともできます。さらに、アプリケーションは同じウィンドウ内で複数のタブを開くことをサポートしており、各タブは独自にドキュメント内容を管理します。
@@ -66,14 +68,15 @@
 
 ## プラットフォームサポート
 
+| プラットフォーム | 使用技術 | コードディレクトリ |
+| --- | --- | --- |
+| Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
+| macOS | Swift + AppKit + WKWebView | `apps/macos` |
+| VS Code 拡張機能 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
-| プラットフォーム | 使用技術                             | コードディレクトリ               |
-| -------- | -------------------------------- | ----------------------- |
-| Windows  | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
-| macOS    | Swift + AppKit + WKWebView       | `apps/macos`            |
+3 つのホストは編集コアと組版スタイルを共有します。VS Code 拡張機能は既存の VS Code 実行環境を使い、独立した Electron 依存関係やデスクトップシェルを追加しません。閲覧とビジュアル編集、書式のコピー、表、脚注、数式と Mermaid、画像の貼り付けとドロップ、検索・置換、アウトライン、表示設定に対応します。保存、元に戻す・やり直し、タブ、Markdown ソース編集は VS Code が管理し、ソースとの切り替えや横並び表示が可能です。
 
-
-両方のプラットフォームで同じエディタフロントエンドとスタイルを共有し、アプリケーションはプラットフォームネイティブな方法で実装されています。
+拡張機能 0.2.4 は 35 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図のソースパネルは対応する内容の下に開き、文書と一緒にスクロールします。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
 
 ## プロジェクト構造
 
@@ -83,13 +86,14 @@ markleaf/
 │   ├── windows/                  # Windowsネイティブアプリ（C# WinForms）
 │   │   ├── MarkLeaf/             #   メインプログラム（.NET 10 + WebView2）
 │   │   └── setup/                #   Inno Setupインストーラ
+│   ├── vscode/                   # VS Code Markdown 閲覧・編集拡張機能（TypeScript）
 │   └── macos/                    # macOSネイティブアプリ（Swift AppKit + WKWebView）
 │       ├── Sources/MarkLeaf/     #   メインプログラム
 │       ├── Changelog/            #   製品更新履歴（4言語）
 │       └── script/               #   ビルド／リリーススクリプト
 ├── packages/
 │   ├── editor-web/               # 共有エディタフロントエンド（Tiptap/ProseMirror + CodeMirror 6）
-│   └── styles/                   # 共有組版／テーマスタイル（印刷スタイル、両プラットフォーム共有）
+│   └── styles/                   # 共有組版／テーマスタイル（3 つのホストで共有）
 ├── MarkLeaf.slnx                 # Windowsソリューション
 ├── Directory.Build.props
 ├── global.json
@@ -101,15 +105,30 @@ markleaf/
 ## 技術アーキテクチャ
 
 ```text
-apps/windows（C# WinForms）        apps/macos（Swift AppKit）
-  メインウィンドウ / メニュー / ワークスペース / エクスポート       メインウィンドウ / メニュー / ワークスペース / エクスポート
-        │                                  │
-        ├── packages/editor-web ───────────┤   共有フロントエンド（Tiptap + CodeMirror）
-        ├── packages/styles ───────────────┤   共有印刷スタイル
-        └── WebView2 / WKWebView ──────────┘   native-shim.js メッセージブリッジ
+packages/editor-web（共有編集コア）+ packages/styles（共有組版）
+├── apps/windows → WinForms + WebView2 → ネイティブメッセージブリッジ
+├── apps/macos   → AppKit + WKWebView  → ネイティブメッセージブリッジ
+└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+
+Windows/macOS：main.ts、内蔵 CodeMirror 6 ソースモード
+VS Code：vscode.ts、VS Code 標準の Markdown ソースエディタ
 ```
 
 ## ビルドと実行
+
+### VS Code 拡張機能
+
+Node.js 22.12 以降とプロジェクト指定の pnpm を使い、リポジトリのルートで実行します。
+
+```bash
+pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir apps/vscode install --frozen-lockfile
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.4.vsix
+```
+
+VS Code の **Install from VSIX…** で生成したパッケージをインストールします。新しく開く `.md`、`.markdown` は既定で MarkLeaf を使用します。既存のソースタブは **Reopen Editor With… → MarkLeaf** で切り替え、既定の関連付けは **Configure default editor for…** で変更します。**Ctrl+Shift+V**（macOS は **Cmd+Shift+V**）でソースとレンダリング表示を切り替えます。
+
+アップグレード後は文書を保存して **Developer: Reload Window** を実行してください。設定項目がない場合や `markleaf.shortcuts` が未登録と表示される場合も、ウィンドウ全体の再読み込みが必要です。**视图 → 快捷键…**（表示 → ショートカット）で書式操作のキーを記録できます。閲覧だけではファイルを書き換えません。ビジュアル編集では Markdown の書式が正規化される場合があります。[拡張機能の使い方と保持範囲](../apps/vscode/docs/README.ja.md) を参照してください。
 
 ### Webフロントエンドエディタ
 
