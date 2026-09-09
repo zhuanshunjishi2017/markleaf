@@ -3354,6 +3354,8 @@ export const editorExtensions = [
 export type EditorCreationOptions = {
   themedVisualSelection?: boolean
   handlePaste?: (event: ClipboardEvent) => boolean
+  // Text-document hosts own undo/redo; native hosts retain Tiptap history.
+  externalHistory?: boolean
 }
 
 export function createEditor(
@@ -3362,11 +3364,16 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
+  const extensions = options.externalHistory
+    ? editorExtensions.map(extension => extension.name === 'starterKit'
+      ? extension.configure({ undoRedo: false })
+      : extension)
+    : editorExtensions
   const editor = new Editor({
     element,
     extensions: options.themedVisualSelection
-      ? [...editorExtensions, ThemedSelection]
-      : editorExtensions,
+      ? [...extensions, ThemedSelection]
+      : extensions,
     content: protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
     contentType: 'markdown',
     autofocus: false,
@@ -3376,13 +3383,14 @@ export function createEditor(
         class: 'markleaf-document',
         spellcheck: 'true',
       },
-      handleDOMEvents: readOnly ? {
+      handleDOMEvents: {
         dragstart: (_view, event) => {
+          if (editor.isEditable) return false
           event.dataTransfer?.clearData()
           event.preventDefault()
           return true
         },
-      } : undefined,
+      },
       // ProseMirror owns the editor's paste event pipeline. Handling custom
       // clipboard formats here guarantees that the callback runs before its
       // default HTML/text insertion and survives editor recreation.
@@ -3478,6 +3486,26 @@ export function replaceEditorDocument(
 ): Editor {
   editor.destroy()
   return createEditor(element, content, readOnly, options)
+}
+
+/** Apply a text host's external update without replacing the editor or its DOM.
+ * The host must suppress its change callback while calling this function. */
+export function updateEditorMarkdown(editor: Editor, content: string): void {
+  const selection = editor.state.selection
+  editor.commands.setContent(
+    protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
+    { contentType: 'markdown', emitUpdate: false },
+  )
+  normalizeTableCaptions(editor)
+  originalListMarkdown.delete(editor)
+  if (hasListFormattingThatNeedsPreservation(content)) {
+    originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
+  }
+  const size = editor.state.doc.content.size
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+    editor.state.doc.resolve(Math.min(selection.from, size)),
+    editor.state.doc.resolve(Math.min(selection.to, size)),
+  )).setMeta('addToHistory', false))
 }
 
 /** Parse clipboard plain text through the same complete Markdown pipeline used
@@ -3631,7 +3659,14 @@ export function setCodeHighlightVisible(editor: Editor, visible: boolean): void 
   editor.view.dispatch(editor.state.tr)
 }
 
+let hostImageResolver: ((markdownPath: string) => string) | undefined
+
+export function setHostImageResolver(resolver?: (markdownPath: string) => string): void {
+  hostImageResolver = resolver
+}
+
 export function toVirtualImageUrl(markdownPath: string): string {
+  if (hostImageResolver) return hostImageResolver(markdownPath)
   // 远程图片（http/https）原样返回，由浏览器直接加载；仅本地路径走虚拟资源服务。
   if (/^(https?:|mailto:)/i.test(markdownPath)) {
     return markdownPath

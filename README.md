@@ -71,9 +71,10 @@
 | ------- | -------------------------------- | ----------------------- |
 | Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
 | macOS   | Swift + AppKit + WKWebView       | `apps/macos`            |
+| VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
 
-两个平台共享同一套编辑器前端与样式，应用则用平台原生方法实现。
+三个宿主共享编辑内核与排版样式。VS Code 扩展使用现有 VS Code 运行环境，不引入 Electron 依赖或独立桌面壳。安装扩展后，Markdown 文件默认以 MarkLeaf 渲染视图打开，支持阅读与可视化编辑、保存、撤销重做，以及原生源码并排编辑；详见 [扩展说明](./apps/vscode/README.md)。
 
 ## 项目结构
 
@@ -83,6 +84,7 @@ markleaf/
 │   ├── windows/                  # Windows 原生应用（C# WinForms）
 │   │   ├── MarkLeaf/             #   主程序（.NET 10 + WebView2）
 │   │   └── setup/                #   Inno Setup 安装器
+│   ├── vscode/                   # VS Code Markdown 阅读与编辑扩展（TypeScript）
 │   └── macos/                    # macOS 原生应用（Swift AppKit + WKWebView）
 │       ├── Sources/MarkLeaf/     #   主程序
 │       ├── Changelog/            #   产品更新日志（四语言）
@@ -110,6 +112,16 @@ apps/windows（C# WinForms）        apps/macos（Swift AppKit）
 ```
 
 ## 构建与运行
+
+### VS Code 扩展
+
+```bash
+pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir apps/vscode install --frozen-lockfile
+pnpm package:vscode                # artifacts/markleaf-vscode-0.1.0.vsix
+```
+
+在 VS Code 中安装生成的 VSIX 后，新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf 渲染视图。已有源码标签可通过 **Reopen Editor With… → MarkLeaf** 或 **MarkLeaf: Open Markdown** 切换；已配置其他默认编辑器时，可通过 **Configure default editor for…** 选择 MarkLeaf。使用 **Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与 MarkLeaf 渲染视图之间切换。可视化编辑允许现有序列化器规范化 Markdown 格式，阅读不会回写；详见[使用和保真边界](./apps/vscode/README.md)。
 
 ### Web 前端编辑器
 

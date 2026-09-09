@@ -1,0 +1,5 @@
+**/*
+!package.json
+!README.md
+!dist/**
+!dist/webview/.vite/manifest.json

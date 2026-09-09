@@ -1,0 +1,52 @@
+:root {
+  font-family: var(--vscode-font-family, sans-serif);
+  --bg-primary: var(--vscode-editor-background);
+  --bg-secondary: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+  --bg-hover: var(--vscode-toolbar-hoverBackground);
+  --bg-selected: var(--vscode-panel-border, #8884);
+  --bg-selected-hover: var(--vscode-widget-border, #8886);
+  --text-primary: var(--vscode-editor-foreground);
+  --text-secondary: var(--vscode-foreground);
+  --text-tertiary: var(--vscode-descriptionForeground);
+  --text-selected: var(--vscode-editor-selectionForeground, var(--vscode-editor-foreground));
+  --text-tertiary-selected: var(--text-selected);
+  --theme-light: var(--vscode-editor-selectionBackground);
+  --theme-dark: var(--vscode-textLink-foreground);
+  --highlight: var(--vscode-editor-findMatchHighlightBackground);
+  --highlight-current: var(--vscode-editor-findMatchBackground);
+  --icon: var(--text-primary);
+  --icon-secondary: var(--text-tertiary);
+  --scrollbar-idle: var(--vscode-scrollbarSlider-background);
+  --scrollbar-active: var(--vscode-scrollbarSlider-activeBackground);
+}
+html { scroll-padding-top: 74px; }
+body { padding: 0; color: var(--text-primary); background: var(--bg-primary); }
+#toolbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 8px 12px; background: var(--bg-primary);
+  border-bottom: 1px solid var(--bg-selected);
+  font-size: 12px;
+}
+.brand { padding: 0 8px 0 2px; font-size: 13px; letter-spacing: .2px; }
+button {
+  font: inherit; color: var(--text-primary); background: transparent;
+  border: 1px solid transparent; border-radius: 4px; padding: 4px 7px;
+  min-height: 28px; cursor: pointer;
+}
+button:hover, button[aria-pressed="true"] { background: var(--bg-hover); }
+button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+button:disabled { opacity: .4; cursor: default; }
+.divider { width: 1px; height: 20px; background: var(--bg-selected); margin: 0 4px; }
+.spacer { flex: 1; }
+#editor { padding: 28px clamp(16px, 4vw, 48px) 80px; }
+#editor .ProseMirror { min-height: calc(100vh - 180px); }
+#editor .ProseMirror:focus-within { caret-color: var(--vscode-editorCursor-foreground, var(--text-primary)); }
+#editor[data-read-only="true"] { cursor: auto; }
+#editor[data-read-only="true"] .markleaf-image-resize-handle { display: none; }
+#editor .markleaf-document pre { font-family: var(--vscode-editor-font-family, monospace); }
+#notice { position: sticky; top: 45px; z-index: 90; padding: 10px 18px; background: var(--vscode-inputValidation-warningBackground, var(--bg-secondary)); border-bottom: 1px solid var(--vscode-inputValidation-warningBorder, var(--bg-selected)); font-size: 13px; }
+#notice button { margin-left: 8px; color: var(--vscode-textLink-foreground); text-decoration: underline; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; display: flex; justify-content: space-between; padding: 5px 16px; color: var(--text-tertiary); background: var(--bg-primary); border-top: 1px solid var(--bg-selected); font-size: 11px; }
+[hidden] { display: none !important; }
+@media (max-width: 520px) { .brand, .divider { display: none; } #toolbar { gap: 1px; padding: 6px; } }

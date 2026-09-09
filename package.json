@@ -6,6 +6,8 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build:editor-web": "pnpm --dir packages/editor-web build",
-    "test:editor-web": "pnpm --dir packages/editor-web test"
+    "test:editor-web": "pnpm --dir packages/editor-web test",
+    "build:vscode": "pnpm --dir packages/editor-web build:vscode && pnpm --dir apps/vscode build",
+    "package:vscode": "pnpm build:vscode && pnpm --dir apps/vscode package"
   }
 }
