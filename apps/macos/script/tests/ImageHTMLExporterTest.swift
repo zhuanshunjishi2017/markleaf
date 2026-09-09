@@ -9,8 +9,14 @@ _ = NSApplication.shared
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let html = """
 <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>html,body{margin:0;padding:0}div{height:1200px;background:linear-gradient(red,blue)}</style>
-</head><body><div></div></body></html>
+<style>
+html,body{margin:0;padding:0}
+div{height:1000px}
+.red{background:rgb(255,0,0)}
+.green{background:rgb(0,255,0)}
+.blue{background:rgb(0,0,255)}
+</style>
+</head><body><div class="red"></div><div class="green"></div><div class="blue"></div></body></html>
 """
 
 func export(_ options: ExportOptions, name: String) -> Result<[URL], Error> {
@@ -40,8 +46,31 @@ for scale in [1.0, 2.0, 3.0, 4.0] {
     expect(bitmaps.allSatisfy { $0.pixelsWide == Int(320 * scale) },
            "\(scale)x must produce width \(Int(320 * scale)); got \(bitmaps.map(\.pixelsWide))")
     expect(bitmaps.allSatisfy { $0.pixelsHigh <= 1000 }, "slice height must respect output pixel limit")
-    expect(bitmaps.reduce(0) { $0 + $1.pixelsHigh } == Int(1200 * scale), "slices must cover content exactly")
-    expect(urls.count == Int(ceil(1200 * scale / 1000)), "slice count must use final pixels")
+    expect(bitmaps.reduce(0) { $0 + $1.pixelsHigh } == Int(3000 * scale), "slices must cover content exactly")
+    expect(urls.count == Int(ceil(3000 * scale / 1000)), "slice count must use final pixels")
+    var completedPixels = 0
+    for (sliceIndex, bitmap) in bitmaps.enumerated() {
+        let centerY = completedPixels + bitmap.pixelsHigh / 2
+        let cssY = Double(centerY) / scale
+        let expected: (r: CGFloat, g: CGFloat, b: CGFloat) = cssY < 1000
+            ? (1, 0, 0)
+            : (cssY < 2000 ? (0, 1, 0) : (0, 0, 1))
+        guard let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?
+            .usingColorSpace(.deviceRGB) else {
+            expect(false, "slice center must have a readable RGB color")
+            continue
+        }
+        // WebKit color management can shift an otherwise solid CSS channel
+        // slightly; keep enough tolerance to identify the dominant band while
+        // still rejecting a repeated red viewport in green/blue slices.
+        let tolerance: CGFloat = 0.2
+        expect(abs(color.redComponent - expected.r) <= tolerance
+            && abs(color.greenComponent - expected.g) <= tolerance
+            && abs(color.blueComponent - expected.b) <= tolerance,
+            "\(scale)x slice \(sliceIndex) must contain its expected source band; "
+                + "got rgb(\(color.redComponent),\(color.greenComponent),\(color.blueComponent)) at cssY \(cssY)")
+        completedPixels += bitmap.pixelsHigh
+    }
     print("PASS: \(scale)x \(bitmaps.map { "\($0.pixelsWide)x\($0.pixelsHigh)" })")
 }
 
