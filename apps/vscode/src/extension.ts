@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { documentReplacement, normalizeDocumentMarkdown } from './document-edit'
 import { localResourceRoots, resolveDocumentLink } from './resources'
 import { webviewHtml } from './webview'
+import { pickFormat } from './formatting'
 import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type WebviewMessage } from '../../../packages/editor-web/src/vscode-protocol'
 
 const viewType = 'markleaf.editor'
@@ -12,18 +13,6 @@ function activeResource(): vscode.Uri | undefined {
   if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) return input.uri
   return vscode.window.activeTextEditor?.document.uri
 }
-
-const formats = [
-  ['正文', 'setParagraph'], ['一级标题', 'setHeading1'], ['二级标题', 'setHeading2'], ['三级标题', 'setHeading3'],
-  ['四级标题', 'setHeading4'], ['五级标题', 'setHeading5'], ['六级标题', 'setHeading6'],
-  ['无序列表', 'toggleBulletList'], ['有序列表', 'toggleOrderedList'], ['任务列表', 'toggleTaskList'],
-  ['引用', 'toggleBlockquote'], ['代码块', 'toggleCodeBlock'], ['分隔线', 'insertHorizontalRule'],
-  ['插入表格 (3 × 3)', 'insertTable'], ['上方插入行', 'addRowBefore'], ['下方插入行', 'addRowAfter'],
-  ['删除行', 'deleteRow'], ['左侧插入列', 'addColumnBefore'], ['右侧插入列', 'addColumnAfter'],
-  ['删除列', 'deleteColumn'], ['删除表格', 'deleteTable'],
-  ['行内公式', 'insertMathInline'], ['独立公式', 'insertMathBlock'], ['Mermaid 图表', 'insertMermaid'],
-  ['备注提示框', 'insertAlertNote'], ['警告提示框', 'insertAlertWarning'],
-].map(([label, command]) => ({ label: label!, command: command! }))
 
 class EditorPanel implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[] = []
@@ -74,6 +63,10 @@ class EditorPanel implements vscode.Disposable {
 
   private post(message: ExtensionMessage): void {
     if (!this.disposed) void this.panel.webview.postMessage(message)
+  }
+
+  requestAction(action: HostAction): void {
+    if (this.ready) this.post({ type: 'requestAction', action })
   }
 
   private report(error: unknown): void {
@@ -145,8 +138,8 @@ class EditorPanel implements vscode.Disposable {
         break
       case 'openSource': case 'openSourceBeside': await this.openSource(action === 'openSourceBeside'); break
       case 'format': {
-        const picked = await vscode.window.showQuickPick(formats, { placeHolder: '选择 Markdown 格式或表格操作' })
-        if (picked) this.post({ type: 'command', command: picked.command })
+        const command = await pickFormat()
+        if (command) this.post({ type: 'command', command })
         break
       }
       case 'insertLink': case 'insertImage': {
@@ -232,6 +225,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!resource) { void vscode.window.showInformationMessage('请先打开或选择一个 Markdown 文件。'); return }
       await vscode.commands.executeCommand('vscode.openWith', resource, viewType)
     }),
+    vscode.commands.registerCommand('markleaf.format', () => active()?.requestAction('format')),
     vscode.commands.registerCommand('markleaf.toggleEditor', async () => {
       try {
         const visual = active()

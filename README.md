@@ -118,7 +118,7 @@ apps/windows（C# WinForms）        apps/macos（Swift AppKit）
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.1.0.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.1.1.vsix
 ```
 
 在 VS Code 中安装生成的 VSIX 后，新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf 渲染视图。已有源码标签可通过 **Reopen Editor With… → MarkLeaf** 或 **MarkLeaf: Open Markdown** 切换；已配置其他默认编辑器时，可通过 **Configure default editor for…** 选择 MarkLeaf。使用 **Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与 MarkLeaf 渲染视图之间切换。可视化编辑允许现有序列化器规范化 Markdown 格式，阅读不会回写；详见[使用和保真边界](./apps/vscode/README.md)。

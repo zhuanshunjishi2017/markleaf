@@ -81,7 +81,7 @@ describe('shared editor in a VS Code text host', () => {
   })
 
   it('runs the webview entry through editing, reading, queued undo, source actions and conflict recovery', async () => {
-    document.body.innerHTML = '<div id="toolbar"><button id="mode"></button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div><main id="editor"></main><span id="sync-status"></span><span id="word-count"></span>'
+    document.body.innerHTML = '<div id="toolbar"><button id="mode"></button><button data-command="toggleUnderline" data-edit>U</button><button data-command="toggleHighlight" data-edit>H</button><button data-action="format" data-edit>格式</button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div><main id="editor"></main><span id="sync-status"></span><span id="word-count"></span>'
     const messages: WebviewMessage[] = []
     vi.stubGlobal('acquireVsCodeApi', () => ({ postMessage: (message: WebviewMessage) => messages.push(message), getState: () => undefined, setState: () => {} }))
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
@@ -95,6 +95,9 @@ describe('shared editor in a VS Code text host', () => {
     receive({ type: 'document', markdown: '# Title\n\nHello\n', version: 1, writable: true })
     expect(messages).toEqual([{ type: 'ready' }])
     const instance = visual!
+    // jsdom has no text layout; this test checks editing and transport, not
+    // browser scroll geometry after toolbar commands restore focus.
+    instance.view.setProps({ handleScrollToSelection: () => true })
     instance.commands.insertContent('Edited ')
     expect(messages.at(-1)).toMatchObject({ type: 'edit', baseVersion: 1, sequence: 1 })
     receive({ type: 'accepted', sequence: 1, version: 2 })
@@ -129,6 +132,54 @@ describe('shared editor in a VS Code text host', () => {
     expect(instance.getText()).toBe('Source changed')
     expect(instance.isEditable).toBe(true)
     expect(create).toHaveBeenCalledTimes(1)
+
+    // Exercise the actual toolbar and host menu response through the same
+    // document transport, including the selection lost while a menu is open.
+    receive({ type: 'document', markdown: 'hello world\n\nNext paragraph', version: 5, writable: true })
+    const acknowledgeLatest = () => {
+      const edit = [...messages].reverse().find(message => message.type === 'edit')
+      if (edit?.type !== 'edit') throw new Error('Expected a document edit')
+      receive({ type: 'accepted', sequence: edit.sequence, version: edit.baseVersion + 1 })
+    }
+    const underline = document.querySelector<HTMLButtonElement>('[data-command="toggleUnderline"]')!
+    const highlight = document.querySelector<HTMLButtonElement>('[data-command="toggleHighlight"]')!
+    instance.commands.setTextSelection({ from: 1, to: 6 })
+    underline.click()
+    expect(instance.getHTML()).toContain('<u>hello</u>')
+    expect(underline.getAttribute('aria-pressed')).toBe('true')
+    acknowledgeLatest()
+    highlight.click()
+    expect(instance.isActive('highlight')).toBe(true)
+    expect(highlight.getAttribute('aria-pressed')).toBe('true')
+    acknowledgeLatest()
+
+    mode.click()
+    const readOnlyDocument = instance.state.doc
+    const actionCount = messages.filter(message => message.type === 'action').length
+    expect(underline.disabled).toBe(true)
+    receive({ type: 'requestAction', action: 'format' })
+    receive({ type: 'command', command: 'deleteParagraph' })
+    expect(instance.state.doc).toBe(readOnlyDocument)
+    expect(messages.filter(message => message.type === 'action')).toHaveLength(actionCount)
+    mode.click()
+
+    receive({ type: 'requestAction', action: 'format' })
+    expect(messages.at(-1)).toEqual({ type: 'action', action: 'format' })
+    instance.commands.setTextSelection({ from: 7, to: 12 })
+    receive({ type: 'command', command: 'toggleBold' })
+    expect(instance.state.doc.firstChild?.firstChild?.text).toBe('hello')
+    expect(instance.state.doc.firstChild?.firstChild?.marks.some(mark => mark.type.name === 'bold')).toBe(true)
+    expect(instance.state.selection.from).toBe(1)
+    expect(instance.state.selection.to).toBe(6)
+    acknowledgeLatest()
+    receive({ type: 'actionFinished' })
+
+    document.querySelector<HTMLButtonElement>('[data-action="format"]')!.click()
+    receive({ type: 'document', markdown: 'Changed in source', version: 9, writable: true })
+    receive({ type: 'command', command: 'deleteParagraph' })
+    expect(instance.state.doc.textContent).toBe('Changed in source')
+    expect(document.querySelector('#notice-text')?.textContent).toContain('文档已改变')
+    receive({ type: 'actionFinished' })
     await new Promise(resolve => setTimeout(resolve, 30))
     window.dispatchEvent(new Event('pagehide'))
   })

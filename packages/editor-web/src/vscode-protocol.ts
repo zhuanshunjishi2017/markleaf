@@ -22,6 +22,7 @@ export type WebviewMessage =
   | { type: 'error'; message: string }
 
 export type ExtensionMessage = DocumentSnapshot
+  | { type: 'requestAction'; action: HostAction }
   | { type: 'recovered'; document: DocumentSnapshot }
   | { type: 'actionFinished' }
   | { type: 'accepted'; sequence: number; version: number }

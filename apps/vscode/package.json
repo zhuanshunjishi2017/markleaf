@@ -2,7 +2,7 @@
   "name": "markleaf",
   "displayName": "MarkLeaf",
   "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "markleaf",
   "license": "MIT",
   "engines": { "vscode": "^1.95.0" },
@@ -21,6 +21,7 @@
     }],
     "commands": [
       { "command": "markleaf.open", "title": "MarkLeaf: Open Markdown" },
+      { "command": "markleaf.format", "title": "MarkLeaf: Format / Paragraph Actions", "enablement": "activeCustomEditorId == markleaf.editor" },
       { "command": "markleaf.toggleEditor", "title": "MarkLeaf: Toggle Source / Rendered View" },
       { "command": "markleaf.openSource", "title": "MarkLeaf: Open Source", "icon": "$(code)" },
       { "command": "markleaf.openSourceBeside", "title": "MarkLeaf: Open Source to the Side", "icon": "$(split-horizontal)" }
@@ -32,6 +33,7 @@
       "when": "editorTextFocus && editorLangId == markdown || webviewFocus && activeCustomEditorId == markleaf.editor"
     }],
     "menus": {
+      "webview/context": [{ "command": "markleaf.format", "when": "webviewId == markleaf.editor && markleafCanEdit", "group": "markleaf@1" }],
       "explorer/context": [{ "command": "markleaf.open", "when": "resourceExtname == .md || resourceExtname == .markdown", "group": "open@10" }],
       "editor/title": [
         { "command": "markleaf.open", "when": "editorLangId == markdown && activeCustomEditorId != markleaf.editor", "group": "navigation" },
@@ -50,7 +52,7 @@
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
-    "package": "vsce package --no-dependencies --skip-license --out ../../artifacts/markleaf-vscode-0.1.0.vsix"
+    "package": "vsce package --no-dependencies --skip-license --out ../../artifacts/markleaf-vscode-0.1.1.vsix"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

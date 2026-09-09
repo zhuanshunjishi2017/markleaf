@@ -9,6 +9,7 @@ import {
 } from './editor'
 import { rerenderMermaidElements } from './mermaid'
 import { TextDocumentSync } from './vscode-sync'
+import { normalizeContextMenuCaretPosition } from './format-painter'
 import type { ExtensionMessage, HostAction, WebviewMessage } from './vscode-protocol'
 
 declare function acquireVsCodeApi(): {
@@ -33,6 +34,7 @@ let suppressUpdate = false
 let editor: ReturnType<typeof createEditor> | undefined
 const pendingActions: HostAction[] = []
 let actionInFlight = false
+let actionState: ReturnType<typeof createEditor>['state'] | undefined
 let noticeError = ''
 let renderingFailed = false
 let restoringScroll = true
@@ -98,6 +100,7 @@ const sync = new TextDocumentSync({
     const editable = writable && mode === 'edit' && !sync.conflict && !renderingFailed
     if (editor.isEditable !== editable) editor.setEditable(editable, false)
     mount.dataset.readOnly = String(!editable)
+    mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editable })
     modeButton.textContent = mode === 'read' ? '编辑' : '阅读'
     modeButton.setAttribute('aria-pressed', String(mode === 'read'))
     modeButton.disabled = !writable || !!sync.conflict || renderingFailed
@@ -114,13 +117,14 @@ const sync = new TextDocumentSync({
 
 function updateToolbar(): void {
   if (!editor) return
-  for (const [command, mark] of [['toggleBold', 'bold'], ['toggleItalic', 'italic'], ['toggleStrike', 'strike'], ['toggleCode', 'code']]) {
+  for (const [command, mark] of [['toggleBold', 'bold'], ['toggleItalic', 'italic'], ['toggleUnderline', 'underline'], ['toggleStrike', 'strike'], ['toggleHighlight', 'highlight'], ['toggleCode', 'code']]) {
     document.querySelector(`[data-command="${command}"]`)?.setAttribute('aria-pressed', String(editor.isActive(mark!)))
   }
 }
 
 function action(action: HostAction): void {
   if (sync.conflict) return
+  if (['format', 'insertLink', 'insertImage'].includes(action) && !editor?.isEditable) return
   pendingActions.push(action)
   runNextAction()
 }
@@ -130,12 +134,24 @@ function runNextAction(): void {
   const action = pendingActions.shift()
   if (action) {
     actionInFlight = true
+    // Native menus can move focus and selection. Keep the original target,
+    // but never reuse its positions after the document itself has changed.
+    actionState = ['format', 'insertLink', 'insertImage'].includes(action) ? editor?.state : undefined
     post({ type: 'action', action })
   }
 }
 
-function command(command: string, text?: string): void {
+function command(command: string, text?: string, fromHost = false): void {
   if (!editor?.isEditable || sync.conflict) return
+  if (fromHost && actionState) {
+    if (editor.state.doc !== actionState.doc) {
+      noticeError = '选择操作期间文档已改变，请重新选择文本后再执行。'
+      noticeText.textContent = noticeError
+      notice.hidden = false
+      return
+    }
+    editor.view.dispatch(editor.state.tr.setSelection(actionState.selection))
+  }
   if (!executeEditorCommand(editor, command, text)) {
     noticeError = '此操作不适用于当前选区。请将光标放入目标段落或表格后重试。'
     noticeText.textContent = noticeError
@@ -197,6 +213,17 @@ document.addEventListener('compositionend', event => {
 mount.addEventListener('beforeinput', event => {
   if (!editor?.isEditable) event.preventDefault()
 }, true)
+mount.addEventListener('contextmenu', event => {
+  if (!editor?.isEditable || !(event.target instanceof Element)
+    || event.target.closest('textarea, input, .markleaf-expanded-source')) return
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (!resolved) return
+  const selection = editor.state.selection
+  if (!selection.empty && resolved.pos >= selection.from && resolved.pos <= selection.to) return
+  const node = resolved.inside >= 0 ? editor.state.doc.nodeAt(resolved.inside) : null
+  if (node?.isAtom && node.type.spec.selectable !== false) editor.commands.setNodeSelection(resolved.inside)
+  else editor.commands.setTextSelection(normalizeContextMenuCaretPosition(editor, resolved.pos))
+})
 mount.addEventListener('click', event => {
   const target = (event.target as Element)
   const footnote = target.closest<HTMLElement>('sup[data-footnote-ref]')
@@ -254,11 +281,12 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
     switch (message.type) {
       case 'document': sync.receiveDocument(message); break
       case 'recovered': recover.disabled = false; pendingActions.length = 0; sync.reset(message.document); break
-      case 'actionFinished': actionInFlight = false; runNextAction(); break
+      case 'requestAction': action(message.action); break
+      case 'actionFinished': actionInFlight = false; actionState = undefined; runNextAction(); break
       case 'accepted': sync.accept(message.sequence, message.version); break
       case 'rejected': sync.reject(message.sequence, message.error); break
       case 'flush': sync.flush(message.requestId); break
-      case 'command': command(message.command, message.text); break
+      case 'command': command(message.command, message.text, true); break
       case 'images':
         for (const [path, url] of Object.entries(message.urls)) imageUrls.set(path, url)
         for (const image of mount.querySelectorAll<HTMLImageElement>('img[data-markleaf-path]')) {

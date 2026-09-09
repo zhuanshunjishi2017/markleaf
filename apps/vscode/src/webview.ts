@@ -28,7 +28,9 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
     <span class="divider"></span>
     <button data-command="toggleBold" data-edit type="button" title="粗体 (Ctrl/Cmd+B)"><b>B</b></button>
     <button data-command="toggleItalic" data-edit type="button" title="斜体 (Ctrl/Cmd+I)"><i>I</i></button>
+    <button data-command="toggleUnderline" data-edit type="button" title="下划线 (Ctrl/Cmd+U)"><u>U</u></button>
     <button data-command="toggleStrike" data-edit type="button" title="删除线"><s>S</s></button>
+    <button data-command="toggleHighlight" data-edit type="button" title="高亮"><mark>H</mark></button>
     <button data-command="toggleCode" data-edit type="button" title="行内代码">&lt;/&gt;</button>
     <button data-action="format" data-edit type="button">格式…</button>
     <button data-action="insertLink" data-edit type="button">链接</button>
