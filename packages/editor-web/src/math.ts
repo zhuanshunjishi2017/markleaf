@@ -22,7 +22,7 @@ function nodeLatex(node: MathNodeContent): string {
 }
 
 function normalizeMathSource(source: string): string {
-  return source.trim() === '...' ? '' : source
+  return source === '...' ? '' : source
 }
 
 function renderMathNode(element: HTMLElement, latex: string, displayMode: boolean): void {
@@ -95,7 +95,7 @@ export const MathInline = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    const latex = normalizeMathSource((token.text ?? '').trim())
+    const latex = normalizeMathSource(token.text ?? '')
     return helpers.createNode(
       'mathInline',
       null,
@@ -121,7 +121,7 @@ export const MathInline = Node.create({
       return Math.min(dollar, parenthesis)
     },
     tokenize: (src: string) => {
-      const match = /^(?:(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
+      const match = /^(?:(?<!\$)\$(?!\$)((?:\\[^\n]|[^$\\\n])+?)\$(?![\d$])|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
       if (!match) return undefined
       return { type: 'mathInline', raw: match[0], text: normalizeMathSource(match[1] ?? match[2] ?? '') }
     },
@@ -201,7 +201,7 @@ export const MathBlock = Node.create({
   },
 
   parseMarkdown(token, helpers) {
-    const latex = normalizeMathSource((token.text ?? '').trim())
+    const latex = normalizeMathSource(token.text ?? '')
     return helpers.createNode(
       'mathBlock',
       { number: null },
@@ -225,12 +225,12 @@ export const MathBlock = Node.create({
       return Math.min(dollars, brackets)
     },
     tokenize: (src: string) => {
-      const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
+      const match = /^(?:\$\$((?:\\[\s\S]|(?!\$\$)[^\\])+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
       if (!match) return undefined
       return {
         type: 'mathBlock',
         raw: match[0],
-        text: normalizeMathSource((match[1] ?? match[2] ?? '').trim()),
+        text: normalizeMathSource(match[1] ?? match[2] ?? ''),
       }
     },
   },
@@ -253,7 +253,7 @@ export const MathBlock = Node.create({
       new InputRule({
         find: /\\\[([\s\S]+?)\\\]$/,
         handler: ({ state, range, match }) => {
-          const latex = normalizeMathSource(match[1]!.trim())
+          const latex = normalizeMathSource(match[1]!)
           const mathType = state.schema.nodes.mathBlock
           if (!mathType) return null
           state.tr.replaceRangeWith(

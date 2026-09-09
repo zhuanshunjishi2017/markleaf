@@ -1,4 +1,4 @@
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
+import { type JSONContent, Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -2343,7 +2343,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['ℜ', '\\Re'], ['ℑ', '\\Im'], ['⊥', '\\perp'], ['⊤', '\\top'],
       ['∞', '\\infty'], ['∂', '\\partial'], ['∇', '\\nabla'],
       ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
-      ['ℵ', '\\aleph'],
+      ['ℵ', '\\aleph'], ['ℏ', '\\hbar'],
       ['∅', '\\emptyset'], ['∖', '\\setminus'], ['△', '\\triangle'],
       ['◇', '\\diamond'], ['∠', '\\angle'], ['⌞', '\\lrcorner'],
       ['⌝', '\\urcorner'], ['⌟', '\\llcorner'], ['⌜', '\\ulcorner'],
@@ -2367,7 +2367,8 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['ⁿ√x', '\\sqrt[n]{x}'],
       ['(x)', '\\left(x\\right)'], ['[x]', '\\left[x\\right]'],
       ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],
-      ['∫', '\\int_{a}^{b}'], ['∫∫', '\\iint_{a}^{b}'], ['∫∫∫', '\\iiint_{a}^{b}'],
+      ['∫', '\\int_{a}^{b}'], ['∫', '\\int_{-\\infty}^{+\\infty}'], ['∫∫', '\\iint_{a}^{b}'], ['∫∫∫', '\\iiint_{a}^{b}'],
+      ['∫∫', '\\iint'], ['∫∫∫', '\\iiint'], ['∮', '\\oint'], ['∯', '\\oiint'], ['∰', '\\oiiint'],
       ['∮', '\\oint_{a}^{b}'], ['∯', '\\oiint_{a}^{b}'], ['∰', '\\oiiint_{a}^{b}'],
       ['∏', '\\prod_{a}^{b}'], ['∑', '\\sum_{a}^{b}'], ['lim', '\\lim_{a\\to b}'],
       ['x', '\\vec{}'], ['AB', '\\overrightarrow{}'],
@@ -2415,12 +2416,13 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
     ],
   },
   {
-    label: '箭头',
+    label: '箭头与点号',
     symbols: [
       ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
       ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
       ['↑', '\\uparrow'], ['↓', '\\downarrow'], ['⇑', '\\Uparrow'],
       ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'],
+      ['⋯', '\\cdots'], ['⋮', '\\vdots'], ['⋱', '\\ddots'], ['⋅', '\\cdot'],
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
 ]
@@ -2445,6 +2447,23 @@ formulaSymbolGroups[0]!.symbols.push(
   { preview: '𝛹', latex: '\\varPsi' },
   { preview: '𝛺', latex: '\\varOmega' },
 )
+
+// Keep templates adjacent to their existing group and derive the empty
+// insertion point from the literal prefix, rather than hand-counted offsets.
+const addFormulaTemplate = (
+  group: number, preview: string, previewLatex: string, before: string, after: string,
+  afterLatex: string,
+) => {
+  const symbols = formulaSymbolGroups[group]!.symbols
+  symbols.splice(symbols.findIndex(symbol => symbol.latex === afterLatex) + 1, 0, {
+    preview, previewLatex, latex: before + after,
+    wrap: { before, after, caretOffset: before.length },
+  })
+}
+addFormulaTemplate(3, '⟨x⟩', '\\langle x \\rangle', '\\langle ', ' \\rangle', '\\left|x\\right|')
+addFormulaTemplate(4, '\\mathrm{e}^{\\mathrm{i}x}', '\\mathrm{e}^{\\mathrm{i}x}', '\\mathrm{e}^{\\mathrm{i}', '}', '\\,\\mathrm{d}x')
+addFormulaTemplate(5, 'overbrace', '\\overbrace{x}^{n}', '\\overbrace{', '}^{}', '\\boxed{}')
+addFormulaTemplate(5, 'underbrace', '\\underbrace{x}_{n}', '\\underbrace{', '}_{}', '\\overbrace{}^{}')
 
 const structureSymbols = formulaSymbolGroups[3]!.symbols
 const markStructureSection = (latex: string, section: string, separatorBefore = true) => {
@@ -2505,8 +2524,9 @@ function createFormulaSymbolToolbar(
       nextSource = source.slice(0, selection.from)
         + symbol.wrap.before + selectedText + symbol.wrap.after
         + source.slice(selection.to)
-      nextCaret = selection.from + symbol.wrap.before.length
-        + (selectedText.length > 0 ? selectedText.length + symbol.wrap.after.length : 0)
+      nextCaret = selection.from + (selectedText.length > 0
+        ? symbol.wrap.before.length + selectedText.length + symbol.wrap.after.length
+        : symbol.wrap.caretOffset)
     } else {
       nextSource = source.slice(0, selection.to) + symbol.latex + source.slice(selection.to)
       nextCaret = selection.to + symbol.latex.length
@@ -2647,7 +2667,16 @@ function createExpandedSourceEditor(
     }))
   })
   code.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (kind !== 'mermaid' && !event.altKey && !event.ctrlKey && !event.metaKey
+      && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault()
+      const selection = getCodeSelectionOffsets(code)
+      const destination = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
+      setCodeSelectionOffsets(code, event.shiftKey ? selection.anchor : destination, destination)
+      return
+    }
+    if (event.key === 'Escape' || (kind !== 'mermaid' && event.key === 'Enter'
+      && event.ctrlKey && !event.altKey)) {
       event.preventDefault()
       event.stopPropagation()
       const expanded = expandedSourceEditorKey.getState(editor.state)
@@ -2711,7 +2740,7 @@ function createExpandedSourceEditor(
     const current = editor.state.doc.nodeAt(position)
     if (!current || current.type.name !== kind) return
     const source = code.textContent ?? ''
-    const caretOffset = getCaretOffset(code)
+    const selection = getCodeSelectionOffsets(code)
     const replacement = current.type.create(
       current.attrs,
       source.length > 0 ? editor.state.schema.text(source) : undefined,
@@ -2719,7 +2748,10 @@ function createExpandedSourceEditor(
     editor.view.dispatch(editor.state.tr
       .replaceWith(position, position + current.nodeSize, replacement)
       .setMeta(expandedSourceEditorKey, { position, kind }))
-    if (!composing) refreshHighlight(source, caretOffset)
+    if (!composing) {
+      refreshHighlight(source)
+      setCodeSelectionOffsets(code, selection.anchor, selection.focus)
+    }
   })
   window.requestAnimationFrame(() => {
     if (!code.isConnected) return
@@ -3008,12 +3040,12 @@ function getCaretOffset(root: HTMLElement): number {
   return range.toString().length
 }
 
-function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number } {
+function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number; anchor: number; focus: number } {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0
     || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) {
     const offset = root.textContent?.length ?? 0
-    return { from: offset, to: offset }
+    return { from: offset, to: offset, anchor: offset, focus: offset }
   }
 
   const range = document.createRange()
@@ -3022,33 +3054,40 @@ function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number 
   const anchor = range.toString().length
   range.setEnd(selection.focusNode!, selection.focusOffset)
   const focus = range.toString().length
-  return anchor <= focus ? { from: anchor, to: focus } : { from: focus, to: anchor }
+  return { from: Math.min(anchor, focus), to: Math.max(anchor, focus), anchor, focus }
+}
+
+function setCodeSelectionOffsets(root: HTMLElement, anchor: number, focus: number): void {
+  const pointAt = (offset: number): { node: globalThis.Node; offset: number } => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let remaining = Math.max(0, offset)
+    let textNode = walker.nextNode()
+    while (textNode) {
+      const length = textNode.textContent?.length ?? 0
+      if (remaining <= length) return { node: textNode, offset: remaining }
+      remaining -= length
+      textNode = walker.nextNode()
+    }
+    return { node: root, offset: root.childNodes.length }
+  }
+  const start = pointAt(anchor)
+  const end = pointAt(focus)
+  const selection = window.getSelection()
+  if (!selection) return
+  if (typeof selection.setBaseAndExtent === 'function') {
+    selection.setBaseAndExtent(start.node, start.offset, end.node, end.offset)
+  } else {
+    const range = document.createRange()
+    const [from, to] = anchor <= focus ? [start, end] : [end, start]
+    range.setStart(from.node, from.offset)
+    range.setEnd(to.node, to.offset)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
 }
 
 function setCaretOffset(root: HTMLElement, offset: number): void {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let remaining = Math.max(0, offset)
-  let textNode = walker.nextNode()
-  while (textNode) {
-    const length = textNode.textContent?.length ?? 0
-    if (remaining <= length) {
-      const range = document.createRange()
-      range.setStart(textNode, remaining)
-      range.collapse(true)
-      const selection = window.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      return
-    }
-    remaining -= length
-    textNode = walker.nextNode()
-  }
-  const range = document.createRange()
-  range.selectNodeContents(root)
-  range.collapse(false)
-  const selection = window.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(range)
+  setCodeSelectionOffsets(root, offset, offset)
 }
 
 function renderEditableCodeHighlight(
@@ -3394,7 +3433,39 @@ export function getMarkdown(editor: Editor): string {
   if (original && editor.state.doc.eq(original.doc)) {
     return original.markdown
   }
-  const markdown = editor.getMarkdown()
+  // Protect only actual math nodes, before any compatibility pass. Tokens are
+  // collision-checked against both source JSON and normal serializer output;
+  // restoration is a single pass, so user text can never act as a token.
+  const originalMarkdown = editor.getMarkdown()
+  const json = editor.getJSON()
+  let prefix = 'MARKLEAFOPAQUEMATH'
+  const occupied = JSON.stringify(json) + originalMarkdown
+  while (occupied.includes(prefix)) prefix += 'X'
+  const payloads: string[] = []
+  const protect = (node: JSONContent): JSONContent => {
+    if (node.type === 'mathInline' || node.type === 'mathBlock') {
+      let source = node.content?.map(child => child.text ?? '').join('') ?? ''
+      if (node.type === 'mathInline') source = source.replace(/\r?\n/g, '')
+      // Keep line structure for list/blockquote indentation during serialization.
+      const text = (source || '...').split('\n').map(line => {
+        const index = payloads.push(line) - 1
+        return `${prefix}${index}END`
+      }).join('\n')
+      return { ...node, content: [{ type: 'text', text }] }
+    }
+    // A literal dollar in a text node must not become math after save/reload.
+    // Code and diagram renderers own their source and escaping conventions.
+    if (node.type === 'codeBlock' || node.type === 'mermaid') return node
+    if (node.type === 'text' && !node.marks?.some(mark => mark.type === 'code')) {
+      return { ...node, text: node.text?.replace(/\$/g, () => {
+        const index = payloads.push('\\$') - 1
+        return `${prefix}${index}END`
+      }) }
+    }
+    return node.content ? { ...node, content: node.content.map(protect) } : node
+  }
+  const protectedDoc = protect(json)
+  const markdown = payloads.length ? editor.markdown!.serialize(protectedDoc) : originalMarkdown
   const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
   // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
   // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
@@ -3402,83 +3473,32 @@ export function getMarkdown(editor: Editor): string {
   const markerSafeOutput = escapeMarkdownLiteralSymbols
     ? output
     : removeMarkdownLiteralEscapes(output)
-  return escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+  const result = escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+  return result.replace(new RegExp(`${prefix}(\\d+)END`, 'g'), (_, index: string) => payloads[Number(index)]!)
+}
+
+// Transform ordinary text in place, without placeholder substitution. Math
+// payloads are already isolated by their nodes in getMarkdown.
+function transformOrdinaryMarkdown(markdown: string, transform: (text: string) => string): string {
+  const syntax = /(`{3,}|~{3,})[\s\S]*?\1|\]\([^\n]*\)|(`+)[\s\S]*?\2/g
+  let result = ''
+  let from = 0
+  for (const match of markdown.matchAll(syntax)) {
+    result += transform(markdown.slice(from, match.index)) + match[0]
+    from = match.index + match[0].length
+  }
+  return result + transform(markdown.slice(from))
 }
 
 function removeMarkdownLiteralEscapes(markdown: string): string {
-  const protectedParts: string[] = []
-  const placeholder = (value: string): string => {
-    const index = protectedParts.push(value) - 1
-    return `\u0000markleaf-marker-protected-${index}\u0000`
-  }
-
-  // Only remove escapes from ordinary Markdown text. Code, formulas and
-  // link destinations are syntax-owned regions and must remain byte-for-byte.
-  const protectedMarkdown = markdown
-    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
-    .replace(/\]\([^\n]*\)/g, placeholder)
-    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
-    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
-    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
-    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
-    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
-
-  const unescaped = protectedMarkdown.replace(/\\([*_\\])/g, '$1')
-  return restoreProtectedMarkdownParts(
-    unescaped,
-    /\u0000markleaf-marker-protected-(\d+)\u0000/g,
-    protectedParts,
-  )
+  return transformOrdinaryMarkdown(markdown, text => text.replace(/\\([*_\\])/g, '$1'))
 }
 
 function decodeLiteralSymbols(markdown: string): string {
-  const protectedParts: string[] = []
-  const placeholder = (value: string): string => {
-    const index = protectedParts.push(value) - 1
-    return `\u0000markleaf-protected-${index}\u0000`
-  }
-
-  // Tiptap deliberately leaves code content untouched. Protect it before
-  // decoding the entities generated for ordinary text, otherwise a literal
-  // `&amp;` or `&lt;` inside code would be changed by this compatibility mode.
-  const protectedMarkdown = markdown
-    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
-    .replace(/\]\([^\n]*\)/g, placeholder)
-    // Formula source is Markdown syntax too. Keep literal symbols inside
-    // all supported math delimiters untouched while decoding ordinary text.
-    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
-    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
-    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
-    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
-    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
-
-  const decoded = protectedMarkdown
+  return transformOrdinaryMarkdown(markdown, text => text
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-  return restoreProtectedMarkdownParts(
-    decoded,
-    /\u0000markleaf-protected-(\d+)\u0000/g,
-    protectedParts,
-  )
-}
-
-function restoreProtectedMarkdownParts(
-  markdown: string,
-  placeholderPattern: RegExp,
-  protectedParts: readonly string[],
-): string {
-  let restored = markdown
-  for (let pass = 0; pass <= protectedParts.length; pass += 1) {
-    let replaced = false
-    const next = restored.replace(placeholderPattern, (_, index: string) => {
-      replaced = true
-      return protectedParts[Number(index)] ?? ''
-    })
-    restored = next
-    if (!replaced) break
-  }
-  return restored
+    .replace(/&amp;/g, '&'))
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
@@ -4135,6 +4155,18 @@ export type FindResult = { current: number; total: number }
 export type SelectionExport = { text: string; markdown: string; html: string }
 
 export function exportEditorSelection(editor: Editor): SelectionExport {
+  const expanded = expandedSourceEditorKey.getState(editor.state)
+  if (expanded) {
+    const nativeSelection = window.getSelection()
+    const source = nativeSelection?.anchorNode?.parentElement?.closest('.markleaf-expanded-source-editor')
+      ?? (document.activeElement instanceof HTMLElement
+        ? document.activeElement.closest('.markleaf-expanded-source-editor') : null)
+    if (source && nativeSelection && source.contains(nativeSelection.anchorNode)
+      && source.contains(nativeSelection.focusNode)) {
+      const text = nativeSelection.toString()
+      return { text, markdown: text, html: '' }
+    }
+  }
   const selection = editor.state.selection
   if (selection.empty) return { text: '', markdown: '', html: '' }
   const slice = editor.state.doc.slice(selection.from, selection.to)
