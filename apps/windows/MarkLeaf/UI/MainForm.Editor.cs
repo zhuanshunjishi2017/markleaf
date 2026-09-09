@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Drawing;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
@@ -29,7 +30,10 @@ internal sealed partial class MainForm
         {
             _documentTabBar.ClearKeyboardMenuMode();
         };
-        webView.MouseDown += (_, _) => _documentTabBar.ClearKeyboardMenuMode();
+        webView.MouseDown += (_, eventArgs) =>
+        {
+            _documentTabBar.ClearKeyboardMenuMode();
+        };
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);
@@ -382,4 +386,5 @@ internal sealed partial class MainForm
         _closeApproved = true;
         BeginInvoke(Close);
     }
+
 }

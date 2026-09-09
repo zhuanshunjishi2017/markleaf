@@ -25,29 +25,6 @@ internal sealed partial class MainForm
             return true;
         }
 
-        if ((keyData & Keys.KeyCode) == Keys.Menu
-            && (keyData & (Keys.Control | Keys.Shift)) == Keys.None
-            && !_focusMode
-            && UseTabBarMenu)
-        {
-            _documentTabBar.ToggleKeyboardMenuMode();
-            return true;
-        }
-
-        if ((keyData & Keys.Alt) != Keys.None
-            && (keyData & (Keys.Control | Keys.Shift)) == Keys.None
-            && !_focusMode
-            && UseTabBarMenu
-            && _settings.Appearance.ShowMenuMnemonics
-            && _documentTabBar.TryGetMnemonicMenuIndex(keyCode, out var mnemonicMenuIndex)
-            && _documentTabBar.ActivateTopLevelMenu(mnemonicMenuIndex))
-        {
-            ShowTopLevelMainMenu(
-                mnemonicMenuIndex,
-                _documentTabBar.GetTopLevelMenuScreenLocation(mnemonicMenuIndex));
-            return true;
-        }
-
         if (_editorCommandStatus.ExpandedSource
             && (keyData & Keys.Control) != Keys.None
             && (keyData & Keys.Alt) == Keys.None
@@ -120,22 +97,6 @@ internal sealed partial class MainForm
 
         return _commandRouter.TryExecuteShortcut(keyData)
             || base.ProcessCmdKey(ref message, keyData);
-    }
-
-    private void ActivateTabBarMenuFromKeyboard()
-    {
-        if (InvokeRequired)
-        {
-            BeginInvoke(ActivateTabBarMenuFromKeyboard);
-            return;
-        }
-
-        if (_focusMode || !UseTabBarMenu)
-        {
-            return;
-        }
-
-        _documentTabBar.SelectFirstTopLevelMenu();
     }
 
     private CommandState GetCommandState(AppCommand command)

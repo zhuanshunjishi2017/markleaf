@@ -3416,30 +3416,51 @@ export function createEditor(
 // the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
   const lines = markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []
+  const defaultEol = /\r?\n/.exec(markdown)?.[0] ?? '\n'
+  const result: string[] = []
   let fence = ''
   let mathClose = ''
-  return lines.map((line, index) => {
+  let dedentMath = false
+  for (const [index, line] of lines.entries()) {
     const trimmed = line.trim()
+    const eol = line.endsWith('\r\n') ? '\r\n' : line.endsWith('\n') ? '\n' : defaultEol
     const codeFence = /^\s*(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})/.exec(line)?.[1]
     if (fence) {
       if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(trimmed)) fence = ''
-      return line
+      result.push(line)
+      continue
     }
     if (mathClose) {
-      if (line.includes(mathClose)) mathClose = ''
-      return line
+      const closesMath = dedentMath ? trimmed === mathClose : line.includes(mathClose)
+      result.push(closesMath && dedentMath ? line.replace(/^[ \t]+/, '') : line)
+      if (closesMath) {
+        if (dedentMath && lines[index + 1]?.trim()) result.push(eol)
+        mathClose = ''
+        dedentMath = false
+      }
+      continue
     }
-    if (codeFence) { fence = codeFence; return line }
-    const math = /^[ \t]{0,3}(\$\$|\\\[)/.exec(line)
-    if (!math) return line
+    if (codeFence) { fence = codeFence; result.push(line); continue }
+
+    // List generators indent complete display formulas, including nested
+    // lists. Dedent their delimiters only; keep formula payload and code
+    // fences intact, and do not turn an unclosed delimiter into a block.
+    const indentedDisplay = /^[ \t]{2,}(\$\$[^\r\n]*\$\$|\\\[[^\r\n]*\\\]|\$\$|\\\[)[ \t]*(?:\r?\n)?$/.test(line)
+    const math = (indentedDisplay ? /^[ \t]*(\$\$|\\\[)/ : /^[ \t]{0,3}(\$\$|\\\[)/).exec(line)
+    if (!math) { result.push(line); continue }
     const close = math[1] === '$$' ? '$$' : '\\]'
-    const afterOpening = line.slice(math[0].length)
-    if (!afterOpening.includes(close)) {
-      if (!lines.slice(index + 1).some(next => next.includes(close))) return line
+    const singleLine = line.slice(math[0].length).includes(close)
+    if (!singleLine) {
+      const hasCloser = lines.slice(index + 1).some(next => indentedDisplay ? next.trim() === close : next.includes(close))
+      if (!hasCloser) { result.push(line); continue }
       mathClose = close
+      dedentMath = indentedDisplay
     }
-    return index > 0 && lines[index - 1]!.trim() ? (line.endsWith('\r\n') ? '\r\n' : '\n') + line : line
-  }).join('')
+    if (result.at(-1)?.trim()) result.push(eol)
+    result.push(indentedDisplay ? line.replace(/^[ \t]+/, '') : line)
+    if (indentedDisplay && singleLine && lines[index + 1]?.trim()) result.push(eol)
+  }
+  return result.join('')
 }
 
 export function replaceEditorDocument(

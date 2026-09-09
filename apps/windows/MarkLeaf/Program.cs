@@ -43,20 +43,29 @@ internal static class Program
 
         try
         {
+            var startupTimer = Stopwatch.StartNew();
             logger.Info("MarkLeaf starting.");
             logger.Info(
                 $"Runtime: MarkLeaf {typeof(Program).Assembly.GetName().Version}; " +
                 $".NET {Environment.Version}; {Environment.OSVersion.VersionString}.");
             var stylesDir = Path.Combine(AppContext.BaseDirectory, "Resources", "Styles");
-            StyleService.Initialize(stylesDir);
+
+            // These operations only perform independent file reads.  Running them
+            // concurrently avoids making first-paint wait for each CSS file set in
+            // sequence (which is especially noticeable on a cold disk/cache).
+            var stylesTask = Task.Run(() => StyleService.Initialize(stylesDir));
+            var colorThemesTask = Task.Run(() => ColorThemeService.Initialize(stylesDir));
+            var settingsTask = settingsService.LoadAsync();
+            Task.WhenAll(stylesTask, colorThemesTask, settingsTask).GetAwaiter().GetResult();
+
+            var settings = settingsTask.GetAwaiter().GetResult();
+            logger.Info($"Startup file initialization completed in {startupTimer.ElapsedMilliseconds} ms.");
             logger.Info($"Styles loaded: {StyleService.Styles.Count} from Resources/Styles.");
-            ColorThemeService.Initialize(stylesDir);
             logger.Info($"Color themes loaded: {ColorThemeService.All.Count} from Resources/Styles.");
-            var settings = settingsService.LoadAsync().GetAwaiter().GetResult();
             var uiLanguage = settings.General.UiLanguage ?? "";
             var localesDir = Path.Combine(AppContext.BaseDirectory, "Resources", "Locales");
             Loc.Initialize(localesDir, uiLanguage);
-            logger.Info($"Locales initialized: {uiLanguage} from Resources/Locales.");
+            logger.Info($"Locales initialized: {uiLanguage} from Resources/Locales ({startupTimer.ElapsedMilliseconds} ms).");
 
             // 在任何窗口创建前设置进程级颜色模式，确保 HMENU 深色渲染就绪。
             DarkModeService.Initialize();

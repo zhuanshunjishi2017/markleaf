@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
@@ -173,6 +174,10 @@ internal sealed partial class MainForm : Form
         ISettingsService settingsService,
         IAppLogger logger)
     {
+        // The constructor creates a fairly large control tree.  Defer layout
+        // passes until all controls and event handlers are attached so the first
+        // window paint is not delayed by repeated intermediate measurements.
+        SuspendLayout();
         _options = options;
         _paths = paths;
         _settings = settings;
@@ -364,6 +369,8 @@ internal sealed partial class MainForm : Form
             _documentTabBar.ConfigureTypography(_effectiveDpi);
             _searchResultsView.ConfigureTypography(_effectiveDpi);
         };
+
+        ResumeLayout(performLayout: false);
     }
 
     protected override void OnHandleCreated(EventArgs eventArgs)
@@ -383,18 +390,6 @@ internal sealed partial class MainForm : Form
         const int wmCommand = 0x0111;
         const int wmInitMenu = 0x0116;
         const int wmInitMenuPopup = 0x0117;
-        const int wmSysKeyDown = 0x0104;
-        const int vkMenu = 0x12;
-
-        if (message.Msg == wmSysKeyDown
-            && message.WParam.ToInt32() == vkMenu
-            && !_focusMode
-            && UseTabBarMenu)
-        {
-            _documentTabBar.ToggleKeyboardMenuMode();
-            return;
-        }
-
         if (_menuDarkMode && IsHandleCreated && !IsDisposed)
         {
             switch (message.Msg)
@@ -493,6 +488,7 @@ internal sealed partial class MainForm : Form
 
     private async Task OnMainFormShownAsync(bool maximize)
     {
+        var startupTimer = Stopwatch.StartNew();
         await Task.Yield();
         if (maximize)
         {
@@ -508,6 +504,7 @@ internal sealed partial class MainForm : Form
         if (_editorHost is null)
         {
             CreateEditorHost();
+            _logger.Info($"Startup: editor host created after {startupTimer.ElapsedMilliseconds} ms.");
         }
 
         var startupTasks = new List<Task>();
@@ -517,6 +514,7 @@ internal sealed partial class MainForm : Form
         }
         startupTasks.Add(InitializeStartupContentAsync());
         await Task.WhenAll(startupTasks);
+        _logger.Info($"Startup: editor and initial content ready after {startupTimer.ElapsedMilliseconds} ms.");
 
         if (_settings.General.AutoCheckForUpdates)
         {
