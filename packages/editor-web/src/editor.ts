@@ -3404,10 +3404,69 @@ export function createEditor(
 // that boundary Marked parses `\[` and `\]` as escaped literal brackets in
 // the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
-  return markdown.replace(
+  const separated = markdown.replace(
     /(^[^\r\n]*\S[ \t]*\r?\n)(?=[ \t]*(?:\$\$|\\\[)[ \t]*(?:\r?\n|$))/gm,
     '$1\n',
   )
+
+  // A complete one-line display formula is also commonly indented by two
+  // spaces under a list item (`  $$...$$`). Marked otherwise keeps it in the
+  // list paragraph, where the dollar delimiters are treated as literal text.
+  // Move that standalone formula to a block boundary, while leaving fenced
+  // code untouched.
+  const lines = separated.split('\n')
+  const result: string[] = []
+  let fence: string | null = null
+  let indentedDisplayDelimiter: '$$' | '\\[' | null = null
+  for (const line of lines) {
+    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
+    if (fenceMatch) {
+      const marker = fenceMatch[1]!
+      if (!fence) fence = marker[0]!
+      else if (marker[0] === fence) fence = null
+      result.push(line)
+      continue
+    }
+
+    // Multi-line display formulas are often indented below a list item:
+    // `  $$` / `  \\[`, followed by several indented source lines and a
+    // matching indented closer. Dedent only the delimiter lines (the formula
+    // payload itself remains byte-for-byte unchanged), and put the block
+    // outside the list with blank-line boundaries.
+    if (!fence && indentedDisplayDelimiter) {
+      // Once an indented list formula has started, accept its closing
+      // delimiter at any indentation. Markdown generators disagree on
+      // whether the closer should retain the list indentation.
+      const closing = indentedDisplayDelimiter === '$$' ? /^\s*\$\$[ \t]*$/ : /^\s*\\\][ \t]*$/
+      if (closing.test(line)) {
+        result.push(indentedDisplayDelimiter === '$$' ? '$$' : '\\]')
+        result.push('')
+        indentedDisplayDelimiter = null
+      } else {
+        result.push(line)
+      }
+      continue
+    }
+
+    const displayOpener = /^[ \t]{2,}(\$\$|\\\[)[ \t]*$/.exec(line)
+    if (!fence && displayOpener) {
+      if (result.length > 0 && result[result.length - 1] !== '') result.push('')
+      const delimiter = displayOpener[1]!.startsWith('\\') ? '\\[' : '$$'
+      result.push(delimiter)
+      indentedDisplayDelimiter = delimiter
+      continue
+    }
+
+    const displayMatch = /^[ \t]{2,}(\$\$[^\r\n]*\$\$|\\\[[^\r\n]*\\\])[ \t]*$/.exec(line)
+    if (!fence && displayMatch) {
+      if (result.length > 0 && result[result.length - 1] !== '') result.push('')
+      result.push(displayMatch[1]!)
+      result.push('')
+      continue
+    }
+    result.push(line)
+  }
+  return result.join('\n')
 }
 
 export function replaceEditorDocument(

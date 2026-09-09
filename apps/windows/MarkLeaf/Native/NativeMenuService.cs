@@ -1030,6 +1030,8 @@ internal sealed class NativeMenuService : IDisposable
         AppendMainMenuCommand(menu, AppCommand.InsertLink, Loc.Get("menu.format.insertLink"));
         AppendPopup(menu, Loc.Get("menu.format.image"), BuildImageSubmenu());
         AppendSeparator(menu);
+        AppendMainMenuCommand(menu, AppCommand.FormatPainter, Loc.Get("menu.format.formatPainter"));
+        AppendSeparator(menu);
         AppendMainMenuCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.format.clearFormat"));
         return menu;
     }

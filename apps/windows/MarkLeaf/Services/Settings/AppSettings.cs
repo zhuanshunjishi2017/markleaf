@@ -102,7 +102,7 @@ public sealed class AppSettings
             Image = new ImageSettings(),
             Export = new ExportSettings(),
             Shortcut = new ShortcutSettings(),
-            MarkdownStyle = "serif",
+            MarkdownStyle = "sans-serif",
             ColorTheme = "apple-blue",
         };
     }
@@ -211,7 +211,7 @@ public sealed class AppearanceSettings
 
     public string DefaultDarkThemeId { get; set; } = "apple-dark";
 
-    public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.Always;
+    public MenuBarStyle MenuBarStyle { get; set; } = MenuBarStyle.TabBar;
 
     public bool ShowMenuKeyboardShortcuts { get; set; } = true;
 
@@ -222,7 +222,7 @@ public sealed class AppearanceSettings
 
 public sealed class StatusBarSettings
 {
-    public bool SidebarToggleVisible { get; set; } = false;
+    public bool SidebarToggleVisible { get; set; } = true;
 
     public bool CommandStatusVisible { get; set; } = true;
 
@@ -230,7 +230,7 @@ public sealed class StatusBarSettings
 
     public bool WordCountVisible { get; set; } = true;
 
-    public bool BlockTypeVisible { get; set; } = true;
+    public bool BlockTypeVisible { get; set; } = false;
 
     public bool PositionVisible { get; set; } = true;
 
@@ -281,7 +281,7 @@ public sealed class EditorSettings
 
     public bool UseShiftEnterHardBreak { get; set; } = true;
 
-    public bool AutoConvertUnsafeEmphasis { get; set; } = true;
+    public bool AutoConvertUnsafeEmphasis { get; set; }
 
     public bool EscapeLiteralSymbols { get; set; }
 

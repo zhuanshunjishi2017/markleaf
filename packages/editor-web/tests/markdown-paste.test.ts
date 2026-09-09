@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createEditor, getMarkdown, pasteMarkdownText, pasteMarkdownTextWithResult, shouldParsePastedTextAsMarkdown } from '../src/editor'
+import { createEditor, getMarkdown, pasteMarkdownText, pasteMarkdownTextWithResult, replaceEditorDocument, shouldParsePastedTextAsMarkdown } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
@@ -142,6 +142,114 @@ body { font-family: serif; }
     expect(editor.getHTML()).not.toContain('>[<')
     expect(editor.getText()).not.toContain('\\[')
     expect(editor.getText()).not.toContain('\\]')
+  })
+
+  it('moves an indented one-line display formula out of a list item', () => {
+    const editor = makeEditor('')
+    const markdown = String.raw`1. 势场不含时 $\dfrac{\partial V(\bm{r})}{\partial t}=0$：$\psi(\bm{r}, t)=\varphi(\bm{r})f(t)$
+2. 代入 Schrödinger EQ：
+  $$\underbrace{\mathrm{i}\hbar\dfrac{\mathrm{d}f}{\mathrm{d}t}\dfrac{1}{f(t)}}_{\text{only-}t}=\underbrace{\dfrac{1}{\varphi(\bm{r})}\left[-\dfrac{\hbar^2}{2m}\nabla^2+V(\bm{r})\right]\varphi(\bm{r})}_{\text{only-}\bm{r}}=\underbrace{E}_\text{so-constant}$$
+3. eqs. and solutions:`
+
+    const result = pasteMarkdownTextWithResult(editor, markdown)
+    const mathBlocks: any[] = []
+    const collect = (node: any): void => {
+      if (node?.type === 'mathBlock') mathBlocks.push(node)
+      if (Array.isArray(node?.content)) node.content.forEach(collect)
+    }
+    collect(editor.getJSON())
+
+    expect(result.success).toBe(true)
+    expect(result.outcome).not.toBe('plainText')
+    expect(mathBlocks).toHaveLength(1)
+    expect(mathBlocks[0].content?.[0]?.text).toContain('\\underbrace')
+  })
+
+  it('uses the same display-math normalization when initially loading a document', () => {
+    const markdown = String.raw`1. 势场不含时 $\dfrac{\partial V(\bm{r})}{\partial t}=0$：$\psi(\bm{r}, t)=\varphi(\bm{r})f(t)$
+2. 代入 Schrödinger EQ：
+  $$\underbrace{\mathrm{i}\hbar\dfrac{\mathrm{d}f}{\mathrm{d}t}\dfrac{1}{f(t)}}_{\text{only-}t}=\underbrace{\dfrac{1}{\varphi(\bm{r})}\left[-\dfrac{\hbar^2}{2m}\nabla^2+V(\bm{r})\right]\varphi(\bm{r})}_{\text{only-}\bm{r}}=\underbrace{E}_\text{so-constant}$$
+3. eqs. and solutions:`
+    const element = document.createElement('div')
+    document.body.append(element)
+    let editor = createEditor(element, markdown)
+    editors.push(editor)
+
+    const hasMathBlock = (node: any): boolean => node?.type === 'mathBlock'
+      || (Array.isArray(node?.content) && node.content.some(hasMathBlock))
+    expect(hasMathBlock(editor.getJSON())).toBe(true)
+    expect(editor.getText()).not.toContain('$$')
+
+    editor = replaceEditorDocument(editor, element, markdown)
+    editors.push(editor)
+    expect(hasMathBlock(editor.getJSON())).toBe(true)
+    expect(editor.getText()).not.toContain('$$')
+  })
+
+  it('normalizes indented multi-line display formulas consistently', () => {
+    const markdown = String.raw`给定方程 $ f(x) + f'(-x) = 1 $，求通解。
+
+1. **变量替换**
+令 $ g(x) = f(-x) $，则 $ g'(x) = -f'(-x) $。
+代入原方程得：
+  $$
+   f(x) - g'(x) = 1. \tag{A}
+  $$
+2. **对称形式**
+将原方程中的 $ x $ 替换为 $ -x $，得：
+  $$
+   f(-x) + f'(x) = 1.
+  $$`
+    const editor = makeEditor(markdown)
+    const mathBlocks: any[] = []
+    const collect = (node: any): void => {
+      if (node?.type === 'mathBlock') mathBlocks.push(node)
+      if (Array.isArray(node?.content)) node.content.forEach(collect)
+    }
+    collect(editor.getJSON())
+
+    expect(mathBlocks).toHaveLength(2)
+    expect(mathBlocks[0].content?.[0]?.text).toContain('f(x) - g\'(x) = 1.')
+    expect(mathBlocks[1].content?.[0]?.text).toContain("f(-x) + f'(x) = 1.")
+    expect(editor.getText()).not.toContain('$$')
+  })
+
+  it.each([
+    ['unordered dash', '-'],
+    ['unordered plus', '+'],
+    ['unordered asterisk', '*'],
+    ['ordered dot', '1.'],
+    ['ordered parenthesis', '1)'],
+  ])('uses one display-math rule for %s list items', (_name, marker) => {
+    const markdown = `${marker} first item\n  $$x_1 + y_1$$\n${marker} second item\n  \\\[\n    x_2 + y_2\n\\]`
+    const editor = makeEditor(markdown)
+    const mathBlocks: any[] = []
+    const collect = (node: any): void => {
+      if (node?.type === 'mathBlock') mathBlocks.push(node)
+      if (Array.isArray(node?.content)) node.content.forEach(collect)
+    }
+    collect(editor.getJSON())
+
+    expect(mathBlocks).toHaveLength(2)
+    expect(mathBlocks[0].content?.[0]?.text).toBe('x_1 + y_1')
+    expect(mathBlocks[1].content?.[0]?.text).toContain('x_2 + y_2')
+    expect(editor.getText()).not.toContain('$$')
+    expect(editor.getText()).not.toContain('\\[')
+    expect(editor.getText()).not.toContain('\\]')
+  })
+
+  it('uses the same display-math rule for nested list indentation', () => {
+    const markdown = String.raw`- outer
+  - inner
+    $$
+    x + y
+    $$`
+    const editor = makeEditor(markdown)
+    const hasMathBlock = (node: any): boolean => node?.type === 'mathBlock'
+      || (Array.isArray(node?.content) && node.content.some(hasMathBlock))
+
+    expect(hasMathBlock(editor.getJSON())).toBe(true)
+    expect(editor.getText()).not.toContain('$$')
   })
 
   it('falls back to literal text when parsed Markdown has no insertable document content', () => {
