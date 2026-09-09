@@ -27,6 +27,14 @@ let data = try! JSONEncoder().encode(custom)
 let decoded = try! JSONDecoder().decode(PersistedExportSettings.self, from: data)
 expect(decoded == custom, "export settings should round-trip through Codable")
 
+let legacyTheme = try! JSONDecoder().decode(
+    PersistedExportSettings.self,
+    from: Data(#"{"colorTheme":"colors-white-only"}"#.utf8)
+)
+expect(legacyTheme.colorTheme == "colors-default-light", "legacy export theme should decode to its canonical equivalent")
+let legacyThemeJSON = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(legacyTheme)) as! [String: Any]
+expect(legacyThemeJSON["colorTheme"] as? String == "colors-default-light", "re-encoding an export theme should persist the canonical ID")
+
 var invalid = PersistedExportSettings(format: "doc", paperSize: "B0", landscape: false,
                                       marginTop: -1, marginBottom: 2000, marginLeft: .nan, marginRight: .infinity,
                                       style: "", colorTheme: "", htmlHeader: "", htmlFooter: "",

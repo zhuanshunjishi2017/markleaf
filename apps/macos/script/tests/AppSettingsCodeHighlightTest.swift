@@ -8,10 +8,6 @@ enum UnsafeEmphasisAction: String {
     case literal
 }
 
-struct PersistedExportSettings: Codable {
-    mutating func normalize() {}
-}
-
 enum DocumentEncodingPolicy: String {
     case utf8 = "UTF-8"
 }
@@ -77,5 +73,53 @@ expect(editingRoundTrip.markdownBulletMarker == "plus", "bullet preference shoul
 
 let explicitFalse = try decoder.decode(AppSettings.self, from: Data(#"{"showCodeHighlight":false}"#.utf8))
 expect(!explicitFalse.showCodeHighlight, "an explicit false value should remain false")
+
+let themeMigrationCases = [
+    ("colors-white", "colors-default-light"),
+    ("colors-white-only", "colors-default-light"),
+    ("colors-apple-note", "colors-memo"),
+    ("colors-default-light", "colors-default-light"),
+    ("colors-memo", "colors-memo"),
+    ("colors-dark", "colors-dark"),
+    ("colors-custom-MiXeD", "colors-custom-MiXeD"),
+    (" custom-theme ", " custom-theme "),
+]
+for (input, expected) in themeMigrationCases {
+    expect(ThemeIDNormalizer.normalize(input) == expected, "theme ID \(input) should normalize to \(expected)")
+    expect(ThemeIDNormalizer.normalize(ThemeIDNormalizer.normalize(input)) == expected, "theme ID normalization should be idempotent for \(input)")
+}
+
+let legacyThemes = try decoder.decode(
+    AppSettings.self,
+    from: Data(#"{"colorTheme":"colors-white-only","defaultLightThemeID":"colors-white","defaultDarkThemeID":"colors-apple-note","exportSettings":{"colorTheme":"colors-apple-note"}}"#.utf8)
+)
+expect(legacyThemes.colorTheme == "colors-default-light", "current legacy theme should migrate")
+expect(legacyThemes.defaultLightThemeID == "colors-default-light", "legacy light default should migrate")
+expect(legacyThemes.defaultDarkThemeID == "colors-memo", "legacy dark-default field should migrate byte-for-byte by ID")
+expect(legacyThemes.exportSettings.colorTheme == "colors-memo", "persisted export theme should migrate")
+
+let migratedJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacyThemes)) as! [String: Any]
+expect(migratedJSON["colorTheme"] as? String == "colors-default-light", "encoding migrated settings should persist the canonical current theme")
+expect(migratedJSON["defaultLightThemeID"] as? String == "colors-default-light", "encoding migrated settings should persist the canonical light default")
+expect(migratedJSON["defaultDarkThemeID"] as? String == "colors-memo", "encoding migrated settings should persist the canonical dark-default field")
+let migratedExport = migratedJSON["exportSettings"] as? [String: Any]
+expect(migratedExport?["colorTheme"] as? String == "colors-memo", "encoding migrated settings should persist the canonical export theme")
+
+let saveRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+defer { try? FileManager.default.removeItem(at: saveRoot) }
+let service = SettingsService(environment: ["MARKLEAF_APP_SUPPORT_DIR": saveRoot.path])
+service.update {
+    $0.colorTheme = "colors-white"
+    $0.defaultLightThemeID = "colors-white-only"
+    $0.defaultDarkThemeID = "colors-apple-note"
+    $0.exportSettings.colorTheme = "colors-apple-note"
+}
+let savedData = try Data(contentsOf: saveRoot.appendingPathComponent("MarkLeaf/settings.json"))
+let savedJSON = try JSONSerialization.jsonObject(with: savedData) as! [String: Any]
+expect(savedJSON["colorTheme"] as? String == "colors-default-light", "settings save should canonicalize a legacy current theme")
+expect(savedJSON["defaultLightThemeID"] as? String == "colors-default-light", "settings save should canonicalize a legacy light default")
+expect(savedJSON["defaultDarkThemeID"] as? String == "colors-memo", "settings save should canonicalize a legacy dark-default field")
+let savedExport = savedJSON["exportSettings"] as? [String: Any]
+expect(savedExport?["colorTheme"] as? String == "colors-memo", "settings save should canonicalize a legacy export theme")
 
 print("PASS")

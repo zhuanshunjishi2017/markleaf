@@ -92,15 +92,18 @@ struct AppSettings: Codable {
         displayLanguage = try container.decodeIfPresent(String.self, forKey: .displayLanguage) ?? Self.detectSystemLanguage()
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
         let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "apple-blue"
-        // colors-white.css 已被 Windows 版移除（由 colors-white-only.css 替代），旧配置迁移
-        colorTheme = decodedTheme == "colors-white" ? "colors-white-only" : decodedTheme
+        colorTheme = ThemeIDNormalizer.normalize(decodedTheme)
         zoomPercent = try container.decodeIfPresent(Int.self, forKey: .zoomPercent) ?? 100
         restoreZoomOnOpen = try container.decodeIfPresent(Bool.self, forKey: .restoreZoomOnOpen) ?? true
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
         autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? true
         followSystemTheme = try container.decodeIfPresent(Bool.self, forKey: .followSystemTheme) ?? true
-        defaultLightThemeID = try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "apple-blue"
-        defaultDarkThemeID = try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "apple-dark"
+        defaultLightThemeID = ThemeIDNormalizer.normalize(
+            try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "apple-blue"
+        )
+        defaultDarkThemeID = ThemeIDNormalizer.normalize(
+            try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "apple-dark"
+        )
         visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.75
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
@@ -299,6 +302,13 @@ struct AppSettings: Codable {
         markdownBulletMarker = ["dash", "asterisk", "plus"].contains(markdownBulletMarker) ? markdownBulletMarker : "dash"
     }
 
+    mutating func normalizeThemeIDs() {
+        colorTheme = ThemeIDNormalizer.normalize(colorTheme)
+        defaultLightThemeID = ThemeIDNormalizer.normalize(defaultLightThemeID)
+        defaultDarkThemeID = ThemeIDNormalizer.normalize(defaultDarkThemeID)
+        exportSettings.normalize()
+    }
+
     private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
         min(max(value, range.lowerBound), range.upperBound)
     }
@@ -350,6 +360,7 @@ final class SettingsService {
     }
 
     func save() {
+        settings.normalizeThemeIDs()
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(settings) else { return }

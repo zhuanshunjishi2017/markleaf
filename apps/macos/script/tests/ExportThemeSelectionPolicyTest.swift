@@ -7,14 +7,14 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
-let availableThemes = ["colors-white-only", "colors-dark"]
+let availableThemes = ["colors-default-light", "colors-dark"]
 expect(
     ExportThemeSelectionPolicy.preferredThemeID(
         currentThemeID: "colors-white-only",
         persistedThemeID: "colors-dark",
         availableThemeIDs: availableThemes
-    ) == "colors-white-only",
-    "the current editor theme should be the default export theme"
+    ) == "colors-default-light",
+    "a legacy current editor theme should select its canonical export equivalent"
 )
 expect(
     ExportThemeSelectionPolicy.preferredThemeID(

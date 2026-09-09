@@ -77,7 +77,7 @@ final class ExportAccessory: NSView {
         }
 
         colorThemePopup.addItems(withTitles: themes.map { L10n.t($0.displayName) })
-        if let idx = themes.firstIndex(where: { $0.id == "colors-white-only" }) {
+        if let idx = themes.firstIndex(where: { $0.id == "colors-default-light" }) {
             colorThemePopup.selectItem(at: idx)
         } else if let idx = themes.firstIndex(where: { $0.id == "colors-apple-blue" }) {
             colorThemePopup.selectItem(at: idx)

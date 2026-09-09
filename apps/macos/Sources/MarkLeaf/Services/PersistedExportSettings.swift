@@ -46,6 +46,7 @@ struct PersistedExportSettings: Codable, Equatable {
         marginLeft = Self.normalizedMargin(marginLeft, fallback: 15)
         marginRight = Self.normalizedMargin(marginRight, fallback: 15)
         style = style.isEmpty ? "serif" : style
+        colorTheme = ThemeIDNormalizer.normalize(colorTheme)
         headerPreset = PDFHeaderFooterPolicy.normalizePreset(headerPreset)
         footerPreset = PDFHeaderFooterPolicy.normalizePreset(footerPreset)
         headerAlignment = PDFHeaderFooterPolicy.normalizeAlignment(headerAlignment)
