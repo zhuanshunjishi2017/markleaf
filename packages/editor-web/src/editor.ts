@@ -13,6 +13,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
+import { MarkdownUnderline } from './markdown-underline'
 import CodeBlock from '@tiptap/extension-code-block'
 import { getListMarker, ListItem } from '@tiptap/extension-list'
 import { markdown as codeMirrorMarkdown } from '@codemirror/lang-markdown'
@@ -3304,6 +3305,7 @@ export const editorExtensions = [
   StarterKit.configure({
     bold: false,
     italic: false,
+    underline: false,
     codeBlock: false,
     listItem: false,
     link: false,
@@ -3311,6 +3313,7 @@ export const editorExtensions = [
   }),
   MarkdownBold,
   MarkdownItalic,
+  MarkdownUnderline,
   MarkdownCodeBlock,
   MarkdownListItem,
   MarkLeafParagraph,
