@@ -51,7 +51,7 @@ MarkLeaf 是輕量化 Markdown 視覺化編輯器，提供 Windows/macOS 原生�
 
 ### 優異的匯出效果
 
-原生 Windows/macOS 版可匯出為 PDF/HTML/長圖片；VS Code 擴充功能尚未接入匯出與列印。PDF可自訂紙張大小、邊界、頁首頁尾等。也支援禁止表格分頁等進階設定。印刷品/LaTeX 等主題匯出成 PDF 文件後非常適合於閱讀和列印，也可滿足部分學術寫作的排版要求。
+Windows 原生版支援 PDF、HTML、PNG/JPG 長圖和列印；macOS 原生版支援 PDF、HTML 和系統列印。VS Code 擴充功能現已接入 PDF、獨立 HTML、PNG/JPG 長圖、預覽和瀏覽器列印，預設採用 MarkLeaf 極簡排版。PDF 可設定紙張、方向、邊界、頁首頁尾和頁碼；長圖可依高度連續分片。除了 HTML 檔案匯出，擴充功能使用 `puppeteer-core` 呼叫已安裝的 Chrome/Edge，不附帶或下載瀏覽器。
 
 ### 極簡但完善的操作邏輯與功能
 
@@ -76,7 +76,9 @@ MarkLeaf 是輕量化 Markdown 視覺化編輯器，提供 Windows/macOS 原生�
 
 三個宿主共享編輯核心與排版樣式。VS Code 擴充功能使用現有的 VS Code 執行環境，不引入獨立 Electron 相依套件或桌面殼層。支援閱讀與視覺化編輯、格式刷、表格、註腳、公式與 Mermaid、圖片貼上和拖放、尋找取代、大綱及排版偏好。儲存、復原重做、分頁和 Markdown 原始碼由 VS Code 管理，支援原始碼切換及並排。
 
-VS Code 擴充功能 0.2.5 提供 35 項設定和 67 項可設定快速鍵的格式操作；公式與圖表原始碼展開在對應內容下方，隨文件捲動。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
+VS Code 擴充功能 0.2.6 提供 36 項設定和 67 項可設定快速鍵的格式操作；公式與圖表原始碼展開在對應內容下方，隨文件捲動。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
+
+正文渲染同樣預設使用 `minimal`（網頁·極簡），保留字型層級、留白和表格細節；已儲存的使用者或工作區排版選擇優先。
 
 在 VS Code 1.120+ 中，Markdown Git 比較預設使用原生原始碼 diff，顯示新增／刪除醒目提示；一般檔案仍預設使用 MarkLeaf。
 
@@ -125,7 +127,7 @@ VS Code：vscode.ts，使用 VS Code 原生 Markdown 原始碼編輯器
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.5.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.6.vsix
 ```
 
 在 VS Code 中使用 **Install from VSIX…** 安裝產生的擴充套件。新開啟的 `.md`、`.markdown` 檔案預設進入 MarkLeaf；既有原始碼分頁使用 **Reopen Editor With… → MarkLeaf**，既有預設關聯使用 **Configure default editor for…** 調整。**Ctrl+Shift+V**（macOS 為 **Cmd+Shift+V**）在原始碼與渲染檢視間切換。

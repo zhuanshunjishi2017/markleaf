@@ -4,18 +4,38 @@
 
 在 VS Code 中阅读和可视化编辑 Markdown，复用 MarkLeaf 的 Tiptap/ProseMirror 编辑内核、KaTeX、Mermaid 和排版样式。扩展由 TypeScript 编写，运行时使用 VS Code 提供的 API 与 Webview，没有 Electron 依赖或独立桌面壳。
 
-当前版本 **0.2.5** 提供 35 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。导出与打印尚未接入。
+当前版本 **0.2.6** 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
 
 工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，始终展开在对应内容下方，随文档滚动移出视野，不会随视口空间上下跳转或固定在窗口底部。公式符号面板会根据可用空间调整布局。
 
 项目与扩展 README 均提供四种语言；界面翻译范围见下方“排版和偏好”。
 
+
+## 导出、预览与打印
+
+打开文档后使用工具栏“导出…”或命令面板中的 **MarkLeaf: 导出文档 / PDF / HTML / 图片 / 打印**。阅读模式也可导出。“按上次设置导出”复用上次成功保存的选项，并重新选择输出位置。
+
+- **PDF**：生成可选择文字的分页文件，支持 A4/A5/Letter/Legal、横向、四边页边距、纯文本页眉页脚和页码；可让表格、标题与下一块尽量保持同页，超过纸张的表格仍可能跨页。
+- **HTML**：完整独立文档，包含排版 CSS、预渲染公式和 Mermaid、KaTeX 字体及内嵌图片；无需浏览器即可生成文件。网页超链接仍指向原地址。
+- **PNG/JPG**：设置内容宽度、1–3 倍分辨率、单张最大输出高度及 JPEG 质量。长文档输出为 `名称-01.png` 等连续分片；覆盖已有分片前会确认。
+- **预览**：独立 Chrome/Edge 窗口展示实际生成的 PDF/图片；HTML 显示完整文档。关闭预览窗口返回，或在 VS Code 进度通知中取消。
+- **打印**：打开 Chrome/Edge 打印对话框，用户选择打印机并确认打印。对话框可再调整纸张、边距和背景图形；扩展只能确认对话框关闭，不能确认纸张实际打印完成。重复页眉页脚依赖现代 Chromium 的分页支持，建议使用当前稳定版浏览器。
+
+导出默认使用 `minimal`（网页·极简）和浅色配色，也可选择九种原有排版与十九种配色。正文显示继续跟随 VS Code 明暗主题；导出设置独立，不改写编辑器排版偏好。导出沿用已配置的正文字体和中西文间距；自定义 CSS 文件与编辑器缩放不用于导出。
+
+PDF、图片、预览与打印使用已安装的 **Chrome/Edge**，扩展不捆绑或下载浏览器。自动查找失败时会提示选择可执行文件；也可在 **MarkLeaf: Export Browser Path**（`markleaf.exportBrowserPath`，机器级设置）填写路径。macOS 示例：`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`。不连接用户现有浏览器会话，每次使用临时配置，完成或取消后释放。
+
+导出先等待编辑同步，再从 VS Code `TextDocument` 获取本次快照，不保存或修改 Markdown。未同步冲突、图片读取或公式/图表解析失败会停止导出并保留原错误。图片通过文档 URI 读取，本地、工作区与 HTTP/HTTPS 图片嵌入为数据；单张限制 16 MiB，联网图片需要可访问，文档字体使用本机已安装字体，只有 KaTeX 字体内嵌。长任务可取消，已经写出的分片会在结果中列出。
+
+远程扩展宿主可使用其文件系统和浏览器导出文件；需要在该宿主安装浏览器。交互预览与打印限定本地桌面 VS Code 窗口，SSH/WSL 窗口请先导出文件再到本机打开。Windows/Linux/远程与真实打印设备仍需在对应环境验收。
+
+
 ## 安装和打开
 
-本地构建得到 `artifacts/markleaf-vscode-0.2.5.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
+本地构建得到 `artifacts/markleaf-vscode-0.2.6.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.6.vsix
 ```
 
 安装并启用扩展后，新打开的 `.md` 或 `.markdown` 文件默认进入 MarkLeaf 渲染视图，可直接阅读和可视化编辑。已打开的源码标签可以通过 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切换，也可以从资源管理器右键选择 **MarkLeaf: Open Markdown**。
@@ -111,7 +131,7 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 
 | 设置组 | 主要设置 |
 | --- | --- |
-| 排版与配色 | `typography` 提供九种原有样式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 默认跟随 VS Code，也可选择十九种原有配色。印刷类样式用于屏幕排版，本版本没有导出动作。 |
+| 排版与配色 | `typography` 提供九种原有样式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 默认跟随 VS Code，也可选择十九种原有配色。正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。 |
 | 字体和宽度 | `fontSize` 默认 16、`fontFamily`、`lineHeight`、`maxWidth` 默认 820、`ignoreMaxWidth`、`zoom`；样式使用的字体须已安装在系统中。 |
 | 代码和中西文 | `showCodeHighlight`、`sourceFontFamily` / `sourceFontSize`（公式/图表源码控件）、`cjkLanguage`、`cjkAutoSpacing`；视觉间距不会插入源码空格。 |
 | 视图 | `defaultMode`、`showOutline`、`focusMode`、`typewriterMode`、`showStatusBar`、`showBlockHandle`、`autoHideScrollbars`、`ctrlWheelZoom`。 |
@@ -120,7 +140,7 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 | 格式快捷键 | `shortcuts`；与“视图 → 快捷键…”的录键面板共用配置，只作用于 VS Code 的 MarkLeaf 渲染编辑区。 |
 | 自定义 CSS | `customCss` 指向文档相对路径或绝对路径的 CSS 文件；仅在可信工作区加载，修改文件后重新加载编辑器。 |
 
-普通 Markdown 源码的字体、缩进和快捷键使用 VS Code 原生编辑器设置。文件/文件夹、最近文件、标签页、自动保存、恢复、编码、换行、窗口布局和扩展更新也使用 VS Code 本身的能力。共享公式和图表控件按 VS Code 语言选择已有翻译；本次新增 Webview 菜单使用中文，格式命令面板标题使用中文，其他命令保留英文。
+普通 Markdown 源码的字体、缩进和快捷键使用 VS Code 原生编辑器设置。文件/文件夹、最近文件、标签页、自动保存、恢复、编码、换行、窗口布局和扩展更新也使用 VS Code 本身的能力。共享公式和图表控件按 VS Code 语言选择已有翻译；导出菜单、面板、命令和状态消息按 VS Code 语言提供简体中文、繁体中文、英文、日文。既有编辑菜单和格式命令标题仍使用中文，其他既有命令保留英文。
 
 ## 格式和交付边界
 
@@ -130,7 +150,7 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 
 当前交付目标是桌面 VS Code，浏览器版没有扩展入口。远程 URI 已接入 VS Code 文件系统与资源 API，但 Windows、Linux、SSH/WSL 及真实剪贴板、拖放、输入法和快捷键交互仍需在对应环境验收。构建、Vitest 和模拟宿主测试不代替实际安装后的界面验收。
 
-PDF、HTML 文件、长图片导出和打印未接入 VS Code 扩展，原生版已有导出功能不受影响。原生功能与 VS Code 入口的逐组对应见 [功能对应说明](./docs/feature-parity.md)。
+原生功能与 VS Code 入口的逐组对应见 [功能对应说明](./docs/feature-parity.md)。
 
 ## 开发与构建
 

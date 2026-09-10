@@ -51,7 +51,7 @@ MarkLeaf 是轻量化 Markdown 可视化编辑器，提供 Windows/macOS 原生�
 
 ### 优秀的导出效果
 
-原生 Windows/macOS 版可导出为 PDF/HTML/长图片，PDF可自定义纸张大小、页边距、页眉页脚等。也支持禁止表格分页等高级设置。印刷品/LaTeX 等主题导出成 PDF 文件后非常适合于阅读和打印，也可满足部分学术写作的排版要求。VS Code 扩展尚未接入导出与打印。
+Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版支持 PDF、HTML 和系统打印。VS Code 扩展现已接入 PDF、独立 HTML、PNG/JPG 长图、预览和浏览器打印，默认采用 MarkLeaf 极简排版。PDF 可设置纸张、方向、页边距、页眉页脚和页码；长图可按高度连续分片。除 HTML 文件导出外，扩展使用 `puppeteer-core` 调用已安装的 Chrome/Edge，不捆绑或下载浏览器。
 
 ### 极简但完善的操作逻辑与功能
 
@@ -76,7 +76,9 @@ MarkLeaf 是轻量化 Markdown 可视化编辑器，提供 Windows/macOS 原生�
 
 三个宿主共享编辑内核与排版样式。VS Code 扩展使用已有 VS Code 运行环境，不引入独立 Electron 依赖或桌面壳。支持阅读与可视化编辑、格式刷、表格、脚注、公式与 Mermaid、图片粘贴和拖放、查找替换、大纲及排版偏好。保存、撤销重做、标签页和原生源码由 VS Code 管理，支持源码切换及并排。
 
-VS Code 扩展 0.2.5 提供 35 项设置和 67 项可配置格式操作；公式与图表源码展开在对应内容下方，随文档滚动。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+VS Code 扩展 0.2.6 提供 36 项设置和 67 项可配置格式操作；公式与图表源码展开在对应内容下方，随文档滚动。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+
+正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。
 
 VS Code 1.120+ 中的 Markdown Git 对比默认使用原生源码 diff，显示增删高亮；普通文件仍默认使用 MarkLeaf。
 
@@ -125,7 +127,7 @@ VS Code：vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.5.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.6.vsix
 ```
 
 在 VS Code 中使用 **Install from VSIX…** 安装生成的扩展包。新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf；已有源码标签使用 **Reopen Editor With… → MarkLeaf**，已有默认关联使用 **Configure default editor for…** 调整。**Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与渲染视图间切换。

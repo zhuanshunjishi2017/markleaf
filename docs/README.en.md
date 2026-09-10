@@ -51,7 +51,7 @@ Based on the **Tiptap/ProseMirror** editor core, supports full CommonMark and Gi
 
 ### Excellent Export Quality
 
-The native Windows/macOS applications support export to PDF/HTML/long images. Export and printing are not available in the VS Code extension. PDF allows custom paper size, margins, headers/footers, etc. It also supports advanced settings such as preventing table page breaks. After exporting to PDF using themes like Print/LaTeX, the result is well‑suited for reading and printing, and can meet some academic writing layout requirements.
+The native Windows app supports PDF, HTML, PNG/JPG long images, and printing; the native macOS app supports PDF, HTML, and system printing. The VS Code extension now provides PDF, standalone HTML, PNG/JPG images, preview, and browser printing, with MarkLeaf Minimal typography by default. PDF offers paper, orientation, margins, headers/footers, and page numbers; long images split into numbered files. Except for HTML file export, the extension uses `puppeteer-core` with an installed Chrome/Edge, without bundling or downloading a browser.
 
 ### Minimal yet Complete Operation Logic and Features
 
@@ -76,7 +76,9 @@ The workspace, window, and built-in source-mode features below primarily describ
 
 All three hosts share the editor core and typography. The VS Code extension uses the existing VS Code runtime without adding a separate Electron dependency or desktop shell. It supports reading and visual editing, a format painter, tables, footnotes, math and Mermaid, image paste and drop, find and replace, an outline, and reading preferences. VS Code manages saving, undo/redo, tabs, and native Markdown source editing, including switching views and opening source alongside the rendered document.
 
-Extension 0.2.5 provides 35 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+Extension 0.2.6 provides 36 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+
+Rendered documents also default to `minimal` (Web · Minimal), preserving type hierarchy, whitespace, and table detail. Existing user/workspace typography choices take precedence.
 
 On VS Code 1.120+, Markdown Git comparisons default to the native source diff editor with addition/deletion highlights. Ordinary files still default to MarkLeaf.
 
@@ -125,7 +127,7 @@ Run from the repository root with Node.js 22.12+ and the project's specified pnp
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.5.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.6.vsix
 ```
 
 Install the generated package with **Install from VSIX…** in VS Code. Newly opened `.md` and `.markdown` files use MarkLeaf by default. For existing source tabs, use **Reopen Editor With… → MarkLeaf**; change an existing association with **Configure default editor for…**. **Ctrl+Shift+V** (**Cmd+Shift+V** on macOS) switches between native source and rendered views.

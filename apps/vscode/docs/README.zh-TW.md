@@ -4,18 +4,38 @@
 
 在 VS Code 中閱讀和視覺化編輯 Markdown，重用 MarkLeaf 的 Tiptap/ProseMirror 編輯核心、KaTeX、Mermaid 和排版樣式。擴充功能由 TypeScript 編寫，使用 VS Code 提供的 API 與 Webview，沒有獨立 Electron 相依套件或桌面殼層。
 
-目前版本 **0.2.5** 提供 35 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。匯出與列印尚未接入。
+目前版本 **0.2.6** 提供 36 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。現已支援 PDF、HTML、PNG/JPG 長圖、預覽和列印。
 
 工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，始終展開在對應內容下方，隨文件捲動移出視野，不會根據可用空間上下跳轉或固定在視窗底部。公式符號面板會根據可用空間調整版面。
 
 專案與擴充功能 README 均提供四種語言；介面翻譯範圍見下方「排版和偏好」。
 
+
+## 匯出、預覽與列印
+
+開啟文件後使用工具列「匯出…」或命令選擇區中的 **MarkLeaf: 匯出文件 / PDF / HTML / 圖片 / 列印**。閱讀模式也可匯出。「依上次設定匯出」重用上次成功儲存的選項，並重新選擇輸出位置。
+
+- **PDF**：產生文字可選取的分頁檔案，支援 A4/A5/Letter/Legal、橫向、四邊邊界、純文字頁首頁尾和頁碼；可讓表格、標題與下一區塊盡量同頁，過大的表格仍可能跨頁。
+- **HTML**：完整獨立文件，包含排版 CSS、預先算繪的公式和 Mermaid、KaTeX 字型及內嵌圖片；產生檔案不需要瀏覽器。Web 超連結保留原始目的地。
+- **PNG/JPG**：設定內容寬度、1–3 倍解析度、單張最大輸出高度與 JPEG 品質。長文件輸出為 `名稱-01.png` 等連續分片；覆寫既有分片前會確認。
+- **預覽**：獨立 Chrome/Edge 視窗顯示實際產生的 PDF／圖片；HTML 顯示完整文件。關閉視窗返回，也可在 VS Code 進度通知中取消。
+- **列印**：Chrome/Edge 開啟列印對話框，使用者選擇印表機並確認列印。可再調整紙張、邊界和背景圖形；對話框關閉不代表印表機已完成工作。重複頁首頁尾使用現代 Chromium 分頁功能，建議使用目前穩定版瀏覽器。
+
+匯出預設使用 `minimal`（網頁·極簡）與淺色配色，可選九種原有排版和十九種配色。正文繼續跟隨 VS Code 明暗主題；匯出設定獨立，不改寫編輯器偏好。沿用已設定的正文字型與中西文間距；自訂 CSS 檔案與編輯器縮放不套用於匯出。
+
+PDF、圖片、預覽與列印使用已安裝的 **Chrome/Edge**，不附帶或下載瀏覽器。自動尋找失敗時可選擇執行檔，或設定 **MarkLeaf: Export Browser Path**（`markleaf.exportBrowserPath`，機器層級）。macOS 範例：`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`。不連接既有瀏覽器工作階段，每次使用暫存設定檔，完成或取消後釋放。
+
+匯出先等待編輯同步，再取得 VS Code `TextDocument` 的本次快照，不儲存或修改 Markdown。未同步衝突、圖片讀取或公式／圖表解析失敗會停止並保留原始錯誤。依文件 URI 讀取本機、工作區及 HTTP/HTTPS 圖片並內嵌，單張限 16 MiB；網路圖片須可存取。正文字型使用本機字型，僅內嵌 KaTeX 字型。可取消長工作，已寫出的分片會在結果中列出。
+
+遠端擴充宿主可透過其檔案系統和已安裝瀏覽器匯出檔案。互動預覽與列印限定本機桌面 VS Code；SSH/WSL 請先匯出再於本機開啟。Windows/Linux/遠端及實際印表機仍需在對應環境驗收。
+
+
 ## 安裝和開啟
 
-在本機建置得到 `artifacts/markleaf-vscode-0.2.5.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
+在本機建置得到 `artifacts/markleaf-vscode-0.2.6.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.6.vsix
 ```
 
 安裝並啟用後，新開啟的 `.md` 或 `.markdown` 檔案預設進入 MarkLeaf 渲染檢視，可直接閱讀與視覺化編輯。已開啟的原始碼分頁可透過 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切換，也可從檔案總管右鍵選擇 **MarkLeaf: Open Markdown**。
@@ -111,7 +131,7 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 
 | 設定群組 | 主要設定 |
 | --- | --- |
-| 排版與配色 | `typography` 提供九種原有樣式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 預設跟隨 VS Code，也可選擇十九種內建配色。印刷類樣式用於螢幕排版，目前沒有匯出操作。 |
+| 排版與配色 | `typography` 提供九種原有樣式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 預設跟隨 VS Code，也可選擇十九種內建配色。正文渲染同樣預設使用 `minimal`（網頁·極簡），保留字型層級、留白和表格細節；已儲存的使用者或工作區排版選擇優先。 |
 | 字型和寬度 | `fontSize` 預設 16、`fontFamily`、`lineHeight`、`maxWidth` 預設 820、`ignoreMaxWidth`、`zoom`；樣式使用的字型須已安裝於本機。 |
 | 程式碼和中西文 | `showCodeHighlight`、`sourceFontFamily` / `sourceFontSize`（公式／圖表原始碼控制項）、`cjkLanguage`、`cjkAutoSpacing`；視覺間距不會插入原始碼空格。 |
 | 檢視 | `defaultMode`、`showOutline`、`focusMode`、`typewriterMode`、`showStatusBar`、`showBlockHandle`、`autoHideScrollbars`、`ctrlWheelZoom`。 |
@@ -120,7 +140,7 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 | 格式快速鍵 | `shortcuts`；與「视图 → 快捷键…」錄鍵面板共用設定，只作用於 VS Code 的 MarkLeaf 渲染編輯區。 |
 | 自訂 CSS | `customCss` 指向相對於文件或絕對路徑的 CSS 檔案；僅在受信任工作區載入，修改 CSS 後重新載入編輯器。 |
 
-一般 Markdown 原始碼的字型、縮排和快速鍵使用 VS Code 原生設定。檔案／資料夾、最近檔案、分頁、自動儲存、復原、編碼、換行、視窗配置和擴充更新也使用 VS Code 本身的能力。共享公式與圖表控制項依 VS Code 語言選擇既有的簡體中文、繁體中文、英文或日文翻譯；新增 Webview 選單和格式命令標題目前使用中文，其他命令保留英文。四語種文件不代表介面已全部在地化。
+一般 Markdown 原始碼的字型、縮排和快速鍵使用 VS Code 原生設定。檔案／資料夾、最近檔案、分頁、自動儲存、復原、編碼、換行、視窗配置和擴充更新也使用 VS Code 本身的能力。共享公式與圖表控制項依 VS Code 語言選擇既有的簡體中文、繁體中文、英文或日文翻譯；匯出選單、面板、命令和狀態訊息依 VS Code 語言提供簡體中文、繁體中文、英文、日文。既有編輯選單和格式命令標題仍使用中文，其他既有命令保留英文。四語種文件不代表介面已全部在地化。
 
 ## 格式和交付範圍
 
@@ -130,7 +150,7 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 
 目前交付目標為桌面 VS Code，瀏覽器版沒有擴充入口。遠端 URI 已接入 VS Code 檔案系統與資源 API，但 Windows、Linux、SSH/WSL 及實際剪貼簿、拖放、輸入法與快速鍵互動仍需在對應環境驗收。建置、Vitest 和模擬宿主測試不取代實際安裝後的介面驗收。
 
-PDF、HTML 檔案、長圖片匯出和列印未接入擴充功能，原生版已有匯出功能不受影響。逐組對應見 [功能對應說明（簡體中文）](./feature-parity.md)。
+逐組對應見 [功能對應說明（簡體中文）](./feature-parity.md)。
 
 ## 開發與建置
 
