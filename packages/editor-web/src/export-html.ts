@@ -247,17 +247,13 @@ body { margin: 0; background: var(--bg-primary); }
   margin-right: 0;
 }
 .markleaf-export-image {
-  /* Keep the document's scroll extent available for chunked capture. Hiding
-     overflow here collapses scrollHeight to the viewport and causes long
-     exports to produce only one screenful. Scrollbars are hidden separately
-     below without clipping the document. */
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+  /* Windows and macOS both capture one expanded page, then slice the bitmap.
+     A scrolling body makes Chromium/WebKit retain a viewport texture and can
+     duplicate the final rows when the viewport is expanded for capture. */
+  overflow: visible !important;
 }
-/* Image capture scrolls the document between chunks. Keep scrolling enabled
-   while making the browser scrollbars completely invisible in the captured
-   surface; otherwise the scrollbar occupies layout width and can leak into
-   the right/bottom edges of exported images. */
+/* Keep scrollbars out of the captured surface without introducing a scroll
+   container that can be tiled by the browser compositor. */
 .markleaf-export-image,
 .markleaf-export-image html,
 .markleaf-export-image body,
