@@ -865,23 +865,50 @@ internal sealed class EditorHostController : IDisposable
             using var metrics = JsonDocument.Parse(metricsText);
             var pageWidth = Math.Max(1, Math.Min(contentWidth + 112, metrics.RootElement.GetProperty("width").GetInt32()));
             var pageHeight = Math.Max(1, metrics.RootElement.GetProperty("height").GetInt32());
-            // Capture one viewport-sized chunk at a time. Chromium's
-            // captureBeyondViewport/full-page path internally tiles long
-            // surfaces and can reuse the first tile in the middle of a page.
+            // Expand the Chromium viewport to the measured document size before
+            // capturing.  This avoids captureBeyondViewport's internal tiling,
+            // which can duplicate the first viewport texture and truncate the
+            // last rows on long pages.
             var metricsParameters = JsonSerializer.Serialize(new
             {
                 width = pageWidth,
-                height = viewportHeight,
-                deviceScaleFactor = 1,
+                height = pageHeight,
+                // Apply the requested output scale at the emulation layer.
+                // Passing a large clip.scale makes Chromium rasterize the
+                // expanded surface through a viewport texture and can repeat
+                // the first viewport over the lower part of long pages.
+                deviceScaleFactor = scale,
                 mobile = false,
             });
             await core.CallDevToolsProtocolMethodAsync(
                 "Emulation.setDeviceMetricsOverride",
                 metricsParameters);
             await Task.Delay(50, cancellationToken);
-            var outputWidth = Math.Max(1, (int)Math.Round(pageWidth * scale));
+            var parameters = JsonSerializer.Serialize(new
+            {
+                format = "png",
+                fromSurface = true,
+                captureBeyondViewport = false,
+                clip = new { x = 0, y = 0, width = pageWidth, height = pageHeight, scale = 1 },
+            });
+            using var responseJson = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters));
+            var fullBytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync(
+                    "Emulation.clearDeviceMetricsOverride",
+                    "{}");
+            }
+            catch
+            {
+                // The temporary export WebView is disposed immediately after
+                // this method; failure to restore metrics is non-fatal.
+            }
+            using var fullStream = new MemoryStream(fullBytes);
+            using var fullBitmap = new Bitmap(fullStream);
+            var outputWidth = fullBitmap.Width;
             var maxOutputHeight = Math.Max(1, maximumImageHeight);
-            var chunkCount = (int)Math.Ceiling(pageHeight * scale / maxOutputHeight);
+            var chunkCount = (int)Math.Ceiling(fullBitmap.Height / (double)maxOutputHeight);
             var directory = Path.GetDirectoryName(outputPath) ?? "";
             var baseName = Path.GetFileNameWithoutExtension(outputPath);
             var extension = format == "jpeg" ? ".jpg" : ".png";
@@ -890,22 +917,13 @@ internal sealed class EditorHostController : IDisposable
             for (var index = 0; index < chunkCount; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var cssY = index * maxOutputHeight / scale;
-                var cssHeight = Math.Min(viewportHeight, pageHeight - cssY);
-                if (cssHeight <= 0) break;
-                await core.ExecuteScriptAsync($"window.scrollTo(0, {cssY.ToString(CultureInfo.InvariantCulture)});");
-                await Task.Delay(30, cancellationToken);
-                var parameters = JsonSerializer.Serialize(new
+                var y = index * maxOutputHeight;
+                var height = Math.Min(maxOutputHeight, fullBitmap.Height - y);
+                using var chunk = new Bitmap(outputWidth, height, PixelFormat.Format32bppPArgb);
+                using (var graphics = Graphics.FromImage(chunk))
                 {
-                    format = "png",
-                    fromSurface = true,
-                    captureBeyondViewport = false,
-                    clip = new { x = 0, y = 0, width = pageWidth, height = cssHeight, scale },
-                });
-                using var responseJson = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters));
-                var bytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
-                using var stream = new MemoryStream(bytes);
-                using var chunk = new Bitmap(stream);
+                    graphics.DrawImage(fullBitmap, new Rectangle(0, 0, outputWidth, height), new Rectangle(0, y, outputWidth, height), GraphicsUnit.Pixel);
+                }
                 var path = chunkCount == 1
                     ? Path.ChangeExtension(outputPath, extension)
                     : Path.Combine(directory, $"{baseName}-{index + 1:D2}{extension}");
