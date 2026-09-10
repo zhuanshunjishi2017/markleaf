@@ -234,6 +234,7 @@ final class SidebarView: NSView {
     func selectTab(_ index: Int, persist: Bool = true) {
         let effectiveIndex = session.outlineDetached ? 0 : index
         tabControl.setEnabled(!session.outlineDetached, forSegment: 1)
+        guard persist || tabControl.selectedSegment != effectiveIndex else { return }
         tabControl.selectedSegment = effectiveIndex
         showTab(effectiveIndex, persist: persist, animate: false)
     }
@@ -247,7 +248,7 @@ final class SidebarView: NSView {
             // 启动时列表模式已持久化：确保文档列表完成首次扫描。
             session.scanWorkspaceDocuments()
         }
-        showTab(tabControl.selectedSegment, persist: false, animate: false)
+        updateEmptyStateVisibility(hasWorkspace: session.workspaceRoot != nil)
     }
 
     private func showTab(_ index: Int, persist: Bool = true, animate: Bool = true) {
@@ -435,12 +436,12 @@ final class SidebarView: NSView {
     /// 多标签切换时改绑活动会话：工作区状态来自共享 WorkspaceContext，无需重建；
     /// 大纲与文档相关状态跟随新会话。
     func rebind(to session: EditorSession) {
+        let previousRoot = self.session.workspaceRoot
+        let previousPaths = self.session.workspaceTree.map(\.path)
         self.session = session
         session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
         session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
         session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
-        let previousRoot = self.session.workspaceRoot
-        let previousPaths = self.session.workspaceTree.map(\.path)
         let topologyUnchanged = previousRoot == session.workspaceRoot
             && previousPaths == session.workspaceTree.map(\.path)
         workspaceTree.rebind(to: session, preservingTopology: topologyUnchanged)
@@ -564,6 +565,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     private let queue = DispatchQueue(label: "com.markleaf.tree")
 
     private var listMode = false
+    private var loadedRoot: String?
     private var pendingRevealPath: String?
     private var revealContinuationScheduled = false
     private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
@@ -605,12 +607,11 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         if let path {
             pendingRevealPath = path
             scheduleRevealContinuation()
-        } else {
-            deselectAll(nil)
         }
     }
 
     func setListMode(_ listMode: Bool) {
+        guard self.listMode != listMode else { return }
         self.listMode = listMode
         rowHeight = listMode ? 70 : 26
         reloadData()
@@ -844,17 +845,51 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         reloadData(activePath: nil)
     }
 
-    /// 重载树时保留当前打开文档的选中状态；AppKit 可能在异步扫描期间继续请求旧行。
+    /// 自动刷新沿用现有节点，保留用户浏览位置，并异步刷新已展开目录。
     func reloadData(activePath: String?) {
-        activeScanners.values.forEach { $0.cancel() }
-        activeScanners.removeAll()
-        activeScannerTokens.removeAll()
-        childrenCache.removeAll()
-        super.reloadData()
-        if let activePath {
+        if loadedRoot != session?.workspaceRoot {
+            activeScanners.values.forEach { $0.cancel() }
+            activeScanners.removeAll()
+            activeScannerTokens.removeAll()
+            childrenCache.removeAll()
+            pendingRevealPath = nil
+            loadedRoot = session?.workspaceRoot
+            super.reloadData()
+        } else {
+            preservingBrowsingState { super.reloadData() }
+        }
+        if selectedRow < 0, pendingRevealPath == nil, let activePath {
             pendingRevealPath = activePath
         }
+        let expanded = (0..<numberOfRows).compactMap { item(atRow: $0) as? WorkspaceEntry }
+            .filter { $0.isDirectory && isItemExpanded($0) }
+        for entry in expanded { _ = children(for: entry, refresh: true) }
         scheduleRevealContinuation()
+    }
+
+    private func preservingBrowsingState(_ update: () -> Void) {
+        let selected = item(atRow: selectedRow) as? WorkspaceEntry
+        let expanded = (0..<numberOfRows).compactMap { item(atRow: $0) as? WorkspaceEntry }
+            .filter { $0.isDirectory && isItemExpanded($0) }
+        let scrollView = enclosingScrollView
+        let origin = scrollView?.contentView.bounds.origin
+        update()
+        for entry in expanded where row(forItem: entry) >= 0 && !isItemExpanded(entry) {
+            expandItem(entry)
+        }
+        if let selected {
+            let row = row(forItem: selected)
+            if row >= 0 { selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
+        }
+        if let origin, let scrollView {
+            scrollView.contentView.scroll(to: origin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard let entry = notification.userInfo?["NSObject"] as? WorkspaceEntry else { return }
+        _ = children(for: entry, refresh: true)
     }
 
     private func rootEntries() -> [WorkspaceEntry] {
@@ -1315,28 +1350,30 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     // MARK: - 懒加载子目录
 
-    private func children(for entry: WorkspaceEntry) -> [WorkspaceEntry] {
-        if let cached = childrenCache[entry.path] {
+    private func children(for entry: WorkspaceEntry, refresh: Bool = false) -> [WorkspaceEntry] {
+        if !refresh, let cached = childrenCache[entry.path] {
             return cached
         }
         if activeScanners[entry.path] != nil {
-            return []
+            return childrenCache[entry.path] ?? []
         }
         let token = UUID()
         let scanner = WorkspaceScanner(root: entry.path) { [weak self] entries in
             DispatchQueue.main.async {
                 guard let self, self.activeScannerTokens[entry.path] == token else { return }
-                self.childrenCache[entry.path] = entries
                 self.activeScanners[entry.path] = nil
                 self.activeScannerTokens[entry.path] = nil
-                self.reloadDirectoryChildren(entry)
+                self.preservingBrowsingState {
+                    self.childrenCache[entry.path] = WorkspaceEntry.retainingIdentity(entries, from: self.childrenCache[entry.path] ?? [])
+                    self.reloadDirectoryChildren(entry)
+                }
                 self.scheduleRevealContinuation()
             }
         }
         activeScanners[entry.path] = scanner
         activeScannerTokens[entry.path] = token
         scanner.scan()
-        return []
+        return childrenCache[entry.path] ?? []
     }
 }
 

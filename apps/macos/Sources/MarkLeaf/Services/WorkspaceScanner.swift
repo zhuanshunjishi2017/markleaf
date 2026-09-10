@@ -5,7 +5,13 @@ import Foundation
 final class WorkspaceScanner {
     private let root: String
     private let queue = DispatchQueue(label: "com.markleaf.workspace-scan")
-    private var cancelled = false
+    private let cancellationLock = NSLock()
+    private var isCancelled = false
+    private var cancelled: Bool {
+        cancellationLock.lock()
+        defer { cancellationLock.unlock() }
+        return isCancelled
+    }
     private let previewCache: WorkspacePreviewCache?
 
     private static let allowedExtensions: Set<String> = ["md", "txt", "markdown"]
@@ -27,6 +33,7 @@ final class WorkspaceScanner {
             guard let self else { return }
             let entries = Self.enumerateChildren(directory: self.root, cancelled: { self.cancelled })
             DispatchQueue.main.async {
+                guard !self.cancelled else { return }
                 self.onComplete?(entries)
             }
         }
@@ -42,13 +49,16 @@ final class WorkspaceScanner {
                 previewCache: self.previewCache
             )
             DispatchQueue.main.async {
+                guard !self.cancelled else { return }
                 completion(documents)
             }
         }
     }
 
     func cancel() {
-        cancelled = true
+        cancellationLock.lock()
+        isCancelled = true
+        cancellationLock.unlock()
     }
 
     private static func enumerateDocuments(
