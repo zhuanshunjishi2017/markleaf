@@ -1,3 +1,4 @@
+import { createBlockHandle } from './block-handle'
 import './styles.css'
 import { NodeSelection, Selection } from '@tiptap/pm/state'
 import {
@@ -231,68 +232,14 @@ document.addEventListener('focusin', updateCaretVisibility)
 document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibility, 0))
 updateCaretVisibility()
 
-const blockHandleButton = document.createElement('button')
-blockHandleButton.type = 'button'
-blockHandleButton.className = 'ml-block-handle ml-block-handle-overlay'
-blockHandleButton.setAttribute(
-  'aria-label',
+const blockHandleOverlay = createBlockHandle(editorMount, () => editor, () => !sourceMode && !readOnly,
+  (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
   sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
 )
-blockHandleButton.setAttribute('tabindex', '-1')
-blockHandleButton.hidden = true
-let blockHandleOverlayPosition: number | null = null
-
-function ensureBlockHandleOverlay(): void {
-  if (blockHandleButton.parentElement !== editorMount) {
-    editorMount.appendChild(blockHandleButton)
-  }
-}
-
-function hideBlockHandleOverlay(): void {
-  blockHandleButton.hidden = true
-  blockHandleButton.style.display = 'none'
-  blockHandleButton.style.removeProperty('left')
-  blockHandleButton.style.removeProperty('top')
-  blockHandleButton.textContent = ''
-  blockHandleButton.classList.remove('ml-block-handle-active')
-  blockHandleOverlayPosition = null
-}
-
-function updateBlockHandleOverlay(): void {
-  ensureBlockHandleOverlay()
-  if (sourceMode || readOnly) {
-    hideBlockHandleOverlay()
-    return
-  }
-  const info = getBlockHandleInfo(editor)
-  if (!info) {
-    hideBlockHandleOverlay()
-    return
-  }
-  blockHandleOverlayPosition = info.position
-  blockHandleButton.hidden = false
-  blockHandleButton.style.removeProperty('display')
-  blockHandleButton.textContent = info.label
-  blockHandleButton.classList.toggle('ml-block-handle-active', info.active)
-  const mountRect = editorMount.getBoundingClientRect()
-  const documentRect = editor.view.dom.getBoundingClientRect()
-  blockHandleButton.style.left = `${documentRect.left - mountRect.left - 36}px`
-  blockHandleButton.style.top = `${info.viewportTop - mountRect.top}px`
-}
-
-blockHandleButton.addEventListener('mousedown', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  if (blockHandleOverlayPosition === null) return
-  setBlockHighlight(editor, blockHandleOverlayPosition)
-  updateBlockHandleOverlay()
-  const rect = blockHandleButton.getBoundingClientRect()
-  send('blockMenuRequested', {
-    clientX: rect.left,
-    clientY: rect.bottom + 10,
-    position: blockHandleOverlayPosition,
-  })
-})
+const blockHandleButton = blockHandleOverlay.button
+const ensureBlockHandleOverlay = blockHandleOverlay.ensure
+const updateBlockHandleOverlay = blockHandleOverlay.update
+const hideBlockHandleOverlay = blockHandleOverlay.hide
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -1347,7 +1294,7 @@ editorMount.addEventListener('mousedown', (event) => {
     pendingSpecialClick = null
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
     pendingSpecialClick = null
     return
   }
@@ -1377,7 +1324,7 @@ editorMount.addEventListener('click', (event) => {
   if (sourceMode) {
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
     return
   }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })

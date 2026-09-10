@@ -2,7 +2,11 @@ import * as vscode from 'vscode'
 import { documentReplacement, normalizeDocumentMarkdown } from './document-edit'
 import { localResourceRoots, resolveDocumentLink } from './resources'
 import { webviewHtml } from './webview'
-import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type WebviewMessage } from '../../../packages/editor-web/src/vscode-protocol'
+import { pickFormat, prepareFormatCommand } from './formatting'
+import { importImages, pickImages, saveImageAs } from './images'
+import { readSettings, updateSetting, pickPreferences, readShortcutSettings, updateShortcut } from './settings'
+import { formatActions } from '../../../packages/editor-web/src/vscode-shortcuts'
+import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type ActionContext, type ImageUpload, type WebviewFocus, type WebviewMessage } from '../../../packages/editor-web/src/vscode-protocol'
 
 const viewType = 'markleaf.editor'
 type EditMessage = Extract<WebviewMessage, { type: 'edit' }>
@@ -13,28 +17,22 @@ function activeResource(): vscode.Uri | undefined {
   return vscode.window.activeTextEditor?.document.uri
 }
 
-const formats = [
-  ['正文', 'setParagraph'], ['一级标题', 'setHeading1'], ['二级标题', 'setHeading2'], ['三级标题', 'setHeading3'],
-  ['四级标题', 'setHeading4'], ['五级标题', 'setHeading5'], ['六级标题', 'setHeading6'],
-  ['无序列表', 'toggleBulletList'], ['有序列表', 'toggleOrderedList'], ['任务列表', 'toggleTaskList'],
-  ['引用', 'toggleBlockquote'], ['代码块', 'toggleCodeBlock'], ['分隔线', 'insertHorizontalRule'],
-  ['插入表格 (3 × 3)', 'insertTable'], ['上方插入行', 'addRowBefore'], ['下方插入行', 'addRowAfter'],
-  ['删除行', 'deleteRow'], ['左侧插入列', 'addColumnBefore'], ['右侧插入列', 'addColumnAfter'],
-  ['删除列', 'deleteColumn'], ['删除表格', 'deleteTable'],
-  ['行内公式', 'insertMathInline'], ['独立公式', 'insertMathBlock'], ['Mermaid 图表', 'insertMermaid'],
-  ['备注提示框', 'insertAlertNote'], ['警告提示框', 'insertAlertWarning'],
-].map(([label, command]) => ({ label: label!, command: command! }))
-
 class EditorPanel implements vscode.Disposable {
+  focus: WebviewFocus = null
   private readonly subscriptions: vscode.Disposable[] = []
   private applying?: { target: string; version?: number }
   private ready = false
+  private mac = false
   private disposed = false
   private flushId = 0
   private readonly flushes = new Map<number, { resolve(success: boolean): void; timer: ReturnType<typeof setTimeout> }>()
 
-  constructor(readonly document: vscode.TextDocument, readonly panel: vscode.WebviewPanel) {
+  constructor(readonly document: vscode.TextDocument, readonly panel: vscode.WebviewPanel, private readonly updateFocus: () => void) {
     this.subscriptions.push(
+      panel.onDidChangeViewState(() => {
+        if (!panel.active) this.focus = null
+        this.updateFocus()
+      }),
       panel.webview.onDidReceiveMessage((message: unknown) => {
         if (isWebviewMessage(message)) void this.receive(message).catch(error => this.report(error))
       }),
@@ -55,13 +53,15 @@ class EditorPanel implements vscode.Disposable {
         }
       }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('markleaf', document.uri)) this.settings()
+        if (event.affectsConfiguration('markleaf', document.uri)) void this.settings().catch(error => this.report(error))
       }),
     )
   }
 
   dispose(): void {
     this.disposed = true
+    this.focus = null
+    this.updateFocus()
     this.subscriptions.forEach(subscription => subscription.dispose())
     for (const pending of this.flushes.values()) { clearTimeout(pending.timer); pending.resolve(false) }
     this.flushes.clear()
@@ -76,15 +76,36 @@ class EditorPanel implements vscode.Disposable {
     if (!this.disposed) void this.panel.webview.postMessage(message)
   }
 
+  requestAction(action: HostAction): void {
+    if (this.ready) this.post({ type: 'requestAction', action })
+  }
+
+  requestFormatCommand(command: string): void {
+    if (this.ready) this.post({ type: 'requestFormatCommand', command })
+  }
+
   private report(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error)
     this.post({ type: 'error', message })
     void vscode.window.showErrorMessage(`MarkLeaf: ${message}`)
   }
 
-  private settings(): void {
-    const config = vscode.workspace.getConfiguration('markleaf', this.document.uri)
-    this.post({ type: 'settings', fontSize: config.get('fontSize', 16), maxWidth: config.get('maxWidth', 820), defaultMode: config.get('defaultMode', 'edit') })
+  private async settings(): Promise<void> {
+    const settings = readSettings(this.document.uri)
+    let customCss = ''
+    if (settings.customCss && vscode.workspace.isTrusted) {
+      const uri = resolveDocumentLink(this.document, settings.customCss)
+      if (!uri || ['http', 'https', 'mailto'].includes(uri.scheme)) throw new Error('自定义样式须为本地或工作区 CSS 文件。')
+      customCss = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8')
+    }
+    this.post({ type: 'settings', settings, customCss, language: vscode.env.language, shortcuts: readShortcutSettings(this.document.uri) })
+  }
+
+  private grantImageDirectory(uri: vscode.Uri): void {
+    const roots = this.panel.webview.options.localResourceRoots ?? []
+    if (!roots.some(root => root.toString() === uri.toString())) {
+      this.panel.webview.options = { ...this.panel.webview.options, localResourceRoots: [...roots, uri] }
+    }
   }
 
   flush(): Promise<boolean> {
@@ -134,7 +155,7 @@ class EditorPanel implements vscode.Disposable {
     }
   }
 
-  private async action(action: HostAction): Promise<void> {
+  private async action(action: HostAction, context: ActionContext = {}, files?: ImageUpload[], formatCommand?: string): Promise<void> {
     switch (action) {
       case 'save':
         if (!await this.document.save()) throw new Error('VS Code 未保存此文档。')
@@ -144,30 +165,92 @@ class EditorPanel implements vscode.Disposable {
         await vscode.commands.executeCommand(action)
         break
       case 'openSource': case 'openSourceBeside': await this.openSource(action === 'openSourceBeside'); break
-      case 'format': {
-        const picked = await vscode.window.showQuickPick(formats, { placeHolder: '选择 Markdown 格式或表格操作' })
-        if (picked) this.post({ type: 'command', command: picked.command })
+      case 'format': case 'block': {
+        const command = await pickFormat(context, action === 'block', readShortcutSettings(this.document.uri).overrides, this.mac)
+        if (command) this.post({ type: 'command', ...command })
         break
       }
-      case 'insertLink': case 'insertImage': {
-        const text = await vscode.window.showInputBox({ prompt: action === 'insertImage' ? '图片地址（相对于 Markdown 文件的路径，或 HTTP/HTTPS URL）' : '链接地址', ignoreFocusOut: true })
-        if (text) {
-          if (!resolveDocumentLink(this.document, text)) throw new Error('请输入本地路径或 HTTP/HTTPS 链接。')
-          this.post({ type: 'command', command: action === 'insertImage' ? 'insertImage' : 'setLink', text })
-        }
+      case 'formatCommand': {
+        if (!formatCommand || context.editable !== true) return
+        const command = await prepareFormatCommand(formatCommand, context)
+        if (command) this.post({ type: 'command', ...command })
         break
       }
+      case 'insertImage': {
+        const paths = await pickImages(this.document, readSettings(this.document.uri), uri => this.grantImageDirectory(uri))
+        if (paths) this.post({ type: 'command', command: 'insertImages', text: JSON.stringify(paths) })
+        break
+      }
+      case 'importImages': {
+        const paths = await importImages(this.document, readSettings(this.document.uri), files ?? [])
+        this.post({ type: 'command', command: 'insertImages', text: JSON.stringify(paths) })
+        break
+      }
+      case 'insertLink': case 'insertImageUrl': {
+        const text = await vscode.window.showInputBox({ prompt: action === 'insertImageUrl' ? '图片地址（相对路径或 HTTP/HTTPS URL）' : '链接地址',
+          value: action === 'insertLink' ? context.linkHref : '', ignoreFocusOut: true,
+          validateInput: text => text.startsWith('#') || resolveDocumentLink(this.document, text) ? undefined : '请输入本地路径或 HTTP/HTTPS 链接' })
+        if (text) this.post({ type: 'command', command: action === 'insertImageUrl' ? 'insertImage' : 'setLink', text })
+        break
+      }
+      case 'image': {
+        if (!context.imageSource) return
+        const choices = [
+          ['替换图片…', 'changeImage'], ['图片标题…', 'setImageCaption'], ['顺时针旋转 90°', 'rotateImageClockwise'],
+          ['宽度 50%', '50'], ['宽度 75%', '75'], ['宽度 90%', '90'], ['宽度 100%', '100'],
+          ['自定义宽度…', 'resizeImage'], ['图片另存为…', 'saveImageAs'],
+        ].filter(([, command]) => context.editable !== false || command === 'saveImageAs').map(([label, command]) => ({ label: label!, command: command! }))
+        const chosen = await vscode.window.showQuickPick(choices, { title: 'MarkLeaf 当前图片' })
+        if (!chosen) return
+        let command = chosen.command
+        let text: string | undefined
+        if (command === 'saveImageAs') { await saveImageAs(this.document, context.imageSource); return }
+        if (command === 'changeImage') {
+          const source = await vscode.window.showQuickPick(['从文件选择', '输入图片地址'], { title: '替换当前图片' })
+          if (!source) return
+          if (source === '从文件选择') text = (await pickImages(this.document, readSettings(this.document.uri), uri => this.grantImageDirectory(uri), false))?.[0]
+          else text = await vscode.window.showInputBox({ prompt: '替换图片地址', value: context.imageSource,
+            validateInput: text => resolveDocumentLink(this.document, text) ? undefined : '请输入有效的图片地址' })
+        } else if (command === 'setImageCaption') {
+          text = await vscode.window.showInputBox({ prompt: '图片标题（留空清除）', value: context.caption ?? '' })
+        } else if (command === 'resizeImage') {
+          text = await vscode.window.showInputBox({ prompt: '图片宽度百分比（1–100）', value: '100',
+            validateInput: text => Number.isFinite(+text) && +text >= 1 && +text <= 100 ? undefined : '请输入 1–100' })
+        } else if (/^\d+$/.test(command)) { text = command; command = 'resizeImage' }
+        if (command !== 'rotateImageClockwise' && text === undefined) return
+        this.post({ type: 'command', command, text })
+        break
+      }
+      case 'codeLanguage': {
+        const text = await vscode.window.showInputBox({ prompt: '代码块语言（留空为纯文本）', value: context.codeBlockLanguage ?? '' })
+        if (text !== undefined) this.post({ type: 'command', command: 'setCodeBlockLanguage', text })
+        break
+      }
+      case 'pastePlainText': this.post({ type: 'command', command: 'pastePlainText', text: await vscode.env.clipboard.readText() }); break
+      case 'preferences': await pickPreferences(this.document.uri); break
+      case 'help': await vscode.commands.executeCommand('workbench.action.openWalkthrough', 'markleaf.markleaf#markleaf.start'); break
+
     }
   }
 
   private async receive(message: WebviewMessage): Promise<void> {
     switch (message.type) {
-      case 'ready': this.ready = true; this.settings(); this.post(this.snapshot()); break
+      case 'ready': this.mac = message.mac === true; this.ready = true; try { await this.settings() } finally { this.post(this.snapshot()) }; break
+      case 'focus': this.focus = this.panel.active ? message.target : null; this.updateFocus(); break
       case 'edit': await this.edit(message); break
       case 'action':
-        try { await this.action(message.action) }
+        try { await this.action(message.action, message.context, message.files, message.command) }
         finally { this.post({ type: 'actionFinished' }) }
         break
+      case 'updateSetting': await updateSetting(this.document.uri, message.key, message.value); break
+      case 'updateShortcut': {
+        let error: string | undefined
+        try { await updateShortcut(this.document.uri, message.command, message.binding, this.mac) }
+        catch (failure) { error = failure instanceof Error ? failure.message : String(failure) }
+        this.post({ type: 'shortcutSaved', requestId: message.requestId, shortcuts: readShortcutSettings(this.document.uri), ...(error ? { error } : {}) })
+        break
+      }
+      case 'openShortcutSettings': await vscode.commands.executeCommand('workbench.action.openSettings', 'markleaf.shortcuts'); break
       case 'flushed': {
         const pending = this.flushes.get(message.requestId)
         if (pending) { clearTimeout(pending.timer); this.flushes.delete(message.requestId); pending.resolve(message.success) }
@@ -177,7 +260,12 @@ class EditorPanel implements vscode.Disposable {
         const urls: Record<string, string> = Object.create(null)
         for (const path of message.paths) {
           const uri = resolveDocumentLink(this.document, path)
-          if (uri && !['http', 'https', 'mailto'].includes(uri.scheme)) urls[path] = this.panel.webview.asWebviewUri(uri).toString()
+          if (uri && !['http', 'https', 'mailto'].includes(uri.scheme)) {
+            // Referenced images can live beside another document or outside
+            // the workspace. Recreate their directory grants when reopening.
+            this.grantImageDirectory(vscode.Uri.joinPath(uri, '..'))
+            urls[path] = this.panel.webview.asWebviewUri(uri).toString()
+          }
         }
         this.post({ type: 'images', urls })
         break
@@ -190,11 +278,6 @@ class EditorPanel implements vscode.Disposable {
         break
       }
       case 'copy': await vscode.env.clipboard.writeText(message.text); break
-      case 'codeLanguage': {
-        const language = await vscode.window.showInputBox({ prompt: '代码块语言（例如 typescript、python、mermaid）', value: message.language })
-        if (language !== undefined) this.post({ type: 'command', command: 'setCodeBlockLanguageAt', text: JSON.stringify({ position: message.position, language }) })
-        break
-      }
       case 'openLink': {
         const uri = resolveDocumentLink(this.document, message.href)
         if (!uri) throw new Error('不支持此链接地址。')
@@ -211,11 +294,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const panels = new Set<EditorPanel>()
   const active = (uri?: vscode.Uri): EditorPanel | undefined => [...panels].find(item => uri
     ? item.document.uri.toString() === uri.toString() : item.panel.active)
+  // An active editor tab can remain active while the terminal or sidebar has
+  // keyboard focus. The webview reports its own focus, including input fields.
+  const updateFocus = (): void => { void vscode.commands.executeCommand('setContext', 'markleaf.focus', active()?.focus ?? null) }
+  updateFocus()
   const provider: vscode.CustomTextEditorProvider = {
     async resolveCustomTextEditor(document, panel) {
       const assets = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')
       panel.webview.options = { enableScripts: true, localResourceRoots: localResourceRoots(document, assets) }
-      const editor = new EditorPanel(document, panel)
+      const editor = new EditorPanel(document, panel, updateFocus)
       panels.add(editor)
       panel.onDidDispose(() => { panels.delete(editor); editor.dispose() }, undefined, context.subscriptions)
       try { panel.webview.html = await webviewHtml(panel.webview, assets) }
@@ -224,7 +311,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(viewType, provider, {
-      webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true },
+      webviewOptions: { retainContextWhenHidden: true, enableFindWidget: false },
       supportsMultipleEditorsPerDocument: false,
     }),
     vscode.commands.registerCommand('markleaf.open', async (uri?: vscode.Uri) => {
@@ -232,6 +319,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!resource) { void vscode.window.showInformationMessage('请先打开或选择一个 Markdown 文件。'); return }
       await vscode.commands.executeCommand('vscode.openWith', resource, viewType)
     }),
+    ...(['format', 'insertImage', 'insertImageUrl', 'image', 'find', 'replace', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText',
+      'toggleOutline', 'toggleFocus', 'toggleTypewriter', 'toggleRead', 'zoomIn', 'zoomOut', 'zoomReset', 'preferences', 'help', 'shortcuts'] as const)
+      .map(action => vscode.commands.registerCommand(`markleaf.${action}`, () => active()?.requestAction(action))),
+    ...formatActions.map(({ command }) => vscode.commands.registerCommand(`markleaf.${command}`, () => active()?.requestFormatCommand(command))),
     vscode.commands.registerCommand('markleaf.toggleEditor', async () => {
       try {
         const visual = active()

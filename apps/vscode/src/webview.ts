@@ -28,11 +28,35 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
     <span class="divider"></span>
     <button data-command="toggleBold" data-edit type="button" title="粗体 (Ctrl/Cmd+B)"><b>B</b></button>
     <button data-command="toggleItalic" data-edit type="button" title="斜体 (Ctrl/Cmd+I)"><i>I</i></button>
+    <button data-command="toggleUnderline" data-edit type="button" title="下划线 (Ctrl/Cmd+U)"><u>U</u></button>
     <button data-command="toggleStrike" data-edit type="button" title="删除线"><s>S</s></button>
+    <button data-command="toggleHighlight" data-edit type="button" title="高亮"><mark>H</mark></button>
     <button data-command="toggleCode" data-edit type="button" title="行内代码">&lt;/&gt;</button>
+    <button data-command="formatPainter" data-edit type="button" title="复制选区格式，拖选目标应用；Escape 取消">格式刷</button>
     <button data-action="format" data-edit type="button">格式…</button>
     <button data-action="insertLink" data-edit type="button">链接</button>
     <button data-action="insertImage" data-edit type="button">图片</button>
+    <details class="toolbar-menu"><summary>编辑</summary><div class="menu-content">
+      <button data-action="insertImageUrl" data-edit type="button">插入图片地址…</button>
+      <button data-action="image" type="button">当前图片操作…</button>
+      <button data-action="copyMarkdown" type="button">复制为 Markdown</button>
+      <button data-action="copyPlainText" type="button">复制为纯文本</button>
+      <button data-action="copyHtml" type="button">复制为 HTML</button>
+      <button data-action="pastePlainText" data-edit type="button">粘贴纯文本</button>
+      <button data-action="find" type="button">查找…</button>
+      <button data-action="replace" type="button">替换…</button>
+    </div></details>
+    <details class="toolbar-menu"><summary>视图</summary><div class="menu-content">
+      <button data-action="toggleOutline" type="button">大纲</button>
+      <button data-action="toggleFocus" type="button">专注当前段落</button>
+      <button data-action="toggleTypewriter" type="button">打字机滚动</button>
+      <button data-action="zoomIn" type="button">放大</button>
+      <button data-action="zoomOut" type="button">缩小</button>
+      <button data-action="zoomReset" type="button">重置缩放</button>
+      <button data-action="preferences" type="button">排版、主题与设置…</button>
+      <button data-action="shortcuts" type="button">快捷键…</button>
+      <button data-action="help" type="button">使用帮助</button>
+    </div></details>
     <span class="spacer"></span>
     <button data-action="undo" data-edit type="button" title="撤销">↶</button>
     <button data-action="redo" data-edit type="button" title="重做">↷</button>

@@ -49,4 +49,84 @@ button:disabled { opacity: .4; cursor: default; }
 #notice button { margin-left: 8px; color: var(--vscode-textLink-foreground); text-decoration: underline; }
 footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; display: flex; justify-content: space-between; padding: 5px 16px; color: var(--text-tertiary); background: var(--bg-primary); border-top: 1px solid var(--bg-selected); font-size: 11px; }
 [hidden] { display: none !important; }
+.toolbar-menu { position: relative; }
+.toolbar-menu summary { cursor: pointer; padding: 6px; border-radius: 4px; }
+.toolbar-menu summary:hover { background: var(--bg-hover); }
+.menu-content { position: absolute; inset-inline-end: 0; top: 100%; min-width: 190px; padding: 5px; display: grid; background: var(--bg-primary); border: 1px solid var(--bg-selected); box-shadow: 0 4px 12px #0004; max-height: 70vh; overflow: auto; }
+.menu-content button { text-align: start; }
+#document-area { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+#document-area.with-outline { grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); }
+#outline { position: sticky; top: 94px; max-height: calc(100vh - 130px); overflow: auto; padding: 16px 8px; border-inline-end: 1px solid var(--bg-selected); font-size: 12px; }
+#outline strong { display: block; margin: 0 8px 10px; }
+#outline button { display: block; width: 100%; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#outline button[aria-current="true"] { background: var(--bg-selected); color: var(--theme-dark); }
+#find-bar { position: sticky; top: 0; z-index: 101; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--bg-primary); border-bottom: 1px solid var(--bg-selected); font-size: 12px; }
+#find-bar input:not([type="checkbox"]) { width: min(200px, 40vw); padding: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--bg-selected)); }
+#find-bar label { display: inline-flex; align-items: center; gap: 3px; }
+#replace-controls { display: flex; gap: 4px; }
+#editor { min-width: 0; }
+footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code,
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-editor { font-family: var(--ml-source-font-family); font-size: var(--ml-source-font-size); }
+.editor-tooltip.markleaf-expanded-source { z-index: 80; }
+/* VS Code theme tokens may be translucent. A floating code editor needs an
+   opaque document surface underneath the code tint, just like an inline block. */
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
+  background: linear-gradient(var(--bg-secondary), var(--bg-secondary)), var(--bg-primary);
+}
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-toolbar {
+  flex-wrap: wrap;
+}
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-groups { flex-wrap: wrap; }
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-panel {
+  max-width: min(400px, calc(100vw - 32px));
+  max-height: min(260px, 35vh);
+}
 @media (max-width: 520px) { .brand, .divider { display: none; } #toolbar { gap: 1px; padding: 6px; } }
+@media (max-width: 680px) { #document-area.with-outline { grid-template-columns: minmax(110px, 25%) minmax(0, 1fr); } #outline { padding: 8px 2px; } }
+
+#markleaf-shortcuts {
+  box-sizing: border-box; width: min(740px, calc(100vw - 24px)); max-width: none;
+  height: min(760px, calc(100vh - 24px)); max-height: calc(100vh - 24px); padding: 0;
+  color: var(--vscode-editor-foreground); background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border, #8886); border-radius: 8px;
+  box-shadow: 0 12px 48px #0005; font: 13px/1.5 var(--vscode-font-family, sans-serif);
+}
+#markleaf-shortcuts[open] { display: flex; flex-direction: column; }
+#markleaf-shortcuts::backdrop { background: #0006; }
+#markleaf-shortcuts button { color: inherit; flex-shrink: 0; }
+#markleaf-shortcuts h2, #markleaf-shortcuts h3, #markleaf-shortcuts p { margin: 0; }
+.shortcut-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
+#markleaf-shortcuts h2 { font-size: 20px; }
+.shortcut-header p, .shortcut-intro p { color: var(--vscode-descriptionForeground); }
+.shortcut-header button { font-size: 22px; }
+.shortcut-intro { padding: 0 20px 12px; }
+.shortcut-intro p { margin-bottom: 4px !important; font-size: 12px; }
+.shortcut-intro [data-native] { padding: 3px 0; color: var(--vscode-textLink-foreground) !important; }
+.shortcut-search { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+#markleaf-shortcuts input { box-sizing: border-box; min-width: 0; padding: 7px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8886); border-radius: 4px; }
+.shortcut-search input { flex: 1; }
+#markleaf-shortcuts input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.shortcut-list { min-height: 60px; overflow: auto; padding: 0 20px 12px; border-block: 1px solid var(--vscode-widget-border, #8884); flex: 1; }
+#markleaf-shortcuts .shortcut-list h3 { font-size: 12px; font-weight: 600; padding: 14px 0 5px; color: var(--vscode-descriptionForeground); }
+.shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--vscode-widget-border, #8882); }
+.shortcut-row kbd { font: 12px var(--vscode-editor-font-family, monospace); padding: 3px 6px; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 4px; white-space: nowrap; }
+.shortcut-row button, .shortcut-buttons button { border: 1px solid var(--vscode-button-border, #8885); }
+.shortcut-recorder { padding: 10px 20px 14px; border-top: 1px solid var(--vscode-widget-border, #8884); }
+#markleaf-shortcuts .shortcut-recorder h3 { font-size: 14px; margin-bottom: 8px; }
+.shortcut-recorder label { display: flex; align-items: center; gap: 12px; }
+.shortcut-recorder input { flex: 1; font-family: var(--vscode-editor-font-family, monospace) !important; }
+.shortcut-recorder p { font-size: 12px; margin: 8px 0 !important; min-height: 18px; }
+.shortcut-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+#markleaf-shortcuts [data-save] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.shortcut-result { padding: 8px 20px; min-height: 18px; font-size: 12px; }
+#markleaf-shortcuts .shortcut-error, #markleaf-shortcuts [data-config-error] { color: var(--vscode-errorForeground, #e86565); }
+#markleaf-shortcuts [data-config-error] { max-height: 60px; overflow: auto; }
+@media (max-width: 440px), (max-height: 560px) {
+  .shortcut-header { padding: 10px 12px 6px; }
+  .shortcut-intro { padding: 0 12px 8px; }
+  .shortcut-recorder { padding: 8px 12px; }
+  .shortcut-list { padding-inline: 12px; }
+  .shortcut-row { gap: 6px; }
+  .shortcut-intro p { font-size: 11px; }
+}
