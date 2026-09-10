@@ -257,6 +257,9 @@ describe('math formulas', () => {
     expect(getMarkdown(editor)).toContain('$$y^2$$')
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    const closing = document.querySelector('.markleaf-expanded-source')!
+    expect(closing.classList.contains('markleaf-expanded-source-exit')).toBe(true)
+    closing.dispatchEvent(new Event('animationend'))
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
     expect(editor.view.dom.querySelector('.markleaf-math-block')).not.toBeNull()
   })
@@ -309,6 +312,9 @@ describe('math formulas', () => {
     expect(document.querySelector('.markleaf-expanded-source')).not.toBeNull()
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    const closing = document.querySelector('.markleaf-expanded-source')!
+    expect(closing.classList.contains('markleaf-expanded-source-exit')).toBe(true)
+    closing.dispatchEvent(new Event('animationend'))
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
   })
 

@@ -29,9 +29,12 @@ afterEach(() => {
   vi.resetModules()
   document.body.innerHTML = ''
   delete window.chrome
+  Reflect.deleteProperty(document, 'fonts')
 })
 
 it('immediately removes the rendered block handle when visibility is disabled', async () => {
+  // jsdom has no CSS Font Loading API; native view restoration waits for it.
+  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
   document.body.innerHTML = shell
   vi.stubGlobal('matchMedia', () => ({
     matches: false,

@@ -2,7 +2,7 @@
 
 [English](./docs/README.en.md) | [日本語](./docs/README.ja.md) | [繁體中文](./docs/README.zh-TW.md)
 
-这是一个原生轻量化 Markdown 可视化编辑器，追求简洁的界面与排版，提供专注于思考、阅读与写作的空间。
+MarkLeaf 是轻量化 Markdown 可视化编辑器，提供 Windows/macOS 原生应用和 VS Code 扩展，追求简洁的界面与排版，为思考、阅读与写作提供专注的空间。
 
 项目最初由 [fcz](https://github.com/zhuanshunjishi2017) 发起并制作，初版仅支持 Windows 平台，后由 [Na Bian](https://github.com/Na-Bian) 提供了 macOS 版本的支持。**当前，Windows 版本与 macOS 版本共同更新。**
 
@@ -25,7 +25,7 @@
 
 > [!NOTE]
 > 部分主题可能需要用到特定的字体以获得更佳体验，您可以前往以下页面，或直接从 [Release](https://github.com/zhuanshunjishi2017/markleaf/releases) 中下载相关字体包并将其安装到计算机上。
-> 
+>
 > - [Computer Modern 系列字体](https://www.fontsquirrel.com/fonts/computer-modern)（LaTeX 默认排版字体）
 > - [汇文、朝华系列字体以及京华老宋体](https://huozi.cool/) （铅字印刷排版，由特里王制作的免费字体）
 > - [霞鹜文楷](https://github.com/lxgw/LxgwWenKai) （由 Lxgw 制作的优秀开源开源中文字体）
@@ -51,9 +51,11 @@
 
 ### 优秀的导出效果
 
-当前可导出为 PDF/HTML/长图片，PDF可自定义纸张大小、页边距、页眉页脚等。也支持禁止表格分页等高级设置。印刷品/LaTeX 等主题导出成 PDF 文件后非常适合于阅读和打印，也可满足部分学术写作的排版要求。
+原生 Windows/macOS 版可导出为 PDF/HTML/长图片，PDF可自定义纸张大小、页边距、页眉页脚等。也支持禁止表格分页等高级设置。印刷品/LaTeX 等主题导出成 PDF 文件后非常适合于阅读和打印，也可满足部分学术写作的排版要求。VS Code 扩展尚未接入导出与打印。
 
 ### 极简但完善的操作逻辑与功能
+
+下面的工作区、多窗口和内置源码模式介绍以原生应用为主。VS Code 扩展使用 VS Code 的资源管理器、窗口、标签页和源码编辑器，其功能入口见下方扩展说明。
 
 - **工作区管理**：支持打开文件夹作为工作区，按树视图或列表视图查看文件，按名称/内容搜索文档。
 - **多窗口与多标签页**：支持打开多个窗口实例，也可将文档在新窗口中打开。另外，应用支持在同一个窗口中打开多个标签页，每个标签页独自管理其文档内容。
@@ -66,15 +68,17 @@
 
 ## 平台支持
 
-
-| 平台      | 所用技术                             | 代码目录                    |
-| ------- | -------------------------------- | ----------------------- |
+| 平台 | 所用技术 | 代码目录 |
+| --- | --- | --- |
 | Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
-| macOS   | Swift + AppKit + WKWebView       | `apps/macos`            |
+| macOS | Swift + AppKit + WKWebView | `apps/macos` |
 | VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
 
+三个宿主共享编辑内核与排版样式。VS Code 扩展使用已有 VS Code 运行环境，不引入独立 Electron 依赖或桌面壳。支持阅读与可视化编辑、格式刷、表格、脚注、公式与 Mermaid、图片粘贴和拖放、查找替换、大纲及排版偏好。保存、撤销重做、标签页和原生源码由 VS Code 管理，支持源码切换及并排。
 
-三个宿主共享编辑内核与排版样式。VS Code 扩展使用现有 VS Code 运行环境，不引入 Electron 依赖或独立桌面壳。安装扩展后，Markdown 文件默认以 MarkLeaf 渲染视图打开，支持阅读与可视化编辑、保存、撤销重做，以及原生源码并排编辑；详见 [扩展说明](./apps/vscode/README.md)。
+VS Code 扩展 0.2.5 提供 35 项设置和 67 项可配置格式操作；公式与图表源码展开在对应内容下方，随文档滚动。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+
+VS Code 1.120+ 中的 Markdown Git 对比默认使用原生源码 diff，显示增删高亮；普通文件仍默认使用 MarkLeaf。
 
 ## 项目结构
 
@@ -91,7 +95,7 @@ markleaf/
 │       └── script/               #   构建 / 发布脚本
 ├── packages/
 │   ├── editor-web/               # 共享编辑器前端（Tiptap/ProseMirror + CodeMirror 6）
-│   └── styles/                   # 共享排版 / 主题样式（打印风格，两平台共用）
+│   └── styles/                   # 共享排版 / 主题样式（三个宿主共用）
 ├── MarkLeaf.slnx                 # Windows 解决方案
 ├── Directory.Build.props
 ├── global.json
@@ -103,25 +107,30 @@ markleaf/
 ## 技术架构
 
 ```text
-apps/windows（C# WinForms）        apps/macos（Swift AppKit）
-  主窗口 / 菜单 / 工作区 / 导出       主窗口 / 菜单 / 工作区 / 导出
-        │                                  │
-        ├── packages/editor-web ───────────┤   共享前端（Tiptap + CodeMirror）
-        ├── packages/styles ───────────────┤   共享打印样式
-        └── WebView2 / WKWebView ──────────┘   native-shim.js 消息桥
+packages/editor-web（共享编辑内核）+ packages/styles（共享排版）
+├── apps/windows → WinForms + WebView2 → 原生消息桥
+├── apps/macos   → AppKit + WKWebView  → 原生消息桥
+└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+
+Windows/macOS：main.ts，内置 CodeMirror 6 源码模式
+VS Code：vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
 ```
 
 ## 构建与运行
 
 ### VS Code 扩展
 
+从仓库根目录执行，Node.js 22.12+，使用项目指定的 pnpm：
+
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.1.0.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
-在 VS Code 中安装生成的 VSIX 后，新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf 渲染视图。已有源码标签可通过 **Reopen Editor With… → MarkLeaf** 或 **MarkLeaf: Open Markdown** 切换；已配置其他默认编辑器时，可通过 **Configure default editor for…** 选择 MarkLeaf。使用 **Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与 MarkLeaf 渲染视图之间切换。可视化编辑允许现有序列化器规范化 Markdown 格式，阅读不会回写；详见[使用和保真边界](./apps/vscode/README.md)。
+在 VS Code 中使用 **Install from VSIX…** 安装生成的扩展包。新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf；已有源码标签使用 **Reopen Editor With… → MarkLeaf**，已有默认关联使用 **Configure default editor for…** 调整。**Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与渲染视图间切换。
+
+升级后先保存文档，再运行 **Developer: Reload Window**。若设置项缺失或提示 `markleaf.shortcuts` 未注册，需要重新加载整个窗口。通过 **视图 → 快捷键…** 录入格式键位。阅读不会回写；可视化编辑可能规范化 Markdown 格式，详见 [扩展使用与保真边界](./apps/vscode/README.md)。
 
 ### Web 前端编辑器
 
@@ -152,7 +161,3 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ## 许可证
 
 应用采用 MIT 许可证。见 [LICENSE](./LICENSE)。
-
-
-
-&nbsp;
