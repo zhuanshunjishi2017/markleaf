@@ -4,7 +4,7 @@
 
 在 VS Code 中閱讀和視覺化編輯 Markdown，重用 MarkLeaf 的 Tiptap/ProseMirror 編輯核心、KaTeX、Mermaid 和排版樣式。擴充功能由 TypeScript 編寫，使用 VS Code 提供的 API 與 Webview，沒有獨立 Electron 相依套件或桌面殼層。
 
-目前版本 **0.2.4** 提供 35 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。匯出與列印尚未接入。
+目前版本 **0.2.5** 提供 35 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。匯出與列印尚未接入。
 
 工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，始終展開在對應內容下方，隨文件捲動移出視野，不會根據可用空間上下跳轉或固定在視窗底部。公式符號面板會根據可用空間調整版面。
 
@@ -12,10 +12,10 @@
 
 ## 安裝和開啟
 
-在本機建置得到 `artifacts/markleaf-vscode-0.2.4.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
+在本機建置得到 `artifacts/markleaf-vscode-0.2.5.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
 安裝並啟用後，新開啟的 `.md` 或 `.markdown` 檔案預設進入 MarkLeaf 渲染檢視，可直接閱讀與視覺化編輯。已開啟的原始碼分頁可透過 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切換，也可從檔案總管右鍵選擇 **MarkLeaf: Open Markdown**。
@@ -23,6 +23,12 @@ code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
 升級 VSIX 後請先儲存文件，再執行 **Developer: Reload Window**，讓目前視窗重新載入擴充功能及其設定宣告。如果設定頁仍只有舊選項，或提示「沒有註冊設定 markleaf.shortcuts」，也請重新載入整個視窗後再錄入鍵位；僅重新啟動擴充功能宿主可能留下舊的設定註冊狀態。
 
 MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指定其他預設編輯器，或安裝多個預設 Markdown 編輯器，可在 **Reopen Editor With… → Configure default editor for…** 選擇 **MarkLeaf**。要恢復預設原始碼開啟方式時，在同一位置選擇 **Text Editor**；擴充功能遵循既有的 VS Code 編輯器關聯設定。
+
+### Git 差異檢視
+
+在 VS Code 1.120 及以上版本，`.md` 和 `.markdown` 的 Git 工作目錄、暫存區與提交歷史比較，預設使用 VS Code 原生原始碼 diff，顯示行號、新增／刪除醒目提示及差異導覽。一般檔案仍預設使用 MarkLeaf 閱讀與編輯。
+
+擴充功能透過 `workbench.diffEditorAssociations` 提供預設值，不寫入使用者設定；既有使用者或工作區的 diff 關聯優先。若曾為 Markdown 明確指定其他 diff 編輯器，可將該設定中的 `*.md`、`*.markdown` 設為 `default`。升級後先執行 **Developer: Reload Window**，再關閉並重新開啟既有比較分頁。較舊的 VS Code 不支援這項自動關聯，可在比較分頁使用 **Reopen Editor With… → Text Editor**，或升級 VS Code。
 
 ## 編輯和閱讀
 

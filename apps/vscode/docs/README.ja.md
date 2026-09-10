@@ -4,7 +4,7 @@
 
 MarkLeaf の Tiptap/ProseMirror 編集コア、KaTeX、Mermaid、組版スタイルを使い、VS Code 内で Markdown を閲覧・ビジュアル編集できます。TypeScript 製の拡張機能は VS Code の API と Webview を利用し、独立した Electron 依存関係やデスクトップシェルを追加しません。
 
-現在のバージョン **0.2.4** は 35 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。エクスポートと印刷は未対応です。
+現在のバージョン **0.2.5** は 35 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。エクスポートと印刷は未対応です。
 
 ツールバーメニューは、外側のクリック、Escape、別メニューへの切り替え、拡張機能からのフォーカス移動で閉じます。数式と Mermaid のソースパネルは明暗テーマに対応した不透明な背景を持ち、対応する内容の下に開いて文書と一緒に画面外へスクロールします。空き領域に応じた上下の反転や、ウィンドウ下端への固定は行いません。数式記号パネルは利用可能な領域に合わせてレイアウトを調整します。
 
@@ -12,10 +12,10 @@ MarkLeaf の Tiptap/ProseMirror 編集コア、KaTeX、Mermaid、組版スタイ
 
 ## インストールと文書の表示
 
-ローカルで `artifacts/markleaf-vscode-0.2.4.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
+ローカルで `artifacts/markleaf-vscode-0.2.5.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
 有効化後、新しく開く `.md` と `.markdown` は既定で MarkLeaf のレンダリング表示になります。既存のソースタブは **Reopen Editor With… → MarkLeaf** または **Ctrl/Cmd+Shift+V** で切り替えます。エクスプローラーの **MarkLeaf: Open Markdown** からも開けます。
@@ -23,6 +23,12 @@ code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
 VSIX のアップグレード後は文書を保存し、**Developer: Reload Window** でウィンドウ全体を再読み込みしてください。設定ページに古い項目しかない場合や、`markleaf.shortcuts` が未登録と表示される場合も同様です。拡張機能ホストだけを再起動すると、古い設定登録情報が残る場合があります。
 
 MarkLeaf は既定のカスタムエディタとして登録されます。Markdown に別の既定エディタを指定済みの場合や、複数の拡張機能が競合する場合は **Reopen Editor With… → Configure default editor for… → MarkLeaf** を選択してください。同じ場所で **Text Editor** を選ぶとソース表示に戻せます。既存の VS Code エディタ関連付けが優先されます。
+
+### Git の差分表示
+
+VS Code 1.120 以降では、`.md` と `.markdown` の作業ツリー、ステージ済みの変更、コミット履歴の比較に、標準のソース差分エディタを既定で使用します。行番号、追加・削除の強調表示、差分への移動を利用できます。通常のファイルは引き続き MarkLeaf で開き、閲覧・編集できます。
+
+拡張機能は `workbench.diffEditorAssociations` の既定値を提供し、ユーザー設定には書き込みません。既存のユーザー・ワークスペース設定が優先されます。Markdown の差分エディタを明示的に設定済みの場合は、この設定の `*.md` と `*.markdown` を `default` に変更してください。更新後は **Developer: Reload Window** を実行し、既存の差分タブを閉じて開き直してください。古い VS Code はこの自動関連付けに対応していないため、差分タブの **Reopen Editor With… → Text Editor** を使うか、VS Code を更新してください。
 
 ## 編集と閲覧
 

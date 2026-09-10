@@ -4,7 +4,7 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.2.4** provides 35 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. Export and printing are not included.
+Version **0.2.5** provides 35 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. Export and printing are not included.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They always open below the corresponding content and scroll out of view with the document; they do not flip to the other side or dock at the bottom of the window. The math symbol panel adapts its layout to the available space.
 
@@ -12,10 +12,10 @@ Project and extension READMEs are available in four languages. UI translation co
 
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.2.4.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.2.5.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
 After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
@@ -23,6 +23,12 @@ After enabling the extension, newly opened `.md` and `.markdown` files use MarkL
 After upgrading the VSIX, save your documents and run **Developer: Reload Window** so the window reloads the extension and its configuration declarations. If the settings page still shows only old options, or reports that `markleaf.shortcuts` is not registered, reload the entire window before recording shortcuts. Restarting only the extension host may leave the old settings registry in place.
 
 MarkLeaf declares a default custom editor. If Markdown already has another default editor, or multiple installed extensions claim it, use **Reopen Editor With… → Configure default editor for… → MarkLeaf**. Select **Text Editor** there to return to source by default. Existing VS Code editor associations take precedence.
+
+### Git diff views
+
+On VS Code 1.120 and later, Git comparisons for `.md` and `.markdown`, including working tree changes, staged changes, and commit history, default to the native source diff editor with line numbers, addition/deletion highlights, and change navigation. Ordinary files still default to MarkLeaf for reading and editing.
+
+The extension supplies defaults through `workbench.diffEditorAssociations` without writing user settings. Existing user or workspace diff associations take precedence. If you explicitly selected another Markdown diff editor, set `*.md` and `*.markdown` to `default` in that setting. After upgrading, run **Developer: Reload Window**, then close and reopen existing diff tabs. Older VS Code versions do not support this automatic association; use **Reopen Editor With… → Text Editor** on the diff tab, or upgrade VS Code.
 
 ## Editing and reading
 

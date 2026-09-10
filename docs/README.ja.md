@@ -76,7 +76,9 @@ Windows/macOS のネイティブアプリは PDF/HTML/縦長画像へのエク�
 
 3 つのホストは編集コアと組版スタイルを共有します。VS Code 拡張機能は既存の VS Code 実行環境を使い、独立した Electron 依存関係やデスクトップシェルを追加しません。閲覧とビジュアル編集、書式のコピー、表、脚注、数式と Mermaid、画像の貼り付けとドロップ、検索・置換、アウトライン、表示設定に対応します。保存、元に戻す・やり直し、タブ、Markdown ソース編集は VS Code が管理し、ソースとの切り替えや横並び表示が可能です。
 
-拡張機能 0.2.4 は 35 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図のソースパネルは対応する内容の下に開き、文書と一緒にスクロールします。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
+拡張機能 0.2.5 は 35 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図のソースパネルは対応する内容の下に開き、文書と一緒にスクロールします。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
+
+VS Code 1.120 以降では、Markdown の Git 比較に標準のソース差分エディタを既定で使用し、追加・削除を強調表示します。通常のファイルは引き続き MarkLeaf で開きます。
 
 ## プロジェクト構造
 
@@ -123,7 +125,7 @@ Node.js 22.12 以降とプロジェクト指定の pnpm を使い、リポジト
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.4.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
 VS Code の **Install from VSIX…** で生成したパッケージをインストールします。新しく開く `.md`、`.markdown` は既定で MarkLeaf を使用します。既存のソースタブは **Reopen Editor With… → MarkLeaf** で切り替え、既定の関連付けは **Configure default editor for…** で変更します。**Ctrl+Shift+V**（macOS は **Cmd+Shift+V**）でソースとレンダリング表示を切り替えます。

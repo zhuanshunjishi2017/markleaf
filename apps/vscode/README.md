@@ -4,7 +4,7 @@
 
 在 VS Code 中阅读和可视化编辑 Markdown，复用 MarkLeaf 的 Tiptap/ProseMirror 编辑内核、KaTeX、Mermaid 和排版样式。扩展由 TypeScript 编写，运行时使用 VS Code 提供的 API 与 Webview，没有 Electron 依赖或独立桌面壳。
 
-当前版本 **0.2.4** 提供 35 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。导出与打印尚未接入。
+当前版本 **0.2.5** 提供 35 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。导出与打印尚未接入。
 
 工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，始终展开在对应内容下方，随文档滚动移出视野，不会随视口空间上下跳转或固定在窗口底部。公式符号面板会根据可用空间调整布局。
 
@@ -12,10 +12,10 @@
 
 ## 安装和打开
 
-本地构建得到 `artifacts/markleaf-vscode-0.2.4.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
+本地构建得到 `artifacts/markleaf-vscode-0.2.5.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
 ```
 
 安装并启用扩展后，新打开的 `.md` 或 `.markdown` 文件默认进入 MarkLeaf 渲染视图，可直接阅读和可视化编辑。已打开的源码标签可以通过 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切换，也可以从资源管理器右键选择 **MarkLeaf: Open Markdown**。
@@ -23,6 +23,12 @@ code --install-extension artifacts/markleaf-vscode-0.2.4.vsix
 升级 VSIX 后请先保存文档，再运行 **Developer: Reload Window（开发人员: 重新加载窗口）**，使当前窗口重新加载扩展及其配置声明。如果设置页仍只有旧选项，或提示“没有注册配置 markleaf.shortcuts”，也请重新加载整个窗口后再录入键位；仅重启扩展宿主可能留下旧的设置注册状态。
 
 MarkLeaf 使用 VS Code 的默认自定义编辑器声明。若已为 Markdown 指定了其他默认编辑器，或安装了多个默认 Markdown 编辑器，可在 **Reopen Editor With… → Configure default editor for…** 中选择 **MarkLeaf**。需要恢复默认源码打开方式时，在同一位置选择 **Text Editor**；扩展遵循 VS Code 的编辑器关联设置。
+
+### Git 差异视图
+
+在 VS Code 1.120 及以上版本，`.md` 和 `.markdown` 的 Git 更改、暂存区及提交历史对比默认使用 VS Code 原生源码 diff，显示行号、增删高亮及差异导航。普通文件仍默认使用 MarkLeaf 阅读和编辑。
+
+扩展通过 `workbench.diffEditorAssociations` 提供默认值，不写入用户设置；已有用户或工作区的 diff 关联优先。若曾为 Markdown 显式指定其他 diff 编辑器，可将该设置中的 `*.md`、`*.markdown` 设为 `default`。升级后先运行 **Developer: Reload Window**，再关闭并重新打开已有对比标签。较旧的 VS Code 不支持这项自动关联，可在对比标签中使用 **Reopen Editor With… → Text Editor**，或升级 VS Code。
 
 ## 编辑和阅读
 
