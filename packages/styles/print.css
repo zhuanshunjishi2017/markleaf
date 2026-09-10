@@ -182,7 +182,7 @@
 }
 
 .markleaf-style-print .markleaf-document hr {
-  width: 10em;
+  /* width: 10em; */
   height: 1px;
   margin: 1.5em auto;
   background: var(--text-primary);

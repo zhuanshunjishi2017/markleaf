@@ -29,7 +29,15 @@ internal sealed partial class MainForm
         }
     }
 
-    private void OnWorkspaceWatcherSignal(object sender, FileSystemEventArgs args) => _workspaceChangeDebouncer.Signal();
+    private void OnWorkspaceWatcherSignal(object sender, FileSystemEventArgs args)
+    {
+        _workspaceService.InvalidatePreview(args.FullPath);
+        if (args is RenamedEventArgs renamed)
+        {
+            _workspaceService.InvalidatePreview(renamed.OldFullPath);
+        }
+        _workspaceChangeDebouncer.Signal();
+    }
 
     private void QueueWorkspaceRefresh()
     {

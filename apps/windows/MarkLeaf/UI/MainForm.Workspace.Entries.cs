@@ -17,6 +17,11 @@ internal sealed partial class MainForm
             return;
         }
 
+        if (_workspaceListViewActive)
+        {
+            ToggleWorkspaceView();
+        }
+
         var fullPath = Path.GetFullPath(filePath);
         var rootFull = Path.GetFullPath(_workspaceRoot);
         var relative = Path.GetRelativePath(rootFull, fullPath);
@@ -24,6 +29,12 @@ internal sealed partial class MainForm
         {
             return;
         }
+
+        if (_sidebarAnimationTargetCollapsed ?? _sidebarSplit.Panel1Collapsed)
+        {
+            ExpandSidebar();
+        }
+        ShowSidebarView(outline: false);
 
         var directory = Path.GetDirectoryName(fullPath);
         if (directory is null)
@@ -69,12 +80,6 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (!await ConfirmDiscardOrSaveAsync())
-        {
-            _workspaceDocumentList.SelectedPath = _document?.FilePath;
-            return;
-        }
-
         await OpenDocumentPathAsync(path);
         _workspaceDocumentList.SelectedPath = _document?.FilePath;
     }
@@ -107,7 +112,7 @@ internal sealed partial class MainForm
             return;
         }
 
-        if (!_documentOperationInProgress && await ConfirmDiscardOrSaveAsync())
+        if (!_documentOperationInProgress)
         {
             await OpenDocumentPathAsync(entry.FullPath);
         }
@@ -203,7 +208,7 @@ internal sealed partial class MainForm
         {
             var fileName = Path.GetFileName(path);
             var destination = Path.Combine(_workspaceRoot, fileName);
-            if (File.Exists(destination) && await ConfirmDiscardOrSaveAsync())
+            if (File.Exists(destination))
             {
                 await OpenDocumentPathAsync(destination);
             }
@@ -236,7 +241,7 @@ internal sealed partial class MainForm
 
             if (isOpenDocument && _document!.IsDirty)
             {
-                if (!await ConfirmDiscardOrSaveAsync(isDocumentSwitch: false))
+                if (!await ConfirmDiscardOrSaveAsync())
                 {
                     return;
                 }
@@ -309,11 +314,14 @@ internal sealed partial class MainForm
             {
                 return true;
             }
-            var isOpenDocument = !entry.IsDirectory
-                && _document?.FilePath is not null
-                && string.Equals(_document.FilePath, entry.FullPath, StringComparison.OrdinalIgnoreCase);
+            var openDocument = !entry.IsDirectory
+                ? _openDocuments.FirstOrDefault(document => document.FilePath is not null
+                    && PathEquals(document.FilePath, entry.FullPath))
+                : null;
+            var isActiveDocument = openDocument is not null
+                && ReferenceEquals(openDocument, _document);
 
-            if (isOpenDocument)
+            if (isActiveDocument)
             {
                 StopWatchingDocument();
                 stoppedOpenDocumentWatcher = true;
@@ -328,17 +336,22 @@ internal sealed partial class MainForm
                 File.Move(entry.FullPath, target);
             }
 
-            if (isOpenDocument)
+            if (openDocument is not null)
             {
-                _document!.FilePath = target;
-                _document.LastKnownWriteTime = File.GetLastWriteTimeUtc(target);
-                UpdateDocumentChrome();
-                StartWatchingDocument(target);
-                stoppedOpenDocumentWatcher = false;
+                openDocument.FilePath = target;
+                openDocument.LastKnownWriteTime = File.GetLastWriteTimeUtc(target);
+                if (isActiveDocument)
+                {
+                    UpdateDocumentChrome();
+                    _editorHost?.SetDocumentPath(target);
+                    StartWatchingDocument(target);
+                    stoppedOpenDocumentWatcher = false;
+                }
+                _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
             }
 
             await RefreshWorkspaceDirectoryAsync(parent);
-            if (isOpenDocument)
+            if (openDocument is not null)
             {
                 _workspaceTree.SelectedPath = target;
             }
@@ -389,10 +402,16 @@ internal sealed partial class MainForm
             if (deletesCurrentDocument && _document is not null)
             {
                 var deletedDocumentKind = _document.Kind;
-                _document = _documentFileService.CreateNew(
+                var replacement = _documentFileService.CreateNew(
                     DefaultNewLine,
                     deletedDocumentKind,
                     DocumentEncodingPolicy.FromId(_settings.File.DefaultEncoding));
+                if (_activeDocumentIndex >= 0 && _activeDocumentIndex < _openDocuments.Count)
+                {
+                    _openDocuments[_activeDocumentIndex] = replacement;
+                }
+                _document = replacement;
+                _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
                 _workspaceTree.SelectedPath = null;
                 _workspaceDocumentList.SelectedPath = null;
                 _recoveryService.DeleteOwnFiles();

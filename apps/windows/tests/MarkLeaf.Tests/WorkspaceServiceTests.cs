@@ -162,6 +162,144 @@ public sealed class WorkspaceServiceTests
     }
 
     [TestMethod]
+    public async Task GetDocumentsAsync_ReturnsPlainTextPreviewFromDocumentStart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "preview.md"),
+                "---\ntitle: hidden\n---\n# 标题 **粗体** [链接](https://example.com) `代码`");
+
+            var documents = await new WorkspaceService().GetDocumentsAsync(root);
+
+            Assert.HasCount(1, documents);
+            Assert.AreEqual("标题 粗体 链接 代码", documents[0].Preview);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task GetDocumentsAsync_RefreshesCachedPreviewAfterExplicitInvalidation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "preview.md");
+            var service = new WorkspaceService();
+            await File.WriteAllTextAsync(path, "# 旧预览");
+            var first = await service.GetDocumentsAsync(root);
+
+            await File.WriteAllTextAsync(path, "# 新的预览内容");
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(1));
+            var cached = await service.GetDocumentsAsync(root);
+            service.InvalidatePreview(path);
+            var refreshed = await service.GetDocumentsAsync(root);
+
+            Assert.AreEqual("旧预览", first[0].Preview);
+            Assert.AreEqual("旧预览", cached[0].Preview);
+            Assert.AreEqual("新的预览内容", refreshed[0].Preview);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_SearchesVisibleMarkdownTextAndBuildsTwoCharacterContext()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "search.md"),
+                "# 开头甲乙**目标文字**结尾 [链接](https://example.com)");
+
+            var results = await new WorkspaceService().SearchAsync(root, "目标");
+
+            Assert.HasCount(1, results);
+            Assert.IsTrue(results[0].IsContentMatch);
+            Assert.AreEqual("甲乙目标文字结尾 链接", results[0].Snippet);
+            Assert.AreEqual("目标", results[0].Query);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_DoesNotMatchMarkdownMarkersOrLinkDestinations()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "search.md"),
+                "# 标题 **正文** [链接](https://marker-only.example.com)");
+
+            var markerResults = await new WorkspaceService().SearchAsync(root, "**");
+            var destinationResults = await new WorkspaceService().SearchAsync(root, "marker-only");
+
+            Assert.IsEmpty(markerResults);
+            Assert.IsEmpty(destinationResults);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_FilenameMatchUsesDocumentPreviewWithoutOpeningFind()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "目标文件.md"), "## 第一段 *内容*");
+
+            var results = await new WorkspaceService().SearchAsync(root, "目标");
+
+            Assert.HasCount(1, results);
+            Assert.IsFalse(results[0].IsContentMatch);
+            Assert.AreEqual("第一段 内容", results[0].Snippet);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_PlainTextKeepsLiteralPunctuation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-workspace-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "notes.txt"), "普通 **星号** 文本");
+
+            var results = await new WorkspaceService().SearchAsync(root, "**星号**");
+
+            Assert.HasCount(1, results);
+            Assert.IsTrue(results[0].IsContentMatch);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public void WorkspaceDocumentTimeFormatter_FormatsRelativeAndCalendarDates()
     {
         var now = new DateTime(2026, 8, 1, 16, 30, 0);

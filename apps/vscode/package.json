@@ -1,0 +1,1208 @@
+{
+  "name": "markleaf",
+  "displayName": "MarkLeaf",
+  "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
+  "version": "0.2.5",
+  "publisher": "markleaf",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "wysiwyg",
+    "preview",
+    "mermaid",
+    "katex"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhuanshunjishi2017/markleaf.git"
+  },
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "configurationDefaults": {
+      "workbench.diffEditorAssociations": {
+        "*.md": "default",
+        "*.markdown": "default"
+      }
+    },
+    "customEditors": [
+      {
+        "viewType": "markleaf.editor",
+        "displayName": "MarkLeaf",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "markleaf.open",
+        "title": "MarkLeaf: Open Markdown"
+      },
+      {
+        "command": "markleaf.format",
+        "title": "MarkLeaf: Format / Paragraph Actions",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleEditor",
+        "title": "MarkLeaf: Toggle Source / Rendered View"
+      },
+      {
+        "command": "markleaf.openSource",
+        "title": "MarkLeaf: Open Source",
+        "icon": "$(code)"
+      },
+      {
+        "command": "markleaf.openSourceBeside",
+        "title": "MarkLeaf: Open Source to the Side",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "markleaf.insertImage",
+        "title": "MarkLeaf: Insert Image from File",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertImageUrl",
+        "title": "MarkLeaf: Insert Image URL",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.image",
+        "title": "MarkLeaf: Image Actions",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.find",
+        "title": "MarkLeaf: Find in Rendered Document",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.replace",
+        "title": "MarkLeaf: Replace in Rendered Document",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.copyMarkdown",
+        "title": "MarkLeaf: Copy as Markdown",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.copyPlainText",
+        "title": "MarkLeaf: Copy as Plain Text",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.copyHtml",
+        "title": "MarkLeaf: Copy as HTML",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.pastePlainText",
+        "title": "MarkLeaf: Paste Plain Text",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleOutline",
+        "title": "MarkLeaf: Toggle Outline",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleFocus",
+        "title": "MarkLeaf: Toggle Paragraph Focus",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleTypewriter",
+        "title": "MarkLeaf: Toggle Typewriter Scrolling",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleRead",
+        "title": "MarkLeaf: Toggle Read / Edit",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.zoomIn",
+        "title": "MarkLeaf: Zoom In",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.zoomOut",
+        "title": "MarkLeaf: Zoom Out",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.zoomReset",
+        "title": "MarkLeaf: Reset Zoom",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.preferences",
+        "title": "MarkLeaf: Typography, Theme and Settings",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.help",
+        "title": "MarkLeaf: Help",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.shortcuts",
+        "title": "MarkLeaf: Configure Shortcuts / 快捷键设置",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleBold",
+        "title": "MarkLeaf: 粗体",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleItalic",
+        "title": "MarkLeaf: 斜体",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleUnderline",
+        "title": "MarkLeaf: 下划线",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleStrike",
+        "title": "MarkLeaf: 删除线",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleHighlight",
+        "title": "MarkLeaf: 高亮",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleCode",
+        "title": "MarkLeaf: 行内代码",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.clearFormat",
+        "title": "MarkLeaf: 清除格式",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.formatPainter",
+        "title": "MarkLeaf: 格式刷",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setParagraph",
+        "title": "MarkLeaf: 正文",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading1",
+        "title": "MarkLeaf: 一级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading2",
+        "title": "MarkLeaf: 二级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading3",
+        "title": "MarkLeaf: 三级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading4",
+        "title": "MarkLeaf: 四级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading5",
+        "title": "MarkLeaf: 五级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setHeading6",
+        "title": "MarkLeaf: 六级标题",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.promoteHeading",
+        "title": "MarkLeaf: 提升标题级别",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.demoteHeading",
+        "title": "MarkLeaf: 降低标题级别",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertLineBefore",
+        "title": "MarkLeaf: 在当前段落前插入",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertLineAfter",
+        "title": "MarkLeaf: 在当前段落后插入",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.duplicateParagraph",
+        "title": "MarkLeaf: 复制当前段落",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteParagraph",
+        "title": "MarkLeaf: 删除当前段落",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleBulletList",
+        "title": "MarkLeaf: 无序列表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleOrderedList",
+        "title": "MarkLeaf: 有序列表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleTaskList",
+        "title": "MarkLeaf: 任务列表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.indentListItem",
+        "title": "MarkLeaf: 增加列表缩进",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.outdentListItem",
+        "title": "MarkLeaf: 减少列表缩进",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleBlockquote",
+        "title": "MarkLeaf: 引用",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.toggleCodeBlock",
+        "title": "MarkLeaf: 代码块",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertHorizontalRule",
+        "title": "MarkLeaf: 分隔线",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertAlertNote",
+        "title": "MarkLeaf: 备注 (NOTE)",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertAlertTip",
+        "title": "MarkLeaf: 提示 (TIP)",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertAlertImportant",
+        "title": "MarkLeaf: 重要 (IMPORTANT)",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertAlertWarning",
+        "title": "MarkLeaf: 警告 (WARNING)",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertAlertCaution",
+        "title": "MarkLeaf: 注意 (CAUTION)",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertTable",
+        "title": "MarkLeaf: 插入表格…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.addRowBefore",
+        "title": "MarkLeaf: 上方插入行",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.addRowAfter",
+        "title": "MarkLeaf: 下方插入行",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteRow",
+        "title": "MarkLeaf: 删除行",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.addColumnBefore",
+        "title": "MarkLeaf: 左侧插入列",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.addColumnAfter",
+        "title": "MarkLeaf: 右侧插入列",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteColumn",
+        "title": "MarkLeaf: 删除列",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.alignTableLeft",
+        "title": "MarkLeaf: 当前列左对齐",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.alignTableCenter",
+        "title": "MarkLeaf: 当前列居中",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.alignTableRight",
+        "title": "MarkLeaf: 当前列右对齐",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setTableCaption",
+        "title": "MarkLeaf: 表格标题…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteTable",
+        "title": "MarkLeaf: 删除表格",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertMathInline",
+        "title": "MarkLeaf: 行内公式",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertMathBlock",
+        "title": "MarkLeaf: 独立公式",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertMermaid",
+        "title": "MarkLeaf: Mermaid 图表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.editMath",
+        "title": "MarkLeaf: 编辑公式源码",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.convertMath",
+        "title": "MarkLeaf: 切换行内 / 独立公式",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setMathNumber",
+        "title": "MarkLeaf: 公式编号…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteMath",
+        "title": "MarkLeaf: 删除公式",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.editMermaid",
+        "title": "MarkLeaf: 编辑图表源码",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.updateMermaid",
+        "title": "MarkLeaf: 渲染当前 Mermaid",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.rerenderMermaid",
+        "title": "MarkLeaf: 重新渲染当前图表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.rerenderAllMermaid",
+        "title": "MarkLeaf: 重新渲染所有图表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteMermaid",
+        "title": "MarkLeaf: 删除图表",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.insertFootnote",
+        "title": "MarkLeaf: 插入脚注…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.resetFootnoteLabel",
+        "title": "MarkLeaf: 重命名当前脚注…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.goToFootnoteReference",
+        "title": "MarkLeaf: 回到脚注引用",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.clearFootnoteReferences",
+        "title": "MarkLeaf: 清除当前脚注引用",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.deleteFootnote",
+        "title": "MarkLeaf: 删除脚注",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.showFrontMatter",
+        "title": "MarkLeaf: 显示 / 插入 Front Matter",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.setCodeBlockLanguage",
+        "title": "MarkLeaf: 代码块语言…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.copyCodeBlock",
+        "title": "MarkLeaf: 复制代码",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exitCode",
+        "title": "MarkLeaf: 退出代码块",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markleaf.toggleEditor",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorTextFocus && editorLangId == markdown"
+      },
+      {
+        "command": "markleaf.toggleEditor",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus"
+      },
+      {
+        "command": "markleaf.find",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus"
+      },
+      {
+        "command": "markleaf.replace",
+        "key": "ctrl+h",
+        "mac": "cmd+alt+f",
+        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus"
+      },
+      {
+        "command": "markleaf.pastePlainText",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus == document"
+      }
+    ],
+    "menus": {
+      "webview/context": [
+        {
+          "command": "markleaf.format",
+          "when": "webviewId == markleaf.editor && markleafCanEdit",
+          "group": "markleaf@1"
+        },
+        {
+          "command": "markleaf.image",
+          "when": "webviewId == markleaf.editor && markleafImage",
+          "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.copyMarkdown",
+          "when": "webviewId == markleaf.editor",
+          "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.copyPlainText",
+          "when": "webviewId == markleaf.editor",
+          "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.copyHtml",
+          "when": "webviewId == markleaf.editor",
+          "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.find",
+          "when": "webviewId == markleaf.editor",
+          "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.replace",
+          "when": "webviewId == markleaf.editor && markleafCanEdit",
+          "group": "markleaf@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "markleaf.open",
+          "when": "resourceExtname == .md || resourceExtname == .markdown",
+          "group": "open@10"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "markleaf.open",
+          "when": "editorLangId == markdown && activeCustomEditorId != markleaf.editor",
+          "group": "navigation"
+        },
+        {
+          "command": "markleaf.openSource",
+          "when": "activeCustomEditorId == markleaf.editor",
+          "group": "navigation"
+        },
+        {
+          "command": "markleaf.openSourceBeside",
+          "when": "activeCustomEditorId == markleaf.editor",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MarkLeaf",
+      "properties": {
+        "markleaf.defaultMode": {
+          "type": "string",
+          "scope": "resource",
+          "enum": [
+            "edit",
+            "read"
+          ],
+          "default": "edit",
+          "description": "Initial mode for newly opened MarkLeaf editors."
+        },
+        "markleaf.fontSize": {
+          "type": "number",
+          "scope": "resource",
+          "default": 16,
+          "minimum": 10,
+          "maximum": 32,
+          "description": "Document font size in pixels."
+        },
+        "markleaf.maxWidth": {
+          "type": "number",
+          "scope": "resource",
+          "default": 820,
+          "minimum": 320,
+          "maximum": 1600,
+          "description": "Maximum document width in pixels."
+        },
+        "markleaf.lineHeight": {
+          "type": "number",
+          "scope": "resource",
+          "default": 1.75,
+          "description": "渲染文档行高。",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "markleaf.typography": {
+          "type": "string",
+          "scope": "resource",
+          "default": "sans",
+          "description": "使用 MarkLeaf 原有排版样式。",
+          "enum": [
+            "sans",
+            "serif",
+            "print",
+            "print-double",
+            "latex",
+            "retro-print",
+            "minimal",
+            "magazine",
+            "notebook"
+          ]
+        },
+        "markleaf.colorTheme": {
+          "type": "string",
+          "scope": "resource",
+          "default": "vscode",
+          "description": "文档配色；vscode 自动跟随当前编辑器主题。",
+          "enum": [
+            "vscode",
+            "default-light",
+            "apple-blue",
+            "apple-dark",
+            "dark",
+            "deep-sea",
+            "espresso",
+            "forest",
+            "high-contrast-dark",
+            "high-contrast-light",
+            "ink",
+            "lavender",
+            "memo",
+            "morandi-cyan",
+            "morandi-dark",
+            "morandi",
+            "pure-black",
+            "rose",
+            "saltlemon",
+            "yellowed-page"
+          ]
+        },
+        "markleaf.fontFamily": {
+          "type": "string",
+          "scope": "resource",
+          "default": "",
+          "description": "文档字体 CSS font-family；留空使用排版样式字体。字体须已安装在系统中。"
+        },
+        "markleaf.sourceFontFamily": {
+          "type": "string",
+          "scope": "resource",
+          "default": "",
+          "description": "公式与图表源码编辑器字体；留空跟随 VS Code。普通源码由 VS Code editor.fontFamily 控制。"
+        },
+        "markleaf.sourceFontSize": {
+          "type": "number",
+          "scope": "resource",
+          "default": 14,
+          "description": "公式与图表源码编辑器字号。",
+          "minimum": 10,
+          "maximum": 32
+        },
+        "markleaf.cjkLanguage": {
+          "type": "string",
+          "scope": "resource",
+          "default": "zh-Hans",
+          "description": "文档中日韩文字的语言标记。",
+          "enum": [
+            "zh-Hans",
+            "zh-Hant",
+            "ja",
+            "ko"
+          ]
+        },
+        "markleaf.cjkAutoSpacing": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "中西文之间增加视觉间距，不改变 Markdown 内容。"
+        },
+        "markleaf.ignoreMaxWidth": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "使用全部可用文档宽度。"
+        },
+        "markleaf.showCodeHighlight": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "显示代码语法高亮。"
+        },
+        "markleaf.showBlockHandle": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "显示段落左侧操作柄。"
+        },
+        "markleaf.focusMode": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "突出当前段落，淡化其他段落。"
+        },
+        "markleaf.typewriterMode": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "编辑时让光标保持在视口中部。"
+        },
+        "markleaf.showOutline": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "显示文档大纲侧栏。"
+        },
+        "markleaf.showStatusBar": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "显示同步状态、字数与位置。"
+        },
+        "markleaf.ctrlWheelZoom": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Ctrl+滚轮调整文档缩放。"
+        },
+        "markleaf.autoHideScrollbars": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "闲置时隐藏文档滚动条，滚动或靠近右侧时显示。"
+        },
+        "markleaf.autoConvertUnsafeEmphasis": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "将有歧义的强调标记转为可保留内容的格式。"
+        },
+        "markleaf.exitBlockOnEmptyEnter": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "空行 Enter 退出代码等块结构。"
+        },
+        "markleaf.useShiftEnterHardBreak": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Shift+Enter 插入硬换行。"
+        },
+        "markleaf.escapeLiteralSymbols": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "序列化时转义字面符号。"
+        },
+        "markleaf.escapeMarkdownLiteralSymbols": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "转义会被识别为 Markdown 的字面符号。"
+        },
+        "markleaf.useRelativeImagePaths": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "插入本地图片时使用相对于文档的路径。"
+        },
+        "markleaf.prefixImagePathsWithDot": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "同目录内的图片相对路径以 ./ 开头。"
+        },
+        "markleaf.zoom": {
+          "type": "number",
+          "scope": "resource",
+          "default": 100,
+          "description": "文档缩放百分比。",
+          "minimum": 50,
+          "maximum": 200
+        },
+        "markleaf.codeFence": {
+          "type": "string",
+          "scope": "resource",
+          "default": "backtick",
+          "description": "代码围栏标记（实际编辑后应用）。",
+          "enum": [
+            "backtick",
+            "tilde"
+          ]
+        },
+        "markleaf.emphasisMarker": {
+          "type": "string",
+          "scope": "resource",
+          "default": "asterisk",
+          "description": "强调标记（实际编辑后应用）。",
+          "enum": [
+            "asterisk",
+            "underscore"
+          ]
+        },
+        "markleaf.bulletMarker": {
+          "type": "string",
+          "scope": "resource",
+          "default": "dash",
+          "description": "无序列表标记（实际编辑后应用）。",
+          "enum": [
+            "dash",
+            "asterisk",
+            "plus"
+          ]
+        },
+        "markleaf.imageDirectory": {
+          "type": "string",
+          "scope": "resource",
+          "default": "assets",
+          "description": "图片粘贴、拖放和复制的资源目录，必须是文档目录内的相对路径。"
+        },
+        "markleaf.fileImageHandling": {
+          "type": "string",
+          "scope": "resource",
+          "default": "copy",
+          "description": "从文件选择图片时复制到资源目录或引用原文件。",
+          "enum": [
+            "copy",
+            "reference"
+          ]
+        },
+        "markleaf.customCss": {
+          "type": "string",
+          "scope": "resource",
+          "default": "",
+          "description": "附加 CSS 文件路径（相对于文档或绝对路径）；仅在可信工作区加载，重新加载编辑器更新文件内容。",
+          "restricted": true
+        },
+        "markleaf.shortcuts": {
+          "type": "object",
+          "scope": "resource",
+          "default": {},
+          "markdownDescription": "MarkLeaf 渲染编辑区的格式快捷键。打开 Markdown 后，可在“视图 → 快捷键…”或命令 `MarkLeaf: Configure Shortcuts / 快捷键设置` 中录键；[打开快捷键面板](command:markleaf.shortcuts)。值为单组组合键，例如 `Mod+Alt+M`；Mod 在 macOS 是 Cmd，在 Windows/Linux 是 Ctrl。省略操作沿用默认，空字符串取消绑定。保存、撤销、查找、源码切换由 VS Code 键盘快捷方式管理。",
+          "additionalProperties": false,
+          "properties": {
+            "toggleBold": {
+              "type": "string",
+              "description": "粗体；空字符串表示不绑定。"
+            },
+            "toggleItalic": {
+              "type": "string",
+              "description": "斜体；空字符串表示不绑定。"
+            },
+            "toggleUnderline": {
+              "type": "string",
+              "description": "下划线；空字符串表示不绑定。"
+            },
+            "toggleStrike": {
+              "type": "string",
+              "description": "删除线；空字符串表示不绑定。"
+            },
+            "toggleHighlight": {
+              "type": "string",
+              "description": "高亮；空字符串表示不绑定。"
+            },
+            "toggleCode": {
+              "type": "string",
+              "description": "行内代码；空字符串表示不绑定。"
+            },
+            "clearFormat": {
+              "type": "string",
+              "description": "清除格式；空字符串表示不绑定。"
+            },
+            "formatPainter": {
+              "type": "string",
+              "description": "格式刷；空字符串表示不绑定。"
+            },
+            "setParagraph": {
+              "type": "string",
+              "description": "正文；空字符串表示不绑定。"
+            },
+            "setHeading1": {
+              "type": "string",
+              "description": "一级标题；空字符串表示不绑定。"
+            },
+            "setHeading2": {
+              "type": "string",
+              "description": "二级标题；空字符串表示不绑定。"
+            },
+            "setHeading3": {
+              "type": "string",
+              "description": "三级标题；空字符串表示不绑定。"
+            },
+            "setHeading4": {
+              "type": "string",
+              "description": "四级标题；空字符串表示不绑定。"
+            },
+            "setHeading5": {
+              "type": "string",
+              "description": "五级标题；空字符串表示不绑定。"
+            },
+            "setHeading6": {
+              "type": "string",
+              "description": "六级标题；空字符串表示不绑定。"
+            },
+            "promoteHeading": {
+              "type": "string",
+              "description": "提升标题级别；空字符串表示不绑定。"
+            },
+            "demoteHeading": {
+              "type": "string",
+              "description": "降低标题级别；空字符串表示不绑定。"
+            },
+            "insertLineBefore": {
+              "type": "string",
+              "description": "在当前段落前插入；空字符串表示不绑定。"
+            },
+            "insertLineAfter": {
+              "type": "string",
+              "description": "在当前段落后插入；空字符串表示不绑定。"
+            },
+            "duplicateParagraph": {
+              "type": "string",
+              "description": "复制当前段落；空字符串表示不绑定。"
+            },
+            "deleteParagraph": {
+              "type": "string",
+              "description": "删除当前段落；空字符串表示不绑定。"
+            },
+            "toggleBulletList": {
+              "type": "string",
+              "description": "无序列表；空字符串表示不绑定。"
+            },
+            "toggleOrderedList": {
+              "type": "string",
+              "description": "有序列表；空字符串表示不绑定。"
+            },
+            "toggleTaskList": {
+              "type": "string",
+              "description": "任务列表；空字符串表示不绑定。"
+            },
+            "indentListItem": {
+              "type": "string",
+              "description": "增加列表缩进；空字符串表示不绑定。"
+            },
+            "outdentListItem": {
+              "type": "string",
+              "description": "减少列表缩进；空字符串表示不绑定。"
+            },
+            "toggleBlockquote": {
+              "type": "string",
+              "description": "引用；空字符串表示不绑定。"
+            },
+            "toggleCodeBlock": {
+              "type": "string",
+              "description": "代码块；空字符串表示不绑定。"
+            },
+            "insertHorizontalRule": {
+              "type": "string",
+              "description": "分隔线；空字符串表示不绑定。"
+            },
+            "insertAlertNote": {
+              "type": "string",
+              "description": "备注 (NOTE)；空字符串表示不绑定。"
+            },
+            "insertAlertTip": {
+              "type": "string",
+              "description": "提示 (TIP)；空字符串表示不绑定。"
+            },
+            "insertAlertImportant": {
+              "type": "string",
+              "description": "重要 (IMPORTANT)；空字符串表示不绑定。"
+            },
+            "insertAlertWarning": {
+              "type": "string",
+              "description": "警告 (WARNING)；空字符串表示不绑定。"
+            },
+            "insertAlertCaution": {
+              "type": "string",
+              "description": "注意 (CAUTION)；空字符串表示不绑定。"
+            },
+            "insertTable": {
+              "type": "string",
+              "description": "插入表格…；空字符串表示不绑定。"
+            },
+            "addRowBefore": {
+              "type": "string",
+              "description": "上方插入行；空字符串表示不绑定。"
+            },
+            "addRowAfter": {
+              "type": "string",
+              "description": "下方插入行；空字符串表示不绑定。"
+            },
+            "deleteRow": {
+              "type": "string",
+              "description": "删除行；空字符串表示不绑定。"
+            },
+            "addColumnBefore": {
+              "type": "string",
+              "description": "左侧插入列；空字符串表示不绑定。"
+            },
+            "addColumnAfter": {
+              "type": "string",
+              "description": "右侧插入列；空字符串表示不绑定。"
+            },
+            "deleteColumn": {
+              "type": "string",
+              "description": "删除列；空字符串表示不绑定。"
+            },
+            "alignTableLeft": {
+              "type": "string",
+              "description": "当前列左对齐；空字符串表示不绑定。"
+            },
+            "alignTableCenter": {
+              "type": "string",
+              "description": "当前列居中；空字符串表示不绑定。"
+            },
+            "alignTableRight": {
+              "type": "string",
+              "description": "当前列右对齐；空字符串表示不绑定。"
+            },
+            "setTableCaption": {
+              "type": "string",
+              "description": "表格标题…；空字符串表示不绑定。"
+            },
+            "deleteTable": {
+              "type": "string",
+              "description": "删除表格；空字符串表示不绑定。"
+            },
+            "insertMathInline": {
+              "type": "string",
+              "description": "行内公式；空字符串表示不绑定。"
+            },
+            "insertMathBlock": {
+              "type": "string",
+              "description": "独立公式；空字符串表示不绑定。"
+            },
+            "insertMermaid": {
+              "type": "string",
+              "description": "Mermaid 图表；空字符串表示不绑定。"
+            },
+            "editMath": {
+              "type": "string",
+              "description": "编辑公式源码；空字符串表示不绑定。"
+            },
+            "convertMath": {
+              "type": "string",
+              "description": "切换行内 / 独立公式；空字符串表示不绑定。"
+            },
+            "setMathNumber": {
+              "type": "string",
+              "description": "公式编号…；空字符串表示不绑定。"
+            },
+            "deleteMath": {
+              "type": "string",
+              "description": "删除公式；空字符串表示不绑定。"
+            },
+            "editMermaid": {
+              "type": "string",
+              "description": "编辑图表源码；空字符串表示不绑定。"
+            },
+            "updateMermaid": {
+              "type": "string",
+              "description": "渲染当前 Mermaid；空字符串表示不绑定。"
+            },
+            "rerenderMermaid": {
+              "type": "string",
+              "description": "重新渲染当前图表；空字符串表示不绑定。"
+            },
+            "rerenderAllMermaid": {
+              "type": "string",
+              "description": "重新渲染所有图表；空字符串表示不绑定。"
+            },
+            "deleteMermaid": {
+              "type": "string",
+              "description": "删除图表；空字符串表示不绑定。"
+            },
+            "insertFootnote": {
+              "type": "string",
+              "description": "插入脚注…；空字符串表示不绑定。"
+            },
+            "resetFootnoteLabel": {
+              "type": "string",
+              "description": "重命名当前脚注…；空字符串表示不绑定。"
+            },
+            "goToFootnoteReference": {
+              "type": "string",
+              "description": "回到脚注引用；空字符串表示不绑定。"
+            },
+            "clearFootnoteReferences": {
+              "type": "string",
+              "description": "清除当前脚注引用；空字符串表示不绑定。"
+            },
+            "deleteFootnote": {
+              "type": "string",
+              "description": "删除脚注；空字符串表示不绑定。"
+            },
+            "showFrontMatter": {
+              "type": "string",
+              "description": "显示 / 插入 Front Matter；空字符串表示不绑定。"
+            },
+            "setCodeBlockLanguage": {
+              "type": "string",
+              "description": "代码块语言…；空字符串表示不绑定。"
+            },
+            "copyCodeBlock": {
+              "type": "string",
+              "description": "复制代码；空字符串表示不绑定。"
+            },
+            "exitCode": {
+              "type": "string",
+              "description": "退出代码块；空字符串表示不绑定。"
+            }
+          }
+        }
+      }
+    },
+    "walkthroughs": [
+      {
+        "id": "markleaf.start",
+        "title": "开始使用 MarkLeaf",
+        "description": "在 VS Code 中阅读和可视化编辑 Markdown。",
+        "steps": [
+          {
+            "id": "open",
+            "title": "渲染编辑与源码",
+            "description": "打开 .md 或 .markdown 文件进入 MarkLeaf。Ctrl/Cmd+Shift+V 切换到 VS Code 源码；工具栏“阅读”切换只读阅读模式。",
+            "media": {
+              "markdown": "docs/welcome.md"
+            }
+          },
+          {
+            "id": "format",
+            "title": "文字、表格与特殊块",
+            "description": "工具栏“格式”或段落左侧操作柄提供完整编辑操作；双击公式和 Mermaid 打开源码编辑器。",
+            "media": {
+              "markdown": "docs/welcome.md"
+            }
+          },
+          {
+            "id": "settings",
+            "title": "阅读与偏好",
+            "description": "在“视图”菜单打开大纲、专注模式、排版主题；更多选项在 VS Code 的 MarkLeaf 设置中。",
+            "media": {
+              "markdown": "docs/welcome.md"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.5.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/vscode": "1.95.0",
+    "@vscode/vsce": "3.6.2",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

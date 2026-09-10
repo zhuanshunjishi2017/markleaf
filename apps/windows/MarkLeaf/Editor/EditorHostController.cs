@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Logging;
+using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -23,7 +25,7 @@ internal sealed class EditorHostController : IDisposable
     private readonly Queue<Action> _readyActions = new();
     private readonly Dictionary<string, TaskCompletionSource<EditorSnapshot>> _snapshotRequests =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, TaskCompletionSource<bool>> _commandRequests =
+    private readonly Dictionary<string, TaskCompletionSource<EditorCommandResult>> _commandRequests =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, TaskCompletionSource<EditorSelectionExport>> _selectionExportRequests =
         new(StringComparer.Ordinal);
@@ -41,11 +43,14 @@ internal sealed class EditorHostController : IDisposable
     private string _lastDocumentMarkdown = string.Empty;
     private bool _lastDocumentReadOnly;
     private string? _lastDocumentType;
+    private string? _lastDocumentPath;
     private bool _replayDocumentAfterNavigation;
 
     public event EventHandler? Ready;
 
     public event EventHandler<EditorMessage>? DocumentLoaded;
+
+    public event EventHandler<EditorSelectionChanged>? SelectionChanged;
 
     public event EventHandler<EditorMessage>? SnapshotReceived;
 
@@ -58,6 +63,10 @@ internal sealed class EditorHostController : IDisposable
     public event EventHandler<EditorContextMenuRequest>? ContextMenuRequested;
 
     public event EventHandler<EditorBlockMenuRequest>? BlockMenuRequested;
+
+    public event EventHandler<EditorCodeBlockLanguageRequest>? CodeBlockLanguageRequested;
+
+    public event EventHandler<string>? CopyCodeBlockRequested;
 
     public event EventHandler? MermaidEditRequested;
 
@@ -202,24 +211,58 @@ internal sealed class EditorHostController : IDisposable
         LoadDocument(Guid.NewGuid(), 0, markdown);
     }
 
-    public void LoadDocument(Guid documentId, long revision, string markdown, bool readOnly = false, string? documentType = null)
+    public void LoadDocument(
+        Guid documentId,
+        long revision,
+        string markdown,
+        bool readOnly = false,
+        string? documentType = null,
+        string? documentPath = null,
+        int? visualSelectionFrom = null,
+        int? visualSelectionTo = null,
+        int? sourceSelectionFrom = null,
+        int? sourceSelectionTo = null,
+        double scrollTop = 0,
+        bool restoreViewState = true)
     {
         _lastDocumentId = documentId;
         _lastDocumentRevision = revision;
         _lastDocumentMarkdown = markdown;
         _lastDocumentReadOnly = readOnly;
         _lastDocumentType = documentType;
+        _lastDocumentPath = documentPath;
         EnqueueOrRun(() =>
         {
             _session.StartDocument(documentId, revision);
             _documentLoaded = false;
-            Post("loadDocument", new { markdown, readOnly, documentType });
+            Post("loadDocument", new
+            {
+                markdown,
+                readOnly,
+                documentType,
+                documentPath,
+                visualSelection = visualSelectionFrom is { } visualFrom
+                    && visualSelectionTo is { } visualTo
+                    ? new { from = visualFrom, to = visualTo }
+                    : null,
+                sourceSelection = sourceSelectionFrom is { } sourceFrom
+                    && sourceSelectionTo is { } sourceTo
+                    ? new { from = sourceFrom, to = sourceTo }
+                    : null,
+                scrollTop = double.IsFinite(scrollTop) && scrollTop >= 0 ? scrollTop : 0,
+                restoreViewState,
+            });
         });
     }
 
     public void SetDocumentType(string documentType)
     {
         EnqueueOrRun(() => Post("setDocumentType", new { documentType }));
+    }
+
+    public void SetDocumentPath(string? documentPath)
+    {
+        _lastDocumentPath = documentPath;
     }
 
     public string RequestSnapshot()
@@ -263,7 +306,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -281,6 +324,7 @@ internal sealed class EditorHostController : IDisposable
             sourceFontFamily = fontFamilyValue,
             cjkLanguage = cjkLang,
             visualCjkAutoSpacing,
+            ignoreMaxWidth,
             usePointerAnchor = false,
             anchorX = (double?)null,
             anchorY = (double?)null,
@@ -299,6 +343,7 @@ internal sealed class EditorHostController : IDisposable
                 document.documentElement.setAttribute('lang', payload.cjkLanguage);
                 document.documentElement.style.setProperty('--ml-cjk-lang', payload.cjkLanguage);
                 document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing);
+                document.documentElement.classList.toggle('markleaf-ignore-max-width', payload.ignoreMaxWidth === true);
               }
             })();
             """;
@@ -317,6 +362,21 @@ internal sealed class EditorHostController : IDisposable
     public void ApplyAutoConvertUnsafeEmphasis(bool enabled)
     {
         EnqueueOrRun(() => Post("command", new { command = "setAutoConvertUnsafeEmphasis", text = enabled ? "1" : "0" }));
+    }
+
+    public void ApplyMarkdownEditingSettings(EditorSettings settings)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            exitBlockOnEmptyEnter = settings.ExitBlockOnEmptyEnter,
+            useShiftEnterHardBreak = settings.UseShiftEnterHardBreak,
+            codeFence = settings.MarkdownCodeFence,
+            emphasisMarker = settings.MarkdownEmphasisMarker,
+            bulletMarker = settings.MarkdownBulletMarker,
+            escapeLiteralSymbols = settings.EscapeLiteralSymbols,
+            escapeMarkdownLiteralSymbols = settings.EscapeMarkdownLiteralSymbols,
+        });
+        EnqueueOrRun(() => Post("command", new { command = "setMarkdownEditingSettings", text = payload }));
     }
 
     /// <summary>
@@ -362,7 +422,7 @@ internal sealed class EditorHostController : IDisposable
         });
     }
 
-    public void ExecuteExpandedSourceCommand(string command)
+    public void ExecuteExpandedSourceCommand(string command, string? text = null)
     {
         if (command is "undo" or "redo")
         {
@@ -372,10 +432,14 @@ internal sealed class EditorHostController : IDisposable
 
         var script = command switch
         {
-            "copy" => "document.execCommand('copy')",
-            "cut" => "document.execCommand('cut')",
-            "paste" => "document.execCommand('paste')",
-            "selectAll" => "document.execCommand('selectAll')",
+            // Do not focus the editor before copying: focusing a contenteditable
+            // element collapses the user's current selection and would copy the
+            // entire formula instead of the selected text.
+            "copy" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); const selection = window.getSelection(); if (!target || !selection || selection.rangeCount === 0 || !target.contains(selection.anchorNode) || !target.contains(selection.focusNode)) return false; const text = selection.toString(); if (!text) return false; if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true).catch(() => document.execCommand('copy')); return document.execCommand('copy'); })()",
+            "cut" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('cut'); })()",
+            "paste" when text is not null => $"(() => {{ const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); return document.execCommand('insertText', false, {System.Text.Json.JsonSerializer.Serialize(text)}); }})()",
+            "paste" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('paste'); })()",
+            "selectAll" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); const selection = window.getSelection(); const range = document.createRange(); range.selectNodeContents(target); selection?.removeAllRanges(); selection?.addRange(range); return true; })()",
             _ => "false",
         };
         EnqueueOrRun(() => _webView.CoreWebView2?.ExecuteScriptAsync($"(() => {{ return {script}; }})()"));
@@ -446,35 +510,6 @@ internal sealed class EditorHostController : IDisposable
     {
         var payload = new
         {
-            find = Loc.Get("findBar.find"),
-            findLabel = Loc.Get("findBar.findLabel"),
-            replaceWith = Loc.Get("findBar.replaceWith"),
-            replaceLabel = Loc.Get("findBar.replaceLabel"),
-            caseSensitive = Loc.Get("findBar.caseSensitive"),
-            wholeWord = Loc.Get("findBar.wholeWord"),
-            previous = Loc.Get("findBar.previous"),
-            next = Loc.Get("findBar.next"),
-            replace = Loc.Get("findBar.replace"),
-            replaceAll = Loc.Get("findBar.replaceAll"),
-            close = Loc.Get("findBar.close"),
-            closeLabel = Loc.Get("findBar.closeLabel"),
-            replaced = Loc.Get("findBar.replaced"),
-            noResults = Loc.Get("findBar.noResults"),
-            blockParagraph = Loc.Get("blockHandle.paragraph"),
-            blockHeading1 = Loc.Get("blockHandle.heading1"),
-            blockHeading2 = Loc.Get("blockHandle.heading2"),
-            blockHeading3 = Loc.Get("blockHandle.heading3"),
-            blockHeading4 = Loc.Get("blockHandle.heading4"),
-            blockHeading5 = Loc.Get("blockHandle.heading5"),
-            blockHeading6 = Loc.Get("blockHandle.heading6"),
-            blockBulletList = Loc.Get("blockHandle.bulletList"),
-            blockOrderedList = Loc.Get("blockHandle.orderedList"),
-            blockTaskList = Loc.Get("blockHandle.taskList"),
-            blockBlockquote = Loc.Get("blockHandle.blockquote"),
-            blockCodeBlock = Loc.Get("blockHandle.codeBlock"),
-            blockTable = Loc.Get("blockHandle.table"),
-            blockFootnote = Loc.Get("blockHandle.footnote"),
-            blockAlert = Loc.Get("blockHandle.alert"),
             alertNote = Loc.Get("menu.paragraph.alertNote"),
             alertTip = Loc.Get("menu.paragraph.alertTip"),
             alertImportant = Loc.Get("menu.paragraph.alertImportant"),
@@ -489,9 +524,10 @@ internal sealed class EditorHostController : IDisposable
     public void ExecuteCommand(
         string command,
         string? text = null,
-        bool applyToCurrentTextBlockWhenEmpty = false)
+        bool applyToCurrentTextBlockWhenEmpty = false,
+        string? html = null)
     {
-        EnqueueOrRun(() => Post("command", new { command, text, applyToCurrentTextBlockWhenEmpty }));
+        EnqueueOrRun(() => Post("command", new { command, text, html, applyToCurrentTextBlockWhenEmpty }));
     }
 
     public void ClearBlockHighlight()
@@ -517,13 +553,27 @@ internal sealed class EditorHostController : IDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
+        var result = await ExecuteCommandResultAsync(
+            command, text, clientX, clientY, null, timeout, cancellationToken);
+        return result.Success;
+    }
+
+    public async Task<EditorCommandResult> ExecuteCommandResultAsync(
+        string command,
+        string? text = null,
+        double? clientX = null,
+        double? clientY = null,
+        string? html = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
         var requestId = Guid.NewGuid().ToString("N");
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<EditorCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _commandRequests.Add(requestId, completion);
         EnqueueOrRun(() =>
         {
             var registeredId = _session.RegisterRequest("commandResult", requestId);
-            Post("command", new { command, text, clientX, clientY }, registeredId);
+            Post("command", new { command, text, html, clientX, clientY }, registeredId);
         });
 
         using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(10));
@@ -715,20 +765,141 @@ internal sealed class EditorHostController : IDisposable
                 // 非致命：公式缩放脚本执行失败时仍继续打印，不阻断导出。
             }
 
-            var settings = core.Environment.CreatePrintSettings();
-            settings.PageWidth = widthIn;
-            settings.PageHeight = heightIn;
-            settings.MarginTop = 0;
-            settings.MarginBottom = 0;
-            settings.MarginLeft = 0;
-            settings.MarginRight = 0;
-            settings.ShouldPrintBackgrounds = true;
+            // Use the DevTools print endpoint so Chromium emits a PDF document
+            // outline from the h1-h6 structure. CoreWebView2.PrintToPdfAsync
+            // has no equivalent outline option.
+            var printParameters = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                landscape,
+                paperWidth = widthIn,
+                paperHeight = heightIn,
+                marginTop = 0,
+                marginBottom = 0,
+                marginLeft = 0,
+                marginRight = 0,
+                printBackground = true,
+                preferCSSPageSize = false,
+                generateDocumentOutline = true,
+            });
+            var printResult = await core.CallDevToolsProtocolMethodAsync(
+                "Page.printToPDF",
+                printParameters);
+            using var printDocument = JsonDocument.Parse(printResult);
+            var base64 = printDocument.RootElement.GetProperty("data").GetString();
+            if (string.IsNullOrWhiteSpace(base64))
+                throw new InvalidOperationException("PDF export returned no data.");
+            return Convert.FromBase64String(base64);
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch { }
+        }
+    }
 
-            var pdfTempPath = Path.Combine(Path.GetTempPath(), $"markleaf-pdf-{Guid.NewGuid():N}.pdf");
-            await core.PrintToPdfAsync(pdfTempPath, settings);
-            var pdfBytes = await File.ReadAllBytesAsync(pdfTempPath, cancellationToken);
-            try { File.Delete(pdfTempPath); } catch { }
-            return pdfBytes;
+    public async Task<IReadOnlyList<string>> CaptureExportImagesAsync(
+        string html,
+        string outputPath,
+        int contentWidth,
+        int maximumImageHeight,
+        float scale,
+        string format,
+        int jpegQuality,
+        CancellationToken cancellationToken = default)
+    {
+        contentWidth = Math.Clamp(contentWidth, 320, 4000);
+        maximumImageHeight = Math.Clamp(maximumImageHeight, 1000, 30000);
+        scale = float.IsFinite(scale) ? Math.Clamp(scale, 1f, 4f) : 2f;
+        format = string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase) ? "jpeg" : "png";
+        jpegQuality = Math.Clamp(jpegQuality, 1, 100);
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"markleaf-image-{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(tempPath, html, Encoding.UTF8, cancellationToken);
+
+        try
+        {
+            using var captureForm = new Form
+            {
+                ClientSize = new Size(contentWidth + 112, 800),
+                ShowInTaskbar = false,
+                FormBorderStyle = FormBorderStyle.None,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-32000, -32000),
+            };
+            var captureView = new WebView2 { Dock = DockStyle.Fill };
+            captureForm.Controls.Add(captureView);
+            captureForm.Show();
+
+            var environment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: _webView2UserDataDirectory);
+            await captureView.EnsureCoreWebView2Async(environment);
+            var core = captureView.CoreWebView2
+                ?? throw new InvalidOperationException("Image export WebView2 failed to initialize.");
+
+            var loadComplete = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<CoreWebView2NavigationCompletedEventArgs>? handler = null;
+            handler = (_, args) =>
+            {
+                core.NavigationCompleted -= handler;
+                if (args.IsSuccess)
+                    loadComplete.TrySetResult(true);
+                else
+                    loadComplete.TrySetException(
+                        new InvalidOperationException($"Image export page failed to load: {args.WebErrorStatus}"));
+            };
+            core.NavigationCompleted += handler;
+            core.Navigate(new Uri(tempPath).AbsoluteUri);
+            await loadComplete.Task.WaitAsync(cancellationToken);
+
+            await core.ExecuteScriptAsync(
+                "Promise.all([document.fonts.ready, Promise.all(Array.from(document.images).map(function (img) { return img.complete ? Promise.resolve() : new Promise(function (resolve) { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }); }); }))]).then(function () { window.__markleafFitMath && window.__markleafFitMath(); })");
+            await Task.Delay(100, cancellationToken);
+
+            var metricsJson = await core.ExecuteScriptAsync(
+                "(function () { var root = document.getElementById('export-root'); var rect = root ? root.getBoundingClientRect() : document.documentElement.getBoundingClientRect(); return JSON.stringify({ width: Math.ceil(rect.width), height: Math.ceil(Math.max(root ? root.scrollHeight : 0, document.documentElement.scrollHeight, document.body.scrollHeight)) }); })()");
+            var metricsText = JsonSerializer.Deserialize<string>(metricsJson) ?? "{}";
+            using var metrics = JsonDocument.Parse(metricsText);
+            var pageWidth = Math.Max(1, metrics.RootElement.GetProperty("width").GetInt32());
+            var pageHeight = Math.Max(1, metrics.RootElement.GetProperty("height").GetInt32());
+            var chunkCssHeight = Math.Max(1, (int)Math.Floor(maximumImageHeight / scale));
+            var chunkCount = (int)Math.Ceiling(pageHeight / (double)chunkCssHeight);
+            var directory = Path.GetDirectoryName(outputPath) ?? "";
+            var baseName = Path.GetFileNameWithoutExtension(outputPath);
+            var extension = format == "jpeg" ? ".jpg" : ".png";
+            var paths = new List<string>(chunkCount);
+
+            for (var index = 0; index < chunkCount; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var y = index * chunkCssHeight;
+                var height = Math.Min(chunkCssHeight, pageHeight - y);
+                // Do not capture a remote document-space clip (y > viewport).
+                // WebView2/Chromium may repeat the viewport's first pixels when
+                // captureBeyondViewport is combined with such clips. Scroll the
+                // export page to the segment and capture from viewport origin.
+                await core.ExecuteScriptAsync($"window.scrollTo(0, {y.ToString(System.Globalization.CultureInfo.InvariantCulture)});");
+                await Task.Delay(30, cancellationToken);
+                var parameters = JsonSerializer.Serialize(new
+                {
+                    format,
+                    quality = format == "jpeg" ? jpegQuality : (int?)null,
+                    fromSurface = true,
+                    captureBeyondViewport = false,
+                    clip = new { x = 0, y = 0, width = pageWidth, height, scale },
+                }, new JsonSerializerOptions
+                {
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                });
+                var response = await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters);
+                using var responseJson = JsonDocument.Parse(response);
+                var bytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
+                var path = chunkCount == 1
+                    ? Path.ChangeExtension(outputPath, extension)
+                    : Path.Combine(directory, $"{baseName}-{index + 1:D2}{extension}");
+                await File.WriteAllBytesAsync(path, bytes, cancellationToken);
+                paths.Add(path);
+            }
+
+            return paths;
         }
         finally
         {
@@ -981,10 +1152,12 @@ internal sealed class EditorHostController : IDisposable
         var encodedPath = uri.Query.StartsWith("?path=", StringComparison.Ordinal)
             ? uri.Query[6..]
             : string.Empty;
-        string path;
+        string? path;
         try
         {
-            path = Path.GetFullPath(Uri.UnescapeDataString(encodedPath).Replace('/', Path.DirectorySeparatorChar));
+            path = ImageAssetService.ResolveLocalImagePath(
+                Uri.UnescapeDataString(encodedPath),
+                _lastDocumentPath);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
         {
@@ -993,7 +1166,7 @@ internal sealed class EditorHostController : IDisposable
             return;
         }
 
-        if (!ImageAssetService.IsSupportedImagePath(path) || !File.Exists(path))
+        if (path is null || !ImageAssetService.IsSupportedImagePath(path) || !File.Exists(path))
         {
             eventArgs.Response = core.Environment.CreateWebResourceResponse(
                 Stream.Null, 404, "Not Found", "Content-Type: text/plain");
@@ -1108,6 +1281,16 @@ internal sealed class EditorHostController : IDisposable
                 NotifyStateChanged();
                 DocumentLoaded?.Invoke(this, message);
                 break;
+            case "selectionChanged":
+                SelectionChanged?.Invoke(
+                    this,
+                    new EditorSelectionChanged(
+                        Guid.Parse(message.DocumentId),
+                        message.Payload.GetProperty("from").GetInt32(),
+                        message.Payload.GetProperty("to").GetInt32(),
+                        message.Payload.TryGetProperty("sourceMode", out var selectionSourceMode)
+                            && selectionSourceMode.ValueKind == JsonValueKind.True));
+                break;
             case "dirtyChanged":
                 DirtyChanged?.Invoke(this, message);
                 break;
@@ -1136,7 +1319,9 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("sourceMode", out var sourceMode)
                             && sourceMode.ValueKind == System.Text.Json.JsonValueKind.True,
                         message.Payload.TryGetProperty("expandedSource", out var expandedSource)
-                            && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True));
+                            && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("outsideDocument", out var outsideDocument)
+                            && outsideDocument.ValueKind == System.Text.Json.JsonValueKind.True));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(
@@ -1145,6 +1330,18 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.GetProperty("clientX").GetDouble(),
                         message.Payload.GetProperty("clientY").GetDouble(),
                         message.Payload.GetProperty("position").GetInt32()));
+                break;
+            case "codeBlockLanguageRequested":
+                CodeBlockLanguageRequested?.Invoke(
+                    this,
+                    new EditorCodeBlockLanguageRequest(
+                        message.Payload.GetProperty("position").GetInt32(),
+                        message.Payload.GetProperty("language").GetString() ?? string.Empty));
+                break;
+            case "copyCodeBlockRequested":
+                CopyCodeBlockRequested?.Invoke(
+                    this,
+                    message.Payload.GetProperty("text").GetString() ?? string.Empty);
                 break;
             case "mermaidEditRequested":
                 MermaidEditRequested?.Invoke(this, EventArgs.Empty);
@@ -1223,8 +1420,15 @@ internal sealed class EditorHostController : IDisposable
                         && _snapshotRequests.TryGetValue(message.RequestId, out var completion)
                         && message.Payload.TryGetProperty("markdown", out var markdownElement))
                     {
+                        var scrollTop = message.Payload.TryGetProperty("scrollTop", out var scrollElement)
+                            && scrollElement.ValueKind == JsonValueKind.Number
+                            && scrollElement.TryGetDouble(out var parsedScrollTop)
+                            && double.IsFinite(parsedScrollTop)
+                            && parsedScrollTop >= 0
+                            ? parsedScrollTop
+                            : 0;
                         completion.TrySetResult(
-                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision));
+                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision, scrollTop));
                     }
                     SnapshotReceived?.Invoke(this, message);
                 }
@@ -1238,7 +1442,18 @@ internal sealed class EditorHostController : IDisposable
                     && message.RequestId is not null
                     && _commandRequests.TryGetValue(message.RequestId, out var commandCompletion))
                 {
-                    commandCompletion.TrySetResult(message.Payload.GetProperty("success").GetBoolean());
+                    var outcome = message.Payload.TryGetProperty("outcome", out var outcomeElement)
+                        && outcomeElement.ValueKind == JsonValueKind.String
+                        ? outcomeElement.GetString()
+                        : null;
+                    var commandError = message.Payload.TryGetProperty("error", out var errorElement)
+                        && errorElement.ValueKind == JsonValueKind.String
+                        ? errorElement.GetString()
+                        : null;
+                    commandCompletion.TrySetResult(new EditorCommandResult(
+                        message.Payload.GetProperty("success").GetBoolean(),
+                        outcome,
+                        commandError));
                 }
                 else
                 {
@@ -1311,6 +1526,7 @@ internal sealed class EditorHostController : IDisposable
                 markdown = _lastDocumentMarkdown,
                 readOnly = _lastDocumentReadOnly,
                 documentType = _lastDocumentType,
+                documentPath = _lastDocumentPath,
             });
         }
     }

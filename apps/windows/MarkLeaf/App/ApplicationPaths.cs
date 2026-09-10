@@ -20,7 +20,7 @@ internal sealed record ApplicationPaths(
             root,
             Path.Combine(root, "settings.json"),
             Path.Combine(root, "Logs"),
-            Path.Combine(root, "Cache"),
+            Path.Combine(root, "Cache", "image"),
             Path.Combine(root, "Recovery"),
             Path.Combine(root, "Cache", "WebView2"));
     }

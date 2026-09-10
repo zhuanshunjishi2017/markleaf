@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Text;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 
@@ -5,6 +7,10 @@ namespace MarkLeaf.Workspace;
 
 internal sealed class WorkspaceService
 {
+    private const int PreviewReadLimit = 2 * 1024;
+    private readonly ConcurrentDictionary<string, PreviewCacheEntry> _previewCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
     public string GetAvailableUntitledDocumentPath(
         string directory,
         NewDocumentKind kind = NewDocumentKind.Markdown)
@@ -61,6 +67,16 @@ internal sealed class WorkspaceService
         return Task.Run<IReadOnlyList<WorkspaceDocumentEntry>>(
             () => EnumerateDocuments(fullPath, cancellationToken),
             cancellationToken);
+    }
+
+    public void ResetPreviewCache() => _previewCache.Clear();
+
+    public void InvalidatePreview(string path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _previewCache.TryRemove(Path.GetFullPath(path), out _);
+        }
     }
 
     public Task<IReadOnlyList<SearchResult>> SearchAsync(
@@ -129,21 +145,32 @@ internal sealed class WorkspaceService
                             ? rootName
                             : relativeFolder;
 
-                        // 文件名匹配
                         var lastWriteTime = File.GetLastWriteTime(path);
+                        var plainText = ReadPlainText(path, extension);
                         if (fileName.Contains(query, StringComparison.OrdinalIgnoreCase))
                         {
-                            // 文件名匹配：显示首行作为片段
-                            var firstLine = ReadFirstLine(path);
-                            results.Add(new SearchResult(fileName, Path.GetFullPath(path), folderName, lastWriteTime, firstLine));
+                            results.Add(new SearchResult(
+                                fileName,
+                                Path.GetFullPath(path),
+                                folderName,
+                                lastWriteTime,
+                                plainText,
+                                IsContentMatch: false,
+                                query));
                             continue;
                         }
 
-                        // 文件内容匹配：显示匹配行作为片段
-                        var snippet = FindSnippet(path, query);
+                        var snippet = FindSnippet(plainText, query);
                         if (snippet is not null)
                         {
-                            results.Add(new SearchResult(fileName, Path.GetFullPath(path), folderName, lastWriteTime, snippet));
+                            results.Add(new SearchResult(
+                                fileName,
+                                Path.GetFullPath(path),
+                                folderName,
+                                lastWriteTime,
+                                snippet,
+                                IsContentMatch: true,
+                                query));
                         }
                     }
                     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -164,15 +191,15 @@ internal sealed class WorkspaceService
             .ToArray();
     }
 
-    private static string? ReadFirstLine(string path)
+    private static string? ReadPlainText(string path, string extension)
     {
         try
         {
-            foreach (var line in File.ReadLines(path))
-            {
-                var trimmed = line.Trim();
-                return trimmed.Length == 0 ? null : trimmed;
-            }
+            var source = File.ReadAllText(path);
+            var plainText = MarkdownPlainText.FromDocument(
+                source,
+                string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase));
+            return plainText.Length == 0 ? null : plainText;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -182,31 +209,85 @@ internal sealed class WorkspaceService
         return null;
     }
 
-    private static string? FindSnippet(string path, string query)
+    private string? ReadPreviewPlainText(
+        string path,
+        string extension,
+        DateTime lastWriteTime,
+        long fileLength)
     {
+        var fullPath = Path.GetFullPath(path);
+        if (_previewCache.TryGetValue(fullPath, out var cached))
+        {
+            return cached.Preview;
+        }
+
+        string? preview = null;
         try
         {
-            var lines = File.ReadLines(path);
-            foreach (var line in lines)
-            {
-                var index = line.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-                if (index < 0)
-                {
-                    continue;
-                }
-
-                var start = Math.Max(0, index - 20);
-                var length = Math.Min(line.Length - start, query.Length + 40);
-                var snippet = line.Substring(start, length).Trim();
-                return snippet.Length == 0 ? null : snippet;
-            }
+            using var stream = new FileStream(
+                fullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                PreviewReadLimit,
+                FileOptions.SequentialScan);
+            var buffer = new byte[Math.Min(PreviewReadLimit, (int)Math.Min(fileLength, int.MaxValue))];
+            var read = stream.Read(buffer, 0, buffer.Length);
+            var bytes = buffer.AsSpan(0, read).ToArray();
+            var source = DecodePreview(bytes);
+            var plainText = MarkdownPlainText.FromDocument(
+                source,
+                string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase));
+            preview = plainText.Length == 0 ? null : plainText;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // Skip unreadable files.
         }
 
-        return null;
+        _previewCache[fullPath] = new PreviewCacheEntry(lastWriteTime, fileLength, preview);
+        return preview;
+    }
+
+    private static string DecodePreview(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var detected = DocumentEncodingPolicy.Detect(bytes);
+        for (var length = bytes.Length; length >= Math.Max(0, bytes.Length - 4); length--)
+        {
+            try
+            {
+                return DocumentEncodingPolicy.Decode(bytes.AsSpan(0, length).ToArray(), detected.Policy);
+            }
+            catch (DecoderFallbackException)
+            {
+                // The byte limit may split the final multi-byte character.
+            }
+        }
+
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    private static string? FindSnippet(string? plainText, string query)
+    {
+        if (string.IsNullOrEmpty(plainText))
+        {
+            return null;
+        }
+
+        var index = plainText.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var start = Math.Max(0, index - 2);
+        var length = Math.Min(plainText.Length - start, query.Length + 42);
+        return plainText.Substring(start, length).TrimEnd();
     }
 
     private static WorkspaceEntry[] EnumerateChildren(string directory, CancellationToken cancellationToken)
@@ -249,7 +330,7 @@ internal sealed class WorkspaceService
             .ToArray();
     }
 
-    private static WorkspaceDocumentEntry[] EnumerateDocuments(
+    private WorkspaceDocumentEntry[] EnumerateDocuments(
         string rootDirectory,
         CancellationToken cancellationToken)
     {
@@ -301,11 +382,14 @@ internal sealed class WorkspaceService
                         var folderName = relativeFolder == "."
                             ? rootName
                             : relativeFolder;
+                        var lastWriteTime = File.GetLastWriteTime(path);
+                        var fileLength = new FileInfo(path).Length;
                         documents.Add(new WorkspaceDocumentEntry(
                             Path.GetFileName(path),
                             Path.GetFullPath(path),
                             folderName,
-                            File.GetLastWriteTime(path)));
+                            lastWriteTime,
+                            ReadPreviewPlainText(path, extension, lastWriteTime, fileLength)));
                     }
                     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                     {
@@ -325,4 +409,9 @@ internal sealed class WorkspaceService
             .ThenBy(document => document.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
+
+    private sealed record PreviewCacheEntry(
+        DateTime LastWriteTime,
+        long FileLength,
+        string? Preview);
 }

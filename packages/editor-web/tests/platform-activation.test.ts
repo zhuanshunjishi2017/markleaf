@@ -29,6 +29,7 @@ afterEach(() => {
   vi.resetModules()
   document.body.innerHTML = ''
   Reflect.deleteProperty(document, 'elementFromPoint')
+  Reflect.deleteProperty(document, 'fonts')
   delete window.chrome
 })
 
@@ -37,6 +38,7 @@ async function loadLink(hostPlatform?: 'macOS'): Promise<{
   messages: EditorMessage[]
 }> {
   document.body.innerHTML = shell
+  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addEventListener() {},

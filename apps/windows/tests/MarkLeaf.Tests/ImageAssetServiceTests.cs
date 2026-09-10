@@ -82,6 +82,74 @@ public sealed class ImageAssetServiceTests
     }
 
     [TestMethod]
+    public void NormalizeLocalImagePaths_RecognizesDotSlashReferences()
+    {
+        var documentPath = Path.Combine(_testDirectory, "notes", "document.md");
+
+        var normalized = _service.NormalizeLocalImagePaths(
+            "![示例](./images/photo.png)",
+            documentPath,
+            useRelativePaths: true,
+            prefixDotSlash: true);
+
+        StringAssert.Contains(normalized, "./images/photo.png");
+    }
+
+    [TestMethod]
+    public async Task NormalizeLocalImagePaths_RecognizesUnescapedSpacesInImagePaths()
+    {
+        var documentPath = Path.Combine(_testDirectory, "notes", "document.md");
+        var imagePath = Path.Combine(_testDirectory, "notes", "示例 photo.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(imagePath)!);
+        await File.WriteAllBytesAsync(imagePath, MinimalPng);
+
+        var normalized = _service.NormalizeLocalImagePaths(
+            "![示例](示例 photo.png \"图片标题\")",
+            documentPath,
+            useRelativePaths: true,
+            prefixDotSlash: true);
+
+        StringAssert.Contains(normalized, "![示例](./示例%20photo.png \"图片标题\")");
+    }
+
+    [TestMethod]
+    public void ToMarkdownPath_EncodesSpacesButPreservesUnicode()
+    {
+        var imagePath = Path.Combine(_testDirectory, "图片 文件.png");
+
+        var markdownPath = ImageAssetService.ToMarkdownPath(imagePath);
+
+        StringAssert.Contains(markdownPath, "图片%20文件.png");
+        Assert.IsFalse(markdownPath.Contains("%E5", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void ResolveLocalImagePath_ResolvesRelativeReferencesFromDocumentDirectory()
+    {
+        var documentPath = Path.Combine(_testDirectory, "notes", "document.md");
+        var expected = Path.Combine(_testDirectory, "notes", "images", "photo.png");
+        var expectedWithSpace = Path.Combine(_testDirectory, "notes", "images", "my photo.png");
+
+        Assert.AreEqual(expected, ImageAssetService.ResolveLocalImagePath("images/photo.png", documentPath));
+        Assert.AreEqual(expected, ImageAssetService.ResolveLocalImagePath("./images/photo.png", documentPath));
+        Assert.AreEqual(expectedWithSpace, ImageAssetService.ResolveLocalImagePath("images/my photo.png", documentPath));
+        Assert.AreEqual(expectedWithSpace, ImageAssetService.ResolveLocalImagePath("images/my%20photo.png", documentPath));
+    }
+
+    [TestMethod]
+    public void ToRelativeMarkdownPath_OnlyUsesDocumentDirectoryAndDescendants()
+    {
+        var documentPath = Path.Combine(_testDirectory, "notes", "document.md");
+        var sameDirectory = Path.Combine(_testDirectory, "notes", "photo.png");
+        var childDirectory = Path.Combine(_testDirectory, "notes", ".images", "photo.png");
+        var parentDirectory = Path.Combine(_testDirectory, "photo.png");
+
+        Assert.AreEqual("./photo.png", ImageAssetService.ToRelativeMarkdownPath(sameDirectory, documentPath, true));
+        Assert.AreEqual("./.images/photo.png", ImageAssetService.ToRelativeMarkdownPath(childDirectory, documentPath, true));
+        Assert.IsNull(ImageAssetService.ToRelativeMarkdownPath(parentDirectory, documentPath, true));
+    }
+
+    [TestMethod]
     public async Task FindMissingImages_ListsMissingLocalFilesAndIgnoresRemoteUrls()
     {
         var existing = Path.Combine(_testDirectory, "existing.png");

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 
@@ -22,7 +23,15 @@ internal sealed partial class MainForm
         _detachedOutlineTabBar.ReloadTexts();
         _detachedOutlineSearchBar.ReloadTexts();
         _editorHost?.SendFindBarLocalization();
+        _editorHost?.ExecuteCommand("setLanguage", GetFrontendLanguage());
         _openFolderPrompt.Invalidate();
+    }
+
+    private string GetFrontendLanguage()
+    {
+        return string.IsNullOrWhiteSpace(_settings.General.UiLanguage)
+            ? CultureInfo.CurrentUICulture.Name
+            : _settings.General.UiLanguage;
     }
 
     private void ApplyFileAssociations()

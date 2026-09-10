@@ -15,6 +15,36 @@ internal static class FileAssociationService
 
     public static readonly IReadOnlyList<string> AllExtensions = [".md", ".markdown", ".txt"];
 
+    /// <summary>
+    /// Reads only machine-wide associations. HKCU is intentionally ignored
+    /// when determining first-run defaults.
+    /// </summary>
+    public static bool IsMachineAssociated(string extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension)) return false;
+        if (extension[0] != '.')
+            extension = "." + extension;
+
+        try
+        {
+            using var extensionKey = Registry.LocalMachine.OpenSubKey(
+                $@"Software\Classes\{extension}", writable: false);
+            if (string.Equals(extensionKey?.GetValue("") as string, ProgId,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            using var openWithKey = extensionKey?.OpenSubKey("OpenWithProgids", writable: false);
+            return openWithKey?.GetValueNames().Any(value =>
+                string.Equals(value, ProgId, StringComparison.OrdinalIgnoreCase)) == true;
+        }
+        catch (Exception exception) when (exception is SecurityException or IOException)
+        {
+            return false;
+        }
+    }
+
     private const int ShcneAssocChanged = 0x08000000;
     private const uint ShcnfIdList = 0x0000;
 

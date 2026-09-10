@@ -13,9 +13,10 @@ internal sealed partial class MainForm
         _markdownStyle = StyleService.TryGetStyle(style) is not null ? style : StyleService.DefaultStyleId;
         _settings.MarkdownStyle = _markdownStyle;
         var editor = _settings.Editor;
-        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing);
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing, editor.VisualIgnoreMaxContentWidth);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ApplyAutoConvertUnsafeEmphasis(editor.AutoConvertUnsafeEmphasis);
+        _editorHost?.ApplyMarkdownEditingSettings(editor);
         _editorHost?.ExecuteCommand("setStyle", _markdownStyle);
         _menuService.RefreshStates();
     }
@@ -30,6 +31,46 @@ internal sealed partial class MainForm
     private void SetColorTheme(string themeId)
     {
         ApplyColorTheme(themeId, persistManualChoice: true);
+    }
+
+    private void ShowColorThemes()
+    {
+        ShowThemeSettings();
+    }
+
+    private void ShowThemeSettings(int? pageIndex = null)
+    {
+        using var dialog = new Dialogs.ColorThemeDialog(
+            _settings.ColorTheme,
+            _settings.Appearance.FollowSystemColorMode,
+            _settings.Appearance.DefaultLightThemeId,
+            _settings.Appearance.DefaultDarkThemeId,
+            (themeId, followSystem, defaultLight, defaultDark) =>
+            {
+                _settings.ColorTheme = themeId;
+                _settings.Appearance.FollowSystemColorMode = followSystem;
+                _settings.Appearance.DefaultLightThemeId = defaultLight;
+                _settings.Appearance.DefaultDarkThemeId = defaultDark;
+                ColorThemeService.DefaultLightThemeId = defaultLight;
+                ColorThemeService.DefaultDarkThemeId = defaultDark;
+                if (followSystem) ApplyEffectiveColorTheme();
+                else ApplyColorTheme(themeId, persistManualChoice: false);
+                SaveSettings();
+            },
+            AddThemeFromFile,
+            OpenThemeFolder,
+            _markdownStyle,
+            styleId =>
+            {
+                SetMarkdownStyle(styleId);
+                SaveSettings();
+            });
+        dialog.Open(this, pageIndex);
+    }
+
+    private void ShowTypographyStyles()
+    {
+        ShowThemeSettings(1);
     }
 
     private void ToggleCodeHighlight()
@@ -130,6 +171,8 @@ internal sealed partial class MainForm
         _outlineSplit.Panel1.BackColor = primaryBg;
         _outlineSplit.Panel2.BackColor = sidebarBg;
         _editorPanel.BackColor = primaryBg;
+        UpdateEditorAreaBackground(colors);
+        _documentTabBar.ApplyThemeColors(colors);
         if (_editorLoadingView is not null)
         {
             _editorLoadingView.BackColor = primaryBg;
@@ -205,6 +248,18 @@ internal sealed partial class MainForm
             Services.Settings.MenuBarStyle.System => false,
             _ => ColorThemeService.IsActiveThemeDark(),
         };
+    }
+
+    private void UpdateEditorAreaBackground(IReadOnlyDictionary<string, Color>? colors = null)
+    {
+        colors ??= ColorThemeService.GetActiveColors();
+        var primaryBg = colors.TryGetValue("bg-primary", out var primary)
+            ? primary
+            : SystemColors.Window;
+        var emptyBg = colors.TryGetValue("bg-secondary", out var secondary)
+            ? secondary
+            : primaryBg;
+        _editorAreaPanel.BackColor = _openDocuments.Count == 0 ? emptyBg : primaryBg;
     }
 
     private void AddThemeFromFile()
@@ -325,7 +380,7 @@ internal sealed partial class MainForm
                     | (percent == _zoomPercent
                         ? NativeMethods.MfChecked | NativeMethods.MfGrayed
                         : NativeMethods.MfUnchecked);
-                NativeMethods.AppendMenu(menu, flags, (nuint)(index + 1), $"{percent}%");
+                AppendStatusBarMenuItem(menu, flags, (nuint)(index + 1), $"{percent}%");
             }
 
             var selected = ShowStatusBarPopupMenu(menu, _zoomLabel);
@@ -399,6 +454,71 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
+    private bool UseTabBarMenu => _editorFullScreen
+        || _settings.Appearance.MenuBarStyle == Services.Settings.MenuBarStyle.TabBar;
+
+    private void ApplyMenuPresentation()
+    {
+        var showTabBarMenu = !_focusMode && UseTabBarMenu;
+        _documentTabBar.SetMenuTextOptions(
+            _settings.Appearance.ShowMenuKeyboardShortcuts,
+            _settings.Appearance.ShowMenuMnemonics,
+            _settings.General.UiLanguage);
+        _documentTabBar.SetFullScreenMenuVisible(showTabBarMenu);
+        if (!IsHandleCreated || IsDisposed)
+        {
+            return;
+        }
+
+        if (_focusMode || UseTabBarMenu)
+        {
+            _menuService.Detach();
+            MainMenuStrip = null;
+        }
+        else
+        {
+            _menuService.Attach(Handle);
+        }
+    }
+
+    private void ToggleEditorFullScreen()
+    {
+        if (!_editorFullScreen)
+        {
+            _boundsBeforeEditorFullScreen = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            _windowStateBeforeEditorFullScreen = WindowState;
+            _borderStyleBeforeEditorFullScreen = FormBorderStyle;
+
+            _editorFullScreen = true;
+            ApplyMenuPresentation();
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = FormBorderStyle.None;
+            Bounds = Screen.FromControl(this).Bounds;
+            FocusEditorAfterWindowModeChange();
+            return;
+        }
+
+        _editorFullScreen = false;
+        WindowState = FormWindowState.Normal;
+        FormBorderStyle = _borderStyleBeforeEditorFullScreen;
+        Bounds = _boundsBeforeEditorFullScreen;
+        ApplyMenuPresentation();
+        if (_windowStateBeforeEditorFullScreen == FormWindowState.Maximized)
+        {
+            WindowState = FormWindowState.Maximized;
+        }
+        FocusEditorAfterWindowModeChange();
+        _menuService.RefreshStates();
+    }
+
+    private void FocusEditorAfterWindowModeChange()
+    {
+        if (_webView is null || _webView.IsDisposed) return;
+        _webView.Focus();
+        if (IsHandleCreated)
+            BeginInvoke(() => { if (!_webView.IsDisposed) _webView.Focus(); });
+    }
+
     private void ToggleFocusMode()
     {
         if (!_focusMode)
@@ -409,10 +529,10 @@ internal sealed partial class MainForm
                 MergeOutlineSidebarImmediately();
             if (_sidebarVisibleBeforeFocus)
                 CollapseSidebar();
-            _menuService.Detach();
-            MainMenuStrip = null;
+            _documentTabBar.SetDisplaySuppressed(true);
             if (_statusStrip is not null) _statusStrip.Visible = false;
             _focusMode = true;
+            ApplyMenuPresentation();
             ApplyBlockHandleVisibility();
             SetStatus(Loc.Get("status.focusModeOn"));
             return;
@@ -420,11 +540,16 @@ internal sealed partial class MainForm
 
         _focusMode = false;
         ApplyBlockHandleVisibility();
+        ApplyMenuPresentation();
         if (!IsDisposed)
         {
-            _menuService.Attach(Handle);
             if (_statusStrip is not null) _statusStrip.Visible = true;
         }
+        _documentTabBar.SetDisplaySuppressed(false);
+        // With the tab-bar menu style, the tab bar also hosts the menu when
+        // there are no documents. A separate top menu must remain visible in
+        // that state, so do not restore the stale pre-focus Visible value.
+        _documentTabBar.Visible = _openDocuments.Count > 0 || UseTabBarMenu;
 
         if (_sidebarVisibleBeforeFocus)
         {

@@ -4,6 +4,14 @@ public static class CommandStateResolver
 {
     public static CommandState Resolve(AppCommand command, CommandContext context)
     {
+        // The editor host can remain initialized briefly after the last tab is
+        // closed. Do not let its stale selection/status re-enable editing
+        // commands when there is no document to edit.
+        if (!context.DocumentAvailable && IsDocumentEditingCommand(command))
+        {
+            return new(false);
+        }
+
         return command switch
         {
             AppCommand.Exit or AppCommand.ShowShortcuts or AppCommand.ShowPreferences
@@ -12,13 +20,17 @@ public static class CommandStateResolver
                 or AppCommand.CheckForUpdates
                 or AppCommand.OpenThemeFolder or AppCommand.AddTheme
                 or AppCommand.OpenFolder
-                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow
+                or AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow or AppCommand.InstallOptionalFonts
+                or AppCommand.ShowColorThemes
+                or AppCommand.ShowTypographyStyles
+                or AppCommand.ShowThemeSettings
                 or AppCommand.RecoverUnsavedFiles
                 or AppCommand.FollowSystemColorMode => new(true),
             AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
 
             AppCommand.ToggleSidebar => new(!context.FocusMode, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),
+            AppCommand.ToggleEditorFullScreen => new(true, context.EditorFullScreen),
             AppCommand.ToggleEditorFocusMode => new(
                 context.EditorReady && !context.SourceMode,
                 context.EditorFocusMode),
@@ -39,7 +51,8 @@ public static class CommandStateResolver
 
             AppCommand.SaveDocument or AppCommand.SaveDocumentAs =>
                 new(context.DocumentAvailable && context.EditorReady),
-            AppCommand.ExportWithLastSettings or AppCommand.ExportPdf or AppCommand.ExportHtml or AppCommand.Print =>
+            AppCommand.ExportWithLastSettings or AppCommand.ExportPdf or AppCommand.ExportHtml
+                or AppCommand.ExportImage or AppCommand.Print =>
                 new(context.DocumentAvailable && context.EditorReady),
             AppCommand.Undo => new(context.EditorReady && !context.ReadOnly && context.CanUndo),
             AppCommand.Redo => new(context.EditorReady && !context.ReadOnly && context.CanRedo),
@@ -79,9 +92,10 @@ public static class CommandStateResolver
             AppCommand.ToggleQuote => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable, context.QuoteActive),
             AppCommand.ToggleCodeBlock => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable, context.CodeBlockActive),
             AppCommand.DeclareCodeLanguage => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.CodeBlockActive),
-            AppCommand.CopyCodeBlock => new(
-                context.EditorReady && (context.CodeBlockActive || context.FrontMatterActive)
-                && !string.IsNullOrEmpty(context.CodeBlockText)),
+            // Keep this command enabled at all times. The context menu is only
+            // offered from code-like blocks, and the command itself safely
+            // copies an empty string when no block text is available.
+            AppCommand.CopyCodeBlock => new(true),
             AppCommand.ExitCode => new(
                 context.EditorReady && !context.ReadOnly && !context.SourceMode
                 && (context.CodeBlockActive || context.FrontMatterActive)),
@@ -91,7 +105,11 @@ public static class CommandStateResolver
             AppCommand.IncreaseListIndent or AppCommand.DecreaseListIndent => new(
                 context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable
                 && (context.BulletListActive || context.OrderedListActive || context.TaskListActive)),
-            AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertHorizontalRule =>
+            // Inline formulas are valid inline content in table cells. Only
+            // block-level insertion remains unavailable inside a table.
+            AppCommand.InsertMathInline =>
+                new(context.EditorReady && !context.ReadOnly && !context.SourceMode),
+            AppCommand.InsertMathBlock or AppCommand.InsertHorizontalRule =>
                 new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
             AppCommand.InsertTable => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
             AppCommand.InsertMermaid => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && !context.InTable),
@@ -120,14 +138,51 @@ public static class CommandStateResolver
             AppCommand.AlignTableCenter => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.InTable, context.TableAlign == "center"),
             AppCommand.AlignTableRight => new(context.EditorReady && !context.ReadOnly && !context.SourceMode && context.InTable, context.TableAlign == "right"),
 
-            AppCommand.InsertLineBefore or AppCommand.InsertLineAfter =>
+            AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+                or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph =>
                 new(context.EditorReady && !context.ReadOnly && !context.SourceMode),
 
             AppCommand.ZoomIn or AppCommand.ZoomOut or AppCommand.ZoomReset => new(context.EditorReady),
             AppCommand.RestartEditor => new(context.EditorReady),
 
-            AppCommand.NewDocument or AppCommand.NewPlainTextDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(context.EditorReady),
+            AppCommand.SwitchDocumentTab1 or AppCommand.SwitchDocumentTab2
+                or AppCommand.SwitchDocumentTab3 or AppCommand.SwitchDocumentTab4
+                or AppCommand.SwitchDocumentTab5 or AppCommand.SwitchDocumentTab6
+                or AppCommand.SwitchDocumentTab7 or AppCommand.SwitchDocumentTab8
+                or AppCommand.SwitchDocumentTab9 or AppCommand.CloseCurrentDocumentTab
+                or AppCommand.CloseOtherDocumentTabs or AppCommand.SwitchToNextDocumentTab
+                or AppCommand.LocateCurrentDocumentInWorkspace
+                => new(context.DocumentAvailable),
+
+            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(true),
             _ => new(context.EditorReady),
         };
     }
+
+    private static bool IsDocumentEditingCommand(AppCommand command) =>
+        command is >= AppCommand.Undo and <= AppCommand.Replace
+            or >= AppCommand.SetParagraph and <= AppCommand.DeleteTable
+            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight
+            or AppCommand.ToggleInlineCode or AppCommand.PromoteHeading or AppCommand.DemoteHeading
+            or AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+            or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph
+            or AppCommand.InsertMathInline or AppCommand.InsertMathBlock
+            or AppCommand.InsertMermaid or AppCommand.InsertFootnote
+            or AppCommand.CopyHtml or AppCommand.SelectAll or AppCommand.ToggleSourceMode
+            or AppCommand.ShowFrontMatter
+            or AppCommand.InsertAlertNote or AppCommand.InsertAlertTip
+            or AppCommand.InsertAlertImportant or AppCommand.InsertAlertWarning
+            or AppCommand.InsertAlertCaution
+            or AppCommand.ResetFootnoteLabel or AppCommand.GoToFootnoteReference
+            or AppCommand.ClearFootnoteReferences or AppCommand.DeleteFootnote
+            or AppCommand.ClearFormat or AppCommand.FormatPainter
+            or AppCommand.EditMath or AppCommand.ConvertMath or AppCommand.DeleteMath
+            or AppCommand.SetMathNumber or AppCommand.EditMermaid
+            or AppCommand.RerenderMermaid or AppCommand.DeleteMermaid
+            or AppCommand.RerenderAllMermaid or AppCommand.DeclareCodeLanguage
+            or AppCommand.ExitCode
+            or AppCommand.ChangeImage or AppCommand.SaveImageAs
+            or AppCommand.ResizeImage100 or AppCommand.ResizeImage50
+            or AppCommand.ResizeImage75 or AppCommand.ResizeImage90;
+
 }

@@ -50,7 +50,9 @@ internal sealed partial class MainForm
 
     private void CollectWindowState()
     {
-        var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        var bounds = _editorFullScreen
+            ? _boundsBeforeEditorFullScreen
+            : WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
         _settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         _settings.MainWindow = new WindowSettings
         {
@@ -59,7 +61,9 @@ internal sealed partial class MainForm
             Width = WindowPlacementCalculator.ToLogicalPixels(bounds.Width, _effectiveDpi),
             Height = WindowPlacementCalculator.ToLogicalPixels(bounds.Height, _effectiveDpi),
             Dpi = _effectiveDpi,
-            IsMaximized = WindowState == FormWindowState.Maximized,
+            IsMaximized = _editorFullScreen
+                ? _windowStateBeforeEditorFullScreen == FormWindowState.Maximized
+                : WindowState == FormWindowState.Maximized,
             WorkspaceWidth = WindowPlacementCalculator.ToLogicalPixels(
                 _sidebarExpandedWidth,
                 _effectiveDpi),
@@ -73,6 +77,17 @@ internal sealed partial class MainForm
         _settings.Workspace.LastFolder = _workspaceRoot;
         _settings.Workspace.LastFile = _document?.FilePath;
         _settings.Workspace.LastFileReadOnly = _document?.IsReadOnly == true;
+        _settings.Workspace.OpenDocuments = _openDocuments
+            .Where(document => document.FilePath is not null && File.Exists(document.FilePath))
+            .Select(document => new OpenDocumentSetting
+            {
+                Path = document.FilePath!,
+                ReadOnly = document.IsReadOnly,
+            })
+            .ToList();
+        _settings.Workspace.ActiveDocumentIndex = _document?.FilePath is null
+            ? -1
+            : _settings.Workspace.OpenDocuments.FindIndex(item => PathEquals(item.Path, _document.FilePath!));
         _settings.Workspace.RecentFolders = _settings.Workspace.RecentFolders
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)

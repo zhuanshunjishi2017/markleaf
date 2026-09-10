@@ -23,7 +23,7 @@ internal sealed class ShortcutDialog : Form
         _shortcutManager = shortcutManager;
 
         Text = Loc.Get("dialog.shortcutsTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -31,7 +31,7 @@ internal sealed class ShortcutDialog : Form
         ShowInTaskbar = false;
         KeyPreview = true;
         AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(this.ScaleForDpi(380), this.ScaleForDpi(480));
+        Size = new Size(this.ScaleForDpi(440), this.ScaleForDpi(480));
         MinimumSize = new Size(this.ScaleForDpi(340), this.ScaleForDpi(360));
 
         _grid = BuildGrid();

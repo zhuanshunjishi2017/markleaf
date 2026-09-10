@@ -23,6 +23,8 @@ public static class EditorProtocol
         "editorStatusChanged",
         "contextMenuRequested",
         "blockMenuRequested",
+        "codeBlockLanguageRequested",
+        "copyCodeBlockRequested",
         "mermaidEditRequested",
         "outlineChanged",
         "outlineSelectionChanged",
@@ -161,8 +163,11 @@ public static class EditorProtocol
         {
             "ready" or "documentLoaded" => IsMissingOrObject(payload),
             "dirtyChanged" => HasProperty(payload, "dirty", JsonValueKind.True, JsonValueKind.False),
-            "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String),
-            "selectionChanged" => HasIntegerProperty(payload, "from") && HasIntegerProperty(payload, "to"),
+            "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String)
+                && HasOptionalNonNegativeNumber(payload, "scrollTop"),
+            "selectionChanged" => HasIntegerProperty(payload, "from")
+                && HasIntegerProperty(payload, "to")
+                && HasOptionalBooleanProperty(payload, "sourceMode"),
             "commandStateChanged" => HasCommandStatePayload(payload),
             "editorStatusChanged" => HasEditorStatusPayload(payload),
             "contextMenuRequested" => HasNonNegativeNumber(payload, "clientX")
@@ -172,10 +177,14 @@ public static class EditorProtocol
                 && HasOptionalBooleanProperty(payload, "formatPainterArmed")
                 && HasOptionalBooleanProperty(payload, "readOnly")
                 && HasOptionalBooleanProperty(payload, "sourceMode")
-                && HasOptionalBooleanProperty(payload, "expandedSource"),
+                && HasOptionalBooleanProperty(payload, "expandedSource")
+                && HasOptionalBooleanProperty(payload, "outsideDocument"),
             "blockMenuRequested" => HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY")
                 && HasNonNegativeInteger(payload, "position"),
+            "codeBlockLanguageRequested" => HasNonNegativeInteger(payload, "position")
+                && HasProperty(payload, "language", JsonValueKind.String),
+            "copyCodeBlockRequested" => HasProperty(payload, "text", JsonValueKind.String),
             "mermaidEditRequested" => IsMissingOrObject(payload),
             "outlineChanged" => HasOutlinePayload(payload),
             "outlineSelectionChanged" => HasNullableNonNegativeInteger(payload, "position"),
@@ -190,7 +199,12 @@ public static class EditorProtocol
             "dropFiles" => HasBoundedCount(payload)
                 && HasNonNegativeNumber(payload, "clientX")
                 && HasNonNegativeNumber(payload, "clientY"),
-            "commandResult" => HasProperty(payload, "success", JsonValueKind.True, JsonValueKind.False),
+            "commandResult" => HasProperty(payload, "success", JsonValueKind.True, JsonValueKind.False)
+                && (!payload.TryGetProperty("outcome", out var outcome)
+                    || outcome.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+                && (!payload.TryGetProperty("error", out var error)
+                    || error.ValueKind == JsonValueKind.Null
+                    || error.ValueKind == JsonValueKind.String && (error.GetString()?.Length ?? 0) <= 256),
             "pasteImage" => IsMissingOrObject(payload),
             "error" => HasProperty(payload, "message", JsonValueKind.String),
             _ => payload.ValueKind == JsonValueKind.Object,
@@ -367,8 +381,26 @@ public static class EditorProtocol
         }
 
         var value = payload.GetProperty("url").GetString();
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            && uri.Scheme is "http" or "https" or "mailto";
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" or "mailto")
+        {
+            return true;
+        }
+
+        return value.StartsWith(".", StringComparison.Ordinal)
+            || value.StartsWith('\\')
+            || value.StartsWith('/')
+            || (value.Length >= 3
+                && char.IsLetter(value[0])
+                && value[1] == ':'
+                && value[2] is '\\' or '/')
+            || value.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+            || !value.Contains(':');
     }
 
     private static bool HasStringArray(JsonElement payload, string name)

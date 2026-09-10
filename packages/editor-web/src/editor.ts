@@ -1206,6 +1206,19 @@ function parseFootnoteDefinitionText(text: string): FootnoteDefinition | null {
   }
 }
 
+/// 文本宿主（VS Code 扩展）用于列出脚注标签，供“转到脚注”选择器使用。
+export function getFootnoteLabels(editor: Editor): string[] {
+  const labels = new Set<string>()
+  editor.state.doc.descendants(node => {
+    if (node.type.name === 'footnoteReference') labels.add(String(node.attrs.label))
+    if (node.isTextblock) {
+      const definition = parseFootnoteDefinitionText(node.textContent)
+      if (definition) labels.add(definition.label)
+    }
+  })
+  return [...labels]
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -1423,16 +1436,17 @@ const EditorFocusMode = Extension.create({
 })
 
 export function setEditorFocusMode(editor: Editor, enabled: boolean): void {
-  editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled))
+  // 纯展示用的 meta 事务不能让 StarterKit 追加尾部空段落。
+  editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled).setMeta('skipTrailingNode', true))
 }
 
 export function setBlockHighlight(editor: Editor, position: number | null): void {
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, { activeBlock: position } satisfies BlockHandleMeta).setMeta('skipTrailingNode', true))
 }
 
 export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
   blockHandleVisible = visible
-  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta))
+  editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta).setMeta('skipTrailingNode', true))
 }
 
 function decodeImageCaption(value: string | undefined): string | null {
@@ -2742,9 +2756,12 @@ function createExpandedSourceEditor(
     'keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy',
     'compositionstart', 'compositionupdate', 'compositionend',
   ]) {
+    if (eventName === 'contextmenu' && textDocumentHostEditors.has(editor)) continue
     code.addEventListener(eventName, stopEditorEvent)
   }
   code.addEventListener('contextmenu', (event) => {
+    // 文本宿主（VS Code）里保留浏览器默认菜单，只有原生宿主转发给 AppKit。
+    if (textDocumentHostEditors.has(editor)) return
     event.preventDefault()
     event.stopPropagation()
     window.dispatchEvent(new CustomEvent('markleaf-expanded-source-contextmenu', {
@@ -2821,7 +2838,8 @@ function createExpandedSourceEditor(
     composing = false
   })
   code.addEventListener('input', () => {
-    if (!editable) return
+    // 只读状态可能在浮层创建之后才切换（宿主切到阅读模式），必须按当前状态判断。
+    if (!editor.isEditable) return
     const current = editor.state.doc.nodeAt(position)
     if (!current || current.type.name !== kind) return
     const source = code.textContent ?? ''
@@ -2859,10 +2877,15 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   const availableWidth = Math.max(0, window.innerWidth - viewportPadding * 2)
   const width = Math.min(documentRect.width, availableWidth)
   overlay.style.width = `${width}px`
+  overlay.style.position = 'absolute'
   overlay.hidden = false
   const overlayWidth = overlay.offsetWidth || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
-  const top = anchorRect.bottom + gap
+  // 文本宿主把源码块固定在文档流里（滚动时跟着节点走）；
+  // 原生宿主用视口坐标的浮层，滚动时重新贴合节点。
+  const top = sourceEditorPlacementByEditor.get(editor) === 'below'
+    ? anchorRect.bottom + gap + window.scrollY
+    : anchorRect.bottom + gap
   overlay.style.left = `${left}px`
   overlay.style.top = `${top}px`
 }
@@ -3343,7 +3366,13 @@ export type EditorCreationOptions = {
   handlePaste?: (event: ClipboardEvent) => boolean
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
+  // 文本宿主把公式/图表源码放在节点下方；原生宿主沿用浮层跟随。
+  sourceEditorPlacement?: 'floating' | 'below'
 }
+
+/// 文本宿主（VS Code 扩展）创建的编辑器：右键菜单等交互按宿主差异分支。
+const textDocumentHostEditors = new WeakSet<Editor>()
+const sourceEditorPlacementByEditor = new WeakMap<Editor, 'floating' | 'below'>()
 
 export function createEditor(
   element: HTMLElement,
@@ -3384,6 +3413,8 @@ export function createEditor(
     },
   })
   normalizeTableCaptions(editor)
+  if (options.externalHistory) textDocumentHostEditors.add(editor)
+  if (options.sourceEditorPlacement) sourceEditorPlacementByEditor.set(editor, options.sourceEditorPlacement)
   if (hasListFormattingThatNeedsPreservation(content)) {
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
@@ -3395,27 +3426,29 @@ export function createEditor(
 // that boundary Marked parses `\[` and `\]` as escaped literal brackets in
 // the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
-  const separated = markdown.replace(
-    /(^[ \t]*(?:[-+*]|\d+[.)])[ \t]+[^\r\n]*\r?\n)(?=[ \t]*(?:\$\$|\\\[))/gm,
-    '$1\n',
-  )
-
   // A complete one-line display formula is also commonly indented by two
   // spaces under a list item (`  $$...$$`). Marked otherwise keeps it in the
   // list paragraph, where the dollar delimiters are treated as literal text.
   // Move that standalone formula to a block boundary, while leaving fenced
   // code untouched.
-  const lines = separated.split('\n')
+  const lines = markdown.split('\n')
+  // 列表行后面紧跟独立公式时要补空行；这一步必须在围栏状态里做，
+  // 否则代码围栏内的 `- item` + `$$` 也会被插入空行，破坏代码内容。
+  const needsGap = listLinesFollowedByDisplayMath(lines)
   const result: string[] = []
   let fence: string | null = null
   let indentedDisplayDelimiter: '$$' | '\\[' | null = null
-  for (const line of lines) {
+  const pushLine = (index: number, line: string) => {
+    result.push(line)
+    if (needsGap.has(index)) result.push('')
+  }
+  for (const [index, line] of lines.entries()) {
     const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
     if (fenceMatch) {
       const marker = fenceMatch[1]!
       if (!fence) fence = marker[0]!
       else if (marker[0] === fence) fence = null
-      result.push(line)
+      pushLine(index, line)
       continue
     }
 
@@ -3434,7 +3467,7 @@ function normalizeDisplayMathAfterList(markdown: string): string {
         result.push('')
         indentedDisplayDelimiter = null
       } else {
-        result.push(line)
+        pushLine(index, line)
       }
       continue
     }
@@ -3455,9 +3488,28 @@ function normalizeDisplayMathAfterList(markdown: string): string {
       result.push('')
       continue
     }
-    result.push(line)
+    pushLine(index, line)
   }
   return result.join('\n')
+}
+
+/// 找出“列表行 + 紧随其后的独立公式”这类行号；跳过代码围栏内部。
+function listLinesFollowedByDisplayMath(lines: string[]): Set<number> {
+  const indexes = new Set<number>()
+  let fence: string | null = null
+  lines.forEach((line, index) => {
+    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
+    if (fenceMatch) {
+      const marker = fenceMatch[1]!
+      if (!fence) fence = marker[0]!
+      else if (marker[0] === fence) fence = null
+      return
+    }
+    if (fence) return
+    if (!/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+\S/.test(line)) return
+    if (/^[ \t]*(?:\$\$|\\\[)/.test(lines[index + 1] ?? '')) indexes.add(index)
+  })
+  return indexes
 }
 
 export function replaceEditorDocument(
@@ -3695,10 +3747,19 @@ export function pasteClipboardContentWithResult(
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
   codeHighlightVisible = visible
-  editor.view.dispatch(editor.state.tr)
+  // Display-only transactions must not cause StarterKit to append content.
+  editor.view.dispatch(editor.state.tr.setMeta('skipTrailingNode', true))
+}
+
+let hostImageResolver: ((markdownPath: string) => string) | undefined
+
+/// 文本宿主（VS Code 扩展）用虚拟资源服务解析本地图片；原生宿主不设置，走 assets.local 兜底。
+export function setHostImageResolver(resolver?: (markdownPath: string) => string): void {
+  hostImageResolver = resolver
 }
 
 export function toVirtualImageUrl(markdownPath: string): string {
+  if (hostImageResolver) return hostImageResolver(markdownPath)
   // 远程图片（http/https）原样返回，由浏览器直接加载；仅本地路径走虚拟资源服务。
   if (/^(https?:|mailto:)/i.test(markdownPath)) {
     return markdownPath
@@ -4501,7 +4562,10 @@ export function replaceCurrentInEditor(
   const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
   const highlight = findHighlightKey.getState(editor.state)
   const selected = highlight?.current === undefined ? undefined : matches[highlight.current]
-  if (selected) editor.commands.insertContentAt(selected, replacement)
+  if (selected) {
+    // 替换内容是字面文本（可能包含 <b> 之类字符），不能按 HTML/Markdown 解析。
+    editor.view.dispatch(editor.state.tr.insertText(replacement, selected.from, selected.to))
+  }
   return findInEditor(editor, query, caseSensitive, wholeWord)
 }
 
@@ -4526,7 +4590,7 @@ export function clearFindHighlights(editor: Editor): void {
 }
 
 function setFindHighlights(editor: Editor, matches: TextMatch[], current: number): void {
-  editor.view.dispatch(editor.state.tr.setMeta(findHighlightKey, { matches, current }))
+  editor.view.dispatch(editor.state.tr.setMeta(findHighlightKey, { matches, current }).setMeta('skipTrailingNode', true))
 }
 
 function scrollCurrentMatchIntoView(editor: Editor): void {
@@ -4544,12 +4608,44 @@ function findEditorMatches(editor: Editor, query: string, caseSensitive: boolean
   const matches: Array<{ from: number; to: number }> = []
   editor.state.doc.descendants((node, position) => {
     if (!node.isTextblock) return
-    for (const match of node.textContent.matchAll(expression)) {
-      matches.push({ from: position + 1 + match.index, to: position + 1 + match.index + match[0].length })
+    // 文本偏移 ≠ 文档位置：行内原子（公式、脚注引用等）会让位置多走几步，
+    // 必须按文本节点逐段换算，否则替换会落在错误的范围上。
+    const runs = textBlockRuns(node, position)
+    const text = runs.map(run => run.text).join('')
+    for (const match of text.matchAll(expression)) {
+      matches.push({
+        from: docPosition(runs, match.index),
+        to: docPosition(runs, match.index + match[0].length),
+      })
     }
     return false
   })
   return matches
+}
+
+function textBlockRuns(
+  node: { descendants: (fn: (child: any, childPosition: number) => void) => void },
+  position: number,
+): Array<{ start: number; text: string }> {
+  const runs: Array<{ start: number; text: string }> = []
+  node.descendants((child, childPosition) => {
+    if (!child.isText || child.text == null) return
+    runs.push({ start: position + 1 + childPosition, text: child.text as string })
+  })
+  return runs
+}
+
+function docPosition(
+  runs: Array<{ start: number; text: string }>,
+  offset: number,
+): number {
+  let consumed = 0
+  for (const run of runs) {
+    if (offset <= consumed + run.text.length) return run.start + (offset - consumed)
+    consumed += run.text.length
+  }
+  const last = runs[runs.length - 1]
+  return last ? last.start + last.text.length : offset
 }
 
 export function getEditorCommandState(editor: Editor): EditorCommandState {
@@ -4588,9 +4684,11 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
         return table && typeof table.node.attrs.caption === 'string' && table.node.attrs.caption.length > 0 ? table.node.attrs.caption : null
       })()
 
+  // 文本宿主接管撤销/重做（StarterKit 的 undoRedo 被关闭），此时没有 undo 命令。
+  const canChain = editor.can() as { undo?: () => boolean; redo?: () => boolean }
   return {
-    canUndo: editor.can().undo(),
-    canRedo: editor.can().redo(),
+    canUndo: typeof canChain.undo === 'function' ? canChain.undo() : false,
+    canRedo: typeof canChain.redo === 'function' ? canChain.redo() : false,
     hasSelection: !editor.state.selection.empty,
     paragraph: editor.isActive('paragraph'),
     headingLevel,

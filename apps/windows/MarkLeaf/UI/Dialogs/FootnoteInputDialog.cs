@@ -22,7 +22,7 @@ internal sealed class FootnoteInputDialog : Form
     public FootnoteInputDialog()
     {
         Text = Loc.Get("dialog.footnoteTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;

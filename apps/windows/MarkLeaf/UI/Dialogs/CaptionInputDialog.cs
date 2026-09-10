@@ -13,7 +13,7 @@ internal sealed class CaptionInputDialog : Form
     public CaptionInputDialog(string initial)
     {
         Text = Loc.Get("dialog.captionTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

@@ -10,7 +10,6 @@ internal sealed class SidebarSearchBar : Control
     private Color _bgHover = Color.FromArgb(0xF0, 0xF0, 0xF0);
     private Color _textPrimary = Color.Black;
     private Color _themeLight = Color.FromArgb(0x66, 0x99, 0xFF);
-    private bool _focused;
     private bool _outlineMode;
     private Rectangle _clearIconBounds;
     private string _workspaceName = string.Empty;
@@ -41,8 +40,8 @@ internal sealed class SidebarSearchBar : Control
             Invalidate();
             SearchTextChanged?.Invoke(this, _textBox.Text);
         };
-        _textBox.Enter += (_, _) => { _focused = true; Invalidate(); };
-        _textBox.Leave += (_, _) => { _focused = false; Invalidate(); };
+        _textBox.GotFocus += (_, _) => Invalidate();
+        _textBox.LostFocus += (_, _) => Invalidate();
         Controls.Add(_textBox);
         UpdatePlaceholder();
     }
@@ -135,7 +134,7 @@ internal sealed class SidebarSearchBar : Control
         using (var brush = new SolidBrush(_bgHover))
             SidebarGdi.FillRoundedRect(e.Graphics, fieldBounds, radius, brush);
 
-        if (Enabled && _focused)
+        if (Enabled && _textBox.Focused)
         {
             using var pen = new Pen(_themeLight, Math.Max(1, this.ScaleForDpi(2)));
             SidebarGdi.DrawRoundedRect(e.Graphics, fieldBounds, radius, pen);

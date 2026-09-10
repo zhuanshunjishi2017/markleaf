@@ -14,7 +14,7 @@ internal sealed class AboutDialog : Form
     private static string AppVersion =>
         typeof(AboutDialog).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-        ?? AppVersionDisplay.Format("1.6.0", "0");
+        ?? AppVersionDisplay.Format("1.6.1", "0");
 
     private static string BuildDate
     {
@@ -35,7 +35,7 @@ internal sealed class AboutDialog : Form
     public AboutDialog()
     {
         Text = Loc.Get("dialog.aboutTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;

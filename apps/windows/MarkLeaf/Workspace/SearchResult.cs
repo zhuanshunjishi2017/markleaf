@@ -5,4 +5,6 @@ internal sealed record SearchResult(
     string FullPath,
     string FolderName,
     DateTime LastWriteTime,
-    string? Snippet);
+    string? Snippet,
+    bool IsContentMatch,
+    string Query);

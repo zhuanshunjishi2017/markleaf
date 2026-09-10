@@ -95,9 +95,12 @@ public sealed class JsonSettingsService : ISettingsService
         window.OutlineWidth = WindowPlacementCalculator.ToLogicalPixels(window.OutlineWidth, window.Dpi);
         settings.MainWindow = window;
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
+        NormalizeShortcuts(settings.Shortcut);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -105,9 +108,12 @@ public sealed class JsonSettingsService : ISettingsService
     private static AppSettings MigrateVersion2(AppSettings settings)
     {
         settings.Workspace ??= new WorkspaceSettings();
+        settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
+        NormalizeShortcuts(settings.Shortcut);
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         return settings;
     }
@@ -118,24 +124,72 @@ public sealed class JsonSettingsService : ISettingsService
         settings.Workspace ??= new WorkspaceSettings();
         settings.Workspace.RecentFolders ??= [];
         settings.Workspace.RecentFiles ??= [];
+        settings.Workspace.OpenDocuments ??= [];
         settings.File ??= new FileSettings();
         settings.Editor ??= new EditorSettings();
+        NormalizeEditor(settings.Editor);
         settings.Appearance ??= new AppearanceSettings();
         settings.Appearance.StatusBar ??= new StatusBarSettings();
         NormalizeStatusBar(settings.Appearance.StatusBar);
         settings.General ??= new GeneralSettings();
         settings.Image ??= new ImageSettings();
+        NormalizeImage(settings.Image);
         settings.Export ??= new ExportSettings();
         NormalizeExport(settings.Export);
         settings.Shortcut ??= new ShortcutSettings();
         settings.Shortcut.Overrides ??= [];
         settings.Shortcut.Cleared ??= [];
+        NormalizeShortcuts(settings.Shortcut);
         return settings;
+    }
+
+    private static void NormalizeShortcuts(ShortcutSettings shortcuts)
+    {
+        shortcuts.Overrides ??= [];
+        shortcuts.Cleared ??= [];
+        if (shortcuts.Overrides.TryGetValue(nameof(Commands.AppCommand.ToggleFocusMode), out var shortcut)
+            && string.Equals(shortcut, "F11", StringComparison.OrdinalIgnoreCase))
+        {
+            shortcuts.Overrides[nameof(Commands.AppCommand.ToggleFocusMode)] = "Shift+F11";
+        }
+    }
+
+    private static void NormalizeImage(ImageSettings image)
+    {
+        if (!Enum.IsDefined(image.ClipboardHandling))
+            image.ClipboardHandling = ClipboardImageHandling.SaveToDefaultDirectory;
+        if (!Enum.IsDefined(image.FileHandling))
+            image.FileHandling = FileImageHandling.ReferenceOriginal;
+    }
+
+    private static void NormalizeEditor(EditorSettings editor)
+    {
+        editor.MarkdownCodeFence = editor.MarkdownCodeFence is "backtick" or "tilde"
+            ? editor.MarkdownCodeFence
+            : "backtick";
+        editor.MarkdownEmphasisMarker = editor.MarkdownEmphasisMarker is "asterisk" or "underscore"
+            ? editor.MarkdownEmphasisMarker
+            : "asterisk";
+        editor.MarkdownBulletMarker = editor.MarkdownBulletMarker is "dash" or "asterisk" or "plus"
+            ? editor.MarkdownBulletMarker
+            : "dash";
+        if (editor.UnsafeEmphasisPreference is not ("literal" or "html"))
+            editor.UnsafeEmphasisPreference = null;
     }
 
     private static void NormalizeExport(ExportSettings export)
     {
         export.Format = NormalizeExportFormat(export.Format);
+        export.ImageMaxHeight = Math.Clamp(export.ImageMaxHeight, 1000, 30000);
+        export.ImageContentWidth = Math.Clamp(export.ImageContentWidth, 320, 4000);
+        export.ImageScale = float.IsFinite(export.ImageScale)
+            ? Math.Clamp(export.ImageScale, 1f, 4f)
+            : 2f;
+        export.ImageFormat = string.Equals(export.ImageFormat, "jpg", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(export.ImageFormat, "jpeg", StringComparison.OrdinalIgnoreCase)
+            ? "jpg"
+            : "png";
+        export.ImageJpegQuality = Math.Clamp(export.ImageJpegQuality, 1, 100);
         export.PaperSize = string.IsNullOrWhiteSpace(export.PaperSize) ? "A4" : export.PaperSize;
         export.HtmlHeader ??= "";
         export.HtmlFooter ??= "";
@@ -152,7 +206,9 @@ public sealed class JsonSettingsService : ISettingsService
     }
 
     private static string NormalizeExportFormat(string? format) =>
-        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html" : "pdf";
+        string.Equals(format, "html", StringComparison.OrdinalIgnoreCase) ? "html"
+        : string.Equals(format, "image", StringComparison.OrdinalIgnoreCase) ? "image"
+        : "pdf";
 
     private static string NormalizeHeaderFooterPreset(string? preset) =>
         preset is "title-left" or "page-center" or "page-right" or "page-total-center" or "custom"

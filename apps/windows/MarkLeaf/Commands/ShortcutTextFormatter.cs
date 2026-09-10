@@ -69,6 +69,7 @@ public static class ShortcutTextFormatter
         Keys.Oem4 => "[",
         Keys.Oem6 => "]",
         Keys.Space => "Space",
+        Keys.Tab => "Tab",
         _ => key.ToString(),
     };
 
@@ -116,6 +117,12 @@ public static class ShortcutTextFormatter
         if (string.Equals(token, "Space", StringComparison.OrdinalIgnoreCase))
         {
             key = Keys.Space;
+            return true;
+        }
+
+        if (string.Equals(token, "Tab", StringComparison.OrdinalIgnoreCase))
+        {
+            key = Keys.Tab;
             return true;
         }
 

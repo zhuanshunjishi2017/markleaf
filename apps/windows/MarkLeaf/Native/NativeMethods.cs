@@ -4,6 +4,8 @@ namespace MarkLeaf.Native;
 
 internal static class NativeMethods
 {
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int AddFontResourceEx(string fileName, uint flags, nint reserved);
     internal const uint ShgfiIcon = 0x000000100;
     internal const uint ShgfiSmallIcon = 0x000000001;
     internal const uint ShgfiLargeIcon = 0x000000000;
@@ -21,6 +23,10 @@ internal static class NativeMethods
     internal const uint TpmRightButton = 0x0002;
     internal const uint TpmReturnCommand = 0x0100;
     internal const uint WmNull = 0x0000;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool EndMenu();
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint CreateMenu();

@@ -189,9 +189,9 @@ internal sealed class OutlineTreeView : Control
         var previousSecondary = _secondaryFont;
         var previousSelected = _selectedFont;
         var previousArrowFont = _arrowFont;
-        _primaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _secondaryFont = new Font("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
-        _selectedFont = new Font("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
+        _primaryFont = new Font("Microsoft YaHei", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
+        _secondaryFont = new Font("Microsoft YaHei", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
+        _selectedFont = new Font("Microsoft YaHei", 9.5F, FontStyle.Bold, GraphicsUnit.Point);
         _arrowFont = new Font(SystemIconProvider.IconFontName, 8F, FontStyle.Regular, GraphicsUnit.Point);
         _primaryRowHeight = (int)Math.Ceiling(_primaryFont.GetHeight(dpi) * 1.75F);
         _secondaryRowHeight = (int)Math.Ceiling(_secondaryFont.GetHeight(dpi) * 1.75F);
@@ -237,7 +237,7 @@ internal sealed class OutlineTreeView : Control
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - this.ScaleForDpi(4) - rightPadding), bounds.Height);
-            var indent = this.ScaleForDpi(18) * node.Depth;
+            var indent = this.ScaleForDpi(9) * node.Depth;
             var expanderBounds = new Rectangle(this.ScaleForDpi(8) + indent, bounds.Top, this.ScaleForDpi(16), bounds.Height);
             if (node.Children.Count > 0)
             {
@@ -281,7 +281,7 @@ internal sealed class OutlineTreeView : Control
         }
 
         var (node, _) = row.Value;
-        var expanderRight = this.ScaleForDpi(24) + this.ScaleForDpi(18) * node.Depth;
+        var expanderRight = this.ScaleForDpi(24) + this.ScaleForDpi(9) * node.Depth;
         if (eventArgs.X <= expanderRight && node.Children.Count > 0)
         {
             node.Expanded = !node.Expanded;

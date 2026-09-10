@@ -38,7 +38,7 @@ internal sealed class SearchResultsView : Control
         ConfigureTypography(DeviceDpi);
     }
 
-    public event EventHandler<string>? ResultActivated;
+    public event EventHandler<SearchResult>? ResultActivated;
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -127,7 +127,9 @@ internal sealed class SearchResultsView : Control
             }
 
             var isHovered = string.Equals(result.FullPath, _hoveredPath, StringComparison.OrdinalIgnoreCase);
-            var rightPadding = ContentRightPadding(this.ScaleForDpi(4));
+            var rightPadding = _scrollBar.Visible
+                ? ContentRightPadding(this.ScaleForDpi(4))
+                : _scrollBar.Width;
             var bgBounds = new Rectangle(
                 bounds.X + this.ScaleForDpi(4), bounds.Y,
                 Math.Max(0, bounds.Width - this.ScaleForDpi(4) - rightPadding), bounds.Height);
@@ -153,7 +155,7 @@ internal sealed class SearchResultsView : Control
 
         if (eventArgs.Button == MouseButtons.Left)
         {
-            ResultActivated?.Invoke(this, row.Value.Result.FullPath);
+            ResultActivated?.Invoke(this, row.Value.Result);
         }
     }
 
@@ -238,7 +240,7 @@ internal sealed class SearchResultsView : Control
             Math.Max(0, metadataBounds.Width - modifiedWidth - gap - iconAdvance),
             metadataBounds.Height);
         var modifiedBounds = new Rectangle(
-            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth - this.ScaleForDpi(4)),
+            Math.Max(metadataBounds.Left, metadataBounds.Right - modifiedWidth - this.ScaleForDpi(9)),
             metadataBounds.Top,
             Math.Min(modifiedWidth, metadataBounds.Width),
             metadataBounds.Height);

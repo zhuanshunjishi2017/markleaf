@@ -159,4 +159,14 @@ internal sealed partial class MainForm
         _outlineTree.SetItems(_currentOutline);
         _outlineTree.SelectedPosition = _activeOutlinePosition;
     }
+
+    private void ClearDocumentOutline()
+    {
+        _currentOutline = [];
+        _activeOutlinePosition = null;
+        _pendingOutlinePosition = null;
+        _outlineSearchActive = false;
+        _outlineTree.SelectedPosition = null;
+        _outlineTree.SetItems([]);
+    }
 }

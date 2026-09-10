@@ -13,6 +13,7 @@ internal sealed partial class MainForm
     private SearchResultsView _searchResultsView = default!;
     private Panel _searchResultsHost = default!;
     private CancellationTokenSource? _searchCancellation;
+    private string? _pendingWorkspaceSearchQuery;
 
     private LiveSplitContainer CreateSidebarSplit(int sidebarWidth, int outlineWidth)
     {
@@ -50,7 +51,20 @@ internal sealed partial class MainForm
             Panel2MinSize = this.ScaleForDpi(160),
         };
         _detachedOutlineMinimumWidth = split.Panel2MinSize;
-        split.Panel1.Controls.Add(_editorPanel);
+        _editorAreaPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = ColorThemeService.GetActiveColors().TryGetValue("bg-secondary", out var secondary)
+                ? secondary
+                : _editorPanel.BackColor,
+            Padding = Padding.Empty,
+            AllowDrop = true,
+        };
+        _editorAreaPanel.DragEnter += OnEmptyEditorAreaDragEnter;
+        _editorAreaPanel.DragDrop += OnEmptyEditorAreaDragDrop;
+        _editorAreaPanel.Controls.Add(_editorPanel);
+        _editorAreaPanel.Controls.Add(_documentTabBar);
+        split.Panel1.Controls.Add(_editorAreaPanel);
         split.Panel2.Controls.Add(CreateDetachedOutlinePanel());
         split.Panel2.Resize += (_, _) =>
         {
@@ -353,9 +367,55 @@ internal sealed partial class MainForm
         return selected;
     }
 
+    private bool AppendStatusBarMenuItem(nint menu, uint flags, nuint command, string text)
+    {
+        var formattedText = MenuTextFormatter.Format(
+            text,
+            _settings.Appearance.ShowMenuKeyboardShortcuts,
+            _settings.Appearance.ShowMenuMnemonics,
+            _settings.General.UiLanguage);
+        return NativeMethods.AppendMenu(menu, flags, command, formattedText);
+    }
+
+    private void ShowExitFullScreenMenu(Point screenPoint)
+    {
+        var menu = NativeMethods.CreatePopupMenu();
+        if (menu == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AppendStatusBarMenuItem(
+                menu,
+                NativeMethods.MfString,
+                1,
+                Loc.Get("menu.view.exitEditorFullScreen"));
+            NativeMethods.SetForegroundWindow(Handle);
+            var selected = NativeMethods.TrackPopupMenuEx(
+                menu,
+                NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
+                screenPoint.X,
+                screenPoint.Y,
+                Handle,
+                0);
+            NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
+            if (selected == 1)
+            {
+                ToggleEditorFullScreen();
+            }
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+        }
+    }
+
     private void ApplyStatusBarItemVisibility()
     {
         var statusBar = _settings.Appearance.StatusBar;
+        var hasDocument = _openDocuments.Count > 0;
         _viewToggleButton.Visible = statusBar.SidebarToggleVisible;
         _statusLabel.Visible = true;
         if (statusBar.CommandDisplayMode == StatusBarCommandDisplayMode.Hidden)
@@ -373,13 +433,13 @@ internal sealed partial class MainForm
         {
             _statusMessageTimer.Stop();
         }
-        _characterCountButton.Visible = statusBar.WordCountVisible;
-        _blockTypeLabel.Visible = statusBar.BlockTypeVisible;
-        _positionLabel.Visible = statusBar.PositionVisible;
-        _encodingLabel.Visible = statusBar.EncodingVisible;
-        _newLineLabel.Visible = statusBar.NewLineVisible;
-        _modeButton.Visible = statusBar.ModeToggleVisible;
-        _zoomLabel.Visible = statusBar.ZoomVisible;
+        _characterCountButton.Visible = hasDocument && statusBar.WordCountVisible;
+        _blockTypeLabel.Visible = hasDocument && statusBar.BlockTypeVisible;
+        _positionLabel.Visible = hasDocument && statusBar.PositionVisible;
+        _encodingLabel.Visible = hasDocument && statusBar.EncodingVisible;
+        _newLineLabel.Visible = hasDocument && statusBar.NewLineVisible;
+        _modeButton.Visible = hasDocument && statusBar.ModeToggleVisible;
+        _zoomLabel.Visible = hasDocument && statusBar.ZoomVisible;
     }
 
     private void ApplySidebarAutoHideScrollbar()
@@ -400,13 +460,26 @@ internal sealed partial class MainForm
                 NewDocumentKind.Markdown);
     }
 
-    private async void OnSearchResultActivated(object? sender, string path)
+    private async void OnSearchResultActivated(object? sender, SearchResult result)
     {
+        var wasCurrentDocument = PathEquals(_document?.FilePath, result.FullPath);
         _sidebarSearchBar.ClearSearch();
         _searchCancellation?.Cancel();
         _searchResultsHost.Visible = false;
-        await ActivateWorkspaceDocumentAsync(path);
-        await RevealPathInTreeAsync(path);
+        _pendingWorkspaceSearchQuery = result.IsContentMatch && !wasCurrentDocument
+            ? result.Query
+            : null;
+        await ActivateWorkspaceDocumentAsync(result.FullPath);
+        if (!PathEquals(_document?.FilePath, result.FullPath))
+        {
+            _pendingWorkspaceSearchQuery = null;
+            return;
+        }
+        await RevealPathInTreeAsync(result.FullPath);
+        if (result.IsContentMatch && wasCurrentDocument)
+        {
+            OpenFindReplaceDialog(replace: false, result.Query);
+        }
     }
 
     private async void OnSidebarSearchTextChanged(object? sender, string text)
@@ -498,7 +571,8 @@ internal sealed partial class MainForm
         var wasCollapsed = _sidebarSplit.Panel1Collapsed;
         var startVisibleWidth = wasCollapsed ? 0 : _sidebarSplit.SplitterDistance;
         var editorWidth = _sidebarSplit.Panel2.ClientSize.Width;
-        _sidebarAnimationPreservesEditorWidth = WindowState == FormWindowState.Normal;
+        _sidebarAnimationPreservesEditorWidth = WindowState == FormWindowState.Normal
+            && !_editorFullScreen;
         if (_sidebarAnimationPreservesEditorWidth)
         {
             _sidebarAnimationEditorBounds = _editorPanel.Bounds;
@@ -573,7 +647,7 @@ internal sealed partial class MainForm
 
     private Rectangle CalculateSidebarAnimationTargetBounds(Rectangle startBounds, int sidebarWidthDelta)
     {
-        if (WindowState != FormWindowState.Normal)
+        if (WindowState != FormWindowState.Normal || _editorFullScreen)
         {
             return startBounds;
         }
@@ -695,7 +769,7 @@ internal sealed partial class MainForm
 
     private void ResizeWindowForSidebarExtent(int widthDelta)
     {
-        if (widthDelta == 0 || WindowState != FormWindowState.Normal)
+        if (widthDelta == 0 || WindowState != FormWindowState.Normal || _editorFullScreen)
         {
             return;
         }
@@ -806,7 +880,7 @@ internal sealed partial class MainForm
             _outlineSplit.Dock = DockStyle.Fill;
             _detachedOutlinePanel.Dock = DockStyle.Fill;
             _detachedOutlinePanel.Location = Point.Empty;
-            if (WindowState == FormWindowState.Normal && visibleWidth > 0)
+            if (WindowState == FormWindowState.Normal && !_editorFullScreen && visibleWidth > 0)
             {
                 ResizeWindowForSidebarExtent(-(visibleWidth + _outlineSplit.SplitterWidth));
             }
@@ -830,7 +904,8 @@ internal sealed partial class MainForm
                     - _outlineSplit.SplitterWidth);
         var targetWidth = detached ? _detachedOutlineWidth : 0;
         var editorWidth = _outlineSplit.Panel1.ClientSize.Width;
-        _outlineAnimationUsesWindowBounds = WindowState == FormWindowState.Normal;
+        _outlineAnimationUsesWindowBounds = WindowState == FormWindowState.Normal
+            && !_editorFullScreen;
 
         _detachedOutlinePanel.Dock = DockStyle.None;
         if (_outlineAnimationUsesWindowBounds)
@@ -969,7 +1044,7 @@ internal sealed partial class MainForm
         Rectangle startBounds,
         int outlineWidthDelta)
     {
-        if (WindowState != FormWindowState.Normal)
+        if (WindowState != FormWindowState.Normal || _editorFullScreen)
         {
             return startBounds;
         }

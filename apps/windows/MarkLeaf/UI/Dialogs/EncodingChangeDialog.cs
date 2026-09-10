@@ -18,7 +18,7 @@ internal sealed class EncodingChangeDialog : Form
         bool hasUnsavedChanges)
     {
         Text = Loc.Get("encoding.warningTitle");
-        BackColor = SystemColors.ControlLightLight;
+        BackColor = DialogColors.Secondary;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

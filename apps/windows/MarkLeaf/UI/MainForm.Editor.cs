@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Drawing;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
 using MarkLeaf.Services;
@@ -25,11 +26,19 @@ internal sealed partial class MainForm
             AllowExternalDrop = true,
         };
         _webView = webView;
+        webView.Enter += (_, _) =>
+        {
+            _documentTabBar.ClearKeyboardMenuMode();
+        };
+        webView.MouseDown += (_, eventArgs) =>
+        {
+            _documentTabBar.ClearKeyboardMenuMode();
+        };
         var loadingView = new EditorLoadingView { Visible = false };
         _editorLoadingView = loadingView;
         _editorPanel.Controls.Add(webView);
         _editorPanel.Controls.Add(loadingView);
-        _editorPanel.Visible = false;
+        _editorPanel.Visible = _document is not null;
         _editorHost = new EditorHostController(
             webView,
             loadingView,
@@ -42,11 +51,13 @@ internal sealed partial class MainForm
         {
             // 必须先于 loadDocument 应用样式，确保文档渲染时排版即已就绪。
             _editorHost?.SendFindBarLocalization();
+            _editorHost?.ExecuteCommand("setLanguage", GetFrontendLanguage());
             _editorHost?.ApplyStyles(StyleService.BaseCss, StyleService.Styles, _markdownStyle);
             var e = _settings.Editor;
-            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing);
+            _editorHost?.ApplyCssVariables(e.VisualLineHeight, e.VisualFontSize, e.VisualMaxContentWidth, e.SourceFontSize, e.SourceFontFamily, e.SourceCjkFontFamily, e.CjkLanguageTag.ToBcp47(), e.VisualCjkAutoSpacing, e.VisualIgnoreMaxContentWidth);
             _editorHost?.ApplySourceSettings(e.SourceIndentWidth);
             _editorHost?.ApplyAutoConvertUnsafeEmphasis(e.AutoConvertUnsafeEmphasis);
+            _editorHost?.ApplyMarkdownEditingSettings(e);
             ApplyCodeHighlightVisibility();
             ApplyBlockHandleVisibility();
             SetZoomPercent(_settings.Appearance.RestoreZoomOnOpen ? _zoomPercent : 100);
@@ -55,13 +66,28 @@ internal sealed partial class MainForm
             ApplySidebarColors();
         };
         _editorHost.Ready += (_, _) => BeginEditorSmokeIfRequested();
-        _editorHost.Ready += (_, _) => LoadInitialDocumentIfNeeded();
+        _editorHost.Ready += async (_, _) => await LoadInitialDocumentIfNeededAsync();
         _editorHost.Ready += async (_, _) => await BeginDocumentSmokeIfRequestedAsync();
         _editorHost.Ready += (_, _) => HandleSmokeCrashExit();
         _editorHost.DocumentLoaded += (_, _) => ContinueEditorSmokeAfterLoad();
         _editorHost.DocumentLoaded += (_, _) => BeginEditorCommandSmokeIfRequested();
         _editorHost.DocumentLoaded += async (_, _) => await ContinueDocumentSmokeAfterLoadAsync();
-        _editorHost.DocumentLoaded += (_, _) => SetMarkdownStyle(_markdownStyle);
+        _editorHost.DocumentLoaded += (_, message) =>
+        {
+            if (_pendingEditorRevealDocumentId is { } pendingId
+                && Guid.TryParse(message.DocumentId, out var loadedId)
+                && loadedId == pendingId)
+            {
+                _pendingEditorRevealDocumentId = null;
+                _editorPanel.Visible = true;
+            }
+            SetMarkdownStyle(_markdownStyle);
+            if (_pendingWorkspaceSearchQuery is { } query)
+            {
+                _pendingWorkspaceSearchQuery = null;
+                OpenFindReplaceDialog(replace: false, query);
+            }
+        };
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorSmoke(message);
         _editorHost.SnapshotReceived += (_, message) => CompleteEditorCommandSmoke(message);
         _editorHost.DirtyChanged += OnEditorDirtyChanged;
@@ -70,6 +96,8 @@ internal sealed partial class MainForm
         _editorHost.EditorStatusChanged += OnEditorStatusChanged;
         _editorHost.ContextMenuRequested += OnEditorContextMenuRequested;
         _editorHost.BlockMenuRequested += OnEditorBlockMenuRequested;
+        _editorHost.CodeBlockLanguageRequested += OnCodeBlockLanguageRequested;
+        _editorHost.CopyCodeBlockRequested += OnCopyCodeBlockRequested;
         _editorHost.MermaidEditRequested += OnMermaidEditRequested;
         _editorHost.OutlineChanged += OnEditorOutlineChanged;
         _editorHost.OutlineSelectionChanged += OnEditorOutlineSelectionChanged;
@@ -97,7 +125,7 @@ internal sealed partial class MainForm
     {
         if (_editorPanel is { IsDisposed: false })
         {
-            _editorPanel.Visible = true;
+            _editorPanel.Visible = _document is not null;
         }
     }
 
@@ -255,22 +283,17 @@ internal sealed partial class MainForm
         _editorHost?.LoadDocument("# 阶段 3 通信检查\n\n初始内容。\n");
     }
 
-    private void LoadInitialDocumentIfNeeded()
+    private async Task LoadInitialDocumentIfNeededAsync()
     {
         if (_editorSmokeStarted
             || !string.IsNullOrWhiteSpace(_options.DocumentSmokeInputPath)
-            || _initialDocumentOpened
-            || _editorHost?.IsDocumentLoaded != false)
+            || _initialDocumentOpened)
         {
             return;
         }
 
-        _document ??= _documentFileService.CreateNew(DefaultNewLine);
-        if (!string.IsNullOrWhiteSpace(_options.EditorCommandSmoke))
-        {
-            _document.Markdown = "段落命令";
-        }
-        LoadDocumentIntoEditor(_document);
+        // 编辑器就绪只代表 WebView 可用，不应隐式创建文档；保持空标签栏状态。
+        await Task.CompletedTask;
     }
 
     private void BeginEditorCommandSmokeIfRequested()
@@ -363,4 +386,5 @@ internal sealed partial class MainForm
         _closeApproved = true;
         BeginInvoke(Close);
     }
+
 }

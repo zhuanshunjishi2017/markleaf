@@ -67,7 +67,8 @@ public sealed class ShortcutManager
             or >= Keys.A and <= Keys.Z
             or >= Keys.F1 and <= Keys.F24
             or Keys.OemPeriod or Keys.Oemcomma or Keys.OemMinus or Keys.Oemplus
-            or Keys.Oemtilde or Keys.Oem5 or Keys.Oem2 or Keys.Oem4 or Keys.Oem6 or Keys.Space;
+            or Keys.Oemtilde or Keys.Oem5 or Keys.Oem2 or Keys.Oem4 or Keys.Oem6
+            or Keys.Space or Keys.Tab;
         if (!hasCommandModifier && !isFunctionKey || !representable)
         {
             return new ShortcutConflict(ShortcutConflictKind.Invalid, default);

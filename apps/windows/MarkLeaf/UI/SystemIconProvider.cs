@@ -36,6 +36,8 @@ internal static class SystemIconProvider
     public static string NewFileIcon => IsWindows11 ? "\uECC8" : "\uE710";
     public static string MergeIcon => IsWindows11 ? "\uE8A0" : "\uE8AB";
     public static string DetachIcon => IsWindows11 ? "\uE89F" : "\uE89F";
+    public const string FullScreenMenuIcon = "\uE700";
+    public const string NewTabIcon = "\uE710";
 
     public static string PreferencesFileIcon => IsWindows11 ? "" : "\uE8A5";
     public static string PreferencesAppearanceIcon => IsWindows11 ? "" : "\uE771";
@@ -44,6 +46,8 @@ internal static class SystemIconProvider
     public static string PreferencesGeneralIcon => IsWindows11 ? "" : "\uE713";
     public static string PdfIcon => IsWindows11 ? "\uEA90" : "\uEA90";
     public static string HtmlIcon => IsWindows11 ? "\uE943" : "\uE943";
+    public static string ImageIcon => IsWindows11 ? "\uE91B" : "\uE91B";
+    public static string OptionalFontWarningIcon => IsWindows11 ? "\uF736" : "\uE7BA";
 
     private static bool DetectWindows11()
     {

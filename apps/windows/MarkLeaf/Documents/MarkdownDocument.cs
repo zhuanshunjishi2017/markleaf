@@ -25,6 +25,18 @@ public sealed class MarkdownDocument
 
     public bool IsReadOnly { get; set; }
 
+    // Visual and source editors use different position coordinate systems.
+    public int? VisualSelectionFrom { get; set; }
+
+    public int? VisualSelectionTo { get; set; }
+
+    public int? SourceSelectionFrom { get; set; }
+
+    public int? SourceSelectionTo { get; set; }
+
+    // Scroll offset of the document's active editor view, restored when the tab is activated again.
+    public double ScrollTop { get; set; }
+
     public long Revision { get; set; }
 
     public DateTimeOffset? LastKnownWriteTime { get; set; }

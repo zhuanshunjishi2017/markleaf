@@ -47,8 +47,13 @@ internal sealed record EditorContextMenuRequest(
     bool FormatPainterArmed,
     bool ReadOnly,
     bool SourceMode = false,
-    bool ExpandedSource = false);
+    bool ExpandedSource = false,
+    bool OutsideDocument = false);
 
 internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);
+
+internal sealed record EditorCodeBlockLanguageRequest(int Position, string Language);
+
+internal sealed record EditorCommandResult(bool Success, string? Outcome = null, string? Error = null);
 
 internal sealed record UnsafeEmphasisRequest(string RequestId, string Kind);

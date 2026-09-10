@@ -18,11 +18,11 @@ internal sealed partial class MainForm
         };
         if (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
-            await OpenWorkspaceAsync(dialog.SelectedPath);
+            await OpenWorkspaceAsync(dialog.SelectedPath, revealSidebar: true);
         }
     }
 
-    private async Task OpenWorkspaceAsync(string path)
+    private async Task OpenWorkspaceAsync(string path, bool revealSidebar = false)
     {
         var fullPath = Path.GetFullPath(path);
         if (!Directory.Exists(fullPath))
@@ -31,10 +31,15 @@ internal sealed partial class MainForm
             return;
         }
 
+        var hadNoWorkspace = _workspaceRoot is null;
+        var sidebarWasCollapsed = _sidebarAnimationTargetCollapsed ?? _sidebarSplit.Panel1Collapsed;
+
         _workspaceLoadCancellation?.Cancel();
         _workspaceLoadCancellation?.Dispose();
         _workspaceLoadCancellation = new CancellationTokenSource();
         _workspaceRoot = fullPath;
+        _documentTabBar.SetWorkspaceRoot(fullPath);
+        _workspaceService.ResetPreviewCache();
         AddRecentWorkspace(fullPath);
         UpdateSidebarSearchEnabled();
         _openFolderPrompt.Visible = false;
@@ -53,6 +58,11 @@ internal sealed partial class MainForm
         }
         _workspaceTree.Expand(fullPath);
         TryStartWatchingWorkspace(fullPath);
+        if (revealSidebar && hadNoWorkspace && sidebarWasCollapsed)
+        {
+            ExpandSidebar();
+            ShowSidebarView(outline: false);
+        }
         SetStatus(Loc.Format("status.workspaceOpened", Path.GetFileName(fullPath)));
         _menuService.RefreshStates();
     }
@@ -63,7 +73,9 @@ internal sealed partial class MainForm
         _workspaceLoadCancellation?.Dispose();
         _workspaceLoadCancellation = null;
         StopWatchingWorkspace();
+        _workspaceService.ResetPreviewCache();
         _workspaceRoot = null;
+        _documentTabBar.SetWorkspaceRoot(null);
         _settings.Workspace.LastFolder = null;
         _sidebarSearchBar.WorkspaceName = string.Empty;
         _sidebarSearchBar.ClearSearch();
@@ -150,11 +162,6 @@ internal sealed partial class MainForm
         if (string.IsNullOrWhiteSpace(_workspaceRoot)
             || _documentOperationInProgress
             || !Directory.Exists(directory))
-        {
-            return;
-        }
-
-        if (!await ConfirmDiscardOrSaveAsync())
         {
             return;
         }

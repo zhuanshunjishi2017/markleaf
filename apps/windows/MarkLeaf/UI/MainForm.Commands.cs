@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
@@ -16,9 +17,63 @@ internal sealed partial class MainForm
 {
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        var keyCode = keyData & Keys.KeyCode;
+        if ((keyData & (Keys.Control | Keys.Alt | Keys.Shift)) == Keys.None
+            && keyCode is Keys.Left or Keys.Right or Keys.Enter or Keys.Escape
+            && _documentTabBar.HandleKeyboardMenuKey(keyCode))
+        {
+            return true;
+        }
+
+        if (_editorCommandStatus.ExpandedSource
+            && (keyData & Keys.Control) != Keys.None
+            && (keyData & Keys.Alt) == Keys.None
+            && (keyData & Keys.KeyCode) is Keys.C or Keys.V or Keys.X)
+        {
+            if ((keyData & Keys.KeyCode) == Keys.C)
+            {
+                _editorHost?.ExecuteExpandedSourceCommand("copy");
+            }
+            else if ((keyData & Keys.KeyCode) == Keys.V)
+            {
+                try
+                {
+                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
+                    {
+                        _editorHost?.ExecuteExpandedSourceCommand(
+                            "paste", Clipboard.GetText(TextDataFormat.UnicodeText));
+                    }
+                }
+                catch (ExternalException)
+                {
+                    // 剪贴板暂时被其他进程占用时保持无操作。
+                }
+            }
+            else if (_document?.IsReadOnly != true)
+            {
+                _editorHost?.ExecuteExpandedSourceCommand("cut");
+            }
+            return true;
+        }
+
+        if (_editorCommandStatus.ExpandedSource
+            && (keyData & Keys.KeyCode) == Keys.A
+            && (keyData & Keys.Control) != Keys.None
+            && (keyData & Keys.Alt) == Keys.None)
+        {
+            _editorHost?.ExecuteExpandedSourceCommand("selectAll");
+            return true;
+        }
+
         if (_focusMode && keyData == Keys.Escape)
         {
             ToggleFocusMode();
+            return true;
+        }
+
+        if (_editorFullScreen && keyData == Keys.Escape)
+        {
+            ToggleEditorFullScreen();
             return true;
         }
 
@@ -69,6 +124,34 @@ internal sealed partial class MainForm
             return new CommandState(_workspaceRoot is not null);
         }
 
+        if (command is >= AppCommand.SwitchDocumentTab1 and <= AppCommand.SwitchDocumentTab9)
+        {
+            var index = (int)command - (int)AppCommand.SwitchDocumentTab1;
+            return new CommandState(index < _openDocuments.Count, index == _activeDocumentIndex);
+        }
+
+        if (command == AppCommand.CloseCurrentDocumentTab)
+        {
+            return new CommandState(_activeDocumentIndex >= 0);
+        }
+
+        if (command == AppCommand.CloseOtherDocumentTabs)
+        {
+            return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
+        }
+
+        if (command == AppCommand.SwitchToNextDocumentTab)
+        {
+            return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
+        }
+
+        if (command == AppCommand.LocateCurrentDocumentInWorkspace)
+        {
+            return new CommandState(
+                _activeDocumentIndex >= 0
+                && CanLocateDocumentInWorkspace(_openDocuments[_activeDocumentIndex]));
+        }
+
         if (command is AppCommand.NewWindow or AppCommand.OpenDocumentInNewWindow)
         {
             return new CommandState(true);
@@ -76,7 +159,8 @@ internal sealed partial class MainForm
 
         if (command is AppCommand.Paste or AppCommand.PastePlainText)
         {
-            return new CommandState(_editorHost?.IsDocumentLoaded == true
+            return new CommandState(_document is not null
+                && _editorHost?.IsDocumentLoaded == true
                 && _document?.IsReadOnly != true
                 && HasClipboardContent());
         }
@@ -116,8 +200,9 @@ internal sealed partial class MainForm
              ImageSelected: _editorCommandStatus.ImageSelected,
              MermaidSelected: _editorCommandStatus.MermaidSelected,
              MermaidCount: _editorCommandStatus.MermaidCount,
-             MathInline: _editorCommandStatus.MathInline,
-             MathBlock: _editorCommandStatus.MathBlock,
+            MathInline: _editorCommandStatus.MathInline,
+            MathBlock: _editorCommandStatus.MathBlock,
+            EditorFullScreen: _editorFullScreen,
              CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
             FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
             DocumentSaved: _document?.FilePath is not null,
@@ -130,6 +215,7 @@ internal sealed partial class MainForm
             FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
         var state = CommandStateResolver.Resolve(command, context);
         if (state.IsEnabled
+            && context.DocumentAvailable
             && context.EditorReady
             && IsEditorCommand(command)
             && command != AppCommand.InsertImage
@@ -147,6 +233,7 @@ internal sealed partial class MainForm
                 and not AppCommand.CopyMarkdown
                 and not AppCommand.CopyPlainText
                 and not AppCommand.CopyHtml
+                and not AppCommand.CopyCodeBlock
                 and not AppCommand.Paste
             && command is not AppCommand.Find and not AppCommand.Replace and not AppCommand.ToggleSourceMode
             && !TryMapEditorCommand(command, out _))
@@ -178,7 +265,7 @@ internal sealed partial class MainForm
             && command is AppCommand.Undo or AppCommand.Redo
                 or AppCommand.Copy or AppCommand.Paste or AppCommand.Cut or AppCommand.SelectAll)
         {
-            _editorHost?.ExecuteExpandedSourceCommand(command switch
+            var expandedCommand = command switch
             {
                 AppCommand.Undo => "undo",
                 AppCommand.Redo => "redo",
@@ -186,7 +273,25 @@ internal sealed partial class MainForm
                 AppCommand.Paste => "paste",
                 AppCommand.Cut => "cut",
                 _ => "selectAll",
-            });
+            };
+            if (expandedCommand == "paste")
+            {
+                try
+                {
+                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
+                    {
+                        _editorHost?.ExecuteExpandedSourceCommand("paste", Clipboard.GetText(TextDataFormat.UnicodeText));
+                    }
+                }
+                catch (ExternalException)
+                {
+                    // 剪贴板暂时被其他进程占用时保持原有的无操作行为。
+                }
+            }
+            else
+            {
+                _editorHost?.ExecuteExpandedSourceCommand(expandedCommand);
+            }
             return;
         }
 
@@ -194,9 +299,6 @@ internal sealed partial class MainForm
         {
             case AppCommand.NewDocument:
                 _ = NewDocumentAsync(NewDocumentKind.Markdown);
-                break;
-            case AppCommand.NewPlainTextDocument:
-                _ = NewDocumentAsync(NewDocumentKind.PlainText);
                 break;
             case AppCommand.NewWindow:
                 StartNewWindow();
@@ -230,6 +332,9 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ExportHtml:
                 _ = ExportHtmlAsync();
+                break;
+            case AppCommand.ExportImage:
+                _ = ExportImageAsync();
                 break;
             case AppCommand.Print:
                 PrintDocument();
@@ -270,6 +375,9 @@ internal sealed partial class MainForm
             case AppCommand.ToggleFocusMode:
                 ToggleFocusMode();
                 break;
+            case AppCommand.ToggleEditorFullScreen:
+                ToggleEditorFullScreen();
+                break;
             case AppCommand.ToggleEditorFocusMode:
                 ToggleEditorFocusMode();
                 break;
@@ -301,6 +409,18 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.ShowShortcuts:
                 ShowShortcutHelp();
+                break;
+            case AppCommand.InstallOptionalFonts:
+                ShowOptionalFonts();
+                break;
+            case AppCommand.ShowColorThemes:
+                ShowColorThemes();
+                break;
+            case AppCommand.ShowTypographyStyles:
+                ShowTypographyStyles();
+                break;
+            case AppCommand.ShowThemeSettings:
+                ShowColorThemes();
                 break;
             case AppCommand.ShowChangelog:
                 ShowChangelog();
@@ -413,6 +533,25 @@ internal sealed partial class MainForm
             case AppCommand.RestartEditor:
                 _ = RestartEditorAsync();
                 break;
+            case >= AppCommand.SwitchDocumentTab1 and <= AppCommand.SwitchDocumentTab9:
+                _ = SwitchDocumentTabAsync((int)command - (int)AppCommand.SwitchDocumentTab1);
+                break;
+            case AppCommand.CloseCurrentDocumentTab:
+                if (_activeDocumentIndex >= 0)
+                    _ = CloseDocumentTabAsync(_activeDocumentIndex);
+                break;
+            case AppCommand.CloseOtherDocumentTabs:
+                if (_activeDocumentIndex >= 0)
+                    _ = CloseOtherDocumentTabsAsync(_activeDocumentIndex);
+                break;
+            case AppCommand.SwitchToNextDocumentTab:
+                if (_activeDocumentIndex >= 0 && _openDocuments.Count > 1)
+                    _ = SwitchDocumentTabAsync((_activeDocumentIndex + 1) % _openDocuments.Count);
+                break;
+            case AppCommand.LocateCurrentDocumentInWorkspace:
+                if (_activeDocumentIndex >= 0)
+                    _ = LocateDocumentInWorkspaceAsync(_activeDocumentIndex);
+                break;
             case AppCommand.Exit:
                 Close();
                 break;
@@ -425,7 +564,7 @@ internal sealed partial class MainForm
 
                 if (TryGetRecentWorkspace(command, out var workspacePath))
                 {
-                    _ = OpenWorkspaceAsync(workspacePath);
+                    _ = OpenWorkspaceAsync(workspacePath, revealSidebar: true);
                     break;
                 }
 
@@ -446,7 +585,75 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
-    private void OpenFindReplaceDialog(bool replace)
+    private void ShowFullScreenMainMenu(Point screenLocation)
+    {
+        var commandId = _menuService.ShowFullScreenMainMenu(Handle, screenLocation);
+        HandlePopupMenuCommand(commandId);
+    }
+
+    private void ShowTopLevelMainMenu(int menuIndex, Point screenLocation)
+    {
+        var bounds = _documentTabBar.GetTopLevelMenuScreenBounds();
+        var currentIndex = menuIndex;
+        try
+        {
+            while (currentIndex >= 0 && currentIndex < bounds.Count)
+            {
+                _documentTabBar.SetOpenTopLevelMenuIndex(currentIndex);
+                var commandId = _menuService.ShowTopLevelMainMenu(
+                    Handle,
+                    screenLocation,
+                    currentIndex,
+                    bounds,
+                    out var nextMenuIndex);
+                if (commandId is not null)
+                {
+                    HandlePopupMenuCommand(commandId);
+                    return;
+                }
+                if (nextMenuIndex < 0 || nextMenuIndex == currentIndex) return;
+                currentIndex = nextMenuIndex;
+                screenLocation = _documentTabBar.GetTopLevelMenuScreenLocation(currentIndex);
+            }
+        }
+        finally
+        {
+            _documentTabBar.SetOpenTopLevelMenuIndex(-1);
+        }
+    }
+
+    private void HandlePopupMenuCommand(int? commandId)
+    {
+        if (commandId is null)
+        {
+            return;
+        }
+
+        if (_menuService.TryGetStyleByCommandId((uint)commandId.Value, out var styleId))
+        {
+            SetMarkdownStyle(styleId);
+            return;
+        }
+        if (_menuService.TryGetZoomByCommandId((uint)commandId.Value, out var zoomPercent))
+        {
+            SetZoomPercent(zoomPercent);
+            return;
+        }
+        if (_menuService.TryGetColorThemeByCommandId((uint)commandId.Value, out var colorThemeId))
+        {
+            if (!_settings.Appearance.FollowSystemColorMode)
+                SetColorTheme(colorThemeId);
+            return;
+        }
+        if (_menuService.TryGetDocumentTabByCommandId((uint)commandId.Value, out var documentTabIndex))
+        {
+            _ = SwitchDocumentTabAsync(documentTabIndex);
+            return;
+        }
+        _commandRouter.TryExecuteById(commandId.Value);
+    }
+
+    private void OpenFindReplaceDialog(bool replace, string? query = null)
     {
         if (_editorHost is null)
         {
@@ -454,7 +661,7 @@ internal sealed partial class MainForm
         }
 
         _findReplaceDialog ??= new FindReplaceDialog((command, text) => _editorHost?.ExecuteCommand(command, text));
-        _findReplaceDialog.Open(this, replace);
+        _findReplaceDialog.Open(this, replace, query);
     }
 
     private static bool TryMapEditorCommand(AppCommand command, out string editorCommand)
@@ -501,6 +708,8 @@ internal sealed partial class MainForm
             AppCommand.DeleteTable => "deleteTable",
             AppCommand.InsertLineBefore => "insertLineBefore",
             AppCommand.InsertLineAfter => "insertLineAfter",
+            AppCommand.DuplicateParagraph => "duplicateParagraph",
+            AppCommand.DeleteParagraph => "deleteParagraph",
             AppCommand.InsertMathInline => "insertMathInline",
             AppCommand.InsertMathBlock => "insertMathBlock",
             AppCommand.InsertMermaid => "insertMermaid",
@@ -539,6 +748,7 @@ internal sealed partial class MainForm
             || command is AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight or AppCommand.ToggleInlineCode
                 or AppCommand.PromoteHeading or AppCommand.DemoteHeading
             || command is AppCommand.InsertLineBefore or AppCommand.InsertLineAfter
+                or AppCommand.DuplicateParagraph or AppCommand.DeleteParagraph
             || command is AppCommand.InsertMathInline or AppCommand.InsertMathBlock or AppCommand.InsertMermaid or AppCommand.InsertFootnote
                 or AppCommand.ShowFrontMatter
                 or AppCommand.InsertAlertNote or AppCommand.InsertAlertTip or AppCommand.InsertAlertImportant
@@ -589,6 +799,15 @@ internal sealed partial class MainForm
         }
 
         var screenPoint = _editorHost.EditorPointToScreen(request);
+        if (request.OutsideDocument)
+        {
+            if (!_editorFullScreen)
+            {
+                return;
+            }
+            ShowExitFullScreenMenu(screenPoint);
+            return;
+        }
         try
         {
             var status = request.ExpandedSource
@@ -630,7 +849,7 @@ internal sealed partial class MainForm
         _editorHost.ClearBlockHighlight();
     }
 
-    private async Task CheckForUpdatesAsync()
+    private async Task CheckForUpdatesAsync(bool silent = false)
     {
         try
         {
@@ -640,7 +859,10 @@ internal sealed partial class MainForm
             var release = await updateService.FindUpdateAsync(currentVersion, cancellation.Token);
             if (release is null)
             {
-                ShowMessage(this, Loc.Get("update.latest"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (!silent)
+                {
+                    ShowMessage(this, Loc.Get("update.latest"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
                 return;
             }
 
@@ -658,13 +880,19 @@ internal sealed partial class MainForm
         }
         catch (OperationCanceledException)
         {
-            ShowMessage(this, Loc.Get("update.failed"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!silent)
+            {
+                ShowMessage(this, Loc.Get("update.failed"), "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         catch (Exception exception)
         {
             _logger.Error("Could not check for application updates.", exception);
-            ShowMessage(this, Loc.Get("update.failed") + "\r\n\r\n" + exception.Message,
-                "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!silent)
+            {
+                ShowMessage(this, Loc.Get("update.failed") + "\r\n\r\n" + exception.Message,
+                    "MarkLeaf", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 
@@ -679,11 +907,22 @@ internal sealed partial class MainForm
         EditMermaid();
     }
 
-    private void OnOpenLinkRequested(object? sender, string url)
+    private async void OnOpenLinkRequested(object? sender, string url)
     {
         try
         {
-            ExternalLinkService.Open(url);
+            if (!ExternalLinkService.IsAllowed(url))
+            {
+                var localPath = ExternalLinkService.TryResolveLocalPath(url, _document?.FilePath);
+                if (localPath is not null && File.Exists(localPath))
+                {
+                    await OpenDocumentPathAsync(localPath, forceNewTab: true);
+                    RecordRecentFile(localPath);
+                    return;
+                }
+            }
+
+            ExternalLinkService.Open(url, _document?.FilePath);
             SetStatus(Loc.Get("status.linkOpened"));
         }
         catch (Exception exception)
@@ -728,17 +967,56 @@ internal sealed partial class MainForm
         SetStatus(Loc.Get("status.codeLanguageUpdated"));
     }
 
-    private void CopyCodeBlock()
+    private void OnCodeBlockLanguageRequested(object? sender, EditorCodeBlockLanguageRequest request)
     {
-        if ((!_editorCommandStatus.CodeBlock && !_editorCommandStatus.FrontMatter)
-            || string.IsNullOrEmpty(_editorCommandStatus.CodeBlockText))
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnCodeBlockLanguageRequested(sender, request));
+            return;
+        }
+        if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
         {
             return;
         }
 
+        using var dialog = new TextInputDialog(
+            Loc.Get("dialog.codeLanguageTitle"),
+            Loc.Get("dialog.codeLanguagePrompt"),
+            request.Language);
+        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _editorHost.ExecuteCommand(
+            "setCodeBlockLanguageAt",
+            JsonSerializer.Serialize(new { position = request.Position, language = dialog.InputText }));
+        SetStatus(Loc.Get("status.codeLanguageUpdated"));
+    }
+
+    private void OnCopyCodeBlockRequested(object? sender, string text)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(() => OnCopyCodeBlockRequested(sender, text));
+            return;
+        }
+        CopyCodeBlockText(text);
+    }
+
+    private void CopyCodeBlock()
+    {
+        CopyCodeBlockText(
+            (_editorCommandStatus.CodeBlock || _editorCommandStatus.FrontMatter)
+                ? _editorCommandStatus.CodeBlockText ?? string.Empty
+                : string.Empty);
+    }
+
+    private void CopyCodeBlockText(string text)
+    {
         try
         {
-            Clipboard.SetText(_editorCommandStatus.CodeBlockText, TextDataFormat.UnicodeText);
+            Clipboard.SetText(text, TextDataFormat.UnicodeText);
             SetStatus(Loc.Get("status.copied"));
         }
         catch (Exception exception)
@@ -837,8 +1115,8 @@ internal sealed partial class MainForm
             if (_editorCommandStatus.SourceMode
                 && TryGetClipboardPlainTextForSourceMode(clipboardData, out var sourcePlainText))
             {
-                _editorHost.ExecuteCommand("pasteText", sourcePlainText);
-                SetStatus(Loc.Get("status.pastedPlainText"));
+                var result = await _editorHost.ExecuteCommandResultAsync("pasteText", sourcePlainText);
+                SetPasteStatus(result, formattedRequested: false);
                 return;
             }
 
@@ -855,14 +1133,22 @@ internal sealed partial class MainForm
             }
 
             if (!_editorCommandStatus.SourceMode
-                && Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml))
+                && TryGetClipboardPlainTextForSourceMode(clipboardData, out var visualPlainText))
             {
-                if (!string.IsNullOrWhiteSpace(clipboardHtml))
+                if (Clipboard.TryGetData<string>(DataFormats.Html, out var clipboardHtml)
+                    && !string.IsNullOrWhiteSpace(clipboardHtml))
                 {
-                    _editorHost.ExecuteCommand("pasteHtml", ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
-                    SetStatus(Loc.Get("status.pastedFormatted"));
+                    var result = await _editorHost.ExecuteCommandResultAsync(
+                        "pasteClipboard",
+                        visualPlainText,
+                        html: ClipboardHtmlFormatter.ExtractFragment(clipboardHtml));
+                    SetPasteStatus(result, formattedRequested: true);
                     return;
                 }
+
+                var markdownResult = await _editorHost.ExecuteCommandResultAsync("pasteMarkdown", visualPlainText);
+                SetPasteStatus(markdownResult, formattedRequested: false);
+                return;
             }
 
             if (!Clipboard.ContainsText())
@@ -871,8 +1157,10 @@ internal sealed partial class MainForm
                 return;
             }
 
-            _editorHost.ExecuteCommand("pasteText", Clipboard.GetText(TextDataFormat.UnicodeText));
-            SetStatus(Loc.Get("status.pastedPlainText"));
+            var fallbackResult = await _editorHost.ExecuteCommandResultAsync(
+                _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
+                Clipboard.GetText(TextDataFormat.UnicodeText));
+            SetPasteStatus(fallbackResult, formattedRequested: false);
         }
         catch (Exception exception)
         {
@@ -881,11 +1169,11 @@ internal sealed partial class MainForm
         }
     }
 
-    private Task PasteClipboardPlainTextAsync()
+    private async Task PasteClipboardPlainTextAsync()
     {
         if (_editorHost?.IsDocumentLoaded != true || _document?.IsReadOnly == true)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         try
@@ -893,11 +1181,13 @@ internal sealed partial class MainForm
             if (!TryGetClipboardPlainTextForSourceMode(Clipboard.GetDataObject(), out var plainText))
             {
                 SetStatus(Loc.Get("status.noTextToPaste"));
-                return Task.CompletedTask;
+                return;
             }
 
-            _editorHost.ExecuteCommand("pasteText", plainText);
-            SetStatus(Loc.Get("status.pastedPlainText"));
+            var result = await _editorHost.ExecuteCommandResultAsync(
+                _editorCommandStatus.SourceMode ? "pasteText" : "pasteMarkdown",
+                plainText);
+            SetPasteStatus(result, formattedRequested: false);
         }
         catch (Exception exception)
         {
@@ -905,7 +1195,27 @@ internal sealed partial class MainForm
             SetStatus(Loc.Get("status.clipboardFailed"));
         }
 
-        return Task.CompletedTask;
+    }
+
+    private void SetPasteStatus(EditorCommandResult result, bool formattedRequested)
+    {
+        if (!result.Success)
+        {
+            SetStatus(Loc.Get("status.pasteFailed"));
+            return;
+        }
+
+        SetStatus(result.Outcome switch
+        {
+            "markdown" => Loc.Get("status.pastedMarkdown"),
+            "normalized" => Loc.Get("status.pastedMarkdownNormalized"),
+            "plainText" when !_editorCommandStatus.SourceMode && !string.IsNullOrWhiteSpace(result.Error) =>
+                Loc.Format("status.pastedPlainTextFallbackReason", result.Error),
+            "plainText" when !_editorCommandStatus.SourceMode => Loc.Get("status.pastedPlainTextFallback"),
+            "formatted" => Loc.Get("status.pastedFormatted"),
+            _ when formattedRequested => Loc.Get("status.pastedFormatted"),
+            _ => Loc.Get("status.pastedPlainText"),
+        });
     }
 
     private static bool TryGetClipboardPlainTextForSourceMode(IDataObject? clipboardData, out string text)

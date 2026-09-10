@@ -3,6 +3,7 @@ import type { Plugin } from 'vite'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 const katexCssPath = require.resolve('katex/dist/katex.min.css')
@@ -61,18 +62,25 @@ function katexSelfContainedCss(): Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [katexWoff2Only(), katexSelfContainedCss()],
   build: {
-    outDir: 'dist',
+    outDir: mode === 'vscode' ? '../../apps/vscode/dist/webview' : 'dist',
     emptyOutDir: true,
     // 发布包不携带调试映射文件；开发调试可通过临时覆盖此项开启。
     sourcemap: false,
     chunkSizeWarningLimit: 550,
+    ...(mode === 'vscode' ? {
+      manifest: true,
+      rollupOptions: { input: 'src/vscode.ts' },
+    } : {}),
   },
   test: {
+    alias: { vscode: fileURLToPath(new URL('./tests/vscode-mock.ts', import.meta.url)) },
+    // Reading-view tests exercise the original typography and its @depends.
+    css: { include: [/\/styles\/[^/]+\.css\?raw(?:$|&)/] },
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
   },
-})
+}))

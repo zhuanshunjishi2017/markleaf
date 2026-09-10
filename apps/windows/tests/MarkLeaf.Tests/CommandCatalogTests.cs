@@ -30,9 +30,22 @@ public sealed class CommandCatalogTests
         Assert.AreEqual(AppCommand.SetHeading6, heading6);
         Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.A, out var selectAll));
         Assert.AreEqual(AppCommand.SelectAll, selectAll);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Alt | Keys.D1, out var firstTab));
+        Assert.AreEqual(AppCommand.SwitchDocumentTab1, firstTab);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Alt | Keys.D9, out var ninthTab));
+        Assert.AreEqual(AppCommand.SwitchDocumentTab9, ninthTab);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Tab, out var nextTab));
+        Assert.AreEqual(AppCommand.SwitchToNextDocumentTab, nextTab);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.W, out var closeCurrentTab));
+        Assert.AreEqual(AppCommand.CloseCurrentDocumentTab, closeCurrentTab);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Shift | Keys.W, out var closeOtherTabs));
+        Assert.AreEqual(AppCommand.CloseOtherDocumentTabs, closeOtherTabs);
+        Assert.IsTrue(manager.TryGetCommand(Keys.F11, out var editorFullScreen));
+        Assert.AreEqual(AppCommand.ToggleEditorFullScreen, editorFullScreen);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Shift | Keys.F11, out var minimalMode));
+        Assert.AreEqual(AppCommand.ToggleFocusMode, minimalMode);
 
-        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Alt | Keys.N, out var newText));
-        Assert.AreEqual(AppCommand.NewPlainTextDocument, newText);
+        Assert.IsFalse(manager.TryGetCommand(Keys.Control | Keys.Alt | Keys.N, out _));
     }
 
     [TestMethod]
@@ -51,8 +64,10 @@ public sealed class CommandCatalogTests
     [DataRow(Keys.Control | Keys.Shift | Keys.S, "Ctrl+Shift+S")]
     [DataRow(Keys.Control | Keys.D6, "Ctrl+6")]
     [DataRow(Keys.F11, "F11")]
+    [DataRow(Keys.Shift | Keys.F11, "Shift+F11")]
     [DataRow(Keys.Control | Keys.OemPeriod, "Ctrl+.")]
     [DataRow(Keys.Control | Keys.Oemcomma, "Ctrl+,")]
+    [DataRow(Keys.Control | Keys.Tab, "Ctrl+Tab")]
     public void ShortcutTextFormatter_RoundTrips(Keys keys, string text)
     {
         Assert.AreEqual(text, ShortcutTextFormatter.Format(keys));
