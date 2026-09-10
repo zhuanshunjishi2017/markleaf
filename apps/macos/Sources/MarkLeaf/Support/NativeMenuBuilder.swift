@@ -61,21 +61,27 @@ final class NativeMenuBuilder {
 
         // 最近项目：最近文件 + 最近文件夹（动态刷新）
         let recent = NSMenu(title: L10n.t("最近项目"))
+        recent.autoenablesItems = false
         recent.delegate = RecentMenuDelegate.shared
         let recentParent = NSMenuItem(title: L10n.t("最近项目"), action: nil, keyEquivalent: "")
         recentParent.submenu = recent
         menu.addItem(recentParent)
+        menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
 
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
+        menu.addItem(commandItem(L10n.t("保存全部"), "saveAll", key: "s", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
-        menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
+        menu.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
+        menu.addItem(commandItem(L10n.t("复制内容到剪贴板"), "copyActiveFileContents"))
+        menu.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
+        menu.addItem(commandItem(L10n.t("分享"), "shareActiveTab"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
-        menu.addItem(.separator())
-        menu.addItem(item(L10n.t("关闭窗口"), #selector(NSWindow.performClose(_:)), target: nil, key: "w"))
         return menu
     }
 
@@ -95,7 +101,8 @@ final class NativeMenuBuilder {
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
-        let copyAsItem = popup(L10n.t("复制为"), copyAs)
+        copyAs.addItem(commandItem(L10n.t("HTML"), "copyHtml"))
+        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true, validationCommand: "copyAs")
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
         menu.addItem(.separator())
@@ -111,25 +118,30 @@ final class NativeMenuBuilder {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         menu.delegate = MenuRouter.shared
+
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
-        menu.addItem(popup(L10n.t("图片"), images))
+        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true, validationCommand: "insertImage"))
+        menu.addItem(tableSizePickerSubmenu { size in
+            AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
+        })
+        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true, validationCommand: "insertMermaid"))
+        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
+        menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
         menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode", key: "`", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
         menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
         menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
-        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
-        menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
-        menu.addItem(.separator())
-        menu.addItem(tableSizePickerSubmenu { size in
-            AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
-        })
-        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu()))
+        let paragraphActions = NSMenu(title: L10n.t("段落操作"))
+        paragraphActions.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
+        paragraphActions.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
+        paragraphActions.addItem(.separator())
+        paragraphActions.addItem(commandItem(L10n.t("重复该段"), "duplicateParagraph"))
+        paragraphActions.addItem(commandItem(L10n.t("删除该段"), "deleteParagraph"))
+        menu.addItem(popup(L10n.t("段落操作"), paragraphActions, requiresDocument: true, validationCommand: "insertLineBefore"))
         return menu
     }
 
@@ -154,17 +166,27 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: ".", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ",", mask: [.command, .option]))
+        return menu
+    }
+
+    private func alertsMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("提示框"))
+        menu.addItem(commandItem(L10n.t("备注"), "insertAlertNote"))
+        menu.addItem(commandItem(L10n.t("提示"), "insertAlertTip"))
+        menu.addItem(commandItem(L10n.t("重要"), "insertAlertImportant"))
+        menu.addItem(commandItem(L10n.t("警告"), "insertAlertWarning"))
+        menu.addItem(commandItem(L10n.t("注意"), "insertAlertCaution"))
+        return menu
+    }
+
+    private func listsMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("列表"))
+        menu.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
+        menu.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
+        menu.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
-        menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
-        let lists = NSMenu(title: L10n.t("列表"))
-        lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
-        lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
-        lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
-        lists.addItem(.separator())
-        lists.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
-        lists.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
-        menu.addItem(popup(L10n.t("列表"), lists))
+        menu.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
+        menu.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
         return menu
     }
 
@@ -194,18 +216,22 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("斜体"), "toggleItalic", key: "i"))
         menu.addItem(commandItem(L10n.t("下划线"), "toggleUnderline", key: "u"))
         menu.addItem(commandItem(L10n.t("删除线"), "toggleStrike"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
+        menu.addItem(commandItem(L10n.t("高亮"), "toggleHighlight"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
-        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu()))
+        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true, validationCommand: "setParagraph"))
+        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true, validationCommand: "toggleBulletList"))
+        menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
+        menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
+        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true, validationCommand: "insertAlertNote"))
         let tableItem = popup(L10n.t("表格"), tableEditingMenu())
         tableItem.representedObject = "tableEditing"
         tableItem.target = MenuRouter.shared
         tableItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
         menu.addItem(tableItem)
+        menu.addItem(commandItem(L10n.t("YAML 前置元数据"), "showFrontMatter"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("清除格式"), "clearFormat"))
         return menu
@@ -225,11 +251,20 @@ final class NativeMenuBuilder {
         sidebarSettings.addItem(.separator())
         sidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))
         menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))
+        let tabManagement = NSMenu(title: L10n.t("标签页管理"))
+        tabManagement.addItem(commandItem(L10n.t("下一个标签"), "tabNext", key: "\t", mask: [.control]))
+        tabManagement.addItem(commandItem(L10n.t("关闭当前标签"), "closeCurrentTab"))
+        tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
+        tabManagement.addItem(commandItem(L10n.t("重新打开关闭的标签"), "restoreClosedTab"))
+        tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
+        menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "closeCurrentTab"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("编辑器专注模式"), "toggleEditorFocusMode"))
+        menu.addItem(commandItem(L10n.t("打字机模式"), "toggleTypewriterMode"))
         menu.addItem(commandItem(
-            L10n.t("专注模式"),
+            L10n.t("最简模式"),
             "toggleFocusMode",
             key: "f",
             mask: [.command, .shift]
@@ -246,44 +281,16 @@ final class NativeMenuBuilder {
             item.state = percent == session?.zoomPercent ? .on : .off
             zoomMenu.addItem(item)
         }
-        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu))
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true, validationCommand: "zoomIn"))
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
         menu.addItem(.separator())
 
-        let styles = session?.styles ?? []
-        let themes = session?.colorThemes ?? []
-
-        // 排版样式（动态）
-        let styleMenu = NSMenu(title: L10n.t("排版样式"))
-        for style in styles {
-            let item = styleItem(L10n.t(style.displayName), #selector(MenuRouter.chooseStyle(_:)), style.id)
-            item.state = style.id == session?.currentStyleId ? .on : .off
-            styleMenu.addItem(item)
-        }
-        menu.addItem(popup(L10n.t("排版样式"), styleMenu))
-
-        // 颜色主题（浅色 / 深色分组，对应 Windows RefreshColorMenu）
-        let themeMenu = NSMenu(title: L10n.t("颜色主题"))
-        let lightThemes = themes.filter { !$0.isDark }
-        let darkThemes = themes.filter { $0.isDark }
-        for theme in lightThemes {
-            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
-            item.state = theme.id == session?.currentThemeId ? .on : .off
-            themeMenu.addItem(item)
-        }
-        if !lightThemes.isEmpty && !darkThemes.isEmpty {
-            themeMenu.addItem(.separator())
-        }
-        for theme in darkThemes {
-            let item = styleItem(L10n.t(theme.displayName), #selector(MenuRouter.chooseTheme(_:)), theme.id)
-            item.state = theme.id == session?.currentThemeId ? .on : .off
-            themeMenu.addItem(item)
-        }
-        themeMenu.addItem(.separator())
-        themeMenu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
-        menu.addItem(popup(L10n.t("颜色主题"), themeMenu))
+        menu.addItem(commandItem(L10n.t("主题设置…"), "showThemeSettings", key: "t", mask: [.option, .shift]))
+        menu.addItem(commandItem(L10n.t("与操作系统同步"), "toggleFollowSystemTheme"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("重启编辑器"), "restartEditor"))
         return menu
     }
 
@@ -295,8 +302,16 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))
         menu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))
+        let samples = NSMenu(title: L10n.t("示例文档"))
+        for sample in SampleDocumentResource.allCases {
+            samples.addItem(commandItem(L10n.t(sample.titleKey), sample.command))
+        }
+        menu.addItem(popup(L10n.t("示例文档"), samples))
         menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("学习 Markdown…"), "learnMarkdown"))
+        menu.addItem(commandItem(L10n.t("安装可选字体…"), "installOptionalFonts"))
         menu.addItem(commandItem(L10n.t("检查更新…"), "checkForUpdates"))
+        menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))
         return menu
     }
@@ -335,9 +350,21 @@ final class NativeMenuBuilder {
         return item
     }
 
-    private func popup(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
+    /// 子菜单父项。action 为 nil 的父项不会参与 AppKit 校验，空标签时仍显示可用；
+    /// requiresDocument: true 时挂上校验钩子，无文档会话时随子项一并置灰。
+    private func popup(
+        _ title: String,
+        _ submenu: NSMenu,
+        requiresDocument: Bool = false,
+        validationCommand: String? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = submenu
+        if requiresDocument {
+            item.representedObject = validationCommand ?? "submenuParent"
+            item.target = MenuRouter.shared
+            item.action = #selector(MenuRouter.validateSubmenuParent(_:))
+        }
         return item
     }
 
@@ -354,6 +381,21 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     static let shared = MenuRouter()
 
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
+    private var viewStateSession: EditorSession? { AppWindowManager.shared.activeViewStateSession }
+
+    /// 无需打开文档即可使用的命令；其余命令在关闭所有标签页后一律置灰。
+    /// （新建/打开/打开文件夹在空标签窗口上由窗口级路由兜底，保持可用。）
+    private static let documentIndependentCommands: Set<String> = [
+        "new", "newPlainText", "newWindow", "open", "openInNewWindow", "openFolder",
+        "restoreClosedTab",
+        "recoverUnsavedFiles", "showPreferences", "showAbout",
+        "openWelcome", "openChangelog", "showShortcuts", "installOptionalFonts", "checkForUpdates", "openHelp",
+        "learnMarkdown",
+        "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced",
+        "toggleFollowSystemTheme", "toggleCodeHighlight",
+        "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
+        "treeView", "listView", "toggleDetachedOutline",
+    ]
 
     /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
     /// WKWebView 编辑器不会使用 NSTextView，因此仍走 EditorSession 命令。
@@ -390,11 +432,16 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
 
     /// 视图菜单勾选状态（对应 Windows RefreshStates）。
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        // 跟随系统外观时禁用主题选择（对应偏好设置置灰）
+        // 跟随系统外观时禁用主题选择（对应偏好设置置灰）；无会话时一并置灰。
         if menuItem.action == #selector(chooseTheme(_:)) {
-            return !SettingsService.shared.settings.followSystemTheme
+            return !SettingsService.shared.settings.followSystemTheme && session != nil
+        }
+        // 缩放/排版样式跟随文档会话，无会话时置灰。
+        if menuItem.action == #selector(setZoom(_:)) || menuItem.action == #selector(chooseStyle(_:)) {
+            return session != nil
         }
         guard let command = menuItem.representedObject as? String else { return true }
+        // 原生文本框（查找面板/偏好设置输入框等）编辑命令优先路由，不受空标签置灰影响。
         if let editor = nativeTextFieldEditor,
            NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) {
             return NativeTextEditingPolicy.isEnabled(
@@ -404,30 +451,86 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 hasClipboard: NSPasteboard.general.string(forType: .string)?.isEmpty == false
             )
         }
+        // 关闭所有标签页后：仅白名单命令保持可用，其余（保存/导出/编辑/插入/格式等）全部置灰。
+        if command.hasPrefix("activateTab:") {
+            let tabID = DocumentTabID(String(command.dropFirst("activateTab:".count)))
+            return AppWindowManager.shared.activeWindowController?.windowSession?.tabStore.tab(withID: tabID) != nil
+        }
+        if AppWindowManager.shared.activeSession == nil,
+           !Self.documentIndependentCommands.contains(command) {
+            return false
+        }
+        switch command {
+        case "new", "newPlainText", "open":
+            return AppWindowManager.shared.activeWindowController != nil
+        case "openReadOnly":
+            return session != nil
+        case "openFolder":
+            return AppWindowManager.shared.activeViewStateSession != nil
+        case "closeFolder":
+            // 没有打开工作区时禁用。
+            return (session ?? viewStateSession)?.workspaceRoot != nil
+        case "toggleFocusMode":
+            menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
+            return AppWindowManager.shared.activeWindowController != nil
+        case "restoreClosedTab":
+            return AppWindowManager.shared.canRestoreClosedTab
+        case "tabNext", "closeCurrentTab", "closeOtherTabs",
+             "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder",
+             "copyActiveFileContents", "shareActiveTab":
+            guard let windowSession = AppWindowManager.shared.activeWindowSession else { return false }
+            return MenuCommandAvailabilityPolicy.isTabCommandEnabled(
+                command: command,
+                state: MenuCommandAvailabilityState(
+                    tabCount: windowSession.tabStore.tabs.count,
+                    activeTabPath: windowSession.tabStore.activeTab?.path,
+                    workspaceRoot: windowSession.controller?.session.workspaceRoot,
+                    hasContent: windowSession.activeTabSession?.hasContent ?? false
+                )
+            )
+        default:
+            break
+        }
         let s = session
         if s?.isReadOnly == true, EditorSession.readOnlyBlockedCommands.contains(command) {
             return false
         }
         switch command {
         case "print": return session != nil
-        case "toggleSidebar": menuItem.state = s?.sidebarVisible == true ? .on : .off
+        case "toggleSidebar":
+            menuItem.state = viewStateSession?.sidebarVisible == true ? .on : .off
+            return viewStateSession != nil
         case "workspaceTab":
-            menuItem.state = s?.sidebarTabIndex == 0 ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+            menuItem.state = viewStateSession?.sidebarTabIndex == 0 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
         case "outlineTab":
-            menuItem.state = s?.sidebarTabIndex == 1 ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
-                && s?.outlineDetached != true
+            menuItem.state = viewStateSession?.sidebarTabIndex == 1 ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+                && viewStateSession?.outlineDetached != true
         case "toggleDetachedOutline": menuItem.state = s?.outlineDetached == true ? .on : .off
         case "treeView":
-            menuItem.state = s?.workspaceListMode == false ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
+            menuItem.state = viewStateSession?.workspaceListMode == false ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
         case "listView":
-            menuItem.state = s?.workspaceListMode == true ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: s?.sidebarVisible ?? false)
-        case "toggleStatusBar": menuItem.state = s?.statusBarVisible == true ? .on : .off
-        case "toggleFocusMode":
-            menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
+            menuItem.state = viewStateSession?.workspaceListMode == true ? .on : .off
+            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+        case "toggleStatusBar":
+            menuItem.state = viewStateSession?.statusBarVisible == true ? .on : .off
+            return viewStateSession != nil
+        case "toggleEditorFocusMode":
+            menuItem.state = s?.isEditorFocusMode == true ? .on : .off
+            return EditorMenuPolicy.isEditorModeCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
+            )
+        case "toggleTypewriterMode":
+            menuItem.state = s?.isTypewriterMode == true ? .on : .off
+            return EditorMenuPolicy.isEditorModeCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
+            )
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "toggleCodeHighlight":
@@ -471,6 +574,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         // 撤销/重做
         case "undo": return s?.canUndo == true
         case "redo": return s?.canRedo == true
+        case "copyHtml":
+            return EditorMenuPolicy.isCopyHtmlEnabled(
+                hasSelection: s?.hasSelection ?? false,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
         case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
             return EditorMenuPolicy.isEnabled(
                 command: command,
@@ -478,7 +587,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 clipboardHasContent: s?.clipboardHasContent ?? false,
                 isReadOnly: s?.isReadOnly == true
             )
-        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode", "insertMathInline":
+        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike",
+             "toggleHighlight", "toggleCode", "insertMathInline":
             return EditorMenuPolicy.isInlineFormatCommandEnabled(
                 command: command,
                 hasSelection: s?.hasSelection ?? false,
@@ -489,12 +599,21 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
              "setHeading4", "setHeading5", "setHeading6",
              "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
              "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
-             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat":
+             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
+             "duplicateParagraph", "deleteParagraph",
+             "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+             "insertAlertWarning", "insertAlertCaution", "showFrontMatter":
             return EditorMenuPolicy.isParagraphCommandEnabled(
                 command: command,
                 isSourceMode: s?.isSourceMode ?? true,
                 isReadOnly: s?.isReadOnly == true,
                 inTable: s?.inTable == true
+            )
+        case "insertImage", "insertImageFromUrl", "insertLink":
+            return EditorMenuPolicy.isVisualInsertCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
             )
         case "insertFootnote", "resetFootnoteLabel":
             return EditorMenuPolicy.isFootnoteCommandEnabled(
@@ -509,6 +628,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             guard let state = s?.editorMenuState,
                   let nativeCommand = EditorMenuPolicy.nativeCommand(for: command) else { return false }
             return EditorMenuPolicy.allows(nativeCommand, state: state)
+        case "setMathNumber":
+            return EditorMenuPolicy.isMathNumberCommandEnabled(
+                mathBlock: s?.mathBlock == true,
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true
+            )
         default: break
         }
         return true
@@ -517,6 +642,11 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     @objc func performCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
         if routeNativeTextCommand(command) { return }
+        if command.hasPrefix("activateTab:") {
+            let rawID = String(command.dropFirst("activateTab:".count))
+            AppWindowManager.shared.activeWindowController?.activateTab(DocumentTabID(rawID), animated: true)
+            return
+        }
         switch command {
         case "showPreferences":
             AppWindowManager.shared.showPreferences()
@@ -527,17 +657,35 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "openInNewWindow":
             AppWindowManager.shared.openDocumentInNewWindow()
         case "openFolder":
-            guard let session else { return }
+            // 空标签窗口也能打开/切换工作区（侧栏跟随窗口级会话）。
+            guard let target = session ?? AppWindowManager.shared.activeViewStateSession else { return }
             let panel = NSOpenPanel()
             panel.title = L10n.t("打开文件夹")
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
-            guard let window = session.webView?.window else { return }
+            guard let window = target.webView?.window ?? AppWindowManager.shared.activeWindowController?.window else { return }
             panel.beginSheetModal(for: window) { response in
                 if response == .OK, let url = panel.url {
-                    session.loadWorkspace(url.path)
+                    target.loadWorkspace(url.path)
                 }
+            }
+        case "closeFolder":
+            (session ?? AppWindowManager.shared.activeViewStateSession)?.closeWorkspace()
+        case "showShortcuts":
+            AppWindowManager.shared.showShortcuts()
+        case "new", "newPlainText":
+            if let session {
+                session.performMenuCommand(command)
+            } else if let controller = AppWindowManager.shared.activeWindowController {
+                // 空标签窗口：由窗口层直接开新标签。
+                controller.newUntitledTab(kind: command == "newPlainText" ? .plainText : .markdown)
+            }
+        case "open":
+            if let session {
+                session.performMenuCommand("open")
+            } else if let controller = AppWindowManager.shared.activeWindowController {
+                controller.openDocumentPanel()
             }
         case "recoverUnsavedFiles":
             AppWindowManager.shared.showRecoveryDialog()
@@ -545,6 +693,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.openChangelog()
         case "openWelcome":
             AppWindowManager.shared.openWelcome()
+        case "showThemeSettings":
+            AppWindowManager.shared.showThemeSettings()
+        case "installOptionalFonts":
+            AppWindowManager.shared.showOptionalFonts()
         case "checkForUpdates":
             AppWindowManager.shared.checkForUpdates()
         case "toggleFollowSystemTheme":
@@ -559,12 +711,82 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             NativeMenuBuilder.refreshIfNeeded()
         case "toggleFocusMode":
             AppWindowManager.shared.activeWindowController?.toggleFocusMode()
+        case "learnMarkdown":
+            if let url = URL(string: "https://markdown.com.cn/basic-syntax/index.html") {
+                NSWorkspace.shared.open(url)
+            }
+        case "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced":
+            guard let sample = SampleDocumentResource(command: command) else { return }
+            AppWindowManager.shared.openSample(sample)
+        case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "treeView", "listView", "toggleDetachedOutline":
+            viewStateSession?.performMenuCommand(command)
+        case "tabNext":
+            AppWindowManager.shared.activeWindowController?.selectNextTab()
+        case "closeCurrentTab":
+            AppWindowManager.shared.activeWindowController?.closeCurrentTab()
+        case "closeOtherTabs":
+            AppWindowManager.shared.activeWindowController?.closeOtherActiveTabs()
+        case "restoreClosedTab":
+            AppWindowManager.shared.activeWindowController?.restoreLastClosedTab()
+        case "revealActiveTabInWorkspace":
+            AppWindowManager.shared.activeWindowController?.revealActiveTabInWorkspace()
+        case "copyActiveTabPath":
+            AppWindowManager.shared.activeWindowController?.copyActiveTabPath()
+        case "revealActiveTabInFinder":
+            AppWindowManager.shared.activeWindowController?.revealActiveTabInFinder()
+        case "copyActiveFileContents":
+            AppWindowManager.shared.activeWindowController?.copyActiveFileContents()
+        case "shareActiveTab":
+            AppWindowManager.shared.activeWindowController?.shareActiveTab()
         case "openHelp":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md") {
                 NSWorkspace.shared.open(url)
             }
         default:
             session?.performMenuCommand(command)
+        }
+    }
+
+    /// “标签页管理”里由 delegate 每轮追加的动态项：末尾分隔线 + 每个打开的标签行。
+    /// 两者必须在刷新时整体回收，只匹配分隔线会漏掉标签行，导致每打开一次菜单就重复一组。
+    enum TabManagementDynamicItem {
+        static func matches(_ item: NSMenuItem, key: String) -> Bool {
+            if item.isSeparatorItem { return item.representedObject as? String == key }
+            guard let identifier = item.representedObject as? String else { return false }
+            return identifier.hasPrefix("activateTab:")
+        }
+    }
+
+    /// 动态维护“标签页管理”中的打开标签列表。
+    final class TabManagementMenuDelegate: NSObject, NSMenuDelegate {
+        static let shared = TabManagementMenuDelegate()
+        private let dynamicItemKey = "tabManagement.dynamicTabs"
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            // 上一轮追加的动态项（分隔线 + 标签行）必须整体移除，否则每次打开菜单都会再追加一组标签。
+            while let item = menu.items.last, TabManagementDynamicItem.matches(item, key: dynamicItemKey) {
+                menu.removeItem(item)
+            }
+
+            guard let controller = AppWindowManager.shared.activeWindowController,
+                  let windowSession = controller.windowSession else { return }
+
+            let separator = NSMenuItem.separator()
+            separator.representedObject = dynamicItemKey
+            menu.addItem(separator)
+
+            for tab in windowSession.tabStore.tabs {
+                let item = NSMenuItem(
+                    title: (tab.isDirty ? "● " : "") + tab.title,
+                    action: #selector(MenuRouter.performCommand(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = MenuRouter.shared
+                item.representedObject = "activateTab:\(tab.tabID.rawValue)"
+                item.state = windowSession.tabStore.activeTabID == tab.tabID ? .on : .off
+                item.isEnabled = true
+                menu.addItem(item)
+            }
         }
     }
 
@@ -596,10 +818,14 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
     static let shared = RecentMenuDelegate()
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        for item in menu.items where item.tag >= 100 {
-            menu.removeItem(item)
-        }
+        // NSMenu 会保留上一次动态构建的标题、分隔线和空态；必须整体重建，
+        // 否则每次打开“最近项目”都会追加一组“最近文件/最近文件夹”。
+        menu.removeAllItems()
         let settings = SettingsService.shared.settings
+        let manager = AppWindowManager.shared
+        // 最近文件：无标签时由窗口层兜底打开；最近文件夹：跟随窗口级会话。
+        let canOpenFile = manager.activeSession != nil || manager.activeWindowController != nil
+        let canOpenFolder = (manager.activeSession ?? manager.activeViewStateSession) != nil
 
         if settings.recordRecentFiles {
             let filesHeader = disabledItem(L10n.t("最近文件"))
@@ -609,7 +835,9 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in files.enumerated() {
-                menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path))
+                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path)
+                item.isEnabled = canOpenFile
+                menu.addItem(item)
             }
         }
         if settings.recordRecentFolders {
@@ -621,7 +849,9 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in folders.enumerated() {
-                menu.addItem(recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path))
+                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path)
+                item.isEnabled = canOpenFolder
+                menu.addItem(item)
             }
         }
         if !settings.recordRecentFiles && !settings.recordRecentFolders {
@@ -644,14 +874,19 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
     }
 
     @objc private func openRecent(_ sender: NSMenuItem) {
-        guard let payload = sender.representedObject as? [String],
-              let session = AppWindowManager.shared.activeSession else { return }
+        guard let payload = sender.representedObject as? [String] else { return }
         let kind = payload[0]
         let path = payload[1]
+        let manager = AppWindowManager.shared
         if kind == "file" {
-            session.openRecentFile(path)
+            if let session = manager.activeSession {
+                session.openRecentFile(path)
+            } else if let controller = manager.activeWindowController {
+                // 空标签窗口：按标签去重打开。
+                controller.openFileInTab(URL(fileURLWithPath: path))
+            }
         } else {
-            session.openRecentFolder(path)
+            (manager.activeSession ?? manager.activeViewStateSession)?.openRecentFolder(path)
         }
     }
 }
@@ -699,11 +934,14 @@ extension EditorSession {
             return
         }
         switch command {
-        case "new": newDocument()
-        case "newPlainText": newDocument(kind: .plainText)
+        case "new":
+            if let newTabRequest { newTabRequest(.markdown) } else { newDocument() }
+        case "newPlainText":
+            if let newTabRequest { newTabRequest(.plainText) } else { newDocument(kind: .plainText) }
         case "open": openDocument()
         case "openReadOnly": openDocumentReadOnly()
         case "save": saveDocument()
+        case "saveAll": saveAllRequest?()
         case "saveAs": saveDocumentAs()
         case "export": exportDocument()
         case "exportWithLastSettings": exportWithLastSettings()
@@ -717,11 +955,13 @@ extension EditorSession {
         case "copy": copySelectionAs(.formatted)
         case "copyMarkdown": copySelectionAs(.markdown)
         case "copyPlain": copySelectionAs(.plainText)
+        case "copyHtml": copySelectionAs(.html)
         case "paste": pasteFromClipboard()
         case "pastePlainText": pastePlainTextFromClipboard()
         case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike":
             guard hasSelection else { return }
             executeInlineFormat(command)
+        case "toggleHighlight": executeInlineFormat("toggleHighlight")
         case "find": showFind()
         case "toggleSidebar": toggleSidebar()
         case "workspaceTab": showWorkspaceTab()
@@ -771,6 +1011,7 @@ extension EditorSession {
         case "declareCodeLanguage": declareCodeBlockLanguage()
         case "copyCodeBlock": copyEntireCodeBlock()
         case "editMath": editMath()
+        case "setMathNumber": setMathNumber()
         case "convertMath": execute("convertMath")
         case "deleteMath": execute("deleteMath")
         case "editTableCaption": editTableCaption()
@@ -778,14 +1019,22 @@ extension EditorSession {
         case "selectAll": execute("selectAll")
         case "exitCode": execute("exitCode")
         case "formatPainter", "formatPainterArm", "formatPainterApply": execute(command)
+        case "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+             "insertAlertWarning", "insertAlertCaution", "showFrontMatter":
+            execute(command)
+        case "toggleEditorFocusMode": toggleEditorFocusMode()
+        case "toggleTypewriterMode": toggleTypewriterMode()
+        case "restartEditor": restartEditor()
         case "toggleBlockquote": execute("toggleBlockquote")
-        case "toggleCodeBlock": execute("toggleCodeBlock")
+        case "toggleCodeBlock": toggleCodeBlockWithLanguage()
         case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)
         case "indentListItem", "outdentListItem": execute(command)
         case "insertHorizontalRule": execute("insertHorizontalRule")
         case "insertTable": execute("insertTable")
         case "insertLineBefore": execute("insertLineBefore")
         case "insertLineAfter": execute("insertLineAfter")
+        case "duplicateParagraph": execute("duplicateParagraph")
+        case "deleteParagraph": execute("deleteParagraph")
         case "addRowBefore": execute("addRowBefore")
         case "addRowAfter": execute("addRowAfter")
         case "deleteRow": execute("deleteRow")

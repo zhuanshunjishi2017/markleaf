@@ -6,11 +6,13 @@ final class WorkspaceEntry: Identifiable {
     let name: String
     let path: String
     let isDirectory: Bool
+    var preview: String?
 
-    init(name: String, path: String, isDirectory: Bool) {
+    init(name: String, path: String, isDirectory: Bool, preview: String? = nil) {
         self.name = name
         self.path = path
         self.isDirectory = isDirectory
+        self.preview = preview
     }
 }
 

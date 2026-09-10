@@ -134,6 +134,12 @@ for language in ["zh-Hans", "zh-Hant", "en", "ja"] {
     expect(PreferencesWindowLayout.appearanceCentersCodeHighlightCheckbox(for: language),
            "the code-highlighting checkbox should be centered independently in \(language) without widening other rows")
 }
+for language in ["zh-Hans", "zh-Hant", "en", "ja"] {
+    expect(PreferencesWindowLayout.editorCentersMultiTabCheckbox(for: language),
+           "the multi-tab checkbox should be centered independently in \(language) without widening other rows")
+    expect(PreferencesWindowLayout.editorCentersBlockHandleCheckbox(for: language),
+           "the block-handle checkbox should be centered independently in \(language) without widening other rows")
+}
 let englishColumn = PreferencesWindowLayout.centeredColumnFrame(
     containerWidth: en.maximumWindowWidth,
     fittingWidth: en.maximumContentColumnWidth + 100,

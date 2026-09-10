@@ -1,4 +1,3 @@
-import { createBlockHandle } from './block-handle'
 import './styles.css'
 import { NodeSelection, Selection } from '@tiptap/pm/state'
 import {
@@ -27,6 +26,7 @@ import {
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
+  pasteClipboardContentWithResult,
   pasteMarkdownText,
   pasteMarkdownTextWithResult,
   shouldParsePastedTextAsMarkdown,
@@ -38,14 +38,20 @@ import {
   setCodeBlockControlHandlers,
   setEditorSharedStrings,
   restoreVisualSelection,
+  restoreEditorScroll,
+  renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
-import { generateExportHtml as buildExportHtml, escapeHtml } from './export-html'
+import { katexCss, renderMathInHtml } from './math'
 import {
+  renderMermaidInHtml,
   rerenderMermaidElements,
   setMermaidStrings,
+  type MermaidThemeName,
 } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
+import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
+import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -64,7 +70,7 @@ import {
 import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
 import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
 import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
-import { normalizeSharedEditorLanguage, sharedEditorStrings } from './shared-editor-strings'
+import { sharedEditorStrings } from './shared-editor-strings'
 import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
@@ -163,7 +169,8 @@ function scrollEditorCursorToCenter(): void {
     return
   }
   const scrollingElement = document.scrollingElement ?? document.documentElement
-  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
+  const targetViewportOffset = Math.max(96, window.innerHeight * 0.42)
+  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - targetViewportOffset)
 }
 
 function updateEditorTypewriterMode(scrollToCursor = true): void {
@@ -229,14 +236,68 @@ document.addEventListener('focusin', updateCaretVisibility)
 document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibility, 0))
 updateCaretVisibility()
 
-const blockHandleOverlay = createBlockHandle(editorMount, () => editor, () => !sourceMode && !readOnly,
-  (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
+const blockHandleButton = document.createElement('button')
+blockHandleButton.type = 'button'
+blockHandleButton.className = 'ml-block-handle ml-block-handle-overlay'
+blockHandleButton.setAttribute(
+  'aria-label',
   sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
 )
-const blockHandleButton = blockHandleOverlay.button
-const ensureBlockHandleOverlay = blockHandleOverlay.ensure
-const updateBlockHandleOverlay = blockHandleOverlay.update
-const hideBlockHandleOverlay = blockHandleOverlay.hide
+blockHandleButton.setAttribute('tabindex', '-1')
+blockHandleButton.hidden = true
+let blockHandleOverlayPosition: number | null = null
+
+function ensureBlockHandleOverlay(): void {
+  if (blockHandleButton.parentElement !== editorMount) {
+    editorMount.appendChild(blockHandleButton)
+  }
+}
+
+function hideBlockHandleOverlay(): void {
+  blockHandleButton.hidden = true
+  blockHandleButton.style.display = 'none'
+  blockHandleButton.style.removeProperty('left')
+  blockHandleButton.style.removeProperty('top')
+  blockHandleButton.textContent = ''
+  blockHandleButton.classList.remove('ml-block-handle-active')
+  blockHandleOverlayPosition = null
+}
+
+function updateBlockHandleOverlay(): void {
+  ensureBlockHandleOverlay()
+  if (sourceMode || readOnly) {
+    hideBlockHandleOverlay()
+    return
+  }
+  const info = getBlockHandleInfo(editor)
+  if (!info) {
+    hideBlockHandleOverlay()
+    return
+  }
+  blockHandleOverlayPosition = info.position
+  blockHandleButton.hidden = false
+  blockHandleButton.style.removeProperty('display')
+  blockHandleButton.textContent = info.label
+  blockHandleButton.classList.toggle('ml-block-handle-active', info.active)
+  const mountRect = editorMount.getBoundingClientRect()
+  const documentRect = editor.view.dom.getBoundingClientRect()
+  blockHandleButton.style.left = `${documentRect.left - mountRect.left - 36}px`
+  blockHandleButton.style.top = `${info.viewportTop - mountRect.top}px`
+}
+
+blockHandleButton.addEventListener('mousedown', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  if (blockHandleOverlayPosition === null) return
+  setBlockHighlight(editor, blockHandleOverlayPosition)
+  updateBlockHandleOverlay()
+  const rect = blockHandleButton.getBoundingClientRect()
+  send('blockMenuRequested', {
+    clientX: rect.left,
+    clientY: rect.bottom + 10,
+    position: blockHandleOverlayPosition,
+  })
+})
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -374,7 +435,7 @@ window.__markleafApplyVisualVariables = (payload) => {
   }, anchorReader)
 }
 
-let editorLoc: Record<string, string> = {}
+let findBarLoc: Record<string, string> = {}
 
 function applyAlertTitleLocalization(loc: Record<string, string>): void {
   const root = document.documentElement
@@ -386,7 +447,7 @@ function applyAlertTitleLocalization(loc: Record<string, string>): void {
 }
 
 function applyFindBarLocalization(loc: Record<string, string>): void {
-  editorLoc = loc
+  findBarLoc = loc
   applyAlertTitleLocalization(loc)
   promoteHeadingButton.textContent = loc.formatPromoteHeading ?? '标+'
   promoteHeadingButton.ariaLabel = loc.formatPromoteHeading ?? 'Promote heading'
@@ -1291,7 +1352,7 @@ editorMount.addEventListener('mousedown', (event) => {
     pendingSpecialClick = null
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
     pendingSpecialClick = null
     return
   }
@@ -1309,6 +1370,12 @@ editorMount.addEventListener('mousedown', (event) => {
     return
   }
 
+  // Atom NodeViews are not editable text. If a previous text selection is
+  // still owned by WebKit, its native highlight can survive beside the
+  // ProseMirror NodeSelection and paint unrelated formula content blue.
+  event.preventDefault()
+  window.getSelection()?.removeAllRanges()
+
   const selected = editor.state.selection
   pendingSpecialClick = {
     kind: mathPosition !== null ? 'math' : 'mermaid',
@@ -1321,7 +1388,7 @@ editorMount.addEventListener('click', (event) => {
   if (sourceMode) {
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
     return
   }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
@@ -1496,6 +1563,7 @@ async function handleMessage(value: unknown): Promise<void> {
         markdown?: unknown
         documentType?: unknown
         readOnly?: unknown
+        initialDirty?: unknown
         visualSelection?: { from?: unknown; to?: unknown }
         sourceSelection?: { from?: unknown; to?: unknown }
         scrollTop?: unknown
@@ -1546,9 +1614,8 @@ async function handleMessage(value: unknown): Promise<void> {
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
         if (restoreViewState && visualSelection) {
-          // Restore the logical selection without focusing or scrolling it into
-          // view. The document's saved scroll position is independent from the
-          // caret and remains authoritative when switching tabs.
+          // Restore the logical selection without scrolling it into view. The
+          // saved scroll offset is independent from the caret and authoritative.
           const from = Math.max(0, Math.min(visualSelection.from, editor.state.doc.content.size))
           const to = Math.max(0, Math.min(visualSelection.to, editor.state.doc.content.size))
           editor.commands.setTextSelection({ from, to })
@@ -1560,11 +1627,24 @@ async function handleMessage(value: unknown): Promise<void> {
       suppressUpdate = false
       updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
-      restoreEditorScrollTopAfterLayout(restoreViewState ? payload.scrollTop : 0)
+      if (payload.initialDirty === true) send('dirtyChanged', { dirty: true })
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
       sendOutlineSelectionFromCursor()
+      break
+    }
+    case 'restoreViewport': {
+      if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break
+      const payload = message.payload
+      if (payload.selection) {
+        if (sourceMode) sourceEditor?.setSelection(payload.selection.from, payload.selection.to)
+        else if (editor) restoreVisualSelection(editor, payload.selection)
+      }
+      if (typeof payload.scrollTop === 'number' && payload.scrollTop >= 0) {
+        if (sourceMode) sourceEditor?.setScrollTop(payload.scrollTop)
+        else restoreEditorScroll(editorMount, payload.scrollTop)
+      }
       break
     }
     case 'setDocumentType': {
@@ -1596,7 +1676,7 @@ async function handleMessage(value: unknown): Promise<void> {
         )
         bindEditorEvents(editor)
         if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
-        updateEditorTypewriterMode()
+        updateEditorTypewriterMode(false)
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
@@ -1810,8 +1890,10 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const keepTablesTogether = options.keepTablesTogether === true
-            const keepHeadingsWithNextBlock = options.keepHeadingsWithNextBlock === true
+            const pagination: ExportPaginationOptions = {
+              keepTablesTogether: options.keepTablesTogether === true,
+              keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
+            }
             const html = await generateExportHtml(
               style,
               format,
@@ -1823,8 +1905,7 @@ async function handleMessage(value: unknown): Promise<void> {
               visualCjkAutoSpacing,
               colorSchemeCss,
               title,
-              keepTablesTogether,
-              keepHeadingsWithNextBlock,
+              pagination,
             )
             send('exportContent', { html }, message.requestId)
           }
@@ -1850,6 +1931,9 @@ async function handleMessage(value: unknown): Promise<void> {
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
+            : (payload.command === 'pasteMarkdown' || payload.command === 'pasteClipboard')
+                && commandText !== undefined
+              ? (commandOutcome = 'plainText', sourceEditor?.replaceSelection(commandText) ?? false)
             : payload.command === 'insertMermaid'
               ? sourceEditor?.insertMermaidCodeBlock() ?? false
             : payload.command === 'selectAll'
@@ -1862,17 +1946,17 @@ async function handleMessage(value: unknown): Promise<void> {
                 commandError = result.error
                 return result.success
               })()
-            : payload.command === 'pasteClipboard' && commandText !== undefined
-              ? shouldParsePastedTextAsMarkdown(editor, commandText, commandHtml ?? '')
-                ? (() => {
-                    const result = pasteMarkdownTextWithResult(editor, commandText)
-                    commandOutcome = result.outcome
-                    commandError = result.error
-                    return result.success
-                  })()
-                : commandHtml !== undefined
-                  ? (commandOutcome = 'formatted', editor.view.pasteHTML(commandHtml))
-                  : (commandOutcome = 'plainText', editor.view.pasteText(commandText))
+            : payload.command === 'pasteClipboard'
+              ? (() => {
+                  const result = pasteClipboardContentWithResult(
+                    editor,
+                    commandText ?? '',
+                    commandHtml ?? '',
+                  )
+                  commandOutcome = result.outcome
+                  commandError = result.error
+                  return result.success
+                })()
               : executeEditorCommand(
                 editor,
                 payload.command,
@@ -1881,7 +1965,9 @@ async function handleMessage(value: unknown): Promise<void> {
                 payload.applyToCurrentTextBlockWhenEmpty === true,
               )
         if (message.requestId) {
-          send('commandResult', { success, outcome: commandOutcome, error: commandError }, message.requestId)
+          const result: Record<string, unknown> = { success, outcome: commandOutcome }
+          if (commandError !== undefined) result.error = commandError
+          send('commandResult', result, message.requestId)
         }
         sendEditorState()
       }
@@ -1996,8 +2082,8 @@ let findReplace = ''
 let findCaseSensitive = false
 let findWholeWord = false
 function setMarkleafLanguage(lang: string): void {
-  markleafLanguage = normalizeSharedEditorLanguage(lang)
-  const strings = sharedEditorStrings(markleafLanguage, hostCapabilities.primaryActivationModifier)
+  markleafLanguage = lang
+  const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
   setBlockTypeLabels(strings)
   blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
   setEditorSharedStrings(strings)
@@ -2017,6 +2103,143 @@ send('ready')
   executeEditorCommand(editor, command)
   lastVisualSelection = captureVisualSelection(editor)
   sendEditorState()
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function renderEditorHtmlForExport(
+  html: string,
+  preserveEmptyParagraphs = false,
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
+  visualCjkAutoSpacing = true,
+): string {
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+
+  for (const frontMatter of Array.from(parsed.body.querySelectorAll('[data-markleaf-front-matter]'))) {
+    frontMatter.remove()
+  }
+
+  for (const caption of Array.from(parsed.body.querySelectorAll<HTMLElement>('figcaption.markleaf-figcaption'))) {
+    caption.innerHTML = renderEscapedCaptionHtml(caption.textContent ?? '')
+  }
+
+  for (const paragraph of Array.from(parsed.body.querySelectorAll<HTMLParagraphElement>('p'))) {
+    if (preserveEmptyParagraphs && isEmptyExportParagraph(paragraph)) {
+      paragraph.innerHTML = '&nbsp;'
+      continue
+    }
+
+    const match = new RegExp(`^\\s*\\u2060?\\[\\^([^\\]\\n]+)\\]:[ \\t]*(.*)$`, 's').exec(paragraph.textContent ?? '')
+    if (!match) continue
+
+    const label = match[1]!.trim()
+    const body = match[2] ?? ''
+    const prefixLength = match[0].length - body.length
+    paragraph.classList.add('markleaf-footnote-def')
+    paragraph.classList.add('markleaf-footnote-def-export')
+    paragraph.dataset.footnoteLabel = label
+    removeTextPrefix(paragraph, prefixLength)
+    const labelElement = parsed.createElement('span')
+    labelElement.className = 'markleaf-footnote-def-label'
+    labelElement.textContent = `[${label}] `
+    paragraph.insertBefore(labelElement, paragraph.firstChild)
+  }
+
+  if (visualCjkAutoSpacing) {
+    applyCjkAutoSpacingToExport(parsed)
+  }
+
+  return applyExportPagination(parsed.body.innerHTML, pagination)
+}
+
+function applyCjkAutoSpacingToExport(parsed: Document): void {
+  const textNodes: Text[] = []
+  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    if (walker.currentNode instanceof Text) textNodes.push(walker.currentNode)
+  }
+
+  for (const textNode of textNodes) {
+    const parent = textNode.parentElement
+    if (!parent || parent.closest('pre, code, .katex, .markleaf-mermaid')) continue
+    const text = textNode.data
+    const boundaries: number[] = []
+    for (let index = 1; index < text.length; index += 1) {
+      const previous = text[index - 1]!
+      const current = text[index]!
+      if ((isCjkAutoSpacingCharacter(previous) && isWesternAutoSpacingCharacter(current))
+        || (isWesternAutoSpacingCharacter(previous) && isCjkAutoSpacingCharacter(current))) {
+        boundaries.push(index)
+      }
+    }
+    if (boundaries.length === 0) continue
+
+    const fragment = parsed.createDocumentFragment()
+    let start = 0
+    for (const boundary of boundaries) {
+      fragment.append(parsed.createTextNode(text.slice(start, boundary)))
+      const spacer = parsed.createElement('span')
+      spacer.className = 'markleaf-cjk-autospace-widget'
+      spacer.setAttribute('aria-hidden', 'true')
+      fragment.append(spacer)
+      start = boundary
+    }
+    fragment.append(parsed.createTextNode(text.slice(start)))
+    textNode.replaceWith(fragment)
+  }
+}
+
+function isCjkAutoSpacingCharacter(character: string): boolean {
+  return /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
+}
+
+function isWesternAutoSpacingCharacter(character: string): boolean {
+  return /[A-Za-z0-9]/.test(character)
+}
+
+function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
+  if ((paragraph.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0) {
+    return false
+  }
+  return !Array.from(paragraph.childNodes).some((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return ((node.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0)
+    }
+    if (!(node instanceof HTMLElement)) {
+      return false
+    }
+    return node.tagName.toLowerCase() !== 'br'
+  })
+}
+
+function removeTextPrefix(element: HTMLElement, length: number): void {
+  let remaining = Math.max(0, length)
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  const emptyTextNodes: Text[] = []
+
+  while (remaining > 0) {
+    const node = walker.nextNode()
+    if (!(node instanceof Text)) break
+
+    if (node.data.length <= remaining) {
+      remaining -= node.data.length
+      emptyTextNodes.push(node)
+      continue
+    }
+
+    node.data = node.data.slice(remaining)
+    remaining = 0
+  }
+
+  for (const node of emptyTextNodes) {
+    node.remove()
+  }
 }
 
 type StyleEntry = { id: string; css: string; dependsOn?: string }
@@ -2060,6 +2283,13 @@ function resolveStyle(styleId: string): { rootClass: string; css: string } {
   return { rootClass: classes.join(' '), css: cssParts.join('\n') }
 }
 
+function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
+  const declarations = Array.from(css.matchAll(
+    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
+  ))
+  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
+}
+
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)
   const toRemove = Array.from(editorMount.classList).filter((cls) => cls.startsWith('markleaf-style-'))
@@ -2085,13 +2315,233 @@ async function generateExportHtml(
   visualCjkAutoSpacing = true,
   colorSchemeCss = '',
   title = '',
-  keepTablesTogether = false,
-  keepHeadingsWithNextBlock = false,
+  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
 ): Promise<string> {
-  return buildExportHtml({
-    rawBodyHtml: sourceMode ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>` : editor.getHTML(),
-    resolved: resolveStyle(style), format, header, footer, fontSize, lineHeight, maxWidth,
-    visualCjkAutoSpacing, colorSchemeCss, baseCss, title,
-    keepTablesTogether, keepHeadingsWithNextBlock, editorLoc,
-  })
+  const isPdf = format === 'pdf'
+  const isImage = format === 'image'
+  const rawBodyHtml = sourceMode
+    ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
+    : editor.getHTML()
+  const resolved = resolveStyle(style)
+  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
+    renderMathInHtml(rawBodyHtml),
+    isPdf,
+    pagination,
+    visualCjkAutoSpacing,
+  ).replace(
+    /https:\/\/assets\.local\/image\?path=([^"']+)/g,
+    (_, encoded: string) => {
+      try { return decodeURIComponent(encoded) } catch { return encoded }
+    },
+  ), resolveMermaidTheme(resolved.css))
+  const rootClass = [
+    resolved.rootClass,
+    isPdf ? 'markleaf-export-pdf' : '',
+    isImage ? 'markleaf-export-image' : '',
+  ].filter(Boolean).join(' ')
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title || 'MarkLeaf')}</title>
+<style>
+* { box-sizing: border-box; }
+${katexCss}
+${baseCss}
+.markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
+.markleaf-document .markleaf-cjk-autospace-widget {
+  display: inline-block;
+  width: 0.35em;
+  min-width: 0.35em;
+  height: 1px;
+  overflow: hidden;
+  vertical-align: baseline;
+  pointer-events: none;
+}
+${colorSchemeCss}
+${resolved.css}
+${exportPaginationCss}
+/* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
+.markleaf-document {
+  padding: 44px 56px 96px;
+}
+:root {
+  --ml-font-size: ${fontSize}px;
+  --ml-line-height: ${lineHeight};
+  --ml-max-width: ${maxWidth}px;
+  --markleaf-alert-note-title: ${JSON.stringify(findBarLoc.alertNote ?? '备注')};
+  --markleaf-alert-tip-title: ${JSON.stringify(findBarLoc.alertTip ?? '提示')};
+  --markleaf-alert-important-title: ${JSON.stringify(findBarLoc.alertImportant ?? '重要')};
+  --markleaf-alert-warning-title: ${JSON.stringify(findBarLoc.alertWarning ?? '警告')};
+  --markleaf-alert-caution-title: ${JSON.stringify(findBarLoc.alertCaution ?? '注意')};
+}
+html { font-size: var(--ml-font-size); }
+body { margin: 0; background: var(--bg-primary); }
+.markleaf-export-image,
+.markleaf-export-image .markleaf-document {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-image #export-root {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-image {
+  /* Keep the document's scroll extent available for chunked capture. Hiding
+     overflow here collapses scrollHeight to the viewport and causes long
+     exports to produce only one screenful. Scrollbars are hidden separately
+     below without clipping the document. */
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+/* Image capture scrolls the document between chunks. Keep scrolling enabled
+   while making the browser scrollbars completely invisible in the captured
+   surface; otherwise the scrollbar occupies layout width and can leak into
+   the right/bottom edges of exported images. */
+.markleaf-export-image,
+.markleaf-export-image html,
+.markleaf-export-image body,
+.markleaf-export-image * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.markleaf-export-image::-webkit-scrollbar,
+.markleaf-export-image html::-webkit-scrollbar,
+.markleaf-export-image body::-webkit-scrollbar,
+.markleaf-export-image *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image html,
+html:has(body.markleaf-export-image) {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+html:has(body.markleaf-export-image)::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image {
+  width: 100% !important;
+}
+/* ---- PDF export: let print-dialog margins control spacing ---- */
+.markleaf-export-pdf .markleaf-document {
+  padding-left: 5px;
+  padding-right: 5px;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-pdf.markleaf-style-print .markleaf-document {
+  padding-left: 5px;
+  padding-right: 5px;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+.markleaf-export-pdf .export-header,
+.markleaf-export-pdf .export-footer {
+  padding-left: 5px;
+  padding-right: 5px;
+  width: 100%;
+}
+
+/* PDF export: prevent horizontal overflow (scrollbars) and wrap long lines. */
+.markleaf-export-pdf .markleaf-document pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  overflow-x: hidden;
+  box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document pre code {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+.markleaf-export-pdf .markleaf-document blockquote {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.markleaf-export-pdf .markleaf-document .markleaf-alert {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  overflow: visible;
+}
+.markleaf-export-pdf .markleaf-document table {
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid,
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid-view,
+.markleaf-export-pdf .markleaf-document .markleaf-mermaid-export {
+  display: flex;
+  justify-content: center;
+}
+
+.export-header, .export-footer {
+  width: min(100%, var(--ml-max-width));
+  margin: 0 auto;
+  padding: 8px 56px;
+}
+.export-header { border-bottom: 1px solid #d8dee4; }
+.export-footer { border-top: 1px solid #d8dee4; margin-top: 24px; }
+</style>
+</head>
+<body${rootClass ? ` class="${rootClass}"` : ''}>
+<div id="export-root">
+${header ? `<div class="export-header">${header}</div>` : ''}
+<div class="markleaf-document">${bodyHtml}</div>
+${footer ? `<div class="export-footer">${footer}</div>` : ''}
+</div>
+<script>
+(function () {
+  function fitMath() {
+    var doc = document.querySelector('.markleaf-document');
+    if (!doc) return;
+    var items = doc.querySelectorAll('.katex-display');
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      el.style.fontSize = '';
+      var available = el.clientWidth;
+      if (available <= 0) continue;
+      // 让容器收缩包裹到内容宽度后再量，避免居中溢出与内联片段导致的测量失真。
+      var display = el.style.display;
+      var width = el.style.width;
+      el.style.display = 'inline-block';
+      el.style.width = 'max-content';
+      var content = el.getBoundingClientRect().width;
+      el.style.display = display;
+      el.style.width = width;
+      if (content <= available) continue;
+      var base = parseFloat(getComputedStyle(el).fontSize) || 16;
+      el.style.fontSize = (base * available / content).toFixed(2) + 'px';
+    }
+  }
+  window.__markleafFitMath = fitMath;
+  // 等待 KaTeX 字体加载完成后再测量，避免用回退字体度量导致公式被误缩放。
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(fitMath);
+  } else {
+    fitMath();
+  }
+})();
+</script>
+</body>
+</html>`
 }

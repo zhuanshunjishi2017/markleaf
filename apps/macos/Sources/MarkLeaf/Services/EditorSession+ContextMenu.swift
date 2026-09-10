@@ -27,6 +27,8 @@ extension EditorSession {
             addMermaidCommands(to: menu, state: state)
         case .codeBlock:
             addCodeBlockCommands(to: menu, state: state)
+        case .frontMatter:
+            addCodeBlockCommands(to: menu, state: state)
         case .image, .math:
             break
         case .ordinaryBlock:
@@ -79,6 +81,9 @@ extension EditorSession {
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
         addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
+        menu.addItem(.separator())
+        addFormatCommand(menu, L10n.t("重复该段"), "duplicateParagraph")
+        addFormatCommand(menu, L10n.t("删除该段"), "deleteParagraph")
     }
 
     private static func headingLevelName(_ level: Int) -> String {
@@ -96,6 +101,10 @@ extension EditorSession {
         formatPainterArmed: Bool? = nil
     ) {
         guard let webView, let window = webView.window else { return }
+        if editorMenuState.expandedSource {
+            showExpandedSourceContextMenu(clientX: clientX, clientY: clientY)
+            return
+        }
         // WKWebView 是 flipped 视图（原点在左上），因此 JS clientY 可直接映射到
         // webView 局部坐标；这里统一换算到屏幕坐标后以 in: nil 弹出，避免依赖
         // WKWebView 内部子视图的翻转语义。
@@ -111,16 +120,22 @@ extension EditorSession {
         let state = editorMenuState
         let semanticContext = EditorMenuPolicy.semanticContext(for: state)
         if state.isSourceMode {
-            // 源码模式：剪贴板 + 全选
+            // 源码模式：历史 + 剪贴板 + 全选
             if state.isReadOnly {
                 addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
-            } else {
-                addClipboardCommands(menu)
                 menu.addItem(.separator())
+                addFormatCommand(menu, L10n.t("全选"), "selectAll")
+            } else {
+                addHistoryCommands(menu)
+                menu.addItem(.separator())
+                addClipboardCommands(menu)
             }
-            addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if semanticContext == .footnoteDefinition {
             addFootnoteCommands(to: menu, state: state)
+        } else if semanticContext == .frontMatter {
+            addCodeBlockCommands(to: menu, state: state)
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            addClipboardCommands(menu)
         } else if semanticContext == .table {
             addTableCommands(to: menu, state: state)
         } else if semanticContext == .mermaid {
@@ -150,7 +165,8 @@ extension EditorSession {
         } else if semanticContext == .math {
             // 公式：编辑 / 行内块级互转 / 删除
             guard !state.isReadOnly else { return }
-            addFormatCommand(menu, L10n.t("编辑公式"), "editMath")
+            addFormatCommand(menu, L10n.t("编辑公式源码"), "editMath")
+            addFormatCommand(menu, L10n.t("公式编号…"), "setMathNumber")
             addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除公式"), "deleteMath")
@@ -167,66 +183,71 @@ extension EditorSession {
             addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else {
-            // 常规：标题升降级（在标题内时）+ 行内格式 + 段落/标题/列表 + 剪贴板
+            addHistoryCommands(menu)
+            menu.addItem(.separator())
+            addClipboardCommands(menu)
+            menu.addItem(.separator())
+            addFormatPainterCommands(
+                menu,
+                canStart: canStartFormatPainter,
+                armed: formatPainterArmed
+            )
+            menu.addItem(.separator())
+
+            let format = NSMenu(title: L10n.t("格式"))
+            addInlineFormatCommand(format, L10n.t("粗体"), "toggleBold", "b")
+            addInlineFormatCommand(format, L10n.t("斜体"), "toggleItalic", "i")
+            addInlineFormatCommand(format, L10n.t("下划线"), "toggleUnderline", "u")
+            addInlineFormatCommand(format, L10n.t("删除线"), "toggleStrike")
+            addInlineFormatCommand(format, L10n.t("高亮"), "toggleHighlight")
+            addInlineFormatCommand(format, L10n.t("行内代码"), "toggleCode")
+            menu.addItem(submenuItem(L10n.t("格式"), format))
+
+            let paragraph = NSMenu(title: L10n.t("段落"))
+            addFormatCommand(paragraph, L10n.t("正文"), "setParagraph")
+            let headings = NSMenu(title: L10n.t("标题"))
+            for level in 1...6 {
+                addFormatCommand(
+                    headings,
+                    L10n.f("%@级标题", Self.headingLevelName(level)),
+                    "setHeading\(level)")
+            }
+            paragraph.addItem(submenuItem(L10n.t("标题"), headings))
             if let headingLevel {
                 addEnabledCommand(
-                    menu,
+                    paragraph,
                     L10n.t("提升标题级别"),
                     "promoteHeading",
                     enabled: headingLevel > 1)
                 addEnabledCommand(
-                    menu,
+                    paragraph,
                     L10n.t("降低标题级别"),
                     "demoteHeading",
                     enabled: headingLevel < 6)
-                menu.addItem(.separator())
             }
-            addInlineFormatCommand(menu, L10n.t("粗体"), "toggleBold", "b")
-            addInlineFormatCommand(menu, L10n.t("斜体"), "toggleItalic", "i")
-            addInlineFormatCommand(menu, L10n.t("下划线"), "toggleUnderline", "u")
-            addInlineFormatCommand(menu, L10n.t("删除线"), "toggleStrike")
-            addInlineFormatCommand(menu, L10n.t("行内代码"), "toggleCode")
-            let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
-            painterItem.representedObject = "formatPainterArm"
-            let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
-            let currentArmed = formatPainterArmed ?? isFormatPainterArmed
-            painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(
-                isSourceMode: isSourceMode,
-                canStartFormatPainter: currentCanStart,
-                isFormatPainterArmed: currentArmed
-            )
-            painterItem.state = currentArmed ? .on : .off
-            menu.addItem(painterItem)
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("正文"), "setParagraph")
-            let headings = NSMenu(title: L10n.t("标题"))
-            for level in 1...6 {
-                headings.addItem(menuItem(L10n.f("%@级标题", Self.headingLevelName(level)), #selector(handleCommand(_:))))
-                headings.items.last?.representedObject = "setHeading\(level)"
-            }
-            let headingItem = NSMenuItem(title: L10n.t("标题"), action: nil, keyEquivalent: "")
-            headingItem.submenu = headings
-            menu.addItem(headingItem)
             let lists = NSMenu(title: L10n.t("列表"))
             for (title, command) in [(L10n.t("无序列表"), "toggleBulletList"),
                                      (L10n.t("有序列表"), "toggleOrderedList"),
                                      (L10n.t("任务列表"), "toggleTaskList")] {
-                let item = menuItem(title, #selector(handleCommand(_:)))
-                item.representedObject = command
-                lists.addItem(item)
+                addFormatCommand(lists, title, command)
             }
-            let listItem = NSMenuItem(title: L10n.t("列表"), action: nil, keyEquivalent: "")
-            listItem.submenu = lists
-            menu.addItem(listItem)
-            addFormatCommand(menu, L10n.t("引用块"), "toggleBlockquote")
-            addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
-            menu.addItem(tableSizePickerSubmenu { [weak self] size in
+            paragraph.addItem(submenuItem(L10n.t("列表"), lists))
+            addFormatCommand(paragraph, L10n.t("引用块"), "toggleBlockquote")
+            addFormatCommand(paragraph, L10n.t("代码块"), "toggleCodeBlock")
+            menu.addItem(submenuItem(L10n.t("段落"), paragraph))
+
+            let insert = NSMenu(title: L10n.t("插入"))
+            addFormatCommand(insert, L10n.t("超链接…"), "insertLink")
+            addFormatCommand(insert, L10n.t("插入注释…"), "insertFootnote")
+            addFormatCommand(insert, L10n.t("行内公式"), "insertMathInline")
+            addFormatCommand(insert, L10n.t("段间公式"), "insertMathBlock")
+            addFormatCommand(insert, L10n.t("水平线"), "insertHorizontalRule")
+            insert.addItem(tableSizePickerSubmenu { [weak self] size in
                 self?.insertTable(rows: size.rows, columns: size.columns)
             })
+            menu.addItem(submenuItem(L10n.t("插入"), insert))
             menu.addItem(.separator())
-            addClipboardCommands(menu)
+            addFormatCommand(menu, L10n.t("清除格式"), "clearFormat")
         }
 
         guard !menu.items.isEmpty else { return }
@@ -346,8 +367,38 @@ extension EditorSession {
             mathInline: mathInline,
             mathBlock: mathBlock,
             codeBlock: codeBlock,
-            codeBlockText: codeBlockText
+            codeBlockText: codeBlockText,
+            frontMatterActive: frontMatterActive,
+            expandedSource: expandedSourceActive
         )
+    }
+
+    /// 公式/Mermaid 浮层中的右键菜单只作用于浮层源码。
+    private func showExpandedSourceContextMenu(clientX: Double, clientY: Double) {
+        guard let webView, let window = webView.window else { return }
+        let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
+        let commands: [(String, String)] = [
+            (L10n.t("撤销"), "undo:"),
+            (L10n.t("重做"), "redo:"),
+            (L10n.t("剪切"), "cut:"),
+            (L10n.t("拷贝"), "copy:"),
+            (L10n.t("粘贴"), "paste:"),
+            (L10n.t("全选"), "selectAll:"),
+        ]
+        for (title, action) in commands {
+            menu.addItem(NSMenuItem(title: title, action: NSSelectorFromString(action), keyEquivalent: ""))
+        }
+
+        let pointInView = Self.editorContextMenuPoint(
+            clientX: clientX,
+            clientY: clientY,
+            viewHeight: webView.bounds.height,
+            isFlipped: webView.isFlipped
+        )
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
 
     private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {
@@ -408,6 +459,7 @@ extension EditorSession {
     private func addFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
         let item = menuItem(title, #selector(handleCommand(_:)), key: key)
         item.representedObject = command
+        applyShortcut(to: item, command: command)
         menu.addItem(item)
     }
 
@@ -420,6 +472,7 @@ extension EditorSession {
             isSourceMode: isSourceMode,
             isReadOnly: isReadOnly
         )
+        applyShortcut(to: item, command: command)
         menu.addItem(item)
     }
 
@@ -427,6 +480,12 @@ extension EditorSession {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         item.keyEquivalentModifierMask = mask
+        return item
+    }
+
+    private func submenuItem(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
         return item
     }
 
@@ -451,7 +510,6 @@ extension EditorSession {
         addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCut)
         addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: canCopy)
         addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
-        addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
         let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
         copyAs.isEnabled = canCopyAs
         let copyAsMenu = NSMenu()
@@ -461,20 +519,66 @@ extension EditorSession {
         let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
         markdown.isEnabled = canCopyAs
         copyAsMenu.addItem(markdown)
+        let html = menuItem(L10n.t("HTML"), #selector(handleCommand(_:)))
+        html.representedObject = "copyHtml"
+        html.isEnabled = canCopyAs && !isSourceMode
+        copyAsMenu.addItem(html)
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)
+        addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
+        addFormatCommand(menu, L10n.t("全选"), "selectAll")
+    }
+
+    /// 撤销/重做区块：与“编辑”菜单共用同一组命令和快捷键。
+    private func addHistoryCommands(_ menu: NSMenu) {
+        addEnabledCommand(menu, L10n.t("撤销"), "undo", enabled: !isReadOnly && canUndo)
+        addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: !isReadOnly && canRedo)
+    }
+
+    /// 格式刷区块：把「格式刷 / 应用格式刷」从「格式」子菜单里提出来单独成组，
+    /// 放在剪贴板与「格式」之间，避免高频操作要先进子菜单。
+    private func addFormatPainterCommands(_ menu: NSMenu, canStart: Bool?, armed: Bool?) {
+        let currentCanStart = canStart ?? canStartFormatPainter
+        let currentArmed = armed ?? isFormatPainterArmed
+
+        let painter = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
+        painter.representedObject = "formatPainterArm"
+        applyShortcut(to: painter, command: "formatPainter")
+        painter.isEnabled = EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: isSourceMode,
+            canStartFormatPainter: currentCanStart,
+            isFormatPainterArmed: currentArmed
+        )
+        painter.state = currentArmed ? .on : .off
+        menu.addItem(painter)
+
+        // 与主菜单一致：只有已经吸取了格式才允许应用。
+        let apply = menuItem(L10n.t("应用格式刷"), #selector(handleCommand(_:)))
+        apply.representedObject = "formatPainterApply"
+        applyShortcut(to: apply, command: "formatPainterApply")
+        apply.isEnabled = !isSourceMode && !isReadOnly && currentArmed
+        menu.addItem(apply)
     }
 
     private func addEnabledCommand(_ menu: NSMenu, _ title: String, _ command: String, enabled: Bool) {
         let item = menuItem(title, #selector(handleCommand(_:)))
         item.representedObject = command
+        applyShortcut(to: item, command: command)
         item.isEnabled = enabled
         menu.addItem(item)
+    }
+
+    private func applyShortcut(to item: NSMenuItem, command: String) {
+        guard let entry = ShortcutCatalog.entry(for: command),
+              let effective = ShortcutSettings.shared.effectiveKey(for: entry) else { return }
+        item.keyEquivalent = effective.0
+        item.keyEquivalentModifierMask = effective.1
     }
 
     @objc func copyFormatted(_ sender: Any?) { copySelectionAs(.formatted) }
     @objc func copyPlain(_ sender: Any?) { copySelectionAs(.plainText) }
     @objc func copyMarkdown(_ sender: Any?) { copySelectionAs(.markdown) }
+    @objc func copyHtml(_ sender: Any?) { copySelectionAs(.html) }
     @objc func pasteFromClipboardAction(_ sender: Any?) { pasteFromClipboard() }
     @objc func pastePlainTextFromClipboardAction(_ sender: Any?) { pastePlainTextFromClipboard() }
 }

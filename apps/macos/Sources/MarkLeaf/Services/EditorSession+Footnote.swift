@@ -91,7 +91,17 @@ extension EditorSession {
         field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
+        // 与其他输入弹窗一致：注释编号为空时禁用「确定」。
+        let okButton = alert.buttons.first
+        okButton?.isEnabled = false
+        var validationToken: NSObjectProtocol?
+        validationToken = bindAlertInputValidation(field: field, button: okButton) {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         alert.beginSheetModal(for: window) { [weak self] response in
+            if let token = validationToken {
+                NotificationCenter.default.removeObserver(token)
+            }
             guard response == .alertFirstButtonReturn, let self else { return }
             let newLabel = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !newLabel.isEmpty, newLabel != oldLabel,

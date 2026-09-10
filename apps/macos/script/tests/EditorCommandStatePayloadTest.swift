@@ -10,6 +10,7 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 let complete = EditorCommandStatePayload.decode([
     "sourceMode": true,
     "readOnly": true,
+    "frontMatter": true,
     "codeBlock": true,
     "codeBlockLanguage": "swift",
     "codeBlockText": "let leaf = 1",
@@ -19,6 +20,7 @@ let complete = EditorCommandStatePayload.decode([
 ])
 expect(complete.sourceMode, "source mode should decode")
 expect(complete.readOnly, "read-only should decode")
+expect(complete.frontMatter, "front matter should decode")
 expect(complete.codeBlock, "code-block state should decode")
 expect(complete.codeBlockLanguage == "swift", "code-block language should decode")
 expect(complete.codeBlockText == "let leaf = 1", "complete code text should decode")
@@ -30,6 +32,7 @@ let missing = EditorCommandStatePayload.decode(nil)
 expect(missing == EditorCommandStatePayload(
     sourceMode: false,
     readOnly: false,
+    frontMatter: false,
     codeBlock: false,
     codeBlockLanguage: nil,
     codeBlockText: nil,

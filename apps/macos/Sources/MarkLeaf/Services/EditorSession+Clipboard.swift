@@ -6,6 +6,7 @@ extension EditorSession {
         case formatted
         case markdown
         case plainText
+        case html
     }
 
     /// 剪贴板中是否有可粘贴内容（文本/富文本/图片/Finder 文件），用于菜单置灰。
@@ -37,7 +38,14 @@ extension EditorSession {
                         // macOS 剪贴板 HTML 类型（对应 Windows CF_HTML）
                         pasteboard.setString(selection.html, forType: .html)
                     }
-                    self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
+                    if mode == .html {
+                        if !selection.html.isEmpty {
+                            pasteboard.setString(selection.html, forType: .html)
+                        }
+                        self.statusText = L10n.t("已复制 HTML")
+                    } else {
+                        self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
+                    }
                 case .failure:
                     self.statusText = L10n.t("剪贴板操作失败")
                 }
@@ -49,10 +57,22 @@ extension EditorSession {
 
     func pasteFromClipboard() {
         let pasteboard = NSPasteboard.general
+        let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        let image = NSImage(pasteboard: pasteboard)
+        let plainText = pasteboard.string(forType: .string)
+        let html = pasteboard.string(forType: .html)
 
-        // 0) Finder 复制的文件（对应 Windows Clipboard.ContainsFileDropList）→ 按「文件图片」设置导入
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-           !urls.isEmpty {
+        switch EditorPastePolicy.contentKind(
+            hasFinderFiles: !urls.isEmpty,
+            hasBitmapImage: image != nil,
+            plainText: plainText,
+            html: html
+        ) {
+        case .finderFiles:
+            // Finder 文件优先（对应 Windows Clipboard.ContainsFileDropList）→ 按「文件图片」设置导入。
             let imageExtensions = Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"])
             var imported = 0
             for url in urls where imageExtensions.contains(url.pathExtension.lowercased()) {
@@ -61,28 +81,27 @@ extension EditorSession {
             }
             statusText = imported > 0 ? "已插入 \(imported) 张图片" : L10n.t("未找到可插入的图片")
             return
-        }
-
-        // 1) 图片 → 保存到本地并插入
-        if let image = NSImage(pasteboard: pasteboard) {
+        case .bitmapImage:
+            guard let image else { return }
             importClipboardImage(image)
             return
-        }
-
-        // 2) HTML 格式化粘贴（可视化模式）
-        if !isSourceMode, let html = pasteboard.string(forType: .html), !html.isEmpty {
-            execute("pasteHtml", text: html)
-            statusText = L10n.t("已粘贴格式化内容")
+        case .textOrHTML:
+            guard let command = EditorPastePolicy.command(
+                isSourceMode: isSourceMode,
+                plainText: plainText,
+                html: html
+            ) else {
+                statusText = L10n.t("剪贴板中没有可粘贴的内容")
+                return
+            }
+            execute(command.command, text: command.text, html: command.html)
+            statusText = command.command == "pasteClipboard" && command.html != nil
+                ? L10n.t("已粘贴格式化内容")
+                : L10n.t("已粘贴纯文本")
             return
+        case .none:
+            statusText = L10n.t("剪贴板中没有可粘贴的内容")
         }
-
-        // 3) 纯文本
-        if let text = pasteboard.string(forType: .string), !text.isEmpty {
-            execute("pasteText", text: text)
-            statusText = L10n.t("已粘贴纯文本")
-            return
-        }
-        statusText = L10n.t("剪贴板中没有可粘贴的内容")
     }
 
     /// 仅粘贴剪贴板的纯文本，忽略 HTML、图片和 Finder 文件。
@@ -140,25 +159,19 @@ extension EditorSession {
     /// 图片引用路径：按 useRelativePaths 相对文档目录，并可选加 "./" 前缀。
     func markdownReferencePath(for path: String) -> String {
         let settings = SettingsService.shared.settings
-        if settings.useRelativePaths, let docDir = documentURL?.deletingLastPathComponent().path {
-            let absolute = URL(fileURLWithPath: path).standardizedFileURL.path
-            let docDirAbs = URL(fileURLWithPath: docDir).standardizedFileURL.path
-            if absolute.hasPrefix(docDirAbs + "/") {
-                var relative = String(absolute.dropFirst(docDirAbs.count + 1))
-                if settings.prefixRelativeWithDotSlash {
-                    relative = "./" + relative
-                }
-                return EditorSession.encodeMarkdownPath(relative)
-            }
+        if settings.useRelativePaths, let documentPath = documentURL?.path,
+           let relative = MarkdownImagePathPolicy.relative(
+            documentPath: documentPath,
+            filePath: path,
+            prefixDotSlash: settings.prefixRelativeWithDotSlash
+           ) {
+            return relative
         }
-        return EditorSession.toMarkdownPath(path)
+        return MarkdownImagePathPolicy.absolute(path)
     }
 
     static func encodeMarkdownPath(_ path: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-        return path.split(separator: "/").map {
-            $0.addingPercentEncoding(withAllowedCharacters: allowed) ?? String($0)
-        }.joined(separator: "/")
+        MarkdownImagePathPolicy.encode(path)
     }
 
     /// 复制图片到目标目录（对应 C# ImageAssetService.CopyFileIntoAsync）。
@@ -180,14 +193,7 @@ extension EditorSession {
 
     /// 对应 C# ImageAssetService.ToMarkdownPath：绝对路径分段百分号编码。
     static func toMarkdownPath(_ path: String) -> String {
-        let full = URL(fileURLWithPath: path).standardizedFileURL.path
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-        let segments = full.split(separator: "/").map { String($0) }
-        let escaped = segments.map { segment -> String in
-            if segment.hasSuffix(":") { return segment }
-            return segment.addingPercentEncoding(withAllowedCharacters: allowed) ?? segment
-        }
-        return "/" + escaped.joined(separator: "/")
+        MarkdownImagePathPolicy.absolute(path)
     }
 
     // MARK: - 选区导出请求

@@ -94,7 +94,7 @@ final class StyleManager {
         self.styles = Self.topologicalSort(rawStyles)
         AppLog.info("样式加载完成: \(themeList.count) 个颜色主题, \(rawStyles.count) 个排版样式")
         self.defaultStyleId = self.styles.first?.id ?? "serif"
-        if let white = themeList.first(where: { $0.id == "white" }) {
+        if let white = themeList.first(where: { $0.id == Self.defaultLightThemeID }) {
             self.defaultThemeId = white.id
         } else {
             self.defaultThemeId = themeList.first?.id
@@ -125,8 +125,8 @@ final class StyleManager {
 
     // MARK: - 默认主题（跟随系统外观）
 
-    /// 跟随系统外观时的默认浅色/深色主题（对齐 Windows 1.1.2 的 dark/white-only 默认）。
-    static let defaultLightThemeID = "colors-white-only"
+    /// 跟随系统外观时的默认浅色/深色主题。
+    static let defaultLightThemeID = "colors-default-light"
     static let defaultDarkThemeID = "colors-dark"
 
     /// 返回指定外观的默认主题 id；内置默认主题缺失时回退到解析出的默认主题。
@@ -135,7 +135,7 @@ final class StyleManager {
         preferredLight: String = StyleManager.defaultLightThemeID,
         preferredDark: String = StyleManager.defaultDarkThemeID
     ) -> String? {
-        let preferred = dark ? preferredDark : preferredLight
+        let preferred = ThemeIDNormalizer.normalize(dark ? preferredDark : preferredLight)
         if colorThemes.contains(where: { $0.id == preferred }) { return preferred }
         let builtIn = dark ? Self.defaultDarkThemeID : Self.defaultLightThemeID
         if colorThemes.contains(where: { $0.id == builtIn }) { return builtIn }

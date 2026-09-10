@@ -218,9 +218,8 @@ function normalizeMermaidSvg(root: ParentNode): void {
   root.querySelectorAll<HTMLElement | SVGElement>('svg, svg *, foreignObject, foreignObject *')
     .forEach((element) => {
       ;(element as HTMLElement | SVGElement).style.textIndent = '0px'
-      // The shared style sheet intentionally uses !important so diagram text
-      // does not inherit unrelated node rules. Match that priority here, or
-      // the browser can render with a different font than Mermaid measured.
+      // Match Mermaid's measured font priority, or the browser can render with
+      // a different font than it used during layout.
       ;(element as HTMLElement | SVGElement).style.setProperty(
         'font-family',
         getActiveMermaidFontFamily(),

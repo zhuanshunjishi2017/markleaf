@@ -26,6 +26,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let tabViewController = NSTabViewController()
     private var preferencesKeyMonitor: Any?
     private var textFieldEditingOriginals: [NSTextField: String] = [:]
+    private weak var applyButton: NSButton?
+    private var numericFieldMonitors: [BoundedTextFieldMonitor] = []
 
     var selectedPageIndex: Int {
         get { tabViewController.selectedTabViewItemIndex }
@@ -38,6 +40,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     // 文件
     private let startupPopup = NSPopUpButton()
     private let externalFileOpenModePopup = NSPopUpButton()
+    private let workspaceOpenModePopup = NSPopUpButton()
+    private let multiTabCheck = NSButton(checkboxWithTitle: L10n.t("启用多标签页"), target: nil, action: nil)
     private let autoSaveCheck = NSButton(checkboxWithTitle: L10n.t("自动保存文件"), target: nil, action: nil)
     private let saveOnSwitchCheck = NSButton(checkboxWithTitle: L10n.t("切换文档时自动保存"), target: nil, action: nil)
     private let snapshotIntervalField = NSTextField(string: "30")
@@ -56,6 +60,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private let sourceIndentField = NSTextField(string: "2")
     private var cjkLanguageTag: CJKLanguageTag
     private let visualCjkAutoSpacingCheck = NSButton(checkboxWithTitle: L10n.t("中西文与数字之间自动添加空格"), target: nil, action: nil)
+    private let ignoreMaxWidthCheck = NSButton(checkboxWithTitle: L10n.t("无视最大宽度限制"), target: nil, action: nil)
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
 
     // 外观
@@ -122,11 +127,14 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         themeIDs = themes.map(\.id)
 
         // ---- 控件初值 ----
-        startupPopup.addItems(withTitles: [L10n.t("新建文档"), L10n.t("打开上次工作区"), L10n.t("打开上次工作区及文件")])
+        startupPopup.addItems(withTitles: [L10n.t("新建空白文档"), L10n.t("恢复最后工作区"), L10n.t("恢复完整会话")])
         startupPopup.selectItem(at: settings.startupAction == .newDocument ? 0
                                 : settings.startupAction == .openLastWorkspace ? 1 : 2)
         externalFileOpenModePopup.addItems(withTitles: ExternalFileOpenPreferenceModel.titles(language: settings.displayLanguage))
         externalFileOpenModePopup.selectItem(at: ExternalFileOpenPreferenceModel.selectedIndex(for: settings.externalFileOpenMode))
+        workspaceOpenModePopup.addItems(withTitles: WorkspaceFileOpenPreferenceModel.titles(language: settings.displayLanguage))
+        workspaceOpenModePopup.selectItem(at: WorkspaceFileOpenPreferenceModel.selectedIndex(opensInNewTab: settings.workspaceOpenInNewTab))
+        multiTabCheck.state = settings.multiTabEnabled ? .on : .off
         autoSaveCheck.state = settings.autoSaveEnabled ? .on : .off
         saveOnSwitchCheck.state = settings.saveOnDocumentSwitch ? .on : .off
         snapshotIntervalField.stringValue = "\(settings.snapshotIntervalSeconds)"
@@ -151,6 +159,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
         visualCjkAutoSpacingCheck.state = settings.visualCjkAutoSpacing ? .on : .off
+        ignoreMaxWidthCheck.state = settings.visualIgnoreMaxWidth ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
@@ -211,10 +220,34 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             field.alignment = .center
             field.widthAnchor.constraint(equalToConstant: PreferencesWindowLayout.numericFieldWidth).isActive = true
         }
+        // 与导出「自定义边距」一致：输入即过滤非法字符、超上限整串回退；
+        // 不做任何回显归一化——用户输入的 “1.60” 原样保留（不用会改写内容的 NumberFormatter）。
+        // 允许清空与低于下限的中间值：此时「应用更改」禁用，失焦还原并弹窗提示。
+        let refreshApply: () -> Void = { [weak self] in self?.refreshApplyButton() }
+        numericFieldMonitors = [
+            BoundedTextFieldMonitor(
+                field: snapshotIntervalField, fractionDigits: 0,
+                upperBound: Double(AppSettings.snapshotIntervalRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: lineHeightField, fractionDigits: 2,
+                upperBound: AppSettings.visualLineHeightRange.upperBound, onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: fontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: maxWidthField, fractionDigits: 0,
+                upperBound: Double(AppSettings.visualMaxContentWidthRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceFontSizeField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceFontSizeRange.upperBound), onChange: refreshApply),
+            BoundedTextFieldMonitor(
+                field: sourceIndentField, fractionDigits: 0,
+                upperBound: Double(AppSettings.sourceIndentWidthRange.upperBound), onChange: refreshApply),
+        ]
         imageDirectoryField.bezelStyle = .roundedBezel
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
-            autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
+            multiTabCheck, autoSaveCheck, saveOnSwitchCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
                       blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
             visualCjkAutoSpacingCheck,
             autoHideScrollbarsCheck, followSystemCheck, codeHighlightCheck, associateMDCheck, associateTextCheck,
@@ -249,7 +282,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         )
 
         // 绑定
-        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
+        let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceOpenModePopup, multiTabCheck, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
                                      recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
                                      restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, visualCjkAutoSpacingCheck, topMostCheck, autoHideScrollbarsCheck,
@@ -336,6 +369,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelAction))
         let applyButton = NSButton(title: L10n.t("应用更改"), target: self, action: #selector(okAction))
         applyButton.keyEquivalent = "\r"
+        self.applyButton = applyButton
+        refreshApplyButton()
         let bottom = NSStackView(views: [resetButton, NSView(), cancelButton, applyButton])
         bottom.orientation = .horizontal
         bottom.spacing = 10
@@ -406,6 +441,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         textFieldEditingOriginals[field] = field.stringValue
     }
 
+    func controlTextDidChange(_ notification: Notification) {
+        refreshApplyButton()
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         let original = textFieldEditingOriginals.removeValue(forKey: field)
@@ -435,6 +474,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .header(L10n.t("启动")),
             .field(L10n.t("启动操作"), startupPopup),
             .field(L10n.t("外部文件打开方式"), externalFileOpenModePopup),
+            .field(L10n.t("工作区文件打开方式"), workspaceOpenModePopup),
             .header(L10n.t("保存选项")),
             .field("", autoSaveCheck),
             .field("", saveOnSwitchCheck),
@@ -451,6 +491,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     private func editorPage() -> NSView {
+        let centersMultiTab = PreferencesWindowLayout.editorCentersMultiTabCheckbox(for: displayLanguage)
+        let centersBlockHandle = PreferencesWindowLayout.editorCentersBlockHandleCheckbox(for: displayLanguage)
+        var editorCenteredCheckboxes: Set<NSButton> = []
+        if centersMultiTab { editorCenteredCheckboxes.insert(multiTabCheck) }
+        if centersBlockHandle { editorCenteredCheckboxes.insert(blockHandleCheck) }
         let primaryLabelWidth = ceil((L10n.t("基础行高") as NSString).size(
             withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
         ).width)
@@ -462,21 +507,26 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             )
             : nil
         return formPage(rows: [
+            .header(L10n.t("文档与标签")),
+            .field("", multiTabCheck),
             .header(L10n.t("可视化")),
             .field(L10n.t("基础行高"), lineHeightField),
             .field(L10n.t("基础字号"), fontSizeField),
             .field(L10n.t("最大内容宽度"), fieldRow(maxWidthField, unit: "px")),
             .field("", visualCjkAutoSpacingCheck),
+            .field("", ignoreMaxWidthCheck),
             .field("", blockHandleCheck),
             .header(L10n.t("源码模式")),
             .field("", linkButton(L10n.t("字体设置…"), #selector(openFontSettings))),
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
+            .header(L10n.t("Markdown 行为")),
+            .field("", linkButton(L10n.t("Markdown 行为…"), #selector(openMarkdownBehaviorSettings))),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
             .centeredHint(L10n.t("部分排版设置可能由当前的排版样式接管，可到「外观」更改。")),
         ], labeledFieldLeadingInset: labeledFieldLeadingInset,
-           intrinsicallyCenteredCheckboxes: displayLanguage == "zh-Hans" ? [blockHandleCheck] : [])
+           intrinsicallyCenteredCheckboxes: editorCenteredCheckboxes)
     }
 
     private func appearancePage() -> NSView {
@@ -564,7 +614,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         if startupPopup.indexOfSelectedItem >= 0 {
             settings.startupAction = switch startupPopup.indexOfSelectedItem {
             case 1: .openLastWorkspace
-            case 2: .openLastWorkspaceAndFiles
+            case 2: .restoreSession
             default: .newDocument
             }
         }
@@ -573,6 +623,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.externalFileOpenMode = ExternalFileOpenPreferenceModel.mode(
             at: externalFileOpenModePopup.indexOfSelectedItem
         )
+        settings.workspaceOpenInNewTab = WorkspaceFileOpenPreferenceModel.opensInNewTab(
+            at: workspaceOpenModePopup.indexOfSelectedItem
+        )
+        settings.multiTabEnabled = multiTabCheck.state == .on
         settings.snapshotIntervalSeconds = Int(snapshotIntervalField.stringValue) ?? 30
         settings.defaultEncoding = DocumentEncodingPolicy.defaultEncoding(
             rawValue: defaultEncodingPopup.titleOfSelectedItem ?? DocumentEncodingPolicy.utf8.rawValue
@@ -589,6 +643,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.sourceCjkFontFamily = sourceCjkFontField.fontName
         settings.cjkLanguageTag = cjkLanguageTag
         settings.visualCjkAutoSpacing = visualCjkAutoSpacingCheck.state == .on
+        settings.visualIgnoreMaxWidth = ignoreMaxWidthCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
 
@@ -661,6 +716,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         window?.close()
     }
 
+    /// 任一数值字段无效时禁用「应用更改」，与导出自定义边距弹窗行为一致。
+    private func refreshApplyButton() {
+        applyButton?.isEnabled = invalidNumericFieldLabel() == nil
+    }
+
     /// 数值字段校验：返回第一个无效字段的错误文案（nil 表示全部有效）。
     private func invalidNumericFieldLabel() -> String? {
         for field in [snapshotIntervalField, lineHeightField, fontSizeField, maxWidthField,
@@ -723,6 +783,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         sourceFontSizeField.stringValue = "\(dialog.fontSize)"
         cjkLanguageTag = dialog.cjkLanguageTag
         controlChanged()
+    }
+
+    @objc private func openMarkdownBehaviorSettings() {
+        let dialog = MarkdownBehaviorSettingsWindowController(settings: SettingsService.shared.settings)
+        guard dialog.runModal(), dialog.accepted else { return }
+        SettingsService.shared.update { dialog.model.apply(to: &$0) }
+        AppWindowManager.shared.applyPreferencesToAll()
     }
 
     /// 打开独立的「自定义状态栏」窗口（对齐 Windows StatusBarSettingsDialog）。

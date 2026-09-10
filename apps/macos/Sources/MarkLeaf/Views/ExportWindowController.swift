@@ -1,18 +1,22 @@
 import AppKit
 import PDFKit
 import WebKit
+import ImageIO
 
 /// “导出…”对话框：格式（PDF / HTML）切换 + 左侧选项，右侧 WKWebView 实时预览，
 /// 底部“导出… / 取消”。PDF 显示纸张/方向/页边距选项，HTML 隐藏之；两种格式均带预览。
-final class ExportWindowController: NSWindowController, NSWindowDelegate {
-    private weak var session: EditorSession?
+final class ExportWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+    private let lease: ExportSessionLease?
+    private var session: EditorSession? { lease?.session }
+    private let binding: ExportBinding
     var onClose: (() -> Void)?
 
-    private let formatPopup = NSPopUpButton()
+    private let formatSelector = ExportFormatSelector.make()
     private let paperPopup = NSPopUpButton()
-    private let landscapeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let directionPopup = NSPopUpButton()
     private let marginPopup = NSPopUpButton()
     private let customMarginButton = NSButton(title: "", target: nil, action: nil)
+    private let marginSummaryLabel = NSTextField(labelWithString: "")
     private let stylePopup = NSPopUpButton()
     private let colorThemePopup = NSPopUpButton()
     private let headerPresetPopup = NSPopUpButton()
@@ -24,19 +28,42 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private let headerFieldRow = NSView()
     private let footerFieldRow = NSView()
     private let lastSettingsButton = NSButton(title: "", target: nil, action: nil)
-    private let previewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    private let keepTablesCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let keepHeadingsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let pdfPreviewView = PDFView()
+    private let htmlPreviewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
+    private let imageMaxHeightField = NSTextField(string: "12000")
+    private let imageContentWidthField = NSTextField(string: "1200")
+    private let imageScalePopup = NSPopUpButton()
+    private let imagePNGButton = NSButton(radioButtonWithTitle: "PNG", target: nil, action: nil)
+    private let imageJPGButton = NSButton(radioButtonWithTitle: "JPG", target: nil, action: nil)
+    private let imageQualitySlider = NSSlider(value: 90, minValue: 1, maxValue: 100, target: nil, action: nil)
+    private let imageQualityLabel = NSTextField(labelWithString: "90%")
+    private let exportButton = NSButton(title: "", target: nil, action: nil)
+    private let imageSizeSummary = NSTextField(labelWithString: "")
+    private var imageFieldMonitors: [BoundedTextFieldMonitor] = []
+    private var imageEditingOriginals: [NSTextField: String] = [:]
+    private var imagePreviewExporter: ImageHTMLExporter?
+    private var imagePreviewDirectory: URL?
+    private var imageQualityGeneration = 0
 
-    private var paperRow: NSView?
-    private var landscapeRow: NSView?
+    private var paperSettingsRow: NSView?
+    private var directionRow: NSView?
     private var marginRow: NSView?
     private var headerPresetRow: NSView?
     private var footerPresetRow: NSView?
+    private var pageBehaviorRow: NSView?
+    private var imageSettingsRow: NSView?
+    private var imageQualityRow: NSView?
     private var headerFieldRowHeight: NSLayoutConstraint?
     private var footerFieldRowHeight: NSLayoutConstraint?
+    private var imageQualityRowHeight: NSLayoutConstraint?
     private var themeIDs: [String] = []
     private var styleIDs: [String] = []
     private var margins = ExportMargins()
+    private var currentMarginFields: [NSTextField] = []
+    private var marginMonitors: [BoundedTextFieldMonitor] = []
     private var previewTimer: DispatchWorkItem?
     private var previewGeneration = 0
     private var previewFileCounter = 0
@@ -60,19 +87,22 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     private static let fieldRowHeight: CGFloat = 28
 
-    init(session: EditorSession) {
-        self.session = session
+    init(lease: ExportSessionLease, binding: ExportBinding) {
+        self.lease = lease
+        self.binding = binding
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 920, height: 680),
+            contentRect: NSRect(x: 0, y: 0, width: 1160, height: 800),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false)
         window.title = L10n.t("导出文档")
         window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 960, height: 680)
         super.init(window: window)
         window.delegate = self
         buildContent()
         populateOptions()
+        configureImageValidation()
         window.center()
     }
 
@@ -83,23 +113,70 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let window else { return }
 
-        previewView.underPageBackgroundColor = .white
-        previewView.setValue(false, forKey: "drawsBackground")
+        htmlPreviewView.underPageBackgroundColor = .white
+        htmlPreviewView.setValue(false, forKey: "drawsBackground")
+        pdfPreviewView.translatesAutoresizingMaskIntoConstraints = false
+        pdfPreviewView.autoScales = true
 
-        formatPopup.addItems(withTitles: [L10n.t("PDF"), L10n.t("HTML")])
-        formatPopup.selectItem(at: 0)
-        formatPopup.target = self
-        formatPopup.action = #selector(formatChanged)
-        formatPopup.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        keepTablesCheck.title = L10n.t("尽量保持表格不跨页")
+        keepHeadingsCheck.title = L10n.t("尽量避免标题孤悬页尾")
+        keepTablesCheck.target = self
+        keepTablesCheck.action = #selector(optionChanged)
+        keepHeadingsCheck.target = self
+        keepHeadingsCheck.action = #selector(optionChanged)
+        imageMaxHeightField.target = self
+        imageMaxHeightField.action = #selector(optionChanged)
+        imageContentWidthField.target = self
+        imageContentWidthField.action = #selector(optionChanged)
+        imageScalePopup.target = self
+        imageScalePopup.action = #selector(optionChanged)
+        for button in [imagePNGButton, imageJPGButton] {
+            button.target = self
+            button.action = #selector(optionChanged)
+        }
+        imageQualitySlider.target = self
+        imageQualitySlider.action = #selector(imageQualityChanged)
+        formatSelector.target = self
+        formatSelector.action = #selector(formatChanged(_:))
+        for check in [keepTablesCheck, keepHeadingsCheck] {
+            check.lineBreakMode = .byWordWrapping
+            check.cell?.wraps = true
+            check.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        imageScalePopup.addItems(withTitles: ["1x", "2x", "3x", "4x"])
+        imageScalePopup.selectItem(withTitle: "2x")
+        imagePNGButton.state = .on
+        imageQualityLabel.font = .systemFont(ofSize: 11)
+        imageQualityLabel.textColor = .secondaryLabelColor
+        imageMaxHeightField.bezelStyle = .roundedBezel
+        imageContentWidthField.bezelStyle = .roundedBezel
+        for field in [imageMaxHeightField, imageContentWidthField] {
+            field.alignment = .center
+            field.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        }
+        imageMaxHeightField.identifier = NSUserInterfaceItemIdentifier("imageMaxHeight")
+        imageContentWidthField.identifier = NSUserInterfaceItemIdentifier("imageContentWidth")
+        imageScalePopup.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        imageQualityLabel.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        imageQualityLabel.alignment = .right
+        imageQualityLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        imageQualitySlider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        imageQualitySlider.isContinuous = true
+        imageSizeSummary.font = .systemFont(ofSize: 11)
+        imageSizeSummary.textColor = .secondaryLabelColor
+        imageSizeSummary.alignment = .center
+        imageSizeSummary.maximumNumberOfLines = 0
+        imageSizeSummary.cell?.wraps = true
 
         paperPopup.addItems(withTitles: PaperSize.allCases.map(\.rawValue))
         paperPopup.selectItem(withTitle: "A4")
         paperPopup.target = self
         paperPopup.action = #selector(optionChanged)
 
-        landscapeCheck.title = L10n.t("横向")
-        landscapeCheck.target = self
-        landscapeCheck.action = #selector(optionChanged)
+        directionPopup.addItems(withTitles: [L10n.t("纵向"), L10n.t("横向")])
+        directionPopup.selectItem(at: 0)
+        directionPopup.target = self
+        directionPopup.action = #selector(optionChanged)
 
         marginPopup.addItems(withTitles: Self.marginPresets.map(\.0))
         marginPopup.selectItem(withTitle: L10n.t("标准"))
@@ -110,6 +187,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         customMarginButton.bezelStyle = .rounded
         customMarginButton.target = self
         customMarginButton.action = #selector(presentCustomMarginSheet)
+        marginSummaryLabel.font = .systemFont(ofSize: 11)
+        marginSummaryLabel.textColor = .secondaryLabelColor
+        marginSummaryLabel.lineBreakMode = .byWordWrapping
+        marginSummaryLabel.maximumNumberOfLines = 2
+        marginSummaryLabel.alignment = .left
+        marginSummaryLabel.widthAnchor.constraint(equalToConstant: 200).isActive = true
 
         stylePopup.target = self
         stylePopup.action = #selector(optionChanged)
@@ -137,10 +220,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         footerField.placeholderString = L10n.t("支持 {title}、{page}、{pages}")
         headerFieldLabel.font = .systemFont(ofSize: 12)
         headerFieldLabel.alignment = .right
-        headerFieldLabel.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        headerFieldLabel.widthAnchor.constraint(equalToConstant: 110).isActive = true
         footerFieldLabel.font = .systemFont(ofSize: 12)
         footerFieldLabel.alignment = .right
-        footerFieldLabel.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        footerFieldLabel.widthAnchor.constraint(equalToConstant: 110).isActive = true
 
         lastSettingsButton.title = L10n.t("按上次设置导出")
         lastSettingsButton.bezelStyle = .rounded
@@ -151,29 +234,110 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         pageCountLabel.textColor = .secondaryLabelColor
         pageCountLabel.alignment = .right
 
-        let exportButton = NSButton(title: L10n.t("导出…"), target: self, action: #selector(exportClicked))
+        exportButton.title = L10n.t("导出…")
+        exportButton.target = self
+        exportButton.action = #selector(exportClicked)
+        exportButton.identifier = NSUserInterfaceItemIdentifier("exportButton")
         exportButton.keyEquivalent = "\r"
         exportButton.bezelStyle = .rounded
         let cancelButton = NSButton(title: L10n.t("取消"), target: self, action: #selector(cancelClicked))
         cancelButton.bezelStyle = .rounded
 
-        paperRow = labeled(L10n.t("纸张"), paperPopup)
-        landscapeRow = labeled(L10n.t("方向"), landscapeCheck)
-        marginRow = labeled(L10n.t("页边距"), NSStackView(views: [marginPopup, customMarginButton]))
+        paperSettingsRow = labeled(L10n.t("纸张设置"), paperPopup)
+        directionRow = labeled(L10n.t("方向"), directionPopup)
+        let marginControlRow = NSStackView(views: [marginPopup, customMarginButton])
+        marginControlRow.orientation = .horizontal
+        marginControlRow.spacing = 8
+        let marginSettingsStack = NSStackView(views: [marginControlRow, marginSummaryLabel])
+        marginSettingsStack.orientation = .vertical
+        marginSettingsStack.alignment = .leading
+        marginSettingsStack.spacing = 4
+        marginRow = labeled(L10n.t("页边距"), marginSettingsStack)
+        if let marginRowStack = marginRow as? NSStackView {
+            marginRowStack.alignment = .top
+        }
         headerPresetRow = labeled(L10n.t("页眉"), headerPresetPopup)
         footerPresetRow = labeled(L10n.t("页脚"), footerPresetPopup)
 
         configureFieldRow(headerFieldRow, label: headerFieldLabel, field: headerField)
         configureFieldRow(footerFieldRow, label: footerFieldLabel, field: footerField)
+        let pageBehaviorStack = NSStackView(views: [keepTablesCheck, keepHeadingsCheck])
+        pageBehaviorStack.orientation = .vertical
+        pageBehaviorStack.alignment = .leading
+        pageBehaviorStack.spacing = 6
+        pageBehaviorRow = labeled(L10n.t("页面行为"), pageBehaviorStack)
+        if let pageBehaviorRowStack = pageBehaviorRow as? NSStackView {
+            pageBehaviorRowStack.alignment = .top
+        }
+        let imageQualityStack = NSStackView(views: [imageQualitySlider, imageQualityLabel])
+        imageQualityStack.orientation = .horizontal
+        imageQualityStack.spacing = 6
+        imageQualityStack.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        let imageFormatStack = NSStackView(views: [imagePNGButton, imageJPGButton])
+        imageFormatStack.orientation = .horizontal
+        imageFormatStack.spacing = 12
+        let jpegQualityLabel = NSTextField(labelWithString: L10n.t("JPEG 质量"))
+        jpegQualityLabel.font = .systemFont(ofSize: 12)
+        jpegQualityLabel.alignment = .right
+        jpegQualityLabel.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        jpegQualityLabel.setContentHuggingPriority(.required, for: .horizontal)
+        imageQualityRow = NSView()
+        imageQualityRow?.translatesAutoresizingMaskIntoConstraints = false
+        imageQualityRow?.wantsLayer = true
+        imageQualityRow?.layer?.masksToBounds = true
+        imageQualityRow?.alphaValue = 0
+        imageQualityRow?.isHidden = true
+        let jpegQualityInner = NSStackView(views: [jpegQualityLabel, imageQualityStack])
+        jpegQualityInner.orientation = .horizontal
+        jpegQualityInner.spacing = 8
+        jpegQualityInner.translatesAutoresizingMaskIntoConstraints = false
+        imageQualityRow?.addSubview(jpegQualityInner)
+        NSLayoutConstraint.activate([
+            jpegQualityInner.leadingAnchor.constraint(equalTo: imageQualityRow!.leadingAnchor),
+            jpegQualityInner.trailingAnchor.constraint(equalTo: imageQualityRow!.trailingAnchor),
+            jpegQualityInner.topAnchor.constraint(equalTo: imageQualityRow!.topAnchor),
+        ])
+        imageQualityRowHeight = imageQualityRow?.heightAnchor.constraint(equalToConstant: 0)
+        imageQualityRowHeight?.isActive = true
+        let imageSettingsStack = NSStackView(views: [
+            labeled(L10n.t("单张最大高度"), imageDimensionControl(imageMaxHeightField)),
+            labeled(L10n.t("内容宽度"), imageDimensionControl(imageContentWidthField)),
+            labeled(L10n.t("输出倍率"), imageScalePopup),
+            labeled(L10n.t("格式"), imageFormatStack),
+            imageQualityRow!,
+            imageSizeSummary,
+        ])
+        imageSettingsStack.orientation = .vertical
+        imageSettingsStack.alignment = .leading
+        imageSettingsStack.spacing = 10
+        imageSizeSummary.widthAnchor.constraint(equalToConstant: 298).isActive = true
+        let imageSettingsHeader = NSTextField(labelWithString: L10n.t("图像设置"))
+        imageSettingsHeader.font = .boldSystemFont(ofSize: 13)
+        imageSettingsHeader.alignment = .left
+        let imageSettingsRowStack = NSStackView(views: [imageSettingsHeader, imageSettingsStack])
+        imageSettingsRowStack.orientation = .vertical
+        imageSettingsRowStack.alignment = .leading
+        imageSettingsRowStack.spacing = 8
+        imageSettingsRow = imageSettingsRowStack
         headerFieldRowHeight = headerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         footerFieldRowHeight = footerFieldRow.heightAnchor.constraint(equalToConstant: 0)
         headerFieldRowHeight?.isActive = true
         footerFieldRowHeight?.isActive = true
 
+        let formatHost = NSView()
+        formatSelector.translatesAutoresizingMaskIntoConstraints = false
+        formatHost.addSubview(formatSelector)
+        NSLayoutConstraint.activate([
+            formatSelector.leadingAnchor.constraint(equalTo: formatHost.leadingAnchor),
+            formatSelector.trailingAnchor.constraint(equalTo: formatHost.trailingAnchor),
+            formatSelector.centerYAnchor.constraint(equalTo: formatHost.centerYAnchor),
+            formatHost.heightAnchor.constraint(equalToConstant: 44),
+        ])
+
         let optionsStack = NSStackView(views: [
-            labeled(L10n.t("格式"), formatPopup),
-            paperRow!,
-            landscapeRow!,
+            formatHost,
+            paperSettingsRow!,
+            directionRow!,
             marginRow!,
             labeled(L10n.t("排版样式"), stylePopup),
             labeled(L10n.t("配色方案"), colorThemePopup),
@@ -181,27 +345,50 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             headerFieldRow,
             footerPresetRow!,
             footerFieldRow,
+            pageBehaviorRow!,
+            imageSettingsRow!,
         ])
         optionsStack.orientation = .vertical
         optionsStack.alignment = .leading
         optionsStack.spacing = 12
         optionsStack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         optionsStack.translatesAutoresizingMaskIntoConstraints = false
-        optionsStack.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        formatHost.widthAnchor.constraint(equalTo: optionsStack.widthAnchor, constant: -40).isActive = true
+        let optionsDocument = ExportOptionsDocumentView()
+        optionsDocument.translatesAutoresizingMaskIntoConstraints = false
+        optionsDocument.addSubview(optionsStack)
+        let optionsScrollView = NSScrollView()
+        optionsScrollView.drawsBackground = false
+        optionsScrollView.hasVerticalScroller = true
+        optionsScrollView.autohidesScrollers = true
+        optionsScrollView.translatesAutoresizingMaskIntoConstraints = false
+        optionsScrollView.documentView = optionsDocument
+        NSLayoutConstraint.activate([
+            optionsDocument.widthAnchor.constraint(equalTo: optionsScrollView.contentView.widthAnchor),
+            optionsStack.leadingAnchor.constraint(equalTo: optionsDocument.leadingAnchor),
+            optionsStack.trailingAnchor.constraint(equalTo: optionsDocument.trailingAnchor),
+            optionsStack.topAnchor.constraint(equalTo: optionsDocument.topAnchor),
+            optionsStack.bottomAnchor.constraint(equalTo: optionsDocument.bottomAnchor),
+        ])
 
         let previewContainer = NSView()
         previewContainer.translatesAutoresizingMaskIntoConstraints = false
-        previewView.translatesAutoresizingMaskIntoConstraints = false
+        htmlPreviewView.translatesAutoresizingMaskIntoConstraints = false
         pageCountLabel.translatesAutoresizingMaskIntoConstraints = false
-        previewContainer.addSubview(previewView)
+        previewContainer.addSubview(pdfPreviewView)
+        previewContainer.addSubview(htmlPreviewView)
         previewContainer.addSubview(pageCountLabel)
         NSLayoutConstraint.activate([
-            previewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
-            previewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
-            previewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
-            previewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+            pdfPreviewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            pdfPreviewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            pdfPreviewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
+            pdfPreviewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
+            htmlPreviewView.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
+            htmlPreviewView.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            htmlPreviewView.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
+            htmlPreviewView.bottomAnchor.constraint(equalTo: previewContainer.bottomAnchor),
             pageCountLabel.leadingAnchor.constraint(equalTo: previewContainer.leadingAnchor),
-            pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor),
+            pageCountLabel.trailingAnchor.constraint(equalTo: previewContainer.trailingAnchor, constant: -12),
             pageCountLabel.topAnchor.constraint(equalTo: previewContainer.topAnchor),
         ])
 
@@ -209,39 +396,125 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         buttonRow.orientation = .horizontal
         buttonRow.spacing = 10
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        let leftStack = NSView()
+        leftStack.addSubview(optionsScrollView)
+        leftStack.addSubview(buttonRow)
+        leftStack.translatesAutoresizingMaskIntoConstraints = false
 
         let root = NSView()
-        root.addSubview(optionsStack)
+        root.addSubview(leftStack)
         root.addSubview(previewContainer)
-        root.addSubview(buttonRow)
 
         window.contentView = root
         NSLayoutConstraint.activate([
-            optionsStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            optionsStack.topAnchor.constraint(equalTo: root.topAnchor),
-            optionsStack.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
+            leftStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            leftStack.topAnchor.constraint(equalTo: root.topAnchor),
+            leftStack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            leftStack.widthAnchor.constraint(equalToConstant: 380),
 
-            previewContainer.leadingAnchor.constraint(equalTo: optionsStack.trailingAnchor, constant: 4),
-            previewContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            previewContainer.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            previewContainer.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
+            optionsScrollView.leadingAnchor.constraint(equalTo: leftStack.leadingAnchor),
+            optionsScrollView.topAnchor.constraint(equalTo: leftStack.topAnchor),
+            optionsScrollView.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor),
+            optionsScrollView.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -8),
 
-            buttonRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            buttonRow.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
-            buttonRow.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+            previewContainer.leadingAnchor.constraint(equalTo: leftStack.trailingAnchor),
+            previewContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            previewContainer.topAnchor.constraint(equalTo: root.topAnchor),
+            previewContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+
+            buttonRow.leadingAnchor.constraint(equalTo: leftStack.leadingAnchor, constant: 16),
+            buttonRow.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor, constant: -12),
+            buttonRow.bottomAnchor.constraint(equalTo: leftStack.bottomAnchor, constant: -14),
         ])
-        if let contentView = window.contentView {
-            contentView.widthAnchor.constraint(equalToConstant: 920).isActive = true
-            contentView.heightAnchor.constraint(equalToConstant: 680).isActive = true
-        }
+        root.layoutSubtreeIfNeeded()
         updatePDFVisibility()
+    }
+
+    private func imageDimensionControl(_ field: NSTextField) -> NSView {
+        let unit = NSTextField(labelWithString: "px")
+        unit.textColor = .secondaryLabelColor
+        let row = NSStackView(views: [field, unit])
+        row.orientation = .horizontal
+        row.spacing = 6
+        return row
+    }
+
+    private var imageFieldsAreValid: Bool {
+        imageFieldValue(imageContentWidthField, in: ImageExportPolicy.contentWidthRange) != nil
+            && imageFieldValue(imageMaxHeightField, in: ImageExportPolicy.maxHeightRange) != nil
+    }
+
+    private func imageFieldValue(_ field: NSTextField, in range: ClosedRange<Int>) -> Int? {
+        guard let value = Int(field.stringValue), range.contains(value) else { return nil }
+        return value
+    }
+
+    private func configureImageValidation() {
+        let fields = [(imageContentWidthField, ImageExportPolicy.contentWidthRange),
+                      (imageMaxHeightField, ImageExportPolicy.maxHeightRange)]
+        imageFieldMonitors = fields.map { field, range in
+            field.delegate = self
+            field.toolTip = "\(range.lowerBound)–\(range.upperBound) px"
+            return BoundedTextFieldMonitor(field: field, fractionDigits: 0,
+                upperBound: Double(range.upperBound), onChange: { [weak self] in
+                    self?.imageInputChanged()
+                })
+        }
+        refreshExportButton()
+        updateImageControls(animated: false)
+    }
+
+    private func refreshExportButton() {
+        exportButton.isEnabled = selectedFormat != "image" || imageFieldsAreValid
+    }
+
+    private func imageInputChanged() {
+        refreshExportButton()
+        if imageFieldsAreValid {
+            updateImageControls(animated: false)
+            schedulePreview()
+        } else {
+            previewTimer?.cancel()
+            previewGeneration += 1
+            imagePreviewExporter?.cancel()
+            imageSizeSummary.stringValue = ""
+        }
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        imageEditingOriginals[field] = field.stringValue
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        imageInputChanged()
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              field === imageContentWidthField || field === imageMaxHeightField else { return }
+        let original = imageEditingOriginals.removeValue(forKey: field)
+        let isWidth = field === imageContentWidthField
+        let range = isWidth ? ImageExportPolicy.contentWidthRange : ImageExportPolicy.maxHeightRange
+        if imageFieldValue(field, in: range) == nil {
+            field.stringValue = original ?? (isWidth ? "1200" : "12000")
+            // Rebind after programmatic restoration so the next rejected edit returns here.
+            configureImageValidation()
+            let alert = NSAlert()
+            alert.messageText = L10n.f("“%@”需要填写有效的数值（%@）",
+                L10n.t(isWidth ? "内容宽度" : "单张最大高度"), "\(range.lowerBound)–\(range.upperBound)")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L10n.t("好"))
+            if let window { alert.beginSheetModal(for: window) }
+        }
+        imageInputChanged()
     }
 
     private func labeled(_ title: String, _ control: NSView) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 12)
         label.alignment = .right
-        label.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        label.widthAnchor.constraint(equalToConstant: 110).isActive = true
         label.setContentHuggingPriority(.required, for: .horizontal)
         let row = NSStackView(views: [label, control])
         row.orientation = .horizontal
@@ -285,9 +558,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if let idx = preferredThemeID.flatMap(themeIDs.firstIndex(of:)) {
             colorThemePopup.selectItem(at: idx)
         }
-        formatPopup.selectItem(at: saved.format == "html" ? 1 : 0)
+        ExportFormatSelector.select(format: saved.format, in: formatSelector)
         paperPopup.selectItem(withTitle: saved.paperSize)
-        landscapeCheck.state = saved.landscape ? .on : .off
+        directionPopup.selectItem(at: saved.landscape ? 1 : 0)
         margins = ExportMargins(
             top: saved.marginTop, bottom: saved.marginBottom,
             left: saved.marginLeft, right: saved.marginRight
@@ -296,6 +569,15 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         footerField.stringValue = saved.format == "html" ? saved.htmlFooter : saved.footerCustom
         selectHeaderFooterPreset(saved.headerPreset, in: headerPresetPopup)
         selectHeaderFooterPreset(saved.footerPreset, in: footerPresetPopup)
+        keepTablesCheck.state = saved.keepTablesTogether ? .on : .off
+        keepHeadingsCheck.state = saved.keepHeadingsWithNextBlock ? .on : .off
+        imageMaxHeightField.stringValue = String(Int(saved.imageMaxHeight))
+        imageContentWidthField.stringValue = String(Int(saved.imageContentWidth))
+        imageScalePopup.selectItem(withTitle: "\(Int(saved.imageScale))x")
+        imageJPGButton.state = saved.imageFormat == "jpg" ? .on : .off
+        imagePNGButton.state = saved.imageFormat == "png" ? .on : .off
+        imageQualitySlider.doubleValue = saved.imageJpegQuality
+        imageQualityLabel.stringValue = "\(Int(saved.imageJpegQuality))%"
         marginPopup.addItem(withTitle: L10n.t("自定义"))
         customMarginItemIndex = marginPopup.numberOfItems - 1
         if let presetIndex = Self.marginPresets.firstIndex(where: { preset in
@@ -307,8 +589,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             marginPopup.selectItem(at: customMarginItemIndex ?? 0)
         }
         updatePDFVisibility()
+        updateImageControls(animated: false)
         updateHeaderFooterFieldState()
         refreshPreview()
+        updateMarginSummary()
     }
 
     private var selectedStyleID: String {
@@ -323,7 +607,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var selectedFormat: String {
-        formatPopup.indexOfSelectedItem == 1 ? "html" : "pdf"
+        ExportFormatSelector.selectedFormat(in: formatSelector)
     }
 
     private func currentOptions() -> ExportOptions {
@@ -332,7 +616,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         options.style = selectedStyleID
         options.colorScheme = selectedThemeID
         options.paperSize = PaperSize(rawValue: paperPopup.titleOfSelectedItem ?? "A4") ?? .a4
-        options.landscape = landscapeCheck.state == .on
+        options.landscape = directionPopup.indexOfSelectedItem == 1
         options.margins = margins
         if selectedFormat == "html" {
             options.header = headerField.stringValue
@@ -345,6 +629,16 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             options.pdfFooter = PDFHeaderFooterPolicy.text(for: footerPreset, custom: footerField.stringValue)
             options.pdfFooterAlignment = PDFHeaderFooterPolicy.alignment(for: footerPreset)
             options.headerFooterFontFamily = selectedHeaderFooterFontFamily
+            options.keepTablesTogether = keepTablesCheck.state == .on
+            options.keepHeadingsWithNextBlock = keepHeadingsCheck.state == .on
+        }
+        if imageFieldsAreValid {
+            options.imageMaxHeight = Double(imageMaxHeightField.stringValue) ?? 12000
+            options.imageContentWidth = Double(imageContentWidthField.stringValue) ?? 1200
+            let scaleText = imageScalePopup.titleOfSelectedItem?.replacingOccurrences(of: "x", with: "") ?? "2"
+            options.imageScale = Double(scaleText) ?? 2
+            options.imageFormat = imageJPGButton.state == .on ? "jpg" : "png"
+            options.imageJpegQuality = imageQualitySlider.doubleValue
         }
         return options
     }
@@ -371,21 +665,70 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - 格式切换
 
-    @objc private func formatChanged() {
+    @objc private func formatChanged(_ sender: NSSegmentedControl) {
         updatePDFVisibility()
+        updateImageControls()
+        refreshExportButton()
+        pageCountLabel.stringValue = ""
+        if selectedFormat != "image" && selectedFormat != "html" {
+            pdfPreviewView.isHidden = false
+            htmlPreviewView.isHidden = true
+        } else {
+            pdfPreviewView.isHidden = true
+            htmlPreviewView.isHidden = false
+        }
         refreshPreview()
     }
 
     private func updatePDFVisibility() {
         let isPDF = selectedFormat == "pdf"
-        paperRow?.isHidden = !isPDF
-        landscapeRow?.isHidden = !isPDF
+        let isImage = selectedFormat == "image"
+        paperSettingsRow?.isHidden = !isPDF
+        directionRow?.isHidden = !isPDF
         marginRow?.isHidden = !isPDF
         headerPresetRow?.isHidden = !isPDF
         footerPresetRow?.isHidden = !isPDF
-        headerFieldLabel.stringValue = isPDF ? "" : L10n.t("页眉")
-        footerFieldLabel.stringValue = isPDF ? "" : L10n.t("页脚")
-        updateHeaderFooterFieldState()
+        pageBehaviorRow?.isHidden = !isPDF
+        imageSettingsRow?.isHidden = !isImage
+        headerFieldLabel.stringValue = isPDF ? L10n.t("页眉") : ""
+        footerFieldLabel.stringValue = isPDF ? L10n.t("页脚") : ""
+        updateHeaderFooterFieldState(animated: false)
+    }
+
+    /// PNG 隐藏 JPEG 质量滑块；切换到 JPG 时恢复显示，并带有与 PDF 页眉/页脚一致的过渡动画。
+    func updateImageControls(animated: Bool = true) {
+        setImageQualityRowVisible(imageJPGButton.state == .on, animated: animated)
+        if imageFieldsAreValid {
+            let options = currentOptions()
+            imageSizeSummary.stringValue = L10n.f("输出宽度 %d px · 单张最高 %d px",
+                Int(options.imageContentWidth * options.imageScale), Int(options.imageMaxHeight))
+        }
+    }
+
+    private func setImageQualityRowVisible(_ visible: Bool, animated: Bool = true) {
+        guard let row = imageQualityRow, let height = imageQualityRowHeight else { return }
+        let currentlyVisible = height.constant > 0
+        guard visible != currentlyVisible else { return }
+        imageQualityGeneration += 1
+        let generation = imageQualityGeneration
+        if visible, row.isHidden {
+            row.isHidden = false
+            row.alphaValue = 0
+        }
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                height.animator().constant = visible ? Self.fieldRowHeight : 0
+                row.animator().alphaValue = visible ? 1 : 0
+            } completionHandler: { [weak self] in
+                guard let self, generation == self.imageQualityGeneration else { return }
+                if !visible { row.isHidden = true }
+            }
+        } else {
+            height.constant = visible ? Self.fieldRowHeight : 0
+            row.alphaValue = visible ? 1 : 0
+            if !visible { row.isHidden = true }
+        }
     }
 
     @objc private func headerFooterPresetChanged() {
@@ -393,12 +736,12 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         schedulePreview()
     }
 
-    private func updateHeaderFooterFieldState() {
+    private func updateHeaderFooterFieldState(animated: Bool = true) {
         let isPDF = selectedFormat == "pdf"
-        let headerVisible = !isPDF || selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
-        let footerVisible = !isPDF || selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
-        setFieldRowVisible(headerFieldRow, height: headerFieldRowHeight, visible: headerVisible)
-        setFieldRowVisible(footerFieldRow, height: footerFieldRowHeight, visible: footerVisible)
+        let headerVisible = isPDF && selectedHeaderFooterPreset(in: headerPresetPopup) == "custom"
+        let footerVisible = isPDF && selectedHeaderFooterPreset(in: footerPresetPopup) == "custom"
+        setFieldRowVisible(headerFieldRow, height: headerFieldRowHeight, visible: headerVisible, animated: animated)
+        setFieldRowVisible(footerFieldRow, height: footerFieldRowHeight, visible: footerVisible, animated: animated)
     }
 
     private func setFieldRowVisible(_ row: NSView, height: NSLayoutConstraint?, visible: Bool, animated: Bool = true) {
@@ -426,6 +769,13 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - 预览
 
     @objc private func optionChanged() {
+        updateImageControls()
+        schedulePreview()
+    }
+
+    @objc private func imageQualityChanged() {
+        imageQualitySlider.doubleValue = imageQualitySlider.doubleValue.rounded()
+        imageQualityLabel.stringValue = "\(Int(imageQualitySlider.doubleValue))%"
         schedulePreview()
     }
 
@@ -434,6 +784,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         if idx < Self.marginPresets.count {
             margins = Self.marginPresets[idx].1
         }
+        updateMarginSummary()
         schedulePreview()
     }
 
@@ -447,6 +798,9 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private func refreshPreview() {
         guard let session else { return }
         previewGeneration += 1
+        imagePreviewExporter?.cancel()
+        imagePreviewExporter = nil
+        guard selectedFormat != "image" || imageFieldsAreValid else { return }
         let generation = previewGeneration
         let options = currentOptions()
         // 保留上一份预览与页码，新预览生成完成后再替换，避免闪烁与页码消失。
@@ -454,8 +808,67 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             guard let self, generation == self.previewGeneration else { return }
             if options.format == "pdf" {
                 self.renderPDFPreview(html: html, options: options, generation: generation)
+            } else if options.format == "image" {
+                self.renderImagePreview(html: html, options: options, generation: generation)
             } else {
-                self.previewView.loadHTMLString(html, baseURL: nil)
+                self.pdfPreviewView.isHidden = true
+                self.htmlPreviewView.isHidden = false
+                self.pageCountLabel.stringValue = ""
+                self.htmlPreviewView.loadHTMLString(html, baseURL: nil)
+            }
+        }
+    }
+
+    /// Preview the same encoded slices as export, including JPEG compression.
+    private func renderImagePreview(html: String, options: ExportOptions, generation: Int) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markleaf-image-preview-" + UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            pageCountLabel.stringValue = error.localizedDescription
+            return
+        }
+        pageCountLabel.stringValue = L10n.t("正在生成图像预览…")
+        let exporter = ImageHTMLExporter()
+        imagePreviewExporter = exporter
+        exporter.export(html: html, options: options,
+                        saveBaseURL: directory.appendingPathComponent("image." + options.imageFormat)) {
+            [weak self] result in
+            guard let self, generation == self.previewGeneration else {
+                try? FileManager.default.removeItem(at: directory)
+                return
+            }
+            self.imagePreviewExporter = nil
+            do {
+                let urls = try result.get()
+                let figures = urls.enumerated().map { index, url -> String in
+                    let source = CGImageSourceCreateWithURL(url as CFURL, nil)
+                    let properties = source.flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] }
+                    let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? 0
+                    let height = properties?[kCGImagePropertyPixelHeight] as? Int ?? 0
+                    return "<figure><figcaption>\(index + 1) / \(urls.count) · \(width) × \(height) px</figcaption><img src=\"\(url.lastPathComponent)\"></figure>"
+                }.joined()
+                let gallery = """
+                <!doctype html><meta charset="utf-8"><style>
+                :root{color-scheme:light dark}body{margin:0;padding:16px;background:#8882;font:12px system-ui}
+                figure{margin:0 0 20px}figcaption{padding:0 0 8px;opacity:.7}
+                img{display:block;max-width:100%;height:auto;margin:auto;box-shadow:0 1px 6px #0003}
+                </style>\(figures)
+                """
+                let indexURL = directory.appendingPathComponent("index.html")
+                try gallery.write(to: indexURL, atomically: true, encoding: .utf8)
+                let previous = self.imagePreviewDirectory
+                self.imagePreviewDirectory = directory
+                self.pdfPreviewView.isHidden = true
+                self.htmlPreviewView.isHidden = false
+                self.htmlPreviewView.loadFileURL(indexURL, allowingReadAccessTo: directory)
+                self.pageCountLabel.stringValue = L10n.f("共 %d 张 · 宽 %d px", urls.count,
+                    Int(options.imageContentWidth * options.imageScale))
+                if let previous { try? FileManager.default.removeItem(at: previous) }
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                self.pageCountLabel.stringValue = error.localizedDescription
             }
         }
     }
@@ -484,8 +897,10 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             DispatchQueue.main.async {
                 guard let self, generation == self.previewGeneration else { return }
                 if case .success(true) = result {
-                    self.previewView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
                     if let document = PDFDocument(url: url) {
+                        self.pdfPreviewView.document = document
+                        self.pdfPreviewView.isHidden = false
+                        self.htmlPreviewView.isHidden = true
                         self.pageCountLabel.stringValue = L10n.f("共 %d 页", document.pageCount)
                     }
                     self.cleanupOldPreviews(except: url)
@@ -516,21 +931,26 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func presentCustomMarginSheet() {
         guard let window else { return }
-        let topField = marginField(String(format: "%.1f", margins.top))
-        let bottomField = marginField(String(format: "%.1f", margins.bottom))
-        let leftField = marginField(String(format: "%.1f", margins.left))
-        let rightField = marginField(String(format: "%.1f", margins.right))
+        let topField = marginField(Self.compactMargin(margins.top))
+        let bottomField = marginField(Self.compactMargin(margins.bottom))
+        let leftField = marginField(Self.compactMargin(margins.left))
+        let rightField = marginField(Self.compactMargin(margins.right))
+        currentMarginFields = [topField, bottomField, leftField, rightField]
 
-        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 96))
-        let rows: [(String, NSTextField)] = [
-            (L10n.t("上边距"), topField),
-            (L10n.t("下边距"), bottomField),
-            (L10n.t("左边距"), leftField),
-            (L10n.t("右边距"), rightField),
-        ]
-        let grid = NSGridView(views: rows.map { [marginLabel($0.0), $0.1] })
-        grid.rowSpacing = 8
-        grid.columnSpacing = 8
+        let topCell = NSStackView(views: [marginLabel(L10n.t("上边距")), topField])
+        let bottomCell = NSStackView(views: [marginLabel(L10n.t("下边距")), bottomField])
+        let leftCell = NSStackView(views: [marginLabel(L10n.t("左边距")), leftField])
+        let rightCell = NSStackView(views: [marginLabel(L10n.t("右边距")), rightField])
+        for cell in [topCell, bottomCell, leftCell, rightCell] {
+            cell.orientation = .horizontal
+            cell.alignment = .centerY
+            cell.spacing = 8
+        }
+        let grid = NSGridView(views: [[topCell, bottomCell], [leftCell, rightCell]])
+        grid.rowSpacing = 7
+        grid.columnSpacing = 14
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 104))
         grid.translatesAutoresizingMaskIntoConstraints = false
         accessory.addSubview(grid)
         NSLayoutConstraint.activate([
@@ -545,11 +965,19 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         alert.addButton(withTitle: L10n.t("取消"))
         let okButton = alert.buttons.first
         func refreshOK() {
-            okButton?.isEnabled = [topField, bottomField, leftField, rightField].allSatisfy { marginValue($0) != nil }
+            okButton?.isEnabled = currentMarginFields.allSatisfy { field in
+                guard let value = marginValue(field) else { return false }
+                return (0...100).contains(value)
+            }
         }
         refreshOK()
+        // 与 Windows 版一致：0–100、最多 1 位小数；输入即过滤非法字符、超上限整串回退；
+        // 不做回显归一化（“18.0”“18.”原样保留），允许清空（此时「确定」禁用）。
+        marginMonitors = currentMarginFields.map {
+            BoundedTextFieldMonitor(field: $0, fractionDigits: 1, upperBound: 100, onChange: { refreshOK() })
+        }
         var tokens: [NSObjectProtocol] = []
-        for field in [topField, bottomField, leftField, rightField] {
+        for field in currentMarginFields {
             tokens.append(NotificationCenter.default.addObserver(
                 forName: NSControl.textDidChangeNotification,
                 object: field,
@@ -558,6 +986,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         }
         alert.beginSheetModal(for: window) { [weak self] response in
             tokens.forEach { NotificationCenter.default.removeObserver($0) }
+            self?.currentMarginFields = []
+            self?.marginMonitors = []
             guard response == .alertFirstButtonReturn,
                   let top = self?.marginValue(topField),
                   let bottom = self?.marginValue(bottomField),
@@ -567,6 +997,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
             if let index = self?.customMarginItemIndex {
                 self?.marginPopup.selectItem(at: index)
             }
+            self?.updateMarginSummary()
             self?.schedulePreview()
         }
     }
@@ -574,35 +1005,48 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
     private func marginLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 12)
-        label.alignment = .right
+        label.alignment = .left
         return label
     }
 
     private func marginField(_ value: String) -> NSTextField {
         let field = NSTextField(string: value)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimum = 0
-        formatter.maximum = 100
-        formatter.maximumFractionDigits = 1
-        field.formatter = formatter
         field.alignment = .center
-        field.widthAnchor.constraint(equalToConstant: 70).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 68).isActive = true
         return field
     }
 
     private func marginValue(_ field: NSTextField) -> Double? {
-        Double(field.stringValue.replacingOccurrences(of: ",", with: "."))
+        Double(field.stringValue
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: "."))
+    }
+
+    private func updateMarginSummary() {
+        marginSummaryLabel.stringValue = L10n.f(
+            "上: %@mm, 下: %@mm\n左: %@mm, 右: %@mm",
+            Self.compactMargin(margins.top),
+            Self.compactMargin(margins.bottom),
+            Self.compactMargin(margins.left),
+            Self.compactMargin(margins.right)
+        )
+    }
+
+    private static func compactMargin(_ value: Double) -> String {
+        let text = String(format: "%.1f", value)
+        return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
     }
 
     // MARK: - 导出/取消
 
     @objc private func exportClicked() {
-        guard let session else { return }
+        guard let session, selectedFormat != "image" || imageFieldsAreValid else { return }
         let options = currentOptions()
         presentSavePanel(options: options, title: L10n.t("导出文档")) { [weak self] url in
             guard let self else { return }
-            let targetURL = EditorSession.fixExportExtension(url, format: options.format)
+            let targetURL = EditorSession.fixExportExtension(
+                url, format: options.format, fallbackExtension: options.imageFormat
+            )
             self.persist(options: options)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
@@ -614,7 +1058,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let options = session.exportOptions(from: SettingsService.shared.settings.exportSettings)
         presentSavePanel(options: options, title: L10n.t("按上次设置导出")) { [weak self] url in
             guard let self else { return }
-            let targetURL = EditorSession.fixExportExtension(url, format: options.format)
+            let targetURL = EditorSession.fixExportExtension(url, format: options.format, fallbackExtension: options.imageFormat)
             session.runExport(options: options, saveURL: targetURL)
             self.close()
         }
@@ -625,7 +1069,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
         let panel = NSSavePanel()
         panel.title = title
         let baseName = session.documentURL?.deletingPathExtension().lastPathComponent ?? L10n.t("未命名")
-        panel.nameFieldStringValue = baseName + "." + (options.format == "pdf" ? "pdf" : "html")
+        panel.nameFieldStringValue = baseName + "." + options.fileExtension
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             onSave(url)
@@ -655,7 +1099,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
                 footerCustom: footerField.stringValue,
                 footerAlignment: options.pdfFooterAlignment,
                 headerFontFamily: options.headerFooterFontFamily,
-                footerFontFamily: options.headerFooterFontFamily
+                footerFontFamily: options.headerFooterFontFamily,
+                keepTablesTogether: options.keepTablesTogether,
+                keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock,
+                imageMaxHeight: options.imageMaxHeight,
+                imageContentWidth: options.imageContentWidth,
+                imageScale: options.imageScale,
+                imageFormat: options.imageFormat,
+                imageJpegQuality: options.imageJpegQuality
             )
         }
     }
@@ -668,7 +1119,14 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         previewTimer?.cancel()
+        previewGeneration += 1
+        imagePreviewExporter?.cancel()
+        if let imagePreviewDirectory { try? FileManager.default.removeItem(at: imagePreviewDirectory) }
         cleanupAllPreviews()
         onClose?()
     }
+}
+
+private final class ExportOptionsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

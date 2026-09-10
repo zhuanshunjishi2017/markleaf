@@ -9,11 +9,6 @@ enum CJKLanguageTag: String, Codable, CaseIterable {
 
 /// 应用设置：镜像 C# AppSettings 的核心子集，JSON 持久化到
 /// ~/Library/Application Support/MarkLeaf/settings.json（原子写入，与 C# 一致）。
-enum ExternalFileOpenMode: String, Codable, CaseIterable {
-    case newWindow
-    case currentWindow
-}
-
 /// 状态栏命令反馈显示模式（对应 Windows StatusBarCommandDisplayMode）。
 enum StatusBarCommandDisplayMode: String, Codable, CaseIterable {
     case always
@@ -40,8 +35,9 @@ enum ExternalFileOpenPreferenceModel {
 
     static func titles(language: String) -> [String] {
         [
-            L10n.translate("始终在新窗口中打开", language: language),
-            L10n.translate("在当前窗口中打开", language: language),
+            L10n.translate("在新窗口中打开", language: language),
+            L10n.translate("在当前窗口的新标签页中打开", language: language),
+            L10n.translate("在当前标签页中打开", language: language),
         ]
     }
 
@@ -51,6 +47,36 @@ enum ExternalFileOpenPreferenceModel {
 
     static func mode(at index: Int) -> ExternalFileOpenMode {
         orderedModes.indices.contains(index) ? orderedModes[index] : .newWindow
+    }
+}
+
+/// 工作区文件打开方式：默认新标签页；也可始终替换当前标签文档。
+enum WorkspaceFileOpenPreferenceModel {
+    static func titles(language: String) -> [String] {
+        [
+            L10n.translate("在新标签页中打开", language: language),
+            L10n.translate("在当前标签中打开", language: language),
+        ]
+    }
+
+    static func selectedIndex(opensInNewTab: Bool) -> Int {
+        opensInNewTab ? 0 : 1
+    }
+
+    static func opensInNewTab(at index: Int) -> Bool {
+        index == 0
+    }
+}
+
+enum StartupActionMigration {
+    static func migrate(rawValue: String?) -> AppSettings.StartupAction {
+        switch rawValue {
+        case AppSettings.StartupAction.newDocument.rawValue: return .newDocument
+        case AppSettings.StartupAction.openLastWorkspace.rawValue: return .openLastWorkspace
+        case AppSettings.StartupAction.restoreSession.rawValue: return .restoreSession
+        case "openLastWorkspaceAndFiles": return .restoreSession
+        default: return .restoreSession
+        }
     }
 }
 
@@ -65,32 +91,45 @@ struct AppSettings: Codable {
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 3
         displayLanguage = try container.decodeIfPresent(String.self, forKey: .displayLanguage) ?? Self.detectSystemLanguage()
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
-        let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "colors-white-only"
-        // colors-white.css 已被 Windows 版移除（由 colors-white-only.css 替代），旧配置迁移
-        colorTheme = decodedTheme == "colors-white" ? "colors-white-only" : decodedTheme
+        let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "apple-blue"
+        colorTheme = ThemeIDNormalizer.normalize(decodedTheme)
         zoomPercent = try container.decodeIfPresent(Int.self, forKey: .zoomPercent) ?? 100
         restoreZoomOnOpen = try container.decodeIfPresent(Bool.self, forKey: .restoreZoomOnOpen) ?? true
         ctrlWheelZoom = try container.decodeIfPresent(Bool.self, forKey: .ctrlWheelZoom) ?? true
-        autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? false
+        autoHideScrollbars = try container.decodeIfPresent(Bool.self, forKey: .autoHideScrollbars) ?? true
         followSystemTheme = try container.decodeIfPresent(Bool.self, forKey: .followSystemTheme) ?? true
-        defaultLightThemeID = try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "colors-white-only"
-        defaultDarkThemeID = try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "colors-dark"
-        visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.6
+        defaultLightThemeID = ThemeIDNormalizer.normalize(
+            try container.decodeIfPresent(String.self, forKey: .defaultLightThemeID) ?? "apple-blue"
+        )
+        defaultDarkThemeID = ThemeIDNormalizer.normalize(
+            try container.decodeIfPresent(String.self, forKey: .defaultDarkThemeID) ?? "apple-dark"
+        )
+        visualLineHeight = try container.decodeIfPresent(Double.self, forKey: .visualLineHeight) ?? 1.75
         visualFontSize = try container.decodeIfPresent(Int.self, forKey: .visualFontSize) ?? 16
         visualMaxContentWidth = try container.decodeIfPresent(Int.self, forKey: .visualMaxContentWidth) ?? 820
+        visualIgnoreMaxWidth = try container.decodeIfPresent(Bool.self, forKey: .visualIgnoreMaxWidth) ?? false
         sourceFontSize = try container.decodeIfPresent(Int.self, forKey: .sourceFontSize) ?? 14
         sourceFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceFontFamily) ?? Self.defaultSourceFontFamily
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         visualCjkAutoSpacing = try container.decodeIfPresent(Bool.self, forKey: .visualCjkAutoSpacing) ?? true
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
+        exitBlockOnEmptyEnter = try container.decodeIfPresent(Bool.self, forKey: .exitBlockOnEmptyEnter) ?? false
+        useShiftEnterHardBreak = try container.decodeIfPresent(Bool.self, forKey: .useShiftEnterHardBreak) ?? true
+        escapeLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeLiteralSymbols) ?? false
+        escapeMarkdownLiteralSymbols = try container.decodeIfPresent(Bool.self, forKey: .escapeMarkdownLiteralSymbols) ?? false
+        markdownCodeFence = try container.decodeIfPresent(String.self, forKey: .markdownCodeFence) ?? "backtick"
+        markdownEmphasisMarker = try container.decodeIfPresent(String.self, forKey: .markdownEmphasisMarker) ?? "asterisk"
+        markdownBulletMarker = try container.decodeIfPresent(String.self, forKey: .markdownBulletMarker) ?? "dash"
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
-        showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? false
+        showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? true
         suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
         exportSettings = try container.decodeIfPresent(PersistedExportSettings.self, forKey: .exportSettings) ?? PersistedExportSettings()
         exportSettings.normalize()
-        startupAction = try container.decodeIfPresent(StartupAction.self, forKey: .startupAction) ?? .newDocument
+        startupAction = StartupActionMigration.migrate(
+            rawValue: try container.decodeIfPresent(String.self, forKey: .startupAction)
+        )
         associateMarkdownFiles = try container.decodeIfPresent(Bool.self, forKey: .associateMarkdownFiles) ?? false
         associateTextFiles = try container.decodeIfPresent(Bool.self, forKey: .associateTextFiles) ?? false
         recordRecentFiles = try container.decodeIfPresent(Bool.self, forKey: .recordRecentFiles) ?? true
@@ -101,12 +140,17 @@ struct AppSettings: Codable {
             ExternalFileOpenMode.self,
             forKey: .externalFileOpenMode
         ) ?? .newWindow
+        workspaceOpenInNewTab = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .workspaceOpenInNewTab
+        ) ?? true
+        multiTabEnabled = try container.decodeIfPresent(Bool.self, forKey: .multiTabEnabled) ?? true
         snapshotIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .snapshotIntervalSeconds) ?? 30
         newLineStyle = try container.decodeIfPresent(String.self, forKey: .newLineStyle) ?? "lf"
         defaultEncoding = try container.decodeIfPresent(String.self, forKey: .defaultEncoding) ?? DocumentEncodingPolicy.utf8.rawValue
         topMostWindow = try container.decodeIfPresent(Bool.self, forKey: .topMostWindow) ?? false
-        clipboardImageHandling = try container.decodeIfPresent(String.self, forKey: .clipboardImageHandling) ?? "saveToDefault"
-        fileImageHandling = try container.decodeIfPresent(String.self, forKey: .fileImageHandling) ?? "referenceOriginal"
+        clipboardImageHandling = try container.decodeIfPresent(String.self, forKey: .clipboardImageHandling) ?? "copyToAssets"
+        fileImageHandling = try container.decodeIfPresent(String.self, forKey: .fileImageHandling) ?? "copyToAssets"
         imageDefaultDirectory = try container.decodeIfPresent(String.self, forKey: .imageDefaultDirectory) ?? ""
         useRelativePaths = try container.decodeIfPresent(Bool.self, forKey: .useRelativePaths) ?? true
         prefixRelativeWithDotSlash = try container.decodeIfPresent(Bool.self, forKey: .prefixRelativeWithDotSlash) ?? true
@@ -115,6 +159,8 @@ struct AppSettings: Codable {
         recentFolders = try container.decodeIfPresent([String].self, forKey: .recentFolders) ?? []
         recentFiles = try container.decodeIfPresent([String].self, forKey: .recentFiles) ?? []
         workspaceWidth = try container.decodeIfPresent(Int.self, forKey: .workspaceWidth) ?? 230
+        // 260 是开发期临时加宽的默认值，恢复原始宽度。
+        if workspaceWidth == 260 { workspaceWidth = 230 }
         outlineWidth = try container.decodeIfPresent(Int.self, forKey: .outlineWidth) ?? 230
         outlineDetached = try container.decodeIfPresent(Bool.self, forKey: .outlineDetached) ?? false
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
@@ -144,21 +190,23 @@ struct AppSettings: Codable {
 
     // 外观
     var markdownStyle = "serif"
-    var colorTheme = "colors-white-only"
+    var colorTheme = "apple-blue"
     var zoomPercent = 100
     var restoreZoomOnOpen = true
     // 是否启用 ⌘ + 滚轮缩放（触控板捏合始终可用，不受此开关控制）
     var ctrlWheelZoom = true
-    var autoHideScrollbars = false
+    var autoHideScrollbars = true
     /// 与操作系统同步：系统浅色/深色自动使用默认浅色/深色主题（对齐 Windows「跟随系统颜色模式」）。
     var followSystemTheme = true
-    var defaultLightThemeID = "colors-white-only"
-    var defaultDarkThemeID = "colors-dark"
+    var defaultLightThemeID = "apple-blue"
+    var defaultDarkThemeID = "apple-dark"
 
     // 编辑器
-    var visualLineHeight: Double = 1.6
+    var visualLineHeight: Double = 1.75
     var visualFontSize = 16
     var visualMaxContentWidth = 820
+    /// 无视最大宽度限制（Windows 1.7.3 VisualIgnoreMaxContentWidth）。
+    var visualIgnoreMaxWidth = false
     var sourceFontSize = 14
     /// 源码模式西文（等宽）字体：对应 Windows SourceFontFamily（默认 Cascadia Mono）
     var sourceFontFamily = AppSettings.defaultSourceFontFamily
@@ -167,8 +215,16 @@ struct AppSettings: Codable {
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var visualCjkAutoSpacing = true
     var sourceIndentWidth = 2
+    // Markdown 编辑行为（与 Windows 1.7.2 EditorSettings 对齐）。
+    var exitBlockOnEmptyEnter = false
+    var useShiftEnterHardBreak = true
+    var escapeLiteralSymbols = false
+    var escapeMarkdownLiteralSymbols = false
+    var markdownCodeFence = "backtick"
+    var markdownEmphasisMarker = "asterisk"
+    var markdownBulletMarker = "dash"
     var showParagraphBlockHandle = true
-    var showCodeHighlight = false
+    var showCodeHighlight = true
     var suppressUnsafeEmphasisPrompt = false
     var unsafeEmphasisAction = UnsafeEmphasisAction.literal.rawValue
     var exportSettings = PersistedExportSettings()
@@ -177,7 +233,7 @@ struct AppSettings: Codable {
     static let defaultSourceCjkFontFamily = "PingFang SC"
 
     // 文件
-    var startupAction = StartupAction.newDocument
+    var startupAction = StartupAction.restoreSession
     // 默认不接管文件关联：只有用户主动勾选后才把 MarkLeaf 设为对应类型默认编辑器（对齐 Windows 默认 false）。
     var associateMarkdownFiles = false
     var associateTextFiles = false
@@ -187,12 +243,16 @@ struct AppSettings: Codable {
     /// 切换文档（打开另一文件）时自动保存当前文档（对齐 Windows FileSettings.SaveOnDocumentSwitch）。
     var saveOnDocumentSwitch = true
     var externalFileOpenMode = ExternalFileOpenMode.newWindow
+    /// 工作区文件默认在新标签页中打开；关闭后在当前标签中替换文档。
+    var workspaceOpenInNewTab = true
+    /// 多标签页默认启用；关闭后窗口退化为单文档模式。
+    var multiTabEnabled = true
     var snapshotIntervalSeconds = 30
     var newLineStyle = "lf"
     var defaultEncoding = DocumentEncodingPolicy.utf8.rawValue
     var topMostWindow = false
-    var clipboardImageHandling = "saveToDefault"
-    var fileImageHandling = "referenceOriginal"
+    var clipboardImageHandling = "copyToAssets"
+    var fileImageHandling = "copyToAssets"
     var imageDefaultDirectory = ""
     var useRelativePaths = true
     var prefixRelativeWithDotSlash = true
@@ -213,18 +273,11 @@ struct AppSettings: Codable {
     var sidebarTab = "workspace"
     var workspaceListMode = false
     var workspaceSortOrder = WorkspaceSortOrder.modifiedTimeDescending
-
-    enum WorkspaceSortOrder: String, Codable, CaseIterable {
-        case fileNameAscending
-        case fileNameDescending
-        case modifiedTimeAscending
-        case modifiedTimeDescending
-    }
-
     enum StartupAction: String, Codable {
         case newDocument
         case openLastWorkspace
         case openLastWorkspaceAndFiles
+        case restoreSession
     }
 
     // MARK: - 数值边界（对齐 Windows PreferencesDialog NumericUpDown 范围）
@@ -244,6 +297,16 @@ struct AppSettings: Codable {
         visualMaxContentWidth = Self.clamp(visualMaxContentWidth, to: Self.visualMaxContentWidthRange)
         sourceFontSize = Self.clamp(sourceFontSize, to: Self.sourceFontSizeRange)
         sourceIndentWidth = Self.clamp(sourceIndentWidth, to: Self.sourceIndentWidthRange)
+        markdownCodeFence = markdownCodeFence == "tilde" ? "tilde" : "backtick"
+        markdownEmphasisMarker = markdownEmphasisMarker == "underscore" ? "underscore" : "asterisk"
+        markdownBulletMarker = ["dash", "asterisk", "plus"].contains(markdownBulletMarker) ? markdownBulletMarker : "dash"
+    }
+
+    mutating func normalizeThemeIDs() {
+        colorTheme = ThemeIDNormalizer.normalize(colorTheme)
+        defaultLightThemeID = ThemeIDNormalizer.normalize(defaultLightThemeID)
+        defaultDarkThemeID = ThemeIDNormalizer.normalize(defaultDarkThemeID)
+        exportSettings.normalize()
     }
 
     private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
@@ -297,6 +360,7 @@ final class SettingsService {
     }
 
     func save() {
+        settings.normalizeThemeIDs()
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(settings) else { return }

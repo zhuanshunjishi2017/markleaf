@@ -2,6 +2,7 @@ import Foundation
 
 enum EditorSemanticContext: Equatable {
     case footnoteDefinition
+    case frontMatter
     case table
     case mermaid
     case image
@@ -42,6 +43,9 @@ enum EditorMenuPolicy {
         "toggleCodeBlock", "insertHorizontalRule", "insertFootnote",
         "insertLineBefore", "insertLineAfter", "toggleBulletList",
         "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
+        "duplicateParagraph", "deleteParagraph",
+        "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+        "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
     ]
     static let readOnlyCommands: Set<String> = [
         "copy", "copyMarkdown", "copyPlain", "selectAll"
@@ -103,7 +107,7 @@ enum EditorMenuPolicy {
         if selectionOnlyInlineFormatCommands.contains(command) {
             return hasSelection
         }
-        return command == "toggleCode" || command == "insertMathInline"
+        return command == "toggleCode" || command == "insertMathInline" || command == "toggleHighlight"
     }
 
     /// 段落格式不依赖字符选区：空选时作用于当前段落，有选区时作用于覆盖到的段落。
@@ -111,9 +115,12 @@ enum EditorMenuPolicy {
         command: String,
         isSourceMode: Bool,
         isReadOnly: Bool,
-        inTable: Bool = false
+        inTable: Bool = false,
+        isPlainText: Bool = false
     ) -> Bool {
-        paragraphCommands.contains(command) && !isSourceMode && !isReadOnly && !inTable
+        guard paragraphCommands.contains(command), !isSourceMode, !isReadOnly else { return false }
+        if inTable, command != "duplicateParagraph", command != "deleteParagraph" { return false }
+        return command != "showFrontMatter" || !isPlainText
     }
 
     static func isHeadingLevelCommandEnabled(command: String, headingLevel: Int?) -> Bool {
@@ -130,9 +137,49 @@ enum EditorMenuPolicy {
         !isPlainText
     }
 
+    /// 段间公式编号只在可视化、可写且选中块级公式时可用。
+    static func isMathNumberCommandEnabled(
+        mathBlock: Bool,
+        isSourceMode: Bool,
+        isReadOnly: Bool
+    ) -> Bool {
+        mathBlock && !isSourceMode && !isReadOnly
+    }
+
+    /// Copy HTML is a selection-scoped export: source mode cannot provide the
+    /// shared editor's rendered HTML, but read-only Markdown still can.
+    static func isCopyHtmlEnabled(
+        hasSelection: Bool,
+        isSourceMode: Bool,
+        isReadOnly: Bool
+    ) -> Bool {
+        _ = isReadOnly
+        return hasSelection && !isSourceMode
+    }
+
+    /// Session-level editor modes may switch in source mode; their visual
+    /// effects are disabled by the shared editor until visual mode returns.
+    static func isEditorModeCommandEnabled(
+        isSourceMode: Bool,
+        isReadOnly: Bool,
+        isPlainText: Bool
+    ) -> Bool {
+        !isSourceMode && !isReadOnly && !isPlainText
+    }
+
+    /// Visual-only insertion commands that have no safe source-mode fallback.
+    static func isVisualInsertCommandEnabled(
+        isSourceMode: Bool,
+        isReadOnly: Bool,
+        isPlainText: Bool = false
+    ) -> Bool {
+        !isSourceMode && !isReadOnly && !isPlainText
+    }
+
     static func semanticContext(for state: EditorContextMenuState) -> EditorSemanticContext {
         guard !state.isSourceMode else { return .ordinaryBlock }
         if state.footnoteDefinitionLabel?.isEmpty == false { return .footnoteDefinition }
+        if state.frontMatterActive { return .frontMatter }
         if state.inTable { return .table }
         if state.mermaidSelected { return .mermaid }
         if state.imageSelected { return .image }
@@ -148,7 +195,7 @@ enum EditorMenuPolicy {
 
         switch command {
         case .insertMermaid:
-            return writableMarkdown
+            return writableMarkdown && visualMode
         case .editMermaid, .deleteMermaid:
             return writableMarkdown && visualMode && state.mermaidSelected
         case .rerenderMermaid:
@@ -158,7 +205,7 @@ enum EditorMenuPolicy {
         case .declareCodeLanguage:
             return writableMarkdown && visualMode && state.codeBlock
         case .copyCodeBlock:
-            return visualMode && state.codeBlock && state.codeBlockText != nil
+            return visualMode && state.codeBlockText != nil
         case .goToFootnoteReference, .resetFootnoteNumber, .clearFootnoteReferences, .deleteFootnote:
             return writableMarkdown && visualMode && footnoteDefinition
         case .tableCaption, .tableRows, .tableColumns, .tableAlignment, .deleteTable:

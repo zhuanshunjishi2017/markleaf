@@ -4,8 +4,9 @@ import UniformTypeIdentifiers
 extension EditorSession {
     /// 文件 → 导出…：打开统一导出对话框（PDF / HTML 均带实时预览）。
     func exportDocument() {
-        guard webView?.window != nil else { return }
-        let controller = ExportWindowController(session: self)
+        guard webView?.window != nil, let lease = exportLeaseProvider?() else { return }
+        let binding = ExportBinding(tabID: lease.tabID, contentRevision: currentRevision)
+        let controller = ExportWindowController(lease: lease, binding: binding)
         exportController = controller
         controller.onClose = { [weak self] in
             self?.exportController = nil
@@ -19,10 +20,10 @@ extension EditorSession {
         let options = exportOptions(from: SettingsService.shared.settings.exportSettings)
         let panel = NSSavePanel()
         panel.title = L10n.t("按上次设置导出")
-        panel.nameFieldStringValue = exportTitle + "." + (options.format == "pdf" ? "pdf" : "html")
+        panel.nameFieldStringValue = exportTitle + "." + options.fileExtension
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            self.runExport(options: options, saveURL: Self.fixExportExtension(url, format: options.format))
+            self.runExport(options: options, saveURL: Self.fixExportExtension(url, format: options.format, fallbackExtension: options.imageFormat))
         }
     }
 
@@ -52,6 +53,13 @@ extension EditorSession {
         options.pdfFooterAlignment = saved.footerAlignment.isEmpty
             ? PDFHeaderFooterPolicy.alignment(for: saved.footerPreset) : saved.footerAlignment
         options.headerFooterFontFamily = saved.headerFontFamily.isEmpty ? "serif" : saved.headerFontFamily
+        options.keepTablesTogether = saved.keepTablesTogether
+        options.keepHeadingsWithNextBlock = saved.keepHeadingsWithNextBlock
+        options.imageMaxHeight = saved.imageMaxHeight
+        options.imageContentWidth = saved.imageContentWidth
+        options.imageScale = saved.imageScale
+        options.imageFormat = saved.imageFormat
+        options.imageJpegQuality = saved.imageJpegQuality
         return options
     }
 
@@ -61,21 +69,26 @@ extension EditorSession {
         let colorSchemeCss = options.colorScheme.flatMap { id in
             colorThemes.first(where: { $0.id == id })?.css
         } ?? ""
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "format": options.format,
             "style": options.style,
             "header": options.format == "html" ? options.header : "",
             "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
-            "maxWidth": settings.visualMaxContentWidth,
+            "maxWidth": options.format == "image" ? options.imageContentWidth : Double(settings.visualMaxContentWidth),
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
             "title": exportTitle,
+            "keepTablesTogether": options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
-        pendingExportHTMLHandler = completion
+        pendingExportHTMLRequest = PendingExportHTMLRequest(
+            context: ExportHTMLRequestContext(route: .preview, documentURL: documentURL),
+            completion: completion
+        )
         execute("exportDocument", text: text)
     }
 
@@ -90,8 +103,13 @@ extension EditorSession {
         runExport(options: options, saveURL: tempURL, forPrint: true)
     }
 
-    static func fixExportExtension(_ url: URL, format: String) -> URL {
-        let ext = format == "pdf" ? "pdf" : "html"
+    static func fixExportExtension(_ url: URL, format: String, fallbackExtension: String? = nil) -> URL {
+        let ext: String
+        switch format {
+        case "pdf": ext = "pdf"
+        case "image": ext = fallbackExtension ?? "png"
+        default: ext = "html"
+        }
         if url.pathExtension.lowercased() == ext {
             return url
         }
@@ -100,6 +118,10 @@ extension EditorSession {
 
     /// 核心导出/打印流程：请求前端生成导出 HTML，再按模式落盘或弹出打印面板。
     func runExport(options: ExportOptions, saveURL: URL, forPrint: Bool = false) {
+        guard options.format != "image" || ImageExportPolicy.isValid(options) else {
+            presentError(L10n.t("图像导出参数无效"))
+            return
+        }
         guard !isExportingOrPrinting else {
             NSSound.beep()
             statusText = L10n.t("正在打印/导出中…")
@@ -118,31 +140,60 @@ extension EditorSession {
             "footer": options.format == "html" ? options.footer : "",
             "fontSize": settings.visualFontSize,
             "lineHeight": settings.visualLineHeight,
-            "maxWidth": settings.visualMaxContentWidth,
+            "maxWidth": options.format == "image" ? options.imageContentWidth : Double(settings.visualMaxContentWidth),
             "visualCjkAutoSpacing": settings.visualCjkAutoSpacing,
             "colorSchemeCss": colorSchemeCss,
+            "keepTablesTogether": forPrint || options.format == "pdf" ? options.keepTablesTogether : false,
+            "keepHeadingsWithNextBlock": forPrint || options.format == "pdf" ? options.keepHeadingsWithNextBlock : false,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
-        pendingExportContext = ExportContext(options: options, saveURL: saveURL, forPrint: forPrint)
+        let route: ExportHTMLRoute
+        if forPrint {
+            route = .print
+        } else {
+            switch options.format {
+            case "pdf": route = .pdf
+            case "image": route = .image
+            default: route = .html
+            }
+        }
+        pendingExportContext = ExportContext(
+            options: options,
+            saveURL: saveURL,
+            forPrint: forPrint,
+            htmlRequest: ExportHTMLRequestContext(route: route, documentURL: documentURL)
+        )
         pendingExport = true
         statusText = L10n.t("正在生成导出内容…")
         execute("exportDocument", text: text)
     }
 
     func handleExportedContent(_ html: String) {
-        if let handler = pendingExportHTMLHandler {
-            pendingExportHTMLHandler = nil
-            handler(html)
-            return
-        }
-        guard let context = pendingExportContext else {
+        let previewRequest = pendingExportHTMLRequest
+        let exportContext = pendingExportContext
+        guard let requestContext = previewRequest?.context ?? exportContext?.htmlRequest else {
             AppLog.warning(L10n.t("收到无上下文的导出内容"))
             return
         }
+        pendingExportHTMLRequest = nil
         pendingExportContext = nil
 
-        if context.forPrint {
+        let prepared = ExportHTMLPreparation.prepare(html: html, context: requestContext)
+        if prepared.unresolvedCount > 0 {
+            statusText = unresolvedImageStatus(prepared.unresolvedCount)
+            AppLog.warning("导出内容有 \(prepared.unresolvedCount) 张本地图片未嵌入")
+        }
+
+        if let previewRequest {
+            previewRequest.completion(prepared.html)
+            return
+        }
+        guard let context = exportContext else { return }
+        let unresolvedCount = prepared.unresolvedCount
+
+        switch prepared.route {
+        case .print:
             statusText = L10n.t("正在打开打印面板…")
             AppLog.info("开始打印（系统打印面板）")
             guard let window = webView?.window else {
@@ -152,7 +203,7 @@ extension EditorSession {
                 return
             }
             PDFGenerator().printPDF(
-                html: html,
+                html: prepared.html,
                 paperSize: .a4,
                 landscape: false,
                 margins: ExportMargins(),
@@ -167,7 +218,7 @@ extension EditorSession {
                     switch result {
                     case .success(let printed):
                         if printed {
-                            self.statusText = L10n.t("已发送到打印机")
+                            self.statusText = self.successStatus("已发送到打印机", unresolvedCount: unresolvedCount)
                             AppLog.info("打印任务已提交")
                             self.onExportComplete?(true)
                         } else {
@@ -180,7 +231,7 @@ extension EditorSession {
                     }
                 }
             }
-        } else if context.options.format == "pdf" {
+        case .pdf:
             statusText = L10n.t("正在生成 PDF…")
             AppLog.info("开始 PDF 导出（直接保存，纸张 \(context.options.paperSize.rawValue)）")
             guard let window = webView?.window else {
@@ -190,7 +241,7 @@ extension EditorSession {
                 return
             }
             PDFGenerator().printPDF(
-                html: html,
+                html: prepared.html,
                 paperSize: context.options.paperSize,
                 landscape: context.options.landscape,
                 margins: context.options.margins,
@@ -209,7 +260,7 @@ extension EditorSession {
                     switch result {
                     case .success(let printed):
                         if printed {
-                            self?.statusText = L10n.t("已导出 PDF")
+                            self?.statusText = self?.successStatus("已导出 PDF", unresolvedCount: unresolvedCount) ?? ""
                             AppLog.info("PDF 已导出: \(context.saveURL.path)")
                             self?.onExportComplete?(true)
                         } else {
@@ -222,11 +273,32 @@ extension EditorSession {
                     }
                 }
             }
-        } else {
+        case .image:
+            statusText = L10n.t("正在生成图像…")
+            ImageHTMLExporter().export(
+                html: prepared.html,
+                options: context.options,
+                saveBaseURL: context.saveURL
+            ) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.isExportingOrPrinting = false
+                    switch result {
+                    case .success(let urls):
+                        self.statusText = self.successStatus("已导出图像", unresolvedCount: unresolvedCount)
+                        AppLog.info("图像已导出: \(urls.map(\.path).joined(separator: ", "))")
+                        self.onExportComplete?(true)
+                    case .failure(let error):
+                        self.presentError("图像导出失败：\(error.localizedDescription)")
+                        self.onExportComplete?(false)
+                    }
+                }
+            }
+        case .html:
             do {
-                try html.write(to: context.saveURL, atomically: true, encoding: .utf8)
+                try prepared.html.write(to: context.saveURL, atomically: true, encoding: .utf8)
                 isExportingOrPrinting = false
-                statusText = L10n.t("已导出 HTML")
+                statusText = successStatus("已导出 HTML", unresolvedCount: unresolvedCount)
                 AppLog.info("HTML 已导出: \(context.saveURL.path)")
                 onExportComplete?(true)
             } catch {
@@ -234,6 +306,17 @@ extension EditorSession {
                 presentError("导出失败：\(error.localizedDescription)")
                 onExportComplete?(false)
             }
+        case .preview:
+            AppLog.warning(L10n.t("收到无上下文的导出内容"))
         }
+    }
+
+    private func unresolvedImageStatus(_ count: Int) -> String {
+        L10n.f("%d 张本地图片未能嵌入导出内容", count)
+    }
+
+    private func successStatus(_ key: String, unresolvedCount: Int) -> String {
+        guard unresolvedCount > 0 else { return L10n.t(key) }
+        return L10n.f("%@（%d 张本地图片未嵌入）", L10n.t(key), unresolvedCount)
     }
 }

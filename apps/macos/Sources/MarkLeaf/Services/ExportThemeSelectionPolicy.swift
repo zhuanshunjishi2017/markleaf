@@ -6,11 +6,17 @@ enum ExportThemeSelectionPolicy {
         persistedThemeID: String?,
         availableThemeIDs: [String]
     ) -> String? {
-        if let currentThemeID, availableThemeIDs.contains(currentThemeID) {
-            return currentThemeID
+        if let currentThemeID {
+            let normalized = ThemeIDNormalizer.normalize(currentThemeID)
+            if availableThemeIDs.contains(normalized) {
+                return normalized
+            }
         }
-        if let persistedThemeID, availableThemeIDs.contains(persistedThemeID) {
-            return persistedThemeID
+        if let persistedThemeID {
+            let normalized = ThemeIDNormalizer.normalize(persistedThemeID)
+            if availableThemeIDs.contains(normalized) {
+                return normalized
+            }
         }
         return nil
     }

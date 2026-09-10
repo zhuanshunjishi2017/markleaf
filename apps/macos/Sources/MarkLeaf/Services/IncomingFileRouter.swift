@@ -12,6 +12,7 @@ enum IncomingFileRouter {
         openDocuments: [URL],
         activateExisting: (URL) -> Void,
         replaceActive: (URL) -> Void,
+        newTabInActiveWindow: (URL) -> Void,
         createWindow: (URL) -> Void
     ) {
         let open = Set(openDocuments.filter(\.isFileURL).map(normalized))
@@ -28,6 +29,7 @@ enum IncomingFileRouter {
             ) {
             case .activateExisting: activateExisting(url)
             case .replaceActive: replaceActive(url)
+            case .newTabInActiveWindow: newTabInActiveWindow(url)
             case .createWindow: createWindow(url)
             }
         }

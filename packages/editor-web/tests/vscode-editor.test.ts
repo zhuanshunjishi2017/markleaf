@@ -4,6 +4,9 @@ import * as editorModule from '../src/editor'
 import { defaultSettings } from '../src/vscode-settings'
 import type { ExtensionMessage, WebviewMessage } from '../src/vscode-protocol'
 
+// webview 入口用例要跑多个异步回合；全量套件并行执行时默认 5s 会因机器负载超时。
+vi.setConfig({ testTimeout: 20000 })
+
 const editors: ReturnType<typeof createEditor>[] = []
 function editor(markdown: string) {
   const mount = document.createElement('div')
@@ -119,6 +122,8 @@ describe('shared editor in a VS Code text host', () => {
     expect(changed).not.toHaveBeenCalled()
   })
 
+  // 这条用例要跑完整的 webview 入口与多个异步回合；并行跑全量套件时
+  // 默认 5s 会因机器负载超时，这里单独放宽。
   it('runs the webview entry through editing, reading, queued undo, source actions and conflict recovery', async () => {
     document.body.innerHTML = '<div id="toolbar"><button id="mode"></button><button data-command="toggleUnderline" data-edit>U</button><button data-command="toggleHighlight" data-edit>H</button><button data-action="format" data-edit>格式</button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div><main id="editor"></main><span id="sync-status"></span><span id="word-count"></span>'
     // jsdom does not implement the ClipboardEvent constructor used by ProseMirror.

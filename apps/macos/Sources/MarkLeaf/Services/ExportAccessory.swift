@@ -15,6 +15,21 @@ struct ExportOptions {
     var pdfFooter = ""
     var pdfFooterAlignment = ""
     var headerFooterFontFamily = ""
+    var keepTablesTogether = true
+    var keepHeadingsWithNextBlock = true
+    var imageMaxHeight: Double = 12000
+    var imageContentWidth: Double = 1200
+    var imageScale: Double = 2
+    var imageFormat = "png"
+    var imageJpegQuality: Double = 90
+
+    var fileExtension: String {
+        switch format {
+        case "pdf": "pdf"
+        case "image": imageFormat
+        default: "html"
+        }
+    }
 }
 
 /// 保存面板附属视图：格式/纸张/方向/边距/样式/页眉页脚（对应 Windows ExportDialog）。
@@ -62,7 +77,7 @@ final class ExportAccessory: NSView {
         }
 
         colorThemePopup.addItems(withTitles: themes.map { L10n.t($0.displayName) })
-        if let idx = themes.firstIndex(where: { $0.id == "colors-white-only" }) {
+        if let idx = themes.firstIndex(where: { $0.id == "colors-default-light" }) {
             colorThemePopup.selectItem(at: idx)
         } else if let idx = themes.firstIndex(where: { $0.id == "colors-apple-blue" }) {
             colorThemePopup.selectItem(at: idx)

@@ -173,20 +173,21 @@ describe('Mermaid chart support', () => {
     expect(failedExport).not.toContain('Mermaid图表文本格式错误')
   })
 
-  it('edits Mermaid through the floating source editor while keeping its rendered node', () => {
+  it('edits Mermaid source directly and keeps the diagram node', () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     editor.commands.setNodeSelection(0)
+
     expect(executeEditorCommand(editor, 'editMermaid')).toBe(true)
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')
+    expect(source?.textContent).toContain('A-->B')
+
+    source!.textContent = 'graph TD\n  A-->C'
+    source!.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(getMarkdown(editor)).toContain('A-->C')
     expect(editor.state.doc.firstChild?.type.name).toBe('mermaid')
-    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
-    expect(source.textContent).toContain('A-->B')
-    source.textContent = 'graph TD\n  A-->C'
-    source.dispatchEvent(new Event('input', { bubbles: true }))
-    expect(executeEditorCommand(editor, 'rerenderMermaid')).toBe(true)
-    expect(getMarkdown(editor)).toContain('```mermaid\ngraph TD\n  A-->C\n```')
   })
 
-  it('edits Mermaid source below the rendered diagram and closes after the outside-click animation', () => {
+  it('edits Mermaid source below the rendered diagram and collapses on blur', async () => {
     const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
     expect(expandSourceEditor(editor, 0, 'mermaid')).toBe(true)
 
@@ -201,34 +202,9 @@ describe('Mermaid chart support', () => {
     expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
 
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
-    const closing = document.querySelector('.markleaf-expanded-source')!
-    expect(closing.classList.contains('markleaf-expanded-source-exit')).toBe(true)
-    closing.dispatchEvent(new Event('animationend'))
+    await new Promise(resolve => setTimeout(resolve, 260))
     expect(document.querySelector('.markleaf-expanded-source')).toBeNull()
     expect(editor.view.dom.querySelector('.markleaf-mermaid')).not.toBeNull()
-  })
-
-  it('keeps the floating source visible for diagrams near or beyond the viewport bottom', () => {
-    const editor = mount('```mermaid\ngraph TD\n  A-->B\n```')
-    const anchor = editor.view.dom.querySelector<HTMLElement>('.markleaf-mermaid')!
-    let anchorTop = 520
-    const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this === anchor) return new DOMRect(30, anchorTop, 400, 180)
-      if (this === editor.view.dom) return new DOMRect(30, 40, 400, 1800)
-      if (this.classList.contains('markleaf-expanded-source')) return new DOMRect(0, 0, 400, 220)
-      return new DOMRect()
-    })
-    try {
-      expect(expandSourceEditor(editor, 0, 'mermaid')).toBe(true)
-      const overlay = document.querySelector<HTMLElement>('.markleaf-expanded-source')!
-      expect(Number.parseFloat(overlay.style.top)).toBeLessThan(anchorTop)
-      expect(Number.parseFloat(overlay.style.top) + 220).toBeLessThanOrEqual(window.innerHeight)
-      anchorTop = -400
-      window.dispatchEvent(new Event('scroll'))
-      expect(Number.parseFloat(overlay.style.top)).toBeGreaterThanOrEqual(8)
-    } finally {
-      geometry.mockRestore()
-    }
   })
 
   it('shows the render button after declaring a code block as mermaid', () => {

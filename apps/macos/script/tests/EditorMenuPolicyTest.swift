@@ -46,6 +46,45 @@ expect(!EditorMenuPolicy.isEnabled(command: "paste", hasSelection: true, clipboa
        "paste should be disabled in read-only documents")
 expect(EditorMenuPolicy.isEnabled(command: "selectAll", hasSelection: false, clipboardHasContent: false, isReadOnly: true),
        "select all should stay available in read-only documents")
+expect(EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: false,
+    isReadOnly: false
+), "copy HTML should be available for selected Markdown in visual mode")
+expect(EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: false,
+    isReadOnly: true
+), "copy HTML should remain available for selected read-only documents")
+expect(!EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: false,
+    isSourceMode: false,
+    isReadOnly: false
+), "copy HTML should require a selection")
+expect(!EditorMenuPolicy.isCopyHtmlEnabled(
+    hasSelection: true,
+    isSourceMode: true,
+    isReadOnly: false
+), "copy HTML must be disabled in source mode")
+
+expect(EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: false, isPlainText: false
+), "editor focus and typewriter modes should be available in editable visual Markdown")
+expect(!EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: true, isReadOnly: false, isPlainText: false
+), "editor modes must be disabled in source mode")
+expect(!EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: true, isPlainText: false
+), "editor modes must be disabled in read-only documents")
+expect(!EditorMenuPolicy.isEditorModeCommandEnabled(
+    isSourceMode: false, isReadOnly: false, isPlainText: true
+), "editor modes must be disabled for plain-text documents")
+expect(!EditorMenuPolicy.isVisualInsertCommandEnabled(
+    isSourceMode: true, isReadOnly: false
+), "visual insert commands must be disabled in source mode")
+expect(EditorMenuPolicy.isVisualInsertCommandEnabled(
+    isSourceMode: false, isReadOnly: false
+), "visual insert commands must remain available in visual mode")
 
 final class MenuActionTarget: NSObject {
     @objc func performAction(_ sender: NSMenuItem) {}
@@ -148,7 +187,8 @@ func contextState(
     mathInline: Bool = false,
     mathBlock: Bool = false,
     codeBlock: Bool = false,
-    codeBlockText: String? = nil
+    codeBlockText: String? = nil,
+    frontMatterActive: Bool = false
 ) -> EditorContextMenuState {
     EditorContextMenuState(
         isSourceMode: sourceMode,
@@ -162,7 +202,8 @@ func contextState(
         mathInline: mathInline,
         mathBlock: mathBlock,
         codeBlock: codeBlock,
-        codeBlockText: codeBlockText
+        codeBlockText: codeBlockText,
+        frontMatterActive: frontMatterActive
     )
 }
 
@@ -176,6 +217,12 @@ expect(EditorMenuPolicy.semanticContext(for: contextState(
 expect(EditorMenuPolicy.semanticContext(for: contextState(
     mermaidSelected: true, imageSelected: true, mathBlock: true, codeBlock: true
 )) == .mermaid, "Mermaid should not fall through to the generic code-block context")
+expect(EditorMenuPolicy.semanticContext(for: contextState(
+    codeBlock: true, frontMatterActive: true
+)) == .frontMatter, "YAML front matter should use its code-like context")
+expect(EditorMenuPolicy.allows(.copyCodeBlock, state: contextState(
+    codeBlockText: "title: MarkLeaf", frontMatterActive: true
+)), "YAML front matter should expose its source through the code-like copy command")
 expect(EditorMenuPolicy.semanticContext(for: contextState(imageSelected: true, mathBlock: true, codeBlock: true)) == .image,
        "images should win over math and code blocks")
 expect(EditorMenuPolicy.semanticContext(for: contextState(mathInline: true, codeBlock: true)) == .math,
@@ -186,6 +233,8 @@ expect(EditorMenuPolicy.semanticContext(for: contextState()) == .ordinaryBlock,
        "unclassified content should use the ordinary block context")
 expect(EditorMenuPolicy.semanticContext(for: contextState(sourceMode: true, mermaidSelected: true, codeBlock: true)) == .ordinaryBlock,
        "source mode should not expose visual block semantics")
+expect(!EditorMenuPolicy.allows(.insertMermaid, state: contextState(sourceMode: true)),
+       "source mode must not expose Mermaid insertion")
 
 // Mermaid、代码块、脚注和表格命令统一由策略矩阵决定。
 let editableMermaid = contextState(mermaidSelected: true, mermaidCount: 2, codeBlock: true)
@@ -207,7 +256,7 @@ expect(!EditorMenuPolicy.allows(.insertMermaid, state: plainText), "plain-text d
 expect(!EditorMenuPolicy.allows(.rerenderAllMermaid, state: plainText), "plain-text documents have no Mermaid rendering context")
 
 let source = contextState(sourceMode: true, mermaidSelected: true, mermaidCount: 1, codeBlock: true, codeBlockText: "x")
-expect(EditorMenuPolicy.allows(.insertMermaid, state: source), "writable Markdown source mode should allow Mermaid insertion")
+expect(!EditorMenuPolicy.allows(.insertMermaid, state: source), "source mode must not expose Mermaid insertion")
 expect(!EditorMenuPolicy.allows(.editMermaid, state: source), "source mode must not expose selected-Mermaid commands")
 expect(!EditorMenuPolicy.allows(.rerenderAllMermaid, state: source), "source mode must not expose Mermaid rendering commands")
 expect(!EditorMenuPolicy.allows(.declareCodeLanguage, state: source), "source mode must not expose visual code-block metadata commands")

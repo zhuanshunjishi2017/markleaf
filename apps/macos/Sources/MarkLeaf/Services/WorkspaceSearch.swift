@@ -5,6 +5,8 @@ struct WorkspaceSearchResult {
     let folderName: String
     let lastWriteTime: Date
     let snippet: String
+    let isContentMatch: Bool
+    let query: String
 }
 
 /// 工作区搜索：文件名或 Markdown/TXT 内容匹配，异步执行并可取消。
@@ -39,18 +41,25 @@ final class WorkspaceSearchService {
                         continue
                     }
                     let ext = (name as NSString).pathExtension.lowercased()
-                    guard ["md", "txt"].contains(ext) else { continue }
+                    guard ["md", "txt", "markdown"].contains(ext) else { continue }
                     if work.isCancelled { return }
                     let lowerName = name.lowercased()
                     let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-                    let nameMatch = lowerName.contains(normalized)
-                    guard nameMatch || content.lowercased().contains(normalized) else { continue }
-                    // 与 Windows 一致：文件名命中显示首行，内容命中显示关键词附近的上下文。
-                    let snippet = WorkspaceSearchPolicy.snippet(
-                        content: content,
-                        query: normalized,
-                        nameMatches: nameMatch
+                    let plainText = MarkdownPlainText.fromDocument(
+                        content,
+                        isMarkdown: ext == "md" || ext == "markdown"
                     )
+                    let nameMatch = lowerName.contains(normalized)
+                    let snippet: String?
+                    let isContentMatch: Bool
+                    if nameMatch {
+                        snippet = plainText.isEmpty ? nil : plainText
+                        isContentMatch = false
+                    } else {
+                        snippet = WorkspacePlainTextSnippet.snippet(plainText, query: normalized)
+                        isContentMatch = snippet != nil
+                    }
+                    guard nameMatch || isContentMatch else { continue }
                     let parent = (path as NSString).deletingLastPathComponent
                     let folderName: String
                     if parent == root {
@@ -63,7 +72,9 @@ final class WorkspaceSearchService {
                         entry: WorkspaceEntry(name: name, path: path, isDirectory: false),
                         folderName: folderName,
                         lastWriteTime: lastWriteTime,
-                        snippet: snippet))
+                        snippet: snippet ?? "",
+                        isContentMatch: isContentMatch,
+                        query: normalized))
                 }
             }
             results.sort { $0.entry.path.localizedCaseInsensitiveCompare($1.entry.path) == .orderedAscending }
@@ -126,6 +137,7 @@ enum WorkspaceDocumentTimeFormatter {
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }
+
 
     private static var yearFormatter: DateFormatter {
         let formatter = DateFormatter()

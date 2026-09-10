@@ -1,5 +1,51 @@
 # MarkLeaf Changelog
 
+## 1.7.5 — 2026-09-10
+
+### New
+
+- Multiple document tabs in one window.
+- Full session restore: the next launch brings back the windows, tabs, cursors, and scroll positions you had before.
+- The File menu gains Reveal in Workspace, Copy File Path, Copy Content to Clipboard, Reveal in Finder, and Share, making file actions easier to reach.
+- Copy and language controls in the top-right corner of code blocks.
+- YAML front matter with format validation, plus basic and advanced sample documents.
+- Formula overlay editing and formula numbering, with recognition, rendering, and export for `\(...\)` inline and `\[...\]` block math.
+- Mermaid supports default / dark / neutral themes and re-renders after a theme or style change.
+- A Markdown Behavior window: configure escaping, exiting blocks on an empty Enter, Shift+Enter hard breaks, code fences, emphasis markers, and list markers.
+- Ignore maximum width and Show Code Highlighting preferences; local links inside a document open the target file directly.
+- Workspace file previews and full-text search in the sidebar.
+- When Opening External Files and When Opening Workspace Files preferences, with automatic de-duplication of repeated opens.
+- Rename and move files or folders from the sidebar; open tabs migrate their paths along with them.
+- Pagination options such as keeping headings off the bottom of a page and keeping tables on one page.
+- A unified Theme Settings window: color themes and typography styles on separate pages, color themes grouped into light and dark with preview swatches, plus follow-system colors, default light and dark themes, add theme, and open theme folder.
+- An Install Optional Fonts window; typography styles missing fonts show a notice and a missing-font badge.
+
+### Changed
+
+- The menu bar is reorganized into File / Edit / Insert / Format / View / Help.
+- The editor context menu is now regrouped by function and shows your custom shortcuts.
+- HTML / PDF export can now embed local images, and long-image export slices automatically.
+- Format → Code Block now accepts a custom identifier.
+- Editor Focus Mode dims non-current paragraphs proportionally; Typewriter Mode keeps the cursor near 42% of the viewport and no longer forces scrolling in short documents.
+- Editor scroll positions survive tab and mode switches.
+- Built-in theme identifiers were migrated so older settings map to the new themes.
+- The workspace sidebar is wider with denser rows: file names come first and timestamps are more compact.
+- Export now supports exporting to images.
+
+### Fixed
+
+- Minimal Mode no longer appears unchecked in the menu after being enabled.
+- Source mode no longer lets Editor Focus Mode, Typewriter Mode, or visual insert and format commands run.
+- The editor context menu now includes Undo, Redo, and Select All, and shows shortcuts for its commands.
+- Source mode now dims whole submenu parents (images, table, Mermaid, paragraph actions, paragraph styles, lists, alerts).
+- Copy Content to Clipboard is no longer clickable for an empty document; the File menu, tab context menu, and workspace file context menu now behave consistently.
+- Closing every tab no longer closes the window or leaves document status behind.
+- Fixed tab drag lift and drop glitches and repeated animation playback.
+- Fixed the sidebar empty state, tab selection, and sidebar flicker when revealing in dark themes.
+- Fixed text corruption from the underline and literal plus conflict: `C++17`, `i++`, and `++i` are no longer rewritten or swallowed after editing and reopening.
+- Fixed block math being converted to inline math too early and digit text around formulas being misread.
+- Fixed Mermaid rendering and layout jitter caused by font measurement.
+- Fixed the export preview not following the current tab and image export layout and validation problems.
 ## 1.5.1 — 2026-08-29
 
 ### New

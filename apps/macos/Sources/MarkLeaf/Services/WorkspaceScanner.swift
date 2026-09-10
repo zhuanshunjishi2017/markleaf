@@ -6,13 +6,19 @@ final class WorkspaceScanner {
     private let root: String
     private let queue = DispatchQueue(label: "com.markleaf.workspace-scan")
     private var cancelled = false
+    private let previewCache: WorkspacePreviewCache?
 
     private static let allowedExtensions: Set<String> = ["md", "txt", "markdown"]
 
     var onComplete: (([WorkspaceEntry]) -> Void)?
 
-    init(root: String, onComplete: @escaping ([WorkspaceEntry]) -> Void) {
+    init(
+        root: String,
+        previewCache: WorkspacePreviewCache? = nil,
+        onComplete: @escaping ([WorkspaceEntry]) -> Void
+    ) {
         self.root = root
+        self.previewCache = previewCache
         self.onComplete = onComplete
     }
 
@@ -30,7 +36,11 @@ final class WorkspaceScanner {
     func scanDocuments(completion: @escaping ([WorkspaceEntry]) -> Void) {
         queue.async { [weak self] in
             guard let self else { return }
-            let documents = Self.enumerateDocuments(root: self.root, cancelled: { self.cancelled })
+            let documents = Self.enumerateDocuments(
+                root: self.root,
+                cancelled: { self.cancelled },
+                previewCache: self.previewCache
+            )
             DispatchQueue.main.async {
                 completion(documents)
             }
@@ -41,7 +51,11 @@ final class WorkspaceScanner {
         cancelled = true
     }
 
-    private static func enumerateDocuments(root: String, cancelled: () -> Bool) -> [WorkspaceEntry] {
+    private static func enumerateDocuments(
+        root: String,
+        cancelled: () -> Bool,
+        previewCache: WorkspacePreviewCache?
+    ) -> [WorkspaceEntry] {
         let fm = FileManager.default
         var results: [WorkspaceEntry] = []
         var stack = [root]
@@ -62,7 +76,8 @@ final class WorkspaceScanner {
                 } else {
                     let ext = (item as NSString).pathExtension.lowercased()
                     if allowedExtensions.contains(ext) {
-                        results.append(WorkspaceEntry(name: item, path: path, isDirectory: false))
+                        let preview = previewCache?.preview(path: path, isMarkdown: ext == "md" || ext == "markdown")
+                        results.append(WorkspaceEntry(name: item, path: path, isDirectory: false, preview: preview))
                     }
                 }
             }

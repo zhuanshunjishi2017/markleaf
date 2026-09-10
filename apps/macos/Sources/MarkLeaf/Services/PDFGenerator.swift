@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import WebKit
 
 /// 纸张尺寸（毫米）→ 英寸，对应 C# EditorHostController.PaperSizeToInches。
@@ -8,6 +9,8 @@ enum PaperSize: String, CaseIterable {
     case a5 = "A5"
     case letter = "Letter"
     case legal = "Legal"
+    case b4 = "B4"
+    case b5 = "B5"
 
     var sizeInches: (width: Double, height: Double) {
         let (wMm, hMm): (Double, Double) = switch self {
@@ -15,6 +18,8 @@ enum PaperSize: String, CaseIterable {
         case .a5: (148.0, 210.0)
         case .letter: (215.9, 279.4)
         case .legal: (215.9, 355.6)
+        case .b4: (250.0, 353.0)
+        case .b5: (176.0, 250.0)
         default: (210.0, 297.0)
         }
         return (wMm / 25.4, hMm / 25.4)
@@ -43,6 +48,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     private var strongSelf: PDFGenerator?
 
     private struct StampContext {
+        let html: String
         let saveURL: URL
         let margins: ExportMargins
         let headerText: String
@@ -297,6 +303,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     /// completion(.success(true)) = 已打印/已保存；.success(false) = 用户取消。
     func printPDF(
         html: String,
+        headings: [PDFHeading] = [],
         paperSize: PaperSize,
         landscape: Bool,
         margins: ExportMargins,
@@ -382,6 +389,7 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         }
         if !showsPanel, let saveURL {
             pendingStamp = StampContext(
+                html: html,
                 saveURL: saveURL,
                 margins: margins,
                 headerText: headerText,
@@ -472,6 +480,9 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             do {
                 var data = try Data(contentsOf: stamp.saveURL)
                 data = try Self.stampPageBackground(data: data, context: stamp)
+                if let outlined = PDFOutlineBuilder.addOutline(to: data, html: stamp.html) {
+                    data = outlined
+                }
                 try data.write(to: stamp.saveURL, options: .atomic)
                 AppLog.info("PDFGenerator: 已补漆页面边距并写入 \(stamp.saveURL.path)")
             } catch {

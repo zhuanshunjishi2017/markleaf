@@ -1,0 +1,922 @@
+import AppKit
+import QuartzCore
+
+enum TabContextAction {
+    case close
+    case closeOthers
+    case closeToRight
+    case locate
+    case copyPath
+    case copyContents
+    case revealInFinder
+    case share
+}
+
+/// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
+/// 单击激活；关闭按钮关闭；完整路径走悬停提示；支持拖拽重排、溢出菜单与横向滚动。
+final class TabBarController: NSView {
+    static let preferredHeight: CGFloat = 32
+    var onActivate: ((DocumentTabID) -> Void)?
+    var onClose: ((DocumentTabID) -> Void)?
+    var onNewTab: (() -> Void)?
+    var onContextAction: ((TabContextAction, DocumentTabID) -> Void)?
+    /// 拖到别的窗口标签栏上释放时回调：标签、目标窗口、目标插入下标。
+    var onTransfer: ((DocumentTabID, EditorWindowController, Int) -> Void)?
+    /// 由窗口控制器注入，用于判断拖拽是否落在别的窗口上。
+    weak var windowController: EditorWindowController?
+    /// 跨窗口命中测试的注入点：默认真实窗口管理器，测试可换成固定结果。
+    var stripHitProvider: (NSPoint, TabBarController) -> TabStripHit? = { point, excluded in
+        AppWindowManager.shared.tabStripHit(globalPoint: point, excluding: excluded)
+    }
+    var workspaceRootProvider: (() -> String?)?
+    var onReorder: ((Int, Int) -> Void)?
+    /// 拖离标签栏条带时回调：标签、新窗口期望原点（屏幕坐标），由窗口层在光标处开新窗口。
+    var onTearOff: ((DocumentTabID, NSPoint) -> Void)?
+    var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
+    /// 该标签的文档是否已有内容；空文档时“复制内容到剪贴板”不可用。
+    var contentProvider: ((DocumentTabID) -> Bool)?
+
+    private let stack = NSStackView()
+    private let newTabButton = NSButton()
+    private let overflowButton = NSPopUpButton(frame: .zero, pullsDown: false)
+    private unowned let tabStore: TabStore
+    private var cellsByTab: [DocumentTabID: TabCellView] = [:]
+    private var stackLeading: NSLayoutConstraint!
+    private var overflowWidth: NSLayoutConstraint!
+
+    private var scrollOffset: CGFloat = 0
+    private var reorderingTabID: DocumentTabID?
+    private var isReordering = false
+    private var motionGeneration = 0
+    private var draggingCell: TabCellView?
+    private var dragPlaceholder: NSView?
+    private var dragSourceIndex: Int?
+    private var dragStartOffset = NSPoint.zero
+    private var dragEventMonitor: Any?
+    private var dragStripGlobalRect = NSRect.zero
+    private var dragGrabOffset = NSPoint.zero
+    private var dragPreviewImage: NSImage?
+    private var dragPreview: TabDragPreviewWindow?
+    private var dropIndicator: NSView?
+    private weak var hoveredTabBar: TabBarController?
+    private var heightConstraint: NSLayoutConstraint!
+
+    init(tabStore: TabStore) {
+        self.tabStore = tabStore
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        translatesAutoresizingMaskIntoConstraints = false
+        heightConstraint = heightAnchor.constraint(equalToConstant: Self.preferredHeight)
+        heightConstraint.isActive = true
+
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.distribution = .fillEqually
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        stackLeading = stack.leadingAnchor.constraint(equalTo: leadingAnchor)
+        configureNewTabButton()
+        configureOverflowButton()
+        NSLayoutConstraint.activate([
+            stackLeading,
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.trailingAnchor.constraint(equalTo: newTabButton.leadingAnchor, constant: -4),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        overflowWidth = overflowButton.widthAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            newTabButton.widthAnchor.constraint(equalToConstant: 26),
+            newTabButton.heightAnchor.constraint(equalToConstant: 26),
+            newTabButton.trailingAnchor.constraint(equalTo: overflowButton.leadingAnchor, constant: -2),
+            newTabButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            overflowWidth,
+            overflowButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            overflowButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            overflowButton.leadingAnchor.constraint(greaterThanOrEqualTo: stack.trailingAnchor, constant: 6),
+        ])
+        overflowButton.isHidden = true
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(boundsChanged),
+            name: NSView.boundsDidChangeNotification,
+            object: self
+        )
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let monitor = dragEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    private var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func configureNewTabButton() {
+        newTabButton.image = NSImage(
+            systemSymbolName: "plus",
+            accessibilityDescription: L10n.t("新建标签")
+        )
+        newTabButton.imagePosition = .imageOnly
+        newTabButton.isBordered = false
+        newTabButton.controlSize = .small
+        newTabButton.translatesAutoresizingMaskIntoConstraints = false
+        newTabButton.toolTip = L10n.t("新建标签")
+        newTabButton.setAccessibilityLabel(L10n.t("新建标签"))
+        newTabButton.target = self
+        newTabButton.action = #selector(newTabClicked)
+        addSubview(newTabButton)
+    }
+
+    private func configureOverflowButton() {
+        overflowButton.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: L10n.t("所有标签"))
+        overflowButton.imagePosition = .imageOnly
+        overflowButton.isBordered = false
+        overflowButton.controlSize = .small
+        overflowButton.translatesAutoresizingMaskIntoConstraints = false
+        overflowButton.refusesFirstResponder = false
+        overflowButton.focusRingType = .default
+        overflowButton.setAccessibilityLabel(L10n.t("所有标签"))
+        addSubview(overflowButton)
+    }
+
+    @objc private func newTabClicked() {
+        onNewTab?()
+    }
+
+    func reload() {
+        guard !isReordering else { return }
+        motionGeneration += 1
+        let generation = motionGeneration
+        let existing = Set(cellsByTab.keys)
+        let current = Set(tabStore.tabs.map(\.tabID))
+        let removedCells = existing.subtracting(current).compactMap { id -> TabCellView? in
+            guard let cell = cellsByTab.removeValue(forKey: id) else { return nil }
+            cell.layer?.removeAllAnimations()
+            cell.setLifted(false, animated: false)
+            // 拖出新窗口时，拖拽收尾已经把旧 cell 从 stack 移除。
+            // 如果继续把它交给 NSStackView 的动画移除，AppKit 会 abort。
+            guard stack.arrangedSubviews.contains(cell), cell.window != nil else { return nil }
+            return cell
+        }
+        let currentOrder = stack.arrangedSubviews.compactMap { ($0 as? TabCellView)?.tabID }
+        let desiredOrder = tabStore.tabs.map(\.tabID)
+        let orderChanged = currentOrder != desiredOrder
+        var insertedCells: [TabCellView] = []
+        for tab in tabStore.tabs {
+            let cell: TabCellView
+            if let existingCell = cellsByTab[tab.tabID] {
+                cell = existingCell
+            } else {
+                cell = makeCell(for: tab)
+                cell.prepareForInsertion()
+                insertedCells.append(cell)
+            }
+            cellsByTab[tab.tabID] = cell
+            configure(cell, for: tab)
+        }
+        rebuildOverflowMenu()
+        updateOverflowVisibility()
+
+        let needsMotion = !insertedCells.isEmpty || !removedCells.isEmpty || orderChanged
+        guard needsMotion else { return }
+        // Establish the pre-change frames so Auto Layout can interpolate the
+        // stack's expansion, collapse, or reorder inside the animation group.
+        layoutSubtreeIfNeeded()
+        animateTabChanges(
+            inserted: insertedCells,
+            removed: removedCells,
+            generation: generation
+        )
+    }
+
+    /// 切换标签栏可见性时同步动画高度与透明度，编辑区跟随约束平滑上移/下移。
+    func setVisible(_ visible: Bool, animated: Bool, completion: (() -> Void)? = nil) {
+        let targetHeight: CGFloat = visible ? Self.preferredHeight : 0
+        let targetAlpha: CGFloat = visible ? 1 : 0
+        guard animated, !reduceMotion else {
+            heightConstraint.constant = targetHeight
+            alphaValue = targetAlpha
+            isHidden = !visible
+            completion?()
+            return
+        }
+
+        isHidden = false
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.24
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            heightConstraint.animator().constant = targetHeight
+            self.animator().alphaValue = targetAlpha
+        }, completionHandler: {
+            self.heightConstraint.constant = targetHeight
+            self.alphaValue = targetAlpha
+            self.isHidden = !visible
+            completion?()
+        })
+    }
+
+    private func animateTabChanges(
+        inserted: [TabCellView],
+        removed: [TabCellView],
+        generation: Int
+    ) {
+        let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
+        removed.forEach { view in
+            if stack.arrangedSubviews.contains(view) {
+                stack.removeArrangedSubview(view)
+            }
+        }
+        for (index, tab) in tabStore.tabs.enumerated() {
+            guard let cell = cellsByTab[tab.tabID] else { continue }
+            if stack.arrangedSubviews.count <= index || stack.arrangedSubviews[index] !== cell {
+                stack.insertArrangedSubview(cell, at: min(index, stack.arrangedSubviews.count))
+            }
+        }
+        guard duration > 0 else {
+            inserted.forEach { $0.finishInsertion() }
+            removed.forEach { view in
+                if view.superview != nil {
+                    view.removeFromSuperview()
+                }
+            }
+            layoutSubtreeIfNeeded()
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.allowsImplicitAnimation = true
+            self.layoutSubtreeIfNeeded()
+            inserted.forEach { $0.animator().alphaValue = 1 }
+            removed.forEach { $0.animator().alphaValue = 0 }
+        }, completionHandler: { [weak self] in
+            guard let self else { return }
+            removed.forEach { $0.removeFromSuperview() }
+            inserted.forEach { $0.finishInsertion() }
+            guard self.motionGeneration == generation else { return }
+            self.layoutSubtreeIfNeeded()
+        })
+    }
+
+    private func makeCell(for tab: DocumentTab) -> TabCellView {
+        let cell = TabCellView()
+        cell.tabID = tab.tabID
+        cell.controller = self
+        cell.onActivate = { [weak self] in self?.onActivate?(tab.tabID) }
+        cell.onClose = { [weak self] in self?.onClose?(tab.tabID) }
+        cell.onContextMenu = { [weak self, weak cell] event in
+            guard let self, let cell, let id = cell.tabID else { return }
+            self.showContextMenu(for: id, with: event, in: cell)
+        }
+        return cell
+    }
+
+    private func configure(_ cell: TabCellView, for tab: DocumentTab) {
+        let isActive = tabStore.activeTabID == tab.tabID
+        let duration = tab.recoveryUnavailable
+            ? TabAnimationPolicy.duration(for: .statusMark, reduceMotion: reduceMotion)
+            : TabAnimationPolicy.duration(for: .activeState, reduceMotion: reduceMotion)
+        let status = statusProvider?(tab.tabID) ?? (isReadOnly: false, hasExternalChange: false)
+        cell.configure(
+            title: tab.title,
+            isActive: isActive,
+            isDirty: tab.isDirty,
+            isReadOnly: status.isReadOnly,
+            hasExternalChange: status.hasExternalChange,
+            isSuspended: tab.isSuspended,
+            recoveryUnavailable: tab.recoveryUnavailable,
+            toolTip: [tab.path ?? tab.title, tab.lastError].compactMap { $0 }.joined(separator: "\n"),
+            animationDuration: duration,
+            accessibilityTitle: tab.path ?? tab.title
+        )
+    }
+
+    // MARK: - 拖拽重排
+
+    /// 按压时只在原位置做抬起效果，不改变视图层级，避免打断 mouse-up 事件流。
+    func liftCell(_ cell: TabCellView, animated: Bool) {
+        guard cell.superview != nil else { return }
+        cell.setLifted(true, animated: animated && !reduceMotion)
+    }
+
+    /// 未进入拖拽就松开时，把标签恢复平放并让其继续可点击激活。
+    func unliftCell(_ cell: TabCellView) {
+        guard !isReordering else { return }
+        cell.setLifted(false, animated: !reduceMotion)
+    }
+
+    func beginReorder(from cell: TabCellView, at windowPoint: NSPoint, pressPoint: NSPoint? = nil) {
+        guard isReordering == false else { return }
+        guard let id = cell.tabID,
+              let source = tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
+        let initialFrame = cell.convert(cell.bounds, to: self)
+        let localPoint = convert(windowPoint, from: nil)
+        let placeholder = NSView(frame: .zero)
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        placeholder.wantsLayer = true
+
+        isReordering = true
+        reorderingTabID = id
+        draggingCell = cell
+        dragPlaceholder = placeholder
+        dragSourceIndex = source
+        dragStripGlobalRect = stripGlobalRect
+        dragPreviewImage = Self.snapshot(of: cell)
+        dragGrabOffset = Self.grabOffset(of: cell, in: window, pressPoint: pressPoint ?? windowPoint)
+        dragStartOffset = NSPoint(
+            x: localPoint.x - initialFrame.minX,
+            y: localPoint.y - initialFrame.minY
+        )
+
+        stack.removeArrangedSubview(cell)
+        cell.removeFromSuperview()
+        stack.insertArrangedSubview(placeholder, at: source)
+        addSubview(cell)
+        cell.translatesAutoresizingMaskIntoConstraints = true
+        cell.frame = initialFrame
+        cell.setFrameOrigin(initialFrame.origin)
+        cell.needsLayout = true
+        cell.setLifted(true, animated: !reduceMotion)
+
+        // 拖拽会改变视图层级；改由窗口级监视器驱动后续事件，
+        // 不再依赖被移动的 cell 继续接收 mouseDragged/mouseUp。
+        // 必须使用 local monitor：global monitor 不会收到本应用自己的鼠标事件，
+        // 向下拖出后收尾函数可能永远不执行，浮动标签会残留并覆盖其他标签。
+        dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            guard event.window === self.window else { return event }
+            switch event.type {
+            case .leftMouseDragged:
+                self.dragReorder(to: event.locationInWindow)
+            case .leftMouseUp:
+                self.endReorder(at: event.locationInWindow)
+            default:
+                break
+            }
+            return nil
+        }
+    }
+
+    func dragReorder(to windowPoint: NSPoint) {
+        guard isReordering, let cell = draggingCell, let placeholder = dragPlaceholder else { return }
+        let local = convert(windowPoint, from: nil)
+        cell.setFrameOrigin(NSPoint(
+            x: local.x - dragStartOffset.x,
+            y: local.y - dragStartOffset.y
+        ))
+        let globalPoint = globalPoint(forWindowPoint: windowPoint)
+        updateDragPreview(globalPoint: globalPoint)
+        updateHoverTarget(globalPoint: globalPoint)
+
+        // 悬停在别的窗口标签栏上时，本窗口的插入占位不再参与排序。
+        if hoveredTabBar != nil { return }
+        let target = targetIndex(for: local)
+        let current = stack.arrangedSubviews.firstIndex(of: placeholder) ?? 0
+        guard target != current else { return }
+        let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: reduceMotion)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.allowsImplicitAnimation = duration > 0
+            stack.removeArrangedSubview(placeholder)
+            stack.insertArrangedSubview(placeholder, at: min(target, stack.arrangedSubviews.count))
+            stack.layoutSubtreeIfNeeded()
+        })
+    }
+
+    func endReorder(at windowPoint: NSPoint) {
+        if let monitor = dragEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            dragEventMonitor = nil
+        }
+        defer { endDragVisuals() }
+        guard isReordering, let id = reorderingTabID,
+              let cell = draggingCell, let placeholder = dragPlaceholder else {
+            isReordering = false
+            reorderingTabID = nil
+            return
+        }
+
+        let globalPoint = globalPoint(forWindowPoint: windowPoint)
+
+        let hit = stripHitProvider(globalPoint, self)
+        let hasOtherStripHit = hit.map { $0.controller !== windowController } ?? false
+        let outcome = TabDetachPolicy.outcome(
+            hasOtherStripHit: hasOtherStripHit,
+            globalPoint: globalPoint,
+            stripGlobalRect: dragStripGlobalRect,
+            windowFrame: window?.frame ?? .zero
+        )
+
+        // 1) 落在别的窗口标签栏上：并入那个窗口。
+        if outcome == .transfer, let hit {
+            finishDragWithoutRestore(cell: cell, placeholder: placeholder)
+            onTransfer?(id, hit.controller, hit.index)
+            return
+        }
+
+        // 2) 离开标签栏条带：在光标处撕成新窗口。
+        if outcome == .tearOff {
+            finishDragWithoutRestore(cell: cell, placeholder: placeholder)
+            onTearOff?(id, TabDetachPolicy.tearOffOrigin(globalPoint: globalPoint, windowPoint: windowPoint))
+            return
+        }
+
+        let source = dragSourceIndex ?? tabStore.tabs.firstIndex(where: { $0.tabID == id })
+        let target = targetIndex(for: convert(windowPoint, from: nil))
+        let placeholderIndex = stack.arrangedSubviews.firstIndex(of: placeholder) ?? target
+        stack.removeArrangedSubview(placeholder)
+        placeholder.removeFromSuperview()
+        cell.removeFromSuperview()
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        stack.insertArrangedSubview(cell, at: min(placeholderIndex, stack.arrangedSubviews.count))
+        cell.setLifted(false, animated: !reduceMotion)
+        isReordering = false
+        reorderingTabID = nil
+        draggingCell = nil
+        dragPlaceholder = nil
+        dragSourceIndex = nil
+        if let source, source != target {
+            onReorder?(source, target)
+        }
+    }
+
+    private func finishDragWithoutRestore(cell: NSView, placeholder: NSView) {
+        placeholder.removeFromSuperview()
+        cell.removeFromSuperview()
+        if let id = reorderingTabID {
+            cellsByTab.removeValue(forKey: id)
+        }
+        isReordering = false
+        reorderingTabID = nil
+        draggingCell = nil
+        dragPlaceholder = nil
+        dragSourceIndex = nil
+    }
+
+    // MARK: - 跨窗口拖拽与撕下
+
+    /// 标签栏条带的全局矩形，用于判断光标是否已经离开这条标签栏。
+    var stripGlobalRect: NSRect {
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
+    }
+
+    /// 全局坐标在该标签栏中的插入下标（跨窗口并入时使用）。
+    func insertionIndex(forGlobalPoint point: NSPoint) -> Int {
+        guard let window else { return 0 }
+        let windowPoint = window.convertFromScreen(NSRect(origin: point, size: .zero)).origin
+        return targetIndex(for: convert(windowPoint, from: nil))
+    }
+
+    /// 目标窗口的插入指示条：拖动过程中提示标签会落在哪里。
+    func showDropIndicator(at index: Int) {
+        let indicator = dropIndicator ?? {
+            let view = NSView()
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            view.layer?.cornerRadius = 1
+            addSubview(view)
+            dropIndicator = view
+            return view
+        }()
+        let arranged = stack.arrangedSubviews
+        let x: CGFloat
+        if arranged.isEmpty {
+            x = stack.frame.minX
+        } else if index >= arranged.count {
+            x = arranged.last!.frame.maxX
+        } else {
+            x = arranged[index].frame.minX
+        }
+        let inStack = NSRect(
+            x: x - 1,
+            y: 3,
+            width: 2,
+            height: max(0, stack.bounds.height - 6)
+        )
+        indicator.frame = convert(inStack, from: stack)
+        indicator.isHidden = false
+    }
+
+    func hideDropIndicator() {
+        dropIndicator?.isHidden = true
+    }
+
+    /// 拖拽结束时清理浮层、插入指示与悬停状态。
+    private func endDragVisuals() {
+        hoveredTabBar?.hideDropIndicator()
+        hoveredTabBar = nil
+        dragPreview?.orderOut(nil)
+        dragPreview = nil
+        dragPreviewImage = nil
+        dragGrabOffset = .zero
+        dragStripGlobalRect = .zero
+    }
+
+    /// 光标离开来源窗口后，用独立的无交互浮层跟随鼠标（窗口内仍用被抬起的标签本身）。
+    private func updateDragPreview(globalPoint: NSPoint) {
+        guard let window else { return }
+        guard !window.frame.contains(globalPoint) else {
+            dragPreview?.orderOut(nil)
+            return
+        }
+        guard let image = dragPreviewImage else { return }
+        let preview = dragPreview ?? {
+            let panel = TabDragPreviewWindow(image: image)
+            dragPreview = panel
+            return panel
+        }()
+        preview.setFrameOrigin(NSPoint(
+            x: globalPoint.x - dragGrabOffset.x,
+            y: globalPoint.y - dragGrabOffset.y
+        ))
+        if !preview.isVisible {
+            preview.orderFront(nil)
+        }
+    }
+
+    /// 悬停在别的窗口标签栏上时，在目标标签栏显示插入指示。
+    private func updateHoverTarget(globalPoint: NSPoint) {
+        guard let hit = stripHitProvider(globalPoint, self), hit.controller !== windowController else {
+            hoveredTabBar?.hideDropIndicator()
+            hoveredTabBar = nil
+            return
+        }
+        if hoveredTabBar !== hit.tabBar {
+            hoveredTabBar?.hideDropIndicator()
+        }
+        hoveredTabBar = hit.tabBar
+        hit.tabBar.showDropIndicator(at: hit.index)
+    }
+
+    private static func snapshot(of view: NSView) -> NSImage? {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let image = NSImage(size: view.bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    /// 鼠标在标签内的抓取偏移（屏幕坐标，原点在左下），用于让浮层跟手。
+    private static func grabOffset(of cell: NSView, in window: NSWindow?, pressPoint: NSPoint) -> NSPoint {
+        guard let window else { return .zero }
+        let screenRect = window.convertToScreen(cell.convert(cell.bounds, to: nil))
+        let press = window.convertToScreen(NSRect(origin: pressPoint, size: .zero)).origin
+        return NSPoint(x: press.x - screenRect.minX, y: press.y - screenRect.minY)
+    }
+
+    /// 事件坐标 → 全局屏幕坐标。比 NSEvent.mouseLocation 可靠：
+    /// 合成事件（自动化测试）不一定会移动真实指针，但事件本身带着窗口内坐标。
+    private func globalPoint(forWindowPoint point: NSPoint) -> NSPoint {
+        guard let window else { return point }
+        return window.convertToScreen(NSRect(origin: point, size: .zero)).origin
+    }
+
+    private func targetIndex(for localPoint: NSPoint) -> Int {
+        let p = stack.convert(localPoint, from: self)
+        for (index, view) in stack.arrangedSubviews.enumerated() {
+            if p.x < view.frame.midX {
+                return index
+            }
+        }
+        return stack.arrangedSubviews.count
+    }
+
+    // MARK: - 溢出菜单
+
+    private func rebuildOverflowMenu() {
+        overflowButton.menu?.removeAllItems()
+        for tab in tabStore.tabs {
+            let prefix = tab.isDirty ? "● " : ""
+            let item = NSMenuItem(title: prefix + tab.title, action: #selector(overflowSelect(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = tab.tabID.rawValue
+            item.state = tabStore.activeTabID == tab.tabID ? .on : .off
+            overflowButton.menu?.addItem(item)
+        }
+    }
+
+    @objc private func overflowSelect(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        onActivate?(DocumentTabID(raw))
+    }
+
+    @objc private func boundsChanged() {
+        updateOverflowVisibility()
+    }
+
+    private func updateOverflowVisibility() {
+        let show = stack.fittingSize.width > bounds.width - 34
+        overflowButton.isHidden = !show
+        overflowWidth.constant = show ? 26 : 0
+        if !show { scrollOffset = 0 }
+    }
+
+    // MARK: - 横向滚动
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaY
+        guard delta != 0 else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let maxOffset = max(0, stack.fittingSize.width - bounds.width)
+        scrollOffset = max(0, min(scrollOffset - delta, maxOffset))
+        stackLeading.constant = -scrollOffset
+        layoutSubtreeIfNeeded()
+    }
+
+    private func showContextMenu(for tabID: DocumentTabID, with event: NSEvent, in cell: NSView) {
+        guard let index = tabStore.tabs.firstIndex(where: { $0.tabID == tabID }) else { return }
+        let menu = NSMenu()
+        // 可用性由本文件显式计算，禁止 AppKit 再用 responder chain 覆盖 isEnabled
+        // （否则未保存标签上的“复制文件路径”等命令会显示为可用但点了没反应）。
+        menu.autoenablesItems = false
+        menu.addItem(contextMenuItem(L10n.t("关闭标签"), action: .close, tabID: tabID))
+        let closeOthers = contextMenuItem(L10n.t("关闭其他标签"), action: .closeOthers, tabID: tabID)
+        closeOthers.isEnabled = tabStore.tabs.count > 1
+        menu.addItem(closeOthers)
+        let closeToRight = contextMenuItem(L10n.t("关闭右侧标签"), action: .closeToRight, tabID: tabID)
+        closeToRight.isEnabled = index < tabStore.tabs.count - 1
+        menu.addItem(closeToRight)
+        // 文件操作区始终显示，并与“文件”菜单共用同一套可用性规则：
+        // 没有工作区时“在工作区定位”置灰，没有本地路径时路径类命令置灰。
+        let tab = tabStore.tab(withID: tabID)
+        let availability = MenuCommandAvailabilityState(
+            tabCount: tabStore.tabs.count,
+            activeTabPath: tab?.path,
+            workspaceRoot: workspaceRootProvider?(),
+            hasContent: contentProvider?(tabID) ?? false
+        )
+        menu.addItem(.separator())
+        let fileCommands: [(String, TabContextAction, String)] = [
+            (L10n.t("在工作区定位"), .locate, "revealActiveTabInWorkspace"),
+            (L10n.t("复制文件路径"), .copyPath, "copyActiveTabPath"),
+            (L10n.t("复制内容到剪贴板"), .copyContents, "copyActiveFileContents"),
+            (L10n.t("在 Finder 中显示"), .revealInFinder, "revealActiveTabInFinder"),
+            (L10n.t("分享"), .share, "shareActiveTab"),
+        ]
+        for (title, action, command) in fileCommands {
+            let item = contextMenuItem(title, action: action, tabID: tabID)
+            item.isEnabled = MenuCommandAvailabilityPolicy.isTabCommandEnabled(
+                command: command,
+                state: availability
+            )
+            menu.addItem(item)
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: cell)
+    }
+
+    private func contextMenuItem(_ title: String, action: TabContextAction, tabID: DocumentTabID) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(tabContextAction(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = (action, tabID.rawValue)
+        return item
+    }
+
+    @objc private func tabContextAction(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? (TabContextAction, String) else { return }
+        onContextAction?(value.0, DocumentTabID(value.1))
+    }
+}
+
+/// 单个标签单元：标题 + 脏圆点 + 关闭按钮。
+final class TabCellView: NSView {
+    var onActivate: (() -> Void)?
+    var onClose: (() -> Void)?
+    var onContextMenu: ((NSEvent) -> Void)?
+    weak var controller: TabBarController?
+    var tabID: DocumentTabID?
+
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let dirtyDot = NSView()
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let closeButton = NSButton()
+    private var isActive = false
+    private var colorConfiguration: (() -> Void)?
+    private var downPoint: NSPoint?
+    private var didDrag = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.shadowColor = NSColor.black.cgColor
+
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.font = .systemFont(ofSize: 12)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        dirtyDot.wantsLayer = true
+        dirtyDot.layer?.cornerRadius = 3
+        dirtyDot.layer?.backgroundColor = NSColor.secondaryLabelColor.cgColor
+        dirtyDot.translatesAutoresizingMaskIntoConstraints = false
+        dirtyDot.isHidden = true
+
+        statusLabel.font = .systemFont(ofSize: 10)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.isHidden = true
+
+        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
+        closeButton.bezelStyle = .inline
+        closeButton.isBordered = false
+        closeButton.imagePosition = .imageOnly
+        closeButton.controlSize = .mini
+        closeButton.target = self
+        closeButton.action = #selector(closeClicked)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.refusesFirstResponder = true
+
+        addSubview(titleLabel)
+        addSubview(dirtyDot)
+        addSubview(statusLabel)
+        addSubview(closeButton)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 24),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: dirtyDot.leadingAnchor, constant: -6),
+
+            dirtyDot.widthAnchor.constraint(equalToConstant: 6),
+            dirtyDot.heightAnchor.constraint(equalToConstant: 6),
+            dirtyDot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dirtyDot.trailingAnchor.constraint(equalTo: statusLabel.leadingAnchor, constant: -4),
+            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            statusLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
+
+            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        renderCurrentColors()
+    }
+
+    @objc private func closeClicked() { onClose?() }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    func prepareForInsertion() {
+        alphaValue = 0
+        layer?.transform = CATransform3DMakeScale(0.96, 0.96, 1)
+    }
+
+    func finishInsertion() {
+        alphaValue = 1
+        layer?.transform = CATransform3DIdentity
+    }
+
+    func setLifted(_ lifted: Bool, animated: Bool) {
+        guard let layer else { return }
+        let duration = TabAnimationPolicy.duration(for: .insertRemoveReorder, reduceMotion: !animated)
+        let fromTransform = layer.presentation()?.transform ?? layer.transform
+        let targetTransform = lifted
+            ? CATransform3DMakeScale(1.04, 1.08, 1)
+            : CATransform3DIdentity
+        let targetShadowOpacity: Float = lifted ? 0.24 : 0
+        let targetShadowRadius: CGFloat = lifted ? 10 : 0
+        let targetShadowOffset = lifted ? CGSize(width: 0, height: -2) : .zero
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = targetTransform
+        layer.shadowOpacity = targetShadowOpacity
+        layer.shadowRadius = targetShadowRadius
+        layer.shadowOffset = targetShadowOffset
+        layer.zPosition = lifted ? 10 : 0
+        CATransaction.commit()
+
+        guard duration > 0 else { return }
+        let transformAnimation = CABasicAnimation(keyPath: "transform")
+        transformAnimation.fromValue = NSValue(caTransform3D: fromTransform)
+        transformAnimation.toValue = NSValue(caTransform3D: targetTransform)
+        transformAnimation.duration = duration
+        transformAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(transformAnimation, forKey: "tabLift")
+
+        let shadowOpacityAnimation = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowOpacityAnimation.fromValue = layer.presentation()?.shadowOpacity ?? layer.shadowOpacity
+        shadowOpacityAnimation.toValue = targetShadowOpacity
+        shadowOpacityAnimation.duration = duration
+        layer.add(shadowOpacityAnimation, forKey: "tabLiftShadow")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        downPoint = convert(event.locationInWindow, from: nil)
+        didDrag = false
+        controller?.liftCell(self, animated: true)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downPoint else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
+            didDrag = true
+            controller?.beginReorder(
+                from: self,
+                at: event.locationInWindow,
+                pressPoint: downPoint.map { convert($0, to: nil) }
+            )
+        }
+        if didDrag {
+            controller?.dragReorder(to: event.locationInWindow)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if didDrag {
+            controller?.endReorder(at: event.locationInWindow)
+        } else {
+            controller?.unliftCell(self)
+            onActivate?()
+        }
+        downPoint = nil
+        didDrag = false
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onContextMenu?(event)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        if event.buttonNumber == 2 {
+            onClose?()
+        } else {
+            super.otherMouseDown(with: event)
+        }
+    }
+
+    func configure(
+        title: String,
+        isActive: Bool,
+        isDirty: Bool,
+        isReadOnly: Bool,
+        hasExternalChange: Bool,
+        isSuspended: Bool,
+        recoveryUnavailable: Bool,
+        toolTip: String,
+        animationDuration: TimeInterval,
+        accessibilityTitle: String
+    ) {
+        self.isActive = isActive
+        titleLabel.stringValue = recoveryUnavailable ? "\(title) ⚠︎" : title
+        self.toolTip = toolTip
+        dirtyDot.isHidden = !isDirty
+        let statusText = isReadOnly ? L10n.t("只读") : (hasExternalChange ? L10n.t("外部") : "")
+        statusLabel.stringValue = statusText
+        statusLabel.isHidden = statusText.isEmpty
+        statusLabel.textColor = hasExternalChange ? .systemOrange : .secondaryLabelColor
+        setAccessibilityLabel(
+            accessibilityTitle
+            + (isDirty ? "，" + L10n.t("已修改") : "")
+            + (isReadOnly ? "，" + L10n.t("只读") : "")
+            + (hasExternalChange ? "，" + L10n.t("外部") : "")
+            + (isSuspended ? "，" + L10n.t("已暂停") : "")
+            + (recoveryUnavailable ? "，" + L10n.t("恢复保护不可用") : "")
+        )
+        closeButton.setAccessibilityLabel(L10n.f("关闭 %@", title))
+
+        let applyColors = { [weak self] in
+            guard let self else { return }
+            var backgroundColor = NSColor.clear.cgColor
+            self.effectiveAppearance.performAsCurrentDrawingAppearance {
+                if self.isActive {
+                    backgroundColor = NSColor.controlBackgroundColor.cgColor
+                }
+            }
+            self.layer?.backgroundColor = backgroundColor
+            self.titleLabel.textColor = recoveryUnavailable
+                ? .systemOrange
+                : (isActive ? .labelColor : .secondaryLabelColor)
+        }
+        self.colorConfiguration = applyColors
+        guard animationDuration > 0 else { applyColors(); return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animationDuration
+            context.allowsImplicitAnimation = true
+            applyColors()
+        }
+    }
+
+    private func renderCurrentColors() {
+        guard let applyColors = colorConfiguration else { return }
+        applyColors()
+    }
+}
