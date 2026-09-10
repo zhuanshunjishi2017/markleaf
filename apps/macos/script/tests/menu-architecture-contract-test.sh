@@ -199,10 +199,16 @@ done
 require_text "$win_image" 'BuildResizeImageSubmenu()'
 
 win_view="$(method_body "$WIN_MENU" BuildViewMenu)"
-for text in menu.view.style menu.view.colorTheme menu.view.zoom; do
+# 上游 1.7.x 把排版样式/颜色主题收进「主题设置」窗口，视图菜单改为：
+# 侧栏设置、状态栏、标签页管理、代码高亮、源码模式、全屏、最简模式、
+# 编辑器专注/打字机模式、主题设置、缩放、重启编辑器。
+for text in menu.view.sidebarSettings menu.view.documentTabs menu.view.zoom menu.view.theme; do
   require_text "$win_view" "$text"
 done
 require_text "$win_view" 'AppCommand.ShowCodeHighlight'
+require_text "$win_view" 'AppCommand.ShowThemeSettings'
+require_text "$win_view" 'AppCommand.ToggleEditorFocusMode'
+require_text "$win_view" 'AppCommand.ToggleEditorTypewriterMode'
 for command in AddTheme OpenThemeFolder; do
   reject_text "$win_view" "AppCommand.$command"
 done
