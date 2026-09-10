@@ -19,11 +19,13 @@ printf '%s' "$new_window_body" | grep -Fq 'let session = EditorSession(workspace
     || fail "initial editor must use WindowSession workspace"
 
 # Rebinding the sidebar must also rebind and refresh its workspace tree.
-rebind_body="$(sed -n '/func rebind(to session: EditorSession)/,/^    }/p' "$SIDEBAR" | head -n 10)"
-printf '%s' "$rebind_body" | grep -Fq 'workspaceTree.rebind(to: session)' \
+rebind_body="$(sed -n '/func rebind(to session: EditorSession)/,/^    }/p' "$SIDEBAR")"
+printf '%s' "$rebind_body" | grep -Fq 'workspaceTree.rebind(to: session, preservingTopology: topologyUnchanged)' \
     || fail "sidebar rebind must update WorkspaceTreeView session"
 printf '%s' "$rebind_body" | grep -Fq 'workspaceChanged()' \
     || fail "sidebar rebind must refresh workspace state"
+printf '%s' "$rebind_body" | grep -Fq 'outlineChanged()' \
+    || fail "sidebar rebind must refresh the outline"
 
 # A workspace file must not be written until its naming dialog is confirmed.
 create_body="$(sed -n '/func createWorkspaceFile(at directory:/,/^    }/p' "$SESSION" | head -n 35)"

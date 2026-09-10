@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 POLICY="$ROOT_DIR/Sources/MarkLeaf/Services/IncomingFileRoutingPolicy.swift"
 ROUTER="$ROOT_DIR/Sources/MarkLeaf/Services/IncomingFileRouter.swift"
 SETTINGS="$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift"
+MODE="$ROOT_DIR/Sources/MarkLeaf/Services/ExternalFileOpenMode.swift"
 MANAGER="$ROOT_DIR/Sources/MarkLeaf/App/AppWindowManager.swift"
 
 require() {
@@ -16,7 +17,7 @@ require() {
 }
 
 # 外部文件模式必须包含"当前窗口新标签页"，否则多标签下语义含糊。
-require "$SETTINGS" 'case newTab' 'external file modes must include opening in a new tab'
+require "$MODE" 'case newTab' 'external file modes must include opening in a new tab'
 require "$SETTINGS" '在当前窗口的新标签页中打开' 'the new-tab mode must be user visible'
 require "$SETTINGS" '在当前标签页中打开' 'replace-active mode must say which tab it touches'
 
