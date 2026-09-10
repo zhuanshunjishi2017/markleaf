@@ -20,6 +20,7 @@ final class WorkspaceContext {
     var openDocumentRequest: ((URL) -> Void)?
 
     private var scanner: WorkspaceScanner?
+    private var documentScanner: WorkspaceScanner?
     private var watcher: WorkspaceWatcher?
     let previewCache = WorkspacePreviewCache()
 
@@ -28,7 +29,13 @@ final class WorkspaceContext {
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return }
 
-        root = path
+        if root != path {
+            closeForSessionTeardown()
+            tree = []
+            documents = []
+            root = path
+            onChanged?()
+        }
 
         rescan()
 
@@ -44,11 +51,10 @@ final class WorkspaceContext {
     func rescan() {
         guard let root else { return }
         scanner?.cancel()
-        tree = []
-        onChanged?()
         let scanner = WorkspaceScanner(root: root, previewCache: previewCache) { [weak self] entries in
-            self?.tree = entries
-            self?.onChanged?()
+            guard let self else { return }
+            self.tree = WorkspaceEntry.retainingIdentity(entries, from: self.tree)
+            self.onChanged?()
         }
         self.scanner = scanner
         scanner.scan()
@@ -58,12 +64,10 @@ final class WorkspaceContext {
     }
 
     func close() {
-        scanner?.cancel()
-        scanner = nil
-        watcher?.stop()
-        watcher = nil
+        closeForSessionTeardown()
         root = nil
         tree = []
+        documents = []
         onChanged?()
     }
 
@@ -71,6 +75,8 @@ final class WorkspaceContext {
     func closeForSessionTeardown() {
         scanner?.cancel()
         scanner = nil
+        documentScanner?.cancel()
+        documentScanner = nil
         watcher?.stop()
         watcher = nil
     }
@@ -86,12 +92,12 @@ final class WorkspaceContext {
     func scanDocuments() {
         guard let root else { return }
         // 存入属性保持 scanner 存活（局部变量会提前释放导致异步扫描不回调）。
-        scanner?.cancel()
+        documentScanner?.cancel()
         let scanner = WorkspaceScanner(root: root, previewCache: previewCache) { _ in }
-        self.scanner = scanner
+        documentScanner = scanner
         scanner.scanDocuments { [weak self] docs in
             guard let self else { return }
-            self.documents = self.sortedDocuments(docs)
+            self.documents = WorkspaceEntry.retainingIdentity(self.sortedDocuments(docs), from: self.documents)
             self.onChanged?()
         }
     }

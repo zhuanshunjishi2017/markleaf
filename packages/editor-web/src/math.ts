@@ -321,12 +321,12 @@ function decodeHtmlEntities(text: string): string {
 
 /// 将 `editor.getHTML()` 输出中的数学标记替换为 KaTeX 渲染结果。
 /// 导出 HTML 由独立 WebView2 加载，无法复用编辑器的 KaTeX 运行时，因此需预渲染。
-export function renderMathInHtml(html: string): string {
+export function renderMathInHtml(html: string, throwOnError = false): string {
   return html
     .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) => {
       const source = decodeHtmlEntities(latex)
       return source
-        ? katex.renderToString(source, { throwOnError: false })
+        ? katex.renderToString(source, { throwOnError })
         : '<span class="markleaf-math-placeholder">...</span>'
     })
     .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
@@ -337,6 +337,6 @@ export function renderMathInHtml(html: string): string {
       const full = /\\tag\{[^{}]*\}\s*$/.test(body)
         ? body
         : number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
-      return katex.renderToString(full, { displayMode: true, throwOnError: false })
+      return katex.renderToString(full, { displayMode: true, throwOnError })
     })
 }

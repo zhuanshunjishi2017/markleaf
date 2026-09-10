@@ -1,0 +1,10 @@
+{
+  "command.exportDocument": "MarkLeaf: Export Document…",
+  "command.exportPdf": "MarkLeaf: Export PDF…",
+  "command.exportHtml": "MarkLeaf: Export HTML…",
+  "command.exportImage": "MarkLeaf: Export Image…",
+  "command.print": "MarkLeaf: Print…",
+  "command.exportLast": "MarkLeaf: Export with Last Settings",
+  "config.exportBrowserPath": "Chrome/Edge executable path for PDF, images, preview and printing. Empty automatically finds an installed browser. No browser is downloaded.",
+  "config.typography": "MarkLeaf typography. Defaults to Web · Minimal; explicit user/workspace choices are preserved."
+}

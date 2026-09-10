@@ -41,13 +41,13 @@ final class WorkspaceSearchService {
                         continue
                     }
                     let ext = (name as NSString).pathExtension.lowercased()
-                    guard ["md", "txt", "markdown"].contains(ext) else { continue }
+                    guard WorkspaceDocumentPolicy.includes(fileExtension: ext) else { continue }
                     if work.isCancelled { return }
                     let lowerName = name.lowercased()
                     let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
                     let plainText = MarkdownPlainText.fromDocument(
                         content,
-                        isMarkdown: ext == "md" || ext == "markdown"
+                        isMarkdown: ext == "md"
                     )
                     let nameMatch = lowerName.contains(normalized)
                     let snippet: String?

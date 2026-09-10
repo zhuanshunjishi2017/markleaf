@@ -39,18 +39,15 @@ import {
   setEditorSharedStrings,
   restoreVisualSelection,
   restoreEditorScroll,
-  renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
-import { katexCss, renderMathInHtml } from './math'
 import {
-  renderMermaidInHtml,
   rerenderMermaidElements,
   setMermaidStrings,
-  type MermaidThemeName,
 } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
-import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
+import type { ExportPaginationOptions } from './export-pagination'
+import { generateExportHtml, escapeHtml } from './export-html'
 import { isRestoreViewportPayload } from './protocol'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
@@ -80,19 +77,6 @@ if (!editorElement) {
 }
 const editorMount = editorElement
 const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
-const findBar = document.querySelector<HTMLFormElement>('#find-bar')!
-const findInput = document.querySelector<HTMLInputElement>('#find-input')!
-const replaceInput = document.querySelector<HTMLInputElement>('#replace-input')!
-const caseInput = document.querySelector<HTMLInputElement>('#find-case')!
-const wholeInput = document.querySelector<HTMLInputElement>('#find-whole')!
-const caseText = document.querySelector<HTMLElement>('#find-case-text')!
-const wholeText = document.querySelector<HTMLElement>('#find-whole-text')!
-const findResult = document.querySelector<HTMLElement>('#find-result')!
-const findPrevious = document.querySelector<HTMLButtonElement>('#find-previous')!
-const findNext = document.querySelector<HTMLButtonElement>('#find-next')!
-const replaceOne = document.querySelector<HTMLButtonElement>('#replace-one')!
-const replaceAll = document.querySelector<HTMLButtonElement>('#replace-all')!
-const findClose = document.querySelector<HTMLButtonElement>('#find-close')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 bindReducedMotionPreference(
@@ -462,19 +446,6 @@ function applyAlertTitleLocalization(loc: Record<string, string>): void {
 function applyFindBarLocalization(loc: Record<string, string>): void {
   findBarLoc = loc
   applyAlertTitleLocalization(loc)
-  findInput.placeholder = loc.find ?? 'Find'
-  findInput.ariaLabel = loc.findLabel ?? 'Find'
-  replaceInput.placeholder = loc.replaceWith ?? 'Replace with'
-  replaceInput.ariaLabel = loc.replaceLabel ?? 'Replace with'
-  caseText.textContent = loc.caseSensitive ?? 'Case sensitive'
-  wholeText.textContent = loc.wholeWord ?? 'Whole word'
-  findPrevious.textContent = loc.previous ?? 'Previous'
-  findNext.textContent = loc.next ?? 'Next'
-  replaceOne.textContent = loc.replace ?? 'Replace'
-  replaceAll.textContent = loc.replaceAll ?? 'Replace all'
-  findClose.textContent = loc.close ?? 'Close'
-  findClose.ariaLabel = loc.closeLabel ?? 'Close find bar'
-  findResult.textContent = loc.noResults ?? '0/0'
   promoteHeadingButton.textContent = loc.formatPromoteHeading ?? '标+'
   promoteHeadingButton.ariaLabel = loc.formatPromoteHeading ?? 'Promote heading'
   demoteHeadingButton.textContent = loc.formatDemoteHeading ?? '标-'
@@ -807,15 +778,7 @@ function setSourceMode(enabled: boolean): void {
   sendEditorState()
 }
 
-function syncFindStateFromDom(): void {
-  findQuery = findInput.value
-  findReplace = replaceInput.value
-  findCaseSensitive = caseInput.checked
-  findWholeWord = wholeInput.checked
-}
-
-function closeFindBar(): void {
-  findBar.hidden = true
+function closeFind(): void {
   if (!sourceMode) clearFindHighlights(editor)
   if (sourceMode) sourceEditor?.focus()
   else editor.commands.focus()
@@ -825,7 +788,6 @@ function updateFindResult(backwards: boolean): void {
   const result = sourceMode
     ? sourceEditor?.find(findQuery, findCaseSensitive, findWholeWord, backwards) ?? { current: 0, total: 0 }
     : findInEditor(editor, findQuery, findCaseSensitive, findWholeWord, backwards)
-  findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
 }
 
@@ -834,7 +796,6 @@ function replaceCurrent(): void {
     ? sourceEditor?.replaceCurrent(findQuery, findReplace, findCaseSensitive, findWholeWord)
       ?? { current: 0, total: 0 }
     : replaceCurrentInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
-  findResult.textContent = `${result.current}/${result.total}`
   send('findResult', result)
 }
 
@@ -842,35 +803,9 @@ function replaceEveryMatch(): void {
   const count = sourceMode
     ? sourceEditor?.replaceAll(findQuery, findReplace, findCaseSensitive, findWholeWord) ?? 0
     : replaceAllInEditor(editor, findQuery, findReplace, findCaseSensitive, findWholeWord)
-  findResult.textContent = count === 0 ? '0/0' : (markleafLanguage === 'zh-Hant' ? `已取代 ${count} 處` : markleafLanguage === 'en' ? `Replaced ${count} occurrence${count === 1 ? '' : 's'}` : markleafLanguage === 'ja' ? `${count} 件を置換しました` : `已替换 ${count} 处`)
   send('findResult', { current: count, total: count, replaced: count })
 }
 
-findBar.addEventListener('submit', event => {
-  event.preventDefault()
-  syncFindStateFromDom()
-  updateFindResult(false)
-})
-findInput.addEventListener('input', () => {
-  findQuery = findInput.value
-  updateFindResult(false)
-})
-caseInput.addEventListener('change', () => {
-  findCaseSensitive = caseInput.checked
-  updateFindResult(false)
-})
-wholeInput.addEventListener('change', () => {
-  findWholeWord = wholeInput.checked
-  updateFindResult(false)
-})
-replaceInput.addEventListener('input', () => {
-  findReplace = replaceInput.value
-})
-findPrevious.addEventListener('click', () => updateFindResult(true))
-findNext.addEventListener('click', () => updateFindResult(false))
-replaceOne.addEventListener('click', replaceCurrent)
-replaceAll.addEventListener('click', replaceEveryMatch)
-findClose.addEventListener('click', closeFindBar)
 sourceToggle.addEventListener('click', () => setSourceMode(!sourceMode))
 window.addEventListener('keydown', event => {
   if (event.key === 'Escape' && formatPainter.isArmed) {
@@ -878,11 +813,6 @@ window.addEventListener('keydown', event => {
     formatPainter.cancel()
     updateFormatPainterCursor()
     sendEditorState()
-    return
-  }
-  if (event.key === 'Escape' && !findBar.hidden) {
-    event.preventDefault()
-    closeFindBar()
     return
   }
   if (event.key === 'Escape') {
@@ -1827,9 +1757,6 @@ async function handleMessage(value: unknown): Promise<void> {
             findQuery = parts[0] ?? ''
             findCaseSensitive = parts[1] === '1'
             findWholeWord = parts[2] === '1'
-            findInput.value = findQuery
-            caseInput.checked = findCaseSensitive
-            wholeInput.checked = findWholeWord
           }
           updateFindResult(payload.command === 'findPrev')
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1841,17 +1768,13 @@ async function handleMessage(value: unknown): Promise<void> {
           findReplace = parts[1] ?? ''
           findCaseSensitive = parts[2] === '1'
           findWholeWord = parts[3] === '1'
-          findInput.value = findQuery
-          replaceInput.value = findReplace
-          caseInput.checked = findCaseSensitive
-          wholeInput.checked = findWholeWord
           if (payload.command === 'replaceOne') replaceCurrent()
           else replaceEveryMatch()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
         if (payload.command === 'findClose') {
-          closeFindBar()
+          closeFind()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -1968,7 +1891,7 @@ async function handleMessage(value: unknown): Promise<void> {
               keepTablesTogether: options.keepTablesTogether === true,
               keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
             }
-            const html = await generateExportHtml(
+            const html = await exportCurrentDocument(
               style,
               format,
               header,
@@ -2148,47 +2071,6 @@ function applyAutoHideScrollbar(enabled: boolean): void {
   }
 }
 
-// ---- i18n：查找栏文案（跟随宿主语言，zh-Hans 为默认） ----
-const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
-  'zh-Hans': { find: '查找', replaceWith: '替换为', prev: '上一个', next: '下一个', replace: '替换', replaceAll: '全部替换', close: '关闭', case: '区分大小写', whole: '全词', closeAria: '关闭查找栏', blockParagraph: '正文', blockHeading1: '标题 1', blockHeading2: '标题 2', blockHeading3: '标题 3', blockHeading4: '标题 4', blockHeading5: '标题 5', blockHeading6: '标题 6', blockBulletList: '无序列表', blockOrderedList: '有序列表', blockTaskList: '任务列表', blockBlockquote: '引用块', blockCodeBlock: '代码块', blockMermaid: '图表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
-  'zh-Hant': { find: '尋找', replaceWith: '取代為', prev: '上一個', next: '下一個', replace: '取代', replaceAll: '全部取代', close: '關閉', case: '區分大小寫', whole: '全詞', closeAria: '關閉搜尋列', blockParagraph: '段落', blockHeading1: '標題 1', blockHeading2: '標題 2', blockHeading3: '標題 3', blockHeading4: '標題 4', blockHeading5: '標題 5', blockHeading6: '標題 6', blockBulletList: '無序清單', blockOrderedList: '有序清單', blockTaskList: '工作清單', blockBlockquote: '引言區塊', blockCodeBlock: '程式碼區塊', blockMermaid: '圖表', blockTable: '表', blockFootnote: '註', blockAlert: '示' },
-  en: { find: 'Find', replaceWith: 'Replace with', prev: 'Previous', next: 'Next', replace: 'Replace', replaceAll: 'Replace All', close: 'Close', case: 'Case Sensitive', whole: 'Whole Word', closeAria: 'Close Find Bar', blockParagraph: 'Paragraph', blockHeading1: 'Heading 1', blockHeading2: 'Heading 2', blockHeading3: 'Heading 3', blockHeading4: 'Heading 4', blockHeading5: 'Heading 5', blockHeading6: 'Heading 6', blockBulletList: 'Bullet List', blockOrderedList: 'Numbered List', blockTaskList: 'Task List', blockBlockquote: 'Blockquote', blockCodeBlock: 'Code Block', blockMermaid: 'Diagram', blockTable: '▦', blockFootnote: 'Fn', blockAlert: '示' },
-  ja: { find: '検索', replaceWith: '置換後の文字列', prev: '前へ', next: '次へ', replace: '置換', replaceAll: 'すべて置換', close: '閉じる', case: '大文字と小文字を区別', whole: '単語全体', closeAria: '検索バーを閉じる', blockParagraph: '本文', blockHeading1: '見出し 1', blockHeading2: '見出し 2', blockHeading3: '見出し 3', blockHeading4: '見出し 4', blockHeading5: '見出し 5', blockTaskList: 'タスクリスト', blockBlockquote: '引用ブロック', blockCodeBlock: 'コードブロック', blockMermaid: '図表', blockTable: '表', blockFootnote: '注', blockAlert: '示' },
-}
-
-function applyFindBarLanguage(lang: string): void {
-  const table: Record<string, string> = FIND_BAR_STRINGS[lang] ?? FIND_BAR_STRINGS['zh-Hans'] ?? {}
-  const findInput = document.getElementById('find-input') as HTMLInputElement | null
-  const replaceInput = document.getElementById('replace-input') as HTMLInputElement | null
-  if (findInput) {
-    findInput.placeholder = table.find ?? ''
-    findInput.setAttribute('aria-label', table.find ?? '')
-  }
-  if (replaceInput) {
-    replaceInput.placeholder = table.replaceWith ?? ''
-    replaceInput.setAttribute('aria-label', table.replaceWith ?? '')
-  }
-  const setText = (id: string, text: string) => {
-    const el = document.getElementById(id)
-    if (el) el.textContent = text
-  }
-  setText('find-previous', table.prev ?? '')
-  setText('find-next', table.next ?? '')
-  setText('replace-one', table.replace ?? '')
-  setText('replace-all', table.replaceAll ?? '')
-  setText('find-close', table.close ?? '')
-  const setLabelText = (textId: string, inputId: string, text: string) => {
-    const textEl = document.getElementById(textId)
-    const input = document.getElementById(inputId)
-    if (textEl) textEl.textContent = text
-    if (input) input.setAttribute('aria-label', text)
-  }
-  setLabelText('find-case-text', 'find-case', table.case ?? '')
-  setLabelText('find-whole-text', 'find-whole', table.whole ?? '')
-  const closeBtn = document.getElementById('find-close')
-  if (closeBtn) closeBtn.setAttribute('aria-label', table.closeAria ?? '')
-}
-
 let markleafLanguage = 'zh-Hans'
 
 // 查找状态：由原生查找面板（FindPanelController）通过命令驱动
@@ -2198,7 +2080,6 @@ let findCaseSensitive = false
 let findWholeWord = false
 function setMarkleafLanguage(lang: string): void {
   markleafLanguage = lang
-  applyFindBarLanguage(lang)
   const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
   setBlockTypeLabels(strings)
   blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
@@ -2219,143 +2100,6 @@ send('ready')
   executeEditorCommand(editor, command)
   lastVisualSelection = captureVisualSelection(editor)
   sendEditorState()
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function renderEditorHtmlForExport(
-  html: string,
-  preserveEmptyParagraphs = false,
-  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
-  visualCjkAutoSpacing = true,
-): string {
-  const parsed = new DOMParser().parseFromString(html, 'text/html')
-
-  for (const frontMatter of Array.from(parsed.body.querySelectorAll('[data-markleaf-front-matter]'))) {
-    frontMatter.remove()
-  }
-
-  for (const caption of Array.from(parsed.body.querySelectorAll<HTMLElement>('figcaption.markleaf-figcaption'))) {
-    caption.innerHTML = renderEscapedCaptionHtml(caption.textContent ?? '')
-  }
-
-  for (const paragraph of Array.from(parsed.body.querySelectorAll<HTMLParagraphElement>('p'))) {
-    if (preserveEmptyParagraphs && isEmptyExportParagraph(paragraph)) {
-      paragraph.innerHTML = '&nbsp;'
-      continue
-    }
-
-    const match = new RegExp(`^\\s*\\u2060?\\[\\^([^\\]\\n]+)\\]:[ \\t]*(.*)$`, 's').exec(paragraph.textContent ?? '')
-    if (!match) continue
-
-    const label = match[1]!.trim()
-    const body = match[2] ?? ''
-    const prefixLength = match[0].length - body.length
-    paragraph.classList.add('markleaf-footnote-def')
-    paragraph.classList.add('markleaf-footnote-def-export')
-    paragraph.dataset.footnoteLabel = label
-    removeTextPrefix(paragraph, prefixLength)
-    const labelElement = parsed.createElement('span')
-    labelElement.className = 'markleaf-footnote-def-label'
-    labelElement.textContent = `[${label}] `
-    paragraph.insertBefore(labelElement, paragraph.firstChild)
-  }
-
-  if (visualCjkAutoSpacing) {
-    applyCjkAutoSpacingToExport(parsed)
-  }
-
-  return applyExportPagination(parsed.body.innerHTML, pagination)
-}
-
-function applyCjkAutoSpacingToExport(parsed: Document): void {
-  const textNodes: Text[] = []
-  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT)
-  while (walker.nextNode()) {
-    if (walker.currentNode instanceof Text) textNodes.push(walker.currentNode)
-  }
-
-  for (const textNode of textNodes) {
-    const parent = textNode.parentElement
-    if (!parent || parent.closest('pre, code, .katex, .markleaf-mermaid')) continue
-    const text = textNode.data
-    const boundaries: number[] = []
-    for (let index = 1; index < text.length; index += 1) {
-      const previous = text[index - 1]!
-      const current = text[index]!
-      if ((isCjkAutoSpacingCharacter(previous) && isWesternAutoSpacingCharacter(current))
-        || (isWesternAutoSpacingCharacter(previous) && isCjkAutoSpacingCharacter(current))) {
-        boundaries.push(index)
-      }
-    }
-    if (boundaries.length === 0) continue
-
-    const fragment = parsed.createDocumentFragment()
-    let start = 0
-    for (const boundary of boundaries) {
-      fragment.append(parsed.createTextNode(text.slice(start, boundary)))
-      const spacer = parsed.createElement('span')
-      spacer.className = 'markleaf-cjk-autospace-widget'
-      spacer.setAttribute('aria-hidden', 'true')
-      fragment.append(spacer)
-      start = boundary
-    }
-    fragment.append(parsed.createTextNode(text.slice(start)))
-    textNode.replaceWith(fragment)
-  }
-}
-
-function isCjkAutoSpacingCharacter(character: string): boolean {
-  return /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
-}
-
-function isWesternAutoSpacingCharacter(character: string): boolean {
-  return /[A-Za-z0-9]/.test(character)
-}
-
-function isEmptyExportParagraph(paragraph: HTMLParagraphElement): boolean {
-  if ((paragraph.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0) {
-    return false
-  }
-  return !Array.from(paragraph.childNodes).some((node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      return ((node.textContent ?? '').replace(/\u00a0/g, '').trim().length > 0)
-    }
-    if (!(node instanceof HTMLElement)) {
-      return false
-    }
-    return node.tagName.toLowerCase() !== 'br'
-  })
-}
-
-function removeTextPrefix(element: HTMLElement, length: number): void {
-  let remaining = Math.max(0, length)
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
-  const emptyTextNodes: Text[] = []
-
-  while (remaining > 0) {
-    const node = walker.nextNode()
-    if (!(node instanceof Text)) break
-
-    if (node.data.length <= remaining) {
-      remaining -= node.data.length
-      emptyTextNodes.push(node)
-      continue
-    }
-
-    node.data = node.data.slice(remaining)
-    remaining = 0
-  }
-
-  for (const node of emptyTextNodes) {
-    node.remove()
-  }
 }
 
 type StyleEntry = { id: string; css: string; dependsOn?: string }
@@ -2399,13 +2143,6 @@ function resolveStyle(styleId: string): { rootClass: string; css: string } {
   return { rootClass: classes.join(' '), css: cssParts.join('\n') }
 }
 
-function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
-  const declarations = Array.from(css.matchAll(
-    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
-  ))
-  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
-}
-
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)
   const toRemove = Array.from(editorMount.classList).filter((cls) => cls.startsWith('markleaf-style-'))
@@ -2420,7 +2157,7 @@ function applyMarkleafStyle(styleId: string): void {
   rerenderMermaidElements(editorMount)
 }
 
-async function generateExportHtml(
+async function exportCurrentDocument(
   style: string,
   format: string,
   header: string,
@@ -2433,231 +2170,10 @@ async function generateExportHtml(
   title = '',
   pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
 ): Promise<string> {
-  const isPdf = format === 'pdf'
-  const isImage = format === 'image'
-  const rawBodyHtml = sourceMode
-    ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
-    : editor.getHTML()
-  const resolved = resolveStyle(style)
-  const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
-    renderMathInHtml(rawBodyHtml),
-    isPdf,
-    pagination,
-    visualCjkAutoSpacing,
-  ).replace(
-    /https:\/\/assets\.local\/image\?path=([^"']+)/g,
-    (_, encoded: string) => {
-      try { return decodeURIComponent(encoded) } catch { return encoded }
-    },
-  ), resolveMermaidTheme(resolved.css))
-  const rootClass = [
-    resolved.rootClass,
-    isPdf ? 'markleaf-export-pdf' : '',
-    isImage ? 'markleaf-export-image' : '',
-  ].filter(Boolean).join(' ')
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(title || 'MarkLeaf')}</title>
-<style>
-* { box-sizing: border-box; }
-${katexCss}
-${baseCss}
-.markleaf-document { text-autospace: ${visualCjkAutoSpacing ? 'normal' : 'no-autospace'}; }
-.markleaf-document .markleaf-cjk-autospace-widget {
-  display: inline-block;
-  width: 0.35em;
-  min-width: 0.35em;
-  height: 1px;
-  overflow: hidden;
-  vertical-align: baseline;
-  pointer-events: none;
-}
-${colorSchemeCss}
-${resolved.css}
-${exportPaginationCss}
-/* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
-.markleaf-document {
-  padding: 44px 56px 96px;
-}
-:root {
-  --ml-font-size: ${fontSize}px;
-  --ml-line-height: ${lineHeight};
-  --ml-max-width: ${maxWidth}px;
-  --markleaf-alert-note-title: ${JSON.stringify(findBarLoc.alertNote ?? '备注')};
-  --markleaf-alert-tip-title: ${JSON.stringify(findBarLoc.alertTip ?? '提示')};
-  --markleaf-alert-important-title: ${JSON.stringify(findBarLoc.alertImportant ?? '重要')};
-  --markleaf-alert-warning-title: ${JSON.stringify(findBarLoc.alertWarning ?? '警告')};
-  --markleaf-alert-caution-title: ${JSON.stringify(findBarLoc.alertCaution ?? '注意')};
-}
-html { font-size: var(--ml-font-size); }
-body { margin: 0; background: var(--bg-primary); }
-.markleaf-export-image,
-.markleaf-export-image .markleaf-document {
-  width: calc(var(--ml-max-width) + 112px);
-  max-width: none;
-  margin-left: 0;
-  margin-right: 0;
-}
-.markleaf-export-image #export-root {
-  width: calc(var(--ml-max-width) + 112px);
-  max-width: none;
-  margin-left: 0;
-  margin-right: 0;
-}
-.markleaf-export-image {
-  /* Keep the document's scroll extent available for chunked capture. Hiding
-     overflow here collapses scrollHeight to the viewport and causes long
-     exports to produce only one screenful. Scrollbars are hidden separately
-     below without clipping the document. */
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-/* Image capture scrolls the document between chunks. Keep scrolling enabled
-   while making the browser scrollbars completely invisible in the captured
-   surface; otherwise the scrollbar occupies layout width and can leak into
-   the right/bottom edges of exported images. */
-.markleaf-export-image,
-.markleaf-export-image html,
-.markleaf-export-image body,
-.markleaf-export-image * {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-.markleaf-export-image::-webkit-scrollbar,
-.markleaf-export-image html::-webkit-scrollbar,
-.markleaf-export-image body::-webkit-scrollbar,
-.markleaf-export-image *::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
-}
-.markleaf-export-image html,
-html:has(body.markleaf-export-image) {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-html:has(body.markleaf-export-image)::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
-}
-.markleaf-export-image {
-  width: 100% !important;
-}
-/* ---- PDF export: let print-dialog margins control spacing ---- */
-.markleaf-export-pdf .markleaf-document {
-  padding-left: 5px;
-  padding-right: 5px;
-  max-width: none;
-  width: 100%;
-  margin-left: 0;
-  margin-right: 0;
-}
-.markleaf-export-pdf.markleaf-style-print .markleaf-document {
-  padding-left: 5px;
-  padding-right: 5px;
-  max-width: none;
-  width: 100%;
-  margin-left: 0;
-  margin-right: 0;
-}
-.markleaf-export-pdf .export-header,
-.markleaf-export-pdf .export-footer {
-  padding-left: 5px;
-  padding-right: 5px;
-  width: 100%;
-}
-
-/* PDF export: prevent horizontal overflow (scrollbars) and wrap long lines. */
-.markleaf-export-pdf .markleaf-document pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: break-all;
-  overflow-x: hidden;
-  box-decoration-break: clone;
-}
-.markleaf-export-pdf .markleaf-document pre code {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: break-all;
-}
-.markleaf-export-pdf .markleaf-document blockquote {
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-.markleaf-export-pdf .markleaf-document .markleaf-alert {
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  overflow: visible;
-}
-.markleaf-export-pdf .markleaf-document table {
-  width: auto;
-  max-width: 100%;
-  table-layout: auto;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-.markleaf-export-pdf .markleaf-document .markleaf-mermaid,
-.markleaf-export-pdf .markleaf-document .markleaf-mermaid-view,
-.markleaf-export-pdf .markleaf-document .markleaf-mermaid-export {
-  display: flex;
-  justify-content: center;
-}
-
-.export-header, .export-footer {
-  width: min(100%, var(--ml-max-width));
-  margin: 0 auto;
-  padding: 8px 56px;
-}
-.export-header { border-bottom: 1px solid #d8dee4; }
-.export-footer { border-top: 1px solid #d8dee4; margin-top: 24px; }
-</style>
-</head>
-<body${rootClass ? ` class="${rootClass}"` : ''}>
-<div id="export-root">
-${header ? `<div class="export-header">${header}</div>` : ''}
-<div class="markleaf-document">${bodyHtml}</div>
-${footer ? `<div class="export-footer">${footer}</div>` : ''}
-</div>
-<script>
-(function () {
-  function fitMath() {
-    var doc = document.querySelector('.markleaf-document');
-    if (!doc) return;
-    var items = doc.querySelectorAll('.katex-display');
-    for (var i = 0; i < items.length; i++) {
-      var el = items[i];
-      el.style.fontSize = '';
-      var available = el.clientWidth;
-      if (available <= 0) continue;
-      // 让容器收缩包裹到内容宽度后再量，避免居中溢出与内联片段导致的测量失真。
-      var display = el.style.display;
-      var width = el.style.width;
-      el.style.display = 'inline-block';
-      el.style.width = 'max-content';
-      var content = el.getBoundingClientRect().width;
-      el.style.display = display;
-      el.style.width = width;
-      if (content <= available) continue;
-      var base = parseFloat(getComputedStyle(el).fontSize) || 16;
-      el.style.fontSize = (base * available / content).toFixed(2) + 'px';
-    }
-  }
-  window.__markleafFitMath = fitMath;
-  // 等待 KaTeX 字体加载完成后再测量，避免用回退字体度量导致公式被误缩放。
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(fitMath);
-  } else {
-    fitMath();
-  }
-})();
-</script>
-</body>
-</html>`
+  return generateExportHtml({
+    rawBodyHtml: sourceMode ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>` : editor.getHTML(),
+    resolved: resolveStyle(style), format, header, footer, fontSize, lineHeight, maxWidth,
+    visualCjkAutoSpacing, colorSchemeCss, baseCss, title,
+    ...pagination, editorLoc: findBarLoc,
+  })
 }

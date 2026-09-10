@@ -283,15 +283,18 @@ describe('shared editor in a VS Code text host', () => {
     expect(messages.filter(message => message.type === 'edit')).toHaveLength(editsBeforeSettings)
     expect(document.querySelector('#outline button')?.textContent).toBe('Heading')
 
-    // Host clipboard input bypasses Markdown paste parsing.
+    // Windows treats the clipboard's plain-text format as Markdown in visual mode.
     receive({ type: 'document', markdown: 'target', version: 11, writable: true })
     instance.commands.setTextSelection({ from: 1, to: 7 })
     receive({ type: 'requestAction', action: 'pastePlainText' })
-    receive({ type: 'command', command: 'pastePlainText', text: '**literal** <b>tag</b>' })
+    receive({ type: 'command', command: 'pastePlainText', text: '**bold** and `code`' })
     expect(messages.filter(message => message.type === 'error')).toEqual([])
-    expect(instance.state.doc.textContent).toBe('**literal** <b>tag</b>')
-    expect(instance.isActive('bold')).toBe(false)
+    expect(instance.state.doc.textContent).toBe('bold and code')
+    expect(instance.getHTML()).toContain('<strong>bold</strong>')
+    expect(instance.getHTML()).toContain('<code>code</code>')
+    expect(document.querySelector('#sync-status')?.textContent).toContain('正在同步… · 已粘贴 Markdown')
     acknowledgeLatest(); receive({ type: 'actionFinished' })
+    expect(document.querySelector('#sync-status')?.textContent).toBe('已同步到 VS Code · 已粘贴 Markdown')
 
     receive({ type: 'requestAction', action: 'find' })
     expect(document.querySelector<HTMLFormElement>('#find-bar')?.hidden).toBe(false)
@@ -367,6 +370,70 @@ describe('shared editor in a VS Code text host', () => {
     receive({ type: 'command', command: 'insertTable', text: '2,3' })
     expect(instance.state.doc.firstChild?.type.name).toBe('table')
     acknowledgeLatest(); receive({ type: 'actionFinished' })
+
+    const pasteText = (text: string, html = '') => {
+      const event = new Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: {
+        files: [], getData: (type: string) => type === 'text/html' ? html : text,
+      } })
+      instance.view.dom.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    receive({ type: 'document', markdown: 'target', version: 30, writable: true })
+    instance.commands.selectAll()
+    const beforeMarkdownPaste = messages.filter(message => message.type === 'edit').length
+    pasteText('# Heading\n\n**bold**')
+    expect(instance.getHTML()).toContain('<h1>Heading</h1>')
+    expect(instance.getHTML()).toContain('<strong>bold</strong>')
+    expect(messages.filter(message => message.type === 'edit')).toHaveLength(beforeMarkdownPaste + 1)
+    acknowledgeLatest()
+    expect(document.querySelector('#sync-status')?.textContent).toContain('已粘贴 Markdown')
+
+    receive({ type: 'document', markdown: 'target', version: 35, writable: true })
+    instance.commands.selectAll()
+    const windowsClipboardEditor = editor('target')
+    windowsClipboardEditor.commands.selectAll()
+    expect(editorModule.pasteClipboardContentWithResult(windowsClipboardEditor, '**literal**', '<p><strong>**literal**</strong></p>'))
+      .toEqual({ success: true, outcome: 'formatted' })
+    pasteText('**literal**', '<p><strong>**literal**</strong></p>')
+    expect(instance.getJSON()).toEqual(windowsClipboardEditor.getJSON())
+    acknowledgeLatest()
+    expect(document.querySelector('#sync-status')?.textContent).toContain('已粘贴格式化内容')
+    instance.commands.selectAll()
+    receive({ type: 'requestAction', action: 'copyHtml' })
+    windowsClipboardEditor.commands.selectAll()
+    expect(messages.at(-1)).toEqual({ type: 'copy', text: editorModule.exportEditorSelection(windowsClipboardEditor).html })
+
+    receive({ type: 'document', markdown: 'target', version: 40, writable: true })
+    instance.commands.selectAll()
+    pasteText('**`font-family` is important**')
+    expect(instance.getHTML()).toContain('<code>font-family</code>')
+    acknowledgeLatest()
+    expect(document.querySelector('#sync-status')?.textContent).toContain('已粘贴 Markdown，并转换了不兼容的格式')
+
+    receive({ type: 'document', markdown: 'target', version: 45, writable: true })
+    instance.commands.selectAll()
+    const brokenParser = vi.spyOn(instance.markdown!, 'parse').mockImplementation(() => { throw new Error('Invalid fixture syntax') })
+    pasteText('# fallback')
+    brokenParser.mockRestore()
+    expect(instance.state.doc.textContent).toBe('# fallback')
+    acknowledgeLatest()
+    expect(document.querySelector('#sync-status')?.textContent).toContain('已作为纯文本粘贴：Invalid fixture syntax')
+
+    receive({ type: 'document', markdown: 'target', version: 50, writable: true })
+    const beforeFailedPaste = messages.filter(message => message.type === 'edit').length
+    const rejectHTML = vi.spyOn(instance.view, 'pasteHTML').mockReturnValue(false)
+    pasteText('rich', '<p><strong>rich</strong></p>')
+    rejectHTML.mockRestore()
+    expect(instance.state.doc.textContent).toBe('target')
+    expect(messages.filter(message => message.type === 'edit')).toHaveLength(beforeFailedPaste)
+    expect(document.querySelector('#sync-status')?.textContent).toContain('无法粘贴剪贴板内容')
+
+    receive({ type: 'document', markdown: 'readonly', version: 55, writable: false })
+    receive({ type: 'command', command: 'pastePlainText', text: '# blocked' })
+    expect(instance.state.doc.textContent).toBe('readonly')
+    expect(messages.filter(message => message.type === 'edit')).toHaveLength(beforeFailedPaste)
+    expect(document.querySelector('#sync-status')?.textContent).toBe('文件只读')
 
     await new Promise(resolve => setTimeout(resolve, 30))
     window.dispatchEvent(new Event('pagehide'))

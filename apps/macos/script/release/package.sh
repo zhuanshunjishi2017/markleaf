@@ -42,8 +42,8 @@ echo "[package] preparing EditorWeb and runtime resources"
 "$MACOS_DIR/script/prepare_resources.sh"
 
 echo "[package] building $APP_NAME $APP_VERSION ($ARCH)"
-swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$MACOS_DIR" -c release -Xswiftc -g
-BUILD_BIN="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --package-path "$MACOS_DIR" -c release --show-bin-path)/$APP_NAME"
+swift build ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --package-path "$MACOS_DIR" -c release -Xswiftc -g
+BUILD_BIN="$(swift build ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --package-path "$MACOS_DIR" -c release --show-bin-path)/$APP_NAME"
 
 echo '[package] assembling application bundle'
 mkdir -p "$APP_STAGE/Contents/MacOS" "$APP_STAGE/Contents/Resources"

@@ -21,6 +21,22 @@
 }
 html { scroll-padding-top: 74px; }
 body { padding: 0; color: var(--text-primary); background: var(--bg-primary); }
+/* Neutral document surfaces belong to the editor, not toolbar hover/selection.
+   Only ordinary dark views opt in; light, high contrast and exports retain
+   their own palettes. Blend with the active background instead of replacing it. */
+@media not (forced-colors: active) {
+  :where(body[data-markleaf-soft-dark]) #editor {
+    --ml-table-header: color-mix(in srgb, var(--bg-primary), #dedee3 5%);
+    --ml-table-border: color-mix(in srgb, var(--bg-primary), #dedee3 13%);
+    --ml-table-header-rule: color-mix(in srgb, var(--bg-primary), #dedee3 30%);
+    --ml-mermaid-surface: color-mix(in srgb, var(--bg-primary), #dedee3 2%);
+    --ml-mermaid-surface-border: color-mix(in srgb, var(--bg-primary), #dedee3 11%);
+    --ml-mermaid-node: color-mix(in srgb, var(--bg-primary), #dedee3 7%);
+    --ml-mermaid-node-border: color-mix(in srgb, var(--bg-primary), #dedee3 36%);
+    --ml-mermaid-line: color-mix(in srgb, var(--bg-primary), #dedee3 61%);
+    --ml-mermaid-text: var(--text-primary);
+  }
+}
 #toolbar {
   position: sticky; top: 0; z-index: 100;
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
@@ -130,3 +146,32 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .shortcut-row { gap: 6px; }
   .shortcut-intro p { font-size: 11px; }
 }
+
+#markleaf-export {
+  width: min(760px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); padding: 0;
+  color: var(--vscode-editor-foreground); background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border, #8886); border-radius: 10px;
+  box-shadow: 0 12px 48px #0005; font: 13px/1.6 var(--vscode-font-family, sans-serif);
+}
+#markleaf-export::backdrop { background: #0006; }
+#markleaf-export form { display: flex; flex-direction: column; max-height: calc(100vh - 26px); }
+#markleaf-export header { flex-shrink: 0; display: flex; justify-content: space-between; gap: 12px; padding: 20px 24px 12px; }
+#markleaf-export h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+#markleaf-export p { margin: 0; color: var(--vscode-descriptionForeground); }
+#markleaf-export [data-close] { align-self: start; font-size: 22px; }
+#markleaf-export .export-fields { flex: 1; min-height: 0; overflow: auto; border: 0; margin: 0; padding: 6px 24px 18px; }
+#markleaf-export .export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-bottom: 18px; }
+#markleaf-export label { display: flex; flex-direction: column; gap: 5px; }
+#markleaf-export input, #markleaf-export select { box-sizing: border-box; width: 100%; padding: 7px 9px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8886); border-radius: 4px; font: inherit; }
+#markleaf-export input:focus, #markleaf-export select:focus { outline: 1px solid var(--vscode-focusBorder); }
+#markleaf-export .export-check { flex-direction: row; align-items: center; margin: 7px 0; }
+#markleaf-export input[type=checkbox] { width: auto; accent-color: var(--vscode-button-background); }
+#markleaf-export .export-hint { font-size: 12px; margin: 8px 0 16px; }
+#markleaf-export [data-result] { padding: 0 24px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
+#markleaf-export .export-error { color: var(--vscode-errorForeground); }
+#markleaf-export .export-buttons { position: relative; flex-shrink: 0; background: var(--vscode-editor-background); display: flex; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--vscode-widget-border, #8884); }
+#markleaf-export .export-buttons span { flex: 1; }
+#markleaf-export button { color: inherit; }
+#markleaf-export .export-buttons button { border: 1px solid var(--vscode-widget-border, #8885); border-radius: 4px; padding: 6px 10px; }
+#markleaf-export [data-save] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+@media (max-width: 440px) { #markleaf-export .export-grid { grid-template-columns: 1fr; } #markleaf-export header, #markleaf-export .export-fields, #markleaf-export .export-buttons { padding-inline: 14px; } }

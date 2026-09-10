@@ -36,7 +36,7 @@ enum EditorPastePolicy {
             return EditorPasteCommand(command: "pasteText", text: text, html: nil)
         }
         guard text != nil || richHTML != nil else { return nil }
-        return EditorPasteCommand(command: "pasteClipboard", text: text, html: richHTML)
+        return EditorPasteCommand(command: richHTML == nil ? "pasteMarkdown" : "pasteClipboard", text: text, html: richHTML)
     }
 
     static func payload(command: String, text: String?, html: String?) -> [String: Any] {

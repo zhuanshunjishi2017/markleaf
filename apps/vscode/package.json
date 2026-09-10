@@ -2,7 +2,7 @@
   "name": "markleaf",
   "displayName": "MarkLeaf",
   "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
-  "version": "0.2.5",
+  "version": "0.2.7",
   "publisher": "markleaf",
   "license": "MIT",
   "engines": {
@@ -506,6 +506,36 @@
         "command": "markleaf.exitCode",
         "title": "MarkLeaf: 退出代码块",
         "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exportDocument",
+        "title": "%command.exportDocument%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exportPdf",
+        "title": "%command.exportPdf%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exportHtml",
+        "title": "%command.exportHtml%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exportImage",
+        "title": "%command.exportImage%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.print",
+        "title": "%command.print%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.exportLast",
+        "title": "%command.exportLast%",
+        "enablement": "activeCustomEditorId == markleaf.editor"
       }
     ],
     "keybindings": [
@@ -643,8 +673,8 @@
         "markleaf.typography": {
           "type": "string",
           "scope": "resource",
-          "default": "sans",
-          "description": "使用 MarkLeaf 原有排版样式。",
+          "default": "minimal",
+          "description": "%config.typography%",
           "enum": [
             "sans",
             "serif",
@@ -1157,6 +1187,12 @@
               "description": "退出代码块；空字符串表示不绑定。"
             }
           }
+        },
+        "markleaf.exportBrowserPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.exportBrowserPath%"
         }
       }
     },
@@ -1196,7 +1232,7 @@
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
-    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.5.vsix"
+    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.7.vsix"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
@@ -1204,5 +1240,8 @@
     "@vscode/vsce": "3.6.2",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "puppeteer-core": "24.43.1"
   }
 }
