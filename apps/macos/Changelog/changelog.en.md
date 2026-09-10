@@ -4,38 +4,33 @@
 
 ### New
 
-- Multiple document tabs in one window: create, close, drag to reorder, plus an overflow menu and tab-switching shortcuts.
-- Detach a tab into its own window, and reopen closed tabs.
-- Tabs show read-only, external-change, and recovery-protection states; inactive tabs are suspended under memory pressure.
-- Full session restore: the next launch brings back windows, tabs, cursors, and scroll positions.
-- The File menu gains Reveal in Workspace, Copy File Path, Copy Content to Clipboard, Reveal in Finder, and Share; the tab context menu offers the same set.
-- View → Tab Management lists every tab in the window so you can switch directly.
-- The editor context menu is regrouped by function and shows your custom shortcuts.
-- Code blocks gained Copy and language controls in the top-right corner; Format → Code Block lets you pick a language (common or custom) before inserting.
-- GitHub-style alerts (NOTE / TIP / IMPORTANT / WARNING / CAUTION).
+- Multiple document tabs in one window.
+- Full session restore: the next launch brings back the windows, tabs, cursors, and scroll positions you had before.
+- The File menu gains Reveal in Workspace, Copy File Path, Copy Content to Clipboard, Reveal in Finder, and Share, making file actions easier to reach.
+- Copy and language controls in the top-right corner of code blocks.
 - YAML front matter with format validation, plus basic and advanced sample documents.
 - Formula overlay editing and formula numbering, with recognition, rendering, and export for `\(...\)` inline and `\[...\]` block math.
 - Mermaid supports default / dark / neutral themes and re-renders after a theme or style change.
-- Pasting Markdown normalizes the structure first, falls back to plain text on failure, and reports the result in the status bar.
-- A Markdown Behavior window for escaping, exiting blocks on an empty Enter, Shift+Enter hard breaks, code fences, emphasis markers, and list markers.
+- A Markdown Behavior window: configure escaping, exiting blocks on an empty Enter, Shift+Enter hard breaks, code fences, emphasis markers, and list markers.
 - Ignore maximum width and Show Code Highlighting preferences; local links inside a document open the target file directly.
 - Workspace file previews and full-text search in the sidebar.
 - When Opening External Files and When Opening Workspace Files preferences, with automatic de-duplication of repeated opens.
 - Rename and move files or folders from the sidebar; open tabs migrate their paths along with them.
-- An export workbench: switch formats, bind the preview to the current tab, and adjust pagination, with B4 / B5 paper and options such as keeping headings off the bottom of a page and keeping tables on one page.
-- HTML / PDF export can embed local images, and long-image export slices automatically.
-- PDF export generates a chapter outline (bookmarks).
+- Pagination options such as keeping headings off the bottom of a page and keeping tables on one page.
 - A unified Theme Settings window: color themes and typography styles on separate pages, color themes grouped into light and dark with preview swatches, plus follow-system colors, default light and dark themes, add theme, and open theme folder.
 - An Install Optional Fonts window; typography styles missing fonts show a notice and a missing-font badge.
 
 ### Changed
 
-- The menu bar is reorganized into File / Edit / Insert / Format / View / Help; Inline Code moved from Format to Insert, and appearance items moved into Theme Settings and Preferences.
+- The menu bar is reorganized into File / Edit / Insert / Format / View / Help.
+- The editor context menu is now regrouped by function and shows your custom shortcuts.
+- HTML / PDF export can now embed local images, and long-image export slices automatically.
+- Format → Code Block now accepts a custom identifier.
 - Editor Focus Mode dims non-current paragraphs proportionally; Typewriter Mode keeps the cursor near 42% of the viewport and no longer forces scrolling in short documents.
 - Editor scroll positions survive tab and mode switches.
 - Built-in theme identifiers were migrated so older settings map to the new themes.
 - The workspace sidebar is wider with denser rows: file names come first and timestamps are more compact.
-- Export settings remember the last choice, and the preview follows the current tab.
+- Export now supports exporting to images.
 
 ### Fixed
 
@@ -51,7 +46,6 @@
 - Fixed block math being converted to inline math too early and digit text around formulas being misread.
 - Fixed Mermaid rendering and layout jitter caused by font measurement.
 - Fixed the export preview not following the current tab and image export layout and validation problems.
-
 ## 1.5.1 — 2026-08-29
 
 ### New
