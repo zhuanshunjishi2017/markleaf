@@ -13,6 +13,7 @@ import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
+import { MarkdownUnderline } from './markdown-underline'
 import CodeBlock from '@tiptap/extension-code-block'
 import { getListMarker, ListItem } from '@tiptap/extension-list'
 import { markdown as codeMirrorMarkdown } from '@codemirror/lang-markdown'
@@ -3288,6 +3289,7 @@ export const editorExtensions = [
   StarterKit.configure({
     bold: false,
     italic: false,
+    underline: false,
     codeBlock: false,
     listItem: false,
     link: false,
@@ -3295,6 +3297,7 @@ export const editorExtensions = [
   }),
   MarkdownBold,
   MarkdownItalic,
+  MarkdownUnderline,
   MarkdownCodeBlock,
   MarkdownListItem,
   MarkLeafParagraph,
@@ -3338,6 +3341,8 @@ export const editorExtensions = [
 export type EditorCreationOptions = {
   themedVisualSelection?: boolean
   handlePaste?: (event: ClipboardEvent) => boolean
+  // Text-document hosts own undo/redo; native hosts retain Tiptap history.
+  externalHistory?: boolean
 }
 
 export function createEditor(
@@ -3346,11 +3351,16 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
+  const extensions = options.externalHistory
+    ? editorExtensions.map(extension => extension.name === 'starterKit'
+      ? extension.configure({ undoRedo: false })
+      : extension)
+    : editorExtensions
   const editor = new Editor({
     element,
     extensions: options.themedVisualSelection
-      ? [...editorExtensions, ThemedSelection]
-      : editorExtensions,
+      ? [...extensions, ThemedSelection]
+      : extensions,
     content: protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
     contentType: 'markdown',
     autofocus: false,
@@ -3459,6 +3469,26 @@ export function replaceEditorDocument(
 ): Editor {
   editor.destroy()
   return createEditor(element, content, readOnly, options)
+}
+
+/** Apply a text host's external update without replacing the editor or its DOM.
+ * The host must suppress its change callback while calling this function. */
+export function updateEditorMarkdown(editor: Editor, content: string): void {
+  const selection = editor.state.selection
+  editor.commands.setContent(
+    protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
+    { contentType: 'markdown', emitUpdate: false },
+  )
+  normalizeTableCaptions(editor)
+  originalListMarkdown.delete(editor)
+  if (hasListFormattingThatNeedsPreservation(content)) {
+    originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
+  }
+  const size = editor.state.doc.content.size
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+    editor.state.doc.resolve(Math.min(selection.from, size)),
+    editor.state.doc.resolve(Math.min(selection.to, size)),
+  )).setMeta('addToHistory', false))
 }
 
 /** Parse clipboard plain text through the same complete Markdown pipeline used
