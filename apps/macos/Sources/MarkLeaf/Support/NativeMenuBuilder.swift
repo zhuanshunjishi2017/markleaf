@@ -746,14 +746,24 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         }
     }
 
+    /// “标签页管理”里由 delegate 每轮追加的动态项：末尾分隔线 + 每个打开的标签行。
+    /// 两者必须在刷新时整体回收，只匹配分隔线会漏掉标签行，导致每打开一次菜单就重复一组。
+    enum TabManagementDynamicItem {
+        static func matches(_ item: NSMenuItem, key: String) -> Bool {
+            if item.isSeparatorItem { return item.representedObject as? String == key }
+            guard let identifier = item.representedObject as? String else { return false }
+            return identifier.hasPrefix("activateTab:")
+        }
+    }
+
     /// 动态维护“标签页管理”中的打开标签列表。
     final class TabManagementMenuDelegate: NSObject, NSMenuDelegate {
         static let shared = TabManagementMenuDelegate()
         private let dynamicItemKey = "tabManagement.dynamicTabs"
 
         func menuNeedsUpdate(_ menu: NSMenu) {
-            while let item = menu.items.last,
-                  item.representedObject as? String == dynamicItemKey {
+            // 上一轮追加的动态项（分隔线 + 标签行）必须整体移除，否则每次打开菜单都会再追加一组标签。
+            while let item = menu.items.last, TabManagementDynamicItem.matches(item, key: dynamicItemKey) {
                 menu.removeItem(item)
             }
 

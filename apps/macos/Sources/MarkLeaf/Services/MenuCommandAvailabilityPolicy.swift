@@ -19,8 +19,11 @@ enum MenuCommandAvailabilityPolicy {
         case "closeCurrentTab":
             return state.tabCount > 0
         case "copyActiveTabPath", "revealActiveTabInFinder",
-             "copyActiveFileContents", "shareActiveTab":
+             "shareActiveTab":
             return state.activeTabPath != nil
+        case "copyActiveFileContents":
+            // 复制的是编辑器当前内容（包含未保存修改），因此只要有活动标签就可用。
+            return state.tabCount > 0
         case "revealActiveTabInWorkspace":
             guard let path = state.activeTabPath,
                   let root = state.workspaceRoot else { return false }

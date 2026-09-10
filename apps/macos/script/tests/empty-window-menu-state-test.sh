@@ -17,7 +17,7 @@ for command in tabNext closeCurrentTab closeOtherTabs revealActiveTabInWorkspace
   fi
 done
 require "$MENU" 'MenuCommandAvailabilityPolicy.isTabCommandEnabled'
-require "$MENU" 'popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true)'
+require "$MENU" 'popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "closeCurrentTab")'
 require "$MANAGER" 'func openDocumentInNewWindow()'
 require "$MANAGER" 'activeWindowController?.window'
 reject "$MANAGER" 'guard let session = activeSession, let window = session.webView?.window else { return }'

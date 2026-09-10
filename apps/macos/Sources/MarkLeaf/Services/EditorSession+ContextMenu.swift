@@ -120,14 +120,16 @@ extension EditorSession {
         let state = editorMenuState
         let semanticContext = EditorMenuPolicy.semanticContext(for: state)
         if state.isSourceMode {
-            // 源码模式：剪贴板 + 全选
+            // 源码模式：历史 + 剪贴板 + 全选
             if state.isReadOnly {
                 addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
-            } else {
-                addClipboardCommands(menu)
                 menu.addItem(.separator())
+                addFormatCommand(menu, L10n.t("全选"), "selectAll")
+            } else {
+                addHistoryCommands(menu)
+                menu.addItem(.separator())
+                addClipboardCommands(menu)
             }
-            addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else if semanticContext == .footnoteDefinition {
             addFootnoteCommands(to: menu, state: state)
         } else if semanticContext == .frontMatter {
@@ -181,6 +183,8 @@ extension EditorSession {
             addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: hasSelection)
             addFormatCommand(menu, L10n.t("全选"), "selectAll")
         } else {
+            addHistoryCommands(menu)
+            menu.addItem(.separator())
             addClipboardCommands(menu)
             menu.addItem(.separator())
 
@@ -513,7 +517,6 @@ extension EditorSession {
         addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCut)
         addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: canCopy)
         addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
-        addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
         let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
         copyAs.isEnabled = canCopyAs
         let copyAsMenu = NSMenu()
@@ -529,6 +532,14 @@ extension EditorSession {
         copyAsMenu.addItem(html)
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)
+        addEnabledCommand(menu, L10n.t("粘贴为纯文本"), "pastePlainText", enabled: canPaste)
+        addFormatCommand(menu, L10n.t("全选"), "selectAll")
+    }
+
+    /// 撤销/重做区块：与“编辑”菜单共用同一组命令和快捷键。
+    private func addHistoryCommands(_ menu: NSMenu) {
+        addEnabledCommand(menu, L10n.t("撤销"), "undo", enabled: !isReadOnly && canUndo)
+        addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: !isReadOnly && canRedo)
     }
 
     private func addEnabledCommand(_ menu: NSMenu, _ title: String, _ command: String, enabled: Bool) {

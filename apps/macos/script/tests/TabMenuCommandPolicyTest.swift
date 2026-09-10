@@ -42,8 +42,10 @@ expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveTa
        "copy path must be disabled for an untitled tab")
 expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "shareActiveTab", state: untitled),
        "share must be disabled for an untitled tab")
-expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveFileContents", state: untitled),
-       "copy file contents must be disabled for an untitled tab")
+expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveFileContents", state: untitled),
+       "copy file contents must stay available for an untitled tab (it copies editor content)")
+expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveFileContents", state: noTabs),
+       "copy file contents must be disabled without any tab")
 expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "revealActiveTabInWorkspace", state: oneFile),
        "workspace reveal must be enabled for a file inside the workspace")
 expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "revealActiveTabInWorkspace", state: untitled),

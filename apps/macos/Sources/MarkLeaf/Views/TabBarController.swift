@@ -474,6 +474,9 @@ final class TabBarController: NSView {
     private func showContextMenu(for tabID: DocumentTabID, with event: NSEvent, in cell: NSView) {
         guard let index = tabStore.tabs.firstIndex(where: { $0.tabID == tabID }) else { return }
         let menu = NSMenu()
+        // 可用性由本文件显式计算，禁止 AppKit 再用 responder chain 覆盖 isEnabled
+        // （否则未保存标签上的“复制文件路径”等命令会显示为可用但点了没反应）。
+        menu.autoenablesItems = false
         menu.addItem(contextMenuItem(L10n.t("关闭标签"), action: .close, tabID: tabID))
         let closeOthers = contextMenuItem(L10n.t("关闭其他标签"), action: .closeOthers, tabID: tabID)
         closeOthers.isEnabled = tabStore.tabs.count > 1
@@ -481,22 +484,29 @@ final class TabBarController: NSView {
         let closeToRight = contextMenuItem(L10n.t("关闭右侧标签"), action: .closeToRight, tabID: tabID)
         closeToRight.isEnabled = index < tabStore.tabs.count - 1
         menu.addItem(closeToRight)
-        if let tab = tabStore.tab(withID: tabID), tab.path != nil {
-            menu.addItem(.separator())
-            let locate = contextMenuItem(L10n.t("在工作区定位"), action: .locate, tabID: tabID)
-            locate.isEnabled = MenuCommandAvailabilityPolicy.isTabCommandEnabled(
-                command: "revealActiveTabInWorkspace",
-                state: MenuCommandAvailabilityState(
-                    tabCount: tabStore.tabs.count,
-                    activeTabPath: tab.path,
-                    workspaceRoot: workspaceRootProvider?()
-                )
+        // 文件操作区始终显示，并与“文件”菜单共用同一套可用性规则：
+        // 没有工作区时“在工作区定位”置灰，没有本地路径时路径类命令置灰。
+        let tab = tabStore.tab(withID: tabID)
+        let availability = MenuCommandAvailabilityState(
+            tabCount: tabStore.tabs.count,
+            activeTabPath: tab?.path,
+            workspaceRoot: workspaceRootProvider?()
+        )
+        menu.addItem(.separator())
+        let fileCommands: [(String, TabContextAction, String)] = [
+            (L10n.t("在工作区定位"), .locate, "revealActiveTabInWorkspace"),
+            (L10n.t("复制文件路径"), .copyPath, "copyActiveTabPath"),
+            (L10n.t("复制内容到剪贴板"), .copyContents, "copyActiveFileContents"),
+            (L10n.t("在 Finder 中显示"), .revealInFinder, "revealActiveTabInFinder"),
+            (L10n.t("分享"), .share, "shareActiveTab"),
+        ]
+        for (title, action, command) in fileCommands {
+            let item = contextMenuItem(title, action: action, tabID: tabID)
+            item.isEnabled = MenuCommandAvailabilityPolicy.isTabCommandEnabled(
+                command: command,
+                state: availability
             )
-            menu.addItem(locate)
-            menu.addItem(contextMenuItem(L10n.t("复制文件路径"), action: .copyPath, tabID: tabID))
-            menu.addItem(contextMenuItem(L10n.t("复制内容到剪贴板"), action: .copyContents, tabID: tabID))
-            menu.addItem(contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID))
-            menu.addItem(contextMenuItem(L10n.t("分享"), action: .share, tabID: tabID))
+            menu.addItem(item)
         }
         NSMenu.popUpContextMenu(menu, with: event, for: cell)
     }

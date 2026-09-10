@@ -235,4 +235,22 @@ require_text "$MAC_MENU" 'requiresDocument: true'
 require_text "$MAC_MENU" '"submenuParent"'
 require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" '"insertTable"'
 
+# 编辑器右键菜单契约：普通文本与源码模式都必须带历史命令和全选，
+# 并统一通过 addClipboardCommands / addHistoryCommands 注入快捷键。
+mac_context_menu="$(method_body "$MAC_CONTEXT" showEditorContextMenu)"
+require_text "$mac_context_menu" 'addHistoryCommands(menu)'
+require_text "$mac_context_menu" 'addClipboardCommands(menu)'
+require_text "$MAC_CONTEXT" 'L10n.t("撤销"), "undo"'
+require_text "$MAC_CONTEXT" 'L10n.t("重做"), "redo"'
+require_text "$MAC_CONTEXT" 'L10n.t("全选"), "selectAll"'
+
+# 复制内容到剪贴板复制的是编辑器内容，未命名标签也必须可用；路径类命令仍要求本地路径。
+mac_tab_policy="$(method_body "$ROOT_DIR/macos/Sources/MarkLeaf/Services/MenuCommandAvailabilityPolicy.swift" isTabCommandEnabled)"
+require_text "$mac_tab_policy" 'case "copyActiveFileContents":'
+require_text "$mac_tab_policy" 'return state.tabCount > 0'
+
+# “标签页管理”的动态标签行必须整体回收，否则每打开一次菜单都会重复追加。
+require_text "$MAC_MENU" 'TabManagementDynamicItem.matches(item, key: dynamicItemKey)'
+require_text "$MAC_MENU" 'identifier.hasPrefix("activateTab:")'
+
 echo "PASS"
