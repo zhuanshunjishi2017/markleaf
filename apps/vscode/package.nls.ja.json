@@ -1,0 +1,9 @@
+{
+  "command.exportDocument": "MarkLeaf: 文書をエクスポート…",
+  "command.exportPdf": "MarkLeaf: PDF をエクスポート…",
+  "command.exportHtml": "MarkLeaf: HTML をエクスポート…",
+  "command.exportImage": "MarkLeaf: 画像をエクスポート…",
+  "command.print": "MarkLeaf: 印刷…",
+  "command.exportLast": "MarkLeaf: 前回の設定でエクスポート",
+  "config.exportBrowserPath": "PDF・画像・プレビュー・印刷に使用する Chrome/Edge 実行ファイルのパス。空欄ではインストール済みのブラウザーを検索します。ブラウザーはダウンロードしません。"
+}

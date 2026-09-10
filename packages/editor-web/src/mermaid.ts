@@ -287,7 +287,7 @@ export const Mermaid = Node.create({
   },
 })
 
-export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName): Promise<string> {
+export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName, throwOnError = false): Promise<string> {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
   const placeholders = Array.from(parsed.body.querySelectorAll<HTMLElement>('.markleaf-mermaid[data-mermaid="1"]'))
   if (placeholders.length === 0) return html
@@ -317,6 +317,7 @@ export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName
       placeholder.replaceWith(host)
     } catch (error) {
       cleanupMermaidErrorArtifacts(parsed)
+      if (throwOnError) throw error
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       const message = parsed.createElement('div')

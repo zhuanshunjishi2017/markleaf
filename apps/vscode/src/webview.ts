@@ -57,6 +57,13 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
       <button data-action="shortcuts" type="button">快捷键…</button>
       <button data-action="help" type="button">使用帮助</button>
     </div></details>
+    <details class="toolbar-menu"><summary data-export-label="export">导出…</summary><div class="menu-content">
+      <button data-action="exportPdf" data-export-label="exportPdf" type="button">导出 PDF…</button>
+      <button data-action="exportHtml" data-export-label="exportHtml" type="button">导出 HTML…</button>
+      <button data-action="exportImage" data-export-label="exportImage" type="button">导出图片…</button>
+      <button data-action="print" data-export-label="print" type="button">打印…</button>
+      <button data-action="exportLast" data-export-label="last" type="button">按上次设置导出</button>
+    </div></details>
     <span class="spacer"></span>
     <button data-action="undo" data-edit type="button" title="撤销">↶</button>
     <button data-action="redo" data-edit type="button" title="重做">↷</button>

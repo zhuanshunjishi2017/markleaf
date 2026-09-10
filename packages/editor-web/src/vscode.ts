@@ -8,6 +8,9 @@ import {
   getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownText, scrollToFootnoteDefinition, setCodeBlockControlHandlers,
   setHostImageResolver, shouldParsePastedTextAsMarkdown, updateEditorMarkdown,
 } from './editor'
+import { createExportDialog } from './vscode-export-dialog'
+import { renderExportSnapshot } from './vscode-export'
+import { exportStrings } from './vscode-export-strings'
 import { createFindBar } from './vscode-find'
 import { createReadingView } from './vscode-reading'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
@@ -59,6 +62,7 @@ const mac = /Mac/i.test(navigator.platform)
 let shortcuts = resolveShortcuts({}, mac)
 let unbindShortcuts: (() => void) | undefined
 const shortcutDialog = createShortcutDialog(mac, post, () => { editor?.view.focus(); updateFocus() })
+const exportDialog = createExportDialog(post, updateFocus)
 const fileReaders = new Set<FileReader>()
 const imageUrls = new Map<string, string>()
 const requestedImages = new Set<string>()
@@ -115,7 +119,7 @@ const sync = new TextDocumentSync({
         })
         editor.on('selectionUpdate', updateToolbar)
         unbindShortcuts = bindFormatShortcuts(editor.view.dom, {
-          mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen,
+          mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen && !exportDialog.isOpen,
           shortcuts: () => shortcuts, run: id => runFormatCommand(id, true),
         })
         interactions = createEditorInteractions(editor, mount, () => action('block'))
@@ -183,7 +187,7 @@ function showError(message: string): void {
 function action(action: HostAction, formatCommand?: string): void {
   if (action === 'shortcuts') { closeToolbarMenus(); shortcutDialog.open(); updateFocus(); return }
   if (!editor) return
-  if (shortcutDialog.isOpen) return
+  if (shortcutDialog.isOpen || exportDialog.isOpen) return
   if (action === 'find' || action === 'replace') { findBar?.open(action === 'replace'); return }
   if (action === 'toggleRead') { modeButton.click(); return }
   const toggles = { toggleOutline: 'showOutline', toggleFocus: 'focusMode', toggleTypewriter: 'typewriterMode' } as const
@@ -229,7 +233,7 @@ function runNextAction(): void {
 }
 
 function runFormatCommand(id: string, fromShortcut = false): void {
-  if (!isFormatCommand(id) || !editor?.isEditable || actionInFlight || shortcutDialog.isOpen) return
+  if (!isFormatCommand(id) || !editor?.isEditable || actionInFlight || shortcutDialog.isOpen || exportDialog.isOpen) return
   // Keep Tiptap's heading-key behavior: pressing the same heading key again
   // returns to a paragraph. Menu commands continue to set the requested level.
   if (fromShortcut && /^setHeading[1-6]$/.test(id) && editor.isActive('heading', { level: Number(id.at(-1)) })) command('setParagraph')
@@ -411,7 +415,7 @@ function reportFocus(target: WebviewFocus): void {
   post({ type: 'focus', target })
 }
 function updateFocus(): void {
-  reportFocus(!document.hasFocus() || shortcutDialog.isOpen ? null
+  reportFocus(!document.hasFocus() || shortcutDialog.isOpen || exportDialog.isOpen ? null
     : document.activeElement?.closest('input, textarea, select, .markleaf-expanded-source') ? 'input' : 'document')
 }
 window.addEventListener('focus', updateFocus)
@@ -536,6 +540,13 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
   if (!message || typeof message.type !== 'string') return
   try {
     switch (message.type) {
+      case 'exportOptions': closeToolbarMenus(); exportDialog.open(message.options, language); updateFocus(); break
+      case 'exportFinished': exportDialog.finished(message.message, message.error); break
+      case 'renderExport':
+        void renderExportSnapshot(message.markdown, message.title, message.options, message.settings, message.language)
+          .then(result => post({ type: 'exportRendered', requestId: message.requestId, result }),
+            error => post({ type: 'exportRendered', requestId: message.requestId, error: error instanceof Error ? error.message : String(error) }))
+        break
       case 'document': sync.receiveDocument(message); break
       case 'recovered': recover.disabled = false; pendingActions.length = 0; sync.reset(message.document); break
       case 'requestAction': action(message.action); break
@@ -562,6 +573,8 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
         settings = message.settings
         customCss = message.customCss ?? ''
         language = message.language ?? 'zh-Hans'
+        const exportLabels = exportStrings(language)
+        for (const label of document.querySelectorAll<HTMLElement>('[data-export-label]')) label.textContent = exportLabels[label.dataset.exportLabel as keyof typeof exportLabels]
         if (!editor && !initialState?.mode) mode = settings.defaultMode
         reading?.apply(settings, customCss, language)
         updateTheme()
@@ -598,6 +611,7 @@ window.addEventListener('pagehide', () => {
   reading?.dispose()
   unbindShortcuts?.()
   shortcutDialog.dispose()
+  exportDialog.dispose()
   cancelAnimationFrame(scrollFrame)
   clearTimeout(zoomTimer)
   editor?.destroy()

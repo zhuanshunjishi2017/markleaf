@@ -5,27 +5,7 @@ import { sharedEditorStrings } from './shared-editor-strings'
 import { rerenderMermaidElements, setMermaidStrings } from './mermaid'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
 
-// Keep the original @depends metadata: CSS processing would remove these
-// comments in production. These styles contain no external asset URLs.
-const styles = import.meta.glob('../../styles/*.css', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-
-function resolveTypography(id: string): { classes: string[]; css: string } {
-  const classes: string[] = []
-  const parts: string[] = []
-  const seen = new Set<string>()
-  function visit(name: string): void {
-    if (seen.has(name)) return
-    seen.add(name)
-    const css = styles[`../../styles/${name}.css`]
-    if (!css) return
-    const dependency = /@depends:\s*([\w-]+)/.exec(css)?.[1]
-    if (dependency) visit(dependency)
-    classes.push(`markleaf-style-${name}`)
-    parts.push(css)
-  }
-  visit(id)
-  return { classes, css: parts.join('\n') }
-}
+import { styles, resolveTypography } from './vscode-styles'
 
 export function createReadingView(editor: Editor, mount: HTMLElement, count: HTMLElement) {
   let settings = { ...defaultSettings }
