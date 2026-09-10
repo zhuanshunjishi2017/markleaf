@@ -247,13 +247,12 @@ body { margin: 0; background: var(--bg-primary); }
   margin-right: 0;
 }
 .markleaf-export-image {
-  /* Windows and macOS both capture one expanded page, then slice the bitmap.
-     A scrolling body makes Chromium/WebKit retain a viewport texture and can
-     duplicate the final rows when the viewport is expanded for capture. */
-  overflow: visible !important;
+  /* WebView2 expands the viewport and captures one full surface before
+     slicing. Do not create a scroll container: Chromium may reuse its first
+     viewport texture for the expanded area, producing repeated content. */
+  overflow: hidden !important;
 }
-/* Keep scrollbars out of the captured surface without introducing a scroll
-   container that can be tiled by the browser compositor. */
+/* Keep scrollbars out of the captured surface. */
 .markleaf-export-image,
 .markleaf-export-image html,
 .markleaf-export-image body,
@@ -278,9 +277,6 @@ html:has(body.markleaf-export-image)::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
-}
-.markleaf-export-image {
-  width: 100% !important;
 }
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
