@@ -5821,8 +5821,14 @@ function expandSelectedMath(editor: Editor): boolean {
 function convertMath(editor: Editor): boolean {
   const selected = getSelectedMath(editor)
   if (!selected) return false
-  const latex = selected.node.textContent
   const targetType = selected.node.type.name === 'mathInline' ? 'mathBlock' : 'mathInline'
+  // KaTeX does not support display-only equation tags inside inline math.
+  // When converting a block formula to inline, remove a trailing \tag{...}
+  // (including surrounding whitespace) while leaving all other source text
+  // byte-for-byte untouched.
+  const latex = targetType === 'mathInline'
+    ? selected.node.textContent.replace(/\s*\\tag\{[^{}]*\}\s*$/u, '')
+    : selected.node.textContent
   return editor.chain().focus().insertContentAt(
     { from: selected.from, to: selected.to },
     { type: targetType, content: [{ type: 'text', text: latex }] },

@@ -2502,8 +2502,51 @@ body { margin: 0; background: var(--bg-primary); }
   margin-left: 0;
   margin-right: 0;
 }
+.markleaf-export-image #export-root {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
 .markleaf-export-image {
-  overflow: hidden;
+  /* Keep the document's scroll extent available for chunked capture. Hiding
+     overflow here collapses scrollHeight to the viewport and causes long
+     exports to produce only one screenful. Scrollbars are hidden separately
+     below without clipping the document. */
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+/* Image capture scrolls the document between chunks. Keep scrolling enabled
+   while making the browser scrollbars completely invisible in the captured
+   surface; otherwise the scrollbar occupies layout width and can leak into
+   the right/bottom edges of exported images. */
+.markleaf-export-image,
+.markleaf-export-image html,
+.markleaf-export-image body,
+.markleaf-export-image * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.markleaf-export-image::-webkit-scrollbar,
+.markleaf-export-image html::-webkit-scrollbar,
+.markleaf-export-image body::-webkit-scrollbar,
+.markleaf-export-image *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image html,
+html:has(body.markleaf-export-image) {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+html:has(body.markleaf-export-image)::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image {
+  width: 100% !important;
 }
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
@@ -2576,8 +2619,8 @@ body { margin: 0; background: var(--bg-primary); }
 .export-footer { border-top: 1px solid #d8dee4; margin-top: 24px; }
 </style>
 </head>
-<body>
-<div id="export-root"${rootClass ? ` class="${rootClass}"` : ''}>
+<body${rootClass ? ` class="${rootClass}"` : ''}>
+<div id="export-root">
 ${header ? `<div class="export-header">${header}</div>` : ''}
 <div class="markleaf-document">${bodyHtml}</div>
 ${footer ? `<div class="export-footer">${footer}</div>` : ''}

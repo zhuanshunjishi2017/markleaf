@@ -83,6 +83,7 @@ internal sealed class OptionalFontsDialog : Form
         _allButton = new Button { Text = Loc.Get("dialog.optionalFontsInstallAll"), AutoSize = true };
         _selectedButton.Click += async (_, _) => await InstallAsync(false);
         _allButton.Click += async (_, _) => await InstallAsync(true);
+        _grid.SelectionChanged += (_, _) => UpdateInstallButtonState();
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
         buttons.Controls.Add(_selectedButton); buttons.Controls.Add(_allButton);
         var close = new Button { Text = Loc.Get("common.close"), AutoSize = true };
@@ -110,6 +111,17 @@ internal sealed class OptionalFontsDialog : Form
                 _grid.Rows[index].Tag = pack;
             }
         }
+        UpdateInstallButtonState();
+    }
+
+    private void UpdateInstallButtonState()
+    {
+        if (_selectedButton is null || _allButton is null)
+            return;
+        var selectedPack = _grid.CurrentRow?.Tag as FontPack;
+        _selectedButton.Enabled = selectedPack is not null
+            && selectedPack.Files.Any(font => FindInstalledFontPath(font.FileName) is null);
+        _allButton.Enabled = Packs.Any(pack => pack.Files.Any(font => FindInstalledFontPath(font.FileName) is null));
     }
 
     private static string GetStyleDisplayName(string styleId) =>
@@ -153,24 +165,30 @@ internal sealed class OptionalFontsDialog : Form
             for (var packIndex = 0; packIndex < targets.Length; packIndex++)
             {
                 var pack = targets[packIndex];
+                if (!pack.Files.Any(font => FindInstalledFontPath(font.FileName) is null))
+                    continue;
                 _status.Text = Loc.Format("dialog.optionalFontsDownloadingProgress", packIndex + 1, targets.Length, pack.Name);
-                await InstallPackAsync(pack, (fontIndex, fontCount, fontName) =>
+                try
                 {
-                    _status.Text = Loc.Format("dialog.optionalFontsInstallingProgress", fontIndex, fontCount, fontName);
+                    await InstallPackAsync(pack, (fontIndex, fontCount, fontName) =>
+                    {
+                        _status.Text = Loc.Format("dialog.optionalFontsInstallingProgress", fontIndex, fontCount, fontName);
+                        _status.Refresh();
+                        ReloadRows();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _status.Text = $"{pack.Name}: {ex.Message}";
                     _status.Refresh();
-                });
+                }
             }
             ReloadRows();
             _status.Text = Loc.Get("dialog.optionalFontsComplete");
-            MessageBox.Show(
-                this,
-                Loc.Get("dialog.optionalFontsRestartRequired"),
-                Loc.Get("dialog.optionalFontsTitle"),
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            MessageBox.Show(this, Loc.Get("dialog.optionalFontsRestartRequired"), Loc.Get("dialog.optionalFontsTitle"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { _status.Text = ex.Message; }
-        finally { _selectedButton.Enabled = _allButton.Enabled = true; }
+        finally { UpdateInstallButtonState(); }
     }
 
     private static async Task InstallPackAsync(FontPack pack, Action<int, int, string> reportFontProgress)
@@ -186,18 +204,30 @@ internal sealed class OptionalFontsDialog : Form
         ZipFile.ExtractToDirectory(zip, root);
         var userFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Fonts");
         Directory.CreateDirectory(userFonts);
+        var expectedFiles = pack.Files.Select(font => font.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var fontFiles = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
             .Where(f => f.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".otf", StringComparison.OrdinalIgnoreCase))
+            .Where(f => expectedFiles.Contains(Path.GetFileName(f)))
             .ToArray();
-        for (var index = 0; index < fontFiles.Length; index++)
+        for (var index = 0; index < pack.Files.Length; index++)
         {
-            var file = fontFiles[index];
-            reportFontProgress(index + 1, fontFiles.Length, Path.GetFileName(file));
-            var target = Path.Combine(userFonts, Path.GetFileName(file));
-            File.Copy(file, target, true);
-            NativeMethods.AddFontResourceEx(target, 0, IntPtr.Zero);
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows NT\CurrentVersion\Fonts");
-            key?.SetValue(Path.GetFileNameWithoutExtension(file) + " (TrueType)", target);
+            var expected = pack.Files[index];
+            reportFontProgress(index + 1, pack.Files.Length, expected.Name);
+            var file = fontFiles.FirstOrDefault(path => string.Equals(Path.GetFileName(path), expected.FileName, StringComparison.OrdinalIgnoreCase));
+            if (file is null || FindInstalledFontPath(expected.FileName) is not null)
+                continue;
+            try
+            {
+                var target = Path.Combine(userFonts, expected.FileName);
+                File.Copy(file, target, true);
+                NativeMethods.AddFontResourceEx(target, 0, IntPtr.Zero);
+                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows NT\CurrentVersion\Fonts");
+                key?.SetValue(Path.GetFileNameWithoutExtension(expected.FileName) + " (TrueType)", target);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
         }
         NativeMethods.PostMessage(0xffff, 0x001d, 0, 0);
     }
