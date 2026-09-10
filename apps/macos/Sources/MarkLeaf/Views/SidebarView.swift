@@ -566,6 +566,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     private var listMode = false
     private var loadedRoot: String?
+    private var isRestoringBrowsingState = false
     private var pendingRevealPath: String?
     private var revealContinuationScheduled = false
     private var lastDirectoryNameClick: (path: String, timestamp: TimeInterval)?
@@ -868,6 +869,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     }
 
     private func preservingBrowsingState(_ update: () -> Void) {
+        let wasRestoring = isRestoringBrowsingState
+        isRestoringBrowsingState = true
+        defer { isRestoringBrowsingState = wasRestoring }
         let selected = item(atRow: selectedRow) as? WorkspaceEntry
         let expanded = (0..<numberOfRows).compactMap { item(atRow: $0) as? WorkspaceEntry }
             .filter { $0.isDirectory && isItemExpanded($0) }
@@ -888,6 +892,8 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
+        // AppKit 重载空目录时也会发送展开通知；恢复状态不能反过来触发新扫描。
+        guard !isRestoringBrowsingState else { return }
         guard let entry = notification.userInfo?["NSObject"] as? WorkspaceEntry else { return }
         _ = children(for: entry, refresh: true)
     }

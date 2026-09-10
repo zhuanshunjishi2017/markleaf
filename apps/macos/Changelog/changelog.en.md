@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed a refresh loop when expanding folders containing only non-text files such as PDFs, images, or archives. Text-file filtering remains in effect, and adding or deleting text files still updates the tree.
 - Removed stale web find-bar references that interrupted editor startup and left the document area blank; native find and replace remain available.
 - Workspace refresh preserves expanded folders, selection and scrolling. Repeated layout updates and switches between untitled tabs no longer reset the sidebar.
 - Tree and document-list scans run independently, and cancelled scans cannot overwrite a closed or switched workspace.

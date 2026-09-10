@@ -76,3 +76,51 @@ tree.expandItem(child)
 expect(waitUntil { tree.numberOfRows == 43 }, "reopening a collapsed directory must refresh its contents")
 context.close()
 print("PASS: nested expansion, selection, scrolling, tab binding and file changes")
+
+// 只有非文本文件的目录过滤后为空，展开后必须稳定，不能自行不断重载。
+final class ReloadTrackingTree: WorkspaceTreeView {
+    var directoryReloads = 0
+
+    override func reloadDirectoryChildren(_ entry: WorkspaceEntry) {
+        directoryReloads += 1
+        super.reloadDirectoryChildren(entry)
+    }
+}
+
+let filteredRoot = root.appendingPathComponent("Filtered")
+let pdfFolder = filteredRoot.appendingPathComponent("PDF only")
+try fm.createDirectory(at: pdfFolder, withIntermediateDirectories: true)
+for name in ["manual.pdf", "image.png", "archive.zip"] {
+    try Data([0x25, 0x50, 0x44, 0x46, 0x00]).write(to: pdfFolder.appendingPathComponent(name))
+}
+try "text".write(to: filteredRoot.appendingPathComponent("readme.md"), atomically: true, encoding: .utf8)
+let filteredContext = WorkspaceContext()
+let filteredSession = EditorSession(workspace: filteredContext)
+let filteredTree = ReloadTrackingTree(frame: NSRect(x: 0, y: 0, width: 260, height: 400))
+filteredTree.configure(session: filteredSession)
+filteredContext.onChanged = { filteredTree.reloadData() }
+filteredContext.load(filteredRoot.path)
+expect(waitUntil { filteredTree.numberOfRows == 2 }, "non-text files must stay out of the workspace tree")
+let pdfDirectory = filteredTree.item(atRow: 0) as! WorkspaceEntry
+filteredTree.expandItem(pdfDirectory)
+RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+let settledReloads = filteredTree.directoryReloads
+RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+print("Non-text directory reloads: \(settledReloads) -> \(filteredTree.directoryReloads)")
+expect(filteredTree.directoryReloads == settledReloads, "an empty filtered directory must stop reloading without user or filesystem input")
+expect(filteredTree.isItemExpanded(pdfDirectory), "an empty filtered directory must preserve the user's expansion")
+expect(filteredTree.numberOfRows == 2, "PDF, images and archives must not become document rows")
+
+try "notes".write(to: pdfFolder.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+filteredContext.rescan()
+expect(waitUntil { filteredTree.numberOfRows == 3 }, "an expanded non-text directory must show a newly created text document")
+try fm.removeItem(at: pdfFolder.appendingPathComponent("notes.txt"))
+filteredContext.rescan()
+expect(waitUntil { filteredTree.numberOfRows == 2 }, "deleting the last text document must remove its row")
+RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+let emptyReloads = filteredTree.directoryReloads
+RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+expect(filteredTree.directoryReloads == emptyReloads, "removing the last text document must not restart a reload loop")
+expect(filteredTree.isItemExpanded(pdfDirectory), "removing the last text document must keep expansion")
+filteredContext.close()
+print("PASS: non-text-only folders settle and continue tracking text file changes")

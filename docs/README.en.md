@@ -57,7 +57,7 @@ The native Windows app supports PDF, HTML, PNG/JPG long images, and printing; th
 
 The workspace, window, and built-in source-mode features below primarily describe the native applications. The VS Code extension uses VS Code Explorer, windows, tabs, and source editing; its own entry points are documented in the extension guide below.
 
-- <strong>Workspace Management</strong>: Supports opening a folder as a workspace, viewing files in tree or list view, and searching documents by name/content. Automatic refresh preserves expanded folders, selection, and scrolling when files change.
+- <strong>Workspace Management</strong>: Supports opening a folder as a workspace, viewing files in tree or list view, and searching documents by name/content. Automatic refresh preserves expanded folders, selection, and scrolling when files change. Currently lists only `.md` and `.txt` text files and folders (Mac also supports `.markdown`); PDF, image, and archive contents are not read.
 - <strong>Multiple Windows and Tabs</strong>: Supports opening multiple window instances, and can also open a document in a new window. Additionally, the application supports opening multiple tabs in the same window, with each tab managing its document content independently.
 - <strong>Source Mode</strong>: Built‑in CodeMirror 6 source editing mode, allowing instant switching between visual editing and Markdown source.
 - <strong>Automatic Conversion of Non‑compliant Markdown Markers</strong>: For common issues in Chinese Markdown text where <strong>literal asterisks are exposed</strong>, the application can detect asterisk markers that do not conform to CommonMark specifications and convert them to HTML tags.
