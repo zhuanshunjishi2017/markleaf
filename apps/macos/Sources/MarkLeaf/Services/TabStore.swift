@@ -91,6 +91,16 @@ final class TabStore {
         return tab
     }
 
+    /// 在指定下标插入标签；跨窗口拖拽并入到别的窗口时使用。
+    @discardableResult
+    func insert(_ tab: DocumentTab, at index: Int, activate: Bool = true) -> DocumentTab {
+        tabs.insert(tab, at: max(0, min(index, tabs.count)))
+        if activate {
+            self.activate(tab.tabID)
+        }
+        return tab
+    }
+
     func activate(_ id: DocumentTabID) {
         guard let tab = tab(withID: id) else { return }
         activeTabID = id

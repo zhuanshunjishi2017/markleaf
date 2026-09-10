@@ -22,7 +22,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var detachedOutlineView: DetachedOutlineView?
     private var detachedOutlineContainerView: NSView?
     private var editorHostView: EditorHostView?
-    private var tabBarController: TabBarController?
+    /// 供跨窗口标签拖拽做命中测试（AppWindowManager）。
+    private(set) var tabBarController: TabBarController?
     private var isAnimatingTabBar = false
     private weak var rightColumnView: NSView?
     private var editorHostTopConstraint: NSLayoutConstraint?
@@ -77,8 +78,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             return (session.isReadOnly, session.hasPendingExternalChange)
         }
-        tabBar.onDetach = { [weak self] id in
-            self?.detachTabToNewWindow(id)
+        tabBar.windowController = self
+        tabBar.onTearOff = { [weak self] id, origin in
+            self?.tearOffTab(id, windowOrigin: origin)
+        }
+        tabBar.onTransfer = { [weak self] id, target, index in
+            self?.transferTab(id, to: target, at: index)
         }
         tabBar.onContextAction = { [weak self] action, id in
             self?.handleTabContextAction(action, for: id)
@@ -176,20 +181,62 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         return true
     }
 
-    func detachTabToNewWindow(_ id: DocumentTabID) {
+    /// 拖离标签栏条带：在光标处撕成新窗口（浏览器行为）。
+    func tearOffTab(_ id: DocumentTabID, windowOrigin: NSPoint) {
+        transferDocument(for: id) { [weak self] document in
+            guard let self, let document else {
+                self?.tabBarController?.reload()
+                return
+            }
+            let newController = AppWindowManager.shared.newWindow(
+                detachedDocument: document,
+                at: windowOrigin
+            )
+            newController.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            self.removeDetachedTab(id)
+        }
+    }
+
+    /// 拖到别的窗口标签栏上：把标签并入目标窗口的指定位置。
+    func transferTab(_ id: DocumentTabID, to target: EditorWindowController, at index: Int) {
+        guard target !== self else { return }
+        transferDocument(for: id) { [weak self, weak target] document in
+            guard let self, let target else { return }
+            guard let document else {
+                self.tabBarController?.reload()
+                return
+            }
+            target.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            target.attachTransferredDocument(document, at: index)
+            self.removeDetachedTab(id)
+        }
+    }
+
+    /// 把来源标签打包成可搬运的文档快照：保留未保存内容、脏状态、只读状态与双模式选区。
+    func transferDocument(
+        for id: DocumentTabID,
+        completion: @escaping (DetachedTabDocument?) -> Void
+    ) {
         guard let windowSession,
               let tab = windowSession.tabStore.tab(withID: id),
-              let session = windowSession.session(for: id) else { return }
-
-        session.requestSnapshot { [weak self] result in
-            guard let self, case .success(let markdown) = result else { return }
+              let session = windowSession.session(for: id) else {
+            completion(nil)
+            return
+        }
+        session.requestSnapshot { result in
+            guard case .success(let markdown) = result else {
+                completion(nil)
+                return
+            }
             let selection = PendingDocumentSelection(
                 visualFrom: session.visualSelectionFrom,
                 visualTo: session.visualSelectionTo,
                 sourceFrom: session.sourceSelectionFrom,
                 sourceTo: session.sourceSelectionTo
             )
-            let document = DetachedTabDocument(
+            completion(DetachedTabDocument(
                 markdown: markdown,
                 fileURL: session.documentURL,
                 title: tab.title,
@@ -200,12 +247,50 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 untitledSequence: tab.untitledSequence,
                 documentKind: session.isPlainText ? .plainText : .markdown,
                 selection: selection
-            )
-            let newController = AppWindowManager.shared.newWindow(detachedDocument: document)
-            newController.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            self.removeDetachedTab(id)
+            ))
         }
+    }
+
+    /// 接收从别的窗口拖来的标签：按目标下标建标签并装载内容，复用原有会话/编辑器装配路径。
+    @discardableResult
+    func attachTransferredDocument(_ document: DetachedTabDocument, at index: Int) -> DocumentTabID? {
+        guard let windowSession else { return nil }
+        let tab = DocumentTab(
+            path: document.fileURL?.path,
+            title: document.title,
+            encoding: document.encoding,
+            newLine: document.newLine,
+            untitledSequence: document.untitledSequence
+        )
+        tab.isDirty = document.isDirty
+        tab.isReadOnly = document.isReadOnly
+        tab.visualSelectionFrom = document.selection?.visualFrom
+        tab.visualSelectionTo = document.selection?.visualTo
+        tab.sourceSelectionFrom = document.selection?.sourceFrom
+        tab.sourceSelectionTo = document.selection?.sourceTo
+        windowSession.tabStore.insert(tab, at: index)
+
+        let session = ensureEditor(for: tab)
+        session.openInitialDocument(
+            markdown: document.markdown,
+            fileURL: document.fileURL,
+            readOnly: document.isReadOnly,
+            encoding: document.encoding,
+            documentKind: document.documentKind,
+            initialDirty: document.isDirty,
+            selection: document.selection
+        )
+        activateTab(tab.tabID, animated: false)
+        return tab.tabID
+    }
+
+    /// 撕下的新窗口贴着光标出现：沿用来源窗口里光标的相对位置，让标签仍在鼠标下方。
+    func placeWindow(origin: NSPoint) {
+        guard let window else { return }
+        var frame = window.frame
+        frame.origin = origin
+        let onScreen = window.constrainFrameRect(frame, to: window.screen)
+        window.setFrame(onScreen, display: true)
     }
 
     private func removeDetachedTab(_ id: DocumentTabID) {

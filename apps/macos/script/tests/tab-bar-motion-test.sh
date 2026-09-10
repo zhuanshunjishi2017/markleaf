@@ -43,7 +43,7 @@ require_block_contains \
 require_block_contains \
   'override func mouseDragged(with event: NSEvent)' \
   'override func mouseUp(with event: NSEvent)' \
-  'controller?.beginReorder(from: self, at: event.locationInWindow)' \
+  'controller?.beginReorder(' \
   'a drag past the threshold must start the floating reorder'
 require_block_contains \
   'override func mouseUp(with event: NSEvent)' \
@@ -62,7 +62,7 @@ require_block_contains \
   'a short press must still activate the tab'
 require 'addLocalMonitorForEvents' 'reordering must track events at window level, not via a reparented view'
 require_block_contains \
-  'func beginReorder(from cell: TabCellView, at windowPoint: NSPoint)' \
+  'func beginReorder(from cell: TabCellView, at windowPoint: NSPoint, pressPoint: NSPoint? = nil)' \
   'func dragReorder(to windowPoint: NSPoint)' \
   'dragEventMonitor = NSEvent.addLocalMonitorForEvents' \
   'beginning a reorder must install the window-level drag monitor'

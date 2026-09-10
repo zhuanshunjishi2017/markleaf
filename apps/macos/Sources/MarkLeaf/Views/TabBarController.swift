@@ -20,9 +20,18 @@ final class TabBarController: NSView {
     var onClose: ((DocumentTabID) -> Void)?
     var onNewTab: (() -> Void)?
     var onContextAction: ((TabContextAction, DocumentTabID) -> Void)?
+    /// 拖到别的窗口标签栏上释放时回调：标签、目标窗口、目标插入下标。
+    var onTransfer: ((DocumentTabID, EditorWindowController, Int) -> Void)?
+    /// 由窗口控制器注入，用于判断拖拽是否落在别的窗口上。
+    weak var windowController: EditorWindowController?
+    /// 跨窗口命中测试的注入点：默认真实窗口管理器，测试可换成固定结果。
+    var stripHitProvider: (NSPoint, TabBarController) -> TabStripHit? = { point, excluded in
+        AppWindowManager.shared.tabStripHit(globalPoint: point, excluding: excluded)
+    }
     var workspaceRootProvider: (() -> String?)?
     var onReorder: ((Int, Int) -> Void)?
-    var onDetach: ((DocumentTabID) -> Void)?
+    /// 拖离标签栏条带时回调：标签、新窗口期望原点（屏幕坐标），由窗口层在光标处开新窗口。
+    var onTearOff: ((DocumentTabID, NSPoint) -> Void)?
     var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
     /// 该标签的文档是否已有内容；空文档时“复制内容到剪贴板”不可用。
     var contentProvider: ((DocumentTabID) -> Bool)?
@@ -44,6 +53,12 @@ final class TabBarController: NSView {
     private var dragSourceIndex: Int?
     private var dragStartOffset = NSPoint.zero
     private var dragEventMonitor: Any?
+    private var dragStripGlobalRect = NSRect.zero
+    private var dragGrabOffset = NSPoint.zero
+    private var dragPreviewImage: NSImage?
+    private var dragPreview: TabDragPreviewWindow?
+    private var dropIndicator: NSView?
+    private weak var hoveredTabBar: TabBarController?
     private var heightConstraint: NSLayoutConstraint!
 
     init(tabStore: TabStore) {
@@ -299,7 +314,7 @@ final class TabBarController: NSView {
         cell.setLifted(false, animated: !reduceMotion)
     }
 
-    func beginReorder(from cell: TabCellView, at windowPoint: NSPoint) {
+    func beginReorder(from cell: TabCellView, at windowPoint: NSPoint, pressPoint: NSPoint? = nil) {
         guard isReordering == false else { return }
         guard let id = cell.tabID,
               let source = tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
@@ -314,6 +329,9 @@ final class TabBarController: NSView {
         draggingCell = cell
         dragPlaceholder = placeholder
         dragSourceIndex = source
+        dragStripGlobalRect = stripGlobalRect
+        dragPreviewImage = Self.snapshot(of: cell)
+        dragGrabOffset = Self.grabOffset(of: cell, in: window, pressPoint: pressPoint ?? windowPoint)
         dragStartOffset = NSPoint(
             x: localPoint.x - initialFrame.minX,
             y: localPoint.y - initialFrame.minY
@@ -355,6 +373,12 @@ final class TabBarController: NSView {
             x: local.x - dragStartOffset.x,
             y: local.y - dragStartOffset.y
         ))
+        let globalPoint = globalPoint(forWindowPoint: windowPoint)
+        updateDragPreview(globalPoint: globalPoint)
+        updateHoverTarget(globalPoint: globalPoint)
+
+        // 悬停在别的窗口标签栏上时，本窗口的插入占位不再参与排序。
+        if hoveredTabBar != nil { return }
         let target = targetIndex(for: local)
         let current = stack.arrangedSubviews.firstIndex(of: placeholder) ?? 0
         guard target != current else { return }
@@ -373,6 +397,7 @@ final class TabBarController: NSView {
             NSEvent.removeMonitor(monitor)
             dragEventMonitor = nil
         }
+        defer { endDragVisuals() }
         guard isReordering, let id = reorderingTabID,
               let cell = draggingCell, let placeholder = dragPlaceholder else {
             isReordering = false
@@ -380,10 +405,28 @@ final class TabBarController: NSView {
             return
         }
 
-        let globalRect = window?.convertToScreen(NSRect(origin: windowPoint, size: .zero)) ?? NSRect(origin: windowPoint, size: .zero)
-        if TabDetachPolicy.action(globalPoint: globalRect.origin, windowFrame: window?.frame ?? .zero) == .detach {
+        let globalPoint = globalPoint(forWindowPoint: windowPoint)
+
+        let hit = stripHitProvider(globalPoint, self)
+        let hasOtherStripHit = hit.map { $0.controller !== windowController } ?? false
+        let outcome = TabDetachPolicy.outcome(
+            hasOtherStripHit: hasOtherStripHit,
+            globalPoint: globalPoint,
+            stripGlobalRect: dragStripGlobalRect,
+            windowFrame: window?.frame ?? .zero
+        )
+
+        // 1) 落在别的窗口标签栏上：并入那个窗口。
+        if outcome == .transfer, let hit {
             finishDragWithoutRestore(cell: cell, placeholder: placeholder)
-            onDetach?(id)
+            onTransfer?(id, hit.controller, hit.index)
+            return
+        }
+
+        // 2) 离开标签栏条带：在光标处撕成新窗口。
+        if outcome == .tearOff {
+            finishDragWithoutRestore(cell: cell, placeholder: placeholder)
+            onTearOff?(id, TabDetachPolicy.tearOffOrigin(globalPoint: globalPoint, windowPoint: windowPoint))
             return
         }
 
@@ -417,6 +460,125 @@ final class TabBarController: NSView {
         draggingCell = nil
         dragPlaceholder = nil
         dragSourceIndex = nil
+    }
+
+    // MARK: - 跨窗口拖拽与撕下
+
+    /// 标签栏条带的全局矩形，用于判断光标是否已经离开这条标签栏。
+    var stripGlobalRect: NSRect {
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
+    }
+
+    /// 全局坐标在该标签栏中的插入下标（跨窗口并入时使用）。
+    func insertionIndex(forGlobalPoint point: NSPoint) -> Int {
+        guard let window else { return 0 }
+        let windowPoint = window.convertFromScreen(NSRect(origin: point, size: .zero)).origin
+        return targetIndex(for: convert(windowPoint, from: nil))
+    }
+
+    /// 目标窗口的插入指示条：拖动过程中提示标签会落在哪里。
+    func showDropIndicator(at index: Int) {
+        let indicator = dropIndicator ?? {
+            let view = NSView()
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            view.layer?.cornerRadius = 1
+            addSubview(view)
+            dropIndicator = view
+            return view
+        }()
+        let arranged = stack.arrangedSubviews
+        let x: CGFloat
+        if arranged.isEmpty {
+            x = stack.frame.minX
+        } else if index >= arranged.count {
+            x = arranged.last!.frame.maxX
+        } else {
+            x = arranged[index].frame.minX
+        }
+        let inStack = NSRect(
+            x: x - 1,
+            y: 3,
+            width: 2,
+            height: max(0, stack.bounds.height - 6)
+        )
+        indicator.frame = convert(inStack, from: stack)
+        indicator.isHidden = false
+    }
+
+    func hideDropIndicator() {
+        dropIndicator?.isHidden = true
+    }
+
+    /// 拖拽结束时清理浮层、插入指示与悬停状态。
+    private func endDragVisuals() {
+        hoveredTabBar?.hideDropIndicator()
+        hoveredTabBar = nil
+        dragPreview?.orderOut(nil)
+        dragPreview = nil
+        dragPreviewImage = nil
+        dragGrabOffset = .zero
+        dragStripGlobalRect = .zero
+    }
+
+    /// 光标离开来源窗口后，用独立的无交互浮层跟随鼠标（窗口内仍用被抬起的标签本身）。
+    private func updateDragPreview(globalPoint: NSPoint) {
+        guard let window else { return }
+        guard !window.frame.contains(globalPoint) else {
+            dragPreview?.orderOut(nil)
+            return
+        }
+        guard let image = dragPreviewImage else { return }
+        let preview = dragPreview ?? {
+            let panel = TabDragPreviewWindow(image: image)
+            dragPreview = panel
+            return panel
+        }()
+        preview.setFrameOrigin(NSPoint(
+            x: globalPoint.x - dragGrabOffset.x,
+            y: globalPoint.y - dragGrabOffset.y
+        ))
+        if !preview.isVisible {
+            preview.orderFront(nil)
+        }
+    }
+
+    /// 悬停在别的窗口标签栏上时，在目标标签栏显示插入指示。
+    private func updateHoverTarget(globalPoint: NSPoint) {
+        guard let hit = stripHitProvider(globalPoint, self), hit.controller !== windowController else {
+            hoveredTabBar?.hideDropIndicator()
+            hoveredTabBar = nil
+            return
+        }
+        if hoveredTabBar !== hit.tabBar {
+            hoveredTabBar?.hideDropIndicator()
+        }
+        hoveredTabBar = hit.tabBar
+        hit.tabBar.showDropIndicator(at: hit.index)
+    }
+
+    private static func snapshot(of view: NSView) -> NSImage? {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let image = NSImage(size: view.bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    /// 鼠标在标签内的抓取偏移（屏幕坐标，原点在左下），用于让浮层跟手。
+    private static func grabOffset(of cell: NSView, in window: NSWindow?, pressPoint: NSPoint) -> NSPoint {
+        guard let window else { return .zero }
+        let screenRect = window.convertToScreen(cell.convert(cell.bounds, to: nil))
+        let press = window.convertToScreen(NSRect(origin: pressPoint, size: .zero)).origin
+        return NSPoint(x: press.x - screenRect.minX, y: press.y - screenRect.minY)
+    }
+
+    /// 事件坐标 → 全局屏幕坐标。比 NSEvent.mouseLocation 可靠：
+    /// 合成事件（自动化测试）不一定会移动真实指针，但事件本身带着窗口内坐标。
+    private func globalPoint(forWindowPoint point: NSPoint) -> NSPoint {
+        guard let window else { return point }
+        return window.convertToScreen(NSRect(origin: point, size: .zero)).origin
     }
 
     private func targetIndex(for localPoint: NSPoint) -> Int {
@@ -667,7 +829,11 @@ final class TabCellView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if !didDrag, hypot(point.x - start.x, point.y - start.y) > 6 {
             didDrag = true
-            controller?.beginReorder(from: self, at: event.locationInWindow)
+            controller?.beginReorder(
+                from: self,
+                at: event.locationInWindow,
+                pressPoint: downPoint.map { convert($0, to: nil) }
+            )
         }
         if didDrag {
             controller?.dragReorder(to: event.locationInWindow)

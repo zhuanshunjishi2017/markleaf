@@ -6,6 +6,13 @@ struct PreferencesRestoration: Equatable {
     let frame: NSRect
 }
 
+/// 标签拖拽命中某个窗口标签栏的结果。
+struct TabStripHit {
+    let controller: EditorWindowController
+    let tabBar: TabBarController
+    let index: Int
+}
+
 struct PreferencesRefreshState {
     let selectedPageIndex: Int
     let frame: NSRect
@@ -97,6 +104,27 @@ final class AppWindowManager {
         windowControllers.forEach { $0.suspendBackgroundTabsIfNeeded() }
     }
 
+    /// 跨窗口标签拖拽的命中测试：光标落在哪个窗口的标签栏吸附区内。
+    /// 只认仍可见、且开启了多标签栏的窗口，避免拖到隐藏条带上。
+    func tabStripHit(globalPoint: NSPoint, excluding excluded: TabBarController? = nil) -> TabStripHit? {
+        for controller in windowControllers {
+            guard let tabBar = controller.tabBarController,
+                  tabBar !== excluded,
+                  let window = controller.window,
+                  window.isVisible,
+                  !tabBar.isHidden,
+                  tabBar.alphaValue > 0 else { continue }
+            let region = TabDetachPolicy.stripRegion(stripGlobalRect: tabBar.stripGlobalRect)
+            guard region.contains(globalPoint) else { continue }
+            return TabStripHit(
+                controller: controller,
+                tabBar: tabBar,
+                index: tabBar.insertionIndex(forGlobalPoint: globalPoint)
+            )
+        }
+        return nil
+    }
+
     func newWindow(documentPath: String? = nil) -> EditorWindowController {
         let windowSession = WindowSession()
         let session = EditorSession(workspace: windowSession.workspace)
@@ -131,7 +159,11 @@ final class AppWindowManager {
     }
 
     /// 为拖出的标签创建新窗口；新窗口装载快照前不创建占位空白文档。
-    func newWindow(detachedDocument: DetachedTabDocument) -> EditorWindowController {
+    /// - Parameter windowOrigin: 撕下时新窗口的期望原点（屏幕坐标）；给出时窗口贴着光标出现。
+    func newWindow(
+        detachedDocument: DetachedTabDocument,
+        at windowOrigin: NSPoint? = nil
+    ) -> EditorWindowController {
         let windowSession = WindowSession()
         let session = EditorSession(workspace: windowSession.workspace)
         let controller = EditorWindowController(session: session)
@@ -176,6 +208,9 @@ final class AppWindowManager {
             selection: detachedDocument.selection
         )
         controller.activateTab(tab.tabID, animated: false)
+        if let windowOrigin {
+            controller.placeWindow(origin: windowOrigin)
+        }
         return controller
     }
 
