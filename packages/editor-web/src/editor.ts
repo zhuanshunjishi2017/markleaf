@@ -3557,6 +3557,38 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
   }
 }
 
+/** Insert a native clipboard payload once, retaining rich HTML when Markdown
+ * parsing is not appropriate and supporting HTML-only clipboard providers. */
+export function pasteClipboardContent(editor: Editor, plainText: string, html: string): boolean {
+  return pasteClipboardContentWithResult(editor, plainText, html).success
+}
+
+export function pasteClipboardContentWithResult(
+  editor: Editor,
+  plainText: string,
+  html: string,
+): { success: boolean; outcome: MarkdownPasteOutcome | 'formatted'; error?: string } {
+  if (plainText) {
+    if (shouldParsePastedTextAsMarkdown(editor, plainText, html)) {
+      return pasteMarkdownTextWithResult(editor, plainText)
+    }
+    if (html) {
+      return editor.view.pasteHTML(html)
+        ? { success: true, outcome: 'formatted' }
+        : { success: false, outcome: 'failed' }
+    }
+    return editor.view.pasteText(plainText)
+      ? { success: true, outcome: 'plainText' }
+      : { success: false, outcome: 'failed' }
+  }
+  if (html) {
+    return editor.view.pasteHTML(html)
+      ? { success: true, outcome: 'formatted' }
+      : { success: false, outcome: 'failed' }
+  }
+  return { success: false, outcome: 'failed' }
+}
+
 function normalizePastedMarkdownContent(editor: Editor, value: any): { content: any; changed: boolean } {
   let changed = false
   const visit = (node: any, parentType?: NodeType): any => {

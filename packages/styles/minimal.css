@@ -60,12 +60,12 @@
 
 .markleaf-style-minimal .markleaf-document th {
   background: transparent;
-  border-bottom: 2px solid var(--text-primary);
+  border-bottom: 2px solid var(--ml-table-header-rule, var(--text-primary));
 }
 
 .markleaf-style-minimal .markleaf-document td {
   border: 0;
-  border-bottom: 1px solid var(--bg-selected);
+  border-bottom: 1px solid var(--ml-table-border, var(--bg-selected));
 }
 
 .markleaf-style-minimal .markleaf-document a {

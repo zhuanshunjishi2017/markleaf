@@ -48,6 +48,12 @@ let source = EditorPastePolicy.command(
 expect(source == EditorPasteCommand(command: "pasteText", text: "# literal", html: nil),
        "source mode should paste literal text and ignore HTML")
 
+for html: String? in [nil, ""] {
+    expect(EditorPastePolicy.command(isSourceMode: false, plainText: "# heading", html: html)
+           == EditorPasteCommand(command: "pasteMarkdown", text: "# heading", html: nil),
+           "visual text-only paste must parse Markdown like Windows")
+}
+
 let htmlOnly = EditorPastePolicy.command(
     isSourceMode: false,
     plainText: nil,

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode'
+import { DocumentExports } from './exports'
 import { documentReplacement, normalizeDocumentMarkdown } from './document-edit'
 import { localResourceRoots, resolveDocumentLink } from './resources'
 import { webviewHtml } from './webview'
@@ -19,6 +20,7 @@ function activeResource(): vscode.Uri | undefined {
 
 class EditorPanel implements vscode.Disposable {
   focus: WebviewFocus = null
+  private readonly exports: DocumentExports
   private readonly subscriptions: vscode.Disposable[] = []
   private applying?: { target: string; version?: number }
   private ready = false
@@ -27,7 +29,8 @@ class EditorPanel implements vscode.Disposable {
   private flushId = 0
   private readonly flushes = new Map<number, { resolve(success: boolean): void; timer: ReturnType<typeof setTimeout> }>()
 
-  constructor(readonly document: vscode.TextDocument, readonly panel: vscode.WebviewPanel, private readonly updateFocus: () => void) {
+  constructor(readonly document: vscode.TextDocument, readonly panel: vscode.WebviewPanel, private readonly updateFocus: () => void, state: vscode.Memento) {
+    this.exports = new DocumentExports(document, state, message => this.post(message), () => this.flush())
     this.subscriptions.push(
       panel.onDidChangeViewState(() => {
         if (!panel.active) this.focus = null
@@ -60,6 +63,7 @@ class EditorPanel implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true
+    this.exports.dispose()
     this.focus = null
     this.updateFocus()
     this.subscriptions.forEach(subscription => subscription.dispose())
@@ -157,6 +161,12 @@ class EditorPanel implements vscode.Disposable {
 
   private async action(action: HostAction, context: ActionContext = {}, files?: ImageUpload[], formatCommand?: string): Promise<void> {
     switch (action) {
+      case 'exportDocument': this.exports.open(); break
+      case 'exportPdf': this.exports.open('pdf'); break
+      case 'exportHtml': this.exports.open('html'); break
+      case 'exportImage': this.exports.open('png'); break
+      case 'print': this.exports.open('print'); break
+      case 'exportLast': await this.exports.last(); break
       case 'save':
         if (!await this.document.save()) throw new Error('VS Code 未保存此文档。')
         break
@@ -235,6 +245,9 @@ class EditorPanel implements vscode.Disposable {
 
   private async receive(message: WebviewMessage): Promise<void> {
     switch (message.type) {
+      case 'export': await this.exports.start(message.options, message.preview); break
+      case 'cancelExport': this.exports.cancel(); break
+      case 'exportRendered': this.exports.rendered(message); break
       case 'ready': this.mac = message.mac === true; this.ready = true; try { await this.settings() } finally { this.post(this.snapshot()) }; break
       case 'focus': this.focus = this.panel.active ? message.target : null; this.updateFocus(); break
       case 'edit': await this.edit(message); break
@@ -302,7 +315,7 @@ export function activate(context: vscode.ExtensionContext): void {
     async resolveCustomTextEditor(document, panel) {
       const assets = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')
       panel.webview.options = { enableScripts: true, localResourceRoots: localResourceRoots(document, assets) }
-      const editor = new EditorPanel(document, panel, updateFocus)
+      const editor = new EditorPanel(document, panel, updateFocus, context.globalState)
       panels.add(editor)
       panel.onDidDispose(() => { panels.delete(editor); editor.dispose() }, undefined, context.subscriptions)
       try { panel.webview.html = await webviewHtml(panel.webview, assets) }
@@ -319,7 +332,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!resource) { void vscode.window.showInformationMessage('请先打开或选择一个 Markdown 文件。'); return }
       await vscode.commands.executeCommand('vscode.openWith', resource, viewType)
     }),
-    ...(['format', 'insertImage', 'insertImageUrl', 'image', 'find', 'replace', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText',
+    ...(['exportDocument', 'exportPdf', 'exportHtml', 'exportImage', 'print', 'exportLast', 'format', 'insertImage', 'insertImageUrl', 'image', 'find', 'replace', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText',
       'toggleOutline', 'toggleFocus', 'toggleTypewriter', 'toggleRead', 'zoomIn', 'zoomOut', 'zoomReset', 'preferences', 'help', 'shortcuts'] as const)
       .map(action => vscode.commands.registerCommand(`markleaf.${action}`, () => active()?.requestAction(action))),
     ...formatActions.map(({ command }) => vscode.commands.registerCommand(`markleaf.${command}`, () => active()?.requestFormatCommand(command))),

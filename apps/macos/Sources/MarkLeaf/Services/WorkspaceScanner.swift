@@ -5,10 +5,14 @@ import Foundation
 final class WorkspaceScanner {
     private let root: String
     private let queue = DispatchQueue(label: "com.markleaf.workspace-scan")
-    private var cancelled = false
+    private let cancellationLock = NSLock()
+    private var isCancelled = false
+    private var cancelled: Bool {
+        cancellationLock.lock()
+        defer { cancellationLock.unlock() }
+        return isCancelled
+    }
     private let previewCache: WorkspacePreviewCache?
-
-    private static let allowedExtensions: Set<String> = ["md", "txt", "markdown"]
 
     var onComplete: (([WorkspaceEntry]) -> Void)?
 
@@ -27,6 +31,7 @@ final class WorkspaceScanner {
             guard let self else { return }
             let entries = Self.enumerateChildren(directory: self.root, cancelled: { self.cancelled })
             DispatchQueue.main.async {
+                guard !self.cancelled else { return }
                 self.onComplete?(entries)
             }
         }
@@ -42,13 +47,16 @@ final class WorkspaceScanner {
                 previewCache: self.previewCache
             )
             DispatchQueue.main.async {
+                guard !self.cancelled else { return }
                 completion(documents)
             }
         }
     }
 
     func cancel() {
-        cancelled = true
+        cancellationLock.lock()
+        isCancelled = true
+        cancellationLock.unlock()
     }
 
     private static func enumerateDocuments(
@@ -75,8 +83,8 @@ final class WorkspaceScanner {
                     }
                 } else {
                     let ext = (item as NSString).pathExtension.lowercased()
-                    if allowedExtensions.contains(ext) {
-                        let preview = previewCache?.preview(path: path, isMarkdown: ext == "md" || ext == "markdown")
+                    if WorkspaceDocumentPolicy.includes(fileExtension: ext) {
+                        let preview = previewCache?.preview(path: path, isMarkdown: ext == "md")
                         results.append(WorkspaceEntry(name: item, path: path, isDirectory: false, preview: preview))
                     }
                 }
@@ -103,7 +111,7 @@ final class WorkspaceScanner {
             if item.hasPrefix(".") { continue }
             if !isDirectory.boolValue {
                 let ext = (item as NSString).pathExtension.lowercased()
-                guard Self.allowedExtensions.contains(ext) else { continue }
+                guard WorkspaceDocumentPolicy.includes(fileExtension: ext) else { continue }
             }
             entries.append(WorkspaceEntry(name: item, path: path, isDirectory: isDirectory.boolValue))
         }

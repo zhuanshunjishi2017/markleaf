@@ -4,18 +4,38 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.2.5** provides 35 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. Export and printing are not included.
+Version **0.2.7** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They always open below the corresponding content and scroll out of view with the document; they do not flip to the other side or dock at the bottom of the window. The math symbol panel adapts its layout to the available space.
 
 Project and extension READMEs are available in four languages. UI translation coverage is described under “Typography and preferences” below.
 
+
+## Export, preview, and printing
+
+Use the toolbar's export menu or **MarkLeaf: Export Document / PDF / HTML / Image / Print** in the Command Palette. Export also works in reading mode. **Export with Last Settings** reuses the last successfully saved options and asks for a new destination.
+
+- **PDF**: paginated output with selectable text; A4/A5/Letter/Legal, landscape, four margins, plain-text headers/footers, and page numbers. Tables and headings can stay with adjacent content when they fit; oversized tables may still span pages.
+- **HTML**: a complete standalone document with typography CSS, rendered math and Mermaid, KaTeX fonts, and embedded images. Creating the file does not require a browser. Web hyperlinks retain their original destinations.
+- **PNG/JPG**: content width, 1–3× resolution, maximum output height per image, and JPEG quality. Long documents split into numbered files such as `name-01.png`; replacing existing split files requires confirmation.
+- **Preview**: a separate Chrome/Edge window shows the generated PDF/images, or the full HTML document. Close it to return, or cancel from VS Code's progress notification.
+- **Print**: Chrome/Edge opens its print dialog for printer selection and confirmation. Paper, margins, and background graphics can be adjusted there. Closing the dialog does not prove that a printer completed the job. Repeating page furniture uses modern Chromium paged-media support; use a current stable browser.
+
+Exports default to `minimal` (Web · Minimal) and a light palette, with all nine built-in typography styles and nineteen palettes available. Document colors still follow VS Code. Export options do not change editor preferences; the configured body font and CJK spacing are reused, while custom CSS files and editor zoom are excluded.
+
+PDF, images, preview, and printing use an installed **Chrome/Edge**. The extension does not bundle or download a browser. If discovery fails, select its executable, or set **MarkLeaf: Export Browser Path** (`markleaf.exportBrowserPath`, machine scope). On macOS, for example: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`. Each operation uses a temporary profile that is released on completion or cancellation, without attaching to an existing browser session.
+
+Export waits for synchronization and snapshots the VS Code `TextDocument`; it does not save or edit Markdown. Conflicts, unreadable images, and math/diagram parse errors stop export and retain the original error. Local, workspace, and HTTP/HTTPS images are embedded from their document-relative URIs, with a 16 MiB limit per image. Network images must be reachable. Body fonts remain system fonts; only KaTeX fonts are embedded. Operations are cancellable, and already-written split files are listed in the result.
+
+A remote extension host can export files using its filesystem and installed browser. Interactive preview and printing require a local desktop VS Code window; for SSH/WSL, export the file and open it locally. Windows/Linux/remote hosts and physical printing still need acceptance in those environments.
+
+
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.2.5.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.2.7.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.5.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
 ```
 
 After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
@@ -40,7 +60,7 @@ The extension supplies defaults through `workbench.diffEditorAssociations` witho
 | Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Double-click a formula or diagram to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. |
 | Footnotes and metadata | Insert footnotes, rename labels, return to references, clear references, delete definitions, and display/insert YAML Front Matter. A label cannot reuse an existing definition or reference. |
 | Code | Choose a block language, copy code, exit a block, and toggle syntax highlighting. |
-| Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML, and pasting plain text. Normal copy supplies selected text and HTML; plain-text paste keeps Markdown/HTML markers literal. |
+| Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML source, and pasting plain text. Normal copy supplies selected text and HTML. In visual mode, both ordinary text paste and Paste Plain Text parse Markdown using the Windows rules. Source editing keeps literal text; the status bar reports parsing, formatting conversion, fallback reasons, or failure. |
 | Find and replace | Search rendered text with case/whole-word matching, previous/next results, replace one, or replace all. Find works in reading mode; replacement requires editing mode. |
 | Outline and reading | “视图” (View) provides an H1–H6 outline, paragraph focus, typewriter scrolling, zoom, typography, and colors. The status bar shows character counts, selected characters, current block, and position; hover for more statistics. |
 
@@ -111,7 +131,7 @@ Use the typography/settings entry in “视图” (View), or search VS Code sett
 
 | Group | Main settings |
 | --- | --- |
-| Typography and colors | `typography`: nine styles—sans, serif, print, print-double, latex, retro-print, minimal, magazine, notebook. `colorTheme`: follows VS Code by default, or selects one of nineteen built-in palettes. Print styles affect screen layout; this extension has no export action. |
+| Typography and colors | `typography`: nine styles—sans, serif, print, print-double, latex, retro-print, minimal, magazine, notebook. `colorTheme`: follows VS Code by default, or selects one of nineteen built-in palettes. Rendered documents also default to `minimal` (Web · Minimal), preserving type hierarchy, whitespace, and table detail. Existing user/workspace typography choices take precedence. |
 | Fonts and width | `fontSize` (default 16), `fontFamily`, `lineHeight`, `maxWidth` (default 820), `ignoreMaxWidth`, `zoom`. Fonts used by a style must be installed locally. |
 | Code and CJK | `showCodeHighlight`, `sourceFontFamily` / `sourceFontSize` for math/diagram source, `cjkLanguage`, `cjkAutoSpacing`. Visual spacing does not insert spaces into source text. |
 | View | `defaultMode`, `showOutline`, `focusMode`, `typewriterMode`, `showStatusBar`, `showBlockHandle`, `autoHideScrollbars`, `ctrlWheelZoom`. |
@@ -120,7 +140,7 @@ Use the typography/settings entry in “视图” (View), or search VS Code sett
 | Formatting shortcuts | `shortcuts`, shared with the recorder under “视图 → 快捷键…”. Applies only to MarkLeaf's rendered editing area in VS Code. |
 | Custom CSS | `customCss`, a CSS path relative to the document or an absolute path. Loaded only in trusted workspaces; reload the editor after changing the CSS file. |
 
-Normal Markdown source fonts, indentation, and shortcuts use native VS Code settings. Files/folders, recent files, tabs, autosave, recovery, encoding, line endings, window layout, and extension updates also use VS Code's capabilities. Shared formula and diagram controls select existing Simplified Chinese, Traditional Chinese, English, or Japanese translations from the VS Code language. Newly added Webview menus and formatting-command titles currently use Chinese; other command titles remain English. Four-language documentation does not imply a fully translated UI.
+Normal Markdown source fonts, indentation, and shortcuts use native VS Code settings. Files/folders, recent files, tabs, autosave, recovery, encoding, line endings, window layout, and extension updates also use VS Code's capabilities. Shared formula and diagram controls select existing Simplified Chinese, Traditional Chinese, English, or Japanese translations from the VS Code language. Export menus, dialogs, commands, and status messages use Simplified Chinese, Traditional Chinese, English, or Japanese according to VS Code. Existing editing menus and formatting-command titles still use Chinese; other existing command titles remain English. Four-language documentation does not imply a fully translated UI.
 
 ## Fidelity and delivery limits
 
@@ -130,7 +150,7 @@ Underline can read bounded `++text++`: its inner edges cannot be whitespace, and
 
 The current target is desktop VS Code; there is no browser-extension entry point. Remote URIs use VS Code file system/resource APIs, but Windows, Linux, SSH/WSL, and real clipboard, drag/drop, IME, and keyboard interactions still need acceptance in their respective environments. Builds, Vitest, and mocked-host tests do not replace installed-extension UI acceptance.
 
-PDF, HTML-file, long-image export, and printing are not integrated. Native export features remain available. See the [feature mapping (Simplified Chinese)](./feature-parity.md).
+See the [feature mapping (Simplified Chinese)](./feature-parity.md).
 
 ## Development and build
 

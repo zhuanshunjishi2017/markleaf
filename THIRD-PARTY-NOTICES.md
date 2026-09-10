@@ -42,6 +42,20 @@ bundled via `@tiptap/pm`.
 | Vitest | 4.0.15 | MIT |
 | jsdom | 27.2.0 | MIT |
 
+## VS Code Export Runtime (npm)
+
+| Package | Version | License |
+| --- | --- | --- |
+| puppeteer-core | 24.43.1 | Apache-2.0 |
+
+The VS Code package bundles Puppeteer Core and its runtime dependencies, but does
+not bundle or download Chrome/Chromium. It launches an installed Chrome or Edge
+with an isolated temporary profile. Bundled runtime license texts are in
+`dist/export-licenses/` in the VSIX.
+The Puppeteer license text is retained from the upstream
+[24.43.1 source tag](https://github.com/puppeteer/puppeteer/blob/puppeteer-v24.43.1/LICENSE)
+in `apps/vscode/licenses/puppeteer-LICENSE` because its npm packages omit that file.
+
 ## Fonts
 
 The editor uses the following system font stacks and does not bundle font

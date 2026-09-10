@@ -208,7 +208,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var onSelectionStateChanged: (() -> Void)?
     var snapshotModePath: String?
 
-    weak var webView: WKWebView?
+    weak var webView: WKWebView? {
+        didSet {
+            if oldValue !== webView { cancelPendingPasteCommands() }
+        }
+    }
 
     init(workspace: WorkspaceContext = WorkspaceContext()) {
         self.workspace = workspace
@@ -242,6 +246,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private let writeCoordinator = SerialWriteCoordinator()
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
+    var pendingPasteCommands: [String: PendingPasteCommand] = [:]
     var pendingExportContext: ExportContext?
     /// 导出预览：请求时捕获文档 URL，避免异步返回前切换标签改变图片解析基准。
     var pendingExportHTMLRequest: PendingExportHTMLRequest?
@@ -324,6 +329,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func handleEditorMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
+        // 只有本会话尚在等待的粘贴回执才能更新状态或修订号。
+        if type == "commandResult" && !handlePasteResult(message) { return }
         let payload = message["payload"] as? [String: Any]
         let messageRevision: Int64?
         if let value = message["revision"] as? NSNumber {
@@ -652,7 +659,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 宿主 -> 编辑器
 
-    private func send(_ type: String, payload: [String: Any]? = nil, requestId: String? = nil) {
+    private func send(_ type: String, payload: [String: Any]? = nil, requestId: String? = nil,
+                      onFailure: (() -> Void)? = nil) {
+        guard let webView else { onFailure?(); return }
         var dict: [String: Any] = [
             "protocolVersion": 1,
             "type": type,
@@ -668,6 +677,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let jsonData = try? JSONSerialization.data(withJSONObject: dict),
               let json = String(data: jsonData, encoding: .utf8) else {
             AppLog.error("消息序列化失败: \(type)")
+            onFailure?()
             return
         }
         // 用数组包裹字符串得到转义后的 JS 字符串字面量（裸 String 不能作为
@@ -675,14 +685,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let literalData = try? JSONSerialization.data(withJSONObject: [json]),
               var literal = String(data: literalData, encoding: .utf8) else {
             AppLog.error("消息字面量序列化失败: \(type)")
+            onFailure?()
             return
         }
         literal.removeFirst() // [" 
         literal.removeLast()  // "]
         let script = "window.postMessage(JSON.parse(\(literal)), '*')"
-        webView?.evaluateJavaScript(script) { _, error in
+        webView.evaluateJavaScript(script) { _, error in
             if let error {
                 AppLog.warning("发送 \(type) 失败: \(error.localizedDescription)")
+                onFailure?()
             }
         }
     }
@@ -817,6 +829,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         sourceSelectionTo: Int? = nil
     ) {
         // 替换文档时清理上一个文档的快照
+        cancelPendingPasteCommands()
         RecoveryService.shared.delete(documentId: documentId)
         startupRecoveryNotice = nil
         documentId = UUID().uuidString.lowercased()
@@ -1090,6 +1103,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 窗口关闭时清理：删除当前文档快照、停止定时器（对应 C# DeleteOwnFiles 的一部分）。
     func cleanupForClose() {
+        cancelPendingPasteCommands()
         recoveryTimer?.invalidate()
         recoveryTimer = nil
         stopExternalChangeWatch()
@@ -1224,12 +1238,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         execute("insertTable", text: Self.tableCommandText(rows: rows, columns: columns))
     }
 
-    func execute(_ command: String, text: String? = nil, html: String? = nil) {
+    func execute(_ command: String, text: String? = nil, html: String? = nil,
+                 requestId: String? = nil, onFailure: (() -> Void)? = nil) {
         if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
+            onFailure?()
             return
         }
         let payload = EditorPastePolicy.payload(command: command, text: text, html: html)
-        send("command", payload: payload)
+        send("command", payload: payload, requestId: requestId, onFailure: onFailure)
     }
 
     func requestSnapshot(completion: @escaping (Result<String, Error>) -> Void) {
@@ -2357,6 +2373,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 initialDirty: self.isDirty
             )
             self.isReady = false
+            self.cancelPendingPasteCommands()
             // 保持“初始文档已处理”状态，让 ready 后进入快照回放分支，
             // 而不是把重启误解为一次新的启动动作。
             self.didLoadInitialDocument = true

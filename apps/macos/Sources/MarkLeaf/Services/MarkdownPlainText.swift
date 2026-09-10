@@ -9,7 +9,7 @@ enum MarkdownPlainText {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         var text = isMarkdown ? stripMarkdown(normalized) : normalized
-        text = decodeHTMLEntities(text)
+        text = HTMLEntities.decode(text)
         return collapseWhitespace(text)
     }
 
@@ -17,7 +17,7 @@ enum MarkdownPlainText {
         var value = text
         value = replace(value, pattern: #"---[ \t]*\n.*?\n---[ \t]*(?:\n|\z)"#, options: [.dotMatchesLineSeparators], isAnchored: true)
         value = replace(value, pattern: #"^[ \t]{0,3}(?:`{3,}|~{3,})[^\n]*$"#, options: [.anchorsMatchLines])
-        value = replace(value, pattern: #"<[^>]+>"#)
+        value = replace(value, pattern: #"<[^>]+>"#, template: " ")
         value = replace(value, pattern: #"!\[([^\]]*)\]\([^\)]*\)"#, template: "$1")
         value = replace(value, pattern: #"\[([^\]]+)\]\([^\)]*\)"#, template: "$1")
         value = replace(value, pattern: #"<((?:https?://|mailto:)[^>]+)>"#, options: [.caseInsensitive], template: "$1")
@@ -45,17 +45,6 @@ enum MarkdownPlainText {
         let range = NSRange(text.startIndex..., in: text)
         let matchingOptions: NSRegularExpression.MatchingOptions = isAnchored ? [.anchored] : []
         return regex.stringByReplacingMatches(in: text, options: matchingOptions, range: range, withTemplate: template)
-    }
-
-    private static func decodeHTMLEntities(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&apos;", with: "'")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&nbsp;", with: " ")
     }
 
     private static func collapseWhitespace(_ text: String) -> String {

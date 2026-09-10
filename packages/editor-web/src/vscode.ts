@@ -1,13 +1,16 @@
 import './styles.css'
 import '../../styles/base.css'
-import '../../styles/sans.css'
+import '../../styles/minimal.css'
 import './vscode.css'
-import { Fragment, Slice } from '@tiptap/pm/model'
 import {
   collapseSourceEditor, createEditor, executeEditorCommand, expandSourceEditor,
-  getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownText, scrollToFootnoteDefinition, setCodeBlockControlHandlers,
-  setHostImageResolver, shouldParsePastedTextAsMarkdown, updateEditorMarkdown,
+  getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownTextWithResult, pasteClipboardContentWithResult, scrollToFootnoteDefinition, setCodeBlockControlHandlers,
+  setHostImageResolver, updateEditorMarkdown,
 } from './editor'
+import { vscodePasteStatus } from './vscode-paste-status'
+import { createExportDialog } from './vscode-export-dialog'
+import { renderExportSnapshot } from './vscode-export'
+import { exportStrings } from './vscode-export-strings'
 import { createFindBar } from './vscode-find'
 import { createReadingView } from './vscode-reading'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
@@ -51,6 +54,7 @@ let language = 'zh-Hans'
 let actionInFlight = false
 let actionState: ReturnType<typeof createEditor>['state'] | undefined
 let noticeError = ''
+let pasteResult: ReturnType<typeof pasteClipboardContentWithResult> | undefined
 let renderingFailed = false
 let restoringScroll = true
 let disposed = false
@@ -59,6 +63,7 @@ const mac = /Mac/i.test(navigator.platform)
 let shortcuts = resolveShortcuts({}, mac)
 let unbindShortcuts: (() => void) | undefined
 const shortcutDialog = createShortcutDialog(mac, post, () => { editor?.view.focus(); updateFocus() })
+const exportDialog = createExportDialog(post, updateFocus)
 const fileReaders = new Set<FileReader>()
 const imageUrls = new Map<string, string>()
 const requestedImages = new Set<string>()
@@ -104,18 +109,22 @@ const sync = new TextDocumentSync({
             if (files.length) { void importImageFiles(files); return true }
             const text = event.clipboardData?.getData('text/plain') ?? ''
             const html = event.clipboardData?.getData('text/html') ?? ''
-            if (!editor.isActive('codeBlock') && shouldParsePastedTextAsMarkdown(editor, text, html)) {
-              return pasteMarkdownText(editor, text)
-            }
-            return false
+            // Synthetic paste events used by the shared HTML/text fallback have
+            // no clipboard payload and must reach ProseMirror without recursion.
+            if (!text && !html) return false
+            pasteContent(text, html)
+            return true
           },
         })
         editor.on('update', ({ transaction }) => {
-          if (!suppressUpdate && transaction.docChanged) sync.change(getMarkdown(editor!))
+          if (!suppressUpdate && transaction.docChanged) {
+            pasteResult = undefined
+            sync.change(getMarkdown(editor!))
+          }
         })
         editor.on('selectionUpdate', updateToolbar)
         unbindShortcuts = bindFormatShortcuts(editor.view.dom, {
-          mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen,
+          mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen && !exportDialog.isOpen,
           shortcuts: () => shortcuts, run: id => runFormatCommand(id, true),
         })
         interactions = createEditorInteractions(editor, mount, () => action('block'))
@@ -128,6 +137,7 @@ const sync = new TextDocumentSync({
       mount.setAttribute('aria-busy', 'false')
       renderingFailed = false
       noticeError = ''
+      pasteResult = undefined
       const target = restoringScroll ? initialState?.scrollTop ?? 0 : scrollTop
       restoringScroll = false
       requestAnimationFrame(() => window.scrollTo(0, target))
@@ -154,6 +164,9 @@ function updateStatus(): void {
     notice.hidden = !noticeText.textContent
     recover.hidden = !sync.conflict
     status.textContent = renderingFailed ? '文档加载失败' : sync.conflict ? '存在未同步编辑' : sync.pending ? '正在同步…' : !writable ? '文件只读' : mode === 'read' ? '阅读模式' : '已同步到 VS Code'
+    if (pasteResult && !renderingFailed && !sync.conflict && writable && mode === 'edit') {
+      status.textContent += ` · ${vscodePasteStatus(pasteResult, language)}`
+    }
     reading?.update()
     findBar?.update()
     updateToolbar()
@@ -180,10 +193,22 @@ function showError(message: string): void {
   notice.hidden = !message
 }
 
+function pasteContent(text: string, html = ''): void {
+  if (!editor?.isEditable || sync.conflict) return
+  try {
+    pasteResult = html
+      ? pasteClipboardContentWithResult(editor, text, html)
+      : pasteMarkdownTextWithResult(editor, text)
+  } catch (error) {
+    pasteResult = { success: false, outcome: 'failed', error: error instanceof Error ? error.message : String(error) }
+  }
+  updateStatus()
+}
+
 function action(action: HostAction, formatCommand?: string): void {
   if (action === 'shortcuts') { closeToolbarMenus(); shortcutDialog.open(); updateFocus(); return }
   if (!editor) return
-  if (shortcutDialog.isOpen) return
+  if (shortcutDialog.isOpen || exportDialog.isOpen) return
   if (action === 'find' || action === 'replace') { findBar?.open(action === 'replace'); return }
   if (action === 'toggleRead') { modeButton.click(); return }
   const toggles = { toggleOutline: 'showOutline', toggleFocus: 'focusMode', toggleTypewriter: 'typewriterMode' } as const
@@ -229,7 +254,7 @@ function runNextAction(): void {
 }
 
 function runFormatCommand(id: string, fromShortcut = false): void {
-  if (!isFormatCommand(id) || !editor?.isEditable || actionInFlight || shortcutDialog.isOpen) return
+  if (!isFormatCommand(id) || !editor?.isEditable || actionInFlight || shortcutDialog.isOpen || exportDialog.isOpen) return
   // Keep Tiptap's heading-key behavior: pressing the same heading key again
   // returns to a paragraph. Menu commands continue to set the requested level.
   if (fromShortcut && /^setHeading[1-6]$/.test(id) && editor.isActive('heading', { level: Number(id.at(-1)) })) command('setParagraph')
@@ -313,16 +338,10 @@ function command(command: string, text?: string, fromHost = false): void {
     success = editor.chain().focus().insertContent(paths.map(src => ({ type: 'image', attrs: { src, alt: decodeURIComponent(src.split('/').at(-1) ?? '图片') } }))).run()
   } else if (command === 'pastePlainText') {
     if (!text) { showError('剪贴板中没有文本。'); return }
-    // The browser paste pipeline also runs Tiptap's Markdown paste rules.
-    // A literal slice bypasses those rules as well as HTML parsing.
-    const transaction = editor.state.tr
-    if (editor.state.selection.$from.parent.type.spec.code) transaction.insertText(text)
-    else {
-      const paragraphs = text.split(/\r\n?|\n/).map(line => editor!.schema.nodes.paragraph!.create(null, line ? editor!.schema.text(line) : undefined))
-      transaction.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)))
-    }
-    editor.view.dispatch(transaction.scrollIntoView())
-    success = true
+    // Windows discards the clipboard's rich format here, then parses Markdown
+    // in the visual editor. The VS Code source editor owns literal source edits.
+    pasteContent(text)
+    return
   } else success = command === 'formatPainter' ? interactions?.togglePainter() : executeEditorCommand(editor, command, text)
   if (!success) {
     noticeError = '此操作不适用于当前选区。请将光标放入目标段落或表格后重试。'
@@ -411,7 +430,7 @@ function reportFocus(target: WebviewFocus): void {
   post({ type: 'focus', target })
 }
 function updateFocus(): void {
-  reportFocus(!document.hasFocus() || shortcutDialog.isOpen ? null
+  reportFocus(!document.hasFocus() || shortcutDialog.isOpen || exportDialog.isOpen ? null
     : document.activeElement?.closest('input, textarea, select, .markleaf-expanded-source') ? 'input' : 'document')
 }
 window.addEventListener('focus', updateFocus)
@@ -526,6 +545,10 @@ function updateTheme(): void {
   const dark = settings.colorTheme === 'vscode' ? document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
     : ['apple-dark', 'dark', 'deep-sea', 'espresso', 'high-contrast-dark', 'morandi-dark', 'pure-black'].includes(settings.colorTheme)
   document.body.classList.toggle('markleaf-theme-dark', dark)
+  const highContrast = settings.colorTheme === 'vscode'
+    ? document.body.classList.contains('vscode-high-contrast') || document.body.classList.contains('vscode-high-contrast-light')
+    : settings.colorTheme.startsWith('high-contrast-')
+  document.body.toggleAttribute('data-markleaf-soft-dark', dark && !highContrast)
   rerenderMermaidElements(mount)
 }
 const themeObserver = new MutationObserver(updateTheme)
@@ -536,6 +559,13 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
   if (!message || typeof message.type !== 'string') return
   try {
     switch (message.type) {
+      case 'exportOptions': closeToolbarMenus(); exportDialog.open(message.options, language); updateFocus(); break
+      case 'exportFinished': exportDialog.finished(message.message, message.error); break
+      case 'renderExport':
+        void renderExportSnapshot(message.markdown, message.title, message.options, message.settings, message.language)
+          .then(result => post({ type: 'exportRendered', requestId: message.requestId, result }),
+            error => post({ type: 'exportRendered', requestId: message.requestId, error: error instanceof Error ? error.message : String(error) }))
+        break
       case 'document': sync.receiveDocument(message); break
       case 'recovered': recover.disabled = false; pendingActions.length = 0; sync.reset(message.document); break
       case 'requestAction': action(message.action); break
@@ -562,6 +592,8 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
         settings = message.settings
         customCss = message.customCss ?? ''
         language = message.language ?? 'zh-Hans'
+        const exportLabels = exportStrings(language)
+        for (const label of document.querySelectorAll<HTMLElement>('[data-export-label]')) label.textContent = exportLabels[label.dataset.exportLabel as keyof typeof exportLabels]
         if (!editor && !initialState?.mode) mode = settings.defaultMode
         reading?.apply(settings, customCss, language)
         updateTheme()
@@ -598,6 +630,7 @@ window.addEventListener('pagehide', () => {
   reading?.dispose()
   unbindShortcuts?.()
   shortcutDialog.dispose()
+  exportDialog.dispose()
   cancelAnimationFrame(scrollFrame)
   clearTimeout(zoomTimer)
   editor?.destroy()

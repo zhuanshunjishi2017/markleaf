@@ -1,4 +1,5 @@
 // VS Code-specific document transport. Native hosts keep protocol.ts unchanged.
+import { isExportOptions, type ExportOptions, type ExportHtmlResult } from './vscode-export-options'
 import type { EditorCommandState } from './editor-state'
 import type { MarkLeafSettings } from './vscode-settings'
 import { isFormatCommand, type ShortcutSettings } from './vscode-shortcuts'
@@ -22,9 +23,13 @@ export type DocumentSnapshot = {
 export type HostAction = 'save' | 'undo' | 'redo' | 'openSource' | 'openSourceBeside'
   | 'format' | 'block' | 'insertLink' | 'insertImage' | 'insertImageUrl' | 'image' | 'importImages' | 'codeLanguage'
   | 'find' | 'replace' | 'toggleOutline' | 'toggleFocus' | 'toggleTypewriter' | 'toggleRead' | 'zoomIn' | 'zoomOut' | 'zoomReset'
+  | 'exportDocument' | 'exportPdf' | 'exportHtml' | 'exportImage' | 'print' | 'exportLast'
   | 'copyMarkdown' | 'copyPlainText' | 'copyHtml' | 'pastePlainText' | 'preferences' | 'help' | 'shortcuts' | 'formatCommand'
 
 export type WebviewMessage =
+  | { type: 'export'; options: ExportOptions; preview: boolean }
+  | { type: 'cancelExport' }
+  | { type: 'exportRendered'; requestId: number; result?: ExportHtmlResult; error?: string }
   | { type: 'ready'; mac?: boolean }
   | { type: 'focus'; target: WebviewFocus }
   | { type: 'edit'; sequence: number; baseVersion: number; markdown: string }
@@ -40,6 +45,9 @@ export type WebviewMessage =
   | { type: 'error'; message: string }
 
 export type ExtensionMessage = DocumentSnapshot
+  | { type: 'exportOptions'; options: ExportOptions }
+  | { type: 'renderExport'; requestId: number; markdown: string; title: string; options: ExportOptions; settings: MarkLeafSettings; language: string }
+  | { type: 'exportFinished'; message: string; error?: boolean }
   | { type: 'requestAction'; action: HostAction }
   | { type: 'requestFormatCommand'; command: string }
   | { type: 'shortcutSaved'; requestId: number; shortcuts: ShortcutSettings; error?: string }
@@ -58,10 +66,17 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
   const message = value as Record<string, unknown>
   const integer = (n: unknown): n is number => Number.isSafeInteger(n) && Number(n) >= 0
   switch (message.type) {
+    case 'export': return isExportOptions(message.options) && typeof message.preview === 'boolean'
+    case 'cancelExport': return true
+    case 'exportRendered': {
+      const result = message.result as Record<string, unknown> | undefined
+      return integer(message.requestId) && ((typeof message.error === 'string' && result === undefined)
+        || (message.error === undefined && !!result && typeof result.html === 'string' && Array.isArray(result.images) && result.images.every(p => typeof p === 'string')))
+    }
     case 'ready': return message.mac === undefined || typeof message.mac === 'boolean'
     case 'focus': return message.target === null || message.target === 'document' || message.target === 'input'
     case 'edit': return integer(message.sequence) && integer(message.baseVersion) && typeof message.markdown === 'string'
-    case 'action': return ['save', 'undo', 'redo', 'openSource', 'openSourceBeside', 'format', 'block', 'insertLink', 'insertImage', 'insertImageUrl', 'image', 'importImages', 'codeLanguage', 'find', 'replace', 'toggleOutline', 'toggleFocus', 'toggleTypewriter', 'toggleRead', 'zoomIn', 'zoomOut', 'zoomReset', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText', 'preferences', 'help', 'formatCommand'].includes(String(message.action))
+    case 'action': return ['exportDocument', 'exportPdf', 'exportHtml', 'exportImage', 'print', 'exportLast', 'save', 'undo', 'redo', 'openSource', 'openSourceBeside', 'format', 'block', 'insertLink', 'insertImage', 'insertImageUrl', 'image', 'importImages', 'codeLanguage', 'find', 'replace', 'toggleOutline', 'toggleFocus', 'toggleTypewriter', 'toggleRead', 'zoomIn', 'zoomOut', 'zoomReset', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText', 'preferences', 'help', 'formatCommand'].includes(String(message.action))
       && (message.action !== 'formatCommand' || isFormatCommand(message.command))
       && (message.context === undefined || isActionContext(message.context))
       && (message.action !== 'importImages' || (Array.isArray(message.files) && message.files.length > 0

@@ -1,0 +1,10 @@
+{
+  "command.exportDocument": "MarkLeaf: 匯出文件…",
+  "command.exportPdf": "MarkLeaf: 匯出 PDF…",
+  "command.exportHtml": "MarkLeaf: 匯出 HTML…",
+  "command.exportImage": "MarkLeaf: 匯出圖片…",
+  "command.print": "MarkLeaf: 列印…",
+  "command.exportLast": "MarkLeaf: 依上次設定匯出",
+  "config.exportBrowserPath": "PDF、圖片、預覽和列印使用的 Chrome/Edge 執行檔路徑。留空自動尋找已安裝瀏覽器，不下載瀏覽器。",
+  "config.typography": "MarkLeaf 排版，預設使用網頁·極簡；保留使用者或工作區選擇的樣式。"
+}

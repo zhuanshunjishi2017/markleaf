@@ -20,28 +20,34 @@ extension EditorSession {
 
     // MARK: - 复制（对应 C# ExecuteClipboardCopyAsync）
 
-    func copySelectionAs(_ mode: ClipboardCopyMode) {
+    func copySelectionAs(_ mode: ClipboardCopyMode, pasteboard: NSPasteboard = .general) {
         requestSelectionExport { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch result {
                 case .success(let selection):
-                    let text = mode == .markdown ? selection.markdown : selection.text
-                    guard !text.isEmpty || !selection.html.isEmpty else {
+                    let text: String
+                    switch mode {
+                    case .markdown: text = selection.markdown
+                    case .html: text = selection.html
+                    case .formatted, .plainText: text = selection.text
+                    }
+                    guard !text.isEmpty || (mode == .formatted && !selection.html.isEmpty) else {
                         self.statusText = L10n.t("当前没有可复制的文本")
                         return
                     }
-                    let pasteboard = NSPasteboard.general
                     pasteboard.clearContents()
-                    pasteboard.setString(text, forType: .string)
+                    var copied = pasteboard.setString(text, forType: .string)
                     if mode == .formatted && !selection.html.isEmpty {
                         // macOS 剪贴板 HTML 类型（对应 Windows CF_HTML）
-                        pasteboard.setString(selection.html, forType: .html)
+                        copied = pasteboard.setString(selection.html, forType: .html) && copied
+                    }
+                    guard copied else {
+                        self.statusText = L10n.t("剪贴板操作失败")
+                        return
                     }
                     if mode == .html {
-                        if !selection.html.isEmpty {
-                            pasteboard.setString(selection.html, forType: .html)
-                        }
+                        // 与 Windows CopySelectionHtmlAsync 一致：HTML 源码作为文本复制。
                         self.statusText = L10n.t("已复制 HTML")
                     } else {
                         self.statusText = mode == .formatted ? L10n.t("已复制格式化内容") : L10n.t("已复制")
@@ -56,13 +62,19 @@ extension EditorSession {
     // MARK: - 粘贴（对应 C# PasteClipboardContentAsync）
 
     func pasteFromClipboard() {
+        guard isReady, !isReadOnly else { return }
         let pasteboard = NSPasteboard.general
+        let plainText = pasteboard.string(forType: .string)
+        // 源码模式先取文本，再考虑同一剪贴板附带的文件或位图。
+        if isSourceMode, let command = EditorPastePolicy.command(isSourceMode: true, plainText: plainText, html: nil) {
+            executePaste(command)
+            return
+        }
         let urls = pasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL] ?? []
         let image = NSImage(pasteboard: pasteboard)
-        let plainText = pasteboard.string(forType: .string)
         let html = pasteboard.string(forType: .html)
 
         switch EditorPastePolicy.contentKind(
@@ -94,24 +106,85 @@ extension EditorSession {
                 statusText = L10n.t("剪贴板中没有可粘贴的内容")
                 return
             }
-            execute(command.command, text: command.text, html: command.html)
-            statusText = command.command == "pasteClipboard" && command.html != nil
-                ? L10n.t("已粘贴格式化内容")
-                : L10n.t("已粘贴纯文本")
+            executePaste(command)
             return
         case .none:
             statusText = L10n.t("剪贴板中没有可粘贴的内容")
         }
     }
 
-    /// 仅粘贴剪贴板的纯文本，忽略 HTML、图片和 Finder 文件。
+    /// 只读取纯文本格式；与 Windows 一致，可视模式仍按 Markdown 解析。
     func pastePlainTextFromClipboard() {
-        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
+        guard isReady, !isReadOnly else { return }
+        guard let command = EditorPastePolicy.command(
+            isSourceMode: isSourceMode, plainText: NSPasteboard.general.string(forType: .string), html: nil
+        ) else {
             statusText = L10n.t("剪贴板中没有可粘贴的内容")
             return
         }
-        execute("pasteText", text: text)
-        statusText = L10n.t("已粘贴纯文本")
+        executePaste(command)
+    }
+
+    struct PendingPasteCommand {
+        let sourceMode: Bool
+        let formattedRequested: Bool
+        let timeout: DispatchWorkItem
+    }
+
+    func executePaste(_ command: EditorPasteCommand) {
+        guard isReady, !isReadOnly else { return }
+        let requestId = UUID().uuidString.lowercased()
+        let timeout = DispatchWorkItem { [weak self] in
+            self?.failPasteCommand(requestId, reason: "Paste command timed out")
+        }
+        pendingPasteCommands[requestId] = PendingPasteCommand(
+            sourceMode: isSourceMode,
+            formattedRequested: command.html != nil,
+            timeout: timeout
+        )
+        // 与 Windows ExecuteCommandResultAsync 使用相同的 10 秒等待期限。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: timeout)
+        execute(command.command, text: command.text, html: command.html, requestId: requestId) { [weak self] in
+            self?.failPasteCommand(requestId, reason: "Paste command could not be sent")
+        }
+    }
+
+    @discardableResult
+    func handlePasteResult(_ message: [String: Any]) -> Bool {
+        guard message["documentId"] as? String == currentDocumentIdentifier,
+              let requestId = message["requestId"] as? String,
+              let pending = pendingPasteCommands.removeValue(forKey: requestId) else { return false }
+        pending.timeout.cancel()
+        let payload = message["payload"] as? [String: Any]
+        guard payload?["success"] as? Bool == true else {
+            statusText = L10n.t("无法粘贴剪贴板内容")
+            return true
+        }
+        switch payload?["outcome"] as? String {
+        case "markdown": statusText = L10n.t("已粘贴 Markdown")
+        case "normalized": statusText = L10n.t("已粘贴 Markdown，并转换了不兼容的格式")
+        case "plainText" where !pending.sourceMode:
+            if let error = payload?["error"] as? String, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                statusText = L10n.f("已作为纯文本粘贴：%@", error)
+            } else {
+                statusText = L10n.t("Markdown 格式不兼容，已作为纯文本粘贴")
+            }
+        case "formatted": statusText = L10n.t("已粘贴格式化内容")
+        default: statusText = pending.formattedRequested ? L10n.t("已粘贴格式化内容") : L10n.t("已粘贴纯文本")
+        }
+        return true
+    }
+
+    func failPasteCommand(_ requestId: String, reason: String) {
+        guard let pending = pendingPasteCommands.removeValue(forKey: requestId) else { return }
+        pending.timeout.cancel()
+        AppLog.warning(reason)
+        statusText = L10n.t("剪贴板操作失败")
+    }
+
+    func cancelPendingPasteCommands() {
+        pendingPasteCommands.values.forEach { $0.timeout.cancel() }
+        pendingPasteCommands.removeAll()
     }
 
     /// 剪贴板图片 → 保存到图片目录 → insertImage（对应 C# ImportClipboardBitmapAsync）。
