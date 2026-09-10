@@ -79,13 +79,6 @@ final class ImageHTMLExporter: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // Fonts and images can change wrapping and document height after didFinish.
         webView.callAsyncJavaScript("""
-            // The shared image-export stylesheet keeps scrolling enabled for
-            // Windows chunk capture. WKWebView must instead render the whole
-            // document as one surface before taking its full-page snapshot;
-            // otherwise the scroll layer can repeat the last viewport rows.
-            document.documentElement.style.setProperty('overflow', 'visible', 'important');
-            document.body.style.setProperty('overflow', 'visible', 'important');
-            document.body.classList.contains('markleaf-export-image') && document.body.style.setProperty('height', 'auto', 'important');
             await document.fonts.ready;
             await Promise.all(Array.from(document.images, image => image.decode().catch(() => {})));
             return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
@@ -98,11 +91,7 @@ final class ImageHTMLExporter: NSObject, WKNavigationDelegate {
             }
             let pixelHeight = Int(ceil(height * options.imageScale))
             webView.setFrameSize(NSSize(width: options.imageContentWidth, height: height))
-            webView.layoutSubtreeIfNeeded()
-            DispatchQueue.main.async { [weak self, weak webView] in
-                guard let self, let webView else { return }
-                self.captureFullPage(webView, totalPixelHeight: pixelHeight)
-            }
+            self.captureFullPage(webView, totalPixelHeight: pixelHeight)
         }
     }
 
