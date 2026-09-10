@@ -187,6 +187,12 @@ extension EditorSession {
             menu.addItem(.separator())
             addClipboardCommands(menu)
             menu.addItem(.separator())
+            addFormatPainterCommands(
+                menu,
+                canStart: canStartFormatPainter,
+                armed: formatPainterArmed
+            )
+            menu.addItem(.separator())
 
             let format = NSMenu(title: L10n.t("格式"))
             addInlineFormatCommand(format, L10n.t("粗体"), "toggleBold", "b")
@@ -195,19 +201,6 @@ extension EditorSession {
             addInlineFormatCommand(format, L10n.t("删除线"), "toggleStrike")
             addInlineFormatCommand(format, L10n.t("高亮"), "toggleHighlight")
             addInlineFormatCommand(format, L10n.t("行内代码"), "toggleCode")
-            format.addItem(.separator())
-            let painterItem = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
-            painterItem.representedObject = "formatPainterArm"
-            applyShortcut(to: painterItem, command: "formatPainter")
-            let currentCanStart = canStartFormatPainter ?? self.canStartFormatPainter
-            let currentArmed = formatPainterArmed ?? isFormatPainterArmed
-            painterItem.isEnabled = EditorContextMenuState.formatPainterEnabled(
-                isSourceMode: isSourceMode,
-                canStartFormatPainter: currentCanStart,
-                isFormatPainterArmed: currentArmed
-            )
-            painterItem.state = currentArmed ? .on : .off
-            format.addItem(painterItem)
             menu.addItem(submenuItem(L10n.t("格式"), format))
 
             let paragraph = NSMenu(title: L10n.t("段落"))
@@ -540,6 +533,31 @@ extension EditorSession {
     private func addHistoryCommands(_ menu: NSMenu) {
         addEnabledCommand(menu, L10n.t("撤销"), "undo", enabled: !isReadOnly && canUndo)
         addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: !isReadOnly && canRedo)
+    }
+
+    /// 格式刷区块：把「格式刷 / 应用格式刷」从「格式」子菜单里提出来单独成组，
+    /// 放在剪贴板与「格式」之间，避免高频操作要先进子菜单。
+    private func addFormatPainterCommands(_ menu: NSMenu, canStart: Bool?, armed: Bool?) {
+        let currentCanStart = canStart ?? canStartFormatPainter
+        let currentArmed = armed ?? isFormatPainterArmed
+
+        let painter = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
+        painter.representedObject = "formatPainterArm"
+        applyShortcut(to: painter, command: "formatPainter")
+        painter.isEnabled = EditorContextMenuState.formatPainterEnabled(
+            isSourceMode: isSourceMode,
+            canStartFormatPainter: currentCanStart,
+            isFormatPainterArmed: currentArmed
+        )
+        painter.state = currentArmed ? .on : .off
+        menu.addItem(painter)
+
+        // 与主菜单一致：只有已经吸取了格式才允许应用。
+        let apply = menuItem(L10n.t("应用格式刷"), #selector(handleCommand(_:)))
+        apply.representedObject = "formatPainterApply"
+        applyShortcut(to: apply, command: "formatPainterApply")
+        apply.isEnabled = !isSourceMode && !isReadOnly && currentArmed
+        menu.addItem(apply)
     }
 
     private func addEnabledCommand(_ menu: NSMenu, _ title: String, _ command: String, enabled: Bool) {

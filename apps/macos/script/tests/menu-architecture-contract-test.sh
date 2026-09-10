@@ -240,9 +240,14 @@ require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" 
 mac_context_menu="$(method_body "$MAC_CONTEXT" showEditorContextMenu)"
 require_text "$mac_context_menu" 'addHistoryCommands(menu)'
 require_text "$mac_context_menu" 'addClipboardCommands(menu)'
+require_text "$mac_context_menu" 'addFormatPainterCommands('
 require_text "$MAC_CONTEXT" 'L10n.t("撤销"), "undo"'
 require_text "$MAC_CONTEXT" 'L10n.t("重做"), "redo"'
 require_text "$MAC_CONTEXT" 'L10n.t("全选"), "selectAll"'
+# 格式刷必须独立成组（在剪贴板与「格式」之间），不能再躺在「格式」子菜单里。
+require_text "$MAC_CONTEXT" 'painter.representedObject = "formatPainterArm"'
+require_text "$MAC_CONTEXT" 'apply.representedObject = "formatPainterApply"'
+reject_text "$MAC_CONTEXT" 'format.addItem(painter'
 
 # 复制内容到剪贴板复制的是编辑器内容，未命名标签也必须可用；路径类命令仍要求本地路径。
 mac_tab_policy="$(method_body "$ROOT_DIR/macos/Sources/MarkLeaf/Services/MenuCommandAvailabilityPolicy.swift" isTabCommandEnabled)"
