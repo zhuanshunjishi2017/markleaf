@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Drawing.Imaging;
 using System.Text;
 using System.Text.Json;
 using MarkLeaf.Documents;
@@ -817,9 +818,13 @@ internal sealed class EditorHostController : IDisposable
 
         try
         {
+            var viewportHeight = Math.Clamp(
+                (int)Math.Ceiling(maximumImageHeight / scale),
+                900,
+                12000);
             using var captureForm = new Form
             {
-                ClientSize = new Size(contentWidth + 112, 800),
+                ClientSize = new Size(contentWidth + 112, viewportHeight),
                 ShowInTaskbar = false,
                 FormBorderStyle = FormBorderStyle.None,
                 StartPosition = FormStartPosition.Manual,
@@ -855,13 +860,51 @@ internal sealed class EditorHostController : IDisposable
             await Task.Delay(100, cancellationToken);
 
             var metricsJson = await core.ExecuteScriptAsync(
-                "(function () { var root = document.getElementById('export-root'); var rect = root ? root.getBoundingClientRect() : document.documentElement.getBoundingClientRect(); return JSON.stringify({ width: Math.ceil(rect.width), height: Math.ceil(Math.max(root ? root.scrollHeight : 0, document.documentElement.scrollHeight, document.body.scrollHeight)) }); })()");
+                "(function () { var root = document.getElementById('export-root'); var doc = document.querySelector('.markleaf-document'); var width = root ? Math.ceil(root.getBoundingClientRect().width) : Math.ceil(document.documentElement.clientWidth); var height = Math.ceil(Math.max(root ? root.scrollHeight : 0, doc ? doc.scrollHeight : 0, document.documentElement.scrollHeight, document.body.scrollHeight, document.documentElement.offsetHeight, document.body.offsetHeight)); return JSON.stringify({ width: width, height: height }); })()");
             var metricsText = JsonSerializer.Deserialize<string>(metricsJson) ?? "{}";
             using var metrics = JsonDocument.Parse(metricsText);
-            var pageWidth = Math.Max(1, metrics.RootElement.GetProperty("width").GetInt32());
+            var pageWidth = Math.Max(1, Math.Min(contentWidth + 112, metrics.RootElement.GetProperty("width").GetInt32()));
             var pageHeight = Math.Max(1, metrics.RootElement.GetProperty("height").GetInt32());
-            var chunkCssHeight = Math.Max(1, (int)Math.Floor(maximumImageHeight / scale));
-            var chunkCount = (int)Math.Ceiling(pageHeight / (double)chunkCssHeight);
+            // Expand the Chromium viewport to the measured document size before
+            // capturing.  This avoids captureBeyondViewport's internal tiling,
+            // which can duplicate the first viewport texture and truncate the
+            // last rows on long pages.
+            var metricsParameters = JsonSerializer.Serialize(new
+            {
+                width = pageWidth,
+                height = pageHeight,
+                deviceScaleFactor = 1,
+                mobile = false,
+            });
+            await core.CallDevToolsProtocolMethodAsync(
+                "Emulation.setDeviceMetricsOverride",
+                metricsParameters);
+            await Task.Delay(50, cancellationToken);
+            var parameters = JsonSerializer.Serialize(new
+            {
+                format = "png",
+                fromSurface = true,
+                captureBeyondViewport = false,
+                clip = new { x = 0, y = 0, width = pageWidth, height = pageHeight, scale },
+            });
+            using var responseJson = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters));
+            var fullBytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync(
+                    "Emulation.clearDeviceMetricsOverride",
+                    "{}");
+            }
+            catch
+            {
+                // The temporary export WebView is disposed immediately after
+                // this method; failure to restore metrics is non-fatal.
+            }
+            using var fullStream = new MemoryStream(fullBytes);
+            using var fullBitmap = new Bitmap(fullStream);
+            var outputWidth = fullBitmap.Width;
+            var maxOutputHeight = Math.Max(1, maximumImageHeight);
+            var chunkCount = (int)Math.Ceiling(fullBitmap.Height / (double)maxOutputHeight);
             var directory = Path.GetDirectoryName(outputPath) ?? "";
             var baseName = Path.GetFileNameWithoutExtension(outputPath);
             var extension = format == "jpeg" ? ".jpg" : ".png";
@@ -870,32 +913,28 @@ internal sealed class EditorHostController : IDisposable
             for (var index = 0; index < chunkCount; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var y = index * chunkCssHeight;
-                var height = Math.Min(chunkCssHeight, pageHeight - y);
-                // Do not capture a remote document-space clip (y > viewport).
-                // WebView2/Chromium may repeat the viewport's first pixels when
-                // captureBeyondViewport is combined with such clips. Scroll the
-                // export page to the segment and capture from viewport origin.
-                await core.ExecuteScriptAsync($"window.scrollTo(0, {y.ToString(System.Globalization.CultureInfo.InvariantCulture)});");
-                await Task.Delay(30, cancellationToken);
-                var parameters = JsonSerializer.Serialize(new
+                var y = index * maxOutputHeight;
+                var height = Math.Min(maxOutputHeight, fullBitmap.Height - y);
+                using var chunk = new Bitmap(outputWidth, height, PixelFormat.Format32bppPArgb);
+                using (var graphics = Graphics.FromImage(chunk))
                 {
-                    format,
-                    quality = format == "jpeg" ? jpegQuality : (int?)null,
-                    fromSurface = true,
-                    captureBeyondViewport = false,
-                    clip = new { x = 0, y = 0, width = pageWidth, height, scale },
-                }, new JsonSerializerOptions
-                {
-                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-                });
-                var response = await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters);
-                using var responseJson = JsonDocument.Parse(response);
-                var bytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");
+                    graphics.DrawImage(fullBitmap, new Rectangle(0, 0, outputWidth, height), new Rectangle(0, y, outputWidth, height), GraphicsUnit.Pixel);
+                }
                 var path = chunkCount == 1
                     ? Path.ChangeExtension(outputPath, extension)
                     : Path.Combine(directory, $"{baseName}-{index + 1:D2}{extension}");
-                await File.WriteAllBytesAsync(path, bytes, cancellationToken);
+                await using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, true);
+                if (format == "jpeg")
+                {
+                    var encoder = ImageCodecInfo.GetImageEncoders().First(codec => codec.MimeType == "image/jpeg");
+                    using var quality = new EncoderParameters(1);
+                    quality.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)jpegQuality);
+                    chunk.Save(output, encoder, quality);
+                }
+                else
+                {
+                    chunk.Save(output, ImageFormat.Png);
+                }
                 paths.Add(path);
             }
 

@@ -122,7 +122,7 @@ public sealed class ShortcutSettings
 
 public sealed class ExportSettings
 {
-    public int ImageMaxHeight { get; set; } = 30000;
+    public int ImageMaxHeight { get; set; } = 6000;
 
     public int ImageContentWidth { get; set; } = 1200;
 
