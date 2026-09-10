@@ -78,4 +78,18 @@ describe('code block controls', () => {
     )).toBe(true)
     expect(getMarkdown(editor)).toContain('```typescript\nconst value = 1\n```')
   })
+
+  it('inserts a code block with the selected language', () => {
+    const editor = mount('paragraph')
+
+    expect(executeEditorCommand(editor, 'insertCodeBlockWithLanguage', 'swift')).toBe(true)
+    expect(getMarkdown(editor)).toContain('```swift\nparagraph\n```')
+  })
+
+  it('inserts an unspecified code fence when no language is selected', () => {
+    const editor = mount('paragraph')
+
+    expect(executeEditorCommand(editor, 'insertCodeBlockWithLanguage', '')).toBe(true)
+    expect(getMarkdown(editor)).toContain('```\nparagraph\n```')
+  })
 })

@@ -58,7 +58,7 @@ reject_text "$mac_build" 'L10n.t("外观")'
 
 mac_insert="$(method_body "$MAC_MENU" insertMenu)"
 for command in insertLink insertImage insertImageFromUrl insertMathInline insertMathBlock \
-  insertHorizontalRule insertFootnote insertLineBefore insertLineAfter; do
+  insertHorizontalRule insertFootnote insertLineBefore insertLineAfter toggleCode; do
   require_text "$mac_insert" "\"$command\""
 done
 require_text "$mac_insert" 'tableSizePickerSubmenu'
@@ -70,15 +70,24 @@ require_text "$mac_mermaid" '"rerenderAllMermaid"'
 
 mac_format="$(method_body "$MAC_MENU" formatMenu)"
 require_text "$mac_format" 'paragraphStyleMenu()'
+require_text "$mac_format" '"toggleBlockquote"'
+require_text "$mac_format" '"toggleCodeBlock"'
 require_text "$mac_format" 'tableEditingMenu()'
 require_text "$mac_format" 'clearFormat'
+reject_text "$mac_format" '"toggleCode"'
 for command in rotateImage resizeImage saveImageAs toggleCodeHighlight importTheme revealThemeFolder; do
   reject_text "$mac_format" "\"$command\""
 done
 
 mac_paragraph_style="$(method_body "$MAC_MENU" paragraphStyleMenu)"
-for command in setParagraph toggleBlockquote toggleCodeBlock toggleBulletList; do
+for command in setParagraph 'setHeading\(level)'; do
   require_text "$mac_paragraph_style" "\"$command\""
+done
+reject_text "$mac_paragraph_style" '"toggleBlockquote"'
+reject_text "$mac_paragraph_style" '"toggleCodeBlock"'
+mac_lists="$(method_body "$MAC_MENU" listsMenu)"
+for command in toggleBulletList toggleOrderedList toggleTaskList; do
+  require_text "$mac_lists" "\"$command\""
 done
 
 mac_table_edit="$(method_body "$MAC_MENU" tableEditingMenu)"
@@ -224,6 +233,6 @@ require_text "$mac_router" 'controller.openDocumentPanel()'
 # 否则 action=nil 的父项不参与 AppKit 校验，空标签时仍显示可用。
 require_text "$MAC_MENU" 'requiresDocument: true'
 require_text "$MAC_MENU" '"submenuParent"'
-require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" '"submenuParent"'
+require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" '"insertTable"'
 
 echo "PASS"

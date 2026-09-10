@@ -154,7 +154,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "insertMathInline", "insertMathBlock", "editMath", "setMathNumber", "convertMath", "deleteMath", "exitCode",
         "insertAlertNote", "insertAlertTip", "insertAlertImportant",
         "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
-        "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "declareCodeLanguage",
+        "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "setCodeBlockLanguageAt", "insertCodeBlockWithLanguage", "declareCodeLanguage",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
         "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
     ]).union(EditorPastePolicy.modifyingCommands)
@@ -501,6 +501,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                let y = payload["clientY"] as? Double,
                let position = payload["position"] as? Int {
                 showBlockMenu(clientX: x, clientY: y, position: position)
+            }
+
+        case "codeBlockLanguageRequested":
+            if let payload,
+               let position = payload["position"] as? Int,
+               let language = payload["language"] as? String {
+                showCodeBlockLanguagePicker(initialLanguage: language) { [weak self] selected in
+                    guard let self, let selected else { return }
+                    self.setCodeBlockLanguageAt(position: position, language: selected)
+                }
+            }
+
+        case "copyCodeBlockRequested":
+            if let text = payload?["text"] as? String {
+                copyCodeBlockText(text)
             }
 
         case "pasteImage":
@@ -2351,6 +2366,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard !isReadOnly, !isPlainText else { return }
         isEditorFocusMode.toggle()
         execute("setEditorFocusMode", text: isEditorFocusMode ? "1" : "0")
+        statusText = L10n.t(isEditorFocusMode ? "专注模式已开启" : "专注模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
     }
 
@@ -2358,6 +2374,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard !isReadOnly, !isPlainText else { return }
         isTypewriterMode.toggle()
         execute("setEditorTypewriterMode", text: isTypewriterMode ? "1" : "0")
+        statusText = L10n.t(isTypewriterMode ? "打字机模式已开启" : "打字机模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
     }
 

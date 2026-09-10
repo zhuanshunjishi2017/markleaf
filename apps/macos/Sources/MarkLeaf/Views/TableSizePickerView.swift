@@ -339,7 +339,9 @@ func tableSizePickerSubmenu(onSelect: @escaping (TableSize) -> Void) -> NSMenuIt
     submenu.addItem(tableSizePickerMenuItem(onSelect: onSelect))
     menuItem.submenu = submenu
     // 父项需要显式校验钩子：无文档会话时空标签下随子项一并置灰。
-    menuItem.representedObject = "submenuParent"
+    // Reuse the insertTable rule so the parent is disabled in source mode and
+    // when the cursor is already inside a table.
+    menuItem.representedObject = "insertTable"
     menuItem.target = MenuRouter.shared
     menuItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
     return menuItem

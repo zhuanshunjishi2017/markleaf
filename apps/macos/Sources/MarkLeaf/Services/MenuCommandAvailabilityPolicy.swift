@@ -18,7 +18,8 @@ enum MenuCommandAvailabilityPolicy {
             return state.tabCount > 1
         case "closeCurrentTab":
             return state.tabCount > 0
-        case "copyActiveTabPath", "revealActiveTabInFinder":
+        case "copyActiveTabPath", "revealActiveTabInFinder",
+             "copyActiveFileContents", "shareActiveTab":
             return state.activeTabPath != nil
         case "revealActiveTabInWorkspace":
             guard let path = state.activeTabPath,

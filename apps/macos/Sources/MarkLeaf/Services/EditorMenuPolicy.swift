@@ -164,8 +164,16 @@ enum EditorMenuPolicy {
         isReadOnly: Bool,
         isPlainText: Bool
     ) -> Bool {
-        _ = isSourceMode
-        return !isReadOnly && !isPlainText
+        !isSourceMode && !isReadOnly && !isPlainText
+    }
+
+    /// Visual-only insertion commands that have no safe source-mode fallback.
+    static func isVisualInsertCommandEnabled(
+        isSourceMode: Bool,
+        isReadOnly: Bool,
+        isPlainText: Bool = false
+    ) -> Bool {
+        !isSourceMode && !isReadOnly && !isPlainText
     }
 
     static func semanticContext(for state: EditorContextMenuState) -> EditorSemanticContext {
@@ -187,7 +195,7 @@ enum EditorMenuPolicy {
 
         switch command {
         case .insertMermaid:
-            return writableMarkdown
+            return writableMarkdown && visualMode
         case .editMermaid, .deleteMermaid:
             return writableMarkdown && visualMode && state.mermaidSelected
         case .rerenderMermaid:

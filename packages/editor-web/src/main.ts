@@ -182,7 +182,8 @@ function scrollEditorCursorToCenter(): void {
     return
   }
   const scrollingElement = document.scrollingElement ?? document.documentElement
-  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
+  const targetViewportOffset = Math.max(96, window.innerHeight * 0.42)
+  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - targetViewportOffset)
 }
 
 function updateEditorTypewriterMode(scrollToCursor = true): void {

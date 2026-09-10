@@ -83,6 +83,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         tabBar.onContextAction = { [weak self] action, id in
             self?.handleTabContextAction(action, for: id)
         }
+        tabBar.workspaceRootProvider = { [weak self] in self?.session.workspaceRoot }
         tabBar.onReorder = { [weak self] from, to in
             guard let self else { return }
             self.windowSession?.tabStore.move(from: from, to: to)
@@ -243,6 +244,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         revealTabInFinder(id)
     }
 
+    func copyActiveFileContents() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        copyTabContents(id)
+    }
+
+    func shareActiveTab() {
+        guard let id = windowSession?.tabStore.activeTabID else { return }
+        shareTab(id)
+    }
+
     private func revealTabInWorkspace(_ id: DocumentTabID) {
         guard let windowSession,
               let tab = windowSession.tabStore.tab(withID: id),
@@ -264,9 +275,27 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         NSPasteboard.general.setString(path, forType: .string)
     }
 
+    private func copyTabContents(_ id: DocumentTabID) {
+        guard let session = windowSession?.session(for: id) else { return }
+        session.requestSnapshot { result in
+            guard case .success(let markdown) = result else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(markdown, forType: .string)
+            session.statusText = L10n.t("已复制")
+        }
+    }
+
     private func revealTabInFinder(_ id: DocumentTabID) {
         guard let path = windowSession?.tabStore.tab(withID: id)?.path else { return }
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    private func shareTab(_ id: DocumentTabID) {
+        guard let path = windowSession?.tabStore.tab(withID: id)?.path,
+              FileManager.default.fileExists(atPath: path),
+              let anchorView = window?.contentView else { return }
+        let picker = NSSharingServicePicker(items: [URL(fileURLWithPath: path)])
+        picker.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: .maxX)
     }
 
     private func handleEditorHostDrop(_ urls: [URL]) {
@@ -535,8 +564,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             revealTabInWorkspace(id)
         case .copyPath:
             copyTabPath(id)
+        case .copyContents:
+            copyTabContents(id)
         case .revealInFinder:
             revealTabInFinder(id)
+        case .share:
+            shareTab(id)
         }
     }
 

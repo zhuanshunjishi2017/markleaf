@@ -7,7 +7,9 @@ enum TabContextAction {
     case closeToRight
     case locate
     case copyPath
+    case copyContents
     case revealInFinder
+    case share
 }
 
 /// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
@@ -18,6 +20,7 @@ final class TabBarController: NSView {
     var onClose: ((DocumentTabID) -> Void)?
     var onNewTab: (() -> Void)?
     var onContextAction: ((TabContextAction, DocumentTabID) -> Void)?
+    var workspaceRootProvider: (() -> String?)?
     var onReorder: ((Int, Int) -> Void)?
     var onDetach: ((DocumentTabID) -> Void)?
     var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
@@ -480,9 +483,20 @@ final class TabBarController: NSView {
         menu.addItem(closeToRight)
         if let tab = tabStore.tab(withID: tabID), tab.path != nil {
             menu.addItem(.separator())
-            menu.addItem(contextMenuItem(L10n.t("在工作区定位"), action: .locate, tabID: tabID))
+            let locate = contextMenuItem(L10n.t("在工作区定位"), action: .locate, tabID: tabID)
+            locate.isEnabled = MenuCommandAvailabilityPolicy.isTabCommandEnabled(
+                command: "revealActiveTabInWorkspace",
+                state: MenuCommandAvailabilityState(
+                    tabCount: tabStore.tabs.count,
+                    activeTabPath: tab.path,
+                    workspaceRoot: workspaceRootProvider?()
+                )
+            )
+            menu.addItem(locate)
             menu.addItem(contextMenuItem(L10n.t("复制文件路径"), action: .copyPath, tabID: tabID))
+            menu.addItem(contextMenuItem(L10n.t("复制内容到剪贴板"), action: .copyContents, tabID: tabID))
             menu.addItem(contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID))
+            menu.addItem(contextMenuItem(L10n.t("分享"), action: .share, tabID: tabID))
         }
         NSMenu.popUpContextMenu(menu, with: event, for: cell)
     }

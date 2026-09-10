@@ -66,6 +66,7 @@ final class NativeMenuBuilder {
         let recentParent = NSMenuItem(title: L10n.t("最近项目"), action: nil, keyEquivalent: "")
         recentParent.submenu = recent
         menu.addItem(recentParent)
+        menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
 
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
@@ -73,7 +74,12 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
-        menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
+        menu.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
+        menu.addItem(commandItem(L10n.t("复制内容到剪贴板"), "copyActiveFileContents"))
+        menu.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
+        menu.addItem(commandItem(L10n.t("分享"), "shareActiveTab"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
         return menu
@@ -112,28 +118,30 @@ final class NativeMenuBuilder {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         menu.delegate = MenuRouter.shared
+
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
         menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
-        menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
-        menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
-        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
-        menu.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("重复该段"), "duplicateParagraph"))
-        menu.addItem(commandItem(L10n.t("删除该段"), "deleteParagraph"))
-        menu.addItem(.separator())
         menu.addItem(tableSizePickerSubmenu { size in
             AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
         })
         menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true))
+        menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
+        menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
+        menu.addItem(.separator())
+        menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode", key: "`", mask: [.command, .option]))
+        menu.addItem(commandItem(L10n.t("行内公式"), "insertMathInline"))
+        menu.addItem(commandItem(L10n.t("段间公式"), "insertMathBlock"))
+        menu.addItem(commandItem(L10n.t("水平线"), "insertHorizontalRule"))
+        menu.addItem(.separator())
+        let paragraphActions = NSMenu(title: L10n.t("段落操作"))
+        paragraphActions.addItem(commandItem(L10n.t("段前插入行"), "insertLineBefore"))
+        paragraphActions.addItem(commandItem(L10n.t("段后插入行"), "insertLineAfter"))
+        paragraphActions.addItem(.separator())
+        paragraphActions.addItem(commandItem(L10n.t("重复该段"), "duplicateParagraph"))
+        paragraphActions.addItem(commandItem(L10n.t("删除该段"), "deleteParagraph"))
+        menu.addItem(popup(L10n.t("段落操作"), paragraphActions, requiresDocument: true))
         return menu
     }
 
@@ -158,26 +166,27 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: ".", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ",", mask: [.command, .option]))
+        return menu
+    }
+
+    private func alertsMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("提示框"))
+        menu.addItem(commandItem(L10n.t("备注"), "insertAlertNote"))
+        menu.addItem(commandItem(L10n.t("提示"), "insertAlertTip"))
+        menu.addItem(commandItem(L10n.t("重要"), "insertAlertImportant"))
+        menu.addItem(commandItem(L10n.t("警告"), "insertAlertWarning"))
+        menu.addItem(commandItem(L10n.t("注意"), "insertAlertCaution"))
+        return menu
+    }
+
+    private func listsMenu() -> NSMenu {
+        let menu = NSMenu(title: L10n.t("列表"))
+        menu.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
+        menu.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
+        menu.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
-        menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
-        let alerts = NSMenu(title: L10n.t("提示框"))
-        alerts.addItem(commandItem(L10n.t("备注"), "insertAlertNote"))
-        alerts.addItem(commandItem(L10n.t("提示"), "insertAlertTip"))
-        alerts.addItem(commandItem(L10n.t("重要"), "insertAlertImportant"))
-        alerts.addItem(commandItem(L10n.t("警告"), "insertAlertWarning"))
-        alerts.addItem(commandItem(L10n.t("注意"), "insertAlertCaution"))
-        menu.addItem(popup(L10n.t("提示框"), alerts, requiresDocument: true))
-        let lists = NSMenu(title: L10n.t("列表"))
-        lists.addItem(commandItem(L10n.t("无序列表"), "toggleBulletList"))
-        lists.addItem(commandItem(L10n.t("有序列表"), "toggleOrderedList"))
-        lists.addItem(commandItem(L10n.t("任务列表"), "toggleTaskList"))
-        lists.addItem(.separator())
-        lists.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
-        lists.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
-        menu.addItem(popup(L10n.t("列表"), lists))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("YAML 前置元数据"), "showFrontMatter"))
+        menu.addItem(commandItem(L10n.t("增加列表缩进"), "indentListItem", key: "]", mask: [.command]))
+        menu.addItem(commandItem(L10n.t("减少列表缩进"), "outdentListItem", key: "[", mask: [.command]))
         return menu
     }
 
@@ -209,17 +218,20 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("删除线"), "toggleStrike"))
         menu.addItem(commandItem(L10n.t("高亮"), "toggleHighlight"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode"))
-        menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true))
+        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true))
+        menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
+        menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
+        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true))
         let tableItem = popup(L10n.t("表格"), tableEditingMenu())
         tableItem.representedObject = "tableEditing"
         tableItem.target = MenuRouter.shared
         tableItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
         menu.addItem(tableItem)
+        menu.addItem(commandItem(L10n.t("YAML 前置元数据"), "showFrontMatter"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("清除格式"), "clearFormat"))
         return menu
@@ -244,10 +256,6 @@ final class NativeMenuBuilder {
         tabManagement.addItem(commandItem(L10n.t("关闭当前标签"), "closeCurrentTab"))
         tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
         tabManagement.addItem(commandItem(L10n.t("重新打开关闭的标签"), "restoreClosedTab"))
-        tabManagement.addItem(.separator())
-        tabManagement.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
-        tabManagement.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
-        tabManagement.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
         tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
         menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true))
         menu.addItem(.separator())
@@ -458,11 +466,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             // 没有打开工作区时禁用。
             return (session ?? viewStateSession)?.workspaceRoot != nil
         case "toggleFocusMode":
+            menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
             return AppWindowManager.shared.activeWindowController != nil
         case "restoreClosedTab":
             return AppWindowManager.shared.canRestoreClosedTab
         case "tabNext", "closeCurrentTab", "closeOtherTabs",
-             "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder":
+             "revealActiveTabInWorkspace", "copyActiveTabPath", "revealActiveTabInFinder",
+             "copyActiveFileContents", "shareActiveTab":
             guard let windowSession = AppWindowManager.shared.activeWindowSession else { return false }
             return MenuCommandAvailabilityPolicy.isTabCommandEnabled(
                 command: command,
@@ -501,8 +511,6 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "toggleStatusBar":
             menuItem.state = viewStateSession?.statusBarVisible == true ? .on : .off
             return viewStateSession != nil
-        case "toggleFocusMode":
-            menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
         case "toggleEditorFocusMode":
             menuItem.state = s?.isEditorFocusMode == true ? .on : .off
             return EditorMenuPolicy.isEditorModeCommandEnabled(
@@ -573,7 +581,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 clipboardHasContent: s?.clipboardHasContent ?? false,
                 isReadOnly: s?.isReadOnly == true
             )
-        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode", "insertMathInline":
+        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike",
+             "toggleHighlight", "toggleCode", "insertMathInline":
             return EditorMenuPolicy.isInlineFormatCommandEnabled(
                 command: command,
                 hasSelection: s?.hasSelection ?? false,
@@ -585,12 +594,20 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
              "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
              "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
              "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
-             "duplicateParagraph", "deleteParagraph":
+             "duplicateParagraph", "deleteParagraph",
+             "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+             "insertAlertWarning", "insertAlertCaution", "showFrontMatter":
             return EditorMenuPolicy.isParagraphCommandEnabled(
                 command: command,
                 isSourceMode: s?.isSourceMode ?? true,
                 isReadOnly: s?.isReadOnly == true,
                 inTable: s?.inTable == true
+            )
+        case "insertImage", "insertImageFromUrl", "insertLink":
+            return EditorMenuPolicy.isVisualInsertCommandEnabled(
+                isSourceMode: s?.isSourceMode ?? true,
+                isReadOnly: s?.isReadOnly == true,
+                isPlainText: s?.isPlainText == true
             )
         case "insertFootnote", "resetFootnoteLabel":
             return EditorMenuPolicy.isFootnoteCommandEnabled(
@@ -711,6 +728,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             AppWindowManager.shared.activeWindowController?.copyActiveTabPath()
         case "revealActiveTabInFinder":
             AppWindowManager.shared.activeWindowController?.revealActiveTabInFinder()
+        case "copyActiveFileContents":
+            AppWindowManager.shared.activeWindowController?.copyActiveFileContents()
+        case "shareActiveTab":
+            AppWindowManager.shared.activeWindowController?.shareActiveTab()
         case "openHelp":
             if let url = URL(string: "https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md") {
                 NSWorkspace.shared.open(url)
@@ -989,7 +1010,7 @@ extension EditorSession {
         case "toggleTypewriterMode": toggleTypewriterMode()
         case "restartEditor": restartEditor()
         case "toggleBlockquote": execute("toggleBlockquote")
-        case "toggleCodeBlock": execute("toggleCodeBlock")
+        case "toggleCodeBlock": toggleCodeBlockWithLanguage()
         case "toggleBulletList", "toggleOrderedList", "toggleTaskList": execute(command)
         case "indentListItem", "outdentListItem": execute(command)
         case "insertHorizontalRule": execute("insertHorizontalRule")

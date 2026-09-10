@@ -4804,6 +4804,7 @@ export function executeEditorCommand(
     },
     setCodeBlockLanguage: () => setCodeBlockLanguage(editor, text),
     setCodeBlockLanguageAt: () => setCodeBlockLanguageAt(editor, text),
+    insertCodeBlockWithLanguage: () => insertCodeBlockWithLanguage(editor, text),
     editMath: () => expandSelectedMath(editor),
     editMermaid: () => expandSelectedMermaid(editor),
     updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
@@ -5578,6 +5579,19 @@ function setCodeBlockLanguageAt(editor: Editor, text?: string): boolean {
   const language = payload.language.trim()
   editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
     ...node.attrs,
+    language: language.length > 0 ? language : null,
+  }))
+  return true
+}
+
+function insertCodeBlockWithLanguage(editor: Editor, text?: string): boolean {
+  const language = (text ?? '').trim()
+  const success = editor.chain().focus().toggleCodeBlock().run()
+  if (!success) return false
+  const current = getCurrentCodeBlock(editor)
+  if (!current) return false
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(current.pos, undefined, {
+    ...current.node.attrs,
     language: language.length > 0 ? language : null,
   }))
   return true

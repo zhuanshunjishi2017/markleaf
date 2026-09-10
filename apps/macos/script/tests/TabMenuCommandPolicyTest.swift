@@ -34,8 +34,16 @@ expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveTab
        "copy path must be enabled when the active tab has a path")
 expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "revealActiveTabInFinder", state: oneFile),
        "Finder reveal must be enabled when the active tab has a path")
+expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "shareActiveTab", state: oneFile),
+       "share must be enabled when the active tab has a path")
+expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveFileContents", state: oneFile),
+       "copy file contents must be enabled when the active tab has a path")
 expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveTabPath", state: untitled),
        "copy path must be disabled for an untitled tab")
+expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "shareActiveTab", state: untitled),
+       "share must be disabled for an untitled tab")
+expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "copyActiveFileContents", state: untitled),
+       "copy file contents must be disabled for an untitled tab")
 expect(MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "revealActiveTabInWorkspace", state: oneFile),
        "workspace reveal must be enabled for a file inside the workspace")
 expect(!MenuCommandAvailabilityPolicy.isTabCommandEnabled(command: "revealActiveTabInWorkspace", state: untitled),
