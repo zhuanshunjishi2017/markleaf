@@ -4,7 +4,7 @@
 
 在 VS Code 中閱讀和視覺化編輯 Markdown，重用 MarkLeaf 的 Tiptap/ProseMirror 編輯核心、KaTeX、Mermaid 和排版樣式。擴充功能由 TypeScript 編寫，使用 VS Code 提供的 API 與 Webview，沒有獨立 Electron 相依套件或桌面殼層。
 
-目前版本 **0.2.6** 提供 36 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。現已支援 PDF、HTML、PNG/JPG 長圖、預覽和列印。
+目前版本 **0.2.7** 提供 36 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。現已支援 PDF、HTML、PNG/JPG 長圖、預覽和列印。
 
 工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，始終展開在對應內容下方，隨文件捲動移出視野，不會根據可用空間上下跳轉或固定在視窗底部。公式符號面板會根據可用空間調整版面。
 
@@ -32,10 +32,10 @@ PDF、圖片、預覽與列印使用已安裝的 **Chrome/Edge**，不附帶或�
 
 ## 安裝和開啟
 
-在本機建置得到 `artifacts/markleaf-vscode-0.2.6.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
+在本機建置得到 `artifacts/markleaf-vscode-0.2.7.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.6.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
 ```
 
 安裝並啟用後，新開啟的 `.md` 或 `.markdown` 檔案預設進入 MarkLeaf 渲染檢視，可直接閱讀與視覺化編輯。已開啟的原始碼分頁可透過 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切換，也可從檔案總管右鍵選擇 **MarkLeaf: Open Markdown**。
@@ -60,7 +60,7 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 | 公式與 Mermaid | 插入行內／獨立公式、公式編號、轉換類型、刪除；雙擊公式與圖表可開啟共享原始碼控制項，保留數學輸入輔助。支援 Mermaid 程式碼渲染、編輯和重新渲染。 |
 | 註腳與中繼資料 | 插入註腳、重新命名標籤、回到參照、清除參照、刪除定義；顯示或插入 YAML Front Matter。標籤不能重複占用既有定義或參照。 |
 | 程式碼 | 選擇程式碼區塊語言、複製程式碼、退出區塊，支援語法醒目提示開關。 |
-| 剪貼簿 | 「编辑」（編輯）提供複製為 Markdown、純文字或 HTML，以及貼上純文字。一般複製同時提供選取文字和 HTML；純文字貼上保留字面的 Markdown/HTML 標記。 |
+| 剪貼簿 | 「編輯」提供複製為 Markdown、純文字或 HTML 原始碼，以及貼上純文字。一般複製同時提供選取文字和 HTML；視覺模式的一般文字貼上和「貼上純文字」均依 Windows 規則解析 Markdown。原始碼編輯保留字面文字；狀態列顯示解析、格式轉換、降級原因或失敗結果。 |
 | 尋找取代 | 在渲染內容中尋找，支援大小寫、完整單字、上一處／下一處、單次和全部取代。閱讀模式可尋找，取代需要編輯模式。 |
 | 大綱與閱讀 | 「视图」（檢視）提供 H1–H6 大綱、專注目前段落、打字機捲動、縮放、排版與配色。狀態列顯示字元數、選取字元數、目前區塊及位置，懸停可查看詳細統計。 |
 

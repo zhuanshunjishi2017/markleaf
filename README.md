@@ -51,13 +51,13 @@ MarkLeaf 是轻量化 Markdown 可视化编辑器，提供 Windows/macOS 原生�
 
 ### 优秀的导出效果
 
-Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版支持 PDF、HTML 和系统打印。VS Code 扩展现已接入 PDF、独立 HTML、PNG/JPG 长图、预览和浏览器打印，默认采用 MarkLeaf 极简排版。PDF 可设置纸张、方向、页边距、页眉页脚和页码；长图可按高度连续分片。除 HTML 文件导出外，扩展使用 `puppeteer-core` 调用已安装的 Chrome/Edge，不捆绑或下载浏览器。
+Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版支持 PDF、HTML、PNG/JPG 长图和系统打印。VS Code 扩展现已接入 PDF、独立 HTML、PNG/JPG 长图、预览和浏览器打印，默认采用 MarkLeaf 极简排版。PDF 可设置纸张、方向、页边距、页眉页脚和页码；长图可按高度连续分片。除 HTML 文件导出外，扩展使用 `puppeteer-core` 调用已安装的 Chrome/Edge，不捆绑或下载浏览器。
 
 ### 极简但完善的操作逻辑与功能
 
 下面的工作区、多窗口和内置源码模式介绍以原生应用为主。VS Code 扩展使用 VS Code 的资源管理器、窗口、标签页和源码编辑器，其功能入口见下方扩展说明。
 
-- **工作区管理**：支持打开文件夹作为工作区，按树视图或列表视图查看文件，按名称/内容搜索文档。
+- **工作区管理**：支持打开文件夹作为工作区，按树视图或列表视图查看文件，按名称/内容搜索文档。文件变化自动刷新时保留目录展开、选中项和滚动位置。
 - **多窗口与多标签页**：支持打开多个窗口实例，也可将文档在新窗口中打开。另外，应用支持在同一个窗口中打开多个标签页，每个标签页独自管理其文档内容。
 - **源码模式**：内置 CodeMirror 6 源码编辑模式，可在可视化编辑和 Markdown 源码之间即时切换。
 - **不合规 Markdown 标记自动转换**：针对中文 Markdown 文本常见的**暴露字面星号**的问题，应用能够检测不符合 CommonMark 规范的星号标记并转化为 HTML 标签。
@@ -76,7 +76,9 @@ Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版�
 
 三个宿主共享编辑内核与排版样式。VS Code 扩展使用已有 VS Code 运行环境，不引入独立 Electron 依赖或桌面壳。支持阅读与可视化编辑、格式刷、表格、脚注、公式与 Mermaid、图片粘贴和拖放、查找替换、大纲及排版偏好。保存、撤销重做、标签页和原生源码由 VS Code 管理，支持源码切换及并排。
 
-VS Code 扩展 0.2.6 提供 36 项设置和 67 项可配置格式操作；公式与图表源码展开在对应内容下方，随文档滚动。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+VS Code 扩展 0.2.7 提供 36 项设置和 67 项可配置格式操作；公式与图表源码展开在对应内容下方，随文档滚动。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+
+三个产品的复制与粘贴以 Windows 逻辑为准：“复制 HTML”得到源码文本；可视编辑中的普通文本粘贴和“粘贴纯文本”均解析 Markdown，源码编辑保留字面文本。粘贴提示区分成功、格式转换、纯文本降级及失败，并保留降级原因。
 
 正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。
 
@@ -127,7 +129,7 @@ VS Code：vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.6.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 ```
 
 在 VS Code 中使用 **Install from VSIX…** 安装生成的扩展包。新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf；已有源码标签使用 **Reopen Editor With… → MarkLeaf**，已有默认关联使用 **Configure default editor for…** 调整。**Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与渲染视图间切换。

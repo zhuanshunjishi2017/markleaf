@@ -4,7 +4,7 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.2.6** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
+Version **0.2.7** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They always open below the corresponding content and scroll out of view with the document; they do not flip to the other side or dock at the bottom of the window. The math symbol panel adapts its layout to the available space.
 
@@ -32,10 +32,10 @@ A remote extension host can export files using its filesystem and installed brow
 
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.2.6.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.2.7.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.6.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
 ```
 
 After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
@@ -60,7 +60,7 @@ The extension supplies defaults through `workbench.diffEditorAssociations` witho
 | Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Double-click a formula or diagram to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. |
 | Footnotes and metadata | Insert footnotes, rename labels, return to references, clear references, delete definitions, and display/insert YAML Front Matter. A label cannot reuse an existing definition or reference. |
 | Code | Choose a block language, copy code, exit a block, and toggle syntax highlighting. |
-| Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML, and pasting plain text. Normal copy supplies selected text and HTML; plain-text paste keeps Markdown/HTML markers literal. |
+| Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML source, and pasting plain text. Normal copy supplies selected text and HTML. In visual mode, both ordinary text paste and Paste Plain Text parse Markdown using the Windows rules. Source editing keeps literal text; the status bar reports parsing, formatting conversion, fallback reasons, or failure. |
 | Find and replace | Search rendered text with case/whole-word matching, previous/next results, replace one, or replace all. Find works in reading mode; replacement requires editing mode. |
 | Outline and reading | “视图” (View) provides an H1–H6 outline, paragraph focus, typewriter scrolling, zoom, typography, and colors. The status bar shows character counts, selected characters, current block, and position; hover for more statistics. |
 

@@ -51,13 +51,13 @@ Based on the **Tiptap/ProseMirror** editor core, supports full CommonMark and Gi
 
 ### Excellent Export Quality
 
-The native Windows app supports PDF, HTML, PNG/JPG long images, and printing; the native macOS app supports PDF, HTML, and system printing. The VS Code extension now provides PDF, standalone HTML, PNG/JPG images, preview, and browser printing, with MarkLeaf Minimal typography by default. PDF offers paper, orientation, margins, headers/footers, and page numbers; long images split into numbered files. Except for HTML file export, the extension uses `puppeteer-core` with an installed Chrome/Edge, without bundling or downloading a browser.
+The native Windows app supports PDF, HTML, PNG/JPG long images, and printing; the native macOS app supports PDF, HTML, PNG/JPG long images, and system printing. The VS Code extension now provides PDF, standalone HTML, PNG/JPG images, preview, and browser printing, with MarkLeaf Minimal typography by default. PDF offers paper, orientation, margins, headers/footers, and page numbers; long images split into numbered files. Except for HTML file export, the extension uses `puppeteer-core` with an installed Chrome/Edge, without bundling or downloading a browser.
 
 ### Minimal yet Complete Operation Logic and Features
 
 The workspace, window, and built-in source-mode features below primarily describe the native applications. The VS Code extension uses VS Code Explorer, windows, tabs, and source editing; its own entry points are documented in the extension guide below.
 
-- <strong>Workspace Management</strong>: Supports opening a folder as a workspace, viewing files in tree or list view, and searching documents by name/content.
+- <strong>Workspace Management</strong>: Supports opening a folder as a workspace, viewing files in tree or list view, and searching documents by name/content. Automatic refresh preserves expanded folders, selection, and scrolling when files change.
 - <strong>Multiple Windows and Tabs</strong>: Supports opening multiple window instances, and can also open a document in a new window. Additionally, the application supports opening multiple tabs in the same window, with each tab managing its document content independently.
 - <strong>Source Mode</strong>: Built‑in CodeMirror 6 source editing mode, allowing instant switching between visual editing and Markdown source.
 - <strong>Automatic Conversion of Non‑compliant Markdown Markers</strong>: For common issues in Chinese Markdown text where <strong>literal asterisks are exposed</strong>, the application can detect asterisk markers that do not conform to CommonMark specifications and convert them to HTML tags.
@@ -76,7 +76,9 @@ The workspace, window, and built-in source-mode features below primarily describ
 
 All three hosts share the editor core and typography. The VS Code extension uses the existing VS Code runtime without adding a separate Electron dependency or desktop shell. It supports reading and visual editing, a format painter, tables, footnotes, math and Mermaid, image paste and drop, find and replace, an outline, and reading preferences. VS Code manages saving, undo/redo, tabs, and native Markdown source editing, including switching views and opening source alongside the rendered document.
 
-Extension 0.2.6 provides 36 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+Extension 0.2.7 provides 36 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+
+All three products follow the Windows copy/paste rules: Copy HTML produces source text; ordinary text paste and Paste Plain Text parse Markdown in visual editing, while source editing keeps literal text. Paste feedback distinguishes success, formatting conversion, plain-text fallback, and failure, retaining fallback reasons.
 
 Rendered documents also default to `minimal` (Web · Minimal), preserving type hierarchy, whitespace, and table detail. Existing user/workspace typography choices take precedence.
 
@@ -127,7 +129,7 @@ Run from the repository root with Node.js 22.12+ and the project's specified pnp
 ```bash
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.6.vsix
+pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 ```
 
 Install the generated package with **Install from VSIX…** in VS Code. Newly opened `.md` and `.markdown` files use MarkLeaf by default. For existing source tabs, use **Reopen Editor With… → MarkLeaf**; change an existing association with **Configure default editor for…**. **Ctrl+Shift+V** (**Cmd+Shift+V** on macOS) switches between native source and rendered views.

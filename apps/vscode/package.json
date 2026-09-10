@@ -2,7 +2,7 @@
   "name": "markleaf",
   "displayName": "MarkLeaf",
   "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "publisher": "markleaf",
   "license": "MIT",
   "engines": {
@@ -1232,7 +1232,7 @@
   },
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
-    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.6.vsix"
+    "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.7.vsix"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
