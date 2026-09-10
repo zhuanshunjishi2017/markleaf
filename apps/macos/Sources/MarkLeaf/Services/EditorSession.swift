@@ -2705,4 +2705,32 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
 }
 
-extension EditorSession: ThemeSettingsSession {}
+extension EditorSession: ThemeSettingsSession {
+    var defaultLightThemeID: String {
+        SettingsService.shared.settings.defaultLightThemeID
+    }
+
+    var defaultDarkThemeID: String {
+        SettingsService.shared.settings.defaultDarkThemeID
+    }
+
+    func setFollowSystemTheme(_ enabled: Bool) {
+        SettingsService.shared.update { $0.followSystemTheme = enabled }
+        AppWindowManager.shared.applyThemeModeToAll()
+        NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    func setDefaultLightThemeID(_ id: String) {
+        SettingsService.shared.update { $0.defaultLightThemeID = id }
+        if isFollowSystemTheme {
+            applyFollowSystemTheme()
+        }
+    }
+
+    func setDefaultDarkThemeID(_ id: String) {
+        SettingsService.shared.update { $0.defaultDarkThemeID = id }
+        if isFollowSystemTheme {
+            applyFollowSystemTheme()
+        }
+    }
+}

@@ -13,8 +13,13 @@ final class Session: ThemeSettingsSession {
     var currentStyleId = "latex"
     var currentThemeId: String? = "colors-dark"
     var isFollowSystemTheme = false
+    var defaultLightThemeID = "colors-default-light"
+    var defaultDarkThemeID = "colors-dark"
     func setStyle(_ id: String) { currentStyleId = id }
     func setTheme(_ id: String) { currentThemeId = id }
+    func setFollowSystemTheme(_ enabled: Bool) { isFollowSystemTheme = enabled }
+    func setDefaultLightThemeID(_ id: String) { defaultLightThemeID = id }
+    func setDefaultDarkThemeID(_ id: String) { defaultDarkThemeID = id }
 }
 _ = NSApplication.shared
 for language in ["zh-Hans", "zh-Hant", "en", "ja"] {
@@ -32,6 +37,14 @@ expect(window.styleMask.contains(.resizable), "theme window must resize")
 expect(window.contentMinSize.width >= 620, "two lists remain usable at minimum size")
 let tables = descendants(window.contentView!).compactMap { $0 as? NSTableView }
 expect(tables.count == 2, "unified window shows color and typography lists")
+let segmented = descendants(window.contentView!).compactMap { $0 as? NSSegmentedControl }.first
+expect(segmented?.segmentCount == 2, "theme settings should separate colors and typography")
+let buttons = descendants(window.contentView!).compactMap { $0 as? NSButton }
+expect(buttons.contains { $0.title == L10n.t("与操作系统同步") }, "follow-system should be available inside the window")
+let popups = descendants(window.contentView!).compactMap { $0 as? NSPopUpButton }
+expect(popups.count >= 2, "default light and dark themes should be selectable inside the window")
+expect(buttons.contains { $0.title == L10n.t("添加主题…") }, "add theme should be available")
+expect(buttons.contains { $0.title == L10n.t("打开主题文件夹…") }, "open theme folder should be available")
 let colors = tables.first { $0.identifier?.rawValue == "theme-colors" }!
 let styles = tables.first { $0.identifier?.rawValue == "theme-styles" }!
 expect(colors.selectedRow == 1 && styles.selectedRow == 1, "opening highlights active selections")

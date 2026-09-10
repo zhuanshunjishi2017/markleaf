@@ -736,7 +736,9 @@ final class AppWindowManager {
         if themeSettingsController == nil {
             let controller = ThemeSettingsWindowController(
                 sessionProvider: { [weak self] in self?.activeSession },
-                onOptionalFonts: { [weak self] in self?.showOptionalFonts() })
+                onOptionalFonts: { [weak self] in self?.showOptionalFonts() },
+                onAddTheme: { [weak self] in self?.activeSession?.importTheme() },
+                onOpenThemeFolder: { [weak self] in self?.activeSession?.revealThemeFolder() })
             themeSettingsController = controller
             controller.onClose = { [weak self, weak controller] in
                 guard let self, self.themeSettingsController === controller else { return }

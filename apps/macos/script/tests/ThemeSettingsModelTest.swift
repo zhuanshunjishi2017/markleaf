@@ -9,10 +9,15 @@ final class Session: ThemeSettingsSession {
     var currentStyleId = "default"
     var currentThemeId: String? = "colors-default-light"
     var isFollowSystemTheme = false
+    var defaultLightThemeID = "colors-default-light"
+    var defaultDarkThemeID = "colors-dark"
     var themeCalls: [String] = []
     var styleCalls: [String] = []
     func setTheme(_ id: String) { themeCalls.append(id); currentThemeId = id }
     func setStyle(_ id: String) { styleCalls.append(id); currentStyleId = id }
+    func setFollowSystemTheme(_ enabled: Bool) { isFollowSystemTheme = enabled }
+    func setDefaultLightThemeID(_ id: String) { defaultLightThemeID = id }
+    func setDefaultDarkThemeID(_ id: String) { defaultDarkThemeID = id }
 }
 let first = Session(), second = Session()
 second.currentThemeId = "colors-dark"; second.currentStyleId = "latex"
