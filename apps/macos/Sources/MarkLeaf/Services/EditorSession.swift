@@ -70,6 +70,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var documentStatistics = DocumentStatistics() {
         didSet { notify() }
     }
+    /// 文档当前是否有内容；空文档没有可复制的内容。
+    var hasContent: Bool { documentStatistics.characterCount > 0 }
     /// 当前文档的换行风格（新文档使用设置中的 newLineStyle）。
     var documentNewLine = "LF" {
         didSet { notify() }

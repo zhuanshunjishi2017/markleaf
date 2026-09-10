@@ -28,6 +28,8 @@ final class ThemeSettingsModel {
     private(set) var selectedLightDefaultIndex: Int?
     private(set) var selectedDarkDefaultIndex: Int?
     private(set) var canSelectTheme = false
+    /// 颜色页按“浅色 / 深色”分组的行模型（对应 Windows 配色方案对话框的分组列表）。
+    private(set) var colorRows: [ColorThemeRow] = []
     var hasSession: Bool { boundSession != nil }
     var followsSystem: Bool { boundSession?.isFollowSystemTheme ?? false }
     var currentStyleID: String? { boundSession?.currentStyleId }
@@ -49,6 +51,36 @@ final class ThemeSettingsModel {
         selectedLightDefaultIndex = lightThemes.firstIndex { $0.id == session?.defaultLightThemeID }
         selectedDarkDefaultIndex = darkThemes.firstIndex { $0.id == session?.defaultDarkThemeID }
         canSelectTheme = session != nil && session?.isFollowSystemTheme == false
+        colorRows = Self.colorRows(light: lightThemes, dark: darkThemes, themes: themes)
+    }
+
+    /// 分组标题 + 组内主题；分组标题不可选，只用于阅读顺序。
+    static func colorRows(
+        light: [ColorThemeInfo],
+        dark: [ColorThemeInfo],
+        themes: [ColorThemeInfo]
+    ) -> [ColorThemeRow] {
+        func rows(for group: String, _ list: [ColorThemeInfo]) -> [ColorThemeRow] {
+            guard !list.isEmpty else { return [] }
+            let indices = list.compactMap { theme in themes.firstIndex { $0.id == theme.id } }
+            guard !indices.isEmpty else { return [] }
+            return [.group(group)] + indices.map(ColorThemeRow.theme)
+        }
+        return rows(for: "浅色", light) + rows(for: "深色", dark)
+    }
+
+    /// 当前主题在颜色列表中的行号（用于选中态）。
+    var selectedThemeRow: Int? {
+        colorRows.firstIndex { row in
+            guard case .theme(let index) = row else { return false }
+            return index == selectedThemeIndex
+        }
+    }
+
+    /// 行号到 themes 下标的映射；落在分组标题上时返回 nil。
+    func themeIndex(atRow row: Int) -> Int? {
+        guard colorRows.indices.contains(row), case .theme(let index) = colorRows[row] else { return nil }
+        return index
     }
 
     func selectTheme(at index: Int) {
@@ -93,6 +125,12 @@ final class ThemeSettingsModel {
         }
         return current
     }
+}
+
+/// 颜色主题列表的一行。
+enum ColorThemeRow: Equatable {
+    case group(String)
+    case theme(Int)
 }
 
 extension Notification.Name {

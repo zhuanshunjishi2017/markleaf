@@ -1075,6 +1075,8 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         let row = row(at: point)
         guard let root = session?.workspaceRoot else { return nil }
         let menu = NSMenu()
+        // 可用性由本文件显式计算，禁止 AppKit 再用 responder chain 覆盖 isEnabled。
+        menu.autoenablesItems = false
         guard row >= 0, let entry = item(atRow: row) as? WorkspaceEntry else {
             return backgroundMenu(in: URL(fileURLWithPath: root, isDirectory: true))
         }
@@ -1108,7 +1110,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
         menu.addItem(.separator())
         menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
-        menu.addItem(item(L10n.t("复制内容到剪贴板"), #selector(copyContent(_:)), entry))
+        let copyContent = item(L10n.t("复制内容到剪贴板"), #selector(copyContent(_:)), entry)
+        copyContent.isEnabled = hasCopyableContent(entry)
+        menu.addItem(copyContent)
         menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("分享"), #selector(shareEntry(_:)), entry))
@@ -1117,6 +1121,7 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     private func backgroundMenu(in directory: URL) -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: directory)))
         menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), directory.path))
         menu.addItem(.separator())
@@ -1127,6 +1132,20 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
         menu.addItem(item(L10n.t("关闭工作区"), #selector(closeWorkspace(_:)), nil))
         return menu
+    }
+
+    /// 工作区文件是否有可复制的内容：只支持文本文档，且内容不能为空。
+    /// 当前打开的就是该文件时以编辑器内容为准（可能尚未保存）。
+    private func hasCopyableContent(_ entry: WorkspaceEntry) -> Bool {
+        guard !entry.isDirectory else { return false }
+        let ext = (entry.path as NSString).pathExtension.lowercased()
+        guard ["md", "txt", "markdown"].contains(ext) else { return false }
+        if session?.documentURL?.path == entry.path {
+            return session?.hasContent ?? false
+        }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: entry.path)
+        let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+        return size > 0
     }
 
     private func sortMenu() -> NSMenu {

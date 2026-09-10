@@ -47,12 +47,22 @@ expect(buttons.contains { $0.title == L10n.t("添加主题…") }, "add theme sh
 expect(buttons.contains { $0.title == L10n.t("打开主题文件夹…") }, "open theme folder should be available")
 let colors = tables.first { $0.identifier?.rawValue == "theme-colors" }!
 let styles = tables.first { $0.identifier?.rawValue == "theme-styles" }!
-expect(colors.selectedRow == 1 && styles.selectedRow == 1, "opening highlights active selections")
+// 颜色列表按“浅色 / 深色”分组：fixture 的主题为 [浅色, 深色]，
+// 因此行序为 [分组“浅色”, 浅色, 分组“深色”, 深色]。
+expect(colors.numberOfRows == 4, "color list shows both groups and their themes")
+let colorDelegate = colors.delegate
+expect(colorDelegate?.tableView?(colors, isGroupRow: 0) == true, "light group header row")
+expect(colorDelegate?.tableView?(colors, isGroupRow: 1) == false, "theme row is selectable content")
+expect(colorDelegate?.tableView?(colors, isGroupRow: 2) == true, "dark group header row")
+expect(colorDelegate?.tableView?(colors, shouldSelectRow: 0) == false, "group headers are not selectable")
+expect(colors.selectedRow == 3 && styles.selectedRow == 1, "opening highlights active selections")
 expect(colors.accessibilityLabel() == L10n.t("颜色主题") && styles.accessibilityLabel() == L10n.t("排版样式"), "VoiceOver identifies each list")
 styles.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
 expect(first.currentStyleId == "serif", "row selection applies immediately")
+colors.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+expect(first.currentThemeId == "colors-default-light", "theme row maps through the grouped list")
 active = second; controller.refresh()
-expect(colors.selectedRow == 0 && styles.selectedRow == 0, "rebinding reflects new session")
+expect(colors.selectedRow == 1 && styles.selectedRow == 0, "rebinding reflects new session")
 expect(second.currentStyleId == "serif", "refresh does not apply old state")
 second.isFollowSystemTheme = true; controller.refresh()
 expect(!colors.isEnabled, "follow-system disables color selection")
@@ -62,6 +72,30 @@ for width in [620.0, 980.0] {
 }
 }
 }
+// 缺字样式必须出现可点击徽标；点击后打开可选字体窗口（注入固定的缺字结果，避免依赖本机字体）。
+var optionalFontsRequested = false
+let badgeSession = Session()
+let badgeController = ThemeSettingsWindowController(
+    sessionProvider: { badgeSession },
+    onOptionalFonts: { optionalFontsRequested = true },
+    missingPacksProvider: { $0 == "latex" ? [OptionalFontCatalog.packs[0]] : [] }
+)
+let badgeWindow = badgeController.window!
+let badgeStyles = descendants(badgeWindow.contentView!)
+    .compactMap { $0 as? NSTableView }
+    .first { $0.identifier?.rawValue == "theme-styles" }!
+badgeController.refresh()
+let latexIndex = badgeSession.styles.firstIndex { $0.id == "latex" }!
+let latexCell = badgeStyles.view(atColumn: 0, row: latexIndex, makeIfNecessary: true)!
+let badge = descendants(latexCell).compactMap { $0 as? NSButton }.first { $0.title == L10n.t("缺字体") }
+expect(badge != nil, "styles missing font packs must show a badge")
+let serifCell = badgeStyles.view(atColumn: 0, row: 0, makeIfNecessary: true)!
+expect(
+    descendants(serifCell).compactMap { $0 as? NSButton }.isEmpty,
+    "styles without missing packs must not show the badge"
+)
+badge?.performClick(nil)
+expect(optionalFontsRequested, "badge opens the optional fonts window")
 print("Theme settings AppKit window tests passed")
 
 enum AppLog { static func info(_ message: String) {}

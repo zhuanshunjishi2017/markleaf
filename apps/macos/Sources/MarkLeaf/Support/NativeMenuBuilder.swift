@@ -484,7 +484,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 state: MenuCommandAvailabilityState(
                     tabCount: windowSession.tabStore.tabs.count,
                     activeTabPath: windowSession.tabStore.activeTab?.path,
-                    workspaceRoot: windowSession.controller?.session.workspaceRoot
+                    workspaceRoot: windowSession.controller?.session.workspaceRoot,
+                    hasContent: windowSession.activeTabSession?.hasContent ?? false
                 )
             )
         default:

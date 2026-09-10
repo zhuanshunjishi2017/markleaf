@@ -84,6 +84,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             self?.handleTabContextAction(action, for: id)
         }
         tabBar.workspaceRootProvider = { [weak self] in self?.session.workspaceRoot }
+        tabBar.contentProvider = { [weak self] id in
+            self?.windowSession?.session(for: id)?.hasContent ?? false
+        }
         tabBar.onReorder = { [weak self] from, to in
             guard let self else { return }
             self.windowSession?.tabStore.move(from: from, to: to)

@@ -26,6 +26,13 @@ let model = ThemeSettingsModel(sessionProvider: { active })
 model.refresh()
 expect(model.themes.map(\.id) == ["colors-default-light", "colors-dark"], "preserve canonical IDs")
 expect(model.selectedThemeIndex == 0 && model.selectedStyleIndex == 0, "reflect current selections")
+expect(
+    model.colorRows == [.group("浅色"), .theme(0), .group("深色"), .theme(1)],
+    "colors are grouped into light and dark sections"
+)
+expect(model.selectedThemeRow == 1, "selected row skips the light group header")
+expect(model.themeIndex(atRow: 0) == nil, "group headers are not themes")
+expect(model.themeIndex(atRow: 3) == 1, "dark theme row maps back to its theme index")
 model.selectTheme(at: 1); model.selectStyle(at: 1)
 expect(first.themeCalls == ["colors-dark"] && first.styleCalls == ["latex"], "apply each selection once through session")
 model.selectTheme(at: 1); model.selectStyle(at: 1)

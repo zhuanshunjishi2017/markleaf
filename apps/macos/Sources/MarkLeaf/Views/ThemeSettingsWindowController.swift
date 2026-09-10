@@ -11,6 +11,8 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     private let onOptionalFonts: () -> Void
     private let onAddTheme: () -> Void
     private let onOpenThemeFolder: () -> Void
+    /// 缺字体判定；默认查询真实字体安装状态，测试可注入固定结果。
+    private let missingPacksProvider: ((String) -> [OptionalFontPack])?
     private let fontInstaller = OptionalFontInstaller()
 
     private let segmentedControl = NSSegmentedControl(
@@ -42,12 +44,14 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         sessionProvider: @escaping () -> (any ThemeSettingsSession)?,
         onOptionalFonts: @escaping () -> Void,
         onAddTheme: @escaping () -> Void = {},
-        onOpenThemeFolder: @escaping () -> Void = {}
+        onOpenThemeFolder: @escaping () -> Void = {},
+        missingPacksProvider: ((String) -> [OptionalFontPack])? = nil
     ) {
         model = ThemeSettingsModel(sessionProvider: sessionProvider)
         self.onOptionalFonts = onOptionalFonts
         self.onAddTheme = onAddTheme
         self.onOpenThemeFolder = onOpenThemeFolder
+        self.missingPacksProvider = missingPacksProvider
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .resizable],
@@ -82,7 +86,7 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         model.refresh()
         themeTable.reloadData()
         styleTable.reloadData()
-        select(table: themeTable, index: model.selectedThemeIndex)
+        select(table: themeTable, index: model.selectedThemeRow)
         select(table: styleTable, index: model.selectedStyleIndex)
         followCheck.state = model.followsSystem ? .on : .off
         rebuildPopup(lightThemePopup, themes: model.lightThemes, selected: model.selectedLightDefaultIndex)
@@ -141,7 +145,12 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     }
 
     private func buildColorsPage() {
-        let scroll = tableScroll(themeTable, title: L10n.t("颜色主题"), id: "theme-colors")
+        let scroll = tableScroll(
+            themeTable,
+            title: L10n.t("颜色主题"),
+            id: "theme-colors",
+            rowHeight: 44
+        )
         followCheck.target = self
         followCheck.action = #selector(toggleFollowSystem)
         lightThemePopup.target = self
@@ -189,7 +198,12 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     }
 
     private func buildStylesPage() {
-        let scroll = tableScroll(styleTable, title: L10n.t("排版样式"), id: "theme-styles")
+        let scroll = tableScroll(
+            styleTable,
+            title: L10n.t("排版样式"),
+            id: "theme-styles",
+            rowHeight: 28
+        )
         missingFontsLabel.textColor = .secondaryLabelColor
         fontsButton.target = self
         fontsButton.action = #selector(showOptionalFonts)
@@ -210,7 +224,12 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         ])
     }
 
-    private func tableScroll(_ table: NSTableView, title: String, id: String) -> NSScrollView {
+    private func tableScroll(
+        _ table: NSTableView,
+        title: String,
+        id: String,
+        rowHeight: CGFloat
+    ) -> NSScrollView {
         table.identifier = NSUserInterfaceItemIdentifier(id)
         table.setAccessibilityLabel(title)
         let column = NSTableColumn(identifier: .init(id))
@@ -225,9 +244,12 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         table.allowsEmptySelection = true
         table.usesAlternatingRowBackgroundColors = true
         table.rowSizeStyle = .medium
+        table.rowHeight = rowHeight
+        table.intercellSpacing = NSSize(width: 0, height: 0)
         table.target = self
         table.doubleAction = #selector(applySelection(_:))
         table.action = #selector(applySelection(_:))
+        table.floatsGroupRows = false
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -249,11 +271,7 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     }
 
     private func refreshMissingFonts() {
-        let missing = CurrentStyleFontNotice.missingPacks(
-            styleID: model.currentStyleID,
-            packs: OptionalFontCatalog.packs,
-            statuses: OptionalFontCatalog.packs.map(fontInstaller.status(for:))
-        )
+        let missing = model.currentStyleID.map(missingPacks(for:)) ?? []
         missingFontsLabel.isHidden = missing.isEmpty
         missingFontsLabel.stringValue = missing.isEmpty
             ? ""
@@ -266,28 +284,111 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        tableView === themeTable ? model.themes.count : model.styles.count
+        tableView === themeTable ? model.colorRows.count : model.styles.count
+    }
+
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        guard tableView === themeTable, model.colorRows.indices.contains(row) else { return false }
+        if case .group = model.colorRows[row] { return true }
+        return false
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        !self.tableView(tableView, isGroupRow: row)
+    }
+
+    /// 行高必须由 delegate 明确给出：仅设置 rowHeight 会被表格样式覆盖，
+    /// 导致 34pt 的主题预览在 24pt 行里互相重叠。
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        if tableView === themeTable {
+            return self.tableView(tableView, isGroupRow: row) ? 20 : 46
+        }
+        return 28
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if tableView === themeTable {
-            guard model.themes.indices.contains(row) else { return nil }
-            return themeCell(model.themes[row])
+            guard model.colorRows.indices.contains(row) else { return nil }
+            switch model.colorRows[row] {
+            case .group(let title):
+                return groupCell(title)
+            case .theme(let index):
+                guard model.themes.indices.contains(index) else { return nil }
+                return themeCell(model.themes[index])
+            }
         }
         guard model.styles.indices.contains(row) else { return nil }
-        let label = NSTextField(labelWithString: L10n.t(model.styles[row].displayName))
+        return styleCell(model.styles[row])
+    }
+
+    private func groupCell(_ title: String) -> NSView {
+        let cell = NSTableCellView()
+        let label = NSTextField(labelWithString: L10n.t(title))
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = .secondaryLabelColor
         label.setAccessibilityLabel(label.stringValue)
-        return label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            label.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -2),
+        ])
+        cell.textField = label
+        return cell
+    }
+
+    /// 排版样式行：名称 + 可选字体缺失徽标（点击打开可选字体窗口）。
+    private func styleCell(_ style: StyleDefinition) -> NSView {
+        let cell = NSTableCellView()
+        let label = NSTextField(labelWithString: L10n.t(style.displayName))
+        label.setAccessibilityLabel(label.stringValue)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(label)
+        cell.textField = label
+        var trailing = cell.trailingAnchor
+        var trailingPadding: CGFloat = -4
+
+        let missing = missingPacks(for: style.id)
+        if !missing.isEmpty {
+            let badge = NSButton(title: L10n.t("缺字体"), target: self, action: #selector(showOptionalFonts))
+            badge.bezelStyle = .inline
+            badge.controlSize = .small
+            badge.font = .systemFont(ofSize: 10, weight: .medium)
+            badge.contentTintColor = .systemOrange
+            badge.toolTip = L10n.f(
+                "当前排版“%@”缺少字体包：%@。",
+                L10n.t(style.displayName),
+                missing.map { L10n.t($0.displayName) }.joined(separator: "、")
+            )
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(badge)
+            NSLayoutConstraint.activate([
+                badge.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                badge.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+            trailing = badge.leadingAnchor
+            trailingPadding = -6
+        }
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailing, constant: trailingPadding),
+        ])
+        return cell
+    }
+
+    private func missingPacks(for styleID: String) -> [OptionalFontPack] {
+        if let missingPacksProvider { return missingPacksProvider(styleID) }
+        return CurrentStyleFontNotice.missingPacks(
+            styleID: styleID,
+            packs: OptionalFontCatalog.packs,
+            statuses: OptionalFontCatalog.packs.map(fontInstaller.status(for:))
+        )
     }
 
     private func themeCell(_ theme: ColorThemeInfo) -> NSView {
         let cell = NSTableCellView()
-        let swatch = NSView()
-        swatch.wantsLayer = true
-        swatch.layer?.cornerRadius = 4
-        swatch.layer?.borderWidth = 1
-        swatch.layer?.borderColor = NSColor.separatorColor.cgColor
-        swatch.layer?.backgroundColor = swatchColor(for: theme).cgColor
+        let swatch = ThemeSwatchView(theme: theme)
         let label = NSTextField(labelWithString: L10n.t(theme.displayName))
         label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityLabel(label.stringValue)
@@ -298,8 +399,8 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         NSLayoutConstraint.activate([
             swatch.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
             swatch.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            swatch.widthAnchor.constraint(equalToConstant: 16),
-            swatch.heightAnchor.constraint(equalToConstant: 16),
+            swatch.widthAnchor.constraint(equalToConstant: 64),
+            swatch.heightAnchor.constraint(equalToConstant: 36),
             label.leadingAnchor.constraint(equalTo: swatch.trailingAnchor, constant: 8),
             label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
@@ -308,14 +409,7 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
         return cell
     }
 
-    private func swatchColor(for theme: ColorThemeInfo) -> NSColor {
-        if let color = Self.cssColor(in: theme.css, names: ["bg-primary", "bg-secondary", "text-primary"]) {
-            return color
-        }
-        return theme.isDark ? .darkGray : .white
-    }
-
-    private static func cssColor(in css: String, names: [String]) -> NSColor? {
+    fileprivate static func cssColor(in css: String, names: [String]) -> NSColor? {
         for name in names {
             let pattern = #"--\#(name)\s*:\s*(#[0-9a-fA-F]{3,8}|rgb[a]?\([^)]+\));"#
             guard let regex = try? NSRegularExpression(pattern: pattern),
@@ -357,7 +451,8 @@ final class ThemeSettingsWindowController: NSWindowController, NSWindowDelegate,
     @objc private func applySelection(_ table: NSTableView) {
         guard !isRefreshing else { return }
         if table === themeTable {
-            model.selectTheme(at: table.selectedRow)
+            guard let index = model.themeIndex(atRow: table.selectedRow) else { return }
+            model.selectTheme(at: index)
         } else {
             model.selectStyle(at: table.selectedRow)
         }
@@ -397,5 +492,66 @@ private final class ThemeSettingsTableView: NSTableView {
             return
         }
         super.keyDown(with: event)
+    }
+}
+
+/// 颜色主题预览缩略图：模拟一页文档（标题条 + 正文线 + 顶部强调色），
+/// 对应 Windows 配色方案对话框里的主题色块。
+final class ThemeSwatchView: NSView {
+    private let accent = NSView()
+    private let titleBar = NSView()
+    private let line1 = NSView()
+    private let line2 = NSView()
+
+    init(theme: ColorThemeInfo) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
+        layer?.masksToBounds = true
+        layer?.backgroundColor = Self.color(
+            in: theme.css,
+            names: ["bg-primary", "bg-secondary"],
+            fallback: theme.isDark ? .init(white: 0.13, alpha: 1) : .white
+        ).cgColor
+
+        let text = Self.color(in: theme.css, names: ["text-primary"], fallback: theme.isDark ? .white : .black)
+        let secondary = Self.color(
+            in: theme.css,
+            names: ["text-secondary", "text-tertiary"],
+            fallback: text.withAlphaComponent(0.55)
+        )
+        let highlight = Self.color(
+            in: theme.css,
+            names: ["theme-light", "icon", "highlight"],
+            fallback: .controlAccentColor
+        )
+        for view in [accent, titleBar, line1, line2] {
+            view.wantsLayer = true
+            addSubview(view)
+        }
+        accent.layer?.backgroundColor = highlight.cgColor
+        titleBar.layer?.backgroundColor = text.cgColor
+        line1.layer?.backgroundColor = secondary.cgColor
+        line2.layer?.backgroundColor = secondary.withAlphaComponent(0.7).cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let width = bounds.width
+        let top = bounds.height - 5
+        accent.frame = NSRect(x: 6, y: top - 3, width: 12, height: 3)
+        titleBar.frame = NSRect(x: 6, y: top - 12, width: width * 0.46, height: 4)
+        line1.frame = NSRect(x: 6, y: top - 20, width: width * 0.74, height: 3)
+        line2.frame = NSRect(x: 6, y: top - 27, width: width * 0.58, height: 3)
+    }
+
+    private static func color(in css: String, names: [String], fallback: NSColor) -> NSColor {
+        ThemeSettingsWindowController.cssColor(in: css, names: names) ?? fallback
     }
 }

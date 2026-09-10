@@ -24,6 +24,8 @@ final class TabBarController: NSView {
     var onReorder: ((Int, Int) -> Void)?
     var onDetach: ((DocumentTabID) -> Void)?
     var statusProvider: ((DocumentTabID) -> (isReadOnly: Bool, hasExternalChange: Bool))?
+    /// 该标签的文档是否已有内容；空文档时“复制内容到剪贴板”不可用。
+    var contentProvider: ((DocumentTabID) -> Bool)?
 
     private let stack = NSStackView()
     private let newTabButton = NSButton()
@@ -490,7 +492,8 @@ final class TabBarController: NSView {
         let availability = MenuCommandAvailabilityState(
             tabCount: tabStore.tabs.count,
             activeTabPath: tab?.path,
-            workspaceRoot: workspaceRootProvider?()
+            workspaceRoot: workspaceRootProvider?(),
+            hasContent: contentProvider?(tabID) ?? false
         )
         menu.addItem(.separator())
         let fileCommands: [(String, TabContextAction, String)] = [
