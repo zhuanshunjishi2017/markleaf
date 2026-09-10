@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Drawing.Imaging;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using MarkLeaf.Documents;
