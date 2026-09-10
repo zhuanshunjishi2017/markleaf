@@ -1,6 +1,6 @@
 import './styles.css'
 import '../../styles/base.css'
-import '../../styles/sans.css'
+import '../../styles/minimal.css'
 import './vscode.css'
 import { Fragment, Slice } from '@tiptap/pm/model'
 import {

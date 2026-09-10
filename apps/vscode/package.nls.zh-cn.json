@@ -5,5 +5,6 @@
   "command.exportImage": "MarkLeaf: 导出图片…",
   "command.print": "MarkLeaf: 打印…",
   "command.exportLast": "MarkLeaf: 按上次设置导出",
-  "config.exportBrowserPath": "PDF、图片、预览和打印使用的 Chrome/Edge 可执行文件路径。留空自动查找已安装浏览器，不下载浏览器。"
+  "config.exportBrowserPath": "PDF、图片、预览和打印使用的 Chrome/Edge 可执行文件路径。留空自动查找已安装浏览器，不下载浏览器。",
+  "config.typography": "MarkLeaf 排版，默认使用网页·极简；保留用户或工作区主动选择的样式。"
 }

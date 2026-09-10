@@ -673,8 +673,8 @@
         "markleaf.typography": {
           "type": "string",
           "scope": "resource",
-          "default": "sans",
-          "description": "使用 MarkLeaf 原有排版样式。",
+          "default": "minimal",
+          "description": "%config.typography%",
           "enum": [
             "sans",
             "serif",

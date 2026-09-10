@@ -71,7 +71,7 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
     <button data-action="openSourceBeside" type="button" title="在侧边打开 VS Code 源码编辑器">并排</button>
   </header>
   <div id="notice" role="status" hidden><span id="notice-text"></span><button id="recover" type="button" hidden>将未同步内容打开为草稿</button></div>
-  <main id="editor" class="markleaf-style-sans" aria-label="Markdown 文档" aria-busy="true"></main>
+  <main id="editor" class="markleaf-style-minimal" aria-label="Markdown 文档" aria-busy="true"></main>
   <footer><span id="sync-status" role="status">正在加载…</span><span id="word-count"></span></footer>
 </div>
 <script nonce="${nonce}" type="module" src="${assetUrl(entry.file)}"></script>
