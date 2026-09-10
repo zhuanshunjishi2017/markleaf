@@ -4,7 +4,7 @@ import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-s
 type MermaidModule = typeof import('mermaid')
 
 let mermaidPromise: Promise<MermaidModule> | null = null
-let mermaidInitializedFontFamily: string | null = null
+let mermaidInitializationKey: string | null = null
 let mermaidSequence = 0
 const MERMAID_RENDER_TIMEOUT_MS = 1000
 let mermaidStrings = sharedEditorStrings('zh-Hans', 'ctrl')
@@ -18,6 +18,55 @@ function getActiveMermaidFontFamily(): string {
     if (fontFamily) return fontFamily
   }
   return 'sans-serif'
+}
+
+type MermaidThemeSettings = {
+  fontFamily: string
+  theme: MermaidThemeName
+}
+
+export type MermaidThemeName = 'default' | 'dark' | 'forest' | 'neutral' | 'base'
+
+function getCssThemeColor(name: string, fallback: string): string {
+  const value = window.getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim()
+  return value || fallback
+}
+
+function isDarkCssColor(value: string): boolean {
+  const probe = document.createElement('span')
+  probe.style.color = value
+  probe.style.position = 'fixed'
+  probe.style.visibility = 'hidden'
+  document.body.append(probe)
+  const resolved = window.getComputedStyle(probe).color
+  probe.remove()
+  const match = resolved.match(/rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)/i)
+  if (!match) return false
+  const red = Number(match[1])
+  const green = Number(match[2])
+  const blue = Number(match[3])
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 < 0.5
+}
+
+function getActiveMermaidTheme(themeOverride?: MermaidThemeName): MermaidThemeSettings {
+  const background = getCssThemeColor('bg-primary', '#ffffff')
+  const documentTheme = document.querySelector<HTMLElement>('.markleaf-document')
+    ? window.getComputedStyle(document.querySelector<HTMLElement>('.markleaf-document')!)
+      .getPropertyValue('--ml-mermaid-theme').trim()
+    : ''
+  const requestedTheme = isMermaidThemeName(documentTheme) ? documentTheme : undefined
+  return {
+    fontFamily: getActiveMermaidFontFamily(),
+    theme: themeOverride ?? requestedTheme ?? (isDarkCssColor(background) ? 'dark' : 'default'),
+  }
+}
+
+function isMermaidThemeName(value: string): value is MermaidThemeName {
+  return value === 'default'
+    || value === 'dark'
+    || value === 'forest'
+    || value === 'neutral'
+    || value === 'base'
 }
 
 export function setMermaidMarkdownCodeFence(preference: 'backtick' | 'tilde'): void {
@@ -38,17 +87,23 @@ async function loadMermaid(): Promise<MermaidModule> {
   return mermaidPromise
 }
 
-async function ensureMermaidInitialized(module: MermaidModule, fontFamily: string): Promise<void> {
-  if (mermaidInitializedFontFamily === fontFamily) return
+async function ensureMermaidInitialized(module: MermaidModule, settings: MermaidThemeSettings): Promise<void> {
+  const initializationKey = JSON.stringify(settings)
+  if (mermaidInitializationKey === initializationKey) return
   module.default.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
     suppressErrorRendering: true,
+    // Mermaid's built-in themes define a much broader palette than MarkLeaf's
+    // UI variables (pie, git, gantt, sequence, quadrant, architecture, etc.).
+    // Only select the matching complete palette here; do not collapse it into
+    // the handful of colors exposed by a MarkLeaf color theme.
+    theme: settings.theme,
     themeVariables: {
-      fontFamily,
+      fontFamily: settings.fontFamily,
     },
   })
-  mermaidInitializedFontFamily = fontFamily
+  mermaidInitializationKey = initializationKey
 }
 
 function nextMermaidId(prefix: string): string {
@@ -65,8 +120,7 @@ async function renderMermaidSvgInto(
     return 'empty'
   }
   const module = await loadMermaid()
-  const fontFamily = getActiveMermaidFontFamily()
-  await ensureMermaidInitialized(module, fontFamily)
+  await ensureMermaidInitialized(module, getActiveMermaidTheme())
   const id = nextMermaidId('markleaf-mermaid')
   return withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS).then(({ svg }) => {
     host.innerHTML = svg
@@ -232,13 +286,13 @@ export const Mermaid = Node.create({
   },
 })
 
-export async function renderMermaidInHtml(html: string): Promise<string> {
+export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName): Promise<string> {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
   const placeholders = Array.from(parsed.body.querySelectorAll<HTMLElement>('.markleaf-mermaid[data-mermaid="1"]'))
   if (placeholders.length === 0) return html
 
   const module = await loadMermaid()
-  await ensureMermaidInitialized(module, getActiveMermaidFontFamily())
+  await ensureMermaidInitialized(module, getActiveMermaidTheme(theme))
   await Promise.all(placeholders.map(async (placeholder) => {
     const source = placeholder.textContent ?? ''
       if (!source.trim()) {

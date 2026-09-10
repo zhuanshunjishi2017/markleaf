@@ -6,6 +6,7 @@
    （与历史 style.css 中 #editor 的内边距一致）。与网页排版一致，正文
    内容宽度响应 --ml-max-width 限制，超过时居中并留出两侧空白。 */
 .markleaf-style-print .markleaf-document {
+  --ml-mermaid-theme: neutral;
   width: min(100%, var(--ml-max-width));
   margin: 0 auto;
 }

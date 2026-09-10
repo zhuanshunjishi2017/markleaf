@@ -146,8 +146,10 @@ it('executes native pasteMarkdown and pasteClipboard commands', async () => {
     html: '<p><a href="https://openai.com">OpenAI</a></p>',
   }, 'clipboard')
 
-  expect(harness.messages.find((message) => message.requestId === 'markdown')?.payload).toEqual({ success: true })
-  expect(harness.messages.find((message) => message.requestId === 'clipboard')?.payload).toEqual({ success: true })
+  expect(harness.messages.find((message) => message.requestId === 'markdown')?.payload)
+    .toEqual({ success: true, outcome: 'markdown' })
+  expect(harness.messages.find((message) => message.requestId === 'clipboard')?.payload)
+    .toEqual({ success: true, outcome: 'formatted' })
   expect(harness.editorDom().querySelectorAll('h1')).toHaveLength(1)
   expect(harness.editorDom().querySelector('a')?.getAttribute('href')).toBe('https://openai.com')
 })
@@ -165,8 +167,10 @@ it('keeps source-mode native clipboard text literal', async () => {
     text: '**still literal source**',
   }, 'source-markdown')
 
-  expect(harness.messages.find((message) => message.requestId === 'source-paste')?.payload).toEqual({ success: true })
-  expect(harness.messages.find((message) => message.requestId === 'source-markdown')?.payload).toEqual({ success: true })
+  expect(harness.messages.find((message) => message.requestId === 'source-paste')?.payload)
+    .toEqual({ success: true, outcome: 'plainText' })
+  expect(harness.messages.find((message) => message.requestId === 'source-markdown')?.payload)
+    .toEqual({ success: true, outcome: 'plainText' })
   expect(harness.snapshot()).toContain('# literal source')
   expect(harness.snapshot()).toContain('**still literal source**')
   harness.send('loadDocument', { markdown: 'cleanup' })
@@ -189,6 +193,7 @@ it('retains an HTML-only native clipboard fallback', async () => {
     html: '<p><strong>HTML only</strong></p>',
   }, 'html-only')
 
-  expect(harness.messages.find((message) => message.requestId === 'html-only')?.payload).toEqual({ success: true })
+  expect(harness.messages.find((message) => message.requestId === 'html-only')?.payload)
+    .toEqual({ success: true, outcome: 'formatted' })
   expect(harness.editorDom().querySelector('strong')?.textContent).toBe('HTML only')
 })

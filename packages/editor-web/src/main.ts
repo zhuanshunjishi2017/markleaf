@@ -26,14 +26,16 @@ import {
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
-  pasteClipboardContent,
+  pasteClipboardContentWithResult,
   pasteMarkdownText,
+  pasteMarkdownTextWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
   scrollToFootnoteDefinition,
   setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
+  setCodeBlockControlHandlers,
   setEditorSharedStrings,
   restoreVisualSelection,
   restoreEditorScroll,
@@ -41,7 +43,12 @@ import {
   type VisualSelectionSnapshot,
 } from './editor'
 import { katexCss, renderMathInHtml } from './math'
-import { renderMermaidInHtml, rerenderMermaidElements, setMermaidStrings } from './mermaid'
+import {
+  renderMermaidInHtml,
+  rerenderMermaidElements,
+  setMermaidStrings,
+  type MermaidThemeName,
+} from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
 import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
 import { isRestoreViewportPayload } from './protocol'
@@ -126,6 +133,10 @@ const editorCreationOptions = {
   handlePaste: handleVisualEditorPaste,
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
+setCodeBlockControlHandlers({
+  editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
+  copyCode: text => send('copyCodeBlockRequested', { text }),
+})
 const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
 let lastVisualSelection = captureVisualSelection(editor)
@@ -449,7 +460,6 @@ function applyAlertTitleLocalization(loc: Record<string, string>): void {
 
 function applyFindBarLocalization(loc: Record<string, string>): void {
   findBarLoc = loc
-  setBlockTypeLabels(loc)
   applyAlertTitleLocalization(loc)
   findInput.placeholder = loc.find ?? 'Find'
   findInput.ariaLabel = loc.findLabel ?? 'Find'
@@ -1983,6 +1993,8 @@ async function handleMessage(value: unknown): Promise<void> {
           && (payload.command === 'indentListItem' || payload.command === 'outdentListItem')) {
           restoreVisualSelection(editor, lastVisualSelection)
         }
+        let commandOutcome: string | undefined
+        let commandError: string | undefined
         const success = sourceMode
           ? payload.command === 'undo'
             ? sourceEditor?.undo() ?? false
@@ -1994,16 +2006,30 @@ async function handleMessage(value: unknown): Promise<void> {
               ? sourceEditor?.replaceSelection(commandText) ?? false
             : (payload.command === 'pasteMarkdown' || payload.command === 'pasteClipboard')
                 && commandText !== undefined
-              ? sourceEditor?.replaceSelection(commandText) ?? false
+              ? (commandOutcome = 'plainText', sourceEditor?.replaceSelection(commandText) ?? false)
             : payload.command === 'insertMermaid'
               ? sourceEditor?.insertMermaidCodeBlock() ?? false
             : payload.command === 'selectAll'
                 ? sourceEditor?.selectAll() ?? false
                 : false
           : payload.command === 'pasteMarkdown' && commandText !== undefined
-            ? pasteMarkdownText(editor, commandText)
+            ? (() => {
+                const result = pasteMarkdownTextWithResult(editor, commandText)
+                commandOutcome = result.outcome
+                commandError = result.error
+                return result.success
+              })()
             : payload.command === 'pasteClipboard'
-              ? pasteClipboardContent(editor, commandText ?? '', commandHtml ?? '')
+              ? (() => {
+                  const result = pasteClipboardContentWithResult(
+                    editor,
+                    commandText ?? '',
+                    commandHtml ?? '',
+                  )
+                  commandOutcome = result.outcome
+                  commandError = result.error
+                  return result.success
+                })()
               : executeEditorCommand(
                 editor,
                 payload.command,
@@ -2012,7 +2038,9 @@ async function handleMessage(value: unknown): Promise<void> {
                 payload.applyToCurrentTextBlockWhenEmpty === true,
               )
         if (message.requestId) {
-          send('commandResult', { success }, message.requestId)
+          const result: Record<string, unknown> = { success, outcome: commandOutcome }
+          if (commandError !== undefined) result.error = commandError
+          send('commandResult', result, message.requestId)
         }
         sendEditorState()
       }
@@ -2129,7 +2157,6 @@ const FIND_BAR_STRINGS: Record<string, Record<string, string>> = {
 
 function applyFindBarLanguage(lang: string): void {
   const table: Record<string, string> = FIND_BAR_STRINGS[lang] ?? FIND_BAR_STRINGS['zh-Hans'] ?? {}
-  setBlockTypeLabels(table)
   const findInput = document.getElementById('find-input') as HTMLInputElement | null
   const replaceInput = document.getElementById('replace-input') as HTMLInputElement | null
   if (findInput) {
@@ -2172,6 +2199,7 @@ function setMarkleafLanguage(lang: string): void {
   markleafLanguage = lang
   applyFindBarLanguage(lang)
   const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
+  setBlockTypeLabels(strings)
   blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
   setEditorSharedStrings(strings)
   setMermaidStrings(strings)
@@ -2370,6 +2398,13 @@ function resolveStyle(styleId: string): { rootClass: string; css: string } {
   return { rootClass: classes.join(' '), css: cssParts.join('\n') }
 }
 
+function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
+  const declarations = Array.from(css.matchAll(
+    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
+  ))
+  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
+}
+
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)
   const toRemove = Array.from(editorMount.classList).filter((cls) => cls.startsWith('markleaf-style-'))
@@ -2402,6 +2437,7 @@ async function generateExportHtml(
   const rawBodyHtml = sourceMode
     ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>`
     : editor.getHTML()
+  const resolved = resolveStyle(style)
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
     renderMathInHtml(rawBodyHtml),
     isPdf,
@@ -2412,8 +2448,7 @@ async function generateExportHtml(
     (_, encoded: string) => {
       try { return decodeURIComponent(encoded) } catch { return encoded }
     },
-  ))
-  const resolved = resolveStyle(style)
+  ), resolveMermaidTheme(resolved.css))
   const rootClass = [
     resolved.rootClass,
     isPdf ? 'markleaf-export-pdf' : '',

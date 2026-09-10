@@ -345,6 +345,61 @@ body.markleaf-theme-dark {
   position: relative;
 }
 
+.markleaf-code-block-controls {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.markleaf-code-block-copy,
+.markleaf-code-block-language {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  line-height: inherit;
+  cursor: default;
+}
+
+.markleaf-code-block-copy {
+  display: none;
+  width: 18px;
+  height: 18px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.markleaf-document pre:hover .markleaf-code-block-copy,
+.markleaf-document pre:focus-within .markleaf-code-block-copy {
+  display: block;
+}
+
+.markleaf-code-block-language {
+  min-width: 8px;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.markleaf-code-block-language-empty {
+  width: 8px;
+  height: 1em;
+}
+
+.markleaf-code-block-copy:hover,
+.markleaf-code-block-language:hover {
+  color: var(--text-primary);
+}
+
 .markleaf-mermaid-render-button,
 .markleaf-front-matter-hide {
   position: absolute;
@@ -365,6 +420,10 @@ body.markleaf-theme-dark {
 .markleaf-front-matter-hide:hover,
 .markleaf-front-matter-hide:focus-visible {
   background: var(--bg-hover, #f0f0f0);
+}
+
+.markleaf-document pre:has(.markleaf-code-block-controls) .markleaf-mermaid-render-button {
+  top: 28px;
 }
 
 /* 表格 / 图片标题（widget decoration，居中显示） */
