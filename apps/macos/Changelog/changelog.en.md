@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- All three products now use one HTML export generator with the Windows pagination and long-image scrolling rules. Mac workspace trees, lists, and search consistently use `.md` / `.txt`, with matching HTML tag spacing and entity decoding in previews and search.
 - Fixed a refresh loop when expanding folders containing only non-text files such as PDFs, images, or archives. Text-file filtering remains in effect, and adding or deleting text files still updates the tree.
 - Removed stale web find-bar references that interrupted editor startup and left the document area blank; native find and replace remain available.
 - Workspace refresh preserves expanded folders, selection and scrolling. Repeated layout updates and switches between untitled tabs no longer reset the sidebar.

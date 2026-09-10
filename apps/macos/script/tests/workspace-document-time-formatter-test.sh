@@ -7,6 +7,9 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 SDK_PATH="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
 cp "$ROOT_DIR/script/tests/WorkspaceDocumentTimeFormatterTest.swift" "$BUILD_DIR/main.swift"
 swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceDocumentPolicy.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/HTMLEntities.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/MarkdownPlainText.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceSearch.swift" "$BUILD_DIR/main.swift" \
   -o "$BUILD_DIR/document-time-test"
 TZ=Asia/Shanghai "$BUILD_DIR/document-time-test"

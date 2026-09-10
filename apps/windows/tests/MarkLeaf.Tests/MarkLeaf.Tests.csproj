@@ -17,6 +17,10 @@
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\..\..\tests\fixtures\workspace-text.json" Link="workspace-text.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup>
       <Reference Remove="@(Reference)" Condition="$([System.String]::Copy('%(Reference.Filename)').Equals('Microsoft.Web.WebView2.Wpf', StringComparison.OrdinalIgnoreCase))" />

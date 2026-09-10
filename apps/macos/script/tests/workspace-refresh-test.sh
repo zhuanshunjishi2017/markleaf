@@ -19,4 +19,4 @@ else:
 subprocess.run(['swiftc', '-I', str(module), '-module-cache-path', str(out / 'module-cache'),
     str(root / 'script/tests/WorkspaceRefreshTest.swift'), *objects, '-o', str(out / 'test')], check=True)
 PY
-MARKLEAF_APP_SUPPORT_DIR="$BUILD_DIR/settings" "$BUILD_DIR/test"
+MARKLEAF_APP_SUPPORT_DIR="$BUILD_DIR/settings" "$BUILD_DIR/test" "$ROOT_DIR/../../tests/fixtures/workspace-text.json"

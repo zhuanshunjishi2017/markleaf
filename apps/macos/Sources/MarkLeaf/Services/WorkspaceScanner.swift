@@ -14,8 +14,6 @@ final class WorkspaceScanner {
     }
     private let previewCache: WorkspacePreviewCache?
 
-    private static let allowedExtensions: Set<String> = ["md", "txt", "markdown"]
-
     var onComplete: (([WorkspaceEntry]) -> Void)?
 
     init(
@@ -85,8 +83,8 @@ final class WorkspaceScanner {
                     }
                 } else {
                     let ext = (item as NSString).pathExtension.lowercased()
-                    if allowedExtensions.contains(ext) {
-                        let preview = previewCache?.preview(path: path, isMarkdown: ext == "md" || ext == "markdown")
+                    if WorkspaceDocumentPolicy.includes(fileExtension: ext) {
+                        let preview = previewCache?.preview(path: path, isMarkdown: ext == "md")
                         results.append(WorkspaceEntry(name: item, path: path, isDirectory: false, preview: preview))
                     }
                 }
@@ -113,7 +111,7 @@ final class WorkspaceScanner {
             if item.hasPrefix(".") { continue }
             if !isDirectory.boolValue {
                 let ext = (item as NSString).pathExtension.lowercased()
-                guard Self.allowedExtensions.contains(ext) else { continue }
+                guard WorkspaceDocumentPolicy.includes(fileExtension: ext) else { continue }
             }
             entries.append(WorkspaceEntry(name: item, path: path, isDirectory: isDirectory.boolValue))
         }

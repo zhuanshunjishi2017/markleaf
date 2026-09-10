@@ -1,5 +1,6 @@
 // Document serialization and typography shared by native hosts and VS Code.
 import { renderEscapedCaptionHtml } from './editor'
+import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
 import { katexCss, renderMathInHtml } from './math'
 import { renderMermaidInHtml, type MermaidThemeName } from './mermaid'
 
@@ -14,8 +15,7 @@ export function escapeHtml(text: string): string {
 function renderEditorHtmlForExport(
   html: string,
   preserveEmptyParagraphs = false,
-  keepTablesTogether = false,
-  keepHeadingsWithNextBlock = false,
+  pagination: ExportPaginationOptions,
   visualCjkAutoSpacing = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
@@ -50,33 +50,11 @@ function renderEditorHtmlForExport(
     paragraph.insertBefore(labelElement, paragraph.firstChild)
   }
 
-  if (keepTablesTogether) {
-    for (const table of Array.from(parsed.body.querySelectorAll<HTMLTableElement>('table'))) {
-      const figure = table.parentElement?.matches('figure.markleaf-figure') === true
-        ? table.parentElement
-        : null
-      ;(figure ?? table).classList.add('markleaf-keep-together')
-    }
-  }
-
-  if (keepHeadingsWithNextBlock) {
-    const headings = Array.from(parsed.body.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6'))
-    for (const heading of headings) {
-      const next = heading.nextElementSibling
-      const parent = heading.parentElement
-      if (!next || !parent || next.matches('h1, h2, h3, h4, h5, h6')) continue
-      const group = parsed.createElement('div')
-      group.className = 'markleaf-heading-with-next'
-      parent.insertBefore(group, heading)
-      group.append(heading, next)
-    }
-  }
-
   if (visualCjkAutoSpacing) {
     applyCjkAutoSpacingToExport(parsed)
   }
 
-  return parsed.body.innerHTML.replace(/\u2060/g, '')
+  return applyExportPagination(parsed.body.innerHTML, pagination)
 }
 
 function applyCjkAutoSpacingToExport(parsed: Document): void {
@@ -202,8 +180,7 @@ export async function generateExportHtml({
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
     renderMathInHtml(rawBodyHtml, strictRendering),
     isPdf,
-    keepTablesTogether,
-    keepHeadingsWithNextBlock,
+    { keepTablesTogether, keepHeadingsWithNextBlock },
     visualCjkAutoSpacing,
   ).replace(
     /https:\/\/assets\.local\/image\?path=([^"']+)/g,
@@ -239,20 +216,7 @@ ${baseCss}
 }
 ${colorSchemeCss}
 ${resolved.css}
-.markleaf-document .markleaf-keep-together,
-.markleaf-document .markleaf-heading-with-next {
-  break-inside: avoid-page !important;
-  page-break-inside: avoid !important;
-}
-.markleaf-document .markleaf-heading-with-next > h1,
-.markleaf-document .markleaf-heading-with-next > h2,
-.markleaf-document .markleaf-heading-with-next > h3,
-.markleaf-document .markleaf-heading-with-next > h4,
-.markleaf-document .markleaf-heading-with-next > h5,
-.markleaf-document .markleaf-heading-with-next > h6 {
-  break-after: avoid-page !important;
-  page-break-after: avoid !important;
-}
+${exportPaginationCss}
 /* 导出文档的排版内边距（编辑器侧由 #editor 承担）。 */
 .markleaf-document {
   padding: 44px 56px 96px;
@@ -276,8 +240,51 @@ body { margin: 0; background: var(--bg-primary); }
   margin-left: 0;
   margin-right: 0;
 }
+.markleaf-export-image #export-root {
+  width: calc(var(--ml-max-width) + 112px);
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
 .markleaf-export-image {
-  overflow: hidden;
+  /* Keep the document's scroll extent available for chunked capture. Hiding
+     overflow here collapses scrollHeight to the viewport and causes long
+     exports to produce only one screenful. Scrollbars are hidden separately
+     below without clipping the document. */
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+/* Image capture scrolls the document between chunks. Keep scrolling enabled
+   while making the browser scrollbars completely invisible in the captured
+   surface; otherwise the scrollbar occupies layout width and can leak into
+   the right/bottom edges of exported images. */
+.markleaf-export-image,
+.markleaf-export-image html,
+.markleaf-export-image body,
+.markleaf-export-image * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.markleaf-export-image::-webkit-scrollbar,
+.markleaf-export-image html::-webkit-scrollbar,
+.markleaf-export-image body::-webkit-scrollbar,
+.markleaf-export-image *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image html,
+html:has(body.markleaf-export-image) {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+html:has(body.markleaf-export-image)::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.markleaf-export-image {
+  width: 100% !important;
 }
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
@@ -350,8 +357,8 @@ body { margin: 0; background: var(--bg-primary); }
 .export-footer { border-top: 1px solid #d8dee4; margin-top: 24px; }
 </style>
 </head>
-<body>
-<div id="export-root"${rootClass ? ` class="${rootClass}"` : ''}>
+<body${rootClass ? ` class="${rootClass}"` : ''}>
+<div id="export-root">
 ${header ? `<div class="export-header">${header}</div>` : ''}
 <div class="markleaf-document">${bodyHtml}</div>
 ${footer ? `<div class="export-footer">${footer}</div>` : ''}

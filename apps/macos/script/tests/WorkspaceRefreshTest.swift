@@ -124,3 +124,19 @@ expect(filteredTree.directoryReloads == emptyReloads, "removing the last text do
 expect(filteredTree.isItemExpanded(pdfDirectory), "removing the last text document must keep expansion")
 filteredContext.close()
 print("PASS: non-text-only folders settle and continue tracking text file changes")
+
+// 搜索与树/列表读取同一份跨平台文件类型样例。
+struct SearchFixture: Decodable {
+    struct FileCase: Decodable { let name: String; let included: Bool }
+    let files: [FileCase]
+}
+let searchFixture = try JSONDecoder().decode(SearchFixture.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
+let searchRoot = root.appendingPathComponent("Search")
+try fm.createDirectory(at: searchRoot, withIntermediateDirectories: true)
+for item in searchFixture.files { try "needle".write(to: searchRoot.appendingPathComponent(item.name), atomically: true, encoding: .utf8) }
+let search = WorkspaceSearchService()
+var matches: [WorkspaceSearchResult]?
+search.search(root: searchRoot.path, query: "needle") { matches = $0 }
+expect(waitUntil { matches != nil }, "workspace search must finish")
+expect(Set(matches!.map { $0.entry.name }) == Set(searchFixture.files.filter(\.included).map(\.name)), "search uses the same Windows text scope as tree and list")
+print("PASS: workspace search matches the shared file-type fixture")

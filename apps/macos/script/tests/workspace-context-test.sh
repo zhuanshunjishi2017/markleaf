@@ -11,8 +11,10 @@ swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceSortOrder.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Models/WorkspaceModel.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/DocumentEncodingPolicy.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/HTMLEntities.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/MarkdownPlainText.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspacePreviewCache.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceDocumentPolicy.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceScanner.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/WorkspaceWatcher.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Support/AppLog.swift" \
