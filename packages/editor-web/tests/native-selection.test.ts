@@ -2,22 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { clearDomSelection } from '../src/native-selection'
 
 describe('native selection cleanup', () => {
-  it('removes an existing native selection so WKWebView cannot leave stale blue highlights', () => {
+  it('clears an active DOM selection for WebKit hosts', () => {
     const owner = document.createElement('div')
-    owner.innerHTML = '<span>alpha</span><span>beta</span>'
+    owner.textContent = 'alpha beta'
     document.body.append(owner)
     const range = document.createRange()
     range.selectNodeContents(owner)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-
+    const selection = document.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
     expect(clearDomSelection(owner.ownerDocument)).toBe(true)
-    expect(document.getSelection()?.isCollapsed).toBe(true)
+    expect(selection.isCollapsed).toBe(true)
     owner.remove()
   })
 
-  it('reports false when there is no active range', () => {
+  it('returns false when there is no active selection', () => {
     document.getSelection()?.removeAllRanges()
     expect(clearDomSelection(document)).toBe(false)
   })

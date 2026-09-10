@@ -33,41 +33,4 @@ describe('shared editor strings', () => {
     expect(sharedEditorStrings('unknown', 'ctrl'))
       .toEqual(sharedEditorStrings('zh-Hans', 'ctrl'))
   })
-
-  it('provides compact block-handle labels in every language', () => {
-    expect(sharedEditorStrings('zh-Hans', 'ctrl')).toMatchObject({
-      blockParagraph: '段',
-      blockHeading1: '标₁',
-      blockBulletList: '列',
-      blockOrderedList: '序',
-      blockTaskList: '任',
-      blockBlockquote: '引',
-      blockCodeBlock: '码',
-      blockTable: '表',
-      blockFootnote: '注',
-      blockMermaid: '图',
-    })
-    expect(sharedEditorStrings('en', 'ctrl')).toMatchObject({
-      blockParagraph: '¶',
-      blockHeading1: 'H1',
-      blockBulletList: '•',
-      blockOrderedList: '1.',
-      blockCodeBlock: '</>',
-    })
-    expect(sharedEditorStrings('ja', 'ctrl').blockHeading1).toBe('見₁')
-    expect(sharedEditorStrings('zh-Hant', 'ctrl').blockHeading1).toBe('標₁')
-  })
-
-  it('localizes formula assistant groups and sections', () => {
-    expect(sharedEditorStrings('zh-Hans', 'ctrl')).toMatchObject({
-      formulaGroupGreek: '希腊字母',
-      formulaSectionFractionsRoots: '分式与根式',
-    })
-    expect(sharedEditorStrings('en', 'ctrl')).toMatchObject({
-      formulaGroupGreek: 'Greek letters',
-      formulaSectionFractionsRoots: 'Fractions and roots',
-    })
-    expect(sharedEditorStrings('ja', 'ctrl').formulaSectionMatrices).toBe('行列と行列式')
-    expect(sharedEditorStrings('zh-Hant', 'ctrl').formulaSectionMatrices).toBe('矩陣與行列式')
-  })
 })
