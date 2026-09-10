@@ -102,7 +102,7 @@ final class NativeMenuBuilder {
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
         copyAs.addItem(commandItem(L10n.t("HTML"), "copyHtml"))
-        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true)
+        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true, validationCommand: "copyAs")
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
         menu.addItem(.separator())
@@ -122,11 +122,11 @@ final class NativeMenuBuilder {
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
-        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true))
+        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true, validationCommand: "insertImage"))
         menu.addItem(tableSizePickerSubmenu { size in
             AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
         })
-        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true))
+        menu.addItem(popup(L10n.t("Mermaid"), mermaidMenu(), requiresDocument: true, validationCommand: "insertMermaid"))
         menu.addItem(commandItem(L10n.t("插入超链接…"), "insertLink", key: "k"))
         menu.addItem(commandItem(L10n.t("插入注释…"), "insertFootnote"))
         menu.addItem(.separator())
@@ -141,7 +141,7 @@ final class NativeMenuBuilder {
         paragraphActions.addItem(.separator())
         paragraphActions.addItem(commandItem(L10n.t("重复该段"), "duplicateParagraph"))
         paragraphActions.addItem(commandItem(L10n.t("删除该段"), "deleteParagraph"))
-        menu.addItem(popup(L10n.t("段落操作"), paragraphActions, requiresDocument: true))
+        menu.addItem(popup(L10n.t("段落操作"), paragraphActions, requiresDocument: true, validationCommand: "insertLineBefore"))
         return menu
     }
 
@@ -221,11 +221,11 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .shift]))
         menu.addItem(.separator())
-        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true))
-        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true))
+        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true, validationCommand: "setParagraph"))
+        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true, validationCommand: "toggleBulletList"))
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
-        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true))
+        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true, validationCommand: "insertAlertNote"))
         let tableItem = popup(L10n.t("表格"), tableEditingMenu())
         tableItem.representedObject = "tableEditing"
         tableItem.target = MenuRouter.shared
@@ -257,7 +257,7 @@ final class NativeMenuBuilder {
         tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
         tabManagement.addItem(commandItem(L10n.t("重新打开关闭的标签"), "restoreClosedTab"))
         tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
-        menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true))
+        menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "closeCurrentTab"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
@@ -281,7 +281,7 @@ final class NativeMenuBuilder {
             item.state = percent == session?.zoomPercent ? .on : .off
             zoomMenu.addItem(item)
         }
-        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true))
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true, validationCommand: "zoomIn"))
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
@@ -352,11 +352,16 @@ final class NativeMenuBuilder {
 
     /// 子菜单父项。action 为 nil 的父项不会参与 AppKit 校验，空标签时仍显示可用；
     /// requiresDocument: true 时挂上校验钩子，无文档会话时随子项一并置灰。
-    private func popup(_ title: String, _ submenu: NSMenu, requiresDocument: Bool = false) -> NSMenuItem {
+    private func popup(
+        _ title: String,
+        _ submenu: NSMenu,
+        requiresDocument: Bool = false,
+        validationCommand: String? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = submenu
         if requiresDocument {
-            item.representedObject = "submenuParent"
+            item.representedObject = validationCommand ?? "submenuParent"
             item.target = MenuRouter.shared
             item.action = #selector(MenuRouter.validateSubmenuParent(_:))
         }
