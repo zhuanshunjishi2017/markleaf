@@ -21,6 +21,22 @@
 }
 html { scroll-padding-top: 74px; }
 body { padding: 0; color: var(--text-primary); background: var(--bg-primary); }
+/* Neutral document surfaces belong to the editor, not toolbar hover/selection.
+   Only ordinary dark views opt in; light, high contrast and exports retain
+   their own palettes. Blend with the active background instead of replacing it. */
+@media not (forced-colors: active) {
+  :where(body[data-markleaf-soft-dark]) #editor {
+    --ml-table-header: color-mix(in srgb, var(--bg-primary), #dedee3 5%);
+    --ml-table-border: color-mix(in srgb, var(--bg-primary), #dedee3 13%);
+    --ml-table-header-rule: color-mix(in srgb, var(--bg-primary), #dedee3 30%);
+    --ml-mermaid-surface: color-mix(in srgb, var(--bg-primary), #dedee3 2%);
+    --ml-mermaid-surface-border: color-mix(in srgb, var(--bg-primary), #dedee3 11%);
+    --ml-mermaid-node: color-mix(in srgb, var(--bg-primary), #dedee3 7%);
+    --ml-mermaid-node-border: color-mix(in srgb, var(--bg-primary), #dedee3 36%);
+    --ml-mermaid-line: color-mix(in srgb, var(--bg-primary), #dedee3 61%);
+    --ml-mermaid-text: var(--text-primary);
+  }
+}
 #toolbar {
   position: sticky; top: 0; z-index: 100;
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px;

@@ -530,6 +530,10 @@ function updateTheme(): void {
   const dark = settings.colorTheme === 'vscode' ? document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
     : ['apple-dark', 'dark', 'deep-sea', 'espresso', 'high-contrast-dark', 'morandi-dark', 'pure-black'].includes(settings.colorTheme)
   document.body.classList.toggle('markleaf-theme-dark', dark)
+  const highContrast = settings.colorTheme === 'vscode'
+    ? document.body.classList.contains('vscode-high-contrast') || document.body.classList.contains('vscode-high-contrast-light')
+    : settings.colorTheme.startsWith('high-contrast-')
+  document.body.toggleAttribute('data-markleaf-soft-dark', dark && !highContrast)
   rerenderMermaidElements(mount)
 }
 const themeObserver = new MutationObserver(updateTheme)

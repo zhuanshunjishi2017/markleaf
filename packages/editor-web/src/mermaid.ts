@@ -69,6 +69,51 @@ function isMermaidThemeName(value: string): value is MermaidThemeName {
     || value === 'base'
 }
 
+function sourceWithDocumentColors(source: string, themeOverride?: MermaidThemeName): string {
+  const root = document.querySelector<HTMLElement>('.markleaf-document')
+  if (!root || themeOverride || getActiveMermaidTheme().theme !== 'dark') return source
+  const css = window.getComputedStyle(root)
+  // Mermaid inherits initialize() variables even when a diagram changes theme.
+  // Keep diagram-owned configuration and explicit document themes untouched.
+  if (css.getPropertyValue('--ml-mermaid-theme').trim()
+    || /^\s*---(?:\r?\n)/.test(source)
+    || /%%\{\s*(?:init|initialize)\s*:/i.test(source)) return source
+
+  const surface = css.getPropertyValue('--ml-mermaid-surface').trim()
+  if (!surface) return source
+  const probe = document.createElement('span')
+  probe.hidden = true
+  // Never insert measurement nodes into the editable document.
+  document.body.append(probe)
+  function color(name: string): string {
+    probe.style.color = css.getPropertyValue(`--ml-mermaid-${name}`).trim()
+    const resolved = window.getComputedStyle(probe).color
+    // Chromium preserves color-mix() results as color(srgb …); Mermaid's
+    // theme engine expects hex, so resolve the display color at this boundary.
+    const srgb = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(resolved)
+    const rgb = srgb ?? /^rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)/.exec(resolved)
+    if (!rgb) throw new Error(`Cannot resolve Mermaid ${name} color: ${resolved}`)
+    return '#' + rgb.slice(1, 4).map(value => Math.round(Number(value) * (srgb ? 255 : 1)).toString(16).padStart(2, '0')).join('')
+  }
+  try {
+    const node = color('node'), border = color('node-border'), line = color('line'), text = color('text'), background = color('surface')
+    // Override only final neutral values, not primaryColor/secondaryColor or
+    // derived chart series. The per-diagram config is consumed inside Mermaid's
+    // render queue, so another diagram or export cannot inherit these values.
+    const config = { themeVariables: {
+      mainBkg: node, nodeBkg: node, nodeBorder: border, primaryTextColor: text,
+      lineColor: line, defaultLinkColor: line, textColor: text,
+      edgeLabelBackground: background, clusterBkg: background, clusterBorder: border,
+      actorBkg: node, actorBorder: border, actorLineColor: line, actorTextColor: text,
+      signalColor: line, signalTextColor: text, labelBoxBkgColor: node,
+      labelBoxBorderColor: border, labelTextColor: text, loopTextColor: text,
+    } }
+    return `---\nconfig: ${JSON.stringify(config)}\n---\n${source}`
+  } finally {
+    probe.remove()
+  }
+}
+
 export function setMermaidMarkdownCodeFence(preference: 'backtick' | 'tilde'): void {
   markdownCodeFence = preference
 }
@@ -122,7 +167,9 @@ async function renderMermaidSvgInto(
   const module = await loadMermaid()
   await ensureMermaidInitialized(module, getActiveMermaidTheme())
   const id = nextMermaidId('markleaf-mermaid')
-  return withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS).then(({ svg }) => {
+  return Promise.resolve().then(() => withTimeout(
+    module.default.render(id, sourceWithDocumentColors(source)), MERMAID_RENDER_TIMEOUT_MS,
+  )).then(({ svg }) => {
     host.innerHTML = svg
     normalizeMermaidSvg(host)
     return 'rendered' as const
@@ -309,7 +356,7 @@ export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName
 
     try {
       const id = nextMermaidId('markleaf-export-mermaid')
-      const { svg } = await withTimeout(module.default.render(id, source), MERMAID_RENDER_TIMEOUT_MS)
+      const { svg } = await withTimeout(module.default.render(id, sourceWithDocumentColors(source, theme)), MERMAID_RENDER_TIMEOUT_MS)
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       host.innerHTML = svg
