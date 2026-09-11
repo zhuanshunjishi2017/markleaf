@@ -6,8 +6,8 @@ import { webviewHtml } from './webview'
 import { pickFormat, prepareFormatCommand } from './formatting'
 import { importImages, pickImages, saveImageAs } from './images'
 import { readSettings, updateSetting, pickPreferences, readShortcutSettings, updateShortcut } from './settings'
-import { formatActions } from '../../../packages/editor-web/src/vscode-shortcuts'
-import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type ActionContext, type ImageUpload, type WebviewFocus, type WebviewMessage } from '../../../packages/editor-web/src/vscode-protocol'
+import { formatActions } from '../webview/src/vscode-shortcuts'
+import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type ActionContext, type ImageUpload, type WebviewFocus, type WebviewMessage } from '../webview/src/vscode-protocol'
 
 const viewType = 'markleaf.editor'
 type EditMessage = Extract<WebviewMessage, { type: 'edit' }>

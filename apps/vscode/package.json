@@ -1235,6 +1235,7 @@
     "package": "vsce package --no-dependencies --skip-license --baseContentUrl https://github.com/zhuanshunjishi2017/markleaf/blob/HEAD/apps/vscode --out ../../artifacts/markleaf-vscode-0.2.7.vsix"
   },
   "devDependencies": {
+    "@markleaf/editor-core": "link:../../packages/editor-core",
     "@types/node": "24.10.1",
     "@types/vscode": "1.95.0",
     "@vscode/vsce": "3.6.2",

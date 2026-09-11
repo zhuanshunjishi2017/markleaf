@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import puppeteer, { type Browser, type Page } from 'puppeteer-core'
-import type { ExportOptions } from '../../../packages/editor-web/src/vscode-export-options'
-import { exportStrings } from '../../../packages/editor-web/src/vscode-export-strings'
+import type { ExportOptions } from '../webview/src/vscode-export-options'
+import { exportStrings } from '../webview/src/vscode-export-strings'
 
 export async function browserExecutable(configured = ''): Promise<string | undefined> {
   const candidates = configured ? [configured] : process.platform === 'darwin' ? [

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
-import { formatGroups, resolveShortcuts, shortcutLabel } from '../../../packages/editor-web/src/vscode-shortcuts'
-import type { ActionContext, EditorCommand } from '../../../packages/editor-web/src/vscode-protocol'
+import { formatGroups, resolveShortcuts, shortcutLabel } from '../webview/src/vscode-shortcuts'
+import type { ActionContext, EditorCommand } from '../webview/src/vscode-protocol'
 
 type FormatItem = vscode.QuickPickItem & { command?: string }
 

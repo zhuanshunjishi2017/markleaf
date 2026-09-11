@@ -1,12 +1,13 @@
-import './styles.css'
-import '../../styles/base.css'
-import '../../styles/minimal.css'
+import '@markleaf/editor-core/styles.css'
+import '../../../../packages/styles/base.css'
+import '../../../../packages/styles/minimal.css'
 import './vscode.css'
 import {
   collapseSourceEditor, createEditor, executeEditorCommand, expandSourceEditor,
   getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownTextWithResult, pasteClipboardContentWithResult, scrollToFootnoteDefinition, setCodeBlockControlHandlers,
   setHostImageResolver, updateEditorMarkdown,
-} from './editor'
+  normalizeContextMenuCaretPosition, rerenderMermaidElements,
+} from '@markleaf/editor-core'
 import { vscodePasteStatus } from './vscode-paste-status'
 import { createExportDialog } from './vscode-export-dialog'
 import { renderExportSnapshot } from './vscode-export'
@@ -14,10 +15,8 @@ import { exportStrings } from './vscode-export-strings'
 import { createFindBar } from './vscode-find'
 import { createReadingView } from './vscode-reading'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
-import { rerenderMermaidElements } from './mermaid'
 import { TextDocumentSync } from './vscode-sync'
 import { createEditorInteractions } from './vscode-interactions'
-import { normalizeContextMenuCaretPosition } from './format-painter'
 import { formatActions, formatCommandsWithInput, isFormatCommand, resolveShortcuts, shortcutLabel, type ShortcutSettings } from './vscode-shortcuts'
 import { bindFormatShortcuts } from './vscode-shortcut-keys'
 import { createShortcutDialog } from './vscode-shortcut-dialog'
