@@ -45,7 +45,7 @@
 
 .markleaf-style-latex .markleaf-alert::before {
   padding: 0 0.85em;
-  color: #fff;
+  color: var(--ml-alert-on-color, #fff);
   font-family: "Latin Modern Roman", "Computer Modern", "CMU Serif", "Helvetica", "方正黑体_GBK", "黑体", sans-serif;
   font-size: var(--ml-font-size);
   line-height: inherit;

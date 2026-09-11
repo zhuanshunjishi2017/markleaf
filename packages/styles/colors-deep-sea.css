@@ -22,4 +22,21 @@
   --theme-dark:          #50A0E8;
   --highlight:           #6F6800;
   --highlight-current:   #A39A00;
+
+  /* 文档表面分级（保持本主题的蓝调偏移，不引入中性灰）。 */
+  --ml-surface-1:        #232D3C;
+  --ml-fill-quaternary:  #293341;
+  --ml-fill-tertiary:    #313A49;
+  --ml-separator:        #384250;
+  --ml-separator-strong: #65717E;  /* 与底色约 3.2:1 */
+  /* 极简排版的表头线为 2px，取值介于两级分隔线之间，避免形成强调亮条。 */
+  --ml-table-header-rule: #475260;
+
+  /* 提示框语义色：暗色变体（均 >= 5:1）。 */
+  --ml-alert-note:       #58A6FF;
+  --ml-alert-tip:        #3FB950;
+  --ml-alert-important:  #BC8CFF;
+  --ml-alert-warning:    #D29922;
+  --ml-alert-caution:    #F85149;
+  --ml-alert-on-color:   #1A2332;
 }

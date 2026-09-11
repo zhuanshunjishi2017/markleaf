@@ -7,6 +7,19 @@
   --ml-max-width: 820px;
 }
 
+/* 文档表面语义层（对齐 Apple HIG 的 background / fill / separator 分级）。
+   这里只声明语义与回退：未定义新变量的颜色主题沿用原有取值，渲染结果不变；
+   暗色主题在各自 colors-*.css 中给出具体分级值。
+   --ml-surface-1        抬升表面：代码块、Mermaid 画布（对应 secondarySystemBackground）
+   --ml-fill-quaternary  最弱填充：行内代码底（对应 quaternarySystemFill）
+   --ml-fill-tertiary    次弱填充：表头底（对应 tertiarySystemFill）
+   --ml-separator        细分隔线：表格网格、分隔线（对应 separator）
+   --ml-separator-strong 强分隔线：标题下划线、引用左边线；暗色下按非文本 3:1 取值
+   --ml-link             正文链接色：暗色下需 >= 4.5:1，不足时由主题单独抬升
+   --ml-selection-bg     文本选区底色：与 --text-selected 组合需 >= 4.5:1
+   --ml-alert-*          提示框语义色（note/tip/important/warning/caution）
+   --ml-alert-on-color   压在提示框语义色实底上的文字色 */
+
 .markleaf-document {
   width: min(100%, var(--ml-max-width));
   margin: 0 auto;
@@ -31,32 +44,32 @@
 .cm-editor::selection,
 .cm-content::selection,
 .cm-content *::selection {
-  background: var(--theme-light) !important;
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 /* WYSIWYG 编辑器选区装饰（WebKit 对 contenteditable 忽略 ::selection） */
 .markleaf-themed-selection {
-  background: var(--theme-light);
+  background: var(--ml-selection-bg, var(--theme-light));
   color: var(--text-selected);
   -webkit-text-fill-color: var(--text-selected);
 }
 ::selection {
-  background: var(--theme-light) !important;
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 .cm-editor .cm-selectionBackground,
 .cm-editor.cm-focused .cm-selectionBackground {
-  background-color: var(--theme-light) !important;
+  background-color: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
 }
 
 /* 源码模式选区：真实 DOM 装饰 span（替代 drawSelection 图层，WKWebView 几何更稳） */
 .cm-editor .ml-source-selection {
-  background-color: var(--theme-light);
+  background-color: var(--ml-selection-bg, var(--theme-light));
   color: var(--text-selected);
   -webkit-text-fill-color: var(--text-selected);
   border-radius: 2px;
@@ -108,7 +121,7 @@
 
 /* 默认提示框采用轻量引用框；各排版主题可覆盖为自身的引用框样式。 */
 .markleaf-alert {
-  --markleaf-alert-color: #0969da;
+  --markleaf-alert-color: var(--ml-alert-note, #0969da);
   --markleaf-alert-content-spacing-x: 0.85em;
   --markleaf-alert-content-spacing-y: 0.25em;
   margin: 1em 0;
@@ -146,11 +159,15 @@
   margin-bottom: 0;
 }
 
-.markleaf-alert-note { --markleaf-alert-color: #0969da; }
-.markleaf-alert-tip { --markleaf-alert-color: #1a7f37; }
-.markleaf-alert-important { --markleaf-alert-color: #8250df; }
-.markleaf-alert-warning { --markleaf-alert-color: #9a6700; }
-.markleaf-alert-caution { --markleaf-alert-color: #cf222e; }
+/* 提示框语义色：默认值为浅色变体，暗色主题在各自 colors-*.css 中提亮。
+   Apple HIG 的语义色在明暗两套外观下取不同数值但保持同一色相与含义，
+   因此提示框色不随排版主题的色调漂移，只随明暗外观切换。
+   --ml-alert-on-color 为压在语义色实底上的文字色（LaTeX 排版的标题条）。 */
+.markleaf-alert-note { --markleaf-alert-color: var(--ml-alert-note, #0969da); }
+.markleaf-alert-tip { --markleaf-alert-color: var(--ml-alert-tip, #1a7f37); }
+.markleaf-alert-important { --markleaf-alert-color: var(--ml-alert-important, #8250df); }
+.markleaf-alert-warning { --markleaf-alert-color: var(--ml-alert-warning, #9a6700); }
+.markleaf-alert-caution { --markleaf-alert-color: var(--ml-alert-caution, #cf222e); }
 
 .markleaf-alert-note::before { content: var(--markleaf-alert-note-title, '备注'); }
 .markleaf-alert-tip::before { content: var(--markleaf-alert-tip-title, '提示'); }
@@ -192,7 +209,7 @@
   font-size: calc(var(--ml-font-size) * 2.0);
   margin-top: 0;
   padding-bottom: calc(var(--ml-line-height) * 0.22em);
-  border-bottom: 1px solid var(--bg-selected);
+  border-bottom: 1px solid var(--ml-separator-strong, var(--bg-selected));
 }
 
 .markleaf-document h2 { font-size: calc(var(--ml-font-size) * 1.5); }
@@ -225,14 +242,14 @@
   margin-left: 0;
   padding-left: 1em;
   color: var(--text-tertiary);
-  border-left: 3px solid var(--bg-selected);
+  border-left: 3px solid var(--ml-separator-strong, var(--bg-selected));
 }
 
 .markleaf-document hr {
   height: 1px;
   margin: calc(var(--ml-line-height) * 1em) 0;
   border: 0;
-  background: var(--bg-selected);
+  background: var(--ml-separator, var(--bg-selected));
 }
 
 .markleaf-document code {
@@ -240,7 +257,7 @@
   font-size: calc(var(--ml-font-size) * 0.9);
   padding: 0.12em 0.35em;
   border-radius: 3px;
-  background: var(--bg-hover);
+  background: var(--ml-fill-quaternary, var(--bg-hover));
   white-space: normal;
   word-break: break-all;
 }
@@ -249,9 +266,9 @@
   position: relative;
   overflow-x: auto;
   padding: 16px 18px;
-  border: 1px solid var(--bg-selected);
+  border: 1px solid var(--ml-separator, var(--bg-selected));
   border-radius: 4px;
-  background: var(--bg-secondary);
+  background: var(--ml-surface-1, var(--bg-secondary));
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -278,7 +295,7 @@
 .markleaf-document table {
   width: 100%;
   border-collapse: collapse;
-  border-color: var(--ml-table-border, var(--bg-selected-hover));
+  border-color: var(--ml-table-border, var(--ml-separator, var(--bg-selected-hover)));
   line-height: calc(var(--ml-line-height) * 0.8875);
 }
 
@@ -288,7 +305,7 @@
   padding: 3px 8px;
   text-align: left;
   vertical-align: middle;
-  border: 1px solid var(--ml-table-border, var(--bg-selected-hover));
+  border: 1px solid var(--ml-table-border, var(--ml-separator, var(--bg-selected-hover)));
 }
 
 .markleaf-document th[style*="text-align: center"],
@@ -320,8 +337,8 @@
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  background: var(--ml-mermaid-surface, var(--bg-secondary));
-  border: 1px solid var(--ml-mermaid-surface-border, var(--bg-selected));
+  background: var(--ml-mermaid-surface, var(--ml-surface-1, var(--bg-secondary)));
+  border: 1px solid var(--ml-mermaid-surface-border, var(--ml-separator, var(--bg-selected)));
   border-radius: 0;
   padding: 12px;
 }
@@ -347,8 +364,8 @@
 
 .markleaf-document th {
   font-weight: 600;
-  border-color: var(--ml-table-border, var(--bg-selected-hover));
-  background: var(--ml-table-header, var(--bg-hover));
+  border-color: var(--ml-table-border, var(--ml-separator, var(--bg-selected-hover)));
+  background: var(--ml-table-header, var(--ml-fill-tertiary, var(--bg-hover)));
 }
 
 .markleaf-document ul[data-type='taskList'] {
@@ -389,7 +406,7 @@
 }
 
 .markleaf-document a {
-  color: var(--theme-dark);
+  color: var(--ml-link, var(--theme-dark));
 }
 
 .ProseMirror-selectednode {

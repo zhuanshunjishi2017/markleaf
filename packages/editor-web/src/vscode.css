@@ -18,23 +18,65 @@
   --icon-secondary: var(--text-tertiary);
   --scrollbar-idle: var(--vscode-scrollbarSlider-background);
   --scrollbar-active: var(--vscode-scrollbarSlider-activeBackground);
+  /* Overlay chrome. Apple HIG treats menus and dialogs as elevated surfaces:
+     in dark mode a drop shadow alone is nearly invisible, so the surface is
+     lifted and a hairline border carries the boundary. VS Code exposes the
+     matching semantic tokens, which keeps third party themes consistent. */
+  --ml-ui-surface: var(--vscode-editorWidget-background, var(--bg-primary));
+  --ml-ui-border: var(--vscode-widget-border, var(--bg-selected));
+  --ml-ui-shadow: var(--vscode-widget-shadow, #0006);
 }
 html { scroll-padding-top: 74px; }
 body { padding: 0; color: var(--text-primary); background: var(--bg-primary); }
 /* Neutral document surfaces belong to the editor, not toolbar hover/selection.
    Only ordinary dark views opt in; light, high contrast and exports retain
-   their own palettes. Blend with the active background instead of replacing it. */
+   their own palettes. Blend with the active background instead of replacing it.
+   Levels follow Apple HIG dark mode: elevated surface + fill tiers + separator,
+   all derived from the live theme so Dark+, Dark Modern and third party themes
+   stay self consistent. */
 @media not (forced-colors: active) {
   :where(body[data-markleaf-soft-dark]) #editor {
-    --ml-table-header: color-mix(in srgb, var(--bg-primary), #dedee3 5%);
-    --ml-table-border: color-mix(in srgb, var(--bg-primary), #dedee3 13%);
-    --ml-table-header-rule: color-mix(in srgb, var(--bg-primary), #dedee3 30%);
-    --ml-mermaid-surface: color-mix(in srgb, var(--bg-primary), #dedee3 2%);
-    --ml-mermaid-surface-border: color-mix(in srgb, var(--bg-primary), #dedee3 11%);
-    --ml-mermaid-node: color-mix(in srgb, var(--bg-primary), #dedee3 7%);
-    --ml-mermaid-node-border: color-mix(in srgb, var(--bg-primary), #dedee3 36%);
-    --ml-mermaid-line: color-mix(in srgb, var(--bg-primary), #dedee3 61%);
+    --ml-surface-1: color-mix(in srgb, var(--bg-primary), var(--text-primary) 5%);
+    --ml-fill-quaternary: color-mix(in srgb, var(--bg-primary), var(--text-primary) 8%);
+    --ml-fill-tertiary: color-mix(in srgb, var(--bg-primary), var(--text-primary) 12%);
+    --ml-separator: color-mix(in srgb, var(--bg-primary), var(--text-primary) 16%);
+    /* Non text boundaries need ~3:1, which lands near systemGray2 in dark mode. */
+    --ml-separator-strong: color-mix(in srgb, var(--bg-primary), var(--text-primary) 40%);
+    /* Some dark themes ship links below 4.5:1; lift them toward the foreground. */
+    --ml-link: color-mix(in srgb, var(--vscode-textLink-foreground) 82%, var(--text-primary) 18%);
+    --ml-table-header: var(--ml-fill-tertiary);
+    --ml-table-border: var(--ml-separator);
+    /* The minimal typography draws this rule at 2px. A separator-strong tint
+       reads as a bright accent bar at that weight, so the header rule sits
+       between the two separator tiers and lets the header fill carry the
+       hierarchy instead. */
+    --ml-table-header-rule: color-mix(in srgb, var(--bg-primary), var(--text-primary) 24%);
+    --ml-mermaid-surface: color-mix(in srgb, var(--bg-primary), var(--text-primary) 2%);
+    --ml-mermaid-surface-border: var(--ml-separator);
+    --ml-mermaid-node: color-mix(in srgb, var(--bg-primary), var(--text-primary) 7%);
+    --ml-mermaid-node-border: color-mix(in srgb, var(--bg-primary), var(--text-primary) 36%);
+    --ml-mermaid-line: color-mix(in srgb, var(--bg-primary), var(--text-primary) 61%);
     --ml-mermaid-text: var(--text-primary);
+    /* Alert accents ship as light variants and only reach ~3.3:1 on dark
+       surfaces, so dark views switch to the dark semantic set (>= 5:1). */
+    --ml-alert-note: #58A6FF;
+    --ml-alert-tip: #3FB950;
+    --ml-alert-important: #BC8CFF;
+    --ml-alert-warning: #D29922;
+    --ml-alert-caution: #F85149;
+    --ml-alert-on-color: var(--bg-primary);
+  }
+}
+/* High contrast dark themes skip the soft dark surfaces above, but still need
+   alert accents that clear the black background. */
+@media not (forced-colors: active) {
+  :where(body.vscode-high-contrast) #editor {
+    --ml-alert-note: #79C0FF;
+    --ml-alert-tip: #56D364;
+    --ml-alert-important: #D2A8FF;
+    --ml-alert-warning: #E3B341;
+    --ml-alert-caution: #FF7B72;
+    --ml-alert-on-color: var(--bg-primary);
   }
 }
 #toolbar {
@@ -68,7 +110,7 @@ footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; display: f
 .toolbar-menu { position: relative; }
 .toolbar-menu summary { cursor: pointer; padding: 6px; border-radius: 4px; }
 .toolbar-menu summary:hover { background: var(--bg-hover); }
-.menu-content { position: absolute; inset-inline-end: 0; top: 100%; min-width: 190px; padding: 5px; display: grid; background: var(--bg-primary); border: 1px solid var(--bg-selected); box-shadow: 0 4px 12px #0004; max-height: 70vh; overflow: auto; }
+.menu-content { position: absolute; inset-inline-end: 0; top: 100%; min-width: 190px; padding: 5px; display: grid; background: var(--ml-ui-surface); border: 1px solid var(--ml-ui-border); border-radius: 6px; box-shadow: 0 8px 24px var(--ml-ui-shadow); max-height: 70vh; overflow: auto; }
 .menu-content button { text-align: start; }
 #document-area { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
 #document-area.with-outline { grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); }
@@ -104,12 +146,12 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #markleaf-shortcuts {
   box-sizing: border-box; width: min(740px, calc(100vw - 24px)); max-width: none;
   height: min(760px, calc(100vh - 24px)); max-height: calc(100vh - 24px); padding: 0;
-  color: var(--vscode-editor-foreground); background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-widget-border, #8886); border-radius: 8px;
-  box-shadow: 0 12px 48px #0005; font: 13px/1.5 var(--vscode-font-family, sans-serif);
+  color: var(--vscode-editor-foreground); background: var(--ml-ui-surface);
+  border: 1px solid var(--ml-ui-border); border-radius: 8px;
+  box-shadow: 0 16px 48px var(--ml-ui-shadow); font: 13px/1.5 var(--vscode-font-family, sans-serif);
 }
 #markleaf-shortcuts[open] { display: flex; flex-direction: column; }
-#markleaf-shortcuts::backdrop { background: #0006; }
+#markleaf-shortcuts::backdrop { background: #0008; }
 #markleaf-shortcuts button { color: inherit; flex-shrink: 0; }
 #markleaf-shortcuts h2, #markleaf-shortcuts h3, #markleaf-shortcuts p { margin: 0; }
 .shortcut-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
@@ -120,15 +162,15 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .shortcut-intro p { margin-bottom: 4px !important; font-size: 12px; }
 .shortcut-intro [data-native] { padding: 3px 0; color: var(--vscode-textLink-foreground) !important; }
 .shortcut-search { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-#markleaf-shortcuts input { box-sizing: border-box; min-width: 0; padding: 7px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8886); border-radius: 4px; }
+#markleaf-shortcuts input { box-sizing: border-box; min-width: 0; padding: 7px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--ml-ui-border)); border-radius: 4px; }
 .shortcut-search input { flex: 1; }
 #markleaf-shortcuts input:focus { outline: 1px solid var(--vscode-focusBorder); }
-.shortcut-list { min-height: 60px; overflow: auto; padding: 0 20px 12px; border-block: 1px solid var(--vscode-widget-border, #8884); flex: 1; }
+.shortcut-list { min-height: 60px; overflow: auto; padding: 0 20px 12px; border-block: 1px solid var(--ml-ui-border); flex: 1; }
 #markleaf-shortcuts .shortcut-list h3 { font-size: 12px; font-weight: 600; padding: 14px 0 5px; color: var(--vscode-descriptionForeground); }
-.shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--vscode-widget-border, #8882); }
-.shortcut-row kbd { font: 12px var(--vscode-editor-font-family, monospace); padding: 3px 6px; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 4px; white-space: nowrap; }
-.shortcut-row button, .shortcut-buttons button { border: 1px solid var(--vscode-button-border, #8885); }
-.shortcut-recorder { padding: 10px 20px 14px; border-top: 1px solid var(--vscode-widget-border, #8884); }
+.shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ml-ui-border); }
+.shortcut-row kbd { font: 12px var(--vscode-editor-font-family, monospace); padding: 3px 6px; border: 1px solid var(--ml-ui-border); border-radius: 4px; white-space: nowrap; }
+.shortcut-row button, .shortcut-buttons button { border: 1px solid var(--vscode-button-border, var(--ml-ui-border)); }
+.shortcut-recorder { padding: 10px 20px 14px; border-top: 1px solid var(--ml-ui-border); }
 #markleaf-shortcuts .shortcut-recorder h3 { font-size: 14px; margin-bottom: 8px; }
 .shortcut-recorder label { display: flex; align-items: center; gap: 12px; }
 .shortcut-recorder input { flex: 1; font-family: var(--vscode-editor-font-family, monospace) !important; }
@@ -149,11 +191,11 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 #markleaf-export {
   width: min(760px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); padding: 0;
-  color: var(--vscode-editor-foreground); background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-widget-border, #8886); border-radius: 10px;
-  box-shadow: 0 12px 48px #0005; font: 13px/1.6 var(--vscode-font-family, sans-serif);
+  color: var(--vscode-editor-foreground); background: var(--ml-ui-surface);
+  border: 1px solid var(--ml-ui-border); border-radius: 10px;
+  box-shadow: 0 16px 48px var(--ml-ui-shadow); font: 13px/1.6 var(--vscode-font-family, sans-serif);
 }
-#markleaf-export::backdrop { background: #0006; }
+#markleaf-export::backdrop { background: #0008; }
 #markleaf-export form { display: flex; flex-direction: column; max-height: calc(100vh - 26px); }
 #markleaf-export header { flex-shrink: 0; display: flex; justify-content: space-between; gap: 12px; padding: 20px 24px 12px; }
 #markleaf-export h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
@@ -162,16 +204,16 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #markleaf-export .export-fields { flex: 1; min-height: 0; overflow: auto; border: 0; margin: 0; padding: 6px 24px 18px; }
 #markleaf-export .export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-bottom: 18px; }
 #markleaf-export label { display: flex; flex-direction: column; gap: 5px; }
-#markleaf-export input, #markleaf-export select { box-sizing: border-box; width: 100%; padding: 7px 9px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8886); border-radius: 4px; font: inherit; }
+#markleaf-export input, #markleaf-export select { box-sizing: border-box; width: 100%; padding: 7px 9px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--ml-ui-border)); border-radius: 4px; font: inherit; }
 #markleaf-export input:focus, #markleaf-export select:focus { outline: 1px solid var(--vscode-focusBorder); }
 #markleaf-export .export-check { flex-direction: row; align-items: center; margin: 7px 0; }
 #markleaf-export input[type=checkbox] { width: auto; accent-color: var(--vscode-button-background); }
 #markleaf-export .export-hint { font-size: 12px; margin: 8px 0 16px; }
 #markleaf-export [data-result] { padding: 0 24px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
 #markleaf-export .export-error { color: var(--vscode-errorForeground); }
-#markleaf-export .export-buttons { position: relative; flex-shrink: 0; background: var(--vscode-editor-background); display: flex; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--vscode-widget-border, #8884); }
+#markleaf-export .export-buttons { position: relative; flex-shrink: 0; background: var(--ml-ui-surface); display: flex; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--ml-ui-border); }
 #markleaf-export .export-buttons span { flex: 1; }
 #markleaf-export button { color: inherit; }
-#markleaf-export .export-buttons button { border: 1px solid var(--vscode-widget-border, #8885); border-radius: 4px; padding: 6px 10px; }
+#markleaf-export .export-buttons button { border: 1px solid var(--ml-ui-border); border-radius: 4px; padding: 6px 10px; }
 #markleaf-export [data-save] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 @media (max-width: 440px) { #markleaf-export .export-grid { grid-template-columns: 1fr; } #markleaf-export header, #markleaf-export .export-fields, #markleaf-export .export-buttons { padding-inline: 14px; } }

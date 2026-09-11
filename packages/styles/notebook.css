@@ -48,14 +48,14 @@
 
 .markleaf-style-notebook .markleaf-document code {
   font-family: "LXGW WenKai Mono", "Cascadia Code", "Consolas", monospace;
-  background: var(--bg-hover);
+  background: var(--ml-fill-quaternary, var(--bg-hover));
   border-radius: 2px;
 }
 
 .markleaf-style-notebook .markleaf-document pre {
   border-style: dashed;
-  border-color: var(--bg-selected);
-  background: var(--bg-hover);
+  border-color: var(--ml-separator, var(--bg-selected));
+  background: var(--ml-surface-1, var(--bg-hover));
 }
 
 .markleaf-style-notebook .markleaf-document hr {
@@ -63,8 +63,8 @@
   height: 1px;
   background: repeating-linear-gradient(
     to right,
-    var(--bg-selected-hover) 0,
-    var(--bg-selected-hover) 4px,
+    var(--ml-separator-strong, var(--bg-selected-hover)) 0,
+    var(--ml-separator-strong, var(--bg-selected-hover)) 4px,
     transparent 4px,
     transparent 8px
   );

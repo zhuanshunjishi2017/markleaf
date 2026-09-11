@@ -22,14 +22,14 @@
 .markleaf-style-magazine .markleaf-document h1 {
   font-size: calc(var(--ml-font-size) * 2.2);
   text-align: center;
-  border-bottom: 1px solid var(--bg-selected);
+  border-bottom: 1px solid var(--ml-separator-strong, var(--bg-selected));
   padding-bottom: 0.4em;
 }
 
 .markleaf-style-magazine .markleaf-document h2 {
   font-size: calc(var(--ml-font-size) * 1.4);
   font-variant: small-caps;
-  border-bottom: 1px dotted var(--bg-selected-hover);
+  border-bottom: 1px dotted var(--ml-separator-strong, var(--bg-selected-hover));
   padding-bottom: 0.2em;
 }
 

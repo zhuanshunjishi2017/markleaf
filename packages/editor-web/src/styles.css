@@ -214,15 +214,31 @@ body {
   --ml-code-operator: #57606a;
 }
 
+/* 暗色语法色：Apple HIG 建议深色下降低饱和，避免亮底色在暗背景上产生光晕。
+   与当前底色混入 10%，色相保持不变，对比度仍在 4.5:1 以上。 */
 body.markleaf-theme-dark {
-  --ml-code-keyword: #ffab70;
-  --ml-code-string: #7ee787;
-  --ml-code-number: #79c0ff;
+  --ml-code-keyword: color-mix(in srgb, #ffab70 90%, var(--bg-primary));
+  --ml-code-string: color-mix(in srgb, #7ee787 90%, var(--bg-primary));
+  --ml-code-number: color-mix(in srgb, #79c0ff 90%, var(--bg-primary));
   --ml-code-comment: #8b949e;
-  --ml-code-type: #d2a8ff;
-  --ml-code-function: #d2a8ff;
-  --ml-code-property: #a5d6ff;
+  --ml-code-type: color-mix(in srgb, #d2a8ff 90%, var(--bg-primary));
+  --ml-code-function: color-mix(in srgb, #d2a8ff 90%, var(--bg-primary));
+  --ml-code-property: color-mix(in srgb, #a5d6ff 90%, var(--bg-primary));
   --ml-code-operator: #c9d1d9;
+  /* 浅色告警红 #d1242f 在暗底上仅约 3.3:1，改用暗色变体（约 6.8:1）。 */
+  --ml-code-invalid: #FF7B72;
+}
+
+/* 强制色彩模式下交还系统配色，不做任何混色。 */
+@media (forced-colors: active) {
+  body.markleaf-theme-dark {
+    --ml-code-keyword: #ffab70;
+    --ml-code-string: #7ee787;
+    --ml-code-number: #79c0ff;
+    --ml-code-type: #d2a8ff;
+    --ml-code-function: #d2a8ff;
+    --ml-code-property: #a5d6ff;
+  }
 }
 
 /* WebView2 使用原生选区，避免拖动期间由装饰改写编辑器 DOM。 */
@@ -601,9 +617,9 @@ body.markleaf-theme-dark {
 .ml-code-property { color: var(--ml-code-property); }
 .ml-code-operator { color: var(--ml-code-operator); }
 .ml-code-invalid {
-  color: #d1242f !important;
-  background: color-mix(in srgb, #d1242f 16%, transparent);
-  text-decoration: underline wavy #d1242f;
+  color: var(--ml-code-invalid, #d1242f) !important;
+  background: color-mix(in srgb, var(--ml-code-invalid, #d1242f) 16%, transparent);
+  text-decoration: underline wavy var(--ml-code-invalid, #d1242f);
   text-decoration-thickness: 1px;
 }
 
