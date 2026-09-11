@@ -85,8 +85,7 @@ describe('formula selection', () => {
     })
     formula.dispatchEvent(mouseDown)
 
-    expect(mouseDown.defaultPrevented).toBe(true)
-    expect(nativeSelection.isCollapsed).toBe(true)
+    expect(nativeSelection.isCollapsed).toBe(false)
 
     formula.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
     formula.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))

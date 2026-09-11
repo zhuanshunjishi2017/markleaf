@@ -1,3 +1,4 @@
+import { createBlockHandle } from './block-handle'
 import './styles.css'
 import { NodeSelection, Selection } from '@tiptap/pm/state'
 import {
@@ -26,9 +27,9 @@ import {
   replaceAllInEditor,
   replaceCurrentInEditor,
   replaceEditorDocument,
-  pasteClipboardContentWithResult,
   pasteMarkdownText,
   pasteMarkdownTextWithResult,
+  pasteClipboardContentWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
   scrollToFootnoteDefinition,
@@ -38,17 +39,18 @@ import {
   setCodeBlockControlHandlers,
   setEditorSharedStrings,
   restoreVisualSelection,
-  restoreEditorScroll,
+  renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
 } from './editor'
+import { katexCss, renderMathInHtml } from './math'
 import {
+  renderMermaidInHtml,
   rerenderMermaidElements,
   setMermaidStrings,
+  type MermaidThemeName,
 } from './mermaid'
 import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
-import type { ExportPaginationOptions } from './export-pagination'
-import { generateExportHtml, escapeHtml } from './export-html'
-import { isRestoreViewportPayload } from './protocol'
+import { generateExportHtml as generateSharedExportHtml, escapeHtml as escapeExportHtml } from './export-html'
 import { isPlainTextDocumentType, type DocumentType } from './document-mode'
 import {
   executeFormatPainterApply,
@@ -59,6 +61,7 @@ import {
 import { applyFormatPainterFromDomSelection } from './format-painter-dom-events'
 import {
   isHostMessage,
+  isRestoreViewportPayload,
   postToHost,
   postToHostWithAdditionalObjects,
   protocolVersion,
@@ -67,7 +70,7 @@ import {
 import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
 import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
 import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
-import { sharedEditorStrings } from './shared-editor-strings'
+import { normalizeSharedEditorLanguage, sharedEditorStrings } from './shared-editor-strings'
 import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
@@ -166,8 +169,7 @@ function scrollEditorCursorToCenter(): void {
     return
   }
   const scrollingElement = document.scrollingElement ?? document.documentElement
-  const targetViewportOffset = Math.max(96, window.innerHeight * 0.42)
-  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - targetViewportOffset)
+  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
 }
 
 function updateEditorTypewriterMode(scrollToCursor = true): void {
@@ -233,68 +235,14 @@ document.addEventListener('focusin', updateCaretVisibility)
 document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibility, 0))
 updateCaretVisibility()
 
-const blockHandleButton = document.createElement('button')
-blockHandleButton.type = 'button'
-blockHandleButton.className = 'ml-block-handle ml-block-handle-overlay'
-blockHandleButton.setAttribute(
-  'aria-label',
+const blockHandleOverlay = createBlockHandle(editorMount, () => editor, () => !sourceMode && !readOnly,
+  (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
   sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
 )
-blockHandleButton.setAttribute('tabindex', '-1')
-blockHandleButton.hidden = true
-let blockHandleOverlayPosition: number | null = null
-
-function ensureBlockHandleOverlay(): void {
-  if (blockHandleButton.parentElement !== editorMount) {
-    editorMount.appendChild(blockHandleButton)
-  }
-}
-
-function hideBlockHandleOverlay(): void {
-  blockHandleButton.hidden = true
-  blockHandleButton.style.display = 'none'
-  blockHandleButton.style.removeProperty('left')
-  blockHandleButton.style.removeProperty('top')
-  blockHandleButton.textContent = ''
-  blockHandleButton.classList.remove('ml-block-handle-active')
-  blockHandleOverlayPosition = null
-}
-
-function updateBlockHandleOverlay(): void {
-  ensureBlockHandleOverlay()
-  if (sourceMode || readOnly) {
-    hideBlockHandleOverlay()
-    return
-  }
-  const info = getBlockHandleInfo(editor)
-  if (!info) {
-    hideBlockHandleOverlay()
-    return
-  }
-  blockHandleOverlayPosition = info.position
-  blockHandleButton.hidden = false
-  blockHandleButton.style.removeProperty('display')
-  blockHandleButton.textContent = info.label
-  blockHandleButton.classList.toggle('ml-block-handle-active', info.active)
-  const mountRect = editorMount.getBoundingClientRect()
-  const documentRect = editor.view.dom.getBoundingClientRect()
-  blockHandleButton.style.left = `${documentRect.left - mountRect.left - 36}px`
-  blockHandleButton.style.top = `${info.viewportTop - mountRect.top}px`
-}
-
-blockHandleButton.addEventListener('mousedown', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  if (blockHandleOverlayPosition === null) return
-  setBlockHighlight(editor, blockHandleOverlayPosition)
-  updateBlockHandleOverlay()
-  const rect = blockHandleButton.getBoundingClientRect()
-  send('blockMenuRequested', {
-    clientX: rect.left,
-    clientY: rect.bottom + 10,
-    position: blockHandleOverlayPosition,
-  })
-})
+const blockHandleButton = blockHandleOverlay.button
+const ensureBlockHandleOverlay = blockHandleOverlay.ensure
+const updateBlockHandleOverlay = blockHandleOverlay.update
+const hideBlockHandleOverlay = blockHandleOverlay.hide
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
@@ -432,7 +380,7 @@ window.__markleafApplyVisualVariables = (payload) => {
   }, anchorReader)
 }
 
-let findBarLoc: Record<string, string> = {}
+let editorLoc: Record<string, string> = {}
 
 function applyAlertTitleLocalization(loc: Record<string, string>): void {
   const root = document.documentElement
@@ -444,7 +392,7 @@ function applyAlertTitleLocalization(loc: Record<string, string>): void {
 }
 
 function applyFindBarLocalization(loc: Record<string, string>): void {
-  findBarLoc = loc
+  editorLoc = loc
   applyAlertTitleLocalization(loc)
   promoteHeadingButton.textContent = loc.formatPromoteHeading ?? '标+'
   promoteHeadingButton.ariaLabel = loc.formatPromoteHeading ?? 'Promote heading'
@@ -498,7 +446,7 @@ function restoreEditorScrollTopAfterLayout(value: unknown): void {
   window.setTimeout(restore, 50)
   window.setTimeout(restore, 150)
   window.setTimeout(restore, 300)
-  void document.fonts.ready.then(restore)
+  if (document.fonts) void document.fonts.ready.then(restore)
   for (const image of Array.from(editorMount.querySelectorAll<HTMLImageElement>('img'))) {
     if (!image.complete) image.addEventListener('load', restore, { once: true })
   }
@@ -1349,7 +1297,7 @@ editorMount.addEventListener('mousedown', (event) => {
     pendingSpecialClick = null
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
     pendingSpecialClick = null
     return
   }
@@ -1367,12 +1315,6 @@ editorMount.addEventListener('mousedown', (event) => {
     return
   }
 
-  // Atom NodeViews are not editable text. If a previous text selection is
-  // still owned by WebKit, its native highlight can survive beside the
-  // ProseMirror NodeSelection and paint unrelated formula content blue.
-  event.preventDefault()
-  window.getSelection()?.removeAllRanges()
-
   const selected = editor.state.selection
   pendingSpecialClick = {
     kind: mathPosition !== null ? 'math' : 'mermaid',
@@ -1385,7 +1327,7 @@ editorMount.addEventListener('click', (event) => {
   if (sourceMode) {
     return
   }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source')) {
+  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
     return
   }
   const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
@@ -1611,8 +1553,9 @@ async function handleMessage(value: unknown): Promise<void> {
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
         if (restoreViewState && visualSelection) {
-          // Restore the logical selection without scrolling it into view. The
-          // saved scroll offset is independent from the caret and authoritative.
+          // Restore the logical selection without focusing or scrolling it into
+          // view. The document's saved scroll position is independent from the
+          // caret and remains authoritative when switching tabs.
           const from = Math.max(0, Math.min(visualSelection.from, editor.state.doc.content.size))
           const to = Math.max(0, Math.min(visualSelection.to, editor.state.doc.content.size))
           editor.commands.setTextSelection({ from, to })
@@ -1625,6 +1568,7 @@ async function handleMessage(value: unknown): Promise<void> {
       updateCaretVisibility()
       send('documentLoaded', undefined, message.requestId)
       if (payload.initialDirty === true) send('dirtyChanged', { dirty: true })
+      restoreEditorScrollTopAfterLayout(restoreViewState ? payload.scrollTop : 0)
       updateBlockHandleOverlay()
       sendOutline()
       sendEditorState()
@@ -1636,11 +1580,11 @@ async function handleMessage(value: unknown): Promise<void> {
       const payload = message.payload
       if (payload.selection) {
         if (sourceMode) sourceEditor?.setSelection(payload.selection.from, payload.selection.to)
-        else if (editor) restoreVisualSelection(editor, payload.selection)
+        else restoreVisualSelection(editor, payload.selection)
       }
       if (typeof payload.scrollTop === 'number' && payload.scrollTop >= 0) {
         if (sourceMode) sourceEditor?.setScrollTop(payload.scrollTop)
-        else restoreEditorScroll(editorMount, payload.scrollTop)
+        else restoreEditorScrollTop(payload.scrollTop)
       }
       break
     }
@@ -1673,7 +1617,7 @@ async function handleMessage(value: unknown): Promise<void> {
         )
         bindEditorEvents(editor)
         if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
-        updateEditorTypewriterMode(false)
+        updateEditorTypewriterMode()
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
         resetEditorViewport(editor, editorMount)
@@ -1887,13 +1831,17 @@ async function handleMessage(value: unknown): Promise<void> {
               : true
             const colorSchemeCss = typeof options.colorSchemeCss === 'string' ? options.colorSchemeCss : ''
             const title = typeof options.title === 'string' ? options.title : ''
-            const pagination: ExportPaginationOptions = {
-              keepTablesTogether: options.keepTablesTogether === true,
-              keepHeadingsWithNextBlock: options.keepHeadingsWithNextBlock === true,
-            }
-            const html = await exportCurrentDocument(
-              style,
+            const keepTablesTogether = options.keepTablesTogether === true
+            const keepHeadingsWithNextBlock = options.keepHeadingsWithNextBlock === true
+            const rawBodyHtml = sourceMode
+              ? `<pre><code>${escapeExportHtml(sourceEditor?.getText() ?? '')}</code></pre>`
+              : editor.getHTML()
+            const resolved = resolveStyle(style)
+            const html = await generateSharedExportHtml({
+              rawBodyHtml,
+              resolved,
               format,
+              mermaidTheme: resolveMermaidTheme(resolved.css),
               header,
               footer,
               fontSize,
@@ -1901,9 +1849,15 @@ async function handleMessage(value: unknown): Promise<void> {
               maxWidth,
               visualCjkAutoSpacing,
               colorSchemeCss,
+              baseCss,
               title,
-              pagination,
-            )
+              // 宿主专属截图规则：WKWebView 需要滚动范围，WebView2 需要裁剪容器。
+              hostClass: window.chrome?.webview?.hostPlatform === 'macOS'
+                ? 'markleaf-host-macos' : 'markleaf-host-windows',
+              keepTablesTogether,
+              keepHeadingsWithNextBlock,
+              editorLoc,
+            })
             send('exportContent', { html }, message.requestId)
           }
           break
@@ -1928,6 +1882,7 @@ async function handleMessage(value: unknown): Promise<void> {
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
+            // 源码模式一律按字面文本插入：Markdown 与剪贴板内容都不解析语法。
             : (payload.command === 'pasteMarkdown' || payload.command === 'pasteClipboard')
                 && commandText !== undefined
               ? (commandOutcome = 'plainText', sourceEditor?.replaceSelection(commandText) ?? false)
@@ -1945,6 +1900,7 @@ async function handleMessage(value: unknown): Promise<void> {
               })()
             : payload.command === 'pasteClipboard'
               ? (() => {
+                  // 只在 HTML 可用（如 HTML-only 剪贴板来源）时也走同一策略。
                   const result = pasteClipboardContentWithResult(
                     editor,
                     commandText ?? '',
@@ -1962,9 +1918,7 @@ async function handleMessage(value: unknown): Promise<void> {
                 payload.applyToCurrentTextBlockWhenEmpty === true,
               )
         if (message.requestId) {
-          const result: Record<string, unknown> = { success, outcome: commandOutcome }
-          if (commandError !== undefined) result.error = commandError
-          send('commandResult', result, message.requestId)
+          send('commandResult', { success, outcome: commandOutcome, error: commandError }, message.requestId)
         }
         sendEditorState()
       }
@@ -2078,9 +2032,21 @@ let findQuery = ''
 let findReplace = ''
 let findCaseSensitive = false
 let findWholeWord = false
+type StyleEntry = { id: string; css: string; dependsOn?: string }
+
+function injectStyleSheet(id: string, css: string): void {
+  let style = document.getElementById(id) as HTMLStyleElement | null
+  if (!style) {
+    style = document.createElement('style')
+    style.id = id
+    document.head.appendChild(style)
+  }
+  style.textContent = css
+}
+
 function setMarkleafLanguage(lang: string): void {
-  markleafLanguage = lang
-  const strings = sharedEditorStrings(lang, hostCapabilities.primaryActivationModifier)
+  markleafLanguage = normalizeSharedEditorLanguage(lang)
+  const strings = sharedEditorStrings(markleafLanguage, hostCapabilities.primaryActivationModifier)
   setBlockTypeLabels(strings)
   blockHandleButton.setAttribute('aria-label', strings.blockHandleAria)
   setEditorSharedStrings(strings)
@@ -2100,18 +2066,6 @@ send('ready')
   executeEditorCommand(editor, command)
   lastVisualSelection = captureVisualSelection(editor)
   sendEditorState()
-}
-
-type StyleEntry = { id: string; css: string; dependsOn?: string }
-
-function injectStyleSheet(id: string, css: string): void {
-  let style = document.getElementById(id) as HTMLStyleElement | null
-  if (!style) {
-    style = document.createElement('style')
-    style.id = id
-    document.head.appendChild(style)
-  }
-  style.textContent = css
 }
 
 function resolveStyle(styleId: string): { rootClass: string; css: string } {
@@ -2143,6 +2097,13 @@ function resolveStyle(styleId: string): { rootClass: string; css: string } {
   return { rootClass: classes.join(' '), css: cssParts.join('\n') }
 }
 
+function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
+  const declarations = Array.from(css.matchAll(
+    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
+  ))
+  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
+}
+
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)
   const toRemove = Array.from(editorMount.classList).filter((cls) => cls.startsWith('markleaf-style-'))
@@ -2155,25 +2116,4 @@ function applyMarkleafStyle(styleId: string): void {
   // Mermaid measures text while rendering. Re-render after a typography
   // switch so its SVG dimensions use the newly active document font.
   rerenderMermaidElements(editorMount)
-}
-
-async function exportCurrentDocument(
-  style: string,
-  format: string,
-  header: string,
-  footer: string,
-  fontSize = 16,
-  lineHeight = 1.6,
-  maxWidth = 820,
-  visualCjkAutoSpacing = true,
-  colorSchemeCss = '',
-  title = '',
-  pagination: ExportPaginationOptions = { keepTablesTogether: false, keepHeadingsWithNextBlock: false },
-): Promise<string> {
-  return generateExportHtml({
-    rawBodyHtml: sourceMode ? `<pre><code>${escapeHtml(sourceEditor?.getText() ?? '')}</code></pre>` : editor.getHTML(),
-    resolved: resolveStyle(style), format, header, footer, fontSize, lineHeight, maxWidth,
-    visualCjkAutoSpacing, colorSchemeCss, baseCss, title,
-    ...pagination, editorLoc: findBarLoc,
-  })
 }

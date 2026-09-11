@@ -47,6 +47,7 @@ afterEach(() => {
   vi.resetModules()
   document.body.innerHTML = ''
   delete window.chrome
+  Reflect.deleteProperty(document, 'fonts')
 })
 
 async function createHarness(markdown: string): Promise<{
@@ -55,6 +56,8 @@ async function createHarness(markdown: string): Promise<{
   editorDom: HTMLElement
   send: (message: HostMessage) => void
 }> {
+  // jsdom has no CSS Font Loading API; native view restoration waits for it.
+  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
   document.body.innerHTML = shell
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -142,7 +145,7 @@ it('applies after a backward mouse selection reaches ProseMirror after mouseup',
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
   expect(requestMarkdown(send, editorMessages))
-    .toEqual({ markdown: '**source**\n\n**target line**', scrollTop: 0 })
+    .toEqual({ scrollTop: 0, markdown: '**source**\n\n**target line**' })
 })
 
 it('applies to a whole paragraph dragged backward without waiting for selectionchange', async () => {
@@ -156,7 +159,7 @@ it('applies to a whole paragraph dragged backward without waiting for selectionc
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
   expect(requestMarkdown(send, editorMessages))
-    .toEqual({ markdown: '**source**\n\n**target line**', scrollTop: 0 })
+    .toEqual({ scrollTop: 0, markdown: '**source**\n\n**target line**' })
 })
 
 it('applies to multiple paragraphs dragged backward without waiting for selectionchange', async () => {
@@ -179,8 +182,8 @@ it('applies to multiple paragraphs dragged backward without waiting for selectio
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
   expect(requestMarkdown(send, editorMessages)).toEqual({
-    markdown: '**source**\n\n**first target**\n\n**second target**',
     scrollTop: 0,
+    markdown: '**source**\n\n**first target**\n\n**second target**',
   })
 })
 
@@ -197,7 +200,7 @@ it('applies when a backward whole-line drag ends on the editor padding at line s
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
   expect(requestMarkdown(send, editorMessages))
-    .toEqual({ markdown: '**source**\n\n**target line**', scrollTop: 0 })
+    .toEqual({ scrollTop: 0, markdown: '**source**\n\n**target line**' })
 })
 
 it('applies when a backward multi-line drag ends on the editor padding at a line start', async () => {
@@ -220,7 +223,7 @@ it('applies when a backward multi-line drag ends on the editor padding at a line
   await new Promise((resolve) => window.setTimeout(resolve, 0))
 
   expect(requestMarkdown(send, editorMessages)).toEqual({
-    markdown: '**source**\n\n**first target**\n\n**second target**',
     scrollTop: 0,
+    markdown: '**source**\n\n**first target**\n\n**second target**',
   })
 })

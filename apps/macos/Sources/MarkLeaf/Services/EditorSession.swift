@@ -217,6 +217,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     init(workspace: WorkspaceContext = WorkspaceContext()) {
         self.workspace = workspace
         super.init()
+        // 主题设置是原生窗口，可能早于 WKWebView 的 ready 消息打开。
+        // 在会话创建时先装载目录，使首次打开即可获得完整主题和排版列表。
+        reloadStyleCatalog()
     }
 
     private var documentId = UUID().uuidString.lowercased()
@@ -354,6 +357,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             // 揭示前同步打好主题底色；applySystemAppearance 里的调用是异步的，
             // 不能覆盖 ready → reveal 之间的首帧。
             applyScrollbarAppearance(dark: currentThemeIsDark)
+            // 「显示段落块句柄」也必须在揭示前生效：前端默认可见，若等到
+            // documentLoaded 才下发，ready → documentLoaded 之间鼠标悬停会让
+            // 操作柄闪一下（对齐 Windows 在 Ready 阶段下发的时序）。
+            applyBlockHandleVisibility(SettingsService.shared.settings.showParagraphBlockHandle)
+            // 「显示代码高亮」同理：关闭时若晚下发，首帧会先渲染高亮再褪掉。
+            setCodeHighlightVisible(SettingsService.shared.settings.showCodeHighlight)
             revealEditorAfterThemeApplied()
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true
@@ -707,14 +716,38 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         return dirs
     }
 
-    func applyStyles() {
+    /// 从磁盘刷新原生可见的样式目录，并恢复设置中的当前选择。
+    /// Web 编辑器就绪前也可调用；这里只更新会话状态，不发送桥接消息。
+    @discardableResult
+    private func reloadStyleCatalog() -> StyleManager? {
         guard !styleDirectories.isEmpty else {
-            AppLog.error("样式资源缺失，跳过 applyStyles")
-            return
+            AppLog.error("样式资源缺失，跳过样式目录加载")
+            return nil
         }
         let manager = StyleManager(directories: styleDirectories)
         attachStyleManager(manager)
-        guard let manager else { return }
+        guard let manager else { return nil }
+
+        let saved = SettingsService.shared.settings
+        if styles.contains(where: { $0.id == saved.markdownStyle }) {
+            currentStyleId = saved.markdownStyle
+        }
+        if !saved.followSystemTheme,
+           colorThemes.contains(where: { $0.id == saved.colorTheme }) {
+            currentThemeId = saved.colorTheme
+        } else {
+            let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            currentThemeId = manager.defaultThemeID(
+                forDark: dark,
+                preferredLight: saved.defaultLightThemeID,
+                preferredDark: saved.defaultDarkThemeID
+            ) ?? manager.defaultThemeId
+        }
+        return manager
+    }
+
+    func applyStyles() {
+        guard let manager = reloadStyleCatalog() else { return }
 
         var payload = manager.applyStylesPayload()
         let saved = SettingsService.shared.settings

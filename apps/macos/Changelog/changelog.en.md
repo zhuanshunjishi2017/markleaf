@@ -60,6 +60,8 @@
 - Fixed block math being converted to inline math too early and digit text around formulas being misread.
 - Fixed Mermaid rendering and layout jitter caused by font measurement.
 - Fixed the export preview not following the current tab and image export layout and validation problems.
+- Fixed the paragraph block handle briefly flashing in the editor when the app launches with Paragraph Block Handle turned off.
+- Fixed code blocks rendering highlighted first and then reverting when a document opens with Show Code Highlighting turned off.
 ## 1.5.1 — 2026-08-29
 
 ### New

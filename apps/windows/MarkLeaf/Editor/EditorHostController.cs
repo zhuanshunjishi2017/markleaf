@@ -873,7 +873,11 @@ internal sealed class EditorHostController : IDisposable
             {
                 width = pageWidth,
                 height = pageHeight,
-                deviceScaleFactor = 1,
+                // Apply the requested output scale at the emulation layer.
+                // Passing a large clip.scale makes Chromium rasterize the
+                // expanded surface through a viewport texture and can repeat
+                // the first viewport over the lower part of long pages.
+                deviceScaleFactor = scale,
                 mobile = false,
             });
             await core.CallDevToolsProtocolMethodAsync(
@@ -885,7 +889,7 @@ internal sealed class EditorHostController : IDisposable
                 format = "png",
                 fromSurface = true,
                 captureBeyondViewport = false,
-                clip = new { x = 0, y = 0, width = pageWidth, height = pageHeight, scale },
+                clip = new { x = 0, y = 0, width = pageWidth, height = pageHeight, scale = 1 },
             });
             using var responseJson = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", parameters));
             var fullBytes = Convert.FromBase64String(responseJson.RootElement.GetProperty("data").GetString() ?? "");

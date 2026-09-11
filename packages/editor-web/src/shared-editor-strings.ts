@@ -24,7 +24,6 @@ export type SharedEditorStrings = {
   mermaidEmpty: string
   mermaidError: string
   mermaidTimeout: string
-  copyCodeBlock: string
   formulaInputAssistant: string
   formulaGroupGreek: string
   formulaGroupOperators: string
@@ -72,7 +71,6 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 图表',
     mermaidError: 'Mermaid 图表文本格式错误',
     mermaidTimeout: 'Mermaid 图表渲染超时',
-    copyCodeBlock: '复制整段代码',
     formulaInputAssistant: '公式键入辅助',
     formulaGroupGreek: '希腊字母', formulaGroupOperators: '运算符', formulaGroupRelations: '关系符号',
     formulaGroupStructures: '结构', formulaGroupFonts: '字体', formulaGroupBlocks: '结构块', formulaGroupArrowsDots: '箭头与点号',
@@ -97,7 +95,6 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 圖表',
     mermaidError: 'Mermaid 圖表文字格式錯誤',
     mermaidTimeout: 'Mermaid 圖表算繪逾時',
-    copyCodeBlock: '複製整段程式碼',
     formulaInputAssistant: '公式鍵入輔助',
     formulaGroupGreek: '希臘字母', formulaGroupOperators: '運算符', formulaGroupRelations: '關係符號',
     formulaGroupStructures: '結構', formulaGroupFonts: '字體', formulaGroupBlocks: '結構塊', formulaGroupArrowsDots: '箭頭與點號',
@@ -122,7 +119,6 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: 'Empty Mermaid diagram',
     mermaidError: 'Invalid Mermaid diagram text',
     mermaidTimeout: 'Mermaid diagram rendering timed out',
-    copyCodeBlock: 'Copy code block',
     formulaInputAssistant: 'Formula input assistant',
     formulaGroupGreek: 'Greek letters', formulaGroupOperators: 'Operators', formulaGroupRelations: 'Relations',
     formulaGroupStructures: 'Structures', formulaGroupFonts: 'Fonts', formulaGroupBlocks: 'Structure blocks', formulaGroupArrowsDots: 'Arrows and dots',
@@ -147,7 +143,6 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空の Mermaid 図表',
     mermaidError: 'Mermaid 図表のテキスト形式が正しくありません',
     mermaidTimeout: 'Mermaid 図表の描画がタイムアウトしました',
-    copyCodeBlock: 'コードブロック全体をコピー',
     formulaInputAssistant: '数式入力補助',
     formulaGroupGreek: 'ギリシャ文字', formulaGroupOperators: '演算子', formulaGroupRelations: '関係記号',
     formulaGroupStructures: '構造', formulaGroupFonts: '書体', formulaGroupBlocks: '構造ブロック', formulaGroupArrowsDots: '矢印と点',

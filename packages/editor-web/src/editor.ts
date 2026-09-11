@@ -1,4 +1,6 @@
-import { type JSONContent, Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
+import type { EditorCommandState, EditorStatus } from './editor-state'
+export type { EditorCommandState, EditorStatus } from './editor-state'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -1132,7 +1134,12 @@ const ThemedSelection = Extension.create({
                   .setMeta('addToHistory', false),
               )
             }
-            clearDomSelection(view.dom.ownerDocument)
+            if (view.dom.ownerDocument.defaultView?.navigator.platform?.includes('Mac')) {
+              // WebKit can keep painting its native DOM selection after the
+              // themed ProseMirror selection is collapsed. Clear it so formula
+              // and other atomic nodes do not retain a stale highlight.
+              clearDomSelection(view.dom.ownerDocument)
+            }
             return false
           },
         },
@@ -1151,7 +1158,7 @@ export function collapseVisualSelection(editor: Editor): boolean {
   return true
 }
 
-/// 段落左侧浮动操作按钮的状态：按钮本体由 main.ts 作为 overlay 渲染，
+/// 段落左侧浮动操作按钮的状态：按钮本体由宿主入口作为 overlay 渲染，
 /// 这里仅保留当前高亮块的 ProseMirror 状态，避免 contenteditable 内部插入 widget 干扰 IME。
 const blockHandleKey = new PluginKey('markleaf-block-handle')
 
@@ -1206,7 +1213,6 @@ function parseFootnoteDefinitionText(text: string): FootnoteDefinition | null {
   }
 }
 
-/// 文本宿主（VS Code 扩展）用于列出脚注标签，供“转到脚注”选择器使用。
 export function getFootnoteLabels(editor: Editor): string[] {
   const labels = new Set<string>()
   editor.state.doc.descendants(node => {
@@ -1436,7 +1442,6 @@ const EditorFocusMode = Extension.create({
 })
 
 export function setEditorFocusMode(editor: Editor, enabled: boolean): void {
-  // 纯展示用的 meta 事务不能让 StarterKit 追加尾部空段落。
   editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled).setMeta('skipTrailingNode', true))
 }
 
@@ -1900,60 +1905,6 @@ const MarkLeafImage = Image.extend({
   },
 })
 
-export type EditorCommandState = {
-  canUndo: boolean
-  canRedo: boolean
-  hasSelection: boolean
-  paragraph: boolean
-  headingLevel: number | null
-  bold: boolean
-  italic: boolean
-  underline: boolean
-  strike: boolean
-  highlight: boolean
-  code: boolean
-  link: boolean
-  blockquote: boolean
-  codeBlock: boolean
-  frontMatter: boolean
-  codeBlockLanguage: string | null
-  codeBlockText: string | null
-  mermaid: boolean
-  mermaidSelected: boolean
-  mermaidSource: string | null
-  mermaidCount: number
-  bulletList: boolean
-  orderedList: boolean
-  taskList: boolean
-  inTable: boolean
-  tableAlign: 'left' | 'center' | 'right' | null
-  imageSelected: boolean
-  mathInline: boolean
-  mathBlock: boolean
-  mathLatex: string | null
-  mathNumber: string | null
-  caption: string | null
-  footnoteDefinitionLabel: string | null
-  canStartFormatPainter: boolean
-  formatPainterArmed: boolean
-}
-
-export type EditorStatus = {
-  characterCount: number
-  selectedCharacterCount: number
-  totalCharacterCount: number
-  nonWhitespaceCharacterCount: number
-  cjkCharacterCount: number
-  westernWordCount: number
-  formulaCount: number
-  codeLineCount: number
-  paragraphCount: number
-  blockType: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'heading5' | 'heading6'
-    | 'blockquote' | 'alert' | 'codeBlock' | 'bulletList' | 'orderedList' | 'taskList' | 'table' | 'image' | 'footnoteDefinition'
-  line: number
-  column: number
-}
-
 const MarkLeafTable = Table.extend({
   name: 'table',
   addAttributes() {
@@ -2314,9 +2265,13 @@ function createCodeBlockControls(editor: Editor, position: number): HTMLDivEleme
   const copy = document.createElement('button')
   copy.type = 'button'
   copy.className = 'markleaf-code-block-copy'
-  copy.textContent = '⧉'
+  // Windows uses the Fluent Icons private-use glyph. WKWebView/macOS does not
+  // ship that font, so use a Unicode fallback on the macOS host only.
+  copy.textContent = document.documentElement.classList.contains('markleaf-host-macos')
+    ? '⧉'
+    : '\uE8C8'
   copy.tabIndex = -1
-  copy.setAttribute('aria-label', editorSharedStrings.copyCodeBlock)
+  copy.setAttribute('aria-label', 'Copy code block')
 
   const language = document.createElement('button')
   language.type = 'button'
@@ -2479,6 +2434,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       { preview: 'e', latex: '\\mathrm{e}' },
       { preview: 'i', latex: '\\mathrm{i}' },
       { preview: 'dx', latex: '\\,\\mathrm{d}x' },
+      { preview: '\\mathrm{e}^{\\mathrm{i}x}', previewLatex: '\\mathrm{e}^{\\mathrm{i}x}', latex: '\\mathrm{e}^{\\mathrm{i}}', wrap: { before: '\\mathrm{e}^{\\mathrm{i}', after: '}',caretOffset: '\\mathrm{e}^{\\mathrm{i}'.length } },
       { preview: '\\mathbb{}', previewLatex: '\\mathbb{R}', latex: '\\mathbb{}', plainPreview: true, sectionBefore: 'formulaSectionBlackboard', separatorBefore: true, wrap: { before: '\\mathbb{', after: '}', caretOffset: '\\mathbb{'.length } },
       { preview: 'C', latex: '\\mathbb{C}' },
       { preview: 'N', latex: '\\mathbb{N}' },
@@ -2506,11 +2462,13 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       { preview: 'align', previewLatex: '\\begin{aligned}a&=b\\end{aligned}', latex: '\\begin{align}\n  \n\\end{align}', sectionBefore: 'formulaSectionAlignment', wrap: { before: '\\begin{align}\n  ', after: '\n\\end{align}', caretOffset: '\\begin{align}\n  '.length } },
       { preview: 'cases', previewLatex: '\\begin{cases}a\\\\b\\end{cases}', latex: '\\begin{cases}\n  \n\\end{cases}', wrap: { before: '\\begin{cases}\n  ', after: '\n\\end{cases}', caretOffset: '\\begin{cases}\n  '.length } },
       { preview: 'boxed', previewLatex: '\\boxed{x}', latex: '\\boxed{}', sectionBefore: 'formulaSectionWrappers', separatorBefore: true, wrap: { before: '\\boxed{', after: '}', caretOffset: '\\boxed{'.length } },
+      { preview: 'overbrace', previewLatex: '\\overbrace{\\cdots}^{\\cdots}', latex: '\\overbrace{}^{}',  wrap: { before: '\\overbrace{', after: '}^{}', caretOffset: '\\overbrace{'.length } },
+      { preview: 'underbrace', previewLatex: '\\underbrace{\\cdots}_{\\cdots}', latex: '\\underbrace{}_{}',  wrap: { before: '\\underbrace{', after: '}_{}', caretOffset: '\\underbrace{'.length } },
       { preview: 'matrix', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{matrix}\n  \n\\end{matrix}', sectionBefore: 'formulaSectionMatrices', separatorBefore: true, wrap: { before: '\\begin{matrix}\n  ', after: '\n\\end{matrix}', caretOffset: '\\begin{matrix}\n  '.length } },
-      { preview: '( )', previewLatex: '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', latex: '\\begin{pmatrix}\n  \n\\end{pmatrix}', wrap: { before: '\\begin{pmatrix}\n  ', after: '\n\\end{pmatrix}', caretOffset: '\\begin{pmatrix}\n  '.length } },
       { preview: '[ ]', previewLatex: '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', latex: '\\begin{bmatrix}\n  \n\\end{bmatrix}', wrap: { before: '\\begin{bmatrix}\n  ', after: '\n\\end{bmatrix}', caretOffset: '\\begin{bmatrix}\n  '.length } },
       { preview: '| |', previewLatex: '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', latex: '\\begin{vmatrix}\n  \n\\end{vmatrix}', wrap: { before: '\\begin{vmatrix}\n  ', after: '\n\\end{vmatrix}', caretOffset: '\\begin{vmatrix}\n  '.length } },
       { preview: '‖ ‖', previewLatex: '\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}', latex: '\\begin{Vmatrix}\n  \n\\end{Vmatrix}', wrap: { before: '\\begin{Vmatrix}\n  ', after: '\n\\end{Vmatrix}', caretOffset: '\\begin{Vmatrix}\n  '.length } },
+
     ],
   },
   {
@@ -2546,22 +2504,19 @@ formulaSymbolGroups[0]!.symbols.push(
   { preview: '𝛺', latex: '\\varOmega' },
 )
 
-// Keep templates adjacent to their existing group and derive the empty
-// insertion point from the literal prefix, rather than hand-counted offsets.
-const addFormulaTemplate = (
-  group: number, preview: string, previewLatex: string, before: string, after: string,
-  afterLatex: string,
-) => {
-  const symbols = formulaSymbolGroups[group]!.symbols
-  symbols.splice(symbols.findIndex(symbol => symbol.latex === afterLatex) + 1, 0, {
-    preview, previewLatex, latex: before + after,
-    wrap: { before, after, caretOffset: before.length },
-  })
-}
-addFormulaTemplate(3, '⟨x⟩', '\\langle x \\rangle', '\\langle ', ' \\rangle', '\\left|x\\right|')
-addFormulaTemplate(4, '\\mathrm{e}^{\\mathrm{i}x}', '\\mathrm{e}^{\\mathrm{i}x}', '\\mathrm{e}^{\\mathrm{i}', '}', '\\,\\mathrm{d}x')
-addFormulaTemplate(5, 'overbrace', '\\overbrace{x}^{n}', '\\overbrace{', '}^{}', '\\boxed{}')
-addFormulaTemplate(5, 'underbrace', '\\underbrace{x}_{n}', '\\underbrace{', '}_{}', '\\overbrace{}^{}')
+// ⟨x⟩ 与 \left|x\right| 相邻，但它在选区上要包成 `\langle x \rangle`，
+// 因此必须带 wrap 模板，而不是像其它符号那样只插入固定文本。
+const structureSymbolList = formulaSymbolGroups[3]!.symbols
+structureSymbolList.splice(
+  structureSymbolList.findIndex(symbol => symbol.latex === '\\left|x\\right|') + 1,
+  0,
+  {
+    preview: '⟨x⟩',
+    previewLatex: '\\langle x \\rangle',
+    latex: '\\langle  \\rangle',
+    wrap: { before: '\\langle ', after: ' \\rangle', caretOffset: '\\langle '.length },
+  },
+)
 
 const structureSymbols = formulaSymbolGroups[3]!.symbols
 const markStructureSection = (latex: string, section: keyof SharedEditorStrings, separatorBefore = true) => {
@@ -2589,6 +2544,20 @@ if (overVectorSymbol) {
 }
 
 const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
+
+function positionFormulaSymbolPanels(toolbar: HTMLElement): void {
+  const toolbarRect = toolbar.getBoundingClientRect()
+  for (const panel of toolbar.querySelectorAll<HTMLElement>('.markleaf-formula-symbol-panel:not([hidden])')) {
+    const below = Math.max(0, window.innerHeight - toolbarRect.bottom - 13)
+    const above = Math.max(0, toolbarRect.top - 13)
+    const openAbove = below < Math.min(panel.scrollHeight, 260) && above > below
+    panel.style.top = openAbove ? 'auto' : 'calc(100% + 5px)'
+    panel.style.bottom = openAbove ? 'calc(100% + 5px)' : 'auto'
+    panel.style.maxHeight = `${Math.min(420, openAbove ? above : below)}px`
+    const width = panel.getBoundingClientRect().width
+    panel.style.left = `${Math.max(8, Math.min(toolbarRect.left, window.innerWidth - width - 8)) - toolbarRect.left}px`
+  }
+}
 
 function createFormulaSymbolToolbar(
   code: HTMLElement,
@@ -2622,9 +2591,8 @@ function createFormulaSymbolToolbar(
       nextSource = source.slice(0, selection.from)
         + symbol.wrap.before + selectedText + symbol.wrap.after
         + source.slice(selection.to)
-      nextCaret = selection.from + (selectedText.length > 0
-        ? symbol.wrap.before.length + selectedText.length + symbol.wrap.after.length
-        : symbol.wrap.caretOffset)
+      nextCaret = selection.from + symbol.wrap.before.length
+        + (selectedText.length > 0 ? selectedText.length + symbol.wrap.after.length : 0)
     } else {
       nextSource = source.slice(0, selection.to) + symbol.latex + source.slice(selection.to)
       nextCaret = selection.to + symbol.latex.length
@@ -2646,10 +2614,10 @@ function createFormulaSymbolToolbar(
   }
 
   for (const [groupIndex, group] of formulaSymbolGroups.entries()) {
-    const groupLabel = editorSharedStrings[group.label]
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'markleaf-formula-symbol-group-button'
+    const groupLabel = editorSharedStrings[group.label]
     button.textContent = ['αβΔ', '×÷±', '≤≠', '√()', '𝔸', '{&=', '←↑'][groupIndex] ?? groupLabel
     button.title = groupLabel
     button.setAttribute('aria-label', groupLabel)
@@ -2707,6 +2675,7 @@ function createFormulaSymbolToolbar(
         other.hidden = index !== groupIndex || !other.hidden
         buttons[index]?.classList.toggle('markleaf-formula-symbol-group-active', !other.hidden)
       }
+      positionFormulaSymbolPanels(toolbar)
     })
     groups.append(button)
     toolbar.append(panel)
@@ -2722,6 +2691,7 @@ function createExpandedSourceEditor(
   editor: Editor,
   position: number,
   kind: ExpandedSourceEditor['kind'],
+  preventScroll = false,
 ): { dom: HTMLElement; code: HTMLElement } {
   const wrapper = document.createElement('div')
   wrapper.className = `editor-tooltip markleaf-expanded-source markleaf-expanded-source-${kind} markleaf-expanded-source-enter`
@@ -2760,7 +2730,6 @@ function createExpandedSourceEditor(
     code.addEventListener(eventName, stopEditorEvent)
   }
   code.addEventListener('contextmenu', (event) => {
-    // 文本宿主（VS Code）里保留浏览器默认菜单，只有原生宿主转发给 AppKit。
     if (textDocumentHostEditors.has(editor)) return
     event.preventDefault()
     event.stopPropagation()
@@ -2769,14 +2738,6 @@ function createExpandedSourceEditor(
     }))
   })
   code.addEventListener('keydown', (event) => {
-    if (kind !== 'mermaid' && !event.altKey && !event.ctrlKey && !event.metaKey
-      && (event.key === 'Home' || event.key === 'End')) {
-      event.preventDefault()
-      const selection = getCodeSelectionOffsets(code)
-      const destination = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
-      setCodeSelectionOffsets(code, event.shiftKey ? selection.anchor : destination, destination)
-      return
-    }
     if (event.key === 'Escape' || (kind !== 'mermaid' && event.key === 'Enter'
       && event.ctrlKey && !event.altKey)) {
       event.preventDefault()
@@ -2795,6 +2756,16 @@ function createExpandedSourceEditor(
       editor.commands.focus()
       return
     }
+    if (kind !== 'mermaid' && !event.altKey && !event.ctrlKey && !event.metaKey
+      && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault()
+      event.stopPropagation()
+      const selection = getCodeSelectionOffsets(code)
+      const destination = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
+      // Shift+Home/End 保持 anchor 不动、只移动 focus，与原生文本框一致。
+      setCodeSelectionOffsets(code, event.shiftKey ? selection.anchor : destination, destination)
+      return
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !event.altKey) {
       event.preventDefault()
       event.stopPropagation()
@@ -2805,7 +2776,7 @@ function createExpandedSourceEditor(
       selection?.addRange(range)
       return
     }
-    if (!editable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
+    if (!editor.isEditable || (!event.ctrlKey && !event.metaKey) || event.altKey) return
     const key = event.key.toLowerCase()
     if (key !== 'z' && key !== 'y') return
     event.preventDefault()
@@ -2838,12 +2809,12 @@ function createExpandedSourceEditor(
     composing = false
   })
   code.addEventListener('input', () => {
-    // 只读状态可能在浮层创建之后才切换（宿主切到阅读模式），必须按当前状态判断。
     if (!editor.isEditable) return
     const current = editor.state.doc.nodeAt(position)
     if (!current || current.type.name !== kind) return
     const source = code.textContent ?? ''
     const selection = getCodeSelectionOffsets(code)
+    const caretOffset = getCaretOffset(code)
     const replacement = current.type.create(
       current.attrs,
       source.length > 0 ? editor.state.schema.text(source) : undefined,
@@ -2851,8 +2822,9 @@ function createExpandedSourceEditor(
     editor.view.dispatch(editor.state.tr
       .replaceWith(position, position + current.nodeSize, replacement)
       .setMeta(expandedSourceEditorKey, { position, kind }))
+    // 高亮重绘会重建文本节点，必须把选区（含反选方向）原样回填。
     if (!composing) {
-      refreshHighlight(source)
+      refreshHighlight(source, caretOffset)
       setCodeSelectionOffsets(code, selection.anchor, selection.focus)
     }
   })
@@ -2860,14 +2832,14 @@ function createExpandedSourceEditor(
     if (!code.isConnected) return
     refreshHighlight(initialSource)
     if (editable) {
-      code.focus()
+      code.focus({ preventScroll })
       setCaretOffset(code, initialSource.length)
     }
   })
   return { dom: wrapper, code }
 }
 
-function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement): void {
+function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement, belowNode = false): void {
   const anchor = editor.view.nodeDOM(position)
   if (!(anchor instanceof HTMLElement)) return
   const anchorRect = anchor.getBoundingClientRect()
@@ -2877,23 +2849,35 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   const availableWidth = Math.max(0, window.innerWidth - viewportPadding * 2)
   const width = Math.min(documentRect.width, availableWidth)
   overlay.style.width = `${width}px`
-  overlay.style.position = 'absolute'
   overlay.hidden = false
-  const overlayWidth = overlay.offsetWidth || width
+  const overlayWidth = overlay.getBoundingClientRect().width || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
-  // 文本宿主把源码块固定在文档流里（滚动时跟着节点走）；
-  // 原生宿主用视口坐标的浮层，滚动时重新贴合节点。
-  const top = sourceEditorPlacementByEditor.get(editor) === 'below'
-    ? anchorRect.bottom + gap + window.scrollY
-    : anchorRect.bottom + gap
-  overlay.style.left = `${left}px`
-  overlay.style.top = `${top}px`
+  if (belowNode) {
+    // VS Code keeps the source below its node in document coordinates. It
+    // scrolls out of view with the document, without flipping or pinning.
+    overlay.style.position = 'absolute'
+    overlay.style.left = `${left + window.scrollX}px`
+    overlay.style.top = `${anchorRect.bottom + window.scrollY + gap}px`
+  } else {
+    // Native hosts retain their viewport-aware floating editor.
+    const overlayHeight = overlay.getBoundingClientRect().height
+    const below = anchorRect.bottom + gap
+    const above = anchorRect.top - gap - overlayHeight
+    const maxTop = Math.max(viewportPadding, window.innerHeight - viewportPadding - overlayHeight)
+    const top = below <= maxTop ? below : above >= viewportPadding ? above : maxTop
+    overlay.style.left = `${left}px`
+    overlay.style.top = `${Math.max(viewportPadding, top)}px`
+  }
+  const toolbar = overlay.querySelector<HTMLElement>('.markleaf-formula-symbol-toolbar')
+  if (toolbar) positionFormulaSymbolPanels(toolbar)
 }
 
-const ExpandedSourceEditor = Extension.create({
+const ExpandedSourceEditor = Extension.create<{ placement: 'floating' | 'below' }>({
   name: 'markleafExpandedSourceEditor',
+  addOptions: () => ({ placement: 'floating' }),
   addProseMirrorPlugins() {
     const editor = this.editor
+    const belowNode = this.options.placement === 'below'
     return [new Plugin({
       key: expandedSourceEditorKey,
       state: {
@@ -2911,7 +2895,7 @@ const ExpandedSourceEditor = Extension.create({
         let closing = false
         const collapse = () => {
           if (expandedSourceEditorKey.getState(editor.state) === null) return
-          editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+          editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null).setMeta('skipTrailingNode', true))
         }
         const removeOverlay = () => {
           overlay?.remove()
@@ -2939,7 +2923,7 @@ const ExpandedSourceEditor = Extension.create({
           window.setTimeout(finish, 240)
         }
         const reposition = () => {
-          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
+          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay, belowNode)
         }
         const handleOutsidePointer = (event: PointerEvent) => {
           if (overlay && event.composedPath().includes(overlay)) return
@@ -2997,11 +2981,11 @@ const ExpandedSourceEditor = Extension.create({
             }
             removeOverlay()
             current = expanded
-            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind)
+            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind, belowNode)
             overlay = created.dom
             overlay.hidden = true
             document.body.append(overlay)
-            positionExpandedSourceEditor(editor, expanded.position, overlay)
+            positionExpandedSourceEditor(editor, expanded.position, overlay, belowNode)
           },
           destroy: () => {
             document.removeEventListener('pointerdown', handleOutsidePointer)
@@ -3025,7 +3009,7 @@ export function expandSourceEditor(
   if (!node || node.type.name !== kind) return false
   const current = expandedSourceEditorKey.getState(editor.state)
   if (current?.position === position && current.kind === kind) return true
-  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, { position, kind }))
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, { position, kind }).setMeta('skipTrailingNode', true))
   return true
 }
 
@@ -3044,7 +3028,7 @@ export function hasExpandedSourceEditor(editor: Editor): boolean {
 
 export function collapseSourceEditor(editor: Editor): boolean {
   if (expandedSourceEditorKey.getState(editor.state) === null) return false
-  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null))
+  editor.view.dispatch(editor.state.tr.setMeta(expandedSourceEditorKey, null).setMeta('skipTrailingNode', true))
   return true
 }
 
@@ -3148,6 +3132,44 @@ function getCaretOffset(root: HTMLElement): number {
   return range.toString().length
 }
 
+function getTextOffset(root: HTMLElement, node: globalThis.Node | null, offset: number): number {
+  if (!node || !root.contains(node)) return root.textContent?.length ?? 0
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.setEnd(node, offset)
+  return range.toString().length
+}
+
+function setCodeSelectionOffsets(root: HTMLElement, anchorOffset: number, focusOffset: number): void {
+  const pointAt = (offset: number): { node: globalThis.Node; offset: number } => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let remaining = Math.max(0, offset)
+    let textNode = walker.nextNode()
+    while (textNode) {
+      const length = textNode.textContent?.length ?? 0
+      if (remaining <= length) return { node: textNode, offset: remaining }
+      remaining -= length
+      textNode = walker.nextNode()
+    }
+    return { node: root, offset: root.childNodes.length }
+  }
+  const anchor = pointAt(anchorOffset)
+  const focus = pointAt(focusOffset)
+  const selection = window.getSelection()
+  if (!selection) return
+  // 方向必须保留：高亮刷新后回填选区时，反选（focus 在前）不能被规范化成从左到右。
+  if (typeof selection.setBaseAndExtent === 'function') {
+    selection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
+  } else {
+    const range = document.createRange()
+    const [from, to] = anchorOffset <= focusOffset ? [anchor, focus] : [focus, anchor]
+    range.setStart(from.node, from.offset)
+    range.setEnd(to.node, to.offset)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+}
+
 function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number; anchor: number; focus: number } {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0
@@ -3165,37 +3187,30 @@ function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number;
   return { from: Math.min(anchor, focus), to: Math.max(anchor, focus), anchor, focus }
 }
 
-function setCodeSelectionOffsets(root: HTMLElement, anchor: number, focus: number): void {
-  const pointAt = (offset: number): { node: globalThis.Node; offset: number } => {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    let remaining = Math.max(0, offset)
-    let textNode = walker.nextNode()
-    while (textNode) {
-      const length = textNode.textContent?.length ?? 0
-      if (remaining <= length) return { node: textNode, offset: remaining }
-      remaining -= length
-      textNode = walker.nextNode()
-    }
-    return { node: root, offset: root.childNodes.length }
-  }
-  const start = pointAt(anchor)
-  const end = pointAt(focus)
-  const selection = window.getSelection()
-  if (!selection) return
-  if (typeof selection.setBaseAndExtent === 'function') {
-    selection.setBaseAndExtent(start.node, start.offset, end.node, end.offset)
-  } else {
-    const range = document.createRange()
-    const [from, to] = anchor <= focus ? [start, end] : [end, start]
-    range.setStart(from.node, from.offset)
-    range.setEnd(to.node, to.offset)
-    selection.removeAllRanges()
-    selection.addRange(range)
-  }
-}
-
 function setCaretOffset(root: HTMLElement, offset: number): void {
-  setCodeSelectionOffsets(root, offset, offset)
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let remaining = Math.max(0, offset)
+  let textNode = walker.nextNode()
+  while (textNode) {
+    const length = textNode.textContent?.length ?? 0
+    if (remaining <= length) {
+      const range = document.createRange()
+      range.setStart(textNode, remaining)
+      range.collapse(true)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      return
+    }
+    remaining -= length
+    textNode = walker.nextNode()
+  }
+  const range = document.createRange()
+  range.selectNodeContents(root)
+  range.collapse(false)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
 }
 
 function renderEditableCodeHighlight(
@@ -3366,13 +3381,11 @@ export type EditorCreationOptions = {
   handlePaste?: (event: ClipboardEvent) => boolean
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
-  // 文本宿主把公式/图表源码放在节点下方；原生宿主沿用浮层跟随。
+  // VS Code anchors formula/diagram source beneath the node in the document.
   sourceEditorPlacement?: 'floating' | 'below'
 }
 
-/// 文本宿主（VS Code 扩展）创建的编辑器：右键菜单等交互按宿主差异分支。
 const textDocumentHostEditors = new WeakSet<Editor>()
-const sourceEditorPlacementByEditor = new WeakMap<Editor, 'floating' | 'below'>()
 
 export function createEditor(
   element: HTMLElement,
@@ -3380,11 +3393,11 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
-  const extensions = options.externalHistory
-    ? editorExtensions.map(extension => extension.name === 'starterKit'
-      ? extension.configure({ undoRedo: false })
-      : extension)
-    : editorExtensions
+  const extensions = editorExtensions.map(extension => {
+    if (options.externalHistory && extension.name === 'starterKit') return extension.configure({ undoRedo: false })
+    if (options.sourceEditorPlacement && extension.name === ExpandedSourceEditor.name) return ExpandedSourceEditor.configure({ placement: options.sourceEditorPlacement })
+    return extension
+  })
   const editor = new Editor({
     element,
     extensions: options.themedVisualSelection
@@ -3399,13 +3412,17 @@ export function createEditor(
         class: 'markleaf-document',
         spellcheck: 'true',
       },
-      handleDOMEvents: readOnly ? {
+      handleDOMEvents: {
         dragstart: (_view, event) => {
+          if (editor.isEditable) return false
           event.dataTransfer?.clearData()
           event.preventDefault()
           return true
         },
-      } : undefined,
+      },
+      // ProseMirror owns the editor's paste event pipeline. Handling custom
+      // clipboard formats here guarantees that the callback runs before its
+      // default HTML/text insertion and survives editor recreation.
       handlePaste: options.handlePaste
         ? (_view, event) => options.handlePaste?.(event) ?? false
         : undefined,
@@ -3414,7 +3431,6 @@ export function createEditor(
   })
   normalizeTableCaptions(editor)
   if (options.externalHistory) textDocumentHostEditors.add(editor)
-  if (options.sourceEditorPlacement) sourceEditorPlacementByEditor.set(editor, options.sourceEditorPlacement)
   if (hasListFormattingThatNeedsPreservation(content)) {
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
@@ -3426,90 +3442,52 @@ export function createEditor(
 // that boundary Marked parses `\[` and `\]` as escaped literal brackets in
 // the paragraph instead of giving the block tokenizer a chance to see them.
 function normalizeDisplayMathAfterList(markdown: string): string {
-  // A complete one-line display formula is also commonly indented by two
-  // spaces under a list item (`  $$...$$`). Marked otherwise keeps it in the
-  // list paragraph, where the dollar delimiters are treated as literal text.
-  // Move that standalone formula to a block boundary, while leaving fenced
-  // code untouched.
-  const lines = markdown.split('\n')
-  // 列表行后面紧跟独立公式时要补空行；这一步必须在围栏状态里做，
-  // 否则代码围栏内的 `- item` + `$$` 也会被插入空行，破坏代码内容。
-  const needsGap = listLinesFollowedByDisplayMath(lines)
+  const lines = markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []
+  const defaultEol = /\r?\n/.exec(markdown)?.[0] ?? '\n'
   const result: string[] = []
-  let fence: string | null = null
-  let indentedDisplayDelimiter: '$$' | '\\[' | null = null
-  const pushLine = (index: number, line: string) => {
-    result.push(line)
-    if (needsGap.has(index)) result.push('')
-  }
+  let fence = ''
+  let mathClose = ''
+  let dedentMath = false
   for (const [index, line] of lines.entries()) {
-    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
-    if (fenceMatch) {
-      const marker = fenceMatch[1]!
-      if (!fence) fence = marker[0]!
-      else if (marker[0] === fence) fence = null
-      pushLine(index, line)
+    const trimmed = line.trim()
+    const eol = line.endsWith('\r\n') ? '\r\n' : line.endsWith('\n') ? '\n' : defaultEol
+    const codeFence = /^\s*(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})/.exec(line)?.[1]
+    if (fence) {
+      if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(trimmed)) fence = ''
+      result.push(line)
       continue
     }
-
-    // Multi-line display formulas are often indented below a list item:
-    // `  $$` / `  \\[`, followed by several indented source lines and a
-    // matching indented closer. Dedent only the delimiter lines (the formula
-    // payload itself remains byte-for-byte unchanged), and put the block
-    // outside the list with blank-line boundaries.
-    if (!fence && indentedDisplayDelimiter) {
-      // Once an indented list formula has started, accept its closing
-      // delimiter at any indentation. Markdown generators disagree on
-      // whether the closer should retain the list indentation.
-      const closing = indentedDisplayDelimiter === '$$' ? /^\s*\$\$[ \t]*$/ : /^\s*\\\][ \t]*$/
-      if (closing.test(line)) {
-        result.push(indentedDisplayDelimiter === '$$' ? '$$' : '\\]')
-        result.push('')
-        indentedDisplayDelimiter = null
-      } else {
-        pushLine(index, line)
+    if (mathClose) {
+      const closesMath = dedentMath ? trimmed === mathClose : line.includes(mathClose)
+      result.push(closesMath && dedentMath ? line.replace(/^[ \t]+/, '') : line)
+      if (closesMath) {
+        if (dedentMath && lines[index + 1]?.trim()) result.push(eol)
+        mathClose = ''
+        dedentMath = false
       }
       continue
     }
+    if (codeFence) { fence = codeFence; result.push(line); continue }
 
-    const displayOpener = /^[ \t]{2,}(\$\$|\\\[)[ \t]*$/.exec(line)
-    if (!fence && displayOpener) {
-      if (result.length > 0 && result[result.length - 1] !== '') result.push('')
-      const delimiter = displayOpener[1]!.startsWith('\\') ? '\\[' : '$$'
-      result.push(delimiter)
-      indentedDisplayDelimiter = delimiter
-      continue
+    // List generators indent complete display formulas, including nested
+    // lists. Dedent their delimiters only; keep formula payload and code
+    // fences intact, and do not turn an unclosed delimiter into a block.
+    const indentedDisplay = /^[ \t]{2,}(\$\$[^\r\n]*\$\$|\\\[[^\r\n]*\\\]|\$\$|\\\[)[ \t]*(?:\r?\n)?$/.test(line)
+    const math = (indentedDisplay ? /^[ \t]*(\$\$|\\\[)/ : /^[ \t]{0,3}(\$\$|\\\[)/).exec(line)
+    if (!math) { result.push(line); continue }
+    const close = math[1] === '$$' ? '$$' : '\\]'
+    const singleLine = line.slice(math[0].length).includes(close)
+    if (!singleLine) {
+      const hasCloser = lines.slice(index + 1).some(next => indentedDisplay ? next.trim() === close : next.includes(close))
+      if (!hasCloser) { result.push(line); continue }
+      mathClose = close
+      dedentMath = indentedDisplay
     }
-
-    const displayMatch = /^[ \t]{2,}(\$\$[^\r\n]*\$\$|\\\[[^\r\n]*\\\])[ \t]*$/.exec(line)
-    if (!fence && displayMatch) {
-      if (result.length > 0 && result[result.length - 1] !== '') result.push('')
-      result.push(displayMatch[1]!)
-      result.push('')
-      continue
-    }
-    pushLine(index, line)
+    if (result.at(-1)?.trim()) result.push(eol)
+    result.push(indentedDisplay ? line.replace(/^[ \t]+/, '') : line)
+    if (indentedDisplay && singleLine && lines[index + 1]?.trim()) result.push(eol)
   }
-  return result.join('\n')
-}
-
-/// 找出“列表行 + 紧随其后的独立公式”这类行号；跳过代码围栏内部。
-function listLinesFollowedByDisplayMath(lines: string[]): Set<number> {
-  const indexes = new Set<number>()
-  let fence: string | null = null
-  lines.forEach((line, index) => {
-    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
-    if (fenceMatch) {
-      const marker = fenceMatch[1]!
-      if (!fence) fence = marker[0]!
-      else if (marker[0] === fence) fence = null
-      return
-    }
-    if (fence) return
-    if (!/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+\S/.test(line)) return
-    if (/^[ \t]*(?:\$\$|\\\[)/.test(lines[index + 1] ?? '')) indexes.add(index)
-  })
-  return indexes
+  return result.join('')
 }
 
 export function replaceEditorDocument(
@@ -3565,6 +3543,10 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
   if (!markdown) return { success: false, outcome: 'failed', error: 'Clipboard text is empty' }
 
   try {
+    // Keep pasted Markdown consistent with full-document loading. Without the
+    // separator inserted here, a display formula immediately following a list
+    // item can be parsed as invalid list-item content instead of a sibling
+    // block after the list.
     const normalizedMarkdown = normalizeDisplayMathAfterList(markdown)
     const sourceChanged = normalizedMarkdown !== markdown
     const parsed = editor.markdown?.parse(normalizedMarkdown)
@@ -3586,8 +3568,41 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
     }
     return pasteMarkdownAsPlainText(editor, markdown, 'Markdown insertion was rejected')
   } catch (error) {
+    // Invalid parser output is handled by the lossless literal-text fallback.
     return pasteMarkdownAsPlainText(editor, markdown, summarizeMarkdownPasteError(error))
   }
+}
+
+/** Insert a native clipboard payload once, retaining rich HTML when Markdown
+ * parsing is not appropriate and supporting HTML-only clipboard providers. */
+export function pasteClipboardContent(editor: Editor, plainText: string, html: string): boolean {
+  return pasteClipboardContentWithResult(editor, plainText, html).success
+}
+
+export function pasteClipboardContentWithResult(
+  editor: Editor,
+  plainText: string,
+  html: string,
+): { success: boolean; outcome: MarkdownPasteOutcome | 'formatted'; error?: string } {
+  if (plainText) {
+    if (shouldParsePastedTextAsMarkdown(editor, plainText, html)) {
+      return pasteMarkdownTextWithResult(editor, plainText)
+    }
+    if (html) {
+      return editor.view.pasteHTML(html)
+        ? { success: true, outcome: 'formatted' }
+        : { success: false, outcome: 'failed' }
+    }
+    return editor.view.pasteText(plainText)
+      ? { success: true, outcome: 'plainText' }
+      : { success: false, outcome: 'failed' }
+  }
+  if (html) {
+    return editor.view.pasteHTML(html)
+      ? { success: true, outcome: 'formatted' }
+      : { success: false, outcome: 'failed' }
+  }
+  return { success: false, outcome: 'failed' }
 }
 
 function normalizePastedMarkdownContent(editor: Editor, value: any): { content: any; changed: boolean } {
@@ -3631,6 +3646,8 @@ function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: stri
   }
 
   try {
+    // Some valid literal payloads are rejected by ProseMirror's paste parser
+    // even though they can be inserted directly into the current text block.
     const transaction = editor.state.tr.insertText(
       markdown,
       editor.state.selection.from,
@@ -3644,6 +3661,10 @@ function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: stri
   }
 }
 
+/** Decide whether clipboard text should use the Markdown parser instead of
+ * ProseMirror's HTML-first paste path. Many source editors attach syntax-
+ * highlighted HTML even when the copied payload is Markdown source, so the
+ * mere presence of text/html does not make the content rich text. */
 const richPasteSelector = [
   'a', 'img', 'table', 'ul', 'ol', 'li', 'blockquote',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
@@ -3713,38 +3734,6 @@ export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: strin
   return true
 }
 
-/** Insert a native clipboard payload once, retaining rich HTML when Markdown
- * parsing is not appropriate and supporting HTML-only clipboard providers. */
-export function pasteClipboardContent(editor: Editor, plainText: string, html: string): boolean {
-  return pasteClipboardContentWithResult(editor, plainText, html).success
-}
-
-export function pasteClipboardContentWithResult(
-  editor: Editor,
-  plainText: string,
-  html: string,
-): { success: boolean; outcome: MarkdownPasteOutcome | 'formatted'; error?: string } {
-  if (plainText) {
-    if (shouldParsePastedTextAsMarkdown(editor, plainText, html)) {
-      return pasteMarkdownTextWithResult(editor, plainText)
-    }
-    if (html) {
-      return editor.view.pasteHTML(html)
-        ? { success: true, outcome: 'formatted' }
-        : { success: false, outcome: 'failed' }
-    }
-    return editor.view.pasteText(plainText)
-      ? { success: true, outcome: 'plainText' }
-      : { success: false, outcome: 'failed' }
-  }
-  if (html) {
-    return editor.view.pasteHTML(html)
-      ? { success: true, outcome: 'formatted' }
-      : { success: false, outcome: 'failed' }
-  }
-  return { success: false, outcome: 'failed' }
-}
-
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
   codeHighlightVisible = visible
   // Display-only transactions must not cause StarterKit to append content.
@@ -3753,7 +3742,6 @@ export function setCodeHighlightVisible(editor: Editor, visible: boolean): void 
 
 let hostImageResolver: ((markdownPath: string) => string) | undefined
 
-/// 文本宿主（VS Code 扩展）用虚拟资源服务解析本地图片；原生宿主不设置，走 assets.local 兜底。
 export function setHostImageResolver(resolver?: (markdownPath: string) => string): void {
   hostImageResolver = resolver
 }
@@ -3778,72 +3766,122 @@ export function getMarkdown(editor: Editor): string {
   if (original && editor.state.doc.eq(original.doc)) {
     return original.markdown
   }
-  // Protect only actual math nodes, before any compatibility pass. Tokens are
-  // collision-checked against both source JSON and normal serializer output;
-  // restoration is a single pass, so user text can never act as a token.
-  const originalMarkdown = editor.getMarkdown()
-  const json = editor.getJSON()
-  let prefix = 'MARKLEAFOPAQUEMATH'
-  const occupied = JSON.stringify(json) + originalMarkdown
-  while (occupied.includes(prefix)) prefix += 'X'
-  const payloads: string[] = []
-  const protect = (node: JSONContent): JSONContent => {
-    if (node.type === 'mathInline' || node.type === 'mathBlock') {
-      let source = node.content?.map(child => child.text ?? '').join('') ?? ''
-      if (node.type === 'mathInline') source = source.replace(/\r?\n/g, '')
-      // Keep line structure for list/blockquote indentation during serialization.
-      const text = (source || '...').split('\n').map(line => {
-        const index = payloads.push(line) - 1
-        return `${prefix}${index}END`
-      }).join('\n')
-      return { ...node, content: [{ type: 'text', text }] }
-    }
-    // A literal dollar in a text node must not become math after save/reload.
-    // Code and diagram renderers own their source and escaping conventions.
-    if (node.type === 'codeBlock' || node.type === 'mermaid') return node
-    if (node.type === 'text' && !node.marks?.some(mark => mark.type === 'code')) {
-      return { ...node, text: node.text?.replace(/\$/g, () => {
-        const index = payloads.push('\\$') - 1
-        return `${prefix}${index}END`
-      }) }
-    }
-    return node.content ? { ...node, content: node.content.map(protect) } : node
+  const markdown = editor.getMarkdown()
+  // Formula payloads are opaque: protect complete delimiters before any
+  // compatibility pass (emphasis conversion, literal escaping, entity
+  // decoding) so no setting can modify characters inside a formula.
+  const formulaParts: string[] = []
+  const formulaPlaceholder = (value: string): string => {
+    const index = formulaParts.push(value) - 1
+    return `\u0000markleaf-formula-${index}\u0000`
   }
-  const protectedDoc = protect(json)
-  const markdown = payloads.length ? editor.markdown!.serialize(protectedDoc) : originalMarkdown
-  const stabilized = autoConvertUnsafeEmphasis ? stabilizeUnsafeEmphasisMarkdown(markdown) : markdown
+  const protectedMarkdown = markdown
+    .replace(/\$\$[\s\S]*?\$\$/g, formulaPlaceholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, formulaPlaceholder)
+  const stabilized = autoConvertUnsafeEmphasis
+    ? stabilizeUnsafeEmphasisMarkdown(protectedMarkdown)
+    : protectedMarkdown
   // Tiptap 会统一转义普通文本中的下划线。单词内部下划线并不构成强调边界，
   // 因此恢复这一种无歧义的字面形式；语法偏好本身由各 AST renderer 决定。
   const output = stabilized.replace(/([\p{L}\p{N}])\\_([\p{L}\p{N}])/gu, '$1_$2')
   const markerSafeOutput = escapeMarkdownLiteralSymbols
     ? output
     : removeMarkdownLiteralEscapes(output)
-  const result = escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
-  return result.replace(new RegExp(`${prefix}(\\d+)END`, 'g'), (_, index: string) => payloads[Number(index)]!)
-}
-
-// Transform ordinary text in place, without placeholder substitution. Math
-// payloads are already isolated by their nodes in getMarkdown.
-function transformOrdinaryMarkdown(markdown: string, transform: (text: string) => string): string {
-  const syntax = /(`{3,}|~{3,})[\s\S]*?\1|\]\([^\n]*\)|(`+)[\s\S]*?\2/g
-  let result = ''
-  let from = 0
-  for (const match of markdown.matchAll(syntax)) {
-    result += transform(markdown.slice(from, match.index)) + match[0]
-    from = match.index + match[0].length
-  }
-  return result + transform(markdown.slice(from))
+  const finalOutput = escapeLiteralSymbols ? markerSafeOutput : decodeLiteralSymbols(markerSafeOutput)
+  return finalOutput.replace(/\u0000markleaf-formula-(\d+)\u0000/g, (_, index: string) => formulaParts[Number(index)] ?? '')
 }
 
 function removeMarkdownLiteralEscapes(markdown: string): string {
-  return transformOrdinaryMarkdown(markdown, text => text.replace(/\\([*_\\])/g, '$1'))
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-marker-protected-${index}\u0000`
+  }
+
+  // Only remove escapes from ordinary Markdown text. Code, formulas and
+  // link destinations are syntax-owned regions and must remain byte-for-byte.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    // Only protect actual inline-code spans. Tiptap escapes literal backticks
+    // in ordinary text as ``\` ``; those delimiters must remain eligible for
+    // removal when this preference is disabled.
+    .replace(/(?<!\\)(`+)([\s\S]*?)(?<!\\)\1/g, placeholder)
+
+  // Keep this character class in sync with Tiptap's MarkdownManager
+  // `escapeMarkdownSyntax()` implementation. When the preference is off,
+  // remove escapes for every character that Tiptap adds them to in ordinary
+  // text: backslash, backtick, asterisk, underscore, square brackets and
+  // tilde. Syntax-owned regions were replaced with placeholders above and
+  // are restored unchanged afterwards.
+  const unescaped = protectedMarkdown
+    // Square brackets may acquire more than one slash while passing through
+    // Markdown parsing and serialization. Remove the complete escape run so
+    // the disabled preference never leaves a residual `\[` or `\]`.
+    .replace(/\\+\[/g, '[')
+    .replace(/\\+\]/g, ']')
+    .replace(/\\\\/g, '\\')
+    .replace(/\\`/g, '`')
+    .replace(/\\\*/g, '*')
+    .replace(/\\_/g, '_')
+    .replace(/\\~/g, '~')
+  return restoreProtectedMarkdownParts(
+    unescaped,
+    /\u0000markleaf-marker-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
 }
 
 function decodeLiteralSymbols(markdown: string): string {
-  return transformOrdinaryMarkdown(markdown, text => text
+  const protectedParts: string[] = []
+  const placeholder = (value: string): string => {
+    const index = protectedParts.push(value) - 1
+    return `\u0000markleaf-protected-${index}\u0000`
+  }
+
+  // Tiptap deliberately leaves code content untouched. Protect it before
+  // decoding the entities generated for ordinary text, otherwise a literal
+  // `&amp;` or `&lt;` inside code would be changed by this compatibility mode.
+  const protectedMarkdown = markdown
+    .replace(/(`{3,}|~{3,})[\s\S]*?\1/g, placeholder)
+    .replace(/\]\([^\n]*\)/g, placeholder)
+    // Formula source is Markdown syntax too. Keep literal symbols inside
+    // all supported math delimiters untouched while decoding ordinary text.
+    .replace(/\$\$[\s\S]*?\$\$/g, placeholder)
+    .replace(/(?<!\$)\$(?!\$)[\s\S]*?(?<!\$)\$(?!\$)/g, placeholder)
+    .replace(/\\\[[\s\S]*?\\\]/g, placeholder)
+    .replace(/\\\([\s\S]*?\\\)/g, placeholder)
+    .replace(/(`+)([\s\S]*?)\1/g, placeholder)
+
+  const decoded = protectedMarkdown
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&'))
+    .replace(/&amp;/g, '&')
+  return restoreProtectedMarkdownParts(
+    decoded,
+    /\u0000markleaf-protected-(\d+)\u0000/g,
+    protectedParts,
+  )
+}
+
+function restoreProtectedMarkdownParts(
+  markdown: string,
+  placeholderPattern: RegExp,
+  protectedParts: readonly string[],
+): string {
+  let restored = markdown
+  for (let pass = 0; pass <= protectedParts.length; pass += 1) {
+    let replaced = false
+    const next = restored.replace(placeholderPattern, (_, index: string) => {
+      replaced = true
+      return protectedParts[Number(index)] ?? ''
+    })
+    restored = next
+    if (!replaced) break
+  }
+  return restored
 }
 
 const originalListMarkdown = new WeakMap<Editor, { doc: any; markdown: string }>()
@@ -4500,6 +4538,8 @@ export type FindResult = { current: number; total: number }
 export type SelectionExport = { text: string; markdown: string; html: string }
 
 export function exportEditorSelection(editor: Editor): SelectionExport {
+  // 公式/图表浮层源码框是普通 DOM 文本，没有 ProseMirror 选区：
+  // 导出只取用户在源码框里真正选中的片段，且不改变焦点或选区。
   const expanded = expandedSourceEditorKey.getState(editor.state)
   if (expanded) {
     const nativeSelection = window.getSelection()
@@ -4562,10 +4602,7 @@ export function replaceCurrentInEditor(
   const matches = findEditorMatches(editor, query, caseSensitive, wholeWord)
   const highlight = findHighlightKey.getState(editor.state)
   const selected = highlight?.current === undefined ? undefined : matches[highlight.current]
-  if (selected) {
-    // 替换内容是字面文本（可能包含 <b> 之类字符），不能按 HTML/Markdown 解析。
-    editor.view.dispatch(editor.state.tr.insertText(replacement, selected.from, selected.to))
-  }
+  if (selected) editor.view.dispatch(editor.state.tr.insertText(replacement, selected.from, selected.to))
   return findInEditor(editor, query, caseSensitive, wholeWord)
 }
 
@@ -4608,44 +4645,23 @@ function findEditorMatches(editor: Editor, query: string, caseSensitive: boolean
   const matches: Array<{ from: number; to: number }> = []
   editor.state.doc.descendants((node, position) => {
     if (!node.isTextblock) return
-    // 文本偏移 ≠ 文档位置：行内原子（公式、脚注引用等）会让位置多走几步，
-    // 必须按文本节点逐段换算，否则替换会落在错误的范围上。
-    const runs = textBlockRuns(node, position)
-    const text = runs.map(run => run.text).join('')
-    for (const match of text.matchAll(expression)) {
-      matches.push({
-        from: docPosition(runs, match.index),
-        to: docPosition(runs, match.index + match[0].length),
-      })
+    // Node.textContent omits inline atoms but positions include their nodeSize.
+    // Search contiguous text across marks, keeping each run's real position.
+    let text = ''
+    let start = position + 1
+    const collect = (): void => {
+      for (const match of text.matchAll(expression)) {
+        matches.push({ from: start + match.index, to: start + match.index + match[0].length })
+      }
     }
+    node.forEach((child, offset) => {
+      if (child.isText) text += child.text ?? ''
+      else { collect(); text = ''; start = position + 1 + offset + child.nodeSize }
+    })
+    collect()
     return false
   })
   return matches
-}
-
-function textBlockRuns(
-  node: { descendants: (fn: (child: any, childPosition: number) => void) => void },
-  position: number,
-): Array<{ start: number; text: string }> {
-  const runs: Array<{ start: number; text: string }> = []
-  node.descendants((child, childPosition) => {
-    if (!child.isText || child.text == null) return
-    runs.push({ start: position + 1 + childPosition, text: child.text as string })
-  })
-  return runs
-}
-
-function docPosition(
-  runs: Array<{ start: number; text: string }>,
-  offset: number,
-): number {
-  let consumed = 0
-  for (const run of runs) {
-    if (offset <= consumed + run.text.length) return run.start + (offset - consumed)
-    consumed += run.text.length
-  }
-  const last = runs[runs.length - 1]
-  return last ? last.start + last.text.length : offset
 }
 
 export function getEditorCommandState(editor: Editor): EditorCommandState {
@@ -4684,11 +4700,9 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
         return table && typeof table.node.attrs.caption === 'string' && table.node.attrs.caption.length > 0 ? table.node.attrs.caption : null
       })()
 
-  // 文本宿主接管撤销/重做（StarterKit 的 undoRedo 被关闭），此时没有 undo 命令。
-  const canChain = editor.can() as { undo?: () => boolean; redo?: () => boolean }
   return {
-    canUndo: typeof canChain.undo === 'function' ? canChain.undo() : false,
-    canRedo: typeof canChain.redo === 'function' ? canChain.redo() : false,
+    canUndo: editor.can().undo?.() ?? false,
+    canRedo: editor.can().redo?.() ?? false,
     hasSelection: !editor.state.selection.empty,
     paragraph: editor.isActive('paragraph'),
     headingLevel,
@@ -5094,12 +5108,6 @@ export function resetEditorViewport(editor: Editor, editorMount: HTMLElement): v
 
   reset()
   window.requestAnimationFrame(() => window.requestAnimationFrame(reset))
-}
-
-export function restoreEditorScroll(editorMount: HTMLElement, top: number): void {
-  const value = Math.max(0, top)
-  editorMount.scrollTop = value
-  scrollPageTo(value)
 }
 
 function scrollPageTo(top: number): void {

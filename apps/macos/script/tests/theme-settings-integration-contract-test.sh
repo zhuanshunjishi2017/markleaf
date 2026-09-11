@@ -17,6 +17,14 @@ assert 'private var themeSettingsController: ThemeSettingsWindowController?' in 
 assert 'NSWindow.willCloseNotification' in manager, 'closed editor must refresh the retained settings panels'
 assert 'func showThemeSettings()' in manager and 'func refreshThemeSettings()' in manager
 assert 'extension EditorSession: ThemeSettingsSession' in editor
+# 原生主题窗口可能早于 WKWebView ready 打开；会话构造阶段必须已经加载主题目录。
+init_match = __import__('re').search(
+    r'init\(workspace: WorkspaceContext = WorkspaceContext\(\)\) \{(?P<body>.*?)\n    \}',
+    editor,
+    __import__('re').S,
+)
+assert init_match and 'reloadStyleCatalog()' in init_match.group('body'), \
+    'EditorSession must preload styles before the web editor ready event'
 assert 'CurrentStyleFontNotice.missingPacks' in window
 assert 'currentStyleProvider' in window and 'refreshCurrentStyleNotice()' in window
 assert 'refreshThemeSettings()' in (root/'Views/EditorWindowController.swift').read_text()

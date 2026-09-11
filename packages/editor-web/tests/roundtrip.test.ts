@@ -779,7 +779,7 @@ describe('editing history', () => {
     editor.commands.setContent({
       type: 'doc',
       content: [
-        { type: 'paragraph', content: [{ type: 'text', text: '*literal* _name_ \\path' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '*literal* _name_ \\path `code` [brackets] ~tilde~' }] },
         { type: 'paragraph', content: [{ type: 'text', text: '\\*code\\* \\\\path', marks: [{ type: 'code' }] }] },
         { type: 'codeBlock', content: [{ type: 'text', text: '\\*block code\\* \\\\path' }] },
         { type: 'paragraph', content: [{ type: 'mathInline', content: [{ type: 'text', text: '\\*x\\* \\\\ y' }] }] },
@@ -795,6 +795,8 @@ describe('editing history', () => {
 
     const markdown = getMarkdown(editor)
     expect(markdown).toContain('*literal* _name_ \\path')
+    expect(markdown).toContain('[brackets] ~tilde~')
+    expect(markdown).not.toContain('\\[brackets\\]')
     expect(markdown).toContain('`\\*code\\* \\\\path`')
     expect(markdown).toContain('```\n\\*block code\\* \\\\path\n```')
     expect(markdown).toContain('$\\*x\\* \\\\ y$')

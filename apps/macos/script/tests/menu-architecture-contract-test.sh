@@ -228,6 +228,11 @@ done
 mac_file="$(method_body "$MAC_MENU" fileMenu)"
 reject_text "$mac_file" '关闭窗口'
 require_text "$mac_file" '"closeFolder"'
+# “最近项目”与“恢复未保存的文件…”单独成组：上下各一条分割线。
+mac_file_recent="$(printf '%s\n' "$mac_file" | sed -n '/"openFolder")/,/L10n.t("保存")/p')"
+mac_file_recent_seq="$(printf '%s\n' "$mac_file_recent" | grep -E 'addItem' | grep -v '"save"' | sed 's/^[[:space:]]*//')"
+expected_mac_file_recent_seq=$'menu.addItem(commandItem(L10n.t("打开文件夹…"), "openFolder"))\nmenu.addItem(.separator())\nmenu.addItem(recentParent)\nmenu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))\nmenu.addItem(.separator())'
+[[ "$mac_file_recent_seq" == "$expected_mac_file_recent_seq" ]] || fail "macOS file menu recent/recovery group is incorrect"
 mac_validate="$(method_body "$MAC_MENU" validateMenuItem)"
 require_text "$mac_validate" 'documentIndependentCommands'
 require_text "$mac_validate" '(session ?? viewStateSession)?.workspaceRoot != nil'

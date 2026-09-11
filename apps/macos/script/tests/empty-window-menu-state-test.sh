@@ -21,4 +21,7 @@ require "$MENU" 'popup(L10n.t("标签页管理"), tabManagement, requiresDocumen
 require "$MANAGER" 'func openDocumentInNewWindow()'
 require "$MANAGER" 'activeWindowController?.window'
 reject "$MANAGER" 'guard let session = activeSession, let window = session.webView?.window else { return }'
+# 偏好设置属于窗口级命令；关闭最后一个标签后仍应使用窗口保留的会话构建窗口。
+require "$MANAGER" 'guard let session = activeViewStateSession else { return nil }'
+reject "$MANAGER" 'guard let session = primarySession else { return nil }'
 echo PASS

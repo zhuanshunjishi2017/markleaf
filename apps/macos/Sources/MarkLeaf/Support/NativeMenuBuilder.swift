@@ -58,6 +58,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("以只读方式打开…"), "openReadOnly"))
         menu.addItem(commandItem(L10n.t("在新窗口中打开…"), "openInNewWindow"))
         menu.addItem(commandItem(L10n.t("打开文件夹…"), "openFolder"))
+        menu.addItem(.separator())
 
         // 最近项目：最近文件 + 最近文件夹（动态刷新）
         let recent = NSMenu(title: L10n.t("最近项目"))
@@ -67,8 +68,8 @@ final class NativeMenuBuilder {
         recentParent.submenu = recent
         menu.addItem(recentParent)
         menu.addItem(commandItem(L10n.t("恢复未保存的文件…"), "recoverUnsavedFiles"))
-
         menu.addItem(.separator())
+
         menu.addItem(commandItem(L10n.t("保存"), "save", key: "s"))
         menu.addItem(commandItem(L10n.t("保存全部"), "saveAll", key: "s", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
