@@ -357,6 +357,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             // 揭示前同步打好主题底色；applySystemAppearance 里的调用是异步的，
             // 不能覆盖 ready → reveal 之间的首帧。
             applyScrollbarAppearance(dark: currentThemeIsDark)
+            // 「显示段落块句柄」也必须在揭示前生效：前端默认可见，若等到
+            // documentLoaded 才下发，ready → documentLoaded 之间鼠标悬停会让
+            // 操作柄闪一下（对齐 Windows 在 Ready 阶段下发的时序）。
+            applyBlockHandleVisibility(SettingsService.shared.settings.showParagraphBlockHandle)
+            // 「显示代码高亮」同理：关闭时若晚下发，首帧会先渲染高亮再褪掉。
+            setCodeHighlightVisible(SettingsService.shared.settings.showCodeHighlight)
             revealEditorAfterThemeApplied()
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true

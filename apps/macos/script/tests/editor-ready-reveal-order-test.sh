@@ -15,6 +15,20 @@ if [ -z "$reveal_line" ] || [ -z "$background_line" ] || [ "$background_line" -g
   exit 1
 fi
 
+handle_line="$(awk -v ready="$ready_line" 'NR > ready && /applyBlockHandleVisibility\(/ { print NR; exit }' "$SESSION")"
+
+if [ -z "$handle_line" ] || [ "$handle_line" -ge "$reveal_line" ]; then
+  echo "FAIL: block handle visibility must be applied before revealEditor" >&2
+  exit 1
+fi
+
+highlight_line="$(awk -v ready="$ready_line" 'NR > ready && /setCodeHighlightVisible\(/ { print NR; exit }' "$SESSION")"
+
+if [ -z "$highlight_line" ] || [ "$highlight_line" -ge "$reveal_line" ]; then
+  echo "FAIL: code highlight visibility must be applied before revealEditor" >&2
+  exit 1
+fi
+
 if ! grep -Fq 'private func revealEditorAfterThemeApplied()' "$SESSION"; then
   echo "FAIL: reveal must be deferred until theme CSS lands (helper missing)" >&2
   exit 1
