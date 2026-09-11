@@ -1,11 +1,10 @@
 packages:
   - '.'
 
+verifyDepsBeforeRun: error
+
 # 渲染栈（@tiptap/*、prosemirror-*、mermaid 等）一律由 @markleaf/editor-core
 # 持有，本包不重复声明，避免解析出第二份副本导致 ProseMirror 私有属性类型
-# 不兼容。katex 仅因 vite.config.ts 需读取其 CSS 资源而保留为开发依赖。
-onlyBuiltDependencies:
-  - esbuild
-
+# 不兼容。KaTeX 字体与导出 CSS 的构建插件同样由内核提供。
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true

@@ -1,5 +1,6 @@
 packages:
   - '.'
+verifyDepsBeforeRun: error
 allowBuilds:
   '@vscode/vsce-sign': false
   esbuild: true

@@ -1,5 +1,6 @@
 {
   "name": "markleaf",
+  "packageManager": "pnpm@11.9.0",
   "displayName": "MarkLeaf",
   "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
   "version": "0.2.7",
