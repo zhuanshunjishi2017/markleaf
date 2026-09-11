@@ -65,13 +65,20 @@ enum PDFOutlineBuilder {
         }
 
         guard !headings.isEmpty else { return nil }
-        let root = document.outlineRoot ?? PDFOutline()
+        let writableDocument = PDFDocument()
+        for index in 0..<document.pageCount {
+            if let page = document.page(at: index) {
+                writableDocument.insert(page, at: writableDocument.pageCount)
+            }
+        }
+
+        let root = writableDocument.outlineRoot ?? PDFOutline()
         var stack: [(outline: PDFOutline, level: Int)] = []
 
-        for (index, title) in titles.enumerated() {
+        for heading in headings {
             let outline = PDFOutline()
-            outline.label = title
-            if let page = document.page(at: max(0, headings[index].page - 1)) {
+            outline.label = heading.text
+            if let page = writableDocument.page(at: max(0, heading.page - 1)) {
                 outline.destination = PDFDestination(
                     page: page,
                     at: NSPoint(x: 0, y: page.bounds(for: .mediaBox).height)
@@ -80,11 +87,11 @@ enum PDFOutlineBuilder {
             while let last = stack.last, last.level >= 1 {
                 stack.removeLast()
             }
-            root.insertChild(outline, at: root.numberOfChildren)
+            root.insertChild(outline, at: max(0, root.numberOfChildren))
             stack.append((outline, 1))
         }
-        document.outlineRoot = root
-        return document.dataRepresentation()
+        writableDocument.outlineRoot = root
+        return writableDocument.dataRepresentation()
     }
 
     private static func normalize(_ value: String) -> String {

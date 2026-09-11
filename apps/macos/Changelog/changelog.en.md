@@ -13,6 +13,7 @@
 - Copy HTML now copies source text; normal formatted copy still supplies both text and HTML.
 - Ordinary text paste and Paste Plain Text parse Markdown in visual mode using the Windows rules; source mode keeps literal text.
 - Paste feedback follows the editor result, distinguishing formatting conversion, plain-text fallback, and failure. Fallback reasons are shown; timed-out and stale document requests are cleared.
+- Fixed a PDF export crash caused by headings that could not be located in the generated PDF text.
 
 ## 1.7.5 — 2026-09-10
 
