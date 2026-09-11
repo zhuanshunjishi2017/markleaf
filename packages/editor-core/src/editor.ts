@@ -3575,10 +3575,6 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
 
 /** Insert a native clipboard payload once, retaining rich HTML when Markdown
  * parsing is not appropriate and supporting HTML-only clipboard providers. */
-export function pasteClipboardContent(editor: Editor, plainText: string, html: string): boolean {
-  return pasteClipboardContentWithResult(editor, plainText, html).success
-}
-
 export function pasteClipboardContentWithResult(
   editor: Editor,
   plainText: string,
@@ -5079,20 +5075,6 @@ export function executeEditorCommand(
       scrollPageTo(top)
       highlightOutlineHeading(heading)
       return true
-    },
-    stage5Smoke: () => {
-      editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size })
-      editor.commands.toggleBold()
-      editor.commands.setTextSelection(editor.state.doc.content.size)
-      editor.commands.setHorizontalRule()
-      editor.commands.insertContent('阶段 5 撤销重做检查')
-      editor.commands.undo()
-      editor.commands.redo()
-      return true
-    },
-    stage5RegressionSmoke: () => {
-      editor.commands.setTextSelection(editor.state.doc.content.size)
-      return executeEditorCommand(editor, 'setLink', 'https://example.com/regression')
     },
   }
 
