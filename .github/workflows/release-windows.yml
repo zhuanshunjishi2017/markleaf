@@ -124,9 +124,21 @@ jobs:
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)" | Add-Content release-assets/SHA256SUMS.txt
           }
+      - name: Check for an existing release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 已存在的 Release 不再重新生成说明：热更新重推 tag 时，GitHub 会把自动生成的
+          # What's Changed / New Contributors 再追加一份，导致正文重复。
+          gh release view "${{ github.ref_name }}" --json tagName *> $null
+          $exists = $LASTEXITCODE -eq 0
+          $LASTEXITCODE = 0
+          "exists=$($exists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release-assets/*
-          generate_release_notes: true
+          generate_release_notes: ${{ steps.release.outputs.exists != 'true' }}
           prerelease: ${{ contains(github.ref_name, '-') }}
