@@ -432,7 +432,9 @@ describe('shared editor in a VS Code text host', () => {
 
     await new Promise(resolve => setTimeout(resolve, 30))
     window.dispatchEvent(new Event('pagehide'))
-  })
+    // 端到端跑完整 webview 入口（编辑、阅读、撤销队列、源码操作、冲突恢复），
+    // 单文件执行约 3 秒，并行跑整个套件时会超过 vitest 默认的 5 秒上限。
+  }, 20000)
 })
 
 const createEditorOriginal = createEditor

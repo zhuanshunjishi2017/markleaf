@@ -164,6 +164,8 @@ export type ExportHtmlInput = {
   baseCss: string
   title?: string
   language?: string
+  /** 宿主标识（markleaf-host-macos / markleaf-host-windows），用于宿主专属的截图规则。 */
+  hostClass?: string
   keepTablesTogether?: boolean
   keepHeadingsWithNextBlock?: boolean
   editorLoc: Partial<Record<'alertNote' | 'alertTip' | 'alertImportant' | 'alertWarning' | 'alertCaution', string>>
@@ -173,12 +175,14 @@ export async function generateExportHtml({
   rawBodyHtml, resolved, format, mermaidTheme, strictRendering = false, header = '', footer = '', fontSize = 16,
   lineHeight = 1.6, maxWidth = 820, visualCjkAutoSpacing = true,
   colorSchemeCss = '', baseCss, title = '', language = 'zh-CN',
+  hostClass = '',
   keepTablesTogether = false, keepHeadingsWithNextBlock = false, editorLoc,
 }: ExportHtmlInput): Promise<string> {
   const isPdf = format === 'pdf'
   const isImage = format === 'image'
   const bodyHtml = await renderMermaidInHtml(renderEditorHtmlForExport(
-    renderMathInHtml(rawBodyHtml),
+    // strictRendering 时公式渲染失败必须抛出，导出端据此报错而不是产出半成品。
+    renderMathInHtml(rawBodyHtml, strictRendering),
     isPdf,
     { keepTablesTogether, keepHeadingsWithNextBlock },
     visualCjkAutoSpacing,
@@ -190,6 +194,7 @@ export async function generateExportHtml({
   ), mermaidTheme ?? resolveMermaidTheme(resolved.css))
   const rootClass = [
     resolved.rootClass,
+    hostClass,
     isPdf ? 'markleaf-export-pdf' : '',
     isImage ? 'markleaf-export-image' : '',
   ].filter(Boolean).join(' ')
@@ -247,9 +252,15 @@ body { margin: 0; background: var(--bg-primary); }
   margin-right: 0;
 }
 .markleaf-export-image {
+  /* 截图端按 scrollHeight 决定整页高度（WKWebView 与 VS Code 均如此），
+     因此默认保留文档滚动范围；隐藏 overflow 会把长图塌缩成一屏。 */
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+.markleaf-export-image.markleaf-host-windows {
   /* WebView2 expands the viewport and captures one full surface before
-     slicing. Do not create a scroll container: Chromium may reuse its first
-     viewport texture for the expanded area, producing repeated content. */
+     slicing. Do not create a scroll container there: Chromium may reuse its
+     first viewport texture for the expanded area, producing repeated rows. */
   overflow: hidden !important;
 }
 /* Keep scrollbars out of the captured surface. */

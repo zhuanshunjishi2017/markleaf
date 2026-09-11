@@ -2396,7 +2396,7 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['ℜ', '\\Re'], ['ℑ', '\\Im'], ['⊥', '\\perp'], ['⊤', '\\top'],
       ['∞', '\\infty'], ['∂', '\\partial'], ['∇', '\\nabla'],
       ['∀', '\\forall'], ['∃', '\\exists'], ['¬', '\\neg'],
-      ['ℵ', '\\aleph'], ['ℵ', '\\hbar'],
+      ['ℵ', '\\aleph'], ['ℏ', '\\hbar'],
       ['∅', '\\emptyset'], ['∖', '\\setminus'], ['△', '\\triangle'],
       ['◇', '\\diamond'], ['∠', '\\angle'], ['⌞', '\\lrcorner'],
       ['⌝', '\\urcorner'], ['⌟', '\\llcorner'], ['⌜', '\\ulcorner'],
@@ -2419,9 +2419,10 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['x̃', '\\tilde{x}'], ['a/b', '\\frac{a}{b}'], ['√x', '\\sqrt{x}'],
       ['ⁿ√x', '\\sqrt[n]{x}'],
       ['(x)', '\\left(x\\right)'], ['[x]', '\\left[x\\right]'],
-      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],['|x|', '\\langle x \\rangle'],
-      ['∫', '\\int_{a}^{b}'],['∫', '\\int_{-\\infty}^{+\\infty}'], ['∫∫', '\\iint'], ['∫∫∫', '\\iiint'],
-      ['∮', '\\oint'], ['∯', '\\oiint'], ['∰', '\\oiiint'],
+      ['{x}', '\\left\\{x\\right\\}'], ['|x|', '\\left|x\\right|'],
+      ['∫', '\\int_{a}^{b}'], ['∫', '\\int_{-\\infty}^{+\\infty}'], ['∫∫', '\\iint_{a}^{b}'], ['∫∫∫', '\\iiint_{a}^{b}'],
+      ['∫∫', '\\iint'], ['∫∫∫', '\\iiint'], ['∮', '\\oint'], ['∯', '\\oiint'], ['∰', '\\oiiint'],
+      ['∮', '\\oint_{a}^{b}'], ['∯', '\\oiint_{a}^{b}'], ['∰', '\\oiiint_{a}^{b}'],
       ['∏', '\\prod_{a}^{b}'], ['∑', '\\sum_{a}^{b}'], ['lim', '\\lim_{a\\to b}'],
       ['x', '\\vec{}'], ['AB', '\\overrightarrow{}'],
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
@@ -2476,7 +2477,8 @@ const formulaSymbolGroups: FormulaSymbolGroup[] = [
       ['←', '\\leftarrow'], ['→', '\\rightarrow'], ['↔', '\\leftrightarrow'],
       ['⇐', '\\Leftarrow'], ['⇒', '\\Rightarrow'], ['⇔', '\\Leftrightarrow'],
       ['↑', '\\uparrow'], ['↓', '\\downarrow'], ['⇑', '\\Uparrow'],
-      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'], ['⇕', '\\cdots'], ['⇕', '\\vdots'], ['⇕', '\\ddots'], ['⇕', '\\cdot'],
+      ['⇓', '\\Downarrow'], ['⇕', '\\Updownarrow'],
+      ['⋯', '\\cdots'], ['⋮', '\\vdots'], ['⋱', '\\ddots'], ['⋅', '\\cdot'],
     ].map(([preview, latex]) => ({ preview: preview!, latex: latex! })),
   },
 ]
@@ -2500,6 +2502,20 @@ formulaSymbolGroups[0]!.symbols.push(
   { preview: '𝛷', latex: '\\varPhi' },
   { preview: '𝛹', latex: '\\varPsi' },
   { preview: '𝛺', latex: '\\varOmega' },
+)
+
+// ⟨x⟩ 与 \left|x\right| 相邻，但它在选区上要包成 `\langle x \rangle`，
+// 因此必须带 wrap 模板，而不是像其它符号那样只插入固定文本。
+const structureSymbolList = formulaSymbolGroups[3]!.symbols
+structureSymbolList.splice(
+  structureSymbolList.findIndex(symbol => symbol.latex === '\\left|x\\right|') + 1,
+  0,
+  {
+    preview: '⟨x⟩',
+    previewLatex: '\\langle x \\rangle',
+    latex: '\\langle  \\rangle',
+    wrap: { before: '\\langle ', after: ' \\rangle', caretOffset: '\\langle '.length },
+  },
 )
 
 const structureSymbols = formulaSymbolGroups[3]!.symbols
@@ -2722,7 +2738,8 @@ function createExpandedSourceEditor(
     }))
   })
   code.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' || (kind !== 'mermaid' && event.key === 'Enter'
+      && event.ctrlKey && !event.altKey)) {
       event.preventDefault()
       event.stopPropagation()
       const expanded = expandedSourceEditorKey.getState(editor.state)
@@ -2739,16 +2756,14 @@ function createExpandedSourceEditor(
       editor.commands.focus()
       return
     }
-    if (!event.ctrlKey && !event.metaKey && !event.altKey
+    if (kind !== 'mermaid' && !event.altKey && !event.ctrlKey && !event.metaKey
       && (event.key === 'Home' || event.key === 'End')) {
       event.preventDefault()
       event.stopPropagation()
-      const selection = window.getSelection()
-      const boundary = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
-      const anchor = event.shiftKey && selection && selection.rangeCount > 0
-        ? getTextOffset(code, selection.anchorNode as globalThis.Node | null, selection.anchorOffset)
-        : boundary
-      setCodeSelectionOffsets(code, anchor, boundary)
+      const selection = getCodeSelectionOffsets(code)
+      const destination = event.key === 'Home' ? 0 : (code.textContent?.length ?? 0)
+      // Shift+Home/End 保持 anchor 不动、只移动 focus，与原生文本框一致。
+      setCodeSelectionOffsets(code, event.shiftKey ? selection.anchor : destination, destination)
       return
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && !event.altKey) {
@@ -2798,6 +2813,7 @@ function createExpandedSourceEditor(
     const current = editor.state.doc.nodeAt(position)
     if (!current || current.type.name !== kind) return
     const source = code.textContent ?? ''
+    const selection = getCodeSelectionOffsets(code)
     const caretOffset = getCaretOffset(code)
     const replacement = current.type.create(
       current.attrs,
@@ -2806,7 +2822,11 @@ function createExpandedSourceEditor(
     editor.view.dispatch(editor.state.tr
       .replaceWith(position, position + current.nodeSize, replacement)
       .setMeta(expandedSourceEditorKey, { position, kind }))
-    if (!composing) refreshHighlight(source, caretOffset)
+    // 高亮重绘会重建文本节点，必须把选区（含反选方向）原样回填。
+    if (!composing) {
+      refreshHighlight(source, caretOffset)
+      setCodeSelectionOffsets(code, selection.anchor, selection.focus)
+    }
   })
   window.requestAnimationFrame(() => {
     if (!code.isConnected) return
@@ -3125,41 +3145,37 @@ function setCodeSelectionOffsets(root: HTMLElement, anchorOffset: number, focusO
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     let remaining = Math.max(0, offset)
     let textNode = walker.nextNode()
-    let last: globalThis.Node = root
     while (textNode) {
-      last = textNode
       const length = textNode.textContent?.length ?? 0
       if (remaining <= length) return { node: textNode, offset: remaining }
       remaining -= length
       textNode = walker.nextNode()
     }
-    return { node: last, offset: last.nodeType === globalThis.Node.TEXT_NODE ? last.textContent?.length ?? 0 : root.childNodes.length }
+    return { node: root, offset: root.childNodes.length }
   }
   const anchor = pointAt(anchorOffset)
   const focus = pointAt(focusOffset)
-  const range = document.createRange()
-  if (anchorOffset <= focusOffset) {
-    range.setStart(anchor.node, anchor.offset)
-    range.setEnd(focus.node, focus.offset)
-  } else {
-    range.setStart(focus.node, focus.offset)
-    range.setEnd(anchor.node, anchor.offset)
-  }
   const selection = window.getSelection()
-  selection?.removeAllRanges()
-  selection?.addRange(range)
-  if (anchorOffset > focusOffset) {
-    selection?.collapse(focus.node, focus.offset)
-    selection?.extend(anchor.node, anchor.offset)
+  if (!selection) return
+  // 方向必须保留：高亮刷新后回填选区时，反选（focus 在前）不能被规范化成从左到右。
+  if (typeof selection.setBaseAndExtent === 'function') {
+    selection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
+  } else {
+    const range = document.createRange()
+    const [from, to] = anchorOffset <= focusOffset ? [anchor, focus] : [focus, anchor]
+    range.setStart(from.node, from.offset)
+    range.setEnd(to.node, to.offset)
+    selection.removeAllRanges()
+    selection.addRange(range)
   }
 }
 
-function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number } {
+function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number; anchor: number; focus: number } {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0
     || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) {
     const offset = root.textContent?.length ?? 0
-    return { from: offset, to: offset }
+    return { from: offset, to: offset, anchor: offset, focus: offset }
   }
 
   const range = document.createRange()
@@ -3168,7 +3184,7 @@ function getCodeSelectionOffsets(root: HTMLElement): { from: number; to: number 
   const anchor = range.toString().length
   range.setEnd(selection.focusNode!, selection.focusOffset)
   const focus = range.toString().length
-  return anchor <= focus ? { from: anchor, to: focus } : { from: focus, to: anchor }
+  return { from: Math.min(anchor, focus), to: Math.max(anchor, focus), anchor, focus }
 }
 
 function setCaretOffset(root: HTMLElement, offset: number): void {
@@ -3649,38 +3665,73 @@ function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: stri
  * ProseMirror's HTML-first paste path. Many source editors attach syntax-
  * highlighted HTML even when the copied payload is Markdown source, so the
  * mere presence of text/html does not make the content rich text. */
+const richPasteSelector = [
+  'a', 'img', 'table', 'ul', 'ol', 'li', 'blockquote',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
+  'strong', 'b', 'em', 'i', 'del', 's', 'u', 'figure', 'svg', 'math',
+].join(',')
+
+function normalizeClipboardText(value: string): string {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .trimEnd()
+}
+
+function htmlPlainText(root: HTMLElement): string {
+  const output: string[] = []
+  const appendBreak = () => {
+    if (output.length > 0 && output[output.length - 1] !== '\n') output.push('\n')
+  }
+  const visit = (node: globalThis.Node): void => {
+    if (node.nodeType === globalThis.Node.TEXT_NODE) {
+      output.push(node.textContent ?? '')
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    const tag = node.tagName.toLowerCase()
+    if (tag === 'br') {
+      output.push('\n')
+      return
+    }
+    const block = ['div', 'p', 'pre'].includes(tag)
+    if (block) appendBreak()
+    for (const child of Array.from(node.childNodes)) visit(child)
+    if (block) appendBreak()
+  }
+  for (const child of Array.from(root.childNodes)) visit(child)
+  return output.join('')
+}
+
+function parsedMarkdownHasStructure(editor: Editor, plainText: string): boolean {
+  const parsed = editor.markdown?.parse(plainText)
+  const hasStructure = (node: any): boolean => {
+    if (Array.isArray(node?.marks) && node.marks.length > 0) return true
+    if (typeof node?.type === 'string' && !['doc', 'paragraph', 'text'].includes(node.type)) return true
+    return Array.isArray(node?.content) && node.content.some(hasStructure)
+  }
+  return Boolean(parsed && hasStructure(parsed))
+}
+
+/**
+ * Choose Markdown only for plain clipboard text or text-equivalent source/plain
+ * wrappers. Semantic HTML elements keep the rich HTML path even when their
+ * accompanying plain text happens to contain valid Markdown punctuation.
+ */
 export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: string, html: string): boolean {
   if (!plainText) return false
   if (!html) return true
 
-  const parsed = editor.markdown?.parse(plainText)
-  const hasMarkdownStructure = (node: any): boolean => {
-    if (Array.isArray(node?.marks) && node.marks.length > 0) return true
-    if (typeof node?.type === 'string' && !['doc', 'paragraph', 'text'].includes(node.type)) return true
-    return Array.isArray(node?.content) && node.content.some(hasMarkdownStructure)
+  const clipboardDocument = new DOMParser().parseFromString(html, 'text/html')
+  if (clipboardDocument.body.querySelector(richPasteSelector)) return false
+  if (normalizeClipboardText(htmlPlainText(clipboardDocument.body)) !== normalizeClipboardText(plainText)) {
+    return false
   }
-  if (parsed && hasMarkdownStructure(parsed)) return true
-
-  const document = new DOMParser().parseFromString(html, 'text/html')
-  const htmlText = (document.body.textContent ?? '')
-    .replace(/\r\n?/g, '\n')
-    .replace(/\u00a0/g, ' ')
-  const normalizedPlainText = plainText
-    .replace(/\r\n?/g, '\n')
-    .replace(/\u00a0/g, ' ')
-
-  if (htmlText.trimEnd() !== normalizedPlainText.trimEnd()) return false
-
-  // Source editors commonly wrap plain source in pre/code and styled spans.
-  // In that case HTML describes highlighting, not intended rich-text content.
-  if (document.body.querySelector('pre, code')) return true
-
-  // Wrapper-only HTML carries no formatting semantics and is plain text for
-  // paste purposes. Preserve genuinely rich HTML such as links, lists, tables,
-  // headings, images, and explicit emphasis.
-  return !document.body.querySelector(
-    'a,img,table,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,hr,strong,b,em,i,del,s,u,figure,svg,math',
-  )
+  if (clipboardDocument.body.querySelector('pre')) return true
+  if (clipboardDocument.body.querySelector('code')) {
+    return parsedMarkdownHasStructure(editor, plainText)
+  }
+  return true
 }
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
@@ -4487,6 +4538,20 @@ export type FindResult = { current: number; total: number }
 export type SelectionExport = { text: string; markdown: string; html: string }
 
 export function exportEditorSelection(editor: Editor): SelectionExport {
+  // 公式/图表浮层源码框是普通 DOM 文本，没有 ProseMirror 选区：
+  // 导出只取用户在源码框里真正选中的片段，且不改变焦点或选区。
+  const expanded = expandedSourceEditorKey.getState(editor.state)
+  if (expanded) {
+    const nativeSelection = window.getSelection()
+    const source = nativeSelection?.anchorNode?.parentElement?.closest('.markleaf-expanded-source-editor')
+      ?? (document.activeElement instanceof HTMLElement
+        ? document.activeElement.closest('.markleaf-expanded-source-editor') : null)
+    if (source && nativeSelection && source.contains(nativeSelection.anchorNode)
+      && source.contains(nativeSelection.focusNode)) {
+      const text = nativeSelection.toString()
+      return { text, markdown: text, html: '' }
+    }
+  }
   const selection = editor.state.selection
   if (selection.empty) return { text: '', markdown: '', html: '' }
   const slice = editor.state.doc.slice(selection.from, selection.to)
@@ -4881,6 +4946,7 @@ export function executeEditorCommand(
     },
     setCodeBlockLanguage: () => setCodeBlockLanguage(editor, text),
     setCodeBlockLanguageAt: () => setCodeBlockLanguageAt(editor, text),
+    insertCodeBlockWithLanguage: () => insertCodeBlockWithLanguage(editor, text),
     editMath: () => expandSelectedMath(editor),
     editMermaid: () => expandSelectedMermaid(editor),
     updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
@@ -5649,6 +5715,19 @@ function setCodeBlockLanguageAt(editor: Editor, text?: string): boolean {
   const language = payload.language.trim()
   editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
     ...node.attrs,
+    language: language.length > 0 ? language : null,
+  }))
+  return true
+}
+
+function insertCodeBlockWithLanguage(editor: Editor, text?: string): boolean {
+  const language = (text ?? '').trim()
+  const success = editor.chain().focus().toggleCodeBlock().run()
+  if (!success) return false
+  const current = getCurrentCodeBlock(editor)
+  if (!current) return false
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(current.pos, undefined, {
+    ...current.node.attrs,
     language: language.length > 0 ? language : null,
   }))
   return true

@@ -29,6 +29,7 @@ import {
   replaceEditorDocument,
   pasteMarkdownText,
   pasteMarkdownTextWithResult,
+  pasteClipboardContentWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
   scrollToFootnoteDefinition,
@@ -1850,6 +1851,9 @@ async function handleMessage(value: unknown): Promise<void> {
               colorSchemeCss,
               baseCss,
               title,
+              // 宿主专属截图规则：WKWebView 需要滚动范围，WebView2 需要裁剪容器。
+              hostClass: window.chrome?.webview?.hostPlatform === 'macOS'
+                ? 'markleaf-host-macos' : 'markleaf-host-windows',
               keepTablesTogether,
               keepHeadingsWithNextBlock,
               editorLoc,
@@ -1878,6 +1882,10 @@ async function handleMessage(value: unknown): Promise<void> {
             ? sourceEditor?.deleteSelection() ?? false
             : payload.command === 'pasteText' && commandText !== undefined
               ? sourceEditor?.replaceSelection(commandText) ?? false
+            // 源码模式一律按字面文本插入：Markdown 与剪贴板内容都不解析语法。
+            : (payload.command === 'pasteMarkdown' || payload.command === 'pasteClipboard')
+                && commandText !== undefined
+              ? (commandOutcome = 'plainText', sourceEditor?.replaceSelection(commandText) ?? false)
             : payload.command === 'insertMermaid'
               ? sourceEditor?.insertMermaidCodeBlock() ?? false
             : payload.command === 'selectAll'
@@ -1890,17 +1898,18 @@ async function handleMessage(value: unknown): Promise<void> {
                 commandError = result.error
                 return result.success
               })()
-            : payload.command === 'pasteClipboard' && commandText !== undefined
-              ? shouldParsePastedTextAsMarkdown(editor, commandText, commandHtml ?? '')
-                ? (() => {
-                    const result = pasteMarkdownTextWithResult(editor, commandText)
-                    commandOutcome = result.outcome
-                    commandError = result.error
-                    return result.success
-                  })()
-                : commandHtml !== undefined
-                  ? (commandOutcome = 'formatted', editor.view.pasteHTML(commandHtml))
-                  : (commandOutcome = 'plainText', editor.view.pasteText(commandText))
+            : payload.command === 'pasteClipboard'
+              ? (() => {
+                  // 只在 HTML 可用（如 HTML-only 剪贴板来源）时也走同一策略。
+                  const result = pasteClipboardContentWithResult(
+                    editor,
+                    commandText ?? '',
+                    commandHtml ?? '',
+                  )
+                  commandOutcome = result.outcome
+                  commandError = result.error
+                  return result.success
+                })()
               : executeEditorCommand(
                 editor,
                 payload.command,
