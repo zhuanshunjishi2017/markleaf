@@ -16,25 +16,23 @@ describe('VS Code host inputs and image filesystem boundary', () => {
   it('asks for table size and returns the shared command parameter; cancel makes no command', async () => {
     window.showQuickPick.mockImplementationOnce(items => Promise.resolve(items.find((item: { command?: string }) => item.command === 'insertTable')))
     window.showInputBox.mockResolvedValueOnce('4 × 5')
-    expect(await pickFormat()).toEqual({ command: 'insertTable', text: '4,5' })
+    expect(await pickFormat({ actions: { insertTable: { enabled: true, checked: false } } })).toEqual({ command: 'insertTable', text: '4,5' })
     const input = window.showInputBox.mock.calls[0]![0]
     expect(input.validateInput('101,2')).toBeTruthy()
     expect(input.validateInput('0,5')).toBeTruthy()
     expect(input.validateInput('2,8')).toBeUndefined()
     window.showQuickPick.mockResolvedValueOnce({ command: 'setTableCaption' })
     window.showInputBox.mockResolvedValueOnce(undefined)
-    expect(await pickFormat({ inTable: true })).toBeUndefined()
+    expect(await pickFormat({ actions: { setTableCaption: { enabled: true, checked: false } } })).toBeUndefined()
   })
 
   it('only offers contextual operations for their target and rejects duplicate footnote labels', async () => {
-    expect(applicable('deleteTable', {})).toBe(false)
-    expect(applicable('deleteTable', { inTable: true })).toBe(true)
-    expect(applicable('editMath', { mathInline: true })).toBe(true)
-    expect(applicable('setMathNumber', { mathInline: true })).toBe(false)
-    expect(applicable('updateMermaid', { codeBlockLanguage: 'mermaid' })).toBe(true)
+    expect(applicable('deleteTable', { inTable: true })).toBe(false)
+    expect(applicable('deleteTable', { actions: { deleteTable: { enabled: true, checked: false } } })).toBe(true)
+    expect(applicable('deleteTable', { inTable: true, actions: { deleteTable: { enabled: false, checked: false } } })).toBe(false)
     window.showQuickPick.mockResolvedValueOnce({ command: 'insertFootnote' })
     window.showInputBox.mockResolvedValueOnce('2').mockResolvedValueOnce('A note')
-    expect(await pickFormat({ footnoteLabels: ['1'] })).toEqual({ command: 'insertFootnote', text: JSON.stringify({ label: '2', note: 'A note' }) })
+    expect(await pickFormat({ footnoteLabels: ['1'], actions: { insertFootnote: { enabled: true, checked: false } } })).toEqual({ command: 'insertFootnote', text: JSON.stringify({ label: '2', note: 'A note' }) })
     const input = window.showInputBox.mock.calls[0]![0]
     expect(input.value).toBe('2')
     expect(input.validateInput('1')).toBeTruthy()

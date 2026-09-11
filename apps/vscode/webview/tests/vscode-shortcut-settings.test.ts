@@ -67,9 +67,9 @@ describe('VS Code shortcut configuration and format command inputs', () => {
       expect(math.description).toBe('⌘⌥M')
       return math
     })
-    expect(await pickFormat({}, false, { insertMathInline: 'Mod+Alt+M' }, true)).toEqual({ command: 'insertMathInline' })
+    expect(await pickFormat({ actions: { insertMathInline: { enabled: true, checked: false } } }, false, { insertMathInline: 'Mod+Alt+M' }, true)).toEqual({ command: 'insertMathInline' })
     window.showInputBox.mockResolvedValueOnce('2,4')
-    expect(await prepareFormatCommand('insertTable')).toEqual({ command: 'insertTable', text: '2,4' })
+    expect(await prepareFormatCommand('insertTable', { actions: { insertTable: { enabled: true, checked: false } } })).toEqual({ command: 'insertTable', text: '2,4' })
     expect(await prepareFormatCommand('deleteTable')).toBeUndefined()
     expect(await prepareFormatCommand('arbitraryCommand')).toBeUndefined()
   })

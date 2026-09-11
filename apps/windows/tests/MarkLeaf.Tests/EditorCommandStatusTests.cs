@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarkLeaf.Editor;
+using MarkLeaf.Commands;
 
 namespace MarkLeaf.Tests;
 
@@ -13,6 +14,7 @@ public sealed class EditorCommandStatusTests
 
         var status = EditorCommandStatus.FromPayload(payload);
 
+        Assert.AreEqual(new CommandState(true, false), status.Actions["formatPainter"]);
         Assert.IsTrue(status.CanStartFormatPainter);
         Assert.IsFalse(status.FormatPainterArmed);
     }
@@ -73,6 +75,7 @@ public sealed class EditorCommandStatusTests
 
         var json = """
             {
+              "actions": { "formatPainter": { "enabled": true, "checked": false } },
               "canUndo": true, "canRedo": false, "hasSelection": false, "paragraph": true,
               "headingLevel": null, "bold": false, "italic": false, "underline": false, "strike": false,
               "code": false, "link": false, "blockquote": false, "codeBlock": false,

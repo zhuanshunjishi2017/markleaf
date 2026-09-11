@@ -10,8 +10,6 @@ cp "$ROOT_DIR/script/tests/WindowsSyncMenuStateTest.swift" "$BUILD_DIR/main.swif
 swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
   "$ROOT_DIR/Sources/MarkLeaf/Models/EditorCommandStatePayload.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/EditorCommandRouter.swift" \
-  "$ROOT_DIR/Sources/MarkLeaf/Services/EditorContextMenuState.swift" \
-  "$ROOT_DIR/Sources/MarkLeaf/Services/EditorMenuPolicy.swift" \
   "$BUILD_DIR/main.swift" \
   -o "$BUILD_DIR/windows-sync-menu-state-test"
 "$BUILD_DIR/windows-sync-menu-state-test"

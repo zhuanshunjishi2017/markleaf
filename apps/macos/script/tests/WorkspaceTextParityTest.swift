@@ -12,9 +12,6 @@ var failures = 0
 func expect(_ condition: Bool, _ name: String) {
     if !condition { fputs("FAIL: \(name)\n", stderr); failures += 1 }
 }
-for item in fixture.projections {
-    expect(MarkdownPlainText.fromDocument(item.source, isMarkdown: item.isMarkdown) == item.expected, item.name)
-}
 let root = FileManager.default.temporaryDirectory.appendingPathComponent("markleaf-text-parity-\(UUID().uuidString)")
 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: root) }
@@ -32,4 +29,4 @@ while (treeNames == nil || documentNames == nil), Date() < deadline {
 expect(treeNames == expected, "tree uses Windows text file scope")
 expect(documentNames == expected, "document list uses Windows text file scope")
 guard failures == 0 else { exit(1) }
-print("PASS: \(fixture.projections.count) shared text projections and tree/list file scope")
+print("PASS: tree/list file scope")

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, getMarkdown, setHostImageResolver } from '@markleaf/editor-core'
+import { createEditor, getMarkdown, setImageResourceResolver } from '@markleaf/editor-core'
 import { renderExportSnapshot } from '../src/vscode-export'
 import { defaultSettings } from '../src/vscode-settings'
 import { exportDefaults, isExportOptions } from '../src/vscode-export-options'
@@ -9,7 +9,7 @@ import { createExportDialog } from '../src/vscode-export-dialog'
 import { generateExportHtml } from '@markleaf/editor-core'
 
 // This suite checks document generation, not browser rasterization or printing.
-afterEach(() => { document.body.innerHTML = ''; setHostImageResolver(); vi.restoreAllMocks() })
+afterEach(() => { document.body.innerHTML = ''; setImageResourceResolver(); vi.restoreAllMocks() })
 
 describe('VS Code complete-document exports', () => {
   it('renders a full snapshot with local image references, KaTeX and minimal typography without editing the visible document', async () => {
@@ -17,7 +17,7 @@ describe('VS Code complete-document exports', () => {
     const visible = createEditor(document.createElement('div'), markdown)
     const state = visible.state
     const before = getMarkdown(visible)
-    setHostImageResolver(() => 'https://webview.invalid/picture')
+    setImageResourceResolver({ resolve: () => 'https://webview.invalid/picture' })
     try {
       const result = await renderExportSnapshot(markdown, 'Title <1>', exportDefaults, defaultSettings, 'en')
       const html = new DOMParser().parseFromString(result.html, 'text/html')

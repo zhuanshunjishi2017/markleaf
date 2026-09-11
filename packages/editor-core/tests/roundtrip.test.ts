@@ -935,15 +935,16 @@ describe('paragraph menu commands', () => {
     expect(getMarkdown(editor)).toContain('before `const leaf = 1`after')
   })
 
-  it('applies context-menu inline formatting to the current text block without a selection', () => {
+  it('keeps existing text unchanged when arming inline formatting at a caret', () => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, 'first line\n\nsecond line')
     editors.push(editor)
     editor.commands.setTextSelection(3)
 
-    expect(executeEditorCommand(editor, 'toggleBold', undefined, undefined, true)).toBe(true)
-    expect(getMarkdown(editor)).toContain('**first line**\n\nsecond line')
+    expect(executeEditorCommand(editor, 'toggleBold')).toBe(true)
+    expect(getMarkdown(editor)).toBe('first line\n\nsecond line')
+    expect(editor.isActive('bold')).toBe(true)
     expect(editor.state.selection.empty).toBe(true)
     expect(editor.state.selection.from).toBe(3)
   })

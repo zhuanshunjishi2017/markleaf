@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, getMarkdown, setHostImageResolver, updateEditorMarkdown } from '@markleaf/editor-core'
+import { createEditor, getMarkdown, setImageResourceResolver, updateEditorMarkdown } from '@markleaf/editor-core'
 import * as editorModule from '@markleaf/editor-core'
 import { defaultSettings } from '../src/vscode-settings'
 import type { ExtensionMessage, WebviewMessage } from '../src/vscode-protocol'
@@ -8,57 +8,19 @@ const editors: ReturnType<typeof createEditor>[] = []
 function editor(markdown: string) {
   const mount = document.createElement('div')
   document.body.append(mount)
-  const editor = createEditor(mount, markdown, false, { externalHistory: true, sourceEditorPlacement: 'below' })
+  const editor = createEditor(mount, markdown, false, { externalHistory: true })
   editors.push(editor)
   return editor
 }
 afterEach(() => {
   editors.splice(0).forEach(editor => editor.destroy())
-  setHostImageResolver()
+  setImageResourceResolver()
   document.body.innerHTML = ''
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe('shared editor in a VS Code text host', () => {
-  it.each([
-    ['mermaid', '```mermaid\ngraph TD\nA-->B\n```'],
-    ['mathBlock', '$$x^2$$'],
-    ['mathInline', 'Inline $x^2$ formula.'],
-  ] as const)('keeps expanded %s source below its node as the document scrolls', (kind, markdown) => {
-    const visual = editor(markdown)
-    let position = 0
-    visual.state.doc.descendants((node, pos) => { if (node.type.name === kind) position = pos })
-    const anchor = visual.view.nodeDOM(position)
-    let scroll = 0
-    let anchorHeight = 180
-    const scrollY = Object.getOwnPropertyDescriptor(window, 'scrollY')!
-    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scroll })
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this === anchor) return new DOMRect(30, 520 - scroll, 400, anchorHeight)
-      if (this === visual.view.dom) return new DOMRect(30, 40 - scroll, 400, 1800)
-      if (this.classList.contains('markleaf-expanded-source')) return new DOMRect(0, 0, 400, 220)
-      return new DOMRect()
-    })
-    try {
-      expect(editorModule.expandSourceEditor(visual, position, kind)).toBe(true)
-      const source = document.querySelector<HTMLElement>('.markleaf-expanded-source')!
-      expect(source.style.position).toBe('absolute')
-      expect(source.style.top).toBe('706px')
-      scroll = 900
-      window.dispatchEvent(new Event('scroll'))
-      expect(source.style.top).toBe('706px')
-      expect(Number.parseFloat(source.style.top) - scroll).toBeLessThan(0)
-      anchorHeight = 280
-      window.dispatchEvent(new Event('resize'))
-      expect(source.style.top).toBe('806px')
-      visual.destroy()
-      expect(source.isConnected).toBe(false)
-    } finally {
-      Object.defineProperty(window, 'scrollY', scrollY)
-    }
-  })
-
   it('lets the text host own history while retaining native editor history by default', () => {
     const visual = editor('hello')
     expect(visual.extensionManager.extensions.some(extension => extension.name === 'undoRedo')).toBe(false)
@@ -83,7 +45,7 @@ describe('shared editor in a VS Code text host', () => {
   })
 
   it('keeps image source paths in Markdown while displaying host resource URLs', () => {
-    setHostImageResolver(path => `https://webview.example/${encodeURIComponent(path)}`)
+    setImageResourceResolver({ resolve: path => `https://webview.example/${encodeURIComponent(path)}` })
     const visual = editor('![图片](./assets/example%20image.png)')
     expect(visual.view.dom.querySelector('img')?.src).toContain('https://webview.example/')
     expect(getMarkdown(visual)).toContain('./assets/example%20image.png')
@@ -136,7 +98,7 @@ describe('shared editor in a VS Code text host', () => {
     receive({ type: 'document', markdown: '# Title\n\nHello\n', version: 1, writable: true })
     expect(messages).toEqual([{ type: 'ready', mac: /Mac/i.test(navigator.platform) }, { type: 'focus', target: null }])
     const instance = visual!
-    expect(create).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(String), true, expect.objectContaining({ sourceEditorPlacement: 'below' }))
+    expect(create).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(String), true, expect.objectContaining({ externalHistory: true }))
     // jsdom has no text layout; this test checks editing and transport, not
     // browser scroll geometry after toolbar commands restore focus.
     instance.view.setProps({ handleScrollToSelection: () => true })
