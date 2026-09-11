@@ -76,7 +76,7 @@ Windows 原生版支援 PDF、HTML、PNG/JPG 長圖和列印；macOS 原生版�
 
 三個宿主共享編輯核心與排版樣式。VS Code 擴充功能使用現有的 VS Code 執行環境，不引入獨立 Electron 相依套件或桌面殼層。支援閱讀與視覺化編輯、格式刷、表格、註腳、公式與 Mermaid、圖片貼上和拖放、尋找取代、大綱及排版偏好。儲存、復原重做、分頁和 Markdown 原始碼由 VS Code 管理，支援原始碼切換及並排。
 
-VS Code 擴充功能 0.2.7 提供 36 項設定和 67 項可設定快速鍵的格式操作；公式與圖表原始碼展開在對應內容下方，隨文件捲動。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
+VS Code 擴充功能 0.2.7 提供 36 項設定和 67 項可設定快速鍵的格式操作；公式與圖表使用核心統一的選取、再次點擊展開及視窗內浮層定位行為。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
 
 三個產品的複製與貼上以 Windows 邏輯為準：「複製 HTML」取得原始碼文字；視覺編輯中的一般文字貼上和「貼上純文字」均解析 Markdown，原始碼編輯保留字面文字。貼上提示區分成功、格式轉換、純文字降級及失敗，並保留降級原因。
 
@@ -100,7 +100,7 @@ markleaf/
 │       ├── Changelog/            #   產品更新日誌（四語言）
 │       └── script/               #   建置 / 發布腳本
 ├── packages/
-│   ├── editor-core/              # 共享渲染核心（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-core/              # 共享文件與渲染核心（TypeScript）
 │   ├── editor-web/               # macOS / Windows 的 webview 適配層
 │   └── styles/                   # 共享排版 / 主題樣式（三個宿主共用）
 ├── MarkLeaf.slnx                 # Windows 解決方案
@@ -114,12 +114,12 @@ markleaf/
 ## 技術架構
 
 ```text
-packages/editor-core（共享渲染核心）+ packages/styles（共享排版）
+packages/editor-core（共享文件與渲染核心）+ packages/styles（共享排版）
 ├── packages/editor-web    → apps/windows → WinForms + WebView2 → 原生訊息橋
 │                          → apps/macos   → AppKit + WKWebView  → 原生訊息橋
 └── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-核心只負責文件渲染、編輯、匯出與排版，不含任何宿主通訊與宿主 UI；
+核心負責文件規則、渲染、編輯、匯出與排版，不含任何宿主通訊與宿主 UI；
 宿主差異經 host-capabilities 的能力注入表達，核心內不做宿主類型判斷。
 渲染堆疊（Tiptap / ProseMirror / CodeMirror / Mermaid / KaTeX）由核心唯一持有，
 適配層不重複宣告，避免解析出第二份副本。
@@ -128,18 +128,20 @@ Windows/macOS：editor-web/src/main.ts，內建 CodeMirror 6 原始碼模式
 VS Code：apps/vscode/webview/src/vscode.ts，使用 VS Code 原生 Markdown 原始碼編輯器
 ```
 
+`build:kernel` 統一產生渲染檔案與無 DOM 的 `document-kernel.cjs`。Webview 載入同一組渲染檔案，macOS JavaScriptCore、Windows Jint 與 VS Code Node.js 載入同一份文件規則。`build:products` 建置一次核心後裝配各產品。詳見 [核心邊界](./kernel-boundaries.md)。
+
 ## 建置與執行
 
 ### VS Code 擴充功能
 
-從儲存庫根目錄執行，Node.js 22.12+，使用專案指定的 pnpm：
+從儲存庫根目錄執行，Node.js 22.12+，使用 Corepack 啟動專案固定的 pnpm 11.9.0：
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir apps/vscode/webview install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+產物為 `artifacts/markleaf-vscode-0.2.7.vsix`。
 
 在 VS Code 中使用 **Install from VSIX…** 安裝產生的擴充套件。新開啟的 `.md`、`.markdown` 檔案預設進入 MarkLeaf；既有原始碼分頁使用 **Reopen Editor With… → MarkLeaf**，既有預設關聯使用 **Configure default editor for…** 調整。**Ctrl+Shift+V**（macOS 為 **Cmd+Shift+V**）在原始碼與渲染檢視間切換。
 
@@ -151,18 +153,21 @@ macOS 與 Windows 共用此產物。`editor-web` 以 `link:` 依賴 `editor-core
 核心依賴須先安裝，符號連結才可用：
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir packages/editor-web build       # 產出輸出到 packages/editor-web/dist
-pnpm --dir packages/editor-web test        # 原生宿主協定測試
-pnpm --dir packages/editor-core test       # 核心 Markdown 往返契約測試
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
 ```
+
+前端產物位於 `packages/editor-web/dist`，其中 `kernel/` 是統一建置後原樣複製的渲染核心。
+
+測試單獨執行：原生宿主協定使用 `corepack pnpm test:editor-web`，共享核心契約使用 `corepack pnpm test:editor-core`。
 
 ### Windows
 
 ```powershell
-dotnet restore .\MarkLeaf.slnx
-dotnet build .\MarkLeaf.slnx --no-restore
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
+dotnet restore .\apps\windows\MarkLeaf\MarkLeaf.csproj
+dotnet build .\apps\windows\MarkLeaf\MarkLeaf.csproj --no-restore
 dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
@@ -175,6 +180,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 # 發布打包（.app / ZIP / 品牌 DMG / 校驗和）
 ./apps/macos/script/release/package.sh
 ```
+
+預設輸出至 `apps/macos/dist/release`，包含 arm64 應用 ZIP、DMG、dSYM 與校驗和。完成 `corepack pnpm build:products` 後，可設定 `MARKLEAF_USE_BUILT_EDITOR_WEB=1` 重用本次核心與前端產物再打包。
 
 ## 授權條款
 

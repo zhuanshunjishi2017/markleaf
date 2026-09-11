@@ -76,7 +76,7 @@ Windows のネイティブ版は PDF、HTML、PNG/JPG の縦長画像、印刷�
 
 3 つのホストは編集コアと組版スタイルを共有します。VS Code 拡張機能は既存の VS Code 実行環境を使い、独立した Electron 依存関係やデスクトップシェルを追加しません。閲覧とビジュアル編集、書式のコピー、表、脚注、数式と Mermaid、画像の貼り付けとドロップ、検索・置換、アウトライン、表示設定に対応します。保存、元に戻す・やり直し、タブ、Markdown ソース編集は VS Code が管理し、ソースとの切り替えや横並び表示が可能です。
 
-拡張機能 0.2.7 は 36 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図のソースパネルは対応する内容の下に開き、文書と一緒にスクロールします。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
+拡張機能 0.2.7 は 36 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図の選択、再クリックによるソース展開、ビューポート内の配置は共有カーネルに統一されています。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
 
 3 製品のコピーと貼り付けは Windows の動作に合わせています。「HTML をコピー」はソース文字列を取得し、ビジュアル編集では通常のテキスト貼り付けとプレーンテキスト貼り付けの両方で Markdown を解析します。ソース編集では文字をそのまま挿入します。貼り付け結果には成功、書式変換、プレーンテキストへのフォールバックと理由、失敗を表示します。
 
@@ -100,7 +100,7 @@ markleaf/
 │       ├── Changelog/            #   製品更新履歴（4言語）
 │       └── script/               #   ビルド／リリーススクリプト
 ├── packages/
-│   ├── editor-core/              # 共有レンダリングカーネル（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-core/              # 共有文書・レンダリングカーネル（TypeScript）
 │   ├── editor-web/               # macOS／Windows 用 webview アダプター
 │   └── styles/                   # 共有組版／テーマスタイル（3 つのホストで共有）
 ├── MarkLeaf.slnx                 # Windowsソリューション
@@ -114,12 +114,12 @@ markleaf/
 ## 技術アーキテクチャ
 
 ```text
-packages/editor-core（共有レンダリングカーネル）+ packages/styles（共有組版）
+packages/editor-core（共有文書・レンダリングカーネル）+ packages/styles（共有組版）
 ├── packages/editor-web    → apps/windows → WinForms + WebView2 → ネイティブメッセージブリッジ
 │                          → apps/macos   → AppKit + WKWebView  → ネイティブメッセージブリッジ
 └── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-カーネルは文書のレンダリング、編集、エクスポート、組版のみを担い、ホスト通信と
+カーネルは文書規則、レンダリング、編集、エクスポート、組版を担い、ホスト通信と
 ホスト UI を一切含みません。ホストの差異は host-capabilities の能力注入で表現し、
 カーネル内でホスト種別を判定しません。レンダリングスタック（Tiptap / ProseMirror /
 CodeMirror / Mermaid / KaTeX）はカーネルが単独で保持し、アダプター側では再宣言
@@ -129,18 +129,20 @@ Windows/macOS：editor-web/src/main.ts、内蔵 CodeMirror 6 ソースモード
 VS Code：apps/vscode/webview/src/vscode.ts、VS Code 標準の Markdown ソースエディタ
 ```
 
+`build:kernel` は共有レンダラーと DOM 非依存の `document-kernel.cjs` を生成します。Webview は同じ描画ファイルを使い、macOS JavaScriptCore、Windows Jint、VS Code Node.js は同じ文書規則を読み込みます。`build:products` はカーネルを一度ビルドして各製品に配布します。[責務の詳細](./kernel-boundaries.md)。
+
 ## ビルドと実行
 
 ### VS Code 拡張機能
 
-Node.js 22.12 以降とプロジェクト指定の pnpm を使い、リポジトリのルートで実行します。
+Node.js 22.12 以降と Corepack 経由でプロジェクト指定の pnpm 11.9.0 を使い、リポジトリのルートで実行します。
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir apps/vscode/webview install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+生成されるパッケージは `artifacts/markleaf-vscode-0.2.7.vsix` です。
 
 VS Code の **Install from VSIX…** で生成したパッケージをインストールします。新しく開く `.md`、`.markdown` は既定で MarkLeaf を使用します。既存のソースタブは **Reopen Editor With… → MarkLeaf** で切り替え、既定の関連付けは **Configure default editor for…** で変更します。**Ctrl+Shift+V**（macOS は **Cmd+Shift+V**）でソースとレンダリング表示を切り替えます。
 
@@ -152,18 +154,21 @@ macOS と Windows で共用します。`editor-web` は `link:` で `editor-core
 シンボリックリンクを有効にするにはカーネル側の依存を先に導入する必要があります。
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir packages/editor-web build       # 出力先 packages/editor-web/dist
-pnpm --dir packages/editor-web test        # ネイティブホストプロトコルのテスト
-pnpm --dir packages/editor-core test       # カーネルの Markdown 往復契約テスト
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
 ```
+
+フロントエンドの出力先は `packages/editor-web/dist` です。`kernel/` には一度ビルドした共有レンダラーをそのまま配置します。
+
+テストは個別に実行します。ネイティブホストのプロトコルは `corepack pnpm test:editor-web`、共有カーネルの契約は `corepack pnpm test:editor-core` です。
 
 ### Windows
 
 ```powershell
-dotnet restore .\MarkLeaf.slnx
-dotnet build .\MarkLeaf.slnx --no-restore
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
+dotnet restore .\apps\windows\MarkLeaf\MarkLeaf.csproj
+dotnet build .\apps\windows\MarkLeaf\MarkLeaf.csproj --no-restore
 dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
@@ -176,6 +181,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 # リリースパッケージング（.app / ZIP / ブランドDMG / チェックサム）
 ./apps/macos/script/release/package.sh
 ```
+
+既定の出力先は `apps/macos/dist/release` で、arm64 アプリの ZIP、DMG、dSYM、チェックサムを含みます。`corepack pnpm build:products` の実行後は `MARKLEAF_USE_BUILT_EDITOR_WEB=1` を指定して、同じカーネルとフロントエンドを再利用できます。
 
 ## ライセンス
 

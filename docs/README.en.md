@@ -76,7 +76,7 @@ The workspace, window, and built-in source-mode features below primarily describ
 
 All three hosts share the editor core and typography. The VS Code extension uses the existing VS Code runtime without adding a separate Electron dependency or desktop shell. It supports reading and visual editing, a format painter, tables, footnotes, math and Mermaid, image paste and drop, find and replace, an outline, and reading preferences. VS Code manages saving, undo/redo, tabs, and native Markdown source editing, including switching views and opening source alongside the rendered document.
 
-Extension 0.2.7 provides 36 settings and 67 configurable formatting actions. Math and diagram source panels open below their content and scroll with the document. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+Extension 0.2.7 provides 36 settings and 67 configurable formatting actions. Math and diagram selection, subsequent-click expansion, and viewport positioning follow the shared kernel. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
 
 All three products follow the Windows copy/paste rules: Copy HTML produces source text; ordinary text paste and Paste Plain Text parse Markdown in visual editing, while source editing keeps literal text. Paste feedback distinguishes success, formatting conversion, plain-text fallback, and failure, retaining fallback reasons.
 
@@ -100,7 +100,7 @@ markleaf/
 │       ├── Changelog/            #   Product changelog (four languages)
 │       └── script/               #   Build / release scripts
 ├── packages/
-│   ├── editor-core/              # Shared rendering kernel (Tiptap/ProseMirror + CodeMirror 6)
+│   ├── editor-core/              # Shared document and rendering kernel (TypeScript)
 │   ├── editor-web/               # Webview adapter for macOS / Windows
 │   └── styles/                   # Shared typography / theme styles (shared by all three hosts)
 ├── MarkLeaf.slnx                 # Windows solution
@@ -114,12 +114,12 @@ markleaf/
 ## Technical Architecture
 
 ```text
-packages/editor-core (shared rendering kernel) + packages/styles (shared typography)
+packages/editor-core (shared document and rendering kernel) + packages/styles (shared typography)
 ├── packages/editor-web    → apps/windows → WinForms + WebView2 → native message bridge
 │                          → apps/macos   → AppKit + WKWebView  → native message bridge
 └── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-The kernel owns document rendering, editing, export and typography only; it carries no
+The kernel owns document rules, rendering, editing, export and typography; it carries no
 host transport and no host UI. Host differences are expressed through capability
 injection in host-capabilities, never through host type checks inside the kernel.
 The rendering stack (Tiptap / ProseMirror / CodeMirror / Mermaid / KaTeX) is owned
@@ -129,18 +129,20 @@ Windows/macOS: editor-web/src/main.ts, with built-in CodeMirror 6 source mode
 VS Code: apps/vscode/webview/src/vscode.ts, using the native VS Code Markdown source editor
 ```
 
+`build:kernel` produces one shared renderer distribution and a DOM-free `document-kernel.cjs`. Webviews load the same renderer files; macOS JavaScriptCore, Windows Jint and VS Code Node.js load the same document rules. `build:products` builds the kernel once before assembling the products. See [kernel boundaries](./kernel-boundaries.md).
+
 ## Build and Run
 
 ### VS Code Extension
 
-Run from the repository root with Node.js 22.12+ and the project's specified pnpm version:
+Run from the repository root with Node.js 22.12+ and the project's pinned pnpm 11.9.0 through Corepack:
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir apps/vscode/webview install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+The package is written to `artifacts/markleaf-vscode-0.2.7.vsix`.
 
 Install the generated package with **Install from VSIX…** in VS Code. Newly opened `.md` and `.markdown` files use MarkLeaf by default. For existing source tabs, use **Reopen Editor With… → MarkLeaf**; change an existing association with **Configure default editor for…**. **Ctrl+Shift+V** (**Cmd+Shift+V** on macOS) switches between native source and rendered views.
 
@@ -152,18 +154,21 @@ Shared by macOS and Windows. `editor-web` depends on `editor-core` through `link
 so the kernel's own dependencies must be installed first for the symlink to work:
 
 ```bash
-pnpm --dir packages/editor-core install --frozen-lockfile
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir packages/editor-web build       # output to packages/editor-web/dist
-pnpm --dir packages/editor-web test        # native host protocol tests
-pnpm --dir packages/editor-core test       # kernel Markdown round-trip contract tests
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
 ```
+
+The frontend is written to `packages/editor-web/dist`; its `kernel/` directory contains the unchanged shared renderer distribution.
+
+Run tests separately: `corepack pnpm test:editor-web` for the native host protocol, and `corepack pnpm test:editor-core` for shared kernel contracts.
 
 ### Windows
 
 ```powershell
-dotnet restore .\MarkLeaf.slnx
-dotnet build .\MarkLeaf.slnx --no-restore
+corepack pnpm install:editor-web
+corepack pnpm build:editor-web
+dotnet restore .\apps\windows\MarkLeaf\MarkLeaf.csproj
+dotnet build .\apps\windows\MarkLeaf\MarkLeaf.csproj --no-restore
 dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
@@ -176,6 +181,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 # Release packaging (.app / ZIP / branded DMG / checksums)
 ./apps/macos/script/release/package.sh
 ```
+
+The default output directory is `apps/macos/dist/release`, containing the arm64 app ZIP, DMG, dSYM and checksums. After `corepack pnpm build:products`, set `MARKLEAF_USE_BUILT_EDITOR_WEB=1` when packaging to reuse those kernel and frontend artifacts.
 
 ## License
 
