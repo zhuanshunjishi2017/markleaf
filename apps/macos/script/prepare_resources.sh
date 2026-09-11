@@ -9,11 +9,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 EDITOR_WEB_DIR="$REPO_DIR/packages/editor-web"
+EDITOR_CORE_DIR="$REPO_DIR/packages/editor-core"
 RESOURCES_DIR="$ROOT_DIR/Resources"
 
 mkdir -p "$RESOURCES_DIR"
 
 # ---- 1. 构建前端 ----
+# editor-web 以 link: 方式依赖 @markleaf/editor-core，内核自身的依赖必须
+# 先装好，符号链接才可用。
+if [ ! -d "$EDITOR_CORE_DIR/node_modules" ]; then
+  echo "[prepare] 安装内核依赖 (pnpm install)..."
+  pnpm --dir "$EDITOR_CORE_DIR" install --frozen-lockfile
+fi
 if [ ! -d "$EDITOR_WEB_DIR/node_modules" ]; then
   echo "[prepare] 安装前端依赖 (pnpm install)..."
   pnpm --dir "$EDITOR_WEB_DIR" install --frozen-lockfile

@@ -47,9 +47,10 @@ jobs:
       - name: Build EditorWeb
         run: |
           set -euo pipefail
+          # editor-web 以 link: 方式依赖 @markleaf/editor-core，内核自身的依赖
+          # 必须先装好，符号链接才可用。
+          pnpm --dir packages/editor-core install --frozen-lockfile
           pnpm --dir packages/editor-web install --frozen-lockfile
-          # editor-web 的类型检查会引用 apps/vscode 源码做跨包校验，需要那边的依赖。
-          pnpm --dir apps/vscode install --frozen-lockfile --ignore-scripts
       - name: Package macOS app
         run: |
           set -euo pipefail

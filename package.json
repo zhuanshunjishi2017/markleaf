@@ -5,9 +5,12 @@
   "description": "MarkLeaf — 跨平台 Markdown 可视化编辑器（Monorepo）",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
+    "typecheck:editor-core": "pnpm --dir packages/editor-core typecheck",
+    "test:editor-core": "pnpm --dir packages/editor-core test",
     "build:editor-web": "pnpm --dir packages/editor-web build",
     "test:editor-web": "pnpm --dir packages/editor-web test",
-    "build:vscode": "pnpm --dir packages/editor-web build:vscode && pnpm --dir apps/vscode build",
+    "build:vscode": "pnpm --dir apps/vscode/webview build && pnpm --dir apps/vscode build",
+    "test:vscode": "pnpm --dir apps/vscode/webview test",
     "package:vscode": "pnpm build:vscode && pnpm --dir apps/vscode package"
   }
 }
