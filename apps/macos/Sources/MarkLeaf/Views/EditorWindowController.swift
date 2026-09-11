@@ -916,6 +916,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             defer: false)
         window.title = "MarkLeaf"
         window.minSize = NSSize(width: 860, height: 520)
+        // WindowServer 的第一帧早于 WKWebView ready；必须先让原生窗口本身使用主题底色。
+        let themeBackground = session.themeBackgroundColor ?? .windowBackgroundColor
+        let themeDark = session.currentThemeIsDark
+        window.appearance = NSAppearance(named: themeDark ? .darkAqua : .aqua)
+        window.backgroundColor = themeBackground
+        window.isOpaque = true
         // 应用已保存的视图状态
         session.sidebarVisible = SettingsService.shared.settings.sidebarVisible
         session.statusBarVisible = SettingsService.shared.settings.statusBarVisible
