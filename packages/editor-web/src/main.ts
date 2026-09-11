@@ -1,7 +1,8 @@
-import { createBlockHandle } from './block-handle'
-import './styles.css'
-import { NodeSelection, Selection } from '@tiptap/pm/state'
+import '@markleaf/editor-core/styles.css'
 import {
+  NodeSelection,
+  Selection,
+  createBlockHandle,
   createEditor,
   clearFindHighlights,
   executeEditorCommand,
@@ -41,24 +42,36 @@ import {
   restoreVisualSelection,
   renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
-} from './editor'
-import { katexCss, renderMathInHtml } from './math'
+} from '@markleaf/editor-core'
 import {
+  katexCss,
+  renderMathInHtml,
   renderMermaidInHtml,
   rerenderMermaidElements,
   setMermaidStrings,
   type MermaidThemeName,
-} from './mermaid'
-import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
-import { generateExportHtml as generateSharedExportHtml, escapeHtml as escapeExportHtml } from './export-html'
-import { isPlainTextDocumentType, type DocumentType } from './document-mode'
-import {
+  SourceEditor,
+  type UnsafeEmphasisRequest,
+  generateExportHtml as generateSharedExportHtml,
+  escapeHtml as escapeExportHtml,
+  isPlainTextDocumentType,
+  type DocumentType,
   executeFormatPainterApply,
   FormatPainterController,
   captureFormat,
   normalizeContextMenuCaretPosition,
-} from './format-painter'
-import { applyFormatPainterFromDomSelection } from './format-painter-dom-events'
+  applyFormatPainterFromDomSelection,
+  preserveViewportDuringLayoutChange,
+  type ViewportAnchorReader,
+  bindReducedMotionPreference,
+  createScrollbarAlphaController,
+  hasPrimaryActivationModifier,
+  resolveHostCapabilities,
+  normalizeSharedEditorLanguage,
+  sharedEditorStrings,
+  isHostCommandAllowed,
+} from '@markleaf/editor-core'
+// 原生宿主消息协议不属于内核，由 macOS / Windows 适配层持有。
 import {
   isHostMessage,
   isRestoreViewportPayload,
@@ -67,11 +80,6 @@ import {
   protocolVersion,
   type HostMessage,
 } from './protocol'
-import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
-import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
-import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
-import { normalizeSharedEditorLanguage, sharedEditorStrings } from './shared-editor-strings'
-import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
