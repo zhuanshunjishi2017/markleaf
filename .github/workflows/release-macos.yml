@@ -104,20 +104,39 @@ jobs:
       - name: Collect Windows assets and write checksums
         run: |
           set -euo pipefail
-          # Windows 安装包由 release-windows.yml 在同一次 tag push 上传。这里等它传完
-          # 再合并生成 SHA256SUMS.txt，让校验和同时覆盖两端资产；等待有上限，超时则按
-          # 现有资产生成，避免发布卡死。
-          pattern='^MarkLeaf-[0-9.]+-win-(x64|arm64)(-with-runtime)?[.](exe|zip)$'
-          deadline=$(( SECONDS + 900 ))
+          build=$(git rev-list --count HEAD)
+          sha=$(git rev-parse HEAD)
+          # Windows 安装包由 release-windows.yml 在同一次 tag push 构建。必须先等它跑完，
+          # 否则这里读到的会是上一轮构建的同名资产（校验和对应不到新安装包）。等待有上限，
+          # 超时按当前资产生成，避免发布卡死。
+          deadline=$(( SECONDS + 300 ))
           while [ "$SECONDS" -lt "$deadline" ]; do
-            count=$(gh release view "$VERSION" --json assets 2>/dev/null \
-              | jq --arg p "$pattern" '[.assets[].name | select(test($p))] | length' 2>/dev/null \
-              || echo 0)
-            if [ "${count:-0}" -ge 6 ]; then
+            runs=$(gh run list --workflow release-windows.yml --commit "$sha" --limit 20 \
+              --json status --jq 'length' 2>/dev/null || echo 0)
+            if [ "${runs:-0}" -gt 0 ]; then
+              break
+            fi
+            sleep 10
+          done
+          deadline=$(( SECONDS + 1800 ))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            pending=$(gh run list --workflow release-windows.yml --commit "$sha" --limit 20 \
+              --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+            if [ "${pending:-0}" -eq 0 ]; then
               break
             fi
             sleep 20
           done
+          # 清掉上一轮构建残留的标记文件，发布页只保留本次 build 的标记。
+          markers=$(gh release view "$VERSION" --json assets 2>/dev/null \
+            | jq -r '.assets[].name | select(test("^MarkLeaf-build-[0-9]+[.]txt$"))' 2>/dev/null || true)
+          for name in $markers; do
+            if [ "$name" != "MarkLeaf-build-$build.txt" ]; then
+              gh release delete-asset "$VERSION" "$name" --yes
+            fi
+          done
+          # 合并两端资产：Windows 安装包取自当前 Release，macOS 包来自本 job 的构建产物。
+          pattern='^MarkLeaf-[0-9.]+-win-(x64|arm64)(-with-runtime)?[.](exe|zip)$'
           for name in $(gh release view "$VERSION" --json assets 2>/dev/null \
               | jq -r --arg p "$pattern" '.assets[].name | select(test($p))' 2>/dev/null \
               || true); do
