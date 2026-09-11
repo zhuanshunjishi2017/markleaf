@@ -157,10 +157,11 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 从仓库根目录执行，Node.js 22.12+，使用项目指定的 pnpm：
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm build:vscode
-pnpm test:editor-web
+pnpm test:vscode
 pnpm package:vscode
 ```
 
@@ -170,4 +171,15 @@ pnpm package:vscode
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` 是扩展前端入口，`apps/vscode/src/extension.ts` 是 VS Code 文档适配层。Windows/macOS 入口继续使用 `main.ts` 和原生宿主协议。扩展构建输出到 `apps/vscode/dist`，原生前端仍输出到 `packages/editor-web/dist`。
+渲染能力由共享内核提供，扩展侧只保留协议与适配层：
+
+| 目录 | 职责 |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | 共享渲染内核入口（`@markleaf/editor-core`），三端共用 |
+| `apps/vscode/webview/src/vscode.ts` | 扩展前端入口：扩展协议、设置、导出、快捷键装配 |
+| `apps/vscode/src/extension.ts` | 扩展进程：VS Code 文档适配层（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts` | Windows/macOS 入口，配合 `protocol.ts` 原生宿主协议 |
+
+构建输出：扩展前端 `apps/vscode/dist/webview`（由 `webviewHtml()` 经 `.vite/manifest.json` 读取），扩展进程 `apps/vscode/dist/extension.js`，原生前端 `packages/editor-web/dist`。
+
+扩展进程侧只可依赖内核之下的纯类型契约层（`editor-state.ts`），不得引入依赖 DOM 的渲染内核，否则会把浏览器类型带入 Node 侧的扩展进程。

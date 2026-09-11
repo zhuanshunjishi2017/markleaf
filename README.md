@@ -93,12 +93,15 @@ markleaf/
 │   │   ├── MarkLeaf/             #   主程序（.NET 10 + WebView2）
 │   │   └── setup/                #   Inno Setup 安装器
 │   ├── vscode/                   # VS Code Markdown 阅读与编辑扩展（TypeScript）
+│   │   ├── src/                  #   扩展进程：文档适配、命令、导出
+│   │   └── webview/              #   webview 适配层：扩展协议、设置、快捷键
 │   └── macos/                    # macOS 原生应用（Swift AppKit + WKWebView）
 │       ├── Sources/MarkLeaf/     #   主程序
 │       ├── Changelog/            #   产品更新日志（四语言）
 │       └── script/               #   构建 / 发布脚本
 ├── packages/
-│   ├── editor-web/               # 共享编辑器前端（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-core/              # 共享渲染内核（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-web/               # macOS / Windows 的 webview 适配层
 │   └── styles/                   # 共享排版 / 主题样式（三个宿主共用）
 ├── MarkLeaf.slnx                 # Windows 解决方案
 ├── Directory.Build.props
@@ -111,13 +114,18 @@ markleaf/
 ## 技术架构
 
 ```text
-packages/editor-web（共享编辑内核）+ packages/styles（共享排版）
-├── apps/windows → WinForms + WebView2 → 原生消息桥
-├── apps/macos   → AppKit + WKWebView  → 原生消息桥
-└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+packages/editor-core（共享渲染内核）+ packages/styles（共享排版）
+├── packages/editor-web    → apps/windows → WinForms + WebView2 → 原生消息桥
+│                          → apps/macos   → AppKit + WKWebView  → 原生消息桥
+└── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-Windows/macOS：main.ts，内置 CodeMirror 6 源码模式
-VS Code：vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
+渲染内核只负责文档渲染、编辑、导出与排版，不含任何宿主通信与宿主 UI；
+宿主差异经 host-capabilities 的能力注入表达，内核内不做宿主类型判断。
+渲染栈（Tiptap / ProseMirror / CodeMirror / Mermaid / KaTeX）由内核唯一持有，
+适配层不重复声明，避免解析出第二份副本。
+
+Windows/macOS：editor-web/src/main.ts，内置 CodeMirror 6 源码模式
+VS Code：apps/vscode/webview/src/vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
 ```
 
 ## 构建与运行
@@ -127,7 +135,8 @@ VS Code：vscode.ts，使用 VS Code 原生 Markdown 源码编辑器
 从仓库根目录执行，Node.js 22.12+，使用项目指定的 pnpm：
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 ```
@@ -138,10 +147,15 @@ pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 
 ### Web 前端编辑器
 
+macOS 与 Windows 共用此产物。`editor-web` 以 `link:` 依赖 `editor-core`，
+内核依赖须先安装，符号链接才可用：
+
 ```bash
+pnpm --dir packages/editor-core install --frozen-lockfile
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir packages/editor-web build       # 产物输出到 packages/editor-web/dist
-pnpm --dir packages/editor-web test        # vitest 前端测试
+pnpm --dir packages/editor-web test        # 原生宿主协议测试
+pnpm --dir packages/editor-core test       # 内核 Markdown 往返契约测试
 ```
 
 ### Windows

@@ -157,10 +157,11 @@ See the [feature mapping (Simplified Chinese)](./feature-parity.md).
 From the repository root, use Node.js 22.12+ and the project's specified pnpm version:
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm build:vscode
-pnpm test:editor-web
+pnpm test:vscode
 pnpm package:vscode
 ```
 
@@ -170,4 +171,15 @@ Use an existing VS Code installation for development:
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` is the extension frontend; `apps/vscode/src/extension.ts` adapts VS Code documents. Windows/macOS retain `main.ts` and the native host protocol. Extension output goes to `apps/vscode/dist`; native frontend output remains in `packages/editor-web/dist`.
+Rendering comes from the shared kernel; the extension keeps only protocol and adapter code:
+
+| Path | Responsibility |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | Shared rendering kernel entry (`@markleaf/editor-core`), used by all three hosts |
+| `apps/vscode/webview/src/vscode.ts` | Extension frontend: extension protocol, settings, export, shortcut wiring |
+| `apps/vscode/src/extension.ts` | Extension process: VS Code document adapter (`TextDocument` / `WorkspaceEdit`) |
+| `packages/editor-web/src/main.ts` | Windows/macOS entry, paired with the `protocol.ts` native host protocol |
+
+Build output: extension frontend in `apps/vscode/dist/webview` (read by `webviewHtml()` through `.vite/manifest.json`), extension process in `apps/vscode/dist/extension.js`, and native frontend in `packages/editor-web/dist`.
+
+The extension process may only depend on the DOM-free type contract layer below the kernel (`editor-state.ts`). Importing the DOM-dependent rendering kernel would pull browser types into the Node-side extension process.

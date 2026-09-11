@@ -157,10 +157,11 @@ PDF、HTML ファイル、縦長画像のPDF、HTML、PNG/JPG 画像、プレビ
 Node.js 22.12 以降とプロジェクト指定の pnpm を使用し、リポジトリのルートで実行します。
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm build:vscode
-pnpm test:editor-web
+pnpm test:vscode
 pnpm package:vscode
 ```
 
@@ -170,4 +171,15 @@ pnpm package:vscode
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` が拡張フロントエンド、`apps/vscode/src/extension.ts` が文書アダプターです。Windows/macOS は `main.ts` とネイティブホストプロトコルを使用します。拡張の出力は `apps/vscode/dist`、ネイティブフロントエンドは `packages/editor-web/dist` です。
+レンダリングは共有カーネルが担い、拡張側はプロトコルとアダプターのみを保持します。
+
+| パス | 役割 |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | 共有レンダリングカーネルの入口（`@markleaf/editor-core`）。3 つのホストで共用 |
+| `apps/vscode/webview/src/vscode.ts` | 拡張フロントエンド：拡張プロトコル、設定、エクスポート、ショートカット |
+| `apps/vscode/src/extension.ts` | 拡張プロセス：VS Code 文書アダプター（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts` | Windows/macOS の入口。`protocol.ts` のネイティブホストプロトコルと併用 |
+
+ビルド出力：拡張フロントエンドは `apps/vscode/dist/webview`（`webviewHtml()` が `.vite/manifest.json` 経由で読み込み）、拡張プロセスは `apps/vscode/dist/extension.js`、ネイティブフロントエンドは `packages/editor-web/dist` です。
+
+拡張プロセスはカーネル配下の DOM 非依存な型契約層（`editor-state.ts`）のみに依存できます。DOM に依存するレンダリングカーネルを読み込むと、Node 側の拡張プロセスにブラウザ型が混入します。

@@ -93,12 +93,15 @@ markleaf/
 │   │   ├── MarkLeaf/             #   Main program (.NET 10 + WebView2)
 │   │   └── setup/                #   Inno Setup installer
 │   ├── vscode/                   # VS Code Markdown reading and editing extension (TypeScript)
+│   │   ├── src/                  #   Extension process: document adapter, commands, export
+│   │   └── webview/              #   Webview adapter: extension protocol, settings, shortcuts
 │   └── macos/                    # macOS native app (Swift AppKit + WKWebView)
 │       ├── Sources/MarkLeaf/     #   Main program
 │       ├── Changelog/            #   Product changelog (four languages)
 │       └── script/               #   Build / release scripts
 ├── packages/
-│   ├── editor-web/               # Shared editor frontend (Tiptap/ProseMirror + CodeMirror 6)
+│   ├── editor-core/              # Shared rendering kernel (Tiptap/ProseMirror + CodeMirror 6)
+│   ├── editor-web/               # Webview adapter for macOS / Windows
 │   └── styles/                   # Shared typography / theme styles (shared by all three hosts)
 ├── MarkLeaf.slnx                 # Windows solution
 ├── Directory.Build.props
@@ -111,13 +114,19 @@ markleaf/
 ## Technical Architecture
 
 ```text
-packages/editor-web (shared editor core) + packages/styles (shared typography)
-├── apps/windows → WinForms + WebView2 → native message bridge
-├── apps/macos   → AppKit + WKWebView  → native message bridge
-└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+packages/editor-core (shared rendering kernel) + packages/styles (shared typography)
+├── packages/editor-web    → apps/windows → WinForms + WebView2 → native message bridge
+│                          → apps/macos   → AppKit + WKWebView  → native message bridge
+└── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-Windows/macOS: main.ts, with built-in CodeMirror 6 source mode
-VS Code: vscode.ts, using the native VS Code Markdown source editor
+The kernel owns document rendering, editing, export and typography only; it carries no
+host transport and no host UI. Host differences are expressed through capability
+injection in host-capabilities, never through host type checks inside the kernel.
+The rendering stack (Tiptap / ProseMirror / CodeMirror / Mermaid / KaTeX) is owned
+solely by the kernel; adapters never redeclare it, so no second copy can be resolved.
+
+Windows/macOS: editor-web/src/main.ts, with built-in CodeMirror 6 source mode
+VS Code: apps/vscode/webview/src/vscode.ts, using the native VS Code Markdown source editor
 ```
 
 ## Build and Run
@@ -127,7 +136,8 @@ VS Code: vscode.ts, using the native VS Code Markdown source editor
 Run from the repository root with Node.js 22.12+ and the project's specified pnpm version:
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 ```
@@ -138,10 +148,15 @@ After upgrading, save your documents and run **Developer: Reload Window**. Missi
 
 ### Web Frontend Editor
 
+Shared by macOS and Windows. `editor-web` depends on `editor-core` through `link:`,
+so the kernel's own dependencies must be installed first for the symlink to work:
+
 ```bash
+pnpm --dir packages/editor-core install --frozen-lockfile
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir packages/editor-web build       # output to packages/editor-web/dist
-pnpm --dir packages/editor-web test        # vitest frontend tests
+pnpm --dir packages/editor-web test        # native host protocol tests
+pnpm --dir packages/editor-core test       # kernel Markdown round-trip contract tests
 ```
 
 ### Windows

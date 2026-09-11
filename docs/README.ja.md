@@ -93,12 +93,15 @@ markleaf/
 │   │   ├── MarkLeaf/             #   メインプログラム（.NET 10 + WebView2）
 │   │   └── setup/                #   Inno Setupインストーラ
 │   ├── vscode/                   # VS Code Markdown 閲覧・編集拡張機能（TypeScript）
+│   │   ├── src/                  #   拡張プロセス：文書アダプター、コマンド、エクスポート
+│   │   └── webview/              #   webview アダプター：拡張プロトコル、設定、ショートカット
 │   └── macos/                    # macOSネイティブアプリ（Swift AppKit + WKWebView）
 │       ├── Sources/MarkLeaf/     #   メインプログラム
 │       ├── Changelog/            #   製品更新履歴（4言語）
 │       └── script/               #   ビルド／リリーススクリプト
 ├── packages/
-│   ├── editor-web/               # 共有エディタフロントエンド（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-core/              # 共有レンダリングカーネル（Tiptap/ProseMirror + CodeMirror 6）
+│   ├── editor-web/               # macOS／Windows 用 webview アダプター
 │   └── styles/                   # 共有組版／テーマスタイル（3 つのホストで共有）
 ├── MarkLeaf.slnx                 # Windowsソリューション
 ├── Directory.Build.props
@@ -111,13 +114,19 @@ markleaf/
 ## 技術アーキテクチャ
 
 ```text
-packages/editor-web（共有編集コア）+ packages/styles（共有組版）
-├── apps/windows → WinForms + WebView2 → ネイティブメッセージブリッジ
-├── apps/macos   → AppKit + WKWebView  → ネイティブメッセージブリッジ
-└── apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
+packages/editor-core（共有レンダリングカーネル）+ packages/styles（共有組版）
+├── packages/editor-web    → apps/windows → WinForms + WebView2 → ネイティブメッセージブリッジ
+│                          → apps/macos   → AppKit + WKWebView  → ネイティブメッセージブリッジ
+└── apps/vscode/webview    → apps/vscode  → VS Code Webview    → TextDocument / WorkspaceEdit
 
-Windows/macOS：main.ts、内蔵 CodeMirror 6 ソースモード
-VS Code：vscode.ts、VS Code 標準の Markdown ソースエディタ
+カーネルは文書のレンダリング、編集、エクスポート、組版のみを担い、ホスト通信と
+ホスト UI を一切含みません。ホストの差異は host-capabilities の能力注入で表現し、
+カーネル内でホスト種別を判定しません。レンダリングスタック（Tiptap / ProseMirror /
+CodeMirror / Mermaid / KaTeX）はカーネルが単独で保持し、アダプター側では再宣言
+しないため、2 つ目の複製が解決されることはありません。
+
+Windows/macOS：editor-web/src/main.ts、内蔵 CodeMirror 6 ソースモード
+VS Code：apps/vscode/webview/src/vscode.ts、VS Code 標準の Markdown ソースエディタ
 ```
 
 ## ビルドと実行
@@ -127,7 +136,8 @@ VS Code：vscode.ts、VS Code 標準の Markdown ソースエディタ
 Node.js 22.12 以降とプロジェクト指定の pnpm を使い、リポジトリのルートで実行します。
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
+pnpm --dir packages/editor-core install --frozen-lockfile
+pnpm --dir apps/vscode/webview install --frozen-lockfile
 pnpm --dir apps/vscode install --frozen-lockfile
 pnpm package:vscode                # artifacts/markleaf-vscode-0.2.7.vsix
 ```
@@ -138,10 +148,15 @@ VS Code の **Install from VSIX…** で生成したパッケージをインス�
 
 ### Webフロントエンドエディタ
 
+macOS と Windows で共用します。`editor-web` は `link:` で `editor-core` に依存するため、
+シンボリックリンクを有効にするにはカーネル側の依存を先に導入する必要があります。
+
 ```bash
+pnpm --dir packages/editor-core install --frozen-lockfile
 pnpm --dir packages/editor-web install --frozen-lockfile
 pnpm --dir packages/editor-web build       # 出力先 packages/editor-web/dist
-pnpm --dir packages/editor-web test        # vitest フロントエンドテスト
+pnpm --dir packages/editor-web test        # ネイティブホストプロトコルのテスト
+pnpm --dir packages/editor-core test       # カーネルの Markdown 往復契約テスト
 ```
 
 ### Windows
