@@ -1070,6 +1070,7 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
       syncThemeModeClass()
+      send('stylesApplied')
       break
     }
     case 'loadDocument': {

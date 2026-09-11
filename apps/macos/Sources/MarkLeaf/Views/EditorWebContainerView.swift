@@ -47,6 +47,7 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     let webView: WKWebView
     private weak var session: EditorSession?
     private var didFinishLoadOnce = false
+    private var reloadCoverView: NSView?
 
     init(session: EditorSession) {
         self.session = session
@@ -91,6 +92,7 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
         session.webView = webView
         // 拖放：图片文件插入，md/txt 打开
         registerForDraggedTypes([.fileURL, .png, .tiff])
+        prepareForReload()
         loadEditor()
     }
 
@@ -144,6 +146,84 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     /// 编辑器前端就绪后揭示 WebView。
     func revealEditor() {
         webView.isHidden = false
+        reloadCoverView?.removeFromSuperview()
+        reloadCoverView = nil
+    }
+
+    /// 重载前先把旧页面从视觉树中移开；否则 WKWebView 会在深色模式中
+    /// 先闪一帧未样式化的白色页面。
+    func prepareForReload() {
+        let background = session?.themeBackgroundColor ?? .windowBackgroundColor
+        if reloadCoverView == nil {
+            let cover = NSView()
+            cover.translatesAutoresizingMaskIntoConstraints = false
+            cover.wantsLayer = true
+            reloadCoverView = cover
+            addSubview(reloadCoverView!, positioned: .above, relativeTo: webView)
+            NSLayoutConstraint.activate([
+                cover.leadingAnchor.constraint(equalTo: leadingAnchor),
+                cover.trailingAnchor.constraint(equalTo: trailingAnchor),
+                cover.topAnchor.constraint(equalTo: topAnchor),
+                cover.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+        }
+        reloadCoverView?.wantsLayer = true
+        reloadCoverView?.layer?.backgroundColor = background.cgColor
+        reloadCoverView?.needsDisplay = true
+        reloadCoverView?.displayIfNeeded()
+        needsDisplay = true
+        displayIfNeeded()
+        webView.isHidden = true
+    }
+
+    /// CSS 注入回执只说明 DOM 已更新；必须等 WebKit 提交新帧后取消隐藏，
+    /// 否则深色主题仍可能先呈现一帧样式注入前的白色位图。
+    func revealEditorAfterScreenUpdate() {
+        let isCovered = reloadCoverView != nil
+        if isCovered {
+            webView.isHidden = false
+        }
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = true
+        let target = session?.themeBackgroundColor ?? .windowBackgroundColor
+        let startedAt = Date()
+
+        func captureAndCheck() {
+            webView.takeSnapshot(with: configuration) { [weak self] image, error in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    var pixel: NSColor?
+                    if let cgImage = image?.cgImage(
+                        forProposedRect: nil, context: nil, hints: nil
+                    ) {
+                        let rep = NSBitmapImageRep(cgImage: cgImage)
+                        let point = CGPoint(
+                            x: min(16, max(0, rep.pixelsWide - 1)),
+                            y: min(16, max(0, rep.pixelsHigh - 1))
+                        )
+                        pixel = rep.colorAt(x: Int(point.x), y: Int(point.y))
+                    }
+                    let elapsed = Date().timeIntervalSince(startedAt)
+                    if !ThemeFrameReadinessPolicy.shouldContinueWaiting(
+                        didCapture: image != nil,
+                        pixel: pixel,
+                        target: target,
+                        elapsed: elapsed
+                    ) {
+                        if image == nil, let error {
+                            AppLog.warning("等待主题首帧失败，按兜底路径揭示: \(error.localizedDescription)")
+                        }
+                        self.revealEditor()
+                        return
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) {
+                        captureAndCheck()
+                    }
+                }
+            }
+        }
+
+        captureAndCheck()
     }
 
     private func loadEditor() {

@@ -231,6 +231,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var headlessPrintURL: URL?
     private var didLoadInitialDocument = false
     private var didRunInitialLoad = false
+    private var isWaitingForStylesAcknowledgement = false
+    private var isRestartingEditor = false
     private var pendingInitialOpenPath: String?
     private var useStartupAction = false
     private let documentDisposition = DocumentDispositionCoordinator()
@@ -322,6 +324,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "ready":
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
+            // applyStyles 经 postMessage 异步派发；揭示必须等前端确认 CSS 已落地。
+            isWaitingForStylesAcknowledgement = true
             applyStyles()
             // 揭示前同步打好主题底色；applySystemAppearance 里的调用是异步的，
             // 不能覆盖 ready → reveal 之间的首帧。
@@ -332,7 +336,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             applyBlockHandleVisibility(SettingsService.shared.settings.showParagraphBlockHandle)
             // 「显示代码高亮」同理：关闭时若晚下发，首帧会先渲染高亮再褪掉。
             setCodeHighlightVisible(SettingsService.shared.settings.showCodeHighlight)
-            revealEditorAfterThemeApplied()
             if !didLoadInitialDocument {
                 didLoadInitialDocument = true
                 loadInitialDocument()
@@ -347,6 +350,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     initialDirty: restart.initialDirty
                 )
                 statusText = L10n.t("编辑器已重启")
+            }
+
+        case "stylesApplied":
+            guard isWaitingForStylesAcknowledgement else { break }
+            isWaitingForStylesAcknowledgement = false
+            if !isRestartingEditor {
+                (webView?.superview as? EditorWebContainerView)?.revealEditorAfterScreenUpdate()
             }
 
         case "documentLoaded":
@@ -368,6 +378,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
             if let notice = startupRecoveryNotice(for: message) {
                 statusText = notice
+            }
+            if isRestartingEditor {
+                isRestartingEditor = false
+                (webView?.superview as? EditorWebContainerView)?.revealEditorAfterScreenUpdate()
             }
 
         case "snapshot":
@@ -754,16 +768,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         onStylesReady?()
     }
 
-    /// 等主题样式真正落地后再揭示 WebView：WKWebView 按提交顺序求值，
-    /// 排在 applyStyles 之后的空脚本完成时，页面底色已切换为目标主题。
-    private func revealEditorAfterThemeApplied() {
-        webView?.evaluateJavaScript("1") { [weak self] _, _ in
-            DispatchQueue.main.async {
-                (self?.webView?.superview as? EditorWebContainerView)?.revealEditor()
-            }
-        }
-    }
-
     /// 偏好设置变更后应用到当前文档（不重复持久化）。
     func applyPreferences() {
         let settings = SettingsService.shared.settings
@@ -789,7 +793,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         """)
     }
 
-    private var currentThemeIsDark: Bool {
+    var currentThemeIsDark: Bool {
         guard let themeID = currentThemeId,
               let theme = colorThemes.first(where: { $0.id == themeID }) else { return false }
         return theme.isDark
@@ -1360,6 +1364,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 NSApp.appearance = nil
             } else {
                 NSApp.appearance = dark ? NSAppearance(named: .darkAqua) : nil
+            }
+            if let window = self.webView?.window {
+                window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                window.backgroundColor = self.themeBackgroundColor ?? .windowBackgroundColor
+                window.isOpaque = true
             }
             self.applyScrollbarAppearance(dark: dark)
         }
@@ -2377,9 +2386,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             )
             self.isReady = false
             self.cancelPendingPasteCommands()
+            self.isRestartingEditor = true
             // 保持“初始文档已处理”状态，让 ready 后进入快照回放分支，
             // 而不是把重启误解为一次新的启动动作。
             self.didLoadInitialDocument = true
+            (self.webView?.superview as? EditorWebContainerView)?.prepareForReload()
             self.webView?.reload()
         }
     }

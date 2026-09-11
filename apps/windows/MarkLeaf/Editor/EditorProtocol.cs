@@ -14,6 +14,7 @@ public static class EditorProtocol
     private static readonly HashSet<string> AllowedEditorMessageTypes =
     [
         "ready",
+        "stylesApplied",
         "documentLoaded",
         "commandResult",
         "dirtyChanged",
@@ -161,7 +162,7 @@ public static class EditorProtocol
         var payload = message.Payload;
         return message.Type switch
         {
-            "ready" or "documentLoaded" => IsMissingOrObject(payload),
+            "ready" or "documentLoaded" or "stylesApplied" => IsMissingOrObject(payload),
             "dirtyChanged" => HasProperty(payload, "dirty", JsonValueKind.True, JsonValueKind.False),
             "snapshot" => HasProperty(payload, "markdown", JsonValueKind.String)
                 && HasOptionalNonNegativeNumber(payload, "scrollTop"),

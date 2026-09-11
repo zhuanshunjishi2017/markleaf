@@ -34,7 +34,13 @@ enum PDFOutlineBuilder {
         let normalizedPages = (0..<document.pageCount).map { index in
             document.page(at: index)?.string.map(normalize)
         }
-        let root = document.outlineRoot ?? PDFOutline()
+        // Rebuild a writable PDF before assigning destinations to its pages.
+        let writableDocument = PDFDocument()
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { return nil }
+            writableDocument.insert(page, at: writableDocument.pageCount)
+        }
+        let root = PDFOutline()
         var addedHeadings = 0
         var searchPage = 0
         var cursor: String.Index?
@@ -56,7 +62,7 @@ enum PDFOutlineBuilder {
                 }
                 page += 1
             }
-            guard let found = location, let pdfPage = document.page(at: page) else { continue }
+            guard let found = location, let pdfPage = writableDocument.page(at: page) else { continue }
 
             // Keep each title and its actual destination together. Unmatched titles
             // have no bookmark and never consume another title's page mapping.
@@ -72,8 +78,8 @@ enum PDFOutlineBuilder {
             cursor = found.upperBound
         }
         guard addedHeadings > 0 else { return nil }
-        document.outlineRoot = root
-        return document.dataRepresentation()
+        writableDocument.outlineRoot = root
+        return writableDocument.dataRepresentation()
     }
 
     private static func normalize(_ value: String) -> String {

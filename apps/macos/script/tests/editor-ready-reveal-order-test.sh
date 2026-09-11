@@ -7,36 +7,30 @@ CONTAINER="$ROOT_DIR/Sources/MarkLeaf/Views/EditorWebContainerView.swift"
 
 # 主题底色必须在揭示 WebView 之前同步生效，否则深色主题会在 ready 后闪白。
 ready_line="$(grep -n 'case "ready":' "$SESSION" | head -1 | cut -d: -f1)"
-reveal_line="$(awk -v ready="$ready_line" 'NR > ready && /revealEditorAfterThemeApplied\(\)/ { print NR; exit }' "$SESSION")"
+waiting_line="$(awk -v ready="$ready_line" 'NR > ready && /isWaitingForStylesAcknowledgement = true/ { print NR; exit }' "$SESSION")"
 background_line="$(awk -v ready="$ready_line" 'NR > ready && /applyScrollbarAppearance\(dark: currentThemeIsDark\)/ { print NR; exit }' "$SESSION")"
 
-if [ -z "$reveal_line" ] || [ -z "$background_line" ] || [ "$background_line" -ge "$reveal_line" ]; then
-  echo "FAIL: theme background must be applied synchronously before revealEditor" >&2
+if [ -z "$waiting_line" ] || [ -z "$background_line" ] || [ "$waiting_line" -ge "$background_line" ]; then
+  echo "FAIL: ready must wait for style acknowledgement before first paint" >&2
   exit 1
 fi
 
 handle_line="$(awk -v ready="$ready_line" 'NR > ready && /applyBlockHandleVisibility\(/ { print NR; exit }' "$SESSION")"
 
-if [ -z "$handle_line" ] || [ "$handle_line" -ge "$reveal_line" ]; then
-  echo "FAIL: block handle visibility must be applied before revealEditor" >&2
+if [ -z "$handle_line" ] || [ "$handle_line" -lt "$background_line" ]; then
+  echo "FAIL: block handle visibility must be prepared before the style acknowledgement" >&2
   exit 1
 fi
 
 highlight_line="$(awk -v ready="$ready_line" 'NR > ready && /setCodeHighlightVisible\(/ { print NR; exit }' "$SESSION")"
 
-if [ -z "$highlight_line" ] || [ "$highlight_line" -ge "$reveal_line" ]; then
-  echo "FAIL: code highlight visibility must be applied before revealEditor" >&2
+if [ -z "$highlight_line" ] || [ "$highlight_line" -lt "$background_line" ]; then
+  echo "FAIL: code highlight visibility must be prepared before the style acknowledgement" >&2
   exit 1
 fi
 
-if ! grep -Fq 'private func revealEditorAfterThemeApplied()' "$SESSION"; then
-  echo "FAIL: reveal must be deferred until theme CSS lands (helper missing)" >&2
-  exit 1
-fi
-
-if ! sed -n '/private func revealEditorAfterThemeApplied/,/func applyPreferences/p' "$SESSION" \
-    | grep -Fq 'evaluateJavaScript'; then
-  echo "FAIL: deferred reveal must wait for the pending style payload to evaluate" >&2
+if grep -Fq 'revealEditorAfterThemeApplied' "$SESSION"; then
+  echo "FAIL: reveal must be driven by stylesApplied, not an empty script" >&2
   exit 1
 fi
 
