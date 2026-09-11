@@ -4,14 +4,6 @@
   --text-primary: #24292f;
 }
 
-/* 主题 CSS 由宿主异步注入；系统深色下先落默认深色底，避免首帧白闪。 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-primary: #1E1E1E;
-    --text-primary: #D4D4D4;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
@@ -123,7 +115,7 @@ body,
 }
 
 .markleaf-front-matter-toggle-icon {
-  font: 14px/1 "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font: 14px/1 "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
 }
 
 .markleaf-front-matter-toggle-error {
@@ -246,12 +238,6 @@ body.markleaf-theme-dark {
 }
 
 /* 数学公式（KaTeX 渲染） */
-.markleaf-math,
-.markleaf-math * {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
 .markleaf-math-block {
   margin: 1em 0;
   text-align: center;
@@ -373,9 +359,15 @@ body.markleaf-theme-dark {
   display: none;
   width: 18px;
   height: 18px;
-  font-family: inherit;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
   font-size: 14px;
   line-height: 18px;
+}
+
+/* WKWebView does not provide Windows' private-use Fluent glyphs. The button
+   text is switched to a portable Unicode glyph by editor.ts on macOS. */
+.markleaf-host-macos .markleaf-code-block-copy {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
 }
 
 .markleaf-document pre:hover .markleaf-code-block-copy,
@@ -467,65 +459,6 @@ body.markleaf-theme-dark {
 
 .markleaf-footnote-def-prefix {
   display: none;
-}
-
-.find-bar {
-  position: sticky;
-  z-index: 10;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--bg-selected);
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.find-fields,
-.find-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.find-fields {
-  flex-wrap: wrap;
-}
-
-.find-actions {
-  padding-left: 188px;
-}
-
-.find-bar[hidden],
-.find-bar [hidden] {
-  display: none;
-}
-
-.find-bar input[type='text'] {
-  width: 180px;
-  padding: 5px 7px;
-  border: 1px solid var(--bg-selected-hover);
-  border-radius: 3px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font: inherit;
-}
-
-.find-bar button {
-  padding: 4px 9px;
-  border: 1px solid var(--bg-selected-hover);
-  border-radius: 3px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.find-bar button:hover {
-  background: var(--bg-hover);
 }
 
 .markleaf-find-match {
@@ -794,7 +727,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   border: none;
   background: transparent;
   color: #24292f;
-  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
   font-size: 14px;
   line-height: 1;
   display: inline-flex;

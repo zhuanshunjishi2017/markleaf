@@ -91,21 +91,16 @@ final class ImageHTMLExporter: NSObject, WKNavigationDelegate {
             }
             let pixelHeight = Int(ceil(height * options.imageScale))
             webView.setFrameSize(NSSize(width: options.imageContentWidth, height: height))
-            self.captureSlice(webView, index: 0, totalPixelHeight: pixelHeight)
+            self.captureFullPage(webView, totalPixelHeight: pixelHeight)
         }
     }
 
-    private func captureSlice(_ webView: WKWebView, index: Int, totalPixelHeight: Int) {
+    private func captureFullPage(_ webView: WKWebView, totalPixelHeight: Int) {
         guard self.webView === webView, let options, let baseURL = saveBaseURL else { return }
-        let maxHeight = Int(options.imageMaxHeight)
-        let pixelY = index * maxHeight
-        let pixelHeight = min(maxHeight, totalPixelHeight - pixelY)
         let pixelWidth = Int(options.imageContentWidth * options.imageScale)
-        let sliceCount = (totalPixelHeight - 1) / maxHeight + 1
         let configuration = WKSnapshotConfiguration()
-        configuration.rect = NSRect(x: 0, y: Double(pixelY) / options.imageScale,
-                                    width: options.imageContentWidth,
-                                    height: Double(pixelHeight) / options.imageScale)
+        configuration.rect = NSRect(x: 0, y: 0, width: options.imageContentWidth,
+                                    height: Double(totalPixelHeight) / options.imageScale)
         // WebKit's snapshotWidth is in points; its bitmap includes backing scale.
         let backingScale = webView.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
         configuration.snapshotWidth = NSNumber(value: Double(pixelWidth) / backingScale)
@@ -113,37 +108,45 @@ final class ImageHTMLExporter: NSObject, WKNavigationDelegate {
             guard let self, self.webView === webView else { return }
             do {
                 guard let image else { throw error ?? ImageExportError.snapshotFailed }
-                let target = sliceCount == 1 ? baseURL : baseURL.deletingLastPathComponent()
-                    .appendingPathComponent("\(baseURL.deletingPathExtension().lastPathComponent)-\(index + 1).\(baseURL.pathExtension)")
                 try autoreleasepool {
-                    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                          let context = CGContext(data: nil, width: pixelWidth, height: pixelHeight,
-                              bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
                         throw ImageExportError.snapshotFailed
                     }
-                    let rect = CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight)
-                    // JPEG has no alpha; composite transparent documents onto white.
-                    if options.imageFormat == "jpg" {
-                        context.setFillColor(NSColor.white.cgColor)
-                        context.fill(rect)
+                    let outputWidth = cgImage.width
+                    let outputHeight = cgImage.height
+                    let maxHeight = Int(options.imageMaxHeight)
+                    let sliceCount = (outputHeight - 1) / maxHeight + 1
+                    for index in 0..<sliceCount {
+                        let pixelY = index * maxHeight
+                        let sliceHeight = min(maxHeight, outputHeight - pixelY)
+                        let target = sliceCount == 1 ? baseURL : baseURL.deletingLastPathComponent()
+                            .appendingPathComponent(String(format: "%@-%02d.%@",
+                                baseURL.deletingPathExtension().lastPathComponent, index + 1, baseURL.pathExtension))
+                        let cropY = outputHeight - pixelY - sliceHeight
+                        guard let slice = cgImage.cropping(to: CGRect(x: 0, y: cropY, width: outputWidth, height: sliceHeight)),
+                              let context = CGContext(data: nil, width: outputWidth, height: sliceHeight,
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                            throw ImageExportError.snapshotFailed
+                        }
+                        let rect = CGRect(x: 0, y: 0, width: outputWidth, height: sliceHeight)
+                        if options.imageFormat == "jpg" {
+                            context.setFillColor(NSColor.white.cgColor)
+                            context.fill(rect)
+                        }
+                        context.interpolationQuality = .high
+                        context.draw(slice, in: rect)
+                        guard let bitmap = context.makeImage(),
+                              let data = NSBitmapImageRep(cgImage: bitmap).representation(
+                                using: options.imageFormat == "jpg" ? .jpeg : .png,
+                                properties: [.compressionFactor: options.imageJpegQuality / 100]) else {
+                            throw ImageExportError.snapshotFailed
+                        }
+                        try data.write(to: target, options: .atomic)
+                        self.urls.append(target)
                     }
-                    context.interpolationQuality = .high
-                    context.draw(cgImage, in: rect)
-                    guard let bitmap = context.makeImage(),
-                          let data = NSBitmapImageRep(cgImage: bitmap).representation(
-                            using: options.imageFormat == "jpg" ? .jpeg : .png,
-                            properties: [.compressionFactor: options.imageJpegQuality / 100]) else {
-                        throw ImageExportError.snapshotFailed
-                    }
-                    try data.write(to: target, options: .atomic)
                 }
-                self.urls.append(target)
-                if index + 1 < sliceCount {
-                    self.captureSlice(webView, index: index + 1, totalPixelHeight: totalPixelHeight)
-                } else {
-                    self.finish(.success(self.urls))
-                }
+                self.finish(.success(self.urls))
             } catch {
                 self.finish(.failure(error))
             }

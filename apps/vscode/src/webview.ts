@@ -57,6 +57,13 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
       <button data-action="shortcuts" type="button">快捷键…</button>
       <button data-action="help" type="button">使用帮助</button>
     </div></details>
+    <details class="toolbar-menu"><summary data-export-label="export">导出…</summary><div class="menu-content">
+      <button data-action="exportPdf" data-export-label="exportPdf" type="button">导出 PDF…</button>
+      <button data-action="exportHtml" data-export-label="exportHtml" type="button">导出 HTML…</button>
+      <button data-action="exportImage" data-export-label="exportImage" type="button">导出图片…</button>
+      <button data-action="print" data-export-label="print" type="button">打印…</button>
+      <button data-action="exportLast" data-export-label="last" type="button">按上次设置导出</button>
+    </div></details>
     <span class="spacer"></span>
     <button data-action="undo" data-edit type="button" title="撤销">↶</button>
     <button data-action="redo" data-edit type="button" title="重做">↷</button>
@@ -64,7 +71,7 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
     <button data-action="openSourceBeside" type="button" title="在侧边打开 VS Code 源码编辑器">并排</button>
   </header>
   <div id="notice" role="status" hidden><span id="notice-text"></span><button id="recover" type="button" hidden>将未同步内容打开为草稿</button></div>
-  <main id="editor" class="markleaf-style-sans" aria-label="Markdown 文档" aria-busy="true"></main>
+  <main id="editor" class="markleaf-style-minimal" aria-label="Markdown 文档" aria-busy="true"></main>
   <footer><span id="sync-status" role="status">正在加载…</span><span id="word-count"></span></footer>
 </div>
 <script nonce="${nonce}" type="module" src="${assetUrl(entry.file)}"></script>

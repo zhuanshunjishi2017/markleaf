@@ -456,8 +456,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         } else {
             session.newDocument()
         }
-        editorHostView?.show(tabID: tab.tabID, animated: false, reduceMotion: true)
-        tabBarController?.reload()
+        // 恢复首个标签同样走激活流程，绑定状态栏、侧栏和文档状态回调。
+        activateTab(tab.tabID, animated: false)
     }
 
     /// 打开文件为标签：去重命中则激活，未命中则建标签并加载。

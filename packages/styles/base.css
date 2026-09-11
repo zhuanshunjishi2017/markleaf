@@ -278,7 +278,7 @@
 .markleaf-document table {
   width: 100%;
   border-collapse: collapse;
-  border-color: var(--bg-selected-hover);
+  border-color: var(--ml-table-border, var(--bg-selected-hover));
   line-height: calc(var(--ml-line-height) * 0.8875);
 }
 
@@ -288,7 +288,7 @@
   padding: 3px 8px;
   text-align: left;
   vertical-align: middle;
-  border: 1px solid var(--bg-selected-hover);
+  border: 1px solid var(--ml-table-border, var(--bg-selected-hover));
 }
 
 .markleaf-document th[style*="text-align: center"],
@@ -320,8 +320,8 @@
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  background: var(--bg-secondary);
-  border: 1px solid var(--bg-selected);
+  background: var(--ml-mermaid-surface, var(--bg-secondary));
+  border: 1px solid var(--ml-mermaid-surface-border, var(--bg-selected));
   border-radius: 0;
   padding: 12px;
 }
@@ -347,8 +347,8 @@
 
 .markleaf-document th {
   font-weight: 600;
-  border-color: var(--bg-selected-hover);
-  background: var(--bg-hover);
+  border-color: var(--ml-table-border, var(--bg-selected-hover));
+  background: var(--ml-table-header, var(--bg-hover));
 }
 
 .markleaf-document ul[data-type='taskList'] {

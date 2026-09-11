@@ -345,6 +345,11 @@ final class AppWindowManager {
             guard !windowSession.tabStore.tabs.isEmpty else { continue }
             windowSession.tabStore.activate(record.activeTabID.map(DocumentTabID.init) ?? windowSession.tabStore.tabs[0].tabID)
             let controller = EditorWindowController(session: EditorSession(workspace: workspace))
+            windowSession.controller = controller
+            workspace.windowProvider = { [weak controller] in controller?.window }
+            windowSession.onOpenFile = { [weak controller] resolution, url in
+                controller?.handleOpenResolution(resolution, url: url)
+            }
             controller.windowSession = windowSession
             windowControllers.append(controller); windowSessions[controller] = windowSession
             controller.onWindowClose = { [weak self] closed in

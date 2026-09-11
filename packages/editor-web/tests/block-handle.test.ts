@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  createEditor,
-  getBlockHandleInfo,
-  setBlockHandleVisible,
-  setBlockTypeLabels,
-} from '../src/editor'
-import { sharedEditorStrings } from '../src/shared-editor-strings'
+import { createEditor, getBlockHandleInfo, setBlockHandleVisible } from '../src/editor'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy()
-  setBlockTypeLabels({})
   document.body.innerHTML = ''
 })
 
@@ -101,17 +94,5 @@ describe('paragraph block handle visibility', () => {
     await new Promise(resolve => window.setTimeout(resolve, 60))
 
     expect(getBlockHandleInfo(editor)).not.toBeNull()
-  })
-
-  it('uses the compact shared labels for the visible block handle', () => {
-    setBlockTypeLabels(sharedEditorStrings('zh-Hans', 'meta'))
-    const element = document.createElement('div')
-    document.body.append(element)
-    const editor = createEditor(element, '- list item')
-    editor.view.coordsAtPos = () => ({ left: 0, right: 0, top: 10, bottom: 30 })
-    editors.push(editor)
-    editor.commands.setTextSelection(3)
-
-    expect(getBlockHandleInfo(editor)?.label).toBe('列')
   })
 })

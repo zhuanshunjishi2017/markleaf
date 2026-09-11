@@ -49,6 +49,13 @@ internal sealed class WorkspaceService
         }
     }
 
+    private static bool IsSupportedDocument(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase);
+    }
+
     public Task<IReadOnlyList<WorkspaceEntry>> GetChildrenAsync(
         string directory,
         CancellationToken cancellationToken = default)
@@ -132,8 +139,7 @@ internal sealed class WorkspaceService
                         }
 
                         var extension = Path.GetExtension(path);
-                        if (!string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase))
+                        if (!IsSupportedDocument(path))
                         {
                             continue;
                         }
@@ -305,10 +311,7 @@ internal sealed class WorkspaceService
                 }
 
                 var isDirectory = (attributes & FileAttributes.Directory) != 0;
-                var extension = Path.GetExtension(path);
-                if (!isDirectory
-                    && !string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase))
+                if (!isDirectory && !IsSupportedDocument(path))
                 {
                     continue;
                 }
@@ -371,8 +374,7 @@ internal sealed class WorkspaceService
                         }
 
                         var extension = Path.GetExtension(path);
-                        if (!string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase))
+                        if (!IsSupportedDocument(path))
                         {
                             continue;
                         }

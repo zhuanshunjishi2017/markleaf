@@ -10,18 +10,13 @@ export function mathNumberFromLatex(latex: string): string | null {
   return match?.[1]?.trim() || null
 }
 
-// Input rules must not treat the second `$` of `$$` as an inline closing
-// delimiter; otherwise `$$x$` converts before block math can complete.
-export const mathInputPatterns = {
-  inline: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
-  block: /\$\$([^$]+?)\$\$$/,
-} as const
-
 function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
 }
 
 function normalizeMathSource(source: string): string {
+  // Formula source is opaque user data. Do not trim, normalize whitespace, or
+  // otherwise alter any character while parsing/serializing Markdown.
   return source === '...' ? '' : source
 }
 
@@ -104,8 +99,9 @@ export const MathInline = Node.create({
   },
 
   renderMarkdown(node) {
-    // Inline math must remain on one Markdown line; a newline would make the
-    // closing delimiter fail to parse as an inline formula.
+    // Inline math must remain on one Markdown line; otherwise the closing
+    // delimiter no longer parses as part of the inline formula. This is the
+    // sole normalization allowed for inline formulas. Block math remains raw.
     const latex = nodeLatex(node).replace(/\r?\n/g, '')
     return `$${latex || '...'}$`
   },
@@ -121,12 +117,8 @@ export const MathInline = Node.create({
       return Math.min(dollar, parenthesis)
     },
     tokenize: (src: string) => {
-      const match = /^(?:(?<!\$)\$(?!\$)((?:\\[^\n]|[^$\\\n])+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
+      const match = /^(?:(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
       if (!match) return undefined
-      // Price pairs have an amount plus a prose/list separator between dollars.
-      // A trailing digit alone must not reject real formulas such as $x$2 or $5$2.
-      if (/^\d/.test(src.slice(match[0].length))
-        && /^\d[\d,.]*(?:,\s*|\s+and\s+)$/.test(match[1] ?? '')) return undefined
       return { type: 'mathInline', raw: match[0], text: normalizeMathSource(match[1] ?? match[2] ?? '') }
     },
   },
@@ -137,7 +129,7 @@ export const MathInline = Node.create({
         // The first `$` must not be the second half of a display-math opener.
         // Otherwise `$$x$` is incorrectly converted to inline math before the
         // second closing `$` can complete the block formula.
-        find: mathInputPatterns.inline,
+        find: /(?<!\$)\$([^$\n]+?)\$(?!\$)$/,
         handler: ({ state, range, match }) => {
           const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathInline
@@ -152,7 +144,7 @@ export const MathInline = Node.create({
       new InputRule({
         find: /\\\(((?:\\(?!\))|[^\\\n])*?)\\\)$/,
         handler: ({ state, range, match }) => {
-          const latex = normalizeMathSource(match[1] ?? '')
+          const latex = match[1]!
           const mathType = state.schema.nodes.mathInline
           if (!mathType) return null
           state.tr.replaceWith(
@@ -229,7 +221,7 @@ export const MathBlock = Node.create({
       return Math.min(dollars, brackets)
     },
     tokenize: (src: string) => {
-      const match = /^(?:\$\$((?:\\[\s\S]|(?!\$\$)[^\\])+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
+      const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
       if (!match) return undefined
       return {
         type: 'mathBlock',
@@ -242,7 +234,7 @@ export const MathBlock = Node.create({
   addInputRules() {
     return [
       new InputRule({
-        find: mathInputPatterns.block,
+        find: /\$\$([^$]+?)\$\$$/,
         handler: ({ state, range, match }) => {
           const latex = normalizeMathSource(match[1] ?? '')
           const mathType = state.schema.nodes.mathBlock
@@ -321,12 +313,12 @@ function decodeHtmlEntities(text: string): string {
 
 /// 将 `editor.getHTML()` 输出中的数学标记替换为 KaTeX 渲染结果。
 /// 导出 HTML 由独立 WebView2 加载，无法复用编辑器的 KaTeX 运行时，因此需预渲染。
-export function renderMathInHtml(html: string): string {
+export function renderMathInHtml(html: string, throwOnError = false): string {
   return html
     .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) => {
       const source = decodeHtmlEntities(latex)
       return source
-        ? katex.renderToString(source, { throwOnError: false })
+        ? katex.renderToString(source, { throwOnError })
         : '<span class="markleaf-math-placeholder">...</span>'
     })
     .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
@@ -337,6 +329,6 @@ export function renderMathInHtml(html: string): string {
       const full = /\\tag\{[^{}]*\}\s*$/.test(body)
         ? body
         : number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
-      return katex.renderToString(full, { displayMode: true, throwOnError: false })
+      return katex.renderToString(full, { displayMode: true, throwOnError })
     })
 }
