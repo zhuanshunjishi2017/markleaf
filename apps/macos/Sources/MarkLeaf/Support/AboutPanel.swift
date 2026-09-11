@@ -9,9 +9,35 @@ import AppKit
 /// 版权行由 `Info.plist` 的 `NSHumanReadableCopyright` 提供；
 /// 描述文字作为 credits 传入（帮助菜单里另有项目主页入口）。
 enum AboutPanel {
+    /// 关于面板的应用图标。
+    ///
+    /// 系统标准面板默认取 `NSApp.applicationIconImage`，该值依赖 LaunchServices
+    /// 对 app bundle 的注册与图标缓存：刚生成、位于临时目录或尚未注册的包会退回
+    /// 通用文档图标（关于面板显示为空白页）。这里优先直接读取 bundle 内的
+    /// `AppIcon.icns`，只有读不到时才回退到系统提供的应用图标。
+    static func icon(
+        bundleResourceURL: URL?,
+        applicationIcon: NSImage?
+    ) -> NSImage? {
+        if let bundleResourceURL,
+           let image = NSImage(contentsOf: bundleResourceURL),
+           image.isValid,
+           !image.representations.isEmpty {
+            return image
+        }
+        if let applicationIcon,
+           applicationIcon.isValid,
+           !applicationIcon.representations.isEmpty {
+            return applicationIcon
+        }
+        return nil
+    }
+
     static func standardOptions(
         infoDictionary: [String: Any]?,
-        descriptionText: String
+        descriptionText: String,
+        bundleResourceURL: URL? = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+        applicationIcon: NSImage? = NSApp?.applicationIconImage
     ) -> [NSApplication.AboutPanelOptionKey: Any] {
         let marketVersion = infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let buildVersion = infoDictionary?["CFBundleVersion"] as? String ?? ""
@@ -22,11 +48,15 @@ enum AboutPanel {
                 .foregroundColor: NSColor.secondaryLabelColor,
             ]
         )
-        return [
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "MarkLeaf",
             .applicationVersion: marketVersion,
             .version: buildVersion,
             .credits: credits,
         ]
+        if let icon = icon(bundleResourceURL: bundleResourceURL, applicationIcon: applicationIcon) {
+            options[.applicationIcon] = icon
+        }
+        return options
     }
 }

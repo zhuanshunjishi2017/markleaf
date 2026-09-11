@@ -519,7 +519,7 @@ final class AppWindowManager {
     private func makePreferences(
         restoration: PreferencesRestoration? = nil
     ) -> PreferencesWindowController? {
-        guard let session = primarySession else { return nil }
+        guard let session = activeViewStateSession else { return nil }
         let controller = PreferencesWindowController(
             styles: session.styles,
             themes: session.colorThemes,
