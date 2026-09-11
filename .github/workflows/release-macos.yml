@@ -1,0 +1,133 @@
+name: macOS Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without a v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # 发布包固定构建 arm64（package.sh 的 ARCH），必须跑在 Apple Silicon runner 上。
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.9.0'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: pnpm
+          cache-dependency-path: packages/editor-web/pnpm-lock.yaml
+      - name: Resolve release metadata
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version='${{ inputs.version }}'
+          else
+            version="$GITHUB_REF_NAME"
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.-]+)?$'; then
+            echo "Release tag must be a semantic version without a v prefix: $version" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+      - name: Build EditorWeb
+        run: |
+          set -euo pipefail
+          pnpm --dir packages/editor-web install --frozen-lockfile
+          # editor-web 的类型检查会引用 apps/vscode 源码做跨包校验，需要那边的依赖。
+          pnpm --dir apps/vscode install --frozen-lockfile --ignore-scripts
+      - name: Package macOS app
+        run: |
+          set -euo pipefail
+          cd apps/macos
+          MARKLEAF_VERSION="$VERSION" ./script/release/package.sh
+      - name: Verify assets
+        run: |
+          set -euo pipefail
+          cd apps/macos/dist/release
+          shasum -a 256 -c SHA256SUMS.txt
+          hdiutil verify "MarkLeaf-$VERSION-macos-arm64.dmg"
+          rm -rf "$RUNNER_TEMP/markleaf-verify"
+          mkdir -p "$RUNNER_TEMP/markleaf-verify"
+          ditto -x -k "MarkLeaf-$VERSION-macos-arm64.zip" "$RUNNER_TEMP/markleaf-verify"
+          app="$RUNNER_TEMP/markleaf-verify/MarkLeaf.app"
+          short=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")
+          test "$short" = "$VERSION" || { echo "CFBundleShortVersionString $short != $VERSION" >&2; exit 1; }
+          test "$build" = "$BUILD_NUMBER" || { echo "CFBundleVersion $build != $BUILD_NUMBER" >&2; exit 1; }
+          file "$app/Contents/MacOS/MarkLeaf" | grep -q arm64 || { echo "expected an arm64 build" >&2; exit 1; }
+          codesign --verify --deep --strict "$app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarkLeaf-macos
+          path: |
+            apps/macos/dist/release/MarkLeaf-*.dmg
+            apps/macos/dist/release/MarkLeaf-*.zip
+            apps/macos/dist/release/MarkLeaf-build-*.txt
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: MarkLeaf-macos
+          path: release-assets
+      - name: Write build marker
+        run: |
+          set -euo pipefail
+          build=$(git rev-list --count HEAD)
+          printf 'version=%s\nbuild=%s\ncommit=%s\n' "$VERSION" "$build" "$(git rev-parse HEAD)" \
+            > "release-assets/MarkLeaf-build-$build.txt"
+          cat "release-assets/MarkLeaf-build-$build.txt"
+      - name: Collect Windows assets and write checksums
+        run: |
+          set -euo pipefail
+          # Windows 安装包由 release-windows.yml 在同一次 tag push 上传。这里等它传完
+          # 再合并生成 SHA256SUMS.txt，让校验和同时覆盖两端资产；等待有上限，超时则按
+          # 现有资产生成，避免发布卡死。
+          pattern='^MarkLeaf-[0-9.]+-win-(x64|arm64)(-with-runtime)?[.](exe|zip)$'
+          deadline=$(( SECONDS + 900 ))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            count=$(gh release view "$VERSION" --json assets 2>/dev/null \
+              | jq --arg p "$pattern" '[.assets[].name | select(test($p))] | length' 2>/dev/null \
+              || echo 0)
+            if [ "${count:-0}" -ge 6 ]; then
+              break
+            fi
+            sleep 20
+          done
+          for name in $(gh release view "$VERSION" --json assets 2>/dev/null \
+              | jq -r --arg p "$pattern" '.assets[].name | select(test($p))' 2>/dev/null \
+              || true); do
+            gh release download "$VERSION" --pattern "$name" --output "release-assets/$name" --clobber
+          done
+          cd release-assets
+          rm -f SHA256SUMS.txt
+          shasum -a 256 MarkLeaf-* | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
