@@ -11,7 +11,13 @@ const result = await build({
   format: 'cjs',
   target: 'node20',
   external: ['vscode'],
+  plugins: [{ name: 'shared-document-kernel', setup(builder) {
+    builder.onResolve({ filter: /^@markleaf\/editor-core\/document$/ }, () => ({ path: './DocumentCore/document-kernel.cjs', external: true }))
+  } }],
 })
+await mkdir('dist/DocumentCore', { recursive: true })
+await copyFile('../../packages/editor-core/dist/document-kernel.cjs', 'dist/DocumentCore/document-kernel.cjs')
+await copyFile('../../packages/editor-core/dist/document-kernel-LICENSES.txt', 'dist/DocumentCore/document-kernel-LICENSES.txt')
 await copyFile('../../LICENSE', 'dist/LICENSE')
 await copyFile('../../THIRD-PARTY-NOTICES.md', 'dist/THIRD-PARTY-NOTICES.md')
 await mkdir('../../artifacts', { recursive: true })

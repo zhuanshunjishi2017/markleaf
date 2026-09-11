@@ -71,12 +71,21 @@ importers:
       '@tiptap/starter-kit':
         specifier: 3.29.2
         version: 3.29.2
+      entities:
+        specifier: 8.1.0
+        version: 8.1.0
       katex:
         specifier: 0.16.21
         version: 0.16.21
+      marked:
+        specifier: 17.0.6
+        version: 17.0.6
       mermaid:
         specifier: ^11.17.0
         version: 11.17.2
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       yaml:
         specifier: 2.8.1
         version: 2.8.1

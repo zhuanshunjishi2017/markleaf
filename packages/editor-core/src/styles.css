@@ -233,10 +233,10 @@ body.markleaf-theme-dark {
   }
 }
 
-/* WebView2 使用原生选区，避免拖动期间由装饰改写编辑器 DOM。 */
-:root:not(.markleaf-host-macos) .markleaf-document::selection,
-:root:not(.markleaf-host-macos) .markleaf-document *::selection,
-.markleaf-host-macos .markleaf-themed-selection,
+/* 选区绘制方式由能力配置决定，正文配色统一。 */
+:root:not(.markleaf-themed-visual-selection) .markleaf-document::selection,
+:root:not(.markleaf-themed-visual-selection) .markleaf-document *::selection,
+.markleaf-themed-visual-selection .markleaf-themed-selection,
 .ml-source-selection {
   background: var(--theme-light);
   color: var(--text-selected);
@@ -375,15 +375,9 @@ body.markleaf-theme-dark {
   display: none;
   width: 18px;
   height: 18px;
-  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 18px;
-}
-
-/* WKWebView does not provide Windows' private-use Fluent glyphs. The button
-   text is switched to a portable Unicode glyph by editor.ts on macOS. */
-.markleaf-host-macos .markleaf-code-block-copy {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Helvetica Neue", sans-serif;
 }
 
 .markleaf-document pre:hover .markleaf-code-block-copy,
@@ -743,7 +737,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   border: none;
   background: transparent;
   color: #24292f;
-  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1;
   display: inline-flex;

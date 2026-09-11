@@ -13,7 +13,7 @@ import {
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
-import { EditorState, RangeSetBuilder, StateEffect, type Transaction } from '@codemirror/state'
+import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import {
   Decoration,
   DecorationSet,

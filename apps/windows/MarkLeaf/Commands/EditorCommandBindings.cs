@@ -1,0 +1,116 @@
+namespace MarkLeaf.Commands;
+
+// Native command identifiers only. Availability is supplied by editor-core.
+internal static class EditorCommandBindings
+{
+    public static bool TryGetCommand(AppCommand command, out string editorCommand)
+    {
+        editorCommand = command switch
+        {
+            AppCommand.Undo => "undo",
+            AppCommand.Redo => "redo",
+            AppCommand.ToggleBold => "toggleBold",
+            AppCommand.ToggleItalic => "toggleItalic",
+            AppCommand.ToggleUnderline => "toggleUnderline",
+            AppCommand.ToggleStrike => "toggleStrike",
+            AppCommand.ToggleHighlight => "toggleHighlight",
+            AppCommand.ToggleInlineCode => "toggleCode",
+            AppCommand.PromoteHeading => "promoteHeading",
+            AppCommand.DemoteHeading => "demoteHeading",
+            AppCommand.SetParagraph => "setParagraph",
+            AppCommand.SetHeading1 => "setHeading1",
+            AppCommand.SetHeading2 => "setHeading2",
+            AppCommand.SetHeading3 => "setHeading3",
+            AppCommand.SetHeading4 => "setHeading4",
+            AppCommand.SetHeading5 => "setHeading5",
+            AppCommand.SetHeading6 => "setHeading6",
+            AppCommand.InsertLink => "setLink",
+            AppCommand.RotateImageClockwise => "rotateImageClockwise",
+            AppCommand.ToggleQuote => "toggleBlockquote",
+            AppCommand.ToggleCodeBlock => "toggleCodeBlock",
+            AppCommand.InsertHorizontalRule => "insertHorizontalRule",
+            AppCommand.ToggleBulletList => "toggleBulletList",
+            AppCommand.ToggleOrderedList => "toggleOrderedList",
+            AppCommand.ToggleTaskList => "toggleTaskList",
+            AppCommand.IncreaseListIndent => "indentListItem",
+            AppCommand.DecreaseListIndent => "outdentListItem",
+            AppCommand.InsertTable => "insertTable",
+            AppCommand.AddTableRowBefore => "addRowBefore",
+            AppCommand.AddTableRowAfter => "addRowAfter",
+            AppCommand.DeleteTableRow => "deleteRow",
+            AppCommand.AddTableColumnBefore => "addColumnBefore",
+            AppCommand.AddTableColumnAfter => "addColumnAfter",
+            AppCommand.DeleteTableColumn => "deleteColumn",
+            AppCommand.AlignTableLeft => "alignTableLeft",
+            AppCommand.AlignTableCenter => "alignTableCenter",
+            AppCommand.AlignTableRight => "alignTableRight",
+            AppCommand.DeleteTable => "deleteTable",
+            AppCommand.InsertLineBefore => "insertLineBefore",
+            AppCommand.InsertLineAfter => "insertLineAfter",
+            AppCommand.DuplicateParagraph => "duplicateParagraph",
+            AppCommand.DeleteParagraph => "deleteParagraph",
+            AppCommand.InsertMathInline => "insertMathInline",
+            AppCommand.InsertMathBlock => "insertMathBlock",
+            AppCommand.InsertMermaid => "insertMermaid",
+            AppCommand.ShowFrontMatter => "showFrontMatter",
+            AppCommand.InsertAlertNote => "insertAlertNote",
+            AppCommand.InsertAlertTip => "insertAlertTip",
+            AppCommand.InsertAlertImportant => "insertAlertImportant",
+            AppCommand.InsertAlertWarning => "insertAlertWarning",
+            AppCommand.InsertAlertCaution => "insertAlertCaution",
+            AppCommand.InsertFootnote => "insertFootnote",
+            AppCommand.ResetFootnoteLabel => "resetFootnoteLabel",
+            AppCommand.GoToFootnoteReference => "goToFootnoteReference",
+            AppCommand.ClearFootnoteReferences => "clearFootnoteReferences",
+            AppCommand.DeleteFootnote => "deleteFootnote",
+            AppCommand.SelectAll => "selectAll",
+            AppCommand.ExitCode => "exitCode",
+            AppCommand.ConvertMath => "convertMath",
+            AppCommand.SetMathNumber => "setMathNumber",
+            AppCommand.DeleteMath => "deleteMath",
+            AppCommand.DeclareCodeLanguage => "setCodeBlockLanguage",
+            AppCommand.EditMermaid => "editMermaid",
+            AppCommand.RerenderMermaid => "rerenderMermaid",
+            AppCommand.DeleteMermaid => "deleteMermaid",
+            AppCommand.RerenderAllMermaid => "rerenderAllMermaid",
+            AppCommand.ClearFormat => "clearFormat",
+            AppCommand.FormatPainter => "formatPainter",
+            _ => string.Empty,
+        };
+        return editorCommand.Length > 0;
+    }
+
+    public static bool TryGetAction(AppCommand command, out string identifier)
+    {
+        if (TryGetCommand(command, out identifier)) return true;
+        identifier = command switch
+        {
+            AppCommand.Cut => "cut",
+            AppCommand.Copy => "copy",
+            AppCommand.CopyMarkdown => "copyMarkdown",
+            AppCommand.CopyPlainText => "copyPlainText",
+            AppCommand.CopyHtml => "copyHtml",
+            AppCommand.CopyCodeBlock => "copyCodeBlock",
+            AppCommand.Paste => "paste",
+            AppCommand.PastePlainText => "pastePlainText",
+            AppCommand.Find => "find",
+            AppCommand.Replace => "replace",
+            AppCommand.InsertImage => "insertImage",
+            AppCommand.InsertImageFromUrl => "insertImage",
+            AppCommand.EditMath => "editMath",
+            AppCommand.ChangeImage => "changeImage",
+            AppCommand.SaveImageAs => "saveImageAs",
+            AppCommand.ResizeImage100 => "resizeImage",
+            AppCommand.ResizeImage50 => "resizeImage",
+            AppCommand.ResizeImage75 => "resizeImage",
+            AppCommand.ResizeImage90 => "resizeImage",
+            AppCommand.EditImageCaption => "setImageCaption",
+            AppCommand.EditTableCaption => "setTableCaption",
+            AppCommand.ToggleSourceMode => "toggleSourceMode",
+            AppCommand.ToggleEditorFocusMode => "setEditorFocusMode",
+            AppCommand.ToggleEditorTypewriterMode => "setEditorTypewriterMode",
+            _ => string.Empty,
+        };
+        return identifier.Length > 0;
+    }
+}

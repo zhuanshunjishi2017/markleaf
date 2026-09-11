@@ -493,11 +493,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             break
         }
         let s = session
-        if s?.isReadOnly == true, EditorSession.readOnlyBlockedCommands.contains(command) {
-            return false
+        if let action = s?.editorAction(command) {
+            menuItem.state = action.checked ? .on : .off
+            return s?.editorCommandEnabled(command) == true
         }
         switch command {
         case "print": return session != nil
+        case "save", "saveAll", "saveAs": return session != nil && session?.isReadOnly != true
         case "toggleSidebar":
             menuItem.state = viewStateSession?.sidebarVisible == true ? .on : .off
             return viewStateSession != nil
@@ -518,126 +520,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "toggleStatusBar":
             menuItem.state = viewStateSession?.statusBarVisible == true ? .on : .off
             return viewStateSession != nil
-        case "toggleEditorFocusMode":
-            menuItem.state = s?.isEditorFocusMode == true ? .on : .off
-            return EditorMenuPolicy.isEditorModeCommandEnabled(
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true,
-                isPlainText: s?.isPlainText == true
-            )
-        case "toggleTypewriterMode":
-            menuItem.state = s?.isTypewriterMode == true ? .on : .off
-            return EditorMenuPolicy.isEditorModeCommandEnabled(
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true,
-                isPlainText: s?.isPlainText == true
-            )
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
         case "toggleCodeHighlight":
             menuItem.state = SettingsService.shared.settings.showCodeHighlight ? .on : .off
-        case "sourceMode":
-            // 纯文本文档固定为源码模式，无法切换回可视化，直接置灰。
-            if s?.isPlainText == true { return false }
-            menuItem.state = s?.isSourceMode == true ? .on : .off
-
-        // 无选中图片时置灰（对应 Windows 命令状态）
-        case "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
-             "changeImage", "saveImageAs":
-            return s?.imageSelected == true
-        // 降低标题级别：仅当光标在标题内可用（非标题保持原样 → 置灰）
-        case "promoteHeading", "demoteHeading":
-            guard s?.isSourceMode == false else { return false }
-            return EditorMenuPolicy.isHeadingLevelCommandEnabled(
-                command: command,
-                headingLevel: s?.headingLevel
-            )
-        // 表格命令：仅当光标在表格内可用
-        case "tableEditing":
-            return s?.inTable == true
-        case "addRowBefore", "addRowAfter", "deleteRow",
-             "addColumnBefore", "addColumnAfter", "deleteColumn",
-             "alignTableLeft", "alignTableCenter", "alignTableRight", "deleteTable":
-            return s?.inTable == true
-        // 插入表格：仅在表格外可用
-        case "insertTable":
-            return s?.inTable == false && EditorMenuPolicy.isParagraphCommandEnabled(
-                command: "setParagraph",
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true
-            )
-        // 格式刷：可视化模式下，可吸附来源或已激活时均可点（再次点击取消，对齐 Word 按钮切换）
-        case "formatPainter":
-            menuItem.state = s?.isFormatPainterArmed == true ? .on : .off
-            return EditorContextMenuState.formatPainterShortcutEnabled(isSourceMode: s?.isSourceMode ?? true)
-        case "formatPainterApply":
-            return s?.isSourceMode == false && s?.isFormatPainterArmed == true
-        // 撤销/重做
-        case "undo": return s?.canUndo == true
-        case "redo": return s?.canRedo == true
-        case "copyHtml":
-            return EditorMenuPolicy.isCopyHtmlEnabled(
-                hasSelection: s?.hasSelection ?? false,
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true
-            )
-        case "cut", "copy", "copyAs", "copyMarkdown", "copyPlain", "paste", "pastePlainText":
-            return EditorMenuPolicy.isEnabled(
-                command: command,
-                hasSelection: s?.hasSelection ?? false,
-                clipboardHasContent: s?.clipboardHasContent ?? false,
-                isReadOnly: s?.isReadOnly == true
-            )
-        case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike",
-             "toggleHighlight", "toggleCode", "insertMathInline":
-            return EditorMenuPolicy.isInlineFormatCommandEnabled(
-                command: command,
-                hasSelection: s?.hasSelection ?? false,
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true
-            )
-        case "setParagraph", "setHeading1", "setHeading2", "setHeading3",
-             "setHeading4", "setHeading5", "setHeading6",
-             "toggleBlockquote", "insertMathBlock", "toggleCodeBlock",
-             "insertHorizontalRule", "insertLineBefore", "insertLineAfter",
-             "toggleBulletList", "toggleOrderedList", "toggleTaskList", "indentListItem", "outdentListItem", "clearFormat",
-             "duplicateParagraph", "deleteParagraph",
-             "insertAlertNote", "insertAlertTip", "insertAlertImportant",
-             "insertAlertWarning", "insertAlertCaution", "showFrontMatter":
-            return EditorMenuPolicy.isParagraphCommandEnabled(
-                command: command,
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true,
-                inTable: s?.inTable == true
-            )
-        case "insertImage", "insertImageFromUrl", "insertLink":
-            return EditorMenuPolicy.isVisualInsertCommandEnabled(
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true,
-                isPlainText: s?.isPlainText == true
-            )
-        case "insertFootnote", "resetFootnoteLabel":
-            return EditorMenuPolicy.isFootnoteCommandEnabled(
-                command: command,
-                hasFootnoteLabel: !(s?.footnoteDefinitionLabel ?? "").isEmpty,
-                isReadOnly: s?.isReadOnly == true,
-                isSourceMode: s?.isSourceMode ?? true
-            )
-        case "insertMermaid", "editMermaid", "rerenderMermaid", "rerenderAllMermaid", "deleteMermaid",
-             "declareCodeLanguage", "copyCodeBlock", "goToFootnoteReference",
-             "clearFootnoteReferences", "deleteFootnote":
-            guard let state = s?.editorMenuState,
-                  let nativeCommand = EditorMenuPolicy.nativeCommand(for: command) else { return false }
-            return EditorMenuPolicy.allows(nativeCommand, state: state)
-        case "setMathNumber":
-            return EditorMenuPolicy.isMathNumberCommandEnabled(
-                mathBlock: s?.mathBlock == true,
-                isSourceMode: s?.isSourceMode ?? true,
-                isReadOnly: s?.isReadOnly == true
-            )
         default: break
         }
-        return true
+        return s?.editorActions.isEmpty != true
     }
 
     @objc func performCommand(_ sender: NSMenuItem) {
@@ -931,7 +820,8 @@ final class WindowMenuDelegate: NSObject, NSMenuDelegate {
 extension EditorSession {
     /// 菜单命令分派（对应 Windows CommandRouter）。
     func performMenuCommand(_ command: String) {
-        if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
+        if editorAction(command)?.enabled == false
+            || (isReadOnly && ["save", "saveAll", "saveAs"].contains(command)) {
             return
         }
         switch command {
@@ -951,8 +841,7 @@ extension EditorSession {
         case "undo": execute("undo")
         case "redo": execute("redo")
         case "cut":
-            copySelectionAs(.formatted)
-            execute("deleteSelection")
+            copySelectionAs(.formatted, cut: true)
         case "copy": copySelectionAs(.formatted)
         case "copyMarkdown": copySelectionAs(.markdown)
         case "copyPlain": copySelectionAs(.plainText)
@@ -960,9 +849,8 @@ extension EditorSession {
         case "paste": pasteFromClipboard()
         case "pastePlainText": pastePlainTextFromClipboard()
         case "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike":
-            guard hasSelection else { return }
-            executeInlineFormat(command)
-        case "toggleHighlight": executeInlineFormat("toggleHighlight")
+            execute(command)
+        case "toggleHighlight": execute("toggleHighlight")
         case "find": showFind()
         case "toggleSidebar": toggleSidebar()
         case "workspaceTab": showWorkspaceTab()
@@ -993,7 +881,7 @@ extension EditorSession {
         case "demoteHeading": execute("demoteHeading")
         case "toggleCode":
             if hasSelection {
-                executeInlineFormat("toggleCode")
+                execute("toggleCode")
             } else {
                 insertInlineCode()
             }

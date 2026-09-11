@@ -13,6 +13,7 @@ extension EditorSession {
             isFlipped: webView.isFlipped
         )
         let menu = NSMenu()
+        EditorContextMenuState.preserveExplicitAvailability(in: menu)
         let state = editorMenuState
         guard !state.isReadOnly else {
             execute("clearBlockHighlight")
@@ -142,7 +143,6 @@ extension EditorSession {
             addMermaidCommands(to: menu, state: state)
         } else if semanticContext == .image {
             // 图片：更换 / 旋转 / 缩放 / 另存为 + 标题 + 剪贴板（对应 Windows ImageContextMenu）
-            guard !state.isReadOnly else { return }
             addFormatCommand(menu, L10n.t("更换图片…"), "changeImage")
             addFormatCommand(menu, L10n.t("顺时针旋转图片"), "rotateImage")
             let resize = NSMenu(title: L10n.t("调整图片大小"))
@@ -164,7 +164,6 @@ extension EditorSession {
             addClipboardCommands(menu)
         } else if semanticContext == .math {
             // 公式：编辑 / 行内块级互转 / 删除
-            guard !state.isReadOnly else { return }
             addFormatCommand(menu, L10n.t("编辑公式源码"), "editMath")
             addFormatCommand(menu, L10n.t("公式编号…"), "setMathNumber")
             addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
@@ -195,12 +194,12 @@ extension EditorSession {
             menu.addItem(.separator())
 
             let format = NSMenu(title: L10n.t("格式"))
-            addInlineFormatCommand(format, L10n.t("粗体"), "toggleBold", "b")
-            addInlineFormatCommand(format, L10n.t("斜体"), "toggleItalic", "i")
-            addInlineFormatCommand(format, L10n.t("下划线"), "toggleUnderline", "u")
-            addInlineFormatCommand(format, L10n.t("删除线"), "toggleStrike")
-            addInlineFormatCommand(format, L10n.t("高亮"), "toggleHighlight")
-            addInlineFormatCommand(format, L10n.t("行内代码"), "toggleCode")
+            addFormatCommand(format, L10n.t("粗体"), "toggleBold", "b")
+            addFormatCommand(format, L10n.t("斜体"), "toggleItalic", "i")
+            addFormatCommand(format, L10n.t("下划线"), "toggleUnderline", "u")
+            addFormatCommand(format, L10n.t("删除线"), "toggleStrike")
+            addFormatCommand(format, L10n.t("高亮"), "toggleHighlight")
+            addFormatCommand(format, L10n.t("行内代码"), "toggleCode")
             menu.addItem(submenuItem(L10n.t("格式"), format))
 
             let paragraph = NSMenu(title: L10n.t("段落"))
@@ -369,7 +368,9 @@ extension EditorSession {
             codeBlock: codeBlock,
             codeBlockText: codeBlockText,
             frontMatterActive: frontMatterActive,
-            expandedSource: expandedSourceActive
+            expandedSource: expandedSourceActive,
+            actions: editorActions,
+            semanticContext: editorSemanticContext
         )
     }
 
@@ -378,16 +379,12 @@ extension EditorSession {
         guard let webView, let window = webView.window else { return }
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
-        let commands: [(String, String)] = [
-            (L10n.t("撤销"), "undo:"),
-            (L10n.t("重做"), "redo:"),
-            (L10n.t("剪切"), "cut:"),
-            (L10n.t("拷贝"), "copy:"),
-            (L10n.t("粘贴"), "paste:"),
-            (L10n.t("全选"), "selectAll:"),
-        ]
-        for (title, action) in commands {
-            menu.addItem(NSMenuItem(title: title, action: NSSelectorFromString(action), keyEquivalent: ""))
+        for (title, command) in [
+            (L10n.t("撤销"), "undo"), (L10n.t("重做"), "redo"),
+            (L10n.t("剪切"), "cut"), (L10n.t("拷贝"), "copy"),
+            (L10n.t("粘贴"), "paste"), (L10n.t("全选"), "selectAll"),
+        ] {
+            addFormatCommand(menu, title, command)
         }
 
         let pointInView = Self.editorContextMenuPoint(
@@ -459,19 +456,7 @@ extension EditorSession {
     private func addFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
         let item = menuItem(title, #selector(handleCommand(_:)), key: key)
         item.representedObject = command
-        applyShortcut(to: item, command: command)
-        menu.addItem(item)
-    }
-
-    private func addInlineFormatCommand(_ menu: NSMenu, _ title: String, _ command: String, _ key: String = "") {
-        let item = menuItem(title, #selector(handleCommand(_:)), key: key)
-        item.representedObject = command
-        item.isEnabled = EditorMenuPolicy.isInlineFormatCommandEnabled(
-            command: command,
-            hasSelection: hasSelection,
-            isSourceMode: isSourceMode,
-            isReadOnly: isReadOnly
-        )
+        item.isEnabled = editorCommandEnabled(command)
         applyShortcut(to: item, command: command)
         menu.addItem(item)
     }
@@ -491,22 +476,10 @@ extension EditorSession {
 
     /// 统一的剪贴板区块：剪切/拷贝/粘贴/粘贴为纯文本 + “复制为 ▸ 纯文本 / Markdown”。
     private func addClipboardCommands(_ menu: NSMenu) {
-        let canCut = EditorMenuPolicy.isEnabled(
-            command: "cut", hasSelection: hasSelection,
-            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
-        )
-        let canCopy = EditorMenuPolicy.isEnabled(
-            command: "copy", hasSelection: hasSelection,
-            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
-        )
-        let canPaste = EditorMenuPolicy.isEnabled(
-            command: "paste", hasSelection: hasSelection,
-            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
-        )
-        let canCopyAs = EditorMenuPolicy.isEnabled(
-            command: "copyAs", hasSelection: hasSelection,
-            clipboardHasContent: clipboardHasContent, isReadOnly: isReadOnly
-        )
+        let canCut = editorCommandEnabled("cut")
+        let canCopy = editorCommandEnabled("copy")
+        let canPaste = editorCommandEnabled("paste")
+        let canCopyAs = editorCommandEnabled("copyAs")
         addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCut)
         addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: canCopy)
         addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
@@ -521,7 +494,7 @@ extension EditorSession {
         copyAsMenu.addItem(markdown)
         let html = menuItem(L10n.t("HTML"), #selector(handleCommand(_:)))
         html.representedObject = "copyHtml"
-        html.isEnabled = canCopyAs && !isSourceMode
+        html.isEnabled = editorCommandEnabled("copyHtml")
         copyAsMenu.addItem(html)
         copyAs.submenu = copyAsMenu
         menu.addItem(copyAs)
@@ -531,24 +504,20 @@ extension EditorSession {
 
     /// 撤销/重做区块：与“编辑”菜单共用同一组命令和快捷键。
     private func addHistoryCommands(_ menu: NSMenu) {
-        addEnabledCommand(menu, L10n.t("撤销"), "undo", enabled: !isReadOnly && canUndo)
-        addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: !isReadOnly && canRedo)
+        addEnabledCommand(menu, L10n.t("撤销"), "undo", enabled: editorCommandEnabled("undo"))
+        addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: editorCommandEnabled("redo"))
     }
 
     /// 格式刷区块：把「格式刷 / 应用格式刷」从「格式」子菜单里提出来单独成组，
     /// 放在剪贴板与「格式」之间，避免高频操作要先进子菜单。
     private func addFormatPainterCommands(_ menu: NSMenu, canStart: Bool?, armed: Bool?) {
-        let currentCanStart = canStart ?? canStartFormatPainter
+        _ = canStart
         let currentArmed = armed ?? isFormatPainterArmed
 
         let painter = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
         painter.representedObject = "formatPainterArm"
         applyShortcut(to: painter, command: "formatPainter")
-        painter.isEnabled = EditorContextMenuState.formatPainterEnabled(
-            isSourceMode: isSourceMode,
-            canStartFormatPainter: currentCanStart,
-            isFormatPainterArmed: currentArmed
-        )
+        painter.isEnabled = editorCommandEnabled("formatPainterArm")
         painter.state = currentArmed ? .on : .off
         menu.addItem(painter)
 
@@ -556,7 +525,7 @@ extension EditorSession {
         let apply = menuItem(L10n.t("应用格式刷"), #selector(handleCommand(_:)))
         apply.representedObject = "formatPainterApply"
         applyShortcut(to: apply, command: "formatPainterApply")
-        apply.isEnabled = !isSourceMode && !isReadOnly && currentArmed
+        apply.isEnabled = editorCommandEnabled("formatPainterApply")
         menu.addItem(apply)
     }
 

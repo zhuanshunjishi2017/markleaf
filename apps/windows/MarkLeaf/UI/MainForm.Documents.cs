@@ -765,7 +765,7 @@ internal sealed partial class MainForm
             _editorHost?.SetDocumentPath(_document.FilePath);
 
             _document.Revision = Math.Max(snapshot.Revision, _editorSession.ConfirmedRevision);
-            _document.IsDirty = _document.Revision > snapshot.Revision;
+            _document.IsDirty = DocumentCoreRuntime.Call<bool>("dirtyAfterSave", new { savedRevision = snapshot.Revision.ToString(), currentRevision = _document.Revision.ToString() });
             StopWatchingDocument();
             StartWatchingDocument(_document.FilePath!);
             _documentTabBar.SetDocuments(_openDocuments, _activeDocumentIndex);
@@ -1167,8 +1167,14 @@ internal sealed partial class MainForm
         }
 
         var current = DocumentEncodingPolicy.FromId(_document.EncodingPolicyId);
-        if (string.Equals(current.Id, target.Id, StringComparison.Ordinal))
+        var action = DocumentCoreRuntime.Call<string>("encodingChange", new { current = current.Id, target = target.Id, hasFile = _document.FilePath is not null, readOnly = _document.IsReadOnly });
+        if (action is "none" or "readOnly") return;
+        if (action == "set")
         {
+            _document.Encoding = target.CreateEncoding();
+            _document.EncodingPolicyId = target.Id;
+            _document.HasBom = target.HasBom;
+            UpdateDocumentChrome();
             return;
         }
 
@@ -1418,6 +1424,7 @@ internal sealed partial class MainForm
             "\r\n" => "CRLF",
             "\n" => "LF",
             "\r" => "CR",
+            "Mixed" => "Mixed",
             _ => "unknown",
         };
     }

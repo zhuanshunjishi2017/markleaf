@@ -20,7 +20,7 @@ extension EditorSession {
 
     // MARK: - 复制（对应 C# ExecuteClipboardCopyAsync）
 
-    func copySelectionAs(_ mode: ClipboardCopyMode, pasteboard: NSPasteboard = .general) {
+    func copySelectionAs(_ mode: ClipboardCopyMode, cut: Bool = false, pasteboard: NSPasteboard = .general) {
         requestSelectionExport { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -46,6 +46,7 @@ extension EditorSession {
                         self.statusText = L10n.t("剪贴板操作失败")
                         return
                     }
+                    if cut && !self.isReadOnly { self.execute("deleteSelection") }
                     if mode == .html {
                         // 与 Windows CopySelectionHtmlAsync 一致：HTML 源码作为文本复制。
                         self.statusText = L10n.t("已复制 HTML")
@@ -66,7 +67,7 @@ extension EditorSession {
         let pasteboard = NSPasteboard.general
         let plainText = pasteboard.string(forType: .string)
         // 源码模式先取文本，再考虑同一剪贴板附带的文件或位图。
-        if isSourceMode, let command = EditorPastePolicy.command(isSourceMode: true, plainText: plainText, html: nil) {
+        if isSourceMode || expandedSourceActive, let command = EditorPastePolicy.command(isSourceMode: true, plainText: plainText, html: nil) {
             executePaste(command)
             return
         }

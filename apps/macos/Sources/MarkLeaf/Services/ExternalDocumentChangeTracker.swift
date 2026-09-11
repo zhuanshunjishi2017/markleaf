@@ -54,6 +54,7 @@ enum ExternalDocumentChangeDecision: Equatable {
 
 final class ExternalDocumentChangeTracker {
     private var acceptedVersion: DocumentFileVersion?
+    var hasAcceptedVersion: Bool { acceptedVersion != nil }
     private var needsRecheck = false
     private var isSelfWriteInProgress = false
 

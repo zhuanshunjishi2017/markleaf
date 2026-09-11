@@ -18,6 +18,7 @@ export async function webviewHtml(webview: vscode.Webview, assets: vscode.Uri): 
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${escapeAttribute(csp)}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="${assetUrl('kernel/editor-core.css')}">
 ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`).join('\n')}
 <title>MarkLeaf</title>
 </head><body>

@@ -3,9 +3,9 @@ import '../../../../packages/styles/base.css'
 import '../../../../packages/styles/minimal.css'
 import './vscode.css'
 import {
-  collapseSourceEditor, createEditor, executeEditorCommand, expandSourceEditor,
-  getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownTextWithResult, pasteClipboardContentWithResult, scrollToFootnoteDefinition, setCodeBlockControlHandlers,
-  setHostImageResolver, updateEditorMarkdown,
+  collapseSourceEditor, createEditor, executeEditorCommand, getEditorCommandPresentation, selectEditorContextAt,
+  getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownTextWithResult, pasteClipboardContentWithResult, setCodeBlockControlHandlers,
+  setImageResourceResolver, refreshImageResources, updateEditorMarkdown,
   normalizeContextMenuCaretPosition, rerenderMermaidElements,
 } from '@markleaf/editor-core'
 import { vscodePasteStatus } from './vscode-paste-status'
@@ -16,7 +16,7 @@ import { createFindBar } from './vscode-find'
 import { createReadingView } from './vscode-reading'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
 import { TextDocumentSync } from './vscode-sync'
-import { createEditorInteractions } from './vscode-interactions'
+import { createEditorInteractions } from '@markleaf/editor-core'
 import { formatActions, formatCommandsWithInput, isFormatCommand, resolveShortcuts, shortcutLabel, type ShortcutSettings } from './vscode-shortcuts'
 import { bindFormatShortcuts } from './vscode-shortcut-keys'
 import { createShortcutDialog } from './vscode-shortcut-dialog'
@@ -77,7 +77,7 @@ function imageUrl(path: string): string {
   }
   return ''
 }
-setHostImageResolver(imageUrl)
+setImageResourceResolver({ resolve: imageUrl })
 setCodeBlockControlHandlers({
   copyCode: text => post({ type: 'copy', text }),
   editLanguage: position => {
@@ -101,7 +101,6 @@ const sync = new TextDocumentSync({
       } else {
         editor = createEditor(mount, document.markdown, true, {
           externalHistory: true,
-          sourceEditorPlacement: 'below',
           handlePaste(event) {
             if (!editor?.isEditable) return false
             const files = Array.from(event.clipboardData?.files ?? []).filter(file => file.type.startsWith('image/'))
@@ -126,7 +125,9 @@ const sync = new TextDocumentSync({
           mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen && !exportDialog.isOpen,
           shortcuts: () => shortcuts, run: id => runFormatCommand(id, true),
         })
-        interactions = createEditorInteractions(editor, mount, () => action('block'))
+        interactions = createEditorInteractions({ mount, getEditor: () => editor!, enabled: () => !!editor?.isEditable, onMenu: () => action('block'), label: '当前段落操作', onStateChanged: updateToolbar,
+          links: { primaryModifier: mac ? 'meta' : 'ctrl', openLink: href => post({ type: 'openLink', href }),
+            topInset: () => window.document.querySelector('#toolbar')?.getBoundingClientRect().height ?? 0 } })
         findBar = createFindBar(editor, window.document.querySelector<HTMLElement>('#toolbar')!)
         reading = createReadingView(editor, mount, count)
         reading.apply(settings, customCss, language)
@@ -175,15 +176,20 @@ function updateStatus(): void {
 
 function updateToolbar(): void {
   if (!editor) return
+  interactions?.update()
+  const state = getEditorCommandPresentation(editor, { readOnly: !editor.isEditable }, interactions?.state())
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-command]')) {
+    const action = state.actions[button.dataset.command!]
+    if (!action) continue
+    button.disabled = !action.enabled
+    button.setAttribute('aria-pressed', String(action.checked))
+  }
   const imageButton = document.querySelector<HTMLButtonElement>('[data-action="image"]')
-  if (imageButton) imageButton.disabled = !getEditorCommandState(editor).imageSelected
+  if (imageButton) imageButton.disabled = !state.actions.saveImageAs?.enabled
   for (const [actionName, value] of [['toggleOutline', settings.showOutline], ['toggleFocus', settings.focusMode], ['toggleTypewriter', settings.typewriterMode]]) {
     document.querySelector(`[data-action="${actionName}"]`)?.setAttribute('aria-pressed', String(value))
   }
-  mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editor.isEditable, markleafImage: getEditorCommandState(editor).imageSelected })
-  for (const [command, mark] of [['toggleBold', 'bold'], ['toggleItalic', 'italic'], ['toggleUnderline', 'underline'], ['toggleStrike', 'strike'], ['toggleHighlight', 'highlight'], ['toggleCode', 'code']]) {
-    document.querySelector(`[data-command="${command}"]`)?.setAttribute('aria-pressed', String(editor.isActive(mark!)))
-  }
+  mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editor.isEditable, markleafImage: state.imageSelected })
 }
 
 function showError(message: string): void {
@@ -222,7 +228,7 @@ function action(action: HostAction, formatCommand?: string): void {
   }
   if (['copyMarkdown', 'copyPlainText', 'copyHtml'].includes(action)) {
     const selection = exportEditorSelection(editor)
-    if (editor.state.selection.empty) { showError('请先选择要复制的内容。'); return }
+    if (!getEditorCommandState(editor).hasSelection) { showError('请先选择要复制的内容。'); return }
     post({ type: 'copy', text: action === 'copyMarkdown' ? selection.markdown : action === 'copyHtml' ? selection.html : selection.text })
     return
   }
@@ -308,7 +314,7 @@ async function importImageFiles(files: File[]): Promise<void> {
 
 function actionContext(): ActionContext {
   if (!editor) return {}
-  return { editable: editor.isEditable, ...getEditorCommandState(editor), ...interactions?.state(),
+  return { editable: editor.isEditable, ...getEditorCommandPresentation(editor, { readOnly: !editor.isEditable }, interactions?.state()),
     imageSource: String(editor.getAttributes('image').src ?? ''),
     linkHref: String(editor.getAttributes('link').href ?? ''), footnoteLabels: getFootnoteLabels(editor) }
 }
@@ -332,10 +338,7 @@ function command(command: string, text?: string, fromHost = false): void {
     return
   }
   let success: boolean | undefined
-  if (command === 'insertImages') {
-    const paths: string[] = JSON.parse(text ?? '[]')
-    success = editor.chain().focus().insertContent(paths.map(src => ({ type: 'image', attrs: { src, alt: decodeURIComponent(src.split('/').at(-1) ?? '图片') } }))).run()
-  } else if (command === 'pastePlainText') {
+  if (command === 'pastePlainText') {
     if (!text) { showError('剪贴板中没有文本。'); return }
     // Windows discards the clipboard's rich format here, then parses Markdown
     // in the visual editor. The VS Code source editor owns literal source edits.
@@ -485,53 +488,8 @@ mount.addEventListener('wheel', event => {
 mount.addEventListener('contextmenu', event => {
   if (!editor || !(event.target instanceof Element)
     || event.target.closest('textarea, input, .markleaf-expanded-source')) return
-  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-  if (!resolved) return
-  const selection = editor.state.selection
-  if (!selection.empty && resolved.pos >= selection.from && resolved.pos <= selection.to) return
-  const node = resolved.inside >= 0 ? editor.state.doc.nodeAt(resolved.inside) : null
-  if (node?.isAtom && node.type.spec.selectable !== false) editor.commands.setNodeSelection(resolved.inside)
-  else if (editor.isEditable) editor.commands.setTextSelection(normalizeContextMenuCaretPosition(editor, resolved.pos))
+  selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
 })
-mount.addEventListener('click', event => {
-  const target = (event.target as Element)
-  const footnote = target.closest<HTMLElement>('sup[data-footnote-ref]')
-  if (footnote && editor) { event.preventDefault(); scrollToFootnoteDefinition(editor, footnote.dataset.footnoteRef ?? ''); return }
-  const link = target.closest<HTMLAnchorElement>('a[href]')
-  if (!link) return
-  event.preventDefault()
-  const primary = /Mac/i.test(navigator.platform) ? event.metaKey : event.ctrlKey
-  if (mode !== 'read' && !primary) return
-  const href = link.getAttribute('href') ?? ''
-  if (href.startsWith('#')) {
-    let slug = href.slice(1)
-    try { slug = decodeURIComponent(slug) } catch { /* Match the literal fragment. */ }
-    const headings = Array.from(mount.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6'))
-    const occurrences = new Map<string, number>()
-    const heading = headings.find(element => {
-      const base = (element.textContent ?? '').toLowerCase().replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/\s/g, '-')
-      const index = occurrences.get(base) ?? 0
-      occurrences.set(base, index + 1)
-      return slug === (index === 0 ? base : `${base}-${index}`)
-    })
-    heading?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-  } else post({ type: 'openLink', href })
-})
-mount.addEventListener('dblclick', event => {
-  if (!editor?.isEditable || !(event.target instanceof Element)) return
-  const node = event.target.closest('.markleaf-math, .markleaf-mermaid')
-  if (!node) return
-  const kind = node.classList.contains('markleaf-mermaid') ? 'mermaid'
-    : node.classList.contains('markleaf-math-inline') ? 'mathInline' : 'mathBlock'
-  editor.state.doc.descendants((documentNode, position) => {
-    if (documentNode.type.name === kind && editor!.view.nodeDOM(position) === node) {
-      expandSourceEditor(editor!, position, kind)
-      return false
-    }
-    return true
-  })
-})
-
 let scrollFrame = 0
 window.addEventListener('scroll', () => {
   if (scrollFrame) return
@@ -580,11 +538,7 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
       case 'command': command(message.command, message.text, true); break
       case 'images':
         for (const [path, url] of Object.entries(message.urls)) imageUrls.set(path, url)
-        for (const image of mount.querySelectorAll<HTMLImageElement>('img[data-markleaf-path]')) {
-          const path = image.getAttribute('data-markleaf-path')!
-          const url = imageUrls.get(path)
-          if (url && image.getAttribute('src') !== url) image.src = url
-        }
+        refreshImageResources(mount)
         break
       case 'settings':
         updateShortcuts(message.shortcuts ?? { overrides: {}, scope: 'user' })

@@ -22,6 +22,10 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
   'exportSelection',
   'exportDocument',
   'selectAll',
+  'scrollToPosition',
+  'goToFootnoteReference',
+  'setBlockHighlight',
+  'clearBlockHighlight',
 ])
 
 export function isHostCommandAllowed(

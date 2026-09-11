@@ -29,7 +29,9 @@ jobs:
         with:
           node-version: '24.x'
           cache: pnpm
-          cache-dependency-path: packages/editor-web/pnpm-lock.yaml
+          cache-dependency-path: |
+            packages/editor-core/pnpm-lock.yaml
+            packages/editor-web/pnpm-lock.yaml
       - name: Resolve release metadata
         run: |
           set -euo pipefail

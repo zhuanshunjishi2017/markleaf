@@ -29,7 +29,7 @@ final class SerialWriteCoordinator {
 
 enum DocumentSaveRevisionPolicy {
     static func isDirty(savedRevision: Int64, currentRevision: Int64) -> Bool {
-        savedRevision != currentRevision
+        DocumentCoreRuntime.shared.require("dirtyAfterSave", ["savedRevision": String(savedRevision), "currentRevision": String(currentRevision)])
     }
 }
 

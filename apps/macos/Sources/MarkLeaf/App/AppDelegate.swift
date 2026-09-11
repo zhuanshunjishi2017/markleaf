@@ -403,27 +403,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        if CommandLine.arguments.contains("--bold-test") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                guard let s = AppWindowManager.shared.primarySession else {
-                    NSApp.terminate(nil)
-                    return
-                }
-                s.loadDocument(markdown: "hello world", fileURL: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    s.executeInlineFormat("toggleBold")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        s.requestSnapshot { result in
-                            if case .success(let md) = result {
-                                let ok = md.trimmingCharacters(in: .whitespacesAndNewlines) == "**hello world**"
-                                AppLog.info("--bold-test: \(md.replacingOccurrences(of: "\n", with: "⏎")) \(ok ? "✓整块加粗" : "✗")")
-                            }
-                            NSApp.terminate(nil)
-                        }
-                    }
-                }
-            }
-        }
         if CommandLine.arguments.contains("--heading-test") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
                 guard let s = AppWindowManager.shared.primarySession else {
@@ -696,27 +675,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     NSApp.terminate(nil)
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-        if CommandLine.arguments.contains("--bold-test") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                guard let s = AppWindowManager.shared.primarySession else {
-                    NSApp.terminate(nil)
-                    return
-                }
-                s.loadDocument(markdown: "hello world", fileURL: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    s.executeInlineFormat("toggleBold")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        s.requestSnapshot { result in
-                            if case .success(let md) = result {
-                                let ok = md.trimmingCharacters(in: .whitespacesAndNewlines) == "**hello world**"
-                                AppLog.info("--bold-test: \(md.replacingOccurrences(of: "\n", with: "⏎")) \(ok ? "✓整块加粗" : "✗")")
-                            }
-                            NSApp.terminate(nil)
                         }
                     }
                 }

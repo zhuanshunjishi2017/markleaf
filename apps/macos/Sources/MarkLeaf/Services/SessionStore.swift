@@ -23,17 +23,27 @@ final class SessionStore {
 
     @discardableResult
     func writeSnapshot(tabID: String, content: String, revision: Int64, encoding: String, newLine: String) throws -> String {
-        let fileName = "snap-\(tabID).md"
+        let fileName = "snap-\(tabID).recovery.json"
+        let content: String = try DocumentCoreRuntime.shared.call("serializeRecovery", [
+            "documentId": tabID, "markdown": content, "revision": String(revision),
+            "encoding": encoding, "newLine": newLine, "timestamp": ISO8601DateFormatter().string(from: Date())
+        ])
         try content.write(to: snapshotsDirectory.appendingPathComponent(fileName), atomically: true, encoding: .utf8)
-        let meta: [String: Any] = ["tabID": tabID, "revision": revision, "encoding": encoding, "newLine": newLine, "timestamp": ISO8601DateFormatter().string(from: Date())]
-        let metaData = try JSONSerialization.data(withJSONObject: meta, options: [.sortedKeys])
-        try metaData.write(to: snapshotsDirectory.appendingPathComponent(fileName + ".meta"), options: .atomic)
         return fileName
     }
 
     func readSnapshot(fileName: String) -> String? {
-        guard fileName.hasPrefix("snap-"), fileName.hasSuffix(".md") else { return nil }
-        return try? String(contentsOf: snapshotsDirectory.appendingPathComponent(fileName), encoding: .utf8)
+        guard fileName.hasPrefix("snap-"), !fileName.contains("/"), !fileName.contains("\\") else { return nil }
+        do {
+            let content = try String(contentsOf: snapshotsDirectory.appendingPathComponent(fileName), encoding: .utf8)
+            if fileName.hasSuffix(".md") { return content } // Existing session manifests reference legacy UTF-8 snapshots.
+            guard fileName.hasSuffix(".recovery.json") else { return nil }
+            let snapshot: KernelRecovery = try DocumentCoreRuntime.shared.call("parseRecovery", ["content": content])
+            return snapshot.markdown
+        } catch {
+            AppLog.warning("会话快照读取失败: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     func commit(manifest: SessionManifest) throws {
@@ -66,7 +76,7 @@ final class SessionStore {
     func pruneOrphanSnapshots(keeping manifest: SessionManifest) {
         let referenced = Set(manifest.windows.flatMap { $0.tabs }.compactMap(\.snapshotFileName))
         guard let files = try? fileManager.contentsOfDirectory(at: snapshotsDirectory, includingPropertiesForKeys: nil) else { return }
-        for file in files where file.pathExtension == "md" && !referenced.contains(file.lastPathComponent) {
+        for file in files where (file.pathExtension == "md" || file.lastPathComponent.hasSuffix(".recovery.json")) && !referenced.contains(file.lastPathComponent) {
             try? fileManager.removeItem(at: file)
             try? fileManager.removeItem(at: file.appendingPathExtension("meta"))
         }

@@ -21,9 +21,6 @@ importers:
       jsdom:
         specifier: 27.2.0
         version: 27.2.0
-      katex:
-        specifier: 0.16.21
-        version: 0.16.21
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -450,10 +447,6 @@ packages:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
 
-  commander@8.3.0:
-    resolution: {integrity: sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww==}
-    engines: {node: '>= 12'}
-
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
@@ -538,10 +531,6 @@ packages:
     peerDependenciesMeta:
       canvas:
         optional: true
-
-  katex@0.16.21:
-    resolution: {integrity: sha512-XvqR7FgOHtWupfMiigNzmh+MgUVmDGU2kXZm899ZkPfcuoPuFxyHmXsgATDpFZDAXCI8tvinaVcDo8PIIJSo4A==}
-    hasBin: true
 
   lru-cache@11.5.2:
     resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
@@ -1054,8 +1043,6 @@ snapshots:
 
   chai@6.2.2: {}
 
-  commander@8.3.0: {}
-
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
@@ -1175,10 +1162,6 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  katex@0.16.21:
-    dependencies:
-      commander: 8.3.0
 
   lru-cache@11.5.2: {}
 

@@ -16,7 +16,6 @@
     "@types/node": "24.10.1",
     "@types/vscode": "1.95.0",
     "jsdom": "27.2.0",
-    "katex": "0.16.21",
     "typescript": "5.9.3",
     "vite": "7.2.4",
     "vitest": "4.0.15"

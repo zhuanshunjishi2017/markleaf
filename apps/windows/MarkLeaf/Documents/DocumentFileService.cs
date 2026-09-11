@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Security;
-using System.Text;
 
 namespace MarkLeaf.Documents;
 
@@ -26,46 +25,34 @@ public sealed class DocumentFileService
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
-        var detected = DocumentEncodingPolicy.Detect(bytes);
-        return await OpenAsync(fullPath, bytes, detected.Policy, detected.PreambleLength, cancellationToken);
+        return await OpenBytesAsync(fullPath, bytes, null, cancellationToken);
     }
 
-    public async Task<MarkdownDocument> OpenAsync(
-        string path,
-        DocumentEncodingPolicy encodingPolicy,
-        CancellationToken cancellationToken = default)
+    public async Task<MarkdownDocument> OpenAsync(string path, DocumentEncodingPolicy encodingPolicy, CancellationToken cancellationToken = default)
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
-        var preambleLength = bytes.AsSpan().StartsWith(DocumentEncodingPolicy.GetPreamble(encodingPolicy))
-            ? DocumentEncodingPolicy.GetPreamble(encodingPolicy).Length
-            : 0;
-        return await OpenAsync(fullPath, bytes, encodingPolicy, preambleLength, cancellationToken);
+        return await OpenBytesAsync(fullPath, bytes, encodingPolicy.Id, cancellationToken);
     }
 
-    private async Task<MarkdownDocument> OpenAsync(
-        string fullPath,
-        byte[] bytes,
-        DocumentEncodingPolicy encodingPolicy,
-        int preambleLength,
-        CancellationToken cancellationToken)
+    private Task<MarkdownDocument> OpenBytesAsync(string fullPath, byte[] bytes, string? encoding, CancellationToken cancellationToken)
     {
-        var markdown = DocumentEncodingPolicy.Decode(bytes, encodingPolicy);
+        var content = DocumentCoreRuntime.Call<KernelDocument>("read", new { bytes = DocumentCoreRuntime.Bytes(bytes), encoding });
+        var policy = DocumentEncodingPolicy.FromId(content.Encoding.Id);
         var info = new FileInfo(fullPath);
-
-        return new MarkdownDocument
+        return Task.FromResult(new MarkdownDocument
         {
             FilePath = fullPath,
             Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath)),
-            Markdown = markdown,
-            Encoding = encodingPolicy.CreateEncoding(),
-            EncodingPolicyId = encodingPolicy.Id,
-            HasBom = encodingPolicy.HasBom || preambleLength > 0,
-            NewLine = DetectNewLine(markdown),
+            Markdown = content.Text,
+            Encoding = policy.CreateEncoding(),
+            EncodingPolicyId = policy.Id,
+            HasBom = policy.HasBom,
+            NewLine = NewLineValue(content.NewLine),
             IsReadOnly = info.IsReadOnly,
             LastKnownWriteTime = info.LastWriteTimeUtc,
-            LastKnownFingerprint = await CreateFingerprintAsync(fullPath, cancellationToken),
-        };
+            LastKnownFingerprint = new FileFingerprint(bytes.Length, info.LastWriteTimeUtc, Convert.ToHexString(SHA256.HashData(bytes))),
+        });
     }
 
     public async Task<bool> HasExternalChangeAsync(
@@ -104,13 +91,13 @@ public sealed class DocumentFileService
         try
         {
             var targetExists = File.Exists(fullPath);
+            var sameTarget = document.FilePath is not null && PathEquals(document.FilePath, fullPath);
+            var targetReadOnly = false;
+            var contentChanged = false;
             if (targetExists)
             {
                 var attributes = File.GetAttributes(fullPath);
-                if ((attributes & FileAttributes.ReadOnly) != 0)
-                {
-                    throw new UnauthorizedAccessException("The target file is read-only.");
-                }
+                targetReadOnly = (attributes & FileAttributes.ReadOnly) != 0;
 
                 targetLock = new FileStream(
                     fullPath,
@@ -120,34 +107,22 @@ public sealed class DocumentFileService
                     64 * 1024,
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-                if (!forceOverwrite
-                    && document.FilePath is not null
-                    && PathEquals(document.FilePath, fullPath))
+                if (sameTarget && !forceOverwrite && document.LastKnownFingerprint is not null)
                 {
-                    if (document.LastKnownFingerprint is null)
-                    {
-                        throw new ExternalDocumentChangedException(fullPath);
-                    }
-
-                    var currentFingerprint = await CreateFingerprintAsync(targetLock, fullPath, cancellationToken);
-                    if (!document.LastKnownFingerprint.HasSameContent(currentFingerprint))
-                    {
-                        throw new ExternalDocumentChangedException(fullPath);
-                    }
+                    var current = await CreateFingerprintAsync(targetLock, fullPath, cancellationToken);
+                    contentChanged = !document.LastKnownFingerprint.HasSameContent(current);
                 }
             }
-            else if (!forceOverwrite
-                && document.FilePath is not null
-                && PathEquals(document.FilePath, fullPath)
-                && document.LastKnownFingerprint is not null)
+            try
             {
-                throw new ExternalDocumentChangedException(fullPath);
+                DocumentCoreRuntime.Call<bool>("validateSave", new { sameTarget, forceOverwrite, targetExists,
+                    acceptedVersion = document.LastKnownFingerprint is not null, contentChanged, readOnly = targetReadOnly });
             }
-
-            var normalizedMarkdown = NormalizeNewLines(markdown, document.NewLine);
-            var encodingPolicy = DocumentEncodingPolicy.FromId(document.EncodingPolicyId);
-            var contentBytes = document.Encoding.GetBytes(normalizedMarkdown);
-            var preamble = document.HasBom ? DocumentEncodingPolicy.GetPreamble(encodingPolicy) : [];
+            catch (DocumentKernelException error) when (error.Code == "external_change") { throw new ExternalDocumentChangedException(fullPath); }
+            var prepared = DocumentCoreRuntime.Call<KernelPreparedSave>("prepareSave", new { text = markdown, encoding = document.EncodingPolicyId, newLine = document.NewLine });
+            var normalizedMarkdown = prepared.Text;
+            var encodingPolicy = DocumentEncodingPolicy.FromId(prepared.Encoding.Id);
+            var contentBytes = prepared.Bytes.Select(value => checked((byte)value)).ToArray();
             temporaryPath = Path.Combine(
                 directory,
                 $".{Path.GetFileName(fullPath)}.markleaf-{Guid.NewGuid():N}.tmp");
@@ -160,11 +135,6 @@ public sealed class DocumentFileService
                 64 * 1024,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                if (preamble.Length > 0)
-                {
-                    await temporary.WriteAsync(preamble, cancellationToken);
-                }
-
                 await temporary.WriteAsync(contentBytes, cancellationToken);
                 await temporary.FlushAsync(cancellationToken);
                 temporary.Flush(flushToDisk: true);
@@ -183,12 +153,12 @@ public sealed class DocumentFileService
             var savedFingerprint = await CreateFingerprintAsync(fullPath, cancellationToken);
             document.FilePath = fullPath;
             document.Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath));
-            document.Markdown = normalizedMarkdown;
+            if (document.Revision <= revision) document.Markdown = normalizedMarkdown;
             document.Encoding = encodingPolicy.CreateEncoding();
             document.EncodingPolicyId = encodingPolicy.Id;
             document.HasBom = encodingPolicy.HasBom;
-            document.Revision = revision;
-            document.IsDirty = false;
+            document.Revision = Math.Max(document.Revision, revision);
+            document.IsDirty = DocumentCoreRuntime.Call<bool>("dirtyAfterSave", new { savedRevision = revision.ToString(), currentRevision = document.Revision.ToString() });
             document.IsReadOnly = false;
             document.LastKnownWriteTime = savedFingerprint.LastWriteTime;
             document.LastKnownFingerprint = savedFingerprint;
@@ -210,45 +180,9 @@ public sealed class DocumentFileService
         }
     }
 
-    internal static string DetectNewLine(string text)
-    {
-        var crlf = 0;
-        var lf = 0;
-        var cr = 0;
-        for (var index = 0; index < text.Length; index++)
-        {
-            if (text[index] == '\r')
-            {
-                if (index + 1 < text.Length && text[index + 1] == '\n')
-                {
-                    crlf++;
-                    index++;
-                }
-                else
-                {
-                    cr++;
-                }
-            }
-            else if (text[index] == '\n')
-            {
-                lf++;
-            }
-        }
-
-        if (crlf == 0 && lf == 0 && cr == 0)
-        {
-            return Environment.NewLine;
-        }
-
-        return crlf >= lf && crlf >= cr ? "\r\n" : lf >= cr ? "\n" : "\r";
-    }
-
-    internal static string NormalizeNewLines(string text, string newLine)
-    {
-        return text.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Replace("\n", newLine, StringComparison.Ordinal);
-    }
+    internal static string DetectNewLine(string text) => NewLineValue(DocumentCoreRuntime.Call<string>("newLine", new { text }));
+    private static string NewLineValue(string style) => style switch { "CRLF" => "\r\n", "CR" => "\r", "Mixed" => "Mixed", _ => "\n" };
+    internal static string NormalizeNewLines(string text, string newLine) => DocumentCoreRuntime.Call<string>("normalizeNewLines", new { text, style = newLine });
 
     private static async Task<FileFingerprint> CreateFingerprintAsync(
         string path,

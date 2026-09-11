@@ -2,6 +2,7 @@
 export type EditorCommandState = {
   canUndo: boolean
   canRedo: boolean
+  expandedSource?: boolean
   hasSelection: boolean
   paragraph: boolean
   headingLevel: number | null

@@ -1,3 +1,7 @@
+import { FOOTNOTE_DEFINITION_SENTINEL, protectFootnoteDefinitionsForVisualMarkdown, frontMatterTokenizer, highlightTokenizer, alertTokenizer, footnoteTokenizer, normalizeDisplayMathAfterList } from './document/markdown-syntax'
+import { resolveImageResource, getImageResourcePath as getMarkLeafImagePath } from './image-resources'
+import { scrollToOutlineHeading } from './outline'
+import { resolveEditorActions, getEditorSemanticContext, type EditorActionContext } from './command-state'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
 import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
@@ -51,7 +55,6 @@ type FindHighlightState = { matches: TextMatch[]; current: number }
 type FootnoteDefinition = { label: string; body: string }
 const EMPTY_PARAGRAPH_MARKDOWN = '&nbsp;'
 const NBSP_CHAR = '\u00A0'
-const FOOTNOTE_DEFINITION_SENTINEL = '\u2060'
 const VISUAL_INDENT = '  '
 const MERMAID_CODE_BLOCK_LANGUAGE = 'mermaid'
 let mermaidRenderButtonText = sharedEditorStrings('zh-Hans', 'ctrl').mermaidRender
@@ -264,24 +267,10 @@ const MarkdownFrontMatter = Node.create({
     return `---\n${getNodeText(node)}\n---`
   },
 
-  markdownTokenizer: {
-    name: 'frontMatter',
-    level: 'block',
-    start: (src: string) => src.startsWith('---\n') || src.startsWith('---\r\n') ? 0 : -1,
-    tokenize: (src: string, tokens: unknown[]) => {
-      if (tokens.length > 0) return undefined
-      const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(src)
-      if (!match) return undefined
-      return {
-        type: 'frontMatter',
-        raw: match[0],
-        text: match[1] ?? '',
-      }
-    },
-  },
+  markdownTokenizer: frontMatterTokenizer,
 
   addNodeView() {
-    return ({ node, editor, getPos }) => {
+    return ({ node }) => {
       const container = document.createElement('div')
       container.className = 'markleaf-front-matter markleaf-front-matter-collapsed'
 
@@ -747,21 +736,7 @@ const MarkdownHighlight = Mark.create({
     return `==${helpers.renderChildren(node.content || [])}==`
   },
 
-  markdownTokenizer: {
-    name: 'highlight',
-    level: 'inline',
-    start: (src: string) => src.indexOf('=='),
-    tokenize: (src: string, _tokens: unknown[], helpers: any) => {
-      const match = /^==([^=\n]+?)==/.exec(src)
-      if (!match) return undefined
-      return {
-        type: 'highlight',
-        raw: match[0],
-        text: match[1],
-        tokens: helpers.inlineTokens(match[1]),
-      }
-    },
-  },
+  markdownTokenizer: highlightTokenizer,
 
   addInputRules() {
     return [
@@ -834,36 +809,7 @@ const MarkdownAlert = Node.create({
     return [`> [!${type}]`, ...lines.map((line: string) => `> ${line}`)].join('\n')
   },
 
-  markdownTokenizer: {
-    name: 'alert',
-    level: 'block',
-    start: (src: string) => src.search(/^ {0,3}>[ \t]*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/m),
-    tokenize: (src: string, _tokens: unknown[], helpers: any) => {
-      const first = /^ {0,3}>[ \t]*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i.exec(src)
-      if (!first) return undefined
-      const type = first[1]!.toUpperCase()
-      const lines = [first[0].replace(/\r?\n$/, '')]
-      let offset = first[0].length
-      while (offset < src.length) {
-        const lineEnd = src.indexOf('\n', offset)
-        const end = lineEnd < 0 ? src.length : lineEnd
-        const line = src.slice(offset, end)
-        if (!/^ {0,3}>[ \t]?/.test(line)) break
-        lines.push(line)
-        offset = lineEnd < 0 ? src.length : lineEnd + 1
-      }
-      const body = lines.slice(1)
-        .map(line => line.replace(/^ {0,3}>[ \t]?/, ''))
-        .join('\n')
-        .replace(/\n+$/, '')
-      return {
-        type: 'alert',
-        alertType: type,
-        raw: src.slice(0, offset),
-        tokens: helpers.blockTokens(body),
-      }
-    },
-  },
+  markdownTokenizer: alertTokenizer,
 
   addCommands(): any {
     return {
@@ -890,13 +836,13 @@ function getListItemTypeAtSelection(editor: Editor): 'listItem' | 'taskItem' | n
   return null
 }
 
-export function indentListItem(editor: Editor): boolean {
+function indentListItem(editor: Editor): boolean {
   if (!editor.isEditable) return false
   const listItemType = getListItemTypeAtSelection(editor)
   return listItemType ? editor.chain().focus().sinkListItem(listItemType).run() : false
 }
 
-export function outdentListItem(editor: Editor): boolean {
+function outdentListItem(editor: Editor): boolean {
   if (!editor.isEditable) return false
   const listItemType = getListItemTypeAtSelection(editor)
   return listItemType ? editor.chain().focus().liftListItem(listItemType).run() : false
@@ -1229,12 +1175,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function protectFootnoteDefinitionsForVisualMarkdown(markdown: string): string {
-  return markdown.replace(
-    /(^|\n)( {0,3})(\[\^[^\]\n]+\]:)/g,
-    (_match, lineStart: string, indent: string, marker: string) => `${lineStart}${indent}${FOOTNOTE_DEFINITION_SENTINEL}${marker}`,
-  )
-}
+
 
 function getNodeText(node: any): string {
   if (typeof node?.textContent === 'string') return node.textContent
@@ -1553,29 +1494,6 @@ function parseNullableNumber(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function getMarkLeafImagePath(element: Element): string | null {
-  const embeddedPath = element.getAttribute('data-markleaf-path')
-  if (embeddedPath) {
-    return embeddedPath
-  }
-
-  const src = element.getAttribute('src')?.trim()
-  if (!src) {
-    return null
-  }
-
-  try {
-    const url = new URL(src)
-    if (url.origin === 'https://assets.local' && url.pathname === '/image') {
-      return url.searchParams.get('path')
-    }
-  } catch {
-    // Relative and Windows paths are handled by data-markleaf-path, not URL parsing.
-  }
-
-  return null
-}
-
 function escapeMarkdownImageText(value: unknown): string {
   return typeof value === 'string' ? value.replace(/([\\\[\]])/g, '\\$1') : ''
 }
@@ -1737,7 +1655,7 @@ const MarkLeafImage = Image.extend({
     const caption = typeof attrs.caption === 'string' && attrs.caption.length > 0 ? attrs.caption : null
     const img = ['img', {
       ...HTMLAttributes,
-      src: toVirtualImageUrl(markdownPath),
+      src: resolveImageResource(markdownPath),
       'data-markleaf-path': markdownPath,
       style: styles.join(';'),
     }] as [string, Record<string, any>]
@@ -1824,7 +1742,7 @@ const MarkLeafImage = Image.extend({
 
       const syncImage = (attrs: Record<string, unknown>) => {
         const markdownPath = typeof attrs.src === 'string' ? attrs.src : ''
-        image.src = toVirtualImageUrl(markdownPath)
+        image.src = resolveImageResource(markdownPath)
         image.setAttribute('data-markleaf-path', markdownPath)
         image.setAttribute('data-markleaf-rotation', String(normalizeImageRotation(attrs.rotation)))
         if (typeof attrs.alt === 'string') image.alt = attrs.alt
@@ -2037,16 +1955,7 @@ const FootnoteReference = Node.create({
     return helpers.createNode('footnoteReference', { label: token.text ?? '' })
   },
 
-  markdownTokenizer: {
-    name: 'footnoteReference',
-    level: 'inline',
-    start: (src: string) => src.indexOf('[^'),
-    tokenize: (src: string) => {
-      const match = /^\[\^([^\]\n]+)\](?!:)/.exec(src)
-      if (!match) return undefined
-      return { type: 'footnoteReference', raw: match[0], text: match[1] }
-    },
-  },
+  markdownTokenizer: footnoteTokenizer,
 
   addInputRules() {
     return [
@@ -2265,11 +2174,7 @@ function createCodeBlockControls(editor: Editor, position: number): HTMLDivEleme
   const copy = document.createElement('button')
   copy.type = 'button'
   copy.className = 'markleaf-code-block-copy'
-  // Windows uses the Fluent Icons private-use glyph. WKWebView/macOS does not
-  // ship that font, so use a Unicode fallback on the macOS host only.
-  copy.textContent = document.documentElement.classList.contains('markleaf-host-macos')
-    ? '⧉'
-    : '\uE8C8'
+  copy.textContent = '⧉'
   copy.tabIndex = -1
   copy.setAttribute('aria-label', 'Copy code block')
 
@@ -2544,6 +2449,45 @@ if (overVectorSymbol) {
 }
 
 const expandedSourceEditorKey = new PluginKey<ExpandedSourceEditor | null>('markleaf-expanded-source-editor')
+const expandedSourceElements = new WeakMap<Editor, HTMLElement>()
+
+function expandedSourceElement(editor: Editor): HTMLElement | undefined {
+  const element = expandedSourceElements.get(editor)
+  return expandedSourceEditorKey.getState(editor.state) && element?.isConnected ? element : undefined
+}
+
+/** All hosts send ordinary editor commands, including when a formula source is open. */
+function executeExpandedSourceCommand(editor: Editor, command: string, text?: string): boolean | undefined {
+  const code = expandedSourceElement(editor)
+  if (!code || !['undo', 'redo', 'selectAll', 'deleteSelection', 'pasteText', 'pasteHtml'].includes(command)) return undefined
+  const selection = getCodeSelectionOffsets(code)
+  if (command === 'selectAll') {
+    code.focus({ preventScroll: true })
+    setCodeSelectionOffsets(code, 0, code.textContent?.length ?? 0)
+    return true
+  }
+  if (!editor.isEditable) return false
+  if (command === 'undo' || command === 'redo') {
+    const success = command === 'undo' ? editor.commands.undo() : editor.commands.redo()
+    if (success) {
+      code.focus({ preventScroll: true })
+      const size = code.textContent?.length ?? 0
+      setCodeSelectionOffsets(code, Math.min(selection.anchor, size), Math.min(selection.focus, size))
+    }
+    return success
+  }
+  if (command !== 'deleteSelection' && text === undefined) return false
+  if (command === 'deleteSelection' && selection.from === selection.to) return false
+  const replacement = command === 'deleteSelection' ? '' : command === 'pasteHtml'
+    ? new DOMParser().parseFromString(text!, 'text/html').body.textContent ?? '' : text!
+  const current = code.textContent ?? ''
+  code.textContent = current.slice(0, selection.from) + replacement + current.slice(selection.to)
+  code.focus({ preventScroll: true })
+  setCodeSelectionOffsets(code, selection.from + replacement.length, selection.from + replacement.length)
+  code.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replacement }))
+  return true
+}
+
 
 function positionFormulaSymbolPanels(toolbar: HTMLElement): void {
   const toolbarRect = toolbar.getBoundingClientRect()
@@ -2704,6 +2648,7 @@ function createExpandedSourceEditor(
   pre.className = 'markleaf-expanded-source-code'
   const code = document.createElement('code')
   code.className = `markleaf-expanded-source-editor ${kind === 'mermaid' ? 'language-mermaid' : 'language-latex'}`
+  expandedSourceElements.set(editor, code)
   const editable = editor.isEditable
   code.contentEditable = editable ? 'true' : 'false'
   code.spellcheck = false
@@ -2726,16 +2671,15 @@ function createExpandedSourceEditor(
     'keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy',
     'compositionstart', 'compositionupdate', 'compositionend',
   ]) {
-    if (eventName === 'contextmenu' && textDocumentHostEditors.has(editor)) continue
+    if (eventName === 'contextmenu') continue
     code.addEventListener(eventName, stopEditorEvent)
   }
   code.addEventListener('contextmenu', (event) => {
-    if (textDocumentHostEditors.has(editor)) return
+    const contextMenu = sourceContextMenus.get(editor)
+    if (!contextMenu) return
     event.preventDefault()
     event.stopPropagation()
-    window.dispatchEvent(new CustomEvent('markleaf-expanded-source-contextmenu', {
-      detail: { clientX: event.clientX, clientY: event.clientY },
-    }))
+    contextMenu({ clientX: event.clientX, clientY: event.clientY })
   })
   code.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' || (kind !== 'mermaid' && event.key === 'Enter'
@@ -2839,7 +2783,7 @@ function createExpandedSourceEditor(
   return { dom: wrapper, code }
 }
 
-function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement, belowNode = false): void {
+function positionExpandedSourceEditor(editor: Editor, position: number, overlay: HTMLElement): void {
   const anchor = editor.view.nodeDOM(position)
   if (!(anchor instanceof HTMLElement)) return
   const anchorRect = anchor.getBoundingClientRect()
@@ -2852,32 +2796,21 @@ function positionExpandedSourceEditor(editor: Editor, position: number, overlay:
   overlay.hidden = false
   const overlayWidth = overlay.getBoundingClientRect().width || width
   const left = Math.max(viewportPadding, Math.min(documentRect.left, window.innerWidth - viewportPadding - overlayWidth))
-  if (belowNode) {
-    // VS Code keeps the source below its node in document coordinates. It
-    // scrolls out of view with the document, without flipping or pinning.
-    overlay.style.position = 'absolute'
-    overlay.style.left = `${left + window.scrollX}px`
-    overlay.style.top = `${anchorRect.bottom + window.scrollY + gap}px`
-  } else {
-    // Native hosts retain their viewport-aware floating editor.
-    const overlayHeight = overlay.getBoundingClientRect().height
-    const below = anchorRect.bottom + gap
-    const above = anchorRect.top - gap - overlayHeight
-    const maxTop = Math.max(viewportPadding, window.innerHeight - viewportPadding - overlayHeight)
-    const top = below <= maxTop ? below : above >= viewportPadding ? above : maxTop
-    overlay.style.left = `${left}px`
-    overlay.style.top = `${Math.max(viewportPadding, top)}px`
-  }
+  const overlayHeight = overlay.getBoundingClientRect().height
+  const below = anchorRect.bottom + gap
+  const above = anchorRect.top - gap - overlayHeight
+  const maxTop = Math.max(viewportPadding, window.innerHeight - viewportPadding - overlayHeight)
+  const top = below <= maxTop ? below : above >= viewportPadding ? above : maxTop
+  overlay.style.left = `${left}px`
+  overlay.style.top = `${Math.max(viewportPadding, top)}px`
   const toolbar = overlay.querySelector<HTMLElement>('.markleaf-formula-symbol-toolbar')
   if (toolbar) positionFormulaSymbolPanels(toolbar)
 }
 
-const ExpandedSourceEditor = Extension.create<{ placement: 'floating' | 'below' }>({
+const ExpandedSourceEditor = Extension.create({
   name: 'markleafExpandedSourceEditor',
-  addOptions: () => ({ placement: 'floating' }),
   addProseMirrorPlugins() {
     const editor = this.editor
-    const belowNode = this.options.placement === 'below'
     return [new Plugin({
       key: expandedSourceEditorKey,
       state: {
@@ -2923,7 +2856,7 @@ const ExpandedSourceEditor = Extension.create<{ placement: 'floating' | 'below' 
           window.setTimeout(finish, 240)
         }
         const reposition = () => {
-          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay, belowNode)
+          if (overlay && current) positionExpandedSourceEditor(editor, current.position, overlay)
         }
         const handleOutsidePointer = (event: PointerEvent) => {
           if (overlay && event.composedPath().includes(overlay)) return
@@ -2981,11 +2914,11 @@ const ExpandedSourceEditor = Extension.create<{ placement: 'floating' | 'below' 
             }
             removeOverlay()
             current = expanded
-            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind, belowNode)
+            const created = createExpandedSourceEditor(editor, expanded.position, expanded.kind)
             overlay = created.dom
             overlay.hidden = true
             document.body.append(overlay)
-            positionExpandedSourceEditor(editor, expanded.position, overlay, belowNode)
+            positionExpandedSourceEditor(editor, expanded.position, overlay)
           },
           destroy: () => {
             document.removeEventListener('pointerdown', handleOutsidePointer)
@@ -3129,14 +3062,6 @@ function getCaretOffset(root: HTMLElement): number {
   const range = document.createRange()
   range.selectNodeContents(root)
   range.setEnd(selection.focusNode!, selection.focusOffset)
-  return range.toString().length
-}
-
-function getTextOffset(root: HTMLElement, node: globalThis.Node | null, offset: number): number {
-  if (!node || !root.contains(node)) return root.textContent?.length ?? 0
-  const range = document.createRange()
-  range.selectNodeContents(root)
-  range.setEnd(node, offset)
   return range.toString().length
 }
 
@@ -3316,7 +3241,7 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
   return null
 }
 
-export const editorExtensions = [
+const editorExtensions = [
   MarkdownFrontMatter,
   MarkdownShortcuts,
   MarkdownEmoji,
@@ -3381,11 +3306,10 @@ export type EditorCreationOptions = {
   handlePaste?: (event: ClipboardEvent) => boolean
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
-  // VS Code anchors formula/diagram source beneath the node in the document.
-  sourceEditorPlacement?: 'floating' | 'below'
+  sourceContextMenu?: (point: { clientX: number; clientY: number }) => void
 }
 
-const textDocumentHostEditors = new WeakSet<Editor>()
+const sourceContextMenus = new WeakMap<Editor, NonNullable<EditorCreationOptions['sourceContextMenu']>>()
 
 export function createEditor(
   element: HTMLElement,
@@ -3395,7 +3319,6 @@ export function createEditor(
 ): Editor {
   const extensions = editorExtensions.map(extension => {
     if (options.externalHistory && extension.name === 'starterKit') return extension.configure({ undoRedo: false })
-    if (options.sourceEditorPlacement && extension.name === ExpandedSourceEditor.name) return ExpandedSourceEditor.configure({ placement: options.sourceEditorPlacement })
     return extension
   })
   const editor = new Editor({
@@ -3430,7 +3353,7 @@ export function createEditor(
     },
   })
   normalizeTableCaptions(editor)
-  if (options.externalHistory) textDocumentHostEditors.add(editor)
+  if (options.sourceContextMenu) sourceContextMenus.set(editor, options.sourceContextMenu)
   if (hasListFormattingThatNeedsPreservation(content)) {
     originalListMarkdown.set(editor, { doc: editor.state.doc, markdown: content })
   }
@@ -3441,54 +3364,7 @@ export function createEditor(
 // text by a blank line. This is especially important in list items: without
 // that boundary Marked parses `\[` and `\]` as escaped literal brackets in
 // the paragraph instead of giving the block tokenizer a chance to see them.
-function normalizeDisplayMathAfterList(markdown: string): string {
-  const lines = markdown.match(/[^\n]*\n|[^\n]+$/g) ?? []
-  const defaultEol = /\r?\n/.exec(markdown)?.[0] ?? '\n'
-  const result: string[] = []
-  let fence = ''
-  let mathClose = ''
-  let dedentMath = false
-  for (const [index, line] of lines.entries()) {
-    const trimmed = line.trim()
-    const eol = line.endsWith('\r\n') ? '\r\n' : line.endsWith('\n') ? '\n' : defaultEol
-    const codeFence = /^\s*(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})/.exec(line)?.[1]
-    if (fence) {
-      if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(trimmed)) fence = ''
-      result.push(line)
-      continue
-    }
-    if (mathClose) {
-      const closesMath = dedentMath ? trimmed === mathClose : line.includes(mathClose)
-      result.push(closesMath && dedentMath ? line.replace(/^[ \t]+/, '') : line)
-      if (closesMath) {
-        if (dedentMath && lines[index + 1]?.trim()) result.push(eol)
-        mathClose = ''
-        dedentMath = false
-      }
-      continue
-    }
-    if (codeFence) { fence = codeFence; result.push(line); continue }
 
-    // List generators indent complete display formulas, including nested
-    // lists. Dedent their delimiters only; keep formula payload and code
-    // fences intact, and do not turn an unclosed delimiter into a block.
-    const indentedDisplay = /^[ \t]{2,}(\$\$[^\r\n]*\$\$|\\\[[^\r\n]*\\\]|\$\$|\\\[)[ \t]*(?:\r?\n)?$/.test(line)
-    const math = (indentedDisplay ? /^[ \t]*(\$\$|\\\[)/ : /^[ \t]{0,3}(\$\$|\\\[)/).exec(line)
-    if (!math) { result.push(line); continue }
-    const close = math[1] === '$$' ? '$$' : '\\]'
-    const singleLine = line.slice(math[0].length).includes(close)
-    if (!singleLine) {
-      const hasCloser = lines.slice(index + 1).some(next => indentedDisplay ? next.trim() === close : next.includes(close))
-      if (!hasCloser) { result.push(line); continue }
-      mathClose = close
-      dedentMath = indentedDisplay
-    }
-    if (result.at(-1)?.trim()) result.push(eol)
-    result.push(indentedDisplay ? line.replace(/^[ \t]+/, '') : line)
-    if (indentedDisplay && singleLine && lines[index + 1]?.trim()) result.push(eol)
-  }
-  return result.join('')
-}
 
 export function replaceEditorDocument(
   editor: Editor,
@@ -3541,6 +3417,8 @@ export type MarkdownPasteResult = {
  * discarded merely because one Markdown construct is unsupported. */
 export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): MarkdownPasteResult {
   if (!markdown) return { success: false, outcome: 'failed', error: 'Clipboard text is empty' }
+  const expanded = executeExpandedSourceCommand(editor, 'pasteText', markdown)
+  if (expanded !== undefined) return { success: expanded, outcome: expanded ? 'plainText' : 'failed' }
 
   try {
     // Keep pasted Markdown consistent with full-document loading. Without the
@@ -3580,6 +3458,8 @@ export function pasteClipboardContentWithResult(
   plainText: string,
   html: string,
 ): { success: boolean; outcome: MarkdownPasteOutcome | 'formatted'; error?: string } {
+  const expanded = executeExpandedSourceCommand(editor, plainText ? 'pasteText' : 'pasteHtml', plainText || html)
+  if (expanded !== undefined) return { success: expanded, outcome: expanded ? 'plainText' : 'failed' }
   if (plainText) {
     if (shouldParsePastedTextAsMarkdown(editor, plainText, html)) {
       return pasteMarkdownTextWithResult(editor, plainText)
@@ -3734,27 +3614,6 @@ export function setCodeHighlightVisible(editor: Editor, visible: boolean): void 
   codeHighlightVisible = visible
   // Display-only transactions must not cause StarterKit to append content.
   editor.view.dispatch(editor.state.tr.setMeta('skipTrailingNode', true))
-}
-
-let hostImageResolver: ((markdownPath: string) => string) | undefined
-
-export function setHostImageResolver(resolver?: (markdownPath: string) => string): void {
-  hostImageResolver = resolver
-}
-
-export function toVirtualImageUrl(markdownPath: string): string {
-  if (hostImageResolver) return hostImageResolver(markdownPath)
-  // 远程图片（http/https）原样返回，由浏览器直接加载；仅本地路径走虚拟资源服务。
-  if (/^(https?:|mailto:)/i.test(markdownPath)) {
-    return markdownPath
-  }
-  let decodedPath = markdownPath
-  try {
-    decodedPath = decodeURIComponent(markdownPath)
-  } catch {
-    // Invalid percent escapes remain literal and are safely encoded below.
-  }
-  return `https://assets.local/image?path=${encodeURIComponent(decodedPath)}`
 }
 
 export function getMarkdown(editor: Editor): string {
@@ -3951,7 +3810,7 @@ export function setMarkdownEditingSettings(settings: MarkdownEditingSettings): v
   escapeMarkdownLiteralSymbols = settings.escapeMarkdownLiteralSymbols !== false
 }
 
-export function getVisualCursorLineNumber(editor: Editor): number {
+function getVisualCursorLineNumber(editor: Editor): number {
   const textBeforeCursor = editor.state.doc.textBetween(0, editor.state.selection.from, '\n', '\n')
   return textBeforeCursor.split('\n').length
 }
@@ -4536,17 +4395,11 @@ export type SelectionExport = { text: string; markdown: string; html: string }
 export function exportEditorSelection(editor: Editor): SelectionExport {
   // 公式/图表浮层源码框是普通 DOM 文本，没有 ProseMirror 选区：
   // 导出只取用户在源码框里真正选中的片段，且不改变焦点或选区。
-  const expanded = expandedSourceEditorKey.getState(editor.state)
-  if (expanded) {
-    const nativeSelection = window.getSelection()
-    const source = nativeSelection?.anchorNode?.parentElement?.closest('.markleaf-expanded-source-editor')
-      ?? (document.activeElement instanceof HTMLElement
-        ? document.activeElement.closest('.markleaf-expanded-source-editor') : null)
-    if (source && nativeSelection && source.contains(nativeSelection.anchorNode)
-      && source.contains(nativeSelection.focusNode)) {
-      const text = nativeSelection.toString()
-      return { text, markdown: text, html: '' }
-    }
+  const source = expandedSourceElement(editor)
+  if (source) {
+    const selection = getCodeSelectionOffsets(source)
+    const text = (source.textContent ?? '').slice(selection.from, selection.to)
+    return { text, markdown: text, html: '' }
   }
   const selection = editor.state.selection
   if (selection.empty) return { text: '', markdown: '', html: '' }
@@ -4699,7 +4552,8 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   return {
     canUndo: editor.can().undo?.() ?? false,
     canRedo: editor.can().redo?.() ?? false,
-    hasSelection: !editor.state.selection.empty,
+    hasSelection: expandedSourceElement(editor) ? exportEditorSelection(editor).text.length > 0 : !editor.state.selection.empty,
+    expandedSource: !!expandedSourceElement(editor),
     paragraph: editor.isActive('paragraph'),
     headingLevel,
     bold: editor.isActive('bold'),
@@ -4890,13 +4744,23 @@ export function sanitizePastedHtml(html: string): string {
   return parsed.body.innerHTML
 }
 
+export function getEditorCommandPresentation(
+  editor: Editor,
+  context: EditorActionContext = { readOnly: !editor.isEditable },
+  overrides: Partial<EditorCommandState> = {},
+) {
+  const state = { ...getEditorCommandState(editor), ...overrides }
+  return { ...state, actions: resolveEditorActions(state, context), semanticContext: getEditorSemanticContext(state, context.sourceMode) }
+}
+
 export function executeEditorCommand(
   editor: Editor,
   command: string,
   text?: string,
   coordinates?: { left: number; top: number },
-  applyToCurrentTextBlockWhenEmpty = false,
 ): boolean {
+  const expanded = executeExpandedSourceCommand(editor, command, text)
+  if (expanded !== undefined) return expanded
   const chain = editor.chain().focus()
   const commands: Record<string, () => boolean> = {
     undo: () => chain.undo().run(),
@@ -4904,8 +4768,8 @@ export function executeEditorCommand(
     deleteSelection: () => chain.deleteSelection().run(),
     pasteText: () => typeof text === 'string' && editor.view.pasteText(text),
     pasteHtml: () => typeof text === 'string' && editor.view.pasteHTML(text),
-    toggleBold: () => toggleInlineMark(editor, 'bold', applyToCurrentTextBlockWhenEmpty),
-    toggleItalic: () => toggleInlineMark(editor, 'italic', applyToCurrentTextBlockWhenEmpty),
+    toggleBold: () => toggleInlineMark(editor, 'bold'),
+    toggleItalic: () => toggleInlineMark(editor, 'italic'),
     setLink: () => {
       if (!text || !isAllowedLink(text)) {
         return false
@@ -4970,9 +4834,9 @@ export function executeEditorCommand(
     setHeading4: () => chain.setHeading({ level: 4 }).run(),
     setHeading5: () => chain.setHeading({ level: 5 }).run(),
     setHeading6: () => chain.setHeading({ level: 6 }).run(),
-    toggleUnderline: () => toggleInlineMark(editor, 'underline', applyToCurrentTextBlockWhenEmpty),
-    toggleStrike: () => toggleInlineMark(editor, 'strike', applyToCurrentTextBlockWhenEmpty),
-    toggleHighlight: () => toggleInlineMark(editor, 'highlight', applyToCurrentTextBlockWhenEmpty),
+    toggleUnderline: () => toggleInlineMark(editor, 'underline'),
+    toggleStrike: () => toggleInlineMark(editor, 'strike'),
+    toggleHighlight: () => toggleInlineMark(editor, 'highlight'),
     toggleCode: () => typeof text === 'string'
       ? chain.insertContent({ type: 'text', text, marks: [{ type: 'code' }] }).run()
       : chain.toggleCode().run(),
@@ -5020,6 +4884,15 @@ export function executeEditorCommand(
         alt,
       }).run()
     },
+    insertImages: () => {
+      const paths: unknown = JSON.parse(text ?? '[]')
+      if (!Array.isArray(paths) || !paths.length || !paths.every(path => typeof path === 'string' && path.length > 0)) return false
+      return editor.chain().focus().insertContent(paths.map(src => {
+        let alt = src.split('/').at(-1) || '图片'
+        try { alt = decodeURIComponent(alt) } catch { /* A literal percent is part of the filename. */ }
+        return { type: 'image', attrs: { src, alt } }
+      })).run()
+    },
     rotateImageClockwise: () => rotateSelectedImageClockwise(editor),
     resizeImage: () => resizeImageToPercent(editor, Number(text)),
     changeImage: () => changeImageSource(editor, text),
@@ -5036,16 +4909,6 @@ export function executeEditorCommand(
       setBlockHighlight(editor, null)
       return true
     },
-    scrollToHeading: () => {
-      if (!text) {
-        return false
-      }
-      const heading = Array.from(
-        document.querySelectorAll<HTMLElement>('.markleaf-document h1, .markleaf-document h2, .markleaf-document h3'),
-      ).find((element) => element.textContent?.trim() === text)
-      heading?.scrollIntoView({ block: 'start' })
-      return heading !== undefined
-    },
     setBlockHighlight: () => {
       const position = Number.parseInt(text ?? '', 10)
       if (!Number.isInteger(position) || position < 0 || position > editor.state.doc.content.size) return false
@@ -5058,23 +4921,10 @@ export function executeEditorCommand(
         return false
       }
 
-      const node = editor.view.nodeDOM(position)
-      const heading = node instanceof HTMLElement && /^H[1-6]$/.test(node.tagName)
-        ? node
-        : null
-      if (!heading) {
-        return false
-      }
-
-      const currentTop = document.scrollingElement?.scrollTop
-        ?? document.documentElement.scrollTop
-        ?? document.body.scrollTop
-      const lineHeight = Number.parseFloat(window.getComputedStyle(heading).lineHeight)
-      const topOffset = Number.isFinite(lineHeight) ? lineHeight / 2 : 12
-      const top = Math.max(0, currentTop + heading.getBoundingClientRect().top - topOffset)
-      scrollPageTo(top)
-      highlightOutlineHeading(heading)
-      return true
+      const success = scrollToOutlineHeading(editor, position)
+      const heading = editor.view.nodeDOM(position)
+      if (success && heading instanceof HTMLElement) highlightOutlineHeading(heading)
+      return success
     },
   }
 
@@ -5124,21 +4974,15 @@ function highlightOutlineHeading(heading: HTMLElement): void {
 function toggleInlineMark(
   editor: Editor,
   mark: 'bold' | 'italic' | 'underline' | 'strike' | 'highlight',
-  applyToCurrentTextBlockWhenEmpty: boolean,
 ): boolean {
   const selection = editor.state.selection
   const selectedRange = { from: selection.from, to: selection.to }
 
   // 数学公式是独立的原子节点，不属于可应用文字格式的范围。
-  // 尤其是整段加粗时，直接对包含公式的块执行 toggleBold 会让 Markdown
+  // 对包含公式的选区执行 toggleBold 时，要避免 Markdown
   // 序列化器把 ** 插入到公式节点边界内部，生成无效的标记嵌套。
   if (mark === 'bold') {
-    const from = applyToCurrentTextBlockWhenEmpty && selection.empty && selection.$from.parent.isTextblock
-      ? selection.$from.start()
-      : selection.from
-    const to = applyToCurrentTextBlockWhenEmpty && selection.empty && selection.$from.parent.isTextblock
-      ? selection.$from.end()
-      : selection.to
+    const { from, to } = selection
     const textRanges = getTextRangesExcludingMath(editor, from, to)
     const hasMath = hasMathNodeInRange(editor, from, to)
     if (hasMath) {
@@ -5152,23 +4996,12 @@ function toggleInlineMark(
     }
   }
 
-  if (!applyToCurrentTextBlockWhenEmpty || !selection.empty || !selection.$from.parent.isTextblock) {
-    const chain = editor.chain().focus()
-    if (mark === 'bold') return chain.toggleBold().run()
-    if (mark === 'italic') return chain.toggleItalic().run()
-    if (mark === 'underline') return chain.toggleUnderline().run()
-    if (mark === 'highlight') return chain.toggleMark('highlight').run()
-    return chain.toggleStrike().run()
-  }
-
-  const cursor = selection.from
-  const block = { from: selection.$from.start(), to: selection.$from.end() }
-  const chain = editor.chain().focus().setTextSelection(block)
-  if (mark === 'bold') return chain.toggleBold().setTextSelection(cursor).run()
-  if (mark === 'italic') return chain.toggleItalic().setTextSelection(cursor).run()
-  if (mark === 'underline') return chain.toggleUnderline().setTextSelection(cursor).run()
-  if (mark === 'highlight') return chain.toggleMark('highlight').setTextSelection(cursor).run()
-  return chain.toggleStrike().setTextSelection(cursor).run()
+  const chain = editor.chain().focus()
+  if (mark === 'bold') return chain.toggleBold().run()
+  if (mark === 'italic') return chain.toggleItalic().run()
+  if (mark === 'underline') return chain.toggleUnderline().run()
+  if (mark === 'highlight') return chain.toggleMark('highlight').run()
+  return chain.toggleStrike().run()
 }
 
 function hasMathNodeInRange(editor: Editor, from: number, to: number): boolean {
@@ -5738,7 +5571,7 @@ function expandSelectedMermaid(editor: Editor): boolean {
   return expandSourceEditor(editor, selected.from, 'mermaid')
 }
 
-export function renderMermaidCodeBlockAt(editor: Editor, position: number): boolean {
+function renderMermaidCodeBlockAt(editor: Editor, position: number): boolean {
   const node = editor.state.doc.nodeAt(position)
   if (!node || !isMermaidCodeBlock(node)) return false
   const mermaidNode = editor.state.schema.nodes.mermaid
@@ -5865,7 +5698,7 @@ function clearParagraphFormat(editor: Editor): boolean {
   return chain.clearNodes().unsetAllMarks({ ignoreClearable: true }).run()
 }
 
-export function rotateSelectedImageClockwise(editor: Editor): boolean {
+function rotateSelectedImageClockwise(editor: Editor): boolean {
   const selection = editor.state.selection
   const selectedImage = getSelectedImage(editor)
   if (!selectedImage) {

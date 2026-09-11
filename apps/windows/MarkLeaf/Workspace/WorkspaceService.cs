@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using MarkLeaf.Documents;
 using MarkLeaf.Services;
 
@@ -7,7 +6,7 @@ namespace MarkLeaf.Workspace;
 
 internal sealed class WorkspaceService
 {
-    private const int PreviewReadLimit = 2 * 1024;
+    private static int PreviewReadLimit => DocumentCoreRuntime.Call<int>("previewReadLimit");
     private readonly ConcurrentDictionary<string, PreviewCacheEntry> _previewCache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -201,10 +200,8 @@ internal sealed class WorkspaceService
     {
         try
         {
-            var source = File.ReadAllText(path);
-            var plainText = MarkdownPlainText.FromDocument(
-                source,
-                string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase));
+            var document = DocumentCoreRuntime.Call<KernelDocument>("read", new { bytes = DocumentCoreRuntime.Bytes(File.ReadAllBytes(path)) });
+            var plainText = DocumentCoreRuntime.Call<string>("plainText", new { text = document.Text, isMarkdown = string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) });
             return plainText.Length == 0 ? null : plainText;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -240,10 +237,8 @@ internal sealed class WorkspaceService
             var buffer = new byte[Math.Min(PreviewReadLimit, (int)Math.Min(fileLength, int.MaxValue))];
             var read = stream.Read(buffer, 0, buffer.Length);
             var bytes = buffer.AsSpan(0, read).ToArray();
-            var source = DecodePreview(bytes);
-            var plainText = MarkdownPlainText.FromDocument(
-                source,
-                string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase));
+            var plainText = DocumentCoreRuntime.Call<string>("preview", new { bytes = DocumentCoreRuntime.Bytes(bytes), truncated = fileLength > read,
+                isMarkdown = string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) });
             preview = plainText.Length == 0 ? null : plainText;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -255,46 +250,8 @@ internal sealed class WorkspaceService
         return preview;
     }
 
-    private static string DecodePreview(byte[] bytes)
-    {
-        if (bytes.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        var detected = DocumentEncodingPolicy.Detect(bytes);
-        for (var length = bytes.Length; length >= Math.Max(0, bytes.Length - 4); length--)
-        {
-            try
-            {
-                return DocumentEncodingPolicy.Decode(bytes.AsSpan(0, length).ToArray(), detected.Policy);
-            }
-            catch (DecoderFallbackException)
-            {
-                // The byte limit may split the final multi-byte character.
-            }
-        }
-
-        return Encoding.UTF8.GetString(bytes);
-    }
-
-    private static string? FindSnippet(string? plainText, string query)
-    {
-        if (string.IsNullOrEmpty(plainText))
-        {
-            return null;
-        }
-
-        var index = plainText.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-        if (index < 0)
-        {
-            return null;
-        }
-
-        var start = Math.Max(0, index - 2);
-        var length = Math.Min(plainText.Length - start, query.Length + 42);
-        return plainText.Substring(start, length).TrimEnd();
-    }
+    private static string? FindSnippet(string? plainText, string query) =>
+        plainText is null ? null : DocumentCoreRuntime.Call<string?>("snippet", new { text = plainText, query });
 
     private static WorkspaceEntry[] EnumerateChildren(string directory, CancellationToken cancellationToken)
     {

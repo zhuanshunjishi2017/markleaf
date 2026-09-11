@@ -12,7 +12,7 @@ final class WorkspacePreviewCache {
         let preview: String?
     }
 
-    private let readLimit = 2 * 1024
+    private var readLimit: Int { DocumentCoreRuntime.shared.require("previewReadLimit") }
     private var entries: [String: Entry] = [:]
     private let lock = NSLock()
 
@@ -53,19 +53,12 @@ final class WorkspacePreviewCache {
         let data = handle.readData(ofLength: readLimit)
         guard !data.isEmpty else { return nil }
 
-        let source = Self.decode(data) ?? String(decoding: data, as: UTF8.self)
-        let plainText = MarkdownPlainText.fromDocument(source, isMarkdown: isMarkdown)
-        return plainText.isEmpty ? nil : plainText
-    }
-
-    private static func decode(_ data: Data) -> String? {
-        let encoding = DocumentEncodingPolicy.detect(data: data)
-        for length in stride(from: data.count, to: max(0, data.count - 4), by: -1) {
-            if let text = DocumentEncodingPolicy.decode(data.prefix(length), using: encoding),
-               !text.contains("\u{FFFD}") {
-                return text
-            }
+        do {
+            let text: String = try DocumentCoreRuntime.shared.call("preview", ["bytes": Array(data), "truncated": size > data.count, "isMarkdown": isMarkdown])
+            return text.isEmpty ? nil : text
+        } catch {
+            AppLog.warning("Document preview failed for \(path): \(error.localizedDescription)")
+            return nil
         }
-        return DocumentEncodingPolicy.decode(data, using: encoding)
     }
 }

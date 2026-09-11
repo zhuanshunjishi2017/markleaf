@@ -1,6 +1,6 @@
 import type { Editor } from '@markleaf/editor-core'
 import {
-  getEditorStatus, rerenderMermaidElements, setAutoConvertUnsafeEmphasis, setBlockHandleVisible,
+  createReadingBehavior, getDocumentOutline, getActiveOutlinePosition, scrollToOutlineHeading, getEditorStatus, rerenderMermaidElements, setAutoConvertUnsafeEmphasis, setBlockHandleVisible,
   setBlockTypeLabels, setCodeHighlightVisible, setEditorFocusMode, setEditorSharedStrings,
   setMarkdownEditingSettings, setMermaidStrings, sharedEditorStrings,
 } from '@markleaf/editor-core'
@@ -12,15 +12,8 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
   let settings = { ...defaultSettings }
   let lastFocus: boolean | undefined
   let scrollFrame = 0
-  let cursorFrame = 0
-  let scrollbarTimer: ReturnType<typeof setTimeout> | undefined
   const events = new AbortController()
-  function showScrollbar(): void {
-    if (!settings.autoHideScrollbars) return
-    document.documentElement.style.setProperty('--ml-scrollbar-alpha', '1')
-    clearTimeout(scrollbarTimer)
-    scrollbarTimer = setTimeout(() => document.documentElement.style.setProperty('--ml-scrollbar-alpha', '0'), 900)
-  }
+  const behavior = createReadingBehavior(() => editor, headerBottom)
   const area = document.createElement('div')
   area.id = 'document-area'
   const outline = document.createElement('nav')
@@ -38,33 +31,24 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       ?? document.querySelector('#toolbar')?.getBoundingClientRect().bottom ?? 0
   }
   function markCurrent(fromCursor: boolean): void {
-    let current = headings[0]
-    for (const heading of headings) {
-      const node = editor.view.nodeDOM(heading.position)
-      if (fromCursor ? heading.position <= editor.state.selection.from
-        : node instanceof HTMLElement && node.getBoundingClientRect().top <= headerBottom() + 24) current = heading
-    }
-    for (const heading of headings) heading.button.setAttribute('aria-current', String(heading === current))
+    const position = getActiveOutlinePosition(editor, fromCursor ? 'cursor' : 'scroll', headerBottom())
+    for (const heading of headings) heading.button.setAttribute('aria-current', String(heading.position === position))
   }
   function rebuildOutline(): void {
     headings = []
     const title = document.createElement('strong')
     title.textContent = '大纲'
     outline.replaceChildren(title)
-    editor.state.doc.descendants((node, position) => {
-      if (node.type.name !== 'heading') return
+    for (const { position, level, text } of getDocumentOutline(editor)) {
       const button = document.createElement('button')
       button.type = 'button'
-      button.textContent = node.textContent || '（空标题）'
-      button.style.paddingInlineStart = `${8 + (node.attrs.level - 1) * 12}px`
+      button.textContent = text || '（空标题）'
+      button.style.paddingInlineStart = `${8 + (level - 1) * 12}px`
       button.dataset.position = String(position)
-      button.addEventListener('click', () => {
-        const element = editor.view.nodeDOM(position)
-        if (element instanceof HTMLElement) window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - headerBottom() - 16), behavior: 'smooth' })
-      })
-      headings.push({ position, level: node.attrs.level, text: node.textContent, button })
+      button.addEventListener('click', () => scrollToOutlineHeading(editor, position, headerBottom()))
+      headings.push({ position, level, text, button })
       outline.append(button)
-    })
+    }
     if (!headings.length) { const empty = document.createElement('p'); empty.textContent = '文档中没有标题'; outline.append(empty) }
     markCurrent(true)
   }
@@ -78,28 +62,16 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
     const focus = settings.focusMode && editor.isEditable
     if (focus !== lastFocus) { lastFocus = focus; setEditorFocusMode(editor, focus) }
     mount.classList.toggle('markleaf-editor-focus-mode', focus)
-    mount.classList.toggle('markleaf-editor-typewriter', settings.typewriterMode && editor.isEditable)
+    behavior.setTypewriter(settings.typewriterMode && editor.isEditable, false)
     markCurrent(true)
   }
   function cursorMoved(): void {
     update()
-    cancelAnimationFrame(cursorFrame)
-    if (settings.typewriterMode && editor.isEditable && editor.view.hasFocus() && !editor.view.composing) {
-      cursorFrame = requestAnimationFrame(() => {
-        try {
-          const top = editor.view.coordsAtPos(editor.state.selection.head).top
-          window.scrollTo({ top: Math.max(0, window.scrollY + top - window.innerHeight * .4), behavior: 'auto' })
-        } catch { /* The caret can be unmounted during document replacement. */ }
-      })
-    }
+    behavior.cursorMoved()
   }
   window.addEventListener('scroll', () => {
-    showScrollbar()
     if (scrollFrame) return
     scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; markCurrent(false) })
-  }, { signal: events.signal, passive: true })
-  window.addEventListener('mousemove', event => {
-    if (event.clientX >= window.innerWidth - 20) showScrollbar()
   }, { signal: events.signal, passive: true })
   editor.on('update', rebuildOutline)
   editor.on('selectionUpdate', cursorMoved)
@@ -116,8 +88,7 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       root.style.setProperty('--ml-source-font-family', next.sourceFontFamily || 'var(--vscode-editor-font-family, monospace)')
       root.classList.toggle('markleaf-cjk-autospace', next.cjkAutoSpacing)
       root.classList.toggle('markleaf-ignore-max-width', next.ignoreMaxWidth)
-      root.classList.toggle('markleaf-auto-hide-scrollbar', next.autoHideScrollbars)
-      document.body.classList.toggle('markleaf-auto-hide-scrollbar', next.autoHideScrollbars)
+      behavior.setAutoHideScrollbar(next.autoHideScrollbars)
       mount.lang = next.cjkLanguage
       for (const name of [...mount.classList]) if (name.startsWith('markleaf-style-')) mount.classList.remove(name)
       const resolvedStyle = resolveTypography(next.typography)
@@ -143,7 +114,7 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       rerenderMermaidElements(mount)
     },
     dispose(): void {
-      events.abort(); cancelAnimationFrame(scrollFrame); cancelAnimationFrame(cursorFrame); clearTimeout(scrollbarTimer)
+      events.abort(); cancelAnimationFrame(scrollFrame); behavior.dispose()
       editor.off('update', rebuildOutline); editor.off('selectionUpdate', cursorMoved)
       theme.remove(); typography.remove(); custom.remove()
     },

@@ -1265,7 +1265,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         modeButton.title = L10n.t(StatusBarModePolicy.title(isSourceMode: session.isSourceMode))
         modeButton.toolTip = L10n.t("切换编辑模式")
         modeButton.isHidden = !status.modeToggleVisible
-        modeButton.isEnabled = EditorMenuPolicy.isModeToggleEnabled(isPlainText: session.isPlainText)
+        modeButton.isEnabled = session.editorCommandEnabled("toggleSourceMode")
         zoomButton.title = "\(session.zoomPercent)%"
         zoomButton.toolTip = L10n.t("设置缩放")
         zoomButton.isHidden = !status.zoomVisible

@@ -1,3 +1,4 @@
+using MarkLeaf.Commands;
 using System.Text.Json;
 
 namespace MarkLeaf.Editor;
@@ -41,6 +42,8 @@ internal sealed record EditorCommandStatus(
     bool Highlight,
     bool ExpandedSource = false)
 {
+    public IReadOnlyDictionary<string, CommandState> Actions { get; init; } = new Dictionary<string, CommandState>();
+
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, null, null, false, false,
         false, false, null, false, false, false, false, null, 0, false, null, null, null, null, false, false, false, false);
@@ -107,6 +110,11 @@ internal sealed record EditorCommandStatus(
             payload.TryGetProperty("formatPainterArmed", out var armed) && armed.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("readOnly", out var readOnly) && readOnly.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("highlight", out var highlight) && highlight.ValueKind == JsonValueKind.True,
-            payload.TryGetProperty("expandedSource", out var expandedSource) && expandedSource.ValueKind == JsonValueKind.True);
+            payload.TryGetProperty("expandedSource", out var expandedSource) && expandedSource.ValueKind == JsonValueKind.True)
+        {
+            Actions = payload.GetProperty("actions").EnumerateObject().ToDictionary(
+                property => property.Name,
+                property => new CommandState(property.Value.GetProperty("enabled").GetBoolean(), property.Value.GetProperty("checked").GetBoolean()))
+        };
     }
 }

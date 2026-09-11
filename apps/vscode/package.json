@@ -1214,7 +1214,7 @@
           {
             "id": "format",
             "title": "文字、表格与特殊块",
-            "description": "工具栏“格式”或段落左侧操作柄提供完整编辑操作；双击公式和 Mermaid 打开源码编辑器。",
+            "description": "工具栏“格式”或段落左侧操作柄提供完整编辑操作；点击选中公式或 Mermaid 后，再次点击展开源码编辑器。",
             "media": {
               "markdown": "docs/welcome.md"
             }

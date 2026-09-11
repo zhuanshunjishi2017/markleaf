@@ -36,7 +36,9 @@ jobs:
         with:
           node-version: '24.x'
           cache: pnpm
-          cache-dependency-path: packages/editor-web/pnpm-lock.yaml
+          cache-dependency-path: |
+            packages/editor-core/pnpm-lock.yaml
+            packages/editor-web/pnpm-lock.yaml
       - name: Resolve release metadata
         shell: pwsh
         run: |
@@ -57,6 +59,8 @@ jobs:
           pnpm --dir packages/editor-core install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --dir packages/editor-core build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

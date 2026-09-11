@@ -1,3 +1,6 @@
+import { assignHeadingAnchors } from './outline'
+import { getImageResourcePath } from './image-resources'
+import { resolveMermaidTheme } from './typography'
 // Document serialization and typography shared by native hosts and VS Code.
 import { renderEscapedCaptionHtml } from './editor'
 import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
@@ -19,6 +22,11 @@ function renderEditorHtmlForExport(
   visualCjkAutoSpacing = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
+  assignHeadingAnchors(parsed.body)
+  for (const image of parsed.body.querySelectorAll('img')) {
+    const path = getImageResourcePath(image)
+    if (path) image.setAttribute('src', path)
+  }
 
   for (const frontMatter of Array.from(parsed.body.querySelectorAll('[data-markleaf-front-matter]'))) {
     frontMatter.remove()
@@ -141,13 +149,6 @@ function removeTextPrefix(element: HTMLElement, length: number): void {
   }
 }
 
-function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
-  const declarations = Array.from(css.matchAll(
-    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
-  ))
-  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
-}
-
 export type ExportHtmlInput = {
   rawBodyHtml: string
   resolved: { rootClass: string; css: string }
@@ -164,8 +165,9 @@ export type ExportHtmlInput = {
   baseCss: string
   title?: string
   language?: string
-  /** 宿主标识（markleaf-host-macos / markleaf-host-windows），用于宿主专属的截图规则。 */
-  hostClass?: string
+  /** Full-surface capture expands the viewport before taking the screenshot. */
+  imageCaptureMode?: 'scroll' | 'fullSurface'
+  fontFamily?: string
   keepTablesTogether?: boolean
   keepHeadingsWithNextBlock?: boolean
   editorLoc: Partial<Record<'alertNote' | 'alertTip' | 'alertImportant' | 'alertWarning' | 'alertCaution', string>>
@@ -175,7 +177,7 @@ export async function generateExportHtml({
   rawBodyHtml, resolved, format, mermaidTheme, strictRendering = false, header = '', footer = '', fontSize = 16,
   lineHeight = 1.6, maxWidth = 820, visualCjkAutoSpacing = true,
   colorSchemeCss = '', baseCss, title = '', language = 'zh-CN',
-  hostClass = '',
+  imageCaptureMode = 'scroll', fontFamily,
   keepTablesTogether = false, keepHeadingsWithNextBlock = false, editorLoc,
 }: ExportHtmlInput): Promise<string> {
   const isPdf = format === 'pdf'
@@ -186,15 +188,10 @@ export async function generateExportHtml({
     isPdf,
     { keepTablesTogether, keepHeadingsWithNextBlock },
     visualCjkAutoSpacing,
-  ).replace(
-    /https:\/\/assets\.local\/image\?path=([^"']+)/g,
-    (_, encoded: string) => {
-      try { return decodeURIComponent(encoded) } catch { return encoded }
-    },
   ), mermaidTheme ?? resolveMermaidTheme(resolved.css))
   const rootClass = [
     resolved.rootClass,
-    hostClass,
+    imageCaptureMode === 'fullSurface' ? 'markleaf-capture-full-surface' : '',
     isPdf ? 'markleaf-export-pdf' : '',
     isImage ? 'markleaf-export-image' : '',
   ].filter(Boolean).join(' ')
@@ -236,7 +233,9 @@ ${exportPaginationCss}
   --markleaf-alert-warning-title: ${JSON.stringify(editorLoc.alertWarning ?? '警告')};
   --markleaf-alert-caution-title: ${JSON.stringify(editorLoc.alertCaution ?? '注意')};
 }
-html { font-size: var(--ml-font-size); }
+html { font-size: var(--ml-font-size); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.markleaf-document table { max-width: 100%; }
+.markleaf-export-image pre, .markleaf-export-image pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
 body { margin: 0; background: var(--bg-primary); }
 .markleaf-export-image,
 .markleaf-export-image .markleaf-document {
@@ -257,7 +256,7 @@ body { margin: 0; background: var(--bg-primary); }
   overflow-x: hidden !important;
   overflow-y: auto !important;
 }
-.markleaf-export-image.markleaf-host-windows {
+.markleaf-export-image.markleaf-capture-full-surface {
   /* WebView2 expands the viewport and captures one full surface before
      slicing. Do not create a scroll container there: Chromium may reuse its
      first viewport texture for the expanded area, producing repeated rows. */
@@ -291,8 +290,7 @@ html:has(body.markleaf-export-image)::-webkit-scrollbar {
 }
 /* ---- PDF export: let print-dialog margins control spacing ---- */
 .markleaf-export-pdf .markleaf-document {
-  padding-left: 5px;
-  padding-right: 5px;
+  padding: 0 5px;
   max-width: none;
   width: 100%;
   margin-left: 0;
@@ -363,7 +361,7 @@ html:has(body.markleaf-export-image)::-webkit-scrollbar {
 <body${rootClass ? ` class="${rootClass}"` : ''}>
 <div id="export-root">
 ${header ? `<div class="export-header">${header}</div>` : ''}
-<div class="markleaf-document">${bodyHtml}</div>
+<div class="markleaf-document"${fontFamily ? ` style="font-family: ${escapeHtml(fontFamily)}"` : ''}>${bodyHtml}</div>
 ${footer ? `<div class="export-footer">${footer}</div>` : ''}
 </div>
 <script>

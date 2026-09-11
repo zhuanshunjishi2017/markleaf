@@ -3,10 +3,12 @@ import { isExportOptions, type ExportOptions, type ExportHtmlResult } from './vs
 // 协议层被扩展进程（Node，无 DOM）与 webview 共同引用，因此只能依赖内核之下的
 // 纯类型契约层，不能经 ./core 引入渲染内核，否则会把 DOM 类型带入扩展进程。
 import type { EditorCommandState } from '@markleaf/editor-core/editor-state'
+import type { EditorActions } from '@markleaf/editor-core/command-state'
 import type { MarkLeafSettings } from './vscode-settings'
 import { isFormatCommand, type ShortcutSettings } from './vscode-shortcuts'
 
 export type ActionContext = Partial<EditorCommandState> & {
+  actions?: EditorActions
   editable?: boolean
   imageSource?: string
   linkHref?: string

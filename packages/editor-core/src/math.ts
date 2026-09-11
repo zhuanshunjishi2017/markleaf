@@ -1,3 +1,4 @@
+import { mathInlineTokenizer, mathBlockTokenizer, normalizeMathSource } from './document/markdown-syntax'
 import { InputRule, Node } from '@tiptap/core'
 import 'katex/dist/katex.min.css'
 import katexSelfContainedCss from 'virtual:katex-css'
@@ -14,11 +15,7 @@ function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
 }
 
-function normalizeMathSource(source: string): string {
-  // Formula source is opaque user data. Do not trim, normalize whitespace, or
-  // otherwise alter any character while parsing/serializing Markdown.
-  return source === '...' ? '' : source
-}
+
 
 function renderMathNode(element: HTMLElement, latex: string, displayMode: boolean): void {
   if (latex.length === 0) {
@@ -106,22 +103,7 @@ export const MathInline = Node.create({
     return `$${latex || '...'}$`
   },
 
-  markdownTokenizer: {
-    name: 'mathInline',
-    level: 'inline',
-    start: (src: string) => {
-      const dollar = src.indexOf('$')
-      const parenthesis = src.indexOf('\\(')
-      if (dollar < 0) return parenthesis
-      if (parenthesis < 0) return dollar
-      return Math.min(dollar, parenthesis)
-    },
-    tokenize: (src: string) => {
-      const match = /^(?:(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\\\(((?:\\(?!\))|[^\\\n])*?)\\\))/.exec(src)
-      if (!match) return undefined
-      return { type: 'mathInline', raw: match[0], text: normalizeMathSource(match[1] ?? match[2] ?? '') }
-    },
-  },
+  markdownTokenizer: mathInlineTokenizer,
 
   addInputRules() {
     return [
@@ -210,26 +192,7 @@ export const MathBlock = Node.create({
     return `$$${body || '...'}$$`
   },
 
-  markdownTokenizer: {
-    name: 'mathBlock',
-    level: 'block',
-    start: (src: string) => {
-      const dollars = src.indexOf('$$')
-      const brackets = src.indexOf('\\[')
-      if (dollars < 0) return brackets
-      if (brackets < 0) return dollars
-      return Math.min(dollars, brackets)
-    },
-    tokenize: (src: string) => {
-      const match = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])/.exec(src)
-      if (!match) return undefined
-      return {
-        type: 'mathBlock',
-        raw: match[0],
-        text: normalizeMathSource(match[1] ?? match[2] ?? ''),
-      }
-    },
-  },
+  markdownTokenizer: mathBlockTokenizer,
 
   addInputRules() {
     return [
