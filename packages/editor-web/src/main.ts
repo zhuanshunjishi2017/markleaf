@@ -56,6 +56,7 @@ import {
   sharedEditorStrings,
   isHostCommandAllowed,
 } from '@markleaf/editor-core'
+import { SourceScrollbarOverlay } from './source-scrollbar'
 // 原生宿主消息协议不属于内核，由 macOS / Windows 适配层持有。
 import {
   isHostMessage,
@@ -92,6 +93,7 @@ let lastOutlinePosition: number | null | undefined
 let outlineTimer = 0
 let sourceEditor: SourceEditor | null = null
 let sourceMode = false
+let sourceScrollbarOverlay: SourceScrollbarOverlay | null = null
 let sourceIndentWidth = 2
 let visualSelectionBeforeSourceMode: VisualSelectionSnapshot | null = null
 // 混合前端右键菜单（粗体/斜体/下划线工具栏）是否启用：由宿主下发，仅 Windows 端为 true。
@@ -538,6 +540,17 @@ function sendSourceSelection(from: number, to: number): void {
   send('selectionChanged', { from, to, sourceMode: true })
 }
 
+function attachSourceScrollbarOverlay(): void {
+  detachSourceScrollbarOverlay()
+  if (!sourceEditor) return
+  sourceScrollbarOverlay = new SourceScrollbarOverlay(sourceMount, sourceEditor.view.scrollDOM)
+}
+
+function detachSourceScrollbarOverlay(): void {
+  sourceScrollbarOverlay?.destroy()
+  sourceScrollbarOverlay = null
+}
+
 function requestUnsafeEmphasisResolution(request: UnsafeEmphasisRequest): void {
   send('unsafeEmphasisRequested', request, request.id)
 }
@@ -563,6 +576,7 @@ function setSourceMode(enabled: boolean): void {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
     const jumpTarget = getSourceModeJumpTarget(editor)
     sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown', sendSourceSelection)
+    attachSourceScrollbarOverlay()
     editorMount.hidden = true
     sourceMount.hidden = false
     sourceMode = true
@@ -578,6 +592,7 @@ function setSourceMode(enabled: boolean): void {
   } else {
     const markdown = sourceEditor?.getText() ?? getMarkdown(editor)
     const visualSelection = visualSelectionBeforeSourceMode
+    detachSourceScrollbarOverlay()
     sourceEditor?.destroy()
     sourceEditor = null
     visualSelectionBeforeSourceMode = null
@@ -1097,6 +1112,7 @@ async function handleMessage(value: unknown): Promise<void> {
       readOnly = payload?.readOnly === true
       const restoreViewState = payload?.restoreViewState !== false
       suppressUpdate = true
+      detachSourceScrollbarOverlay()
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       sourceEditor?.destroy()
       sourceEditor = null
@@ -1105,6 +1121,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMount.hidden = false
         editorMount.hidden = true
         sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
+        attachSourceScrollbarOverlay()
         if (restoreViewState && typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
           sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
         } else {
@@ -1174,6 +1191,7 @@ async function handleMessage(value: unknown): Promise<void> {
       interactions.cancel()
       updateFormatPainterCursor()
       suppressUpdate = true
+      detachSourceScrollbarOverlay()
       sourceEditor?.destroy()
       sourceEditor = null
       documentType = nextType
@@ -1182,6 +1200,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMount.hidden = false
         editorMount.hidden = true
         sourceEditor = new SourceEditor(sourceMount, markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
+        attachSourceScrollbarOverlay()
       } else {
         sourceMode = false
         sourceMount.hidden = true
