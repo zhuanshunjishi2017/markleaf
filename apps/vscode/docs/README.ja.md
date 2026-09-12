@@ -4,7 +4,7 @@
 
 MarkLeaf の Tiptap/ProseMirror 編集コア、KaTeX、Mermaid、組版スタイルを使い、VS Code 内で Markdown を閲覧・ビジュアル編集できます。TypeScript 製の拡張機能は VS Code の API と Webview を利用し、独立した Electron 依存関係やデスクトップシェルを追加しません。
 
-現在のバージョン **0.2.7** は 36 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。
+現在のバージョン **0.2.8** は 36 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。
 
 ツールバーメニューは、外側のクリック、Escape、別メニューへの切り替え、拡張機能からのフォーカス移動で閉じます。数式と Mermaid のソースパネルは明暗テーマに対応した不透明な背景を持ち、ネイティブ製品と同じ共有カーネルの配置を使います。内容の下を優先し、空き領域が足りない場合はビューポート内で位置を調整します。数式記号パネルは利用可能な領域に合わせてレイアウトを調整します。
 
@@ -32,10 +32,10 @@ PDF・画像・プレビュー・印刷にはインストール済みの **Chrom
 
 ## インストールと文書の表示
 
-ローカルで `artifacts/markleaf-vscode-0.2.7.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
+ローカルで `artifacts/markleaf-vscode-0.2.8.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
 ```
 
 有効化後、新しく開く `.md` と `.markdown` は既定で MarkLeaf のレンダリング表示になります。既存のソースタブは **Reopen Editor With… → MarkLeaf** または **Ctrl/Cmd+Shift+V** で切り替えます。エクスプローラーの **MarkLeaf: Open Markdown** からも開けます。
@@ -161,7 +161,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-インストールはカーネル、Webview、拡張ホストの依存を準備します。パッケージ作成時はこの順にビルドし、`artifacts/markleaf-vscode-0.2.7.vsix` を生成します。ビルドのみは `corepack pnpm build:vscode`、アダプターのテストは別途 `corepack pnpm test:vscode` で実行します。
+インストールはカーネル、Webview、拡張ホストの依存を準備します。パッケージ作成時はこの順にビルドし、`artifacts/markleaf-vscode-0.2.8.vsix` を生成します。ビルドのみは `corepack pnpm build:vscode`、アダプターのテストは別途 `corepack pnpm test:vscode` で実行します。
 
 開発時は既存の VS Code を使用できます。
 
