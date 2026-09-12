@@ -82,6 +82,15 @@ apps/windows/setup/obj/
 apps/windows/setup/bin/
 apps/windows/setup/*.exe
 
+# MSIX build outputs and local signing credentials
+apps/windows/msix/publish-*/
+apps/windows/msix/staging-*/
+apps/windows/msix/*.msix
+apps/windows/msix/*.appx
+apps/windows/msix/*.cer
+apps/windows/msix/*.pfx
+apps/windows/msix/*.log
+
 # Release output
 release/
 
