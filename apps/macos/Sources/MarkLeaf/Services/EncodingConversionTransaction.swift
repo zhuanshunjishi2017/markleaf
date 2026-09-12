@@ -11,6 +11,11 @@ struct EncodingDirectReadSnapshot: Equatable {
     let markdown: String
 }
 
+enum EncodingConversionTransactionError: Error {
+    case unrepresentableText
+    case unreadableData
+}
+
 enum EncodingConversionTransaction {
     typealias AtomicWriter = (_ data: Data, _ destination: URL) throws -> Void
 
@@ -19,7 +24,9 @@ enum EncodingConversionTransaction {
         using target: DocumentEncodingPolicy
     ) throws -> EncodingDirectReadSnapshot {
         let data = try Data(contentsOf: url)
-        let markdown: String = try DocumentCoreRuntime.shared.call("decode", ["bytes": Array(data), "encoding": target.rawValue])
+        guard let markdown = DocumentEncodingPolicy.decode(data, using: target) else {
+            throw EncodingConversionTransactionError.unreadableData
+        }
         return EncodingDirectReadSnapshot(data: data, markdown: markdown)
     }
 
@@ -27,8 +34,10 @@ enum EncodingConversionTransaction {
         markdown: String,
         target: DocumentEncodingPolicy
     ) throws -> Data {
-        let bytes: [UInt8] = try DocumentCoreRuntime.shared.call("encode", ["text": markdown, "encoding": target.rawValue])
-        return Data(bytes)
+        guard let data = DocumentEncodingPolicy.encode(markdown, using: target) else {
+            throw EncodingConversionTransactionError.unrepresentableText
+        }
+        return data
     }
 
     static func convert(

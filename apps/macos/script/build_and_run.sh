@@ -58,7 +58,6 @@ chmod +x "$APP_BINARY"
 
 mkdir -p "$APP_CONTENTS/Resources"
 cp -RX "$ROOT_DIR/Resources/EditorWeb" "$APP_CONTENTS/Resources/EditorWeb"
-cp -RX "$ROOT_DIR/Resources/DocumentCore" "$APP_CONTENTS/Resources/DocumentCore"
 cp -RX "$ROOT_DIR/Resources/Styles" "$APP_CONTENTS/Resources/Styles"
 if [ -d "$ROOT_DIR/Changelog" ]; then
   mkdir -p "$APP_CONTENTS/Resources/Changelog"

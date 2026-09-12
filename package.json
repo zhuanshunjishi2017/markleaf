@@ -9,13 +9,13 @@
     "install:vscode": "corepack pnpm --dir packages/editor-core install --frozen-lockfile && corepack pnpm --dir apps/vscode/webview install --frozen-lockfile && corepack pnpm --dir apps/vscode install --frozen-lockfile",
     "typecheck:editor-core": "corepack pnpm --dir packages/editor-core typecheck",
     "test:editor-core": "corepack pnpm --dir packages/editor-core test",
-    "build:editor-web": "corepack pnpm build:kernel && corepack pnpm --dir packages/editor-web build",
+    "build:editor-web": "corepack pnpm --dir packages/editor-core build:renderer && corepack pnpm --dir packages/editor-web build",
     "test:editor-web": "corepack pnpm --dir packages/editor-web test",
     "build:vscode": "corepack pnpm build:kernel && corepack pnpm --dir apps/vscode/webview build && corepack pnpm --dir apps/vscode build",
     "test:vscode": "corepack pnpm --dir apps/vscode/webview test",
     "package:vscode": "corepack pnpm build:vscode && corepack pnpm --dir apps/vscode package",
     "build:document-core": "corepack pnpm --dir packages/editor-core build:document",
     "build:kernel": "corepack pnpm --dir packages/editor-core build",
-    "build:products": "corepack pnpm build:kernel && corepack pnpm --dir packages/editor-web build && corepack pnpm --dir apps/vscode/webview build && corepack pnpm --dir apps/vscode build"
+    "build:products": "corepack pnpm --dir packages/editor-core build:renderer && corepack pnpm --dir packages/editor-web build && corepack pnpm build:vscode"
   }
 }

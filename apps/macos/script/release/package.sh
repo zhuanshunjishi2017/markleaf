@@ -52,7 +52,6 @@ chmod +x "$APP_STAGE/Contents/MacOS/$APP_NAME"
 MARKLEAF_BUILD="$BUILD_NUMBER" "$HERE/write-info-plist.sh" "$APP_STAGE/Contents/Info.plist" "$APP_VERSION"
 
 ditto "$MACOS_DIR/Resources/EditorWeb" "$APP_STAGE/Contents/Resources/EditorWeb"
-ditto "$MACOS_DIR/Resources/DocumentCore" "$APP_STAGE/Contents/Resources/DocumentCore"
 ditto "$MACOS_DIR/Resources/Styles" "$APP_STAGE/Contents/Resources/Styles"
 if [ -d "$MACOS_DIR/Changelog" ]; then
     ditto "$MACOS_DIR/Changelog" "$APP_STAGE/Contents/Resources/Changelog"

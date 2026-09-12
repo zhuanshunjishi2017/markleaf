@@ -510,7 +510,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             menuItem.state = viewStateSession?.sidebarTabIndex == 1 ? .on : .off
             return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
                 && viewStateSession?.outlineDetached != true
-        case "toggleDetachedOutline": menuItem.state = s?.outlineDetached == true ? .on : .off
+        case "toggleDetachedOutline":
+            menuItem.state = viewStateSession?.outlineDetached == true ? .on : .off
+            return viewStateSession != nil
         case "treeView":
             menuItem.state = viewStateSession?.workspaceListMode == false ? .on : .off
             return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
@@ -522,6 +524,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return viewStateSession != nil
         case "toggleFollowSystemTheme":
             menuItem.state = SettingsService.shared.settings.followSystemTheme ? .on : .off
+            return true
         case "toggleCodeHighlight":
             menuItem.state = SettingsService.shared.settings.showCodeHighlight ? .on : .off
         default: break

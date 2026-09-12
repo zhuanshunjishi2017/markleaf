@@ -14,6 +14,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $root
 $repoRoot = Split-Path -Parent (Split-Path -Parent $root)
 $editorWebDir = Join-Path $repoRoot "packages\editor-web"
+$editorCoreDir = Join-Path $repoRoot "packages\editor-core"
 $setupScript = Join-Path $root "setup\markleaf.iss"
 $releaseDir = Join-Path $root "release"
 $csproj = Join-Path $root "MarkLeaf\MarkLeaf.csproj"
@@ -41,6 +42,11 @@ $scFlags  = if ($PSBoundParameters.ContainsKey('SelfContained')) { @($SelfContai
 Write-Host "=== MarkLeaf v$Version (Build $BuildNumber) Release ===" -ForegroundColor Cyan
 Write-Host ""
 
+Write-Host "Building shared renderer..." -ForegroundColor Yellow
+pnpm --dir $editorCoreDir install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw "EditorCore dependency installation failed." }
+pnpm --dir $editorCoreDir build:renderer
+if ($LASTEXITCODE -ne 0) { throw "Shared renderer build failed." }
 Write-Host "Building EditorWeb..." -ForegroundColor Yellow
 pnpm --dir $editorWebDir install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { throw "EditorWeb dependency installation failed." }

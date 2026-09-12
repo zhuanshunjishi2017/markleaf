@@ -1,0 +1,7 @@
+publish-*/
+staging-*/
+*.msix
+*.appx
+*.cer
+*.pfx
+*.log

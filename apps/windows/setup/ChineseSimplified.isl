@@ -132,12 +132,6 @@ PasswordLabel3=请输入密码，然后点击“下一步”继续。密码区�
 PasswordEditLabel=密码(&P)：
 IncorrectPassword=您输入的密码不正确，请重新输入。
 
-; *** "License Agreement" wizard page
-WizardLicense=许可协议
-LicenseLabel=请在继续安装前阅读以下重要信息。
-LicenseLabel3=请阅读下列许可协议。在继续安装前您必须同意这些协议条款。
-LicenseAccepted=我同意此协议(&A)
-LicenseNotAccepted=我不同意此协议(&D)
 
 ; *** "Information" wizard pages
 WizardInfoBefore=信息

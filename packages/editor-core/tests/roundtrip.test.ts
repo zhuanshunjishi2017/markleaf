@@ -974,6 +974,7 @@ describe('paragraph menu commands', () => {
     expect(executeEditorCommand(editor, 'scrollToPosition', String(secondHeadingPosition))).toBe(true)
     expect(editor.state.selection.from).toBe(selectionBefore)
     expect(document.documentElement.scrollTop).toBe(508)
+    expect(document.body.scrollTop).toBe(508)
     expect(heading.classList.contains('markleaf-outline-highlight')).toBe(true)
   })
 

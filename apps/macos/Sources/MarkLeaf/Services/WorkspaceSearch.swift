@@ -43,16 +43,23 @@ final class WorkspaceSearchService {
                     let ext = (name as NSString).pathExtension.lowercased()
                     guard WorkspaceDocumentPolicy.includes(fileExtension: ext) else { continue }
                     if work.isCancelled { return }
-                    let match: KernelSearchMatch
-                    do {
-                        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                        let document: KernelDocument = try DocumentCoreRuntime.shared.call("read", ["bytes": Array(data)])
-                        match = try DocumentCoreRuntime.shared.call("match", ["name": name, "text": document.text, "isMarkdown": ext == "md", "query": normalized])
-                    } catch {
-                        AppLog.warning("Document search failed for \(path): \(error.localizedDescription)")
-                        continue
+                    let lowerName = name.lowercased()
+                    let content = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+                    let plainText = MarkdownPlainText.fromDocument(
+                        content,
+                        isMarkdown: ext == "md"
+                    )
+                    let nameMatch = lowerName.contains(normalized)
+                    let snippet: String?
+                    let isContentMatch: Bool
+                    if nameMatch {
+                        snippet = plainText.isEmpty ? nil : plainText
+                        isContentMatch = false
+                    } else {
+                        snippet = WorkspacePlainTextSnippet.snippet(plainText, query: normalized)
+                        isContentMatch = snippet != nil
                     }
-                    guard match.matched else { continue }
+                    guard nameMatch || isContentMatch else { continue }
                     let parent = (path as NSString).deletingLastPathComponent
                     let folderName: String
                     if parent == root {
@@ -65,8 +72,8 @@ final class WorkspaceSearchService {
                         entry: WorkspaceEntry(name: name, path: path, isDirectory: false),
                         folderName: folderName,
                         lastWriteTime: lastWriteTime,
-                        snippet: match.snippet,
-                        isContentMatch: match.isContentMatch,
+                        snippet: snippet ?? "",
+                        isContentMatch: isContentMatch,
                         query: normalized))
                 }
             }

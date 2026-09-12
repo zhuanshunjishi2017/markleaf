@@ -18,8 +18,15 @@ struct PreparedDocument: Equatable {
     static func read(from url: URL) throws -> PreparedDocument {
         let standardized = url.standardizedFileURL.resolvingSymlinksInPath()
         let data = try Data(contentsOf: standardized)
-        let document: KernelDocument = try DocumentCoreRuntime.shared.call("read", ["bytes": Array(data)])
-        return PreparedDocument(url: standardized, markdown: document.text, encoding: document.encoding.label)
+        let encoding = DocumentEncodingPolicy.detect(data: data)
+        guard let markdown = DocumentEncodingPolicy.decode(data, using: encoding) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return PreparedDocument(
+            url: standardized,
+            markdown: markdown,
+            encoding: encoding.rawValue
+        )
     }
 }
 
@@ -121,14 +128,40 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     var documentKind: NewDocumentKind {
         newDocumentKind
     }
-    private(set) var editorActions: [String: EditorActionState] = [:]
-    private(set) var editorSemanticContext: EditorSemanticContext = .ordinaryBlock
     private(set) var canUndo = false
     private(set) var canRedo = false
     private(set) var canStartFormatPainter = false
     private(set) var isFormatPainterArmed = false
     private(set) var headingLevel: Int?
     private(set) var isReadOnly = false
+    private(set) var editorActions: [String: EditorActionState] = [:]
+    private(set) var editorSemanticContext: EditorSemanticContext = .ordinaryBlock
+
+    /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
+    static let readOnlyBlockedCommands: Set<String> = Set([
+        "save", "saveAll", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
+        "replaceOne", "replaceAll", "pasteText", "deleteSelection",
+        "setParagraph", "setHeading1", "setHeading2", "setHeading3",
+        "setHeading4", "setHeading5", "setHeading6",
+        "promoteHeading", "demoteHeading",
+        "toggleBold", "toggleItalic", "toggleUnderline", "toggleStrike", "toggleCode", "toggleHighlight",
+        "toggleBlockquote", "toggleCodeBlock", "toggleBulletList", "toggleOrderedList", "toggleTaskList",
+        "indentListItem", "outdentListItem",
+        "insertLink", "insertImage", "insertImageFromUrl", "insertHorizontalRule",
+        "insertTable", "insertLineBefore", "insertLineAfter",
+        "addRowBefore", "addRowAfter", "deleteRow",
+        "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
+        "alignTableLeft", "alignTableCenter", "alignTableRight",
+        "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
+        "changeImage", "clearFormat",
+        "formatPainter", "formatPainterArm", "formatPainterApply",
+        "insertMathInline", "insertMathBlock", "editMath", "setMathNumber", "convertMath", "deleteMath", "exitCode",
+        "insertAlertNote", "insertAlertTip", "insertAlertImportant",
+        "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
+        "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "setCodeBlockLanguageAt", "insertCodeBlockWithLanguage", "declareCodeLanguage",
+        "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
+        "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
+    ]).union(EditorPastePolicy.modifyingCommands)
 
     // 工作区 / 大纲
     /// 窗口共享工作区（构造时注入；缺省自建，等价旧行为）。
@@ -1031,7 +1064,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             isDirty: self.isDirty
                         )
                         do {
-                            try self.validateDocumentSave(to: url)
                             self.stopExternalChangeWatch()
                             self.externalChangeTracker.beginSelfWrite()
                             let completed = try EncodingConversionTransaction.convert(
@@ -1056,7 +1088,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                         } catch {
                             self.externalChangeTracker.cancelSelfWrite()
                             self.startExternalChangeWatch(for: url, acceptingCurrentVersion: true)
-                            let message = (error as? DocumentKernelFailure)?.code == "unrepresentable_text"
+                            let message = error is EncodingConversionTransactionError
                                 ? L10n.f("当前内容无法无损转换为 %@。", target.rawValue)
                                 : L10n.f("转换编码失败：%@", error.localizedDescription)
                             self.presentError(message)
@@ -1251,6 +1283,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func execute(_ command: String, text: String? = nil, html: String? = nil,
                  requestId: String? = nil, onFailure: (() -> Void)? = nil) {
+        if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
+            onFailure?()
+            return
+        }
         let payload = EditorPastePolicy.payload(command: command, text: text, html: html)
         send("command", payload: payload, requestId: requestId, onFailure: onFailure)
     }
@@ -1391,6 +1427,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 行内格式命令：空选时应用到整个文本块。
+    func executeInlineFormat(_ command: String) {
+        let payload: [String: Any] = ["command": command, "applyToCurrentTextBlockWhenEmpty": true]
+        send("command", payload: payload)
+    }
+
     /// 文档加载完成后应用持久化设置（缩放/自动隐藏滚动条）。
     func applyPostLoadSettings() {
         let settings = SettingsService.shared.settings
@@ -1775,18 +1816,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
     }
 
-    private func validateDocumentSave(to url: URL) throws {
-        let sameTarget = documentURL?.standardizedFileURL == url.standardizedFileURL
-        let exists = FileManager.default.fileExists(atPath: url.path)
-        let changed = sameTarget && exists
-            ? externalChangeTracker.hasAcceptedVersionDifferent(from: try DocumentFileVersion.read(from: url)) : false
-        try DocumentCoreRuntime.shared.validateSave([
-            "sameTarget": sameTarget, "forceOverwrite": false, "targetExists": exists,
-            "acceptedVersion": externalChangeTracker.hasAcceptedVersion, "contentChanged": changed,
-            "readOnly": exists && !FileManager.default.isWritableFile(atPath: url.path)
-        ])
-    }
-
     private func writeCurrentDocument(to url: URL, completion: ((Bool) -> Void)? = nil) {
         writeCoordinator.enqueue { [weak self] finish in
             guard let self else {
@@ -1805,13 +1834,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     switch result {
                     case .success(let snapshot):
                         do {
-                            try self.validateDocumentSave(to: url)
-                            let prepared: KernelPreparedSave = try DocumentCoreRuntime.shared.call("prepareSave", [
-                                "text": snapshot.markdown, "encoding": self.documentEncoding, "newLine": self.documentNewLine
-                            ])
+                            // 保存时统一按当前文档的换行风格写入；状态栏切换对新建和已打开文件均生效。
+                            let markdown = DocumentNewLinePolicy.normalize(
+                                snapshot.markdown,
+                                to: DocumentNewLinePolicy.style(from: self.documentNewLine)
+                            )
                             self.stopExternalChangeWatch()
                             self.externalChangeTracker.beginSelfWrite()
-                            try Data(prepared.bytes).write(to: url, options: .atomic)
+                            guard let data = DocumentEncodingPolicy.encode(
+                                markdown,
+                                using: DocumentEncodingPolicy.defaultEncoding(rawValue: self.documentEncoding)
+                            ) else {
+                                throw CocoaError(.fileWriteInapplicableStringEncoding)
+                            }
+                            try data.write(to: url, options: .atomic)
                             try self.externalChangeTracker.finishSelfWrite(at: url)
                             self.documentURL = url
                             self.newDocumentKind = NewDocumentKind.from(fileExtension: url.pathExtension)
@@ -2287,7 +2323,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// 行内代码与行内公式保持一致：有选区时套用格式，空选时通过输入框插入内容。
     func insertInlineCode() {
         if hasSelection {
-            execute("toggleCode")
+            executeInlineFormat("toggleCode")
             return
         }
         guard let window = webView?.window else { return }

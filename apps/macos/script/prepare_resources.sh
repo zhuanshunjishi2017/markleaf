@@ -14,31 +14,19 @@ RESOURCES_DIR="$ROOT_DIR/Resources"
 
 mkdir -p "$RESOURCES_DIR"
 
-# ---- 1. 构建前端，或使用本次统一构建的产物 ----
-if [[ "${MARKLEAF_USE_BUILT_EDITOR_WEB:-0}" == "1" ]]; then
-  for artifact in "$EDITOR_WEB_DIR/dist/index.html" "$EDITOR_WEB_DIR/dist/kernel/editor-core.js" "$EDITOR_CORE_DIR/dist/document-kernel.cjs"; do
-    [[ -f "$artifact" ]] || { echo "[prepare] 缺少内核／前端产物，请先执行 corepack pnpm build:products: $artifact" >&2; exit 1; }
-  done
-  echo "[prepare] 使用统一构建的内核及 EditorWeb 产物"
-else
-# editor-web 以 link: 方式依赖 @markleaf/editor-core，内核自身的依赖必须
-# 先装好，符号链接才可用。
+# ---- 1. 构建前端 ----
 if [ ! -d "$EDITOR_CORE_DIR/node_modules" ]; then
-  echo "[prepare] 安装内核依赖 (pnpm install)..."
-  corepack pnpm --dir "$EDITOR_CORE_DIR" install --frozen-lockfile
+  echo "[prepare] 安装共享渲染内核依赖 (pnpm install)..."
+  pnpm --dir "$EDITOR_CORE_DIR" install --frozen-lockfile
 fi
 if [ ! -d "$EDITOR_WEB_DIR/node_modules" ]; then
   echo "[prepare] 安装前端依赖 (pnpm install)..."
-  corepack pnpm --dir "$EDITOR_WEB_DIR" install --frozen-lockfile
+  pnpm --dir "$EDITOR_WEB_DIR" install --frozen-lockfile
 fi
+echo "[prepare] 构建共享渲染内核 (renderer)..."
+pnpm --dir "$EDITOR_CORE_DIR" build:renderer
 echo "[prepare] 构建 EditorWeb (pnpm build)..."
-corepack pnpm --dir "$REPO_DIR" build:editor-web
-fi
-
-# DOM-free document kernel, shared by background native services.
-mkdir -p "$RESOURCES_DIR/DocumentCore"
-cp "$EDITOR_CORE_DIR/dist/document-kernel.cjs" "$RESOURCES_DIR/DocumentCore/document-kernel.cjs"
-cp "$EDITOR_CORE_DIR/dist/document-kernel-LICENSES.txt" "$RESOURCES_DIR/DocumentCore/document-kernel-LICENSES.txt"
+pnpm --dir "$EDITOR_WEB_DIR" build
 
 # ---- 2. 复制并注入桥 ----
 DIST_DIR="$RESOURCES_DIR/EditorWeb"

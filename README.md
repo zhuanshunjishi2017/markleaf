@@ -25,7 +25,7 @@ MarkLeaf 是轻量化 Markdown 可视化编辑器，提供 Windows/macOS 原生�
 
 > [!NOTE]
 > 部分主题可能需要用到特定的字体以获得更佳体验，您可以前往以下页面，或直接从 [Release](https://github.com/zhuanshunjishi2017/markleaf/releases) 中下载相关字体包并将其安装到计算机上。
->
+> 
 > - [Computer Modern 系列字体](https://www.fontsquirrel.com/fonts/computer-modern)（LaTeX 默认排版字体）
 > - [汇文、朝华系列字体以及京华老宋体](https://huozi.cool/) （铅字印刷排版，由特里王制作的免费字体）
 > - [霞鹜文楷](https://github.com/lxgw/LxgwWenKai) （由 Lxgw 制作的优秀开源开源中文字体）
@@ -68,11 +68,13 @@ Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版�
 
 ## 平台支持
 
-| 平台 | 所用技术 | 代码目录 |
-| --- | --- | --- |
-| Windows | C# + .NET 10 WinForms + WebView2 | `apps/windows/MarkLeaf` |
-| macOS | Swift + AppKit + WKWebView | `apps/macos` |
-| VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode` |
+
+| 平台         | 所用技术                                            | 代码目录                    |
+| ---------- | ----------------------------------------------- | ----------------------- |
+| Windows    | C# + .NET 10 WinForms + WebView2                | `apps/windows/MarkLeaf` |
+| macOS      | Swift + AppKit + WKWebView                      | `apps/macos`            |
+| VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode`           |
+
 
 三个宿主共享编辑内核与排版样式。VS Code 扩展使用已有 VS Code 运行环境，不引入独立 Electron 依赖或桌面壳。支持阅读与可视化编辑、格式刷、表格、脚注、公式与 Mermaid、图片粘贴和拖放、查找替换、大纲及排版偏好。保存、撤销重做、标签页和原生源码由 VS Code 管理，支持源码切换及并排。
 
@@ -130,7 +132,7 @@ VS Code：apps/vscode/webview/src/vscode.ts，使用 VS Code 原生 Markdown 源
 
 内核现在统一提供命令状态、公式／图表点击与源码框操作、右键选区、大纲与文内链接、格式刷、打字机滚动、排版依赖、图片展示及 HTML 导出。产品菜单消费内核投影的 `enabled` / `checked`，系统对话框、剪贴板、文件 API 和原生外观由适配层接入。空选区的行内格式命令只设置后续输入格式，已有整段文字保持原样。
 
-内核通过 `build:kernel` 统一编译。渲染产物由三个 Webview 原样加载；无 DOM 的 `document-kernel.cjs` 由 macOS JavaScriptCore、Windows Jint 和 VS Code Node.js 加载，统一编码、换行、保存决策、恢复格式及工作区预览／搜索。`build:products` 构建一次内核后装配全部产品。
+共享渲染内核通过 `build:editor-web` 或 `build:products` 编译，供 macOS、Windows 和 VS Code Webview 加载；无 DOM 的 `document-kernel.cjs` 仅由 VS Code Node.js 加载。macOS 与 Windows 继续使用各自原生的编码、文件读写和恢复实现。`build:products` 会在构建 VS Code 时额外生成文档内核。
 
 职责与本轮收敛范围见 [内核边界说明](./docs/kernel-boundaries.md)。
 
@@ -147,9 +149,9 @@ corepack pnpm package:vscode
 
 产物为 `artifacts/markleaf-vscode-0.2.8.vsix`。
 
-在 VS Code 中使用 **Install from VSIX…** 安装生成的扩展包。新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf；已有源码标签使用 **Reopen Editor With… → MarkLeaf**，已有默认关联使用 **Configure default editor for…** 调整。**Ctrl+Shift+V**（macOS 为 **Cmd+Shift+V**）在原生源码与渲染视图间切换。
+在 VS Code 中使用 <strong>Install from VSIX…</strong> 安装生成的扩展包。新打开的 `.md`、`.markdown` 文件默认进入 MarkLeaf；已有源码标签使用 <strong>Reopen Editor With… → MarkLeaf</strong>，已有默认关联使用 <strong>Configure default editor for…</strong> 调整。<strong>Ctrl+Shift+V</strong>（macOS 为 <strong>Cmd+Shift+V</strong>）在原生源码与渲染视图间切换。
 
-升级后先保存文档，再运行 **Developer: Reload Window**。若设置项缺失或提示 `markleaf.shortcuts` 未注册，需要重新加载整个窗口。通过 **视图 → 快捷键…** 录入格式键位。阅读不会回写；可视化编辑可能规范化 Markdown 格式，详见 [扩展使用与保真边界](./apps/vscode/README.md)。
+升级后先保存文档，再运行 <strong>Developer: Reload Window</strong>。若设置项缺失或提示 `markleaf.shortcuts` 未注册，需要重新加载整个窗口。通过 <strong>视图 → 快捷键…</strong> 录入格式键位。阅读不会回写；可视化编辑可能规范化 Markdown 格式，详见 [扩展使用与保真边界](./apps/vscode/README.md)。
 
 ### Web 前端编辑器
 
@@ -174,6 +176,8 @@ dotnet restore .\apps\windows\MarkLeaf\MarkLeaf.csproj
 dotnet build .\apps\windows\MarkLeaf\MarkLeaf.csproj --no-restore
 dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
+
+<strong>Windows 发布支持两种安装包格式：Inno Setup 生成用于 GitHub Release 的</strong> `.exe`<strong>，MSIX 生成用于 Microsoft Store 的商店包。MSIX 构建默认输出</strong> `win-x64` <strong>和</strong> `win-arm64` <strong>两个自包含架构，并支持简体中文、繁体中文、英语和日语资源。</strong>
 
 ### macOS
 

@@ -51,7 +51,6 @@ ArchitecturesInstallIn64BitMode={#AppArchitectureAllowed}
 OutputDir=.
 OutputBaseFilename=MarkLeaf-{#MyAppVersion}-{#AppArchitectureLabel}{#RuntimeSuffix}
 UninstallDisplayIcon={app}\{#AppExeName}
-LicenseFile=License.rtf
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -101,7 +100,7 @@ Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: str
 Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_txt
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayName}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayName}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 ; Inno Setup's Restart Manager closes running instances that lock files under
 ; the installation directory. Do not launch MarkLeaf with a synthetic quit

@@ -19,7 +19,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jint" Version="4.16.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
   </ItemGroup>
 
@@ -55,11 +54,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\..\packages\editor-core\dist\document-kernel*">
-      <Link>DocumentCore\%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
     <Content Include="..\..\..\packages\editor-web\dist\**\*">
       <Link>EditorWeb\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

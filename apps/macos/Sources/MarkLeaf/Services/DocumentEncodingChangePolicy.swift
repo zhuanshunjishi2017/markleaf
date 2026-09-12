@@ -21,14 +21,9 @@ enum DocumentEncodingChangePolicy {
         isDirty: Bool,
         isReadOnly: Bool
     ) -> DocumentEncodingChangeAction {
-        let action: String = DocumentCoreRuntime.shared.require("encodingChange", [
-            "current": current.rawValue, "target": target.rawValue, "hasFile": hasFileURL, "readOnly": isReadOnly
-        ])
-        switch action {
-        case "readOnly": return .rejectReadOnly
-        case "none": return .noOp
-        case "set": return .updateUnsavedDocumentEncoding(target)
-        default: return .prompt(target: target, warnsAboutUnsavedChanges: isDirty)
-        }
+        if isReadOnly { return .rejectReadOnly }
+        if current == target { return .noOp }
+        if !hasFileURL { return .updateUnsavedDocumentEncoding(target) }
+        return .prompt(target: target, warnsAboutUnsavedChanges: isDirty)
     }
 }

@@ -60,7 +60,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm --dir packages/editor-core build
+          pnpm --dir packages/editor-core build:renderer
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -201,7 +201,7 @@ final class SidebarView: NSView {
             DispatchQueue.main.async { self?.outlineSelectionChanged() }
         }
         applyLanguage()
-        showTab(session.sidebarTabIndex, persist: false)
+        selectTab(session.sidebarTabIndex, persist: false)
     }
 
     required init?(coder: NSCoder) {
@@ -439,6 +439,7 @@ final class SidebarView: NSView {
         let previousRoot = self.session.workspaceRoot
         let previousPaths = self.session.workspaceTree.map(\.path)
         self.session = session
+        outlineTree.rebind(to: session)
         session.onWorkspaceChanged = { [weak self] in self?.workspaceChanged() }
         session.onOutlineChanged = { [weak self] in self?.outlineChanged() }
         session.onOutlineSelectionChanged = { [weak self] in self?.outlineSelectionChanged() }
@@ -452,6 +453,7 @@ final class SidebarView: NSView {
         }
         outlineChanged()
         outlineSelectionChanged()
+        selectTab(session.sidebarTabIndex, persist: false)
     }
 }
 
@@ -516,6 +518,7 @@ final class DetachedOutlineView: NSView {
     /// 多标签切换时改绑活动会话并刷新大纲。
     func rebind(to session: EditorSession) {
         self.session = session
+        outlineTree.rebind(to: session)
         reload()
         synchronizeSelection()
     }
@@ -1468,6 +1471,14 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         return OutlineHierarchy.flatten(roots)
             .filter { $0.heading.text.lowercased().contains(filter) }
             .map { OutlineNode(heading: $0.heading) }
+    }
+
+    func rebind(to session: EditorSession) {
+        self.session = session
+        onHeadingActivated = { [weak session] heading in
+            session?.scrollToPosition(heading.position)
+        }
+        reloadData(activePosition: session.activeOutlinePosition)
     }
 
     func configure(

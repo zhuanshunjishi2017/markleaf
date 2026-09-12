@@ -11,28 +11,30 @@ packages/editor-core
        │   ├─ editor-web/kernel/       macOS WKWebView / Windows WebView2
        │   └─ vscode-webview/kernel/   VS Code Webview
        └─ dist/document-kernel.cjs     无 DOM 的文档规则
-           ├─ macOS JavaScriptCore
-           ├─ Windows Jint
-           └─ VS Code Node.js
+            └─ VS Code Node.js（仅 VS Code）
 ```
 
-这是同一内核按运行环境提供的两个入口。渲染入口需要 DOM；后台预览、搜索、编码及恢复服务使用无 DOM 入口。Markdown 自定义词法器和规范化规则位于 `src/document/markdown-syntax.ts`，两个入口复用同一份定义。
+渲染入口供三个 WebView 使用；无 DOM 文档入口仅供 VS Code 扩展进程使用。macOS 和 Windows 保留原生的编码、文件读写、恢复和搜索实现。
 
-`DocumentCoreRuntime.swift` 和 `DocumentCoreRuntime.cs` 仅装载 `document-kernel.cjs`、封装 JSON 调用、提供系统字符编解码原语。它们不实现另一套文档内核。JavaScript 源产物可跨平台分发；执行引擎和原生系统适配器仍按平台编译。内核不通过网络常驻服务运行，也不要求各产品共享进程内的文档实例。
+macOS 和 Windows 不装载 `document-kernel.cjs`，因此不引入 JavaScriptCore 文档运行时或 Jint。VS Code 使用 Node.js 加载该无 DOM 文档入口。
 
-产品生产构建将 `@markleaf/editor-core` 标记为外部模块，再原样复制 `dist/renderer/`；VS Code 扩展进程和两个原生应用原样复制 `document-kernel.cjs`。产品不重新打包内核源码，不直接持有 Tiptap、ProseMirror、CodeMirror、Mermaid、KaTeX 依赖。包内文件比对用于确认分发结果，不作为运行时版本锁步门禁。
+产品生产构建将 `@markleaf/editor-core` 标记为外部模块，再原样复制 `dist/renderer/`；仅 VS Code 扩展进程复制 `document-kernel.cjs`，macOS 和 Windows 不复制该文件。产品不重新打包内核源码，不直接持有 Tiptap、ProseMirror、CodeMirror、Mermaid、KaTeX 依赖。
 
 ## 文档事实与系统接口
 
 ```text
-文件系统 / VS Code TextDocument 提供实际内容、版本和权限
-    → 产品适配器传递字节、版本、用户操作
-    → 共享内核解释内容、产生文档投影和保存决策
-    → 产品执行系统读写，返回成功或原始错误
-    → 内核生成编辑状态，产品控件呈现
+macOS / Windows：文件系统提供实际内容、版本和权限
+    → 原生实现读取、解码、检测并执行保存决策
+    → 产品控件呈现编辑状态
+
+VS Code：TextDocument 提供实际内容、版本和权限
+    → 扩展适配器传递字节、版本、用户操作
+    → document kernel 解释内容、产生文档投影和保存决策
+    → 扩展执行系统读写，返回成功或原始错误
+    → Webview 生成编辑状态，产品控件呈现
 ```
 
-VS Code 的 `TextDocument` 继续拥有文档内容、撤销记录和保存生命周期。Webview 通过 `WorkspaceEdit`、版本与确认队列同步，内核不另建文件副本争夺权威。原生产品提供文件读取、监视、锁定、原子替换以及窗口会话；编码选择、BOM、换行、保存前冲突判断、保存后脏状态和恢复内容格式由公共文档入口决定。
+VS Code 的 `TextDocument` 继续拥有文档内容、撤销记录和保存生命周期。Webview 通过 `WorkspaceEdit`、版本与确认队列同步，内核不另建文件副本争夺权威。macOS 和 Windows 继续由原生实现提供文件读取、监视、锁定、原子替换、编码选择、BOM、换行、保存前冲突判断、保存后脏状态和恢复内容格式。
 
 ## 职责表
 
