@@ -201,7 +201,7 @@ final class SidebarView: NSView {
             DispatchQueue.main.async { self?.outlineSelectionChanged() }
         }
         applyLanguage()
-        showTab(session.sidebarTabIndex, persist: false)
+        selectTab(session.sidebarTabIndex, persist: false)
     }
 
     required init?(coder: NSCoder) {
@@ -453,6 +453,7 @@ final class SidebarView: NSView {
         }
         outlineChanged()
         outlineSelectionChanged()
+        selectTab(session.sidebarTabIndex, persist: false)
     }
 }
 
@@ -1474,6 +1475,9 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
 
     func rebind(to session: EditorSession) {
         self.session = session
+        onHeadingActivated = { [weak session] heading in
+            session?.scrollToPosition(heading.position)
+        }
         reloadData(activePosition: session.activeOutlinePosition)
     }
 

@@ -511,7 +511,7 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
                 && viewStateSession?.outlineDetached != true
         case "toggleDetachedOutline":
-            menuItem.state = s?.outlineDetached == true ? .on : .off
+            menuItem.state = viewStateSession?.outlineDetached == true ? .on : .off
             return viewStateSession != nil
         case "treeView":
             menuItem.state = viewStateSession?.workspaceListMode == false ? .on : .off

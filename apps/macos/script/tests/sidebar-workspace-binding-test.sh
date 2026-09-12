@@ -26,6 +26,24 @@ printf '%s' "$rebind_body" | grep -Fq 'workspaceChanged()' \
     || fail "sidebar rebind must refresh workspace state"
 printf '%s' "$rebind_body" | grep -Fq 'outlineChanged()' \
     || fail "sidebar rebind must refresh the outline"
+printf '%s' "$rebind_body" | grep -Fq 'selectTab(session.sidebarTabIndex, persist: false)' \
+    || fail "sidebar rebind must reapply outline exclusion to segmented control"
+
+# Right-outline state is window-level.  Rebinding an active tab must copy it into
+# that tab's session so the sidebar cannot route around the menu's exclusion.
+rebind_active_body="$(sed -n '/private func rebindActiveSessionUI/,/private func configureTabSession/p' "$ROOT_DIR/Sources/MarkLeaf/Views/EditorWindowController.swift")"
+printf '%s' "$rebind_active_body" | grep -Fq 'session.outlineDetached = self.session.outlineDetached' \
+    || fail "active tab rebind must inherit window-level right-outline state"
+printf '%s' "$rebind_active_body" | grep -Fq 'if session.outlineDetached, session.sidebarTabIndex == 1' \
+    || fail "active tab rebind must keep right-outline tabs mutually exclusive"
+
+# Outline rows keep editor positions for a specific session.  Rebinding must also
+# rebuild the click callback, otherwise clicks scroll the first tab's old editor.
+outline_rebind_body="$(sed -n '/final class OutlineTreeView/,/func synchronizeSelection/p' "$SIDEBAR")"
+printf '%s' "$outline_rebind_body" | grep -Fq 'onHeadingActivated = { [weak session] heading in' \
+    || fail "outline tree rebind must rebuild the heading activation callback"
+printf '%s' "$outline_rebind_body" | grep -Fq 'session?.scrollToPosition(heading.position)' \
+    || fail "outline tree rebind must target the newly bound session"
 
 # A workspace file must not be written until its naming dialog is confirmed.
 create_body="$(sed -n '/func createWorkspaceFile(at directory:/,/^    }/p' "$SESSION" | head -n 35)"

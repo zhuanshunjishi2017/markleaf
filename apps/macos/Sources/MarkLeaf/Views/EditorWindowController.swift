@@ -826,6 +826,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func rebindActiveSessionUI() {
         defer { AppWindowManager.shared.refreshThemeSettings() }
         guard let session = windowSession?.activeTabSession else { return }
+        // Detached outline is window-level state; every tab inherits the same
+        // sidebar exclusion, otherwise a newly created tab can re-enable Outline.
+        session.outlineDetached = self.session.outlineDetached
+        if session.outlineDetached, session.sidebarTabIndex == 1 {
+            session.sidebarTabIndex = 0
+        }
         if let windowSession {
             configureTabSession(session, in: windowSession)
         }
@@ -1578,6 +1584,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         // session is the window bootstrap session and may no longer be the
         // session currently bound to the sidebar after a tab switch.
         let sidebarSession = sidebarView.session
+        sidebarSession.outlineDetached = session.outlineDetached
+        if sidebarSession.outlineDetached, sidebarSession.sidebarTabIndex == 1 {
+            sidebarSession.sidebarTabIndex = 0
+        }
         let selectedTabIndex = SidebarStateSourcePolicy.selectedTabIndex(
             activeSessionIndex: sidebarSession.sidebarTabIndex,
             bootstrapSessionIndex: session.sidebarTabIndex

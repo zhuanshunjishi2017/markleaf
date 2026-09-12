@@ -25,9 +25,16 @@ export function getActiveOutlinePosition(editor: Editor, source: 'cursor' | 'scr
 export function scrollToOutlineHeading(editor: Editor, position: number, topInset = 0): boolean {
   const heading = editor.view.nodeDOM(position)
   if (!(heading instanceof HTMLElement) || !/^H[1-6]$/.test(heading.tagName)) return false
+  const scrollingElement = document.scrollingElement ?? document.documentElement
   const lineHeight = Number.parseFloat(window.getComputedStyle(heading).lineHeight)
-  const top = Math.max(0, window.scrollY + heading.getBoundingClientRect().top - topInset - (Number.isFinite(lineHeight) ? lineHeight / 2 : 12))
-  window.scrollTo({ top, behavior: document.documentElement.classList.contains('markleaf-reduced-motion') ? 'auto' : 'smooth' })
+  const top = Math.max(0, scrollingElement.scrollTop + heading.getBoundingClientRect().top - topInset
+    - (Number.isFinite(lineHeight) ? lineHeight / 2 : 12))
+
+  // WKWebView may ignore window.scrollTo for very tall documents, while the same
+  // scrolling element accepts direct offset writes (the path used by session restore).
+  scrollingElement.scrollTop = top
+  document.documentElement.scrollTop = top
+  document.body.scrollTop = top
   return true
 }
 

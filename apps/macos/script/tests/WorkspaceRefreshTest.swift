@@ -58,6 +58,12 @@ let otherTab = EditorSession(workspace: context)
 sidebar.rebind(to: otherTab)
 expectBrowsingState("switching to another untitled tab in the same workspace")
 
+let detachedTab = EditorSession(workspace: context)
+detachedTab.outlineDetached = true
+sidebar.rebind(to: detachedTab)
+expect(!sidebar.tabControl.isEnabled(forSegment: 1), "right outline must disable the sidebar outline tab")
+expect(sidebar.tabControl.selectedSegment == 0, "right outline must force the sidebar to Workspace")
+
 try "new".write(to: nested.appendingPathComponent("new.md"), atomically: true, encoding: .utf8)
 context.rescan()
 expect(waitUntil { tree.numberOfRows == 43 }, "refresh must show new files inside expanded directories")

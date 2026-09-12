@@ -17,6 +17,8 @@
 - Fixed editor flashing white in dark mode when launching the app, restarting the editor, or creating a new tab.
 - Fixed the title bar, tab bar, and status bar not updating together when switching between light and dark themes.
 - Fixed auto-hide scrollbars not working in source mode.
+- Fixed outline clicks not jumping to the corresponding heading.
+- Fixed “Show Outline on the Right” showing as unchecked in the menu while enabled.
 
 ## 1.7.5 — 2026-09-10
 
