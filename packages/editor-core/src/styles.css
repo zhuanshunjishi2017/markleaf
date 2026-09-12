@@ -487,6 +487,7 @@ body.markleaf-theme-dark {
 }
 
 #source-editor {
+  position: relative;
   height: 100vh;
 }
 
@@ -675,6 +676,42 @@ body.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
 html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar {
   width: 8px;
   height: 8px;
+}
+
+html.markleaf-auto-hide-scrollbar,
+body.markleaf-auto-hide-scrollbar,
+html.markleaf-auto-hide-scrollbar .cm-scroller {
+  scrollbar-color: color-mix(
+    in srgb,
+    var(--scrollbar-active, rgba(0, 0, 0, 0.35))
+    calc(var(--ml-scrollbar-alpha, 0) * 100%),
+    transparent
+  ) transparent;
+}
+
+html.markleaf-auto-hide-scrollbar .cm-scroller {
+  scrollbar-width: none;
+}
+
+.markleaf-source-scrollbar {
+  position: absolute;
+  right: 0;
+  width: 8px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.markleaf-source-scrollbar-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  border-radius: 4px;
+  background: color-mix(
+    in srgb,
+    var(--scrollbar-active, rgba(0, 0, 0, 0.35))
+    calc(var(--ml-scrollbar-alpha, 0) * 100%),
+    transparent
+  );
 }
 
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,

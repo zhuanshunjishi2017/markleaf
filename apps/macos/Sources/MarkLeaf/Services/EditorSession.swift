@@ -134,6 +134,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isFormatPainterArmed = false
     private(set) var headingLevel: Int?
     private(set) var isReadOnly = false
+    private(set) var editorActions: [String: EditorActionState] = [:]
+    private(set) var editorSemanticContext: EditorSemanticContext = .ordinaryBlock
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
     static let readOnlyBlockedCommands: Set<String> = Set([
@@ -443,6 +445,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
 
         case "commandStateChanged":
+            editorActions = EditorActionState.decode(payload?["actions"])
+            editorSemanticContext = EditorSemanticContext(rawValue: payload?["semanticContext"] as? String ?? "") ?? .ordinaryBlock
             let decoded = EditorCommandStatePayload.decode(payload)
             isSourceMode = decoded.sourceMode
             hasSelection = payload?["hasSelection"] as? Bool ?? false
@@ -886,6 +890,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 ? SettingsService.shared.settings.defaultEncoding
                 : DocumentEncodingPolicy.utf8.rawValue)
         ).rawValue
+        editorActions = [:]
+        editorSemanticContext = .ordinaryBlock
         documentStatistics = DocumentStatistics()
         self.visualSelectionFrom = visualSelectionFrom
         self.visualSelectionTo = visualSelectionTo

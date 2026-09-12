@@ -1,21 +1,22 @@
 # MarkLeaf Changelog
 
-## Unreleased
+## 1.7.6 — 2026-09-12
+
+### Changed
+
+- Workspace trees, lists, and search now use `.md` / `.txt`, with matching HTML tag spacing and entity decoding in previews and search.
+- Copy HTML now copies source text; ordinary formatted copy still provides both text and HTML.
+- Tree and document-list scans now run independently, and cancelled scans are no longer applied after switching or closing a workspace.
 
 ### Fixed
 
-- All three products now use one HTML export generator with the Windows pagination and long-image scrolling rules. Mac workspace trees, lists, and search consistently use `.md` / `.txt`, with matching HTML tag spacing and entity decoding in previews and search.
-- Fixed a refresh loop when expanding folders containing only non-text files such as PDFs, images, or archives. Text-file filtering remains in effect, and adding or deleting text files still updates the tree.
-- Removed stale web find-bar references that interrupted editor startup and left the document area blank; native find and replace remain available.
-- Workspace refresh preserves expanded folders, selection and scrolling. Repeated layout updates and switches between untitled tabs no longer reset the sidebar.
-- Tree and document-list scans run independently, and cancelled scans cannot overwrite a closed or switched workspace.
-- Restored windows now bind file-open requests and dialog ownership correctly, so selecting a file loads it into the editor.
-- Copy HTML now copies source text; normal formatted copy still supplies both text and HTML.
-- Ordinary text paste and Paste Plain Text parse Markdown in visual mode using the Windows rules; source mode keeps literal text.
-- Paste feedback follows the editor result, distinguishing formatting conversion, plain-text fallback, and failure. Fallback reasons are shown; timed-out and stale document requests are cleared.
+- Fixed a refresh loop when expanding folders containing only non-text files such as PDFs, images, or archives.
+- Fixed stale web find-bar references that interrupted editor startup and left the document area blank.
+- Fixed restored windows not binding file-open requests and dialog ownership, so selecting a file did not load it.
 - Fixed a PDF export crash caused by headings that could not be located in the generated PDF text.
-- Fixed editor flashing in dark mode when launching the app, restarting the editor, or creating a new tab.
+- Fixed editor flashing white in dark mode when launching the app, restarting the editor, or creating a new tab.
 - Fixed the title bar, tab bar, and status bar not updating together when switching between light and dark themes.
+- Fixed auto-hide scrollbars not working in source mode.
 
 ## 1.7.5 — 2026-09-10
 

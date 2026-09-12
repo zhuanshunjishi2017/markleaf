@@ -128,7 +128,7 @@ Windows/macOS：editor-web/src/main.ts，內建 CodeMirror 6 原始碼模式
 VS Code：apps/vscode/webview/src/vscode.ts，使用 VS Code 原生 Markdown 原始碼編輯器
 ```
 
-`build:kernel` 統一產生渲染檔案與無 DOM 的 `document-kernel.cjs`。Webview 載入同一組渲染檔案，macOS JavaScriptCore、Windows Jint 與 VS Code Node.js 載入同一份文件規則。`build:products` 建置一次核心後裝配各產品。詳見 [核心邊界](./kernel-boundaries.md)。
+`build:kernel` 產生共享渲染檔案與 VS Code 專用的無 DOM `document-kernel.cjs`。macOS、Windows 與 VS Code Webview 載入同一組渲染檔案，文件規則由 VS Code Node.js 載入。macOS 與 Windows 繼續使用原生編碼、檔案讀寫、搜尋、預覽與還原實作。`build:products` 建置一次核心後裝配各產品。詳見 [核心邊界](./kernel-boundaries.md)。
 
 ## 建置與執行
 

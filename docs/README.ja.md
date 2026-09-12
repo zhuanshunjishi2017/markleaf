@@ -129,7 +129,7 @@ Windows/macOS：editor-web/src/main.ts、内蔵 CodeMirror 6 ソースモード
 VS Code：apps/vscode/webview/src/vscode.ts、VS Code 標準の Markdown ソースエディタ
 ```
 
-`build:kernel` は共有レンダラーと DOM 非依存の `document-kernel.cjs` を生成します。Webview は同じ描画ファイルを使い、macOS JavaScriptCore、Windows Jint、VS Code Node.js は同じ文書規則を読み込みます。`build:products` はカーネルを一度ビルドして各製品に配布します。[責務の詳細](./kernel-boundaries.md)。
+`build:kernel` は共有レンダラーと VS Code 専用の DOM 非依存 `document-kernel.cjs` を生成します。macOS、Windows、VS Code の Webview は同じ描画ファイルを読み込み、文書規則は VS Code Node.js が読み込みます。macOS と Windows はネイティブの符号判定、ファイル I/O、検索、プレビュー、復元実装を維持します。`build:products` はカーネルを一度ビルドして各製品に配布します。[責務の詳細](./kernel-boundaries.md)。
 
 ## ビルドと実行
 
