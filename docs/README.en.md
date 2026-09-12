@@ -129,7 +129,7 @@ Windows/macOS: editor-web/src/main.ts, with built-in CodeMirror 6 source mode
 VS Code: apps/vscode/webview/src/vscode.ts, using the native VS Code Markdown source editor
 ```
 
-`build:kernel` produces one shared renderer distribution and a DOM-free `document-kernel.cjs`. Webviews load the same renderer files; macOS JavaScriptCore, Windows Jint and VS Code Node.js load the same document rules. `build:products` builds the kernel once before assembling the products. See [kernel boundaries](./kernel-boundaries.md).
+`build:editor-web` and `build:products` build the shared renderer distribution for all Webviews. The DOM-free `document-kernel.cjs` is built and loaded only by the VS Code Node.js extension; macOS and Windows retain their native document encoding, file, and recovery implementations. See [kernel boundaries](./kernel-boundaries.md).
 
 ## Build and Run
 

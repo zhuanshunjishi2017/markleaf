@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
     "build:document": "tsc --project tsconfig.document.json && vite build --config vite.document.config.ts",
     "build": "corepack pnpm build:document && vite build --config vite.renderer.config.ts"
   },

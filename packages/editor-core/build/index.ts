@@ -76,7 +76,7 @@ export function sharedRendererDistribution() {
       destination = resolve(config.root, config.build.outDir, 'kernel')
     },
     buildStart() {
-      if (!existsSync(resolve(source, 'editor-core.js'))) throw new Error('Shared renderer is missing. Run the repository build:kernel command first.')
+      if (!existsSync(resolve(source, 'editor-core.js'))) throw new Error('Shared renderer is missing. Run build:editor-web or packages/editor-core build:renderer first.')
     },
     resolveId(id: string) {
       return id === '@markleaf/editor-core/styles.css' ? '\0markleaf-prebuilt-style' : null

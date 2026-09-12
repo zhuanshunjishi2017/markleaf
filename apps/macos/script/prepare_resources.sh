@@ -9,15 +9,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 EDITOR_WEB_DIR="$REPO_DIR/packages/editor-web"
+EDITOR_CORE_DIR="$REPO_DIR/packages/editor-core"
 RESOURCES_DIR="$ROOT_DIR/Resources"
 
 mkdir -p "$RESOURCES_DIR"
 
 # ---- 1. 构建前端 ----
+if [ ! -d "$EDITOR_CORE_DIR/node_modules" ]; then
+  echo "[prepare] 安装共享渲染内核依赖 (pnpm install)..."
+  pnpm --dir "$EDITOR_CORE_DIR" install --frozen-lockfile
+fi
 if [ ! -d "$EDITOR_WEB_DIR/node_modules" ]; then
   echo "[prepare] 安装前端依赖 (pnpm install)..."
   pnpm --dir "$EDITOR_WEB_DIR" install --frozen-lockfile
 fi
+echo "[prepare] 构建共享渲染内核 (renderer)..."
+pnpm --dir "$EDITOR_CORE_DIR" build:renderer
 echo "[prepare] 构建 EditorWeb (pnpm build)..."
 pnpm --dir "$EDITOR_WEB_DIR" build
 
