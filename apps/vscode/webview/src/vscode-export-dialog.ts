@@ -20,8 +20,8 @@ export function createExportDialog(post: (message: WebviewMessage) => void, onCl
     const number = (key: keyof ExportOptions, min: number, max: number, step = 1) => `<label>${label(key)}<input type="number" name="${key}" min="${min}" max="${max}" step="${step}" required></label>`
     const checkbox = (key: keyof ExportOptions) => `<label class="export-check"><input type="checkbox" name="${key}">${label(key)}</label>`
     dialog.innerHTML = `<form>
-      <header><div><h2 id="export-title">${strings.title}</h2><p>${strings.intro}</p></div><button type="button" data-close aria-label="${strings.close}">×</button></header>
-      <fieldset class="export-fields">
+      <header><h2 id="export-title">${strings.title}</h2><button type="button" data-close aria-label="${strings.close}">×</button></header>
+      <div class="export-body"><p class="export-intro">${strings.intro}</p><fieldset class="export-fields">
         <div class="export-grid">${select('format', ['pdf', 'html', 'png', 'jpg', 'print'])}${select('typography', typographyStyles)}${select('colorTheme', colorThemes.filter(name => name !== 'vscode'))}
           ${number('fontSize', 10, 32, .5)}${number('lineHeight', 1, 3, .05)}<span data-width>${number('contentWidth', 320, 2400)}</span></div>
         <section data-paper><div class="export-grid">${select('paperSize', paperSizes)}${checkbox('landscape')}${number('marginTop', 0, 50, .5)}${number('marginRight', 0, 50, .5)}${number('marginBottom', 0, 50, .5)}${number('marginLeft', 0, 50, .5)}</div>
@@ -29,9 +29,9 @@ export function createExportDialog(post: (message: WebviewMessage) => void, onCl
         <div class="export-grid"><label>${strings.header}<input name="header" maxlength="500"></label><label>${strings.footer}<input name="footer" maxlength="500"></label></div>
         <section data-image><div class="export-grid">${number('imageScale', 1, 3)}${number('imageMaxHeight', 1000, 30000)}<span data-jpeg>${number('jpegQuality', 1, 100)}</span></div><p class="export-hint">${strings.imageHint}</p></section>
         <p data-print class="export-hint">${strings.printHint}</p>
-      </fieldset>
+      </fieldset></div>
       <p data-result role="status" aria-live="polite"></p>
-      <div class="export-buttons"><button type="button" data-default>${strings.defaults}</button><span></span><button type="button" data-preview>${strings.preview}</button><button type="submit" data-save>${strings.save}</button><button type="button" data-cancel>${strings.cancel}</button></div>
+      <div class="export-buttons"><button type="button" data-default>${strings.defaults}</button><div class="export-primary-actions"><button type="button" data-preview>${strings.preview}</button><button type="button" data-cancel>${strings.cancel}</button><button type="submit" data-save>${strings.save}</button></div></div>
     </form>`
     for (const [key, value] of Object.entries(options)) {
       const input = element<HTMLInputElement | HTMLSelectElement>(`[name="${key}"]`)

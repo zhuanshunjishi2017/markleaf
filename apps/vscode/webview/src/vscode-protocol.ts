@@ -101,7 +101,15 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
 
 function isActionContext(value: unknown): value is ActionContext {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  return Object.entries(value).every(([key, item]) => key === 'footnoteLabels'
-    ? Array.isArray(item) && item.every(label => typeof label === 'string')
-    : item === null || ['boolean', 'string', 'number'].includes(typeof item))
+  return Object.entries(value).every(([key, item]) => {
+    if (key === 'actions') {
+      // The shared kernel projects command state as a nested map.
+      return item !== null && typeof item === 'object' && !Array.isArray(item)
+        && Object.values(item).every(state => state !== null && typeof state === 'object' && !Array.isArray(state)
+          && 'enabled' in state && typeof state.enabled === 'boolean'
+          && 'checked' in state && typeof state.checked === 'boolean')
+    }
+    if (key === 'footnoteLabels') return Array.isArray(item) && item.every(label => typeof label === 'string')
+    return item === null || ['boolean', 'string', 'number'].includes(typeof item)
+  })
 }

@@ -8,7 +8,7 @@ export function createShortcutDialog(mac: boolean, post: (message: WebviewMessag
   dialog.setAttribute('aria-labelledby', 'shortcut-title')
   dialog.innerHTML = `
     <header class="shortcut-header"><div><h2 id="shortcut-title">快捷键</h2><p>MarkLeaf · VS Code</p></div><button type="button" data-close aria-label="关闭快捷键设置">×</button></header>
-    <div class="shortcut-intro"><p>仅在 MarkLeaf 渲染编辑区生效。公式和图表使用现有源码辅助输入。</p>
+    <div class="shortcut-body"><div class="shortcut-intro"><p>仅在 MarkLeaf 渲染编辑区生效。公式和图表使用现有源码辅助输入。</p>
       <p data-scope></p><p>保存、撤销、查找及源码切换沿用 VS Code。其他扩展或系统占用的键位请在 VS Code 键盘快捷方式中检查。</p>
       <button type="button" data-native>在 VS Code 设置中查看</button>
       <label class="shortcut-search">搜索操作<input type="search" placeholder="公式、标题、粗体…" aria-label="搜索快捷键操作"></label>
@@ -18,9 +18,9 @@ export function createShortcutDialog(mac: boolean, post: (message: WebviewMessag
       <h3 id="shortcut-edit-title"></h3>
       <label>按下组合键<input data-record readonly aria-label="录入快捷键" placeholder="例如 Ctrl/Cmd + Alt + M" autocomplete="off"></label>
       <p data-validation role="status"></p>
-      <div class="shortcut-buttons"><button type="button" data-save>保存键位</button><button type="button" data-clear>清除键位</button><button type="button" data-default>使用默认</button><button type="button" data-cancel>取消</button></div>
+      <div class="shortcut-buttons"><button type="button" data-clear>清除键位</button><button type="button" data-default>使用默认</button><button type="button" data-cancel>取消</button><button type="button" data-save>保存键位</button></div>
     </section>
-    <div class="shortcut-list" aria-label="格式操作快捷键"></div>
+    <div class="shortcut-list" aria-label="格式操作快捷键"></div></div>
     <p class="shortcut-result" role="status" data-result></p>`
   document.body.append(dialog)
   const find = <T extends HTMLElement>(selector: string): T => dialog.querySelector<T>(selector)!

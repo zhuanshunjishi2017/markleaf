@@ -6,7 +6,7 @@ import { defaultSettings } from '../src/vscode-settings'
 
 const cleanup: Array<() => void> = []
 function setup(markdown: string) {
-  document.body.innerHTML = '<div id="toolbar"><button data-command="formatPainter"></button></div><main id="editor"></main><footer><span id="count"></span></footer>'
+  document.body.innerHTML = '<div id="app"><div id="editor-chrome"><div id="toolbar"><button data-command="formatPainter"></button></div></div><main id="editor"></main><footer><span id="count"></span></footer></div>'
   const mount = document.querySelector<HTMLElement>('#editor')!
   const editor = createEditor(mount, markdown, false, { externalHistory: true })
   editor.view.setProps({ handleScrollToSelection: () => true })

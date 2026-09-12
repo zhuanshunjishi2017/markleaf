@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createEditor, getMarkdown, setImageResourceResolver, updateEditorMarkdown } from '@markleaf/editor-core'
 import * as editorModule from '@markleaf/editor-core'
 import { defaultSettings } from '../src/vscode-settings'
-import type { ExtensionMessage, WebviewMessage } from '../src/vscode-protocol'
+import { isWebviewMessage, type ExtensionMessage, type WebviewMessage } from '../src/vscode-protocol'
 
 const editors: ReturnType<typeof createEditor>[] = []
 function editor(markdown: string) {
@@ -82,11 +82,15 @@ describe('shared editor in a VS Code text host', () => {
   })
 
   it('runs the webview entry through editing, reading, queued undo, source actions and conflict recovery', async () => {
-    document.body.innerHTML = '<div id="toolbar"><button id="mode"></button><button data-command="toggleUnderline" data-edit>U</button><button data-command="toggleHighlight" data-edit>H</button><button data-action="format" data-edit>格式</button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div><main id="editor"></main><span id="sync-status"></span><span id="word-count"></span>'
+    document.body.innerHTML = '<div id="app"><div id="editor-chrome"><div id="toolbar"><button id="mode"></button><button data-command="toggleUnderline" data-edit>U</button><button data-command="toggleHighlight" data-edit>H</button><button data-action="format" data-edit>格式</button><button data-action="openSource">源码</button></div><div id="notice"><span id="notice-text"></span><button id="recover"></button></div></div><main id="editor"></main><footer><span id="sync-status"></span><span id="word-count"></span></footer></div>'
     // jsdom does not implement the ClipboardEvent constructor used by ProseMirror.
     vi.stubGlobal('ClipboardEvent', class extends Event {})
     const messages: WebviewMessage[] = []
-    vi.stubGlobal('acquireVsCodeApi', () => ({ postMessage: (message: WebviewMessage) => messages.push(message), getState: () => undefined, setState: () => {} }))
+    vi.stubGlobal('acquireVsCodeApi', () => ({ postMessage: (message: WebviewMessage) => {
+      // Every real Webview request must also pass the extension's receive boundary.
+      expect(isWebviewMessage(message)).toBe(true)
+      messages.push(message)
+    }, getState: () => undefined, setState: () => {} }))
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     let visual: ReturnType<typeof createEditor> | undefined
     const create = vi.spyOn(editorModule, 'createEditor').mockImplementation((...args) => {

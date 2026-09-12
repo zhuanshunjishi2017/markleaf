@@ -16,11 +16,6 @@ export function createFindBar(editor: Editor, toolbar: HTMLElement) {
     <button type="button" id="replace-one">替换</button><button type="button" id="replace-all">全部替换</button></span>
     <button type="button" id="find-close" title="关闭 (Escape)">×</button>`
   toolbar.after(form)
-  // The toolbar can wrap on narrow editors; keep both sticky rows visible.
-  const positionBar = (): void => { form.style.top = `${toolbar.getBoundingClientRect().height}px` }
-  const toolbarResize = new ResizeObserver(positionBar)
-  toolbarResize.observe(toolbar)
-  positionBar()
   const query = form.querySelector<HTMLInputElement>('#find-input')!
   const replacement = form.querySelector<HTMLInputElement>('#replace-input')!
   const sensitive = form.querySelector<HTMLInputElement>('#find-case')!
@@ -78,6 +73,6 @@ export function createFindBar(editor: Editor, toolbar: HTMLElement) {
       query.focus()
       query.select()
     },
-    dispose(): void { editor.off('update', refresh); toolbarResize.disconnect(); form.remove() },
+    dispose(): void { editor.off('update', refresh); form.remove() },
   }
 }

@@ -4,12 +4,11 @@
 
 在 VS Code 中阅读和可视化编辑 Markdown，复用 MarkLeaf 的 Tiptap/ProseMirror 编辑内核、KaTeX、Mermaid 和排版样式。扩展由 TypeScript 编写，运行时使用 VS Code 提供的 API 与 Webview，没有 Electron 依赖或独立桌面壳。
 
-当前版本 **0.2.7** 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
+当前版本 0.2.8 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
 
 工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，与原生产品共用内核的浮层定位：优先在内容下方展开，空间不足时调整位置以保持可见。公式符号面板会根据可用空间调整布局。
 
 项目与扩展 README 均提供四种语言；界面翻译范围见下方“排版和偏好”。
-
 
 ## 导出、预览与打印
 
@@ -29,13 +28,12 @@ PDF、图片、预览与打印使用已安装的 **Chrome/Edge**，扩展不捆�
 
 远程扩展宿主可使用其文件系统和浏览器导出文件；需要在该宿主安装浏览器。交互预览与打印限定本地桌面 VS Code 窗口，SSH/WSL 窗口请先导出文件再到本机打开。Windows/Linux/远程与真实打印设备仍需在对应环境验收。
 
-
 ## 安装和打开
 
-本地构建得到 `artifacts/markleaf-vscode-0.2.7.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
+本地构建得到 `artifacts/markleaf-vscode-0.2.8.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
 ```
 
 安装并启用扩展后，新打开的 `.md` 或 `.markdown` 文件默认进入 MarkLeaf 渲染视图，可直接阅读和可视化编辑。已打开的源码标签可以通过 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切换，也可以从资源管理器右键选择 **MarkLeaf: Open Markdown**。
@@ -52,19 +50,21 @@ MarkLeaf 使用 VS Code 的默认自定义编辑器声明。若已为 Markdown �
 
 ## 编辑和阅读
 
-| 功能组 | 入口和行为 |
-| --- | --- |
-| 文字与段落 | 工具栏和“格式…”支持粗体、斜体、下划线、删除线、高亮、行内代码、清除格式、H1–H6、标题升降级、段落前后插入、复制和删除、列表缩进，以及五种 GitHub 提示框。菜单支持按名称搜索。 |
-| 格式刷与段落操作柄 | 选择已有格式的文字，点击格式刷，再拖选目标文字；应用一次后退出，Escape 取消。段落左侧操作柄打开当前段落菜单，操作柄位于可编辑内容外。 |
-| 表格 | 指定行列数插入、增删行列、列对齐、设置或清除表格标题、删除表格。菜单依据光标位置显示适用操作。 |
-| 公式与 Mermaid | 插入行内/独立公式、公式编号、转换类型、删除；点击选中公式或图表后，再次点击展开共享源码控件，保留数学输入辅助。支持 Mermaid 代码渲染、编辑和重新渲染。 |
-| 脚注与元数据 | 插入脚注、重命名标签、回到引用、清除引用、删除脚注；显示或插入 YAML Front Matter。标签不能重复占用已有定义或引用。 |
-| 代码 | 选择代码块语言、复制代码、退出代码块，支持语法高亮开关。 |
-| 剪贴板 | “编辑”提供复制为 Markdown、纯文本或 HTML 源码，以及粘贴纯文本。普通复制同时提供选区文本和 HTML；可视模式的普通文本粘贴和“粘贴纯文本”均按 Windows 规则解析 Markdown。源码编辑保留字面文本；状态栏显示解析、格式转换、降级原因或失败结果。 |
-| 查找替换 | 在渲染内容中查找，支持大小写、全词、上/下一处、单次和全部替换。阅读模式可查找，替换需要编辑模式。 |
-| 大纲与阅读 | “视图”提供 H1–H6 大纲、专注当前段落、打字机滚动、缩放、排版与配色。状态栏显示字符数、选区字符数、当前块及位置，悬停可查看详细统计。 |
 
-**阅读 / 编辑**按钮切换模式。打开文档、查找以及切换模式或显示设置不会触发 Markdown 回写。阅读模式保留复制、查找、链接和大纲导航，需要改动文档的操作仅在编辑模式可用。
+| 功能组         | 入口和行为                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 文字与段落       | 工具栏和“格式…”支持粗体、斜体、下划线、删除线、高亮、行内代码、清除格式、H1–H6、标题升降级、段落前后插入、复制和删除、列表缩进，以及五种 GitHub 提示框。菜单支持按名称搜索。                                            |
+| 格式刷与段落操作柄   | 选择已有格式的文字，点击格式刷，再拖选目标文字；应用一次后退出，Escape 取消。段落左侧操作柄打开当前段落菜单，操作柄位于可编辑内容外。                                                                    |
+| 表格          | 指定行列数插入、增删行列、列对齐、设置或清除表格标题、删除表格。菜单依据光标位置显示适用操作。                                                                                           |
+| 公式与 Mermaid | 插入行内/独立公式、公式编号、转换类型、删除；点击选中公式或图表后，再次点击展开共享源码控件，保留数学输入辅助。支持 Mermaid 代码渲染、编辑和重新渲染。                                                          |
+| 脚注与元数据      | 插入脚注、重命名标签、回到引用、清除引用、删除脚注；显示或插入 YAML Front Matter。标签不能重复占用已有定义或引用。                                                                        |
+| 代码          | 选择代码块语言、复制代码、退出代码块，支持语法高亮开关。                                                                                                              |
+| 剪贴板         | “编辑”提供复制为 Markdown、纯文本或 HTML 源码，以及粘贴纯文本。普通复制同时提供选区文本和 HTML；可视模式的普通文本粘贴和“粘贴纯文本”均按 Windows 规则解析 Markdown。源码编辑保留字面文本；状态栏显示解析、格式转换、降级原因或失败结果。 |
+| 查找替换        | 在渲染内容中查找，支持大小写、全词、上/下一处、单次和全部替换。阅读模式可查找，替换需要编辑模式。                                                                                         |
+| 大纲与阅读       | “视图”提供 H1–H6 大纲、专注当前段落、打字机滚动、缩放、排版与配色。状态栏显示字符数、选区字符数、当前块及位置，悬停可查看详细统计。                                                                    |
+
+
+<strong>阅读 / 编辑</strong>按钮切换模式。打开文档、查找以及切换模式或显示设置不会触发 Markdown 回写。阅读模式保留复制、查找、链接和大纲导航，需要改动文档的操作仅在编辑模式可用。
 
 打开格式菜单、图片选择器或输入框后，操作仍应用到打开时的选区。如果等待期间文档已被修改，会提示重新选择。若图片文件已经保存，但原选区过期，提示中会保留资源路径，方便从新位置插入。
 
@@ -80,24 +80,26 @@ MarkLeaf 使用 VS Code 的默认自定义编辑器声明。若已为 Markdown �
 
 ## 快捷键与文档同步
 
-| 操作 | Windows / Linux | macOS |
-| --- | --- | --- |
-| 源码 / 渲染双向切换 | `Ctrl+Shift+V` | `Cmd+Shift+V` |
-| 渲染内容查找 | `Ctrl+F` | `Cmd+F` |
-| 渲染内容替换 | `Ctrl+H` | `Cmd+Alt+F` |
-| 粘贴纯文本 | `Ctrl+Alt+V` | `Cmd+Alt+V` |
-| 保存 | `Ctrl+S` | `Cmd+S` |
-| 撤销 / 重做 | `Ctrl+Z` / `Ctrl+Shift+Z` | `Cmd+Z` / `Cmd+Shift+Z` |
+
+| 操作          | Windows / Linux           | macOS                   |
+| ----------- | ------------------------- | ----------------------- |
+| 源码 / 渲染双向切换 | `Ctrl+Shift+V`            | `Cmd+Shift+V`           |
+| 渲染内容查找      | `Ctrl+F`                  | `Cmd+F`                 |
+| 渲染内容替换      | `Ctrl+H`                  | `Cmd+Alt+F`             |
+| 粘贴纯文本       | `Ctrl+Alt+V`              | `Cmd+Alt+V`             |
+| 保存          | `Ctrl+S`                  | `Cmd+S`                 |
+| 撤销 / 重做     | `Ctrl+Z` / `Ctrl+Shift+Z` | `Cmd+Z` / `Cmd+Shift+Z` |
+
 
 查找栏用 Enter / Shift+Enter 定位下一处 / 上一处，Escape 关闭。Ctrl+滚轮可调整文档缩放。源码 / 渲染切换、查找、替换和纯文本粘贴可在 VS Code Keyboard Shortcuts 中搜索 MarkLeaf 后自定义；两条视图切换规则分别作用于源码与渲染，改键时应一起调整。渲染快捷键仅在 MarkLeaf 获得焦点时生效，纯文本粘贴不接管查找框和公式源码等输入框。标题、粗体、斜体等默认沿用共享编辑器已有键位，可在 MarkLeaf 快捷键设置中改绑。源码切换绑定在 Markdown 编辑场景中接管原生预览快捷键，原生预览命令仍可通过命令面板使用。
 
 ### 格式快捷键设置
 
-打开 MarkLeaf 文档后，选择 **视图 → 快捷键…**，或在命令面板运行 **MarkLeaf: Configure Shortcuts / 快捷键设置**。也可从“排版、主题与设置”进入。录键面板提供所有格式菜单操作的搜索、录入、清除和恢复默认；点击“保存键位”后立即生效，格式菜单和工具栏提示同步更新。
+打开 MarkLeaf 文档后，选择 <strong>视图 → 快捷键…</strong>，或在命令面板运行 <strong>MarkLeaf: Configure Shortcuts / 快捷键设置</strong>。也可从“排版、主题与设置”进入。录键面板提供所有格式菜单操作的搜索、录入、清除和恢复默认；点击“保存键位”后立即生效，格式菜单和工具栏提示同步更新。
 
 行内公式、独立公式及图表默认不绑定。给“行内公式”录入一组键位后，在渲染编辑区的光标位置按键即可插入公式并打开原有公式源码与符号辅助。表格尺寸、脚注等需要额外参数的操作仍使用原有输入框；不再需要先展开格式菜单。
 
-扩展设置页中的 **Markleaf: Shortcuts** 保存同一份配置，也可直接编辑设置 JSON，例如：
+扩展设置页中的 <strong>Markleaf: Shortcuts</strong> 保存同一份配置，也可直接编辑设置 JSON，例如：
 
 ```json
 "markleaf.shortcuts": {
@@ -129,16 +131,18 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 
 通过“视图 → 排版、主题与设置…”选择常用选项，或在 VS Code 设置中搜索 `@ext:markleaf.markleaf`。设置遵循已有的用户、工作区或工作区文件夹作用域。
 
-| 设置组 | 主要设置 |
-| --- | --- |
-| 排版与配色 | `typography` 提供九种原有样式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 默认跟随 VS Code，也可选择十九种原有配色。正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。 |
-| 字体和宽度 | `fontSize` 默认 16、`fontFamily`、`lineHeight`、`maxWidth` 默认 820、`ignoreMaxWidth`、`zoom`；样式使用的字体须已安装在系统中。 |
-| 代码和中西文 | `showCodeHighlight`、`sourceFontFamily` / `sourceFontSize`（公式/图表源码控件）、`cjkLanguage`、`cjkAutoSpacing`；视觉间距不会插入源码空格。 |
-| 视图 | `defaultMode`、`showOutline`、`focusMode`、`typewriterMode`、`showStatusBar`、`showBlockHandle`、`autoHideScrollbars`、`ctrlWheelZoom`。 |
-| Markdown 编辑 | `codeFence`、`emphasisMarker`、`bulletMarker`、`exitBlockOnEmptyEnter`、`useShiftEnterHardBreak`、强调转换及字面符号转义。序列化设置在实际编辑后应用。 |
-| 图片 | `imageDirectory`、`fileImageHandling`、`useRelativeImagePaths`、`prefixImagePathsWithDot`。 |
-| 格式快捷键 | `shortcuts`；与“视图 → 快捷键…”的录键面板共用配置，只作用于 VS Code 的 MarkLeaf 渲染编辑区。 |
-| 自定义 CSS | `customCss` 指向文档相对路径或绝对路径的 CSS 文件；仅在可信工作区加载，修改文件后重新加载编辑器。 |
+
+| 设置组         | 主要设置                                                                                                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 排版与配色       | `typography` 提供九种原有样式：sans、serif、print、print-double、latex、retro-print、minimal、magazine、notebook；`colorTheme` 默认跟随 VS Code，也可选择十九种原有配色。正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。 |
+| 字体和宽度       | `fontSize` 默认 16、`fontFamily`、`lineHeight`、`maxWidth` 默认 820、`ignoreMaxWidth`、`zoom`；样式使用的字体须已安装在系统中。                                                                                              |
+| 代码和中西文      | `showCodeHighlight`、`sourceFontFamily` / `sourceFontSize`（公式/图表源码控件）、`cjkLanguage`、`cjkAutoSpacing`；视觉间距不会插入源码空格。                                                                                  |
+| 视图          | `defaultMode`、`showOutline`、`focusMode`、`typewriterMode`、`showStatusBar`、`showBlockHandle`、`autoHideScrollbars`、`ctrlWheelZoom`。                                                                   |
+| Markdown 编辑 | `codeFence`、`emphasisMarker`、`bulletMarker`、`exitBlockOnEmptyEnter`、`useShiftEnterHardBreak`、强调转换及字面符号转义。序列化设置在实际编辑后应用。                                                                            |
+| 图片          | `imageDirectory`、`fileImageHandling`、`useRelativeImagePaths`、`prefixImagePathsWithDot`。                                                                                                            |
+| 格式快捷键       | `shortcuts`；与“视图 → 快捷键…”的录键面板共用配置，只作用于 VS Code 的 MarkLeaf 渲染编辑区。                                                                                                                                   |
+| 自定义 CSS     | `customCss` 指向文档相对路径或绝对路径的 CSS 文件；仅在可信工作区加载，修改文件后重新加载编辑器。                                                                                                                                          |
+
 
 普通 Markdown 源码的字体、缩进和快捷键使用 VS Code 原生编辑器设置。文件/文件夹、最近文件、标签页、自动保存、恢复、编码、换行、窗口布局和扩展更新也使用 VS Code 本身的能力。共享公式和图表控件按 VS Code 语言选择已有翻译；导出菜单、面板、命令和状态消息按 VS Code 语言提供简体中文、繁体中文、英文、日文。既有编辑菜单和格式命令标题仍使用中文，其他既有命令保留英文。
 
@@ -161,7 +165,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-安装入口依次准备共享内核、VS Code Webview 和扩展宿主。打包入口先统一编译内核，再编译两个扩展包，生成 `artifacts/markleaf-vscode-0.2.7.vsix`。仅编译使用 `corepack pnpm build:vscode`；适配层测试单独使用 `corepack pnpm test:vscode`。
+安装入口依次准备共享内核、VS Code Webview 和扩展宿主。打包入口先统一编译内核，再编译两个扩展包，生成 `artifacts/markleaf-vscode-0.2.8.vsix`。仅编译使用 `corepack pnpm build:vscode`；适配层测试单独使用 `corepack pnpm test:vscode`。
 
 开发运行可使用已有 VS Code，无需安装额外桌面运行时：
 
@@ -171,13 +175,15 @@ code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document
 
 渲染能力由共享内核提供，扩展侧只保留协议与适配层：
 
-| 目录 | 职责 |
-| --- | --- |
-| `packages/editor-core/src/index.ts` | 共享渲染内核入口（`@markleaf/editor-core`），三端共用 |
-| `packages/editor-core/dist/document-kernel.cjs` | 共享无 DOM 文档产物：由扩展进程加载 |
-| `apps/vscode/webview/src/vscode.ts` | 扩展前端入口：扩展协议、设置、导出、快捷键装配 |
-| `apps/vscode/src/extension.ts` | 扩展进程：VS Code 文档适配层（`TextDocument` / `WorkspaceEdit`） |
-| `packages/editor-web/src/main.ts` | Windows/macOS 入口，配合 `protocol.ts` 原生宿主协议 |
+
+| 目录                                              | 职责                                                   |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| `packages/editor-core/src/index.ts`             | 共享渲染内核入口（`@markleaf/editor-core`），三端共用               |
+| `packages/editor-core/dist/document-kernel.cjs` | 共享无 DOM 文档产物：由扩展进程加载                                 |
+| `apps/vscode/webview/src/vscode.ts`             | 扩展前端入口：扩展协议、设置、导出、快捷键装配                              |
+| `apps/vscode/src/extension.ts`                  | 扩展进程：VS Code 文档适配层（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts`               | Windows/macOS 入口，配合 `protocol.ts` 原生宿主协议             |
+
 
 构建输出：扩展前端 `apps/vscode/dist/webview`（由 `webviewHtml()` 经 `.vite/manifest.json` 读取），扩展进程 `apps/vscode/dist/extension.js`，原生前端 `packages/editor-web/dist`。
 

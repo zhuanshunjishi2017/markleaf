@@ -127,7 +127,7 @@ const sync = new TextDocumentSync({
         })
         interactions = createEditorInteractions({ mount, getEditor: () => editor!, enabled: () => !!editor?.isEditable, onMenu: () => action('block'), label: '当前段落操作', onStateChanged: updateToolbar,
           links: { primaryModifier: mac ? 'meta' : 'ctrl', openLink: href => post({ type: 'openLink', href }),
-            topInset: () => window.document.querySelector('#toolbar')?.getBoundingClientRect().height ?? 0 } })
+            topInset: () => chrome.getBoundingClientRect().bottom } })
         findBar = createFindBar(editor, window.document.querySelector<HTMLElement>('#toolbar')!)
         reading = createReadingView(editor, mount, count)
         reading.apply(settings, customCss, language)
@@ -356,6 +356,29 @@ function command(command: string, text?: string, fromHost = false): void {
 }
 
 const toolbar = document.querySelector<HTMLElement>('#toolbar')!
+const chrome = document.querySelector<HTMLElement>('#editor-chrome')!
+const footer = document.querySelector<HTMLElement>('#app > footer')!
+function positionToolbarMenus(): void {
+  for (const menu of toolbar.querySelectorAll<HTMLDetailsElement>('details[open]')) {
+    const anchor = menu.querySelector('summary')!.getBoundingClientRect()
+    const content = menu.querySelector<HTMLElement>('.menu-content')!
+    const width = content.getBoundingClientRect().width
+    const top = anchor.bottom + 4
+    content.style.left = `${Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8))}px`
+    content.style.top = `${top}px`
+    content.style.maxHeight = `${Math.max(0, window.innerHeight - top - footer.getBoundingClientRect().height - 8)}px`
+  }
+}
+function updateChromeLayout(): void {
+  document.documentElement.style.setProperty('--ml-chrome-height', `${chrome.getBoundingClientRect().height}px`)
+  document.documentElement.style.setProperty('--ml-status-height', `${footer.getBoundingClientRect().height}px`)
+  positionToolbarMenus()
+}
+const chromeResize = new ResizeObserver(updateChromeLayout)
+chromeResize.observe(chrome)
+chromeResize.observe(footer)
+window.addEventListener('resize', positionToolbarMenus)
+updateChromeLayout()
 function closeToolbarMenus(except?: Element | null): void {
   toolbar.querySelectorAll<HTMLDetailsElement>('details[open]').forEach(menu => {
     if (menu !== except) menu.open = false
@@ -365,7 +388,10 @@ document.addEventListener('pointerdown', event => {
   closeToolbarMenus(event.target instanceof Element ? event.target.closest('#toolbar details') : null)
 }, true)
 toolbar.addEventListener('toggle', event => {
-  if (event.target instanceof HTMLDetailsElement && event.target.open) closeToolbarMenus(event.target)
+  if (event.target instanceof HTMLDetailsElement && event.target.open) {
+    closeToolbarMenus(event.target)
+    positionToolbarMenus()
+  }
 }, true)
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.isComposing) return
@@ -578,6 +604,8 @@ window.addEventListener('pagehide', () => {
   for (const reader of fileReaders) reader.abort()
   fileReaders.clear()
   themeObserver.disconnect()
+  chromeResize.disconnect()
+  window.removeEventListener('resize', positionToolbarMenus)
   interactions?.dispose()
   findBar?.dispose()
   reading?.dispose()

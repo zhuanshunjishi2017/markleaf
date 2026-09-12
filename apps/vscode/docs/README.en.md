@@ -4,7 +4,7 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.2.7** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
+Version **0.2.8** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They use the same kernel positioning as the native products: prefer the space below the content and adjust within the viewport when space is limited. The math symbol panel adapts its layout to the available space.
 
@@ -32,10 +32,10 @@ A remote extension host can export files using its filesystem and installed brow
 
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.2.7.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.2.8.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.7.vsix
+code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
 ```
 
 After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
@@ -161,7 +161,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.2.7.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
+The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.2.8.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
 
 Use an existing VS Code installation for development:
 
