@@ -6,6 +6,7 @@ import { imageReference, importImages, pickImages, saveImageAs } from '../../src
 import { resolveDocumentLink } from '../../src/resources'
 import { defaultSettings } from '../src/vscode-settings'
 import { isWebviewMessage } from '../src/vscode-protocol'
+import { resolveEditorActions } from '@markleaf/editor-core/command-state'
 
 function doc(uri = 'file:///project/readme.md', isUntitled = false): vscode.TextDocument {
   return { uri: Uri.parse(uri), isUntitled } as unknown as vscode.TextDocument
@@ -13,6 +14,16 @@ function doc(uri = 'file:///project/readme.md', isUntitled = false): vscode.Text
 afterEach(() => { files.clear(); vi.clearAllMocks(); workspace.workspaceFolders = undefined })
 
 describe('VS Code host inputs and image filesystem boundary', () => {
+  it('accepts kernel command projections on toolbar requests without accepting malformed states', () => {
+    const actions = resolveEditorActions({ paragraph: true, canStartFormatPainter: true }, { readOnly: false })
+    for (const action of ['format', 'block', 'insertLink', 'insertImage', 'insertImageUrl', 'image', 'codeLanguage']) {
+      expect(isWebviewMessage({ type: 'action', action, context: { editable: true, actions, footnoteLabels: [] } })).toBe(true)
+    }
+    for (const actions of [null, [], true, { toggleBold: null }, { toggleBold: { enabled: true } }, { toggleBold: { enabled: 'true', checked: false } }]) {
+      expect(isWebviewMessage({ type: 'action', action: 'format', context: { actions } })).toBe(false)
+    }
+  })
+
   it('asks for table size and returns the shared command parameter; cancel makes no command', async () => {
     window.showQuickPick.mockImplementationOnce(items => Promise.resolve(items.find((item: { command?: string }) => item.command === 'insertTable')))
     window.showInputBox.mockResolvedValueOnce('4 × 5')
