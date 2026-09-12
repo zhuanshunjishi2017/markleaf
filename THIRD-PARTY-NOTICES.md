@@ -8,8 +8,6 @@ included in the distribution package or available at the listed URLs.
 | Package | Version | License |
 | --- | --- | --- |
 | Microsoft.Web.WebView2 | 1.0.4078.44 | [Microsoft package license](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4078.44/License) |
-| Jint | 4.16.2 | [BSD-2-Clause](https://github.com/sebastienros/jint/blob/main/LICENSE.txt) |
-| Acornima (Jint parser) | 1.7.0 | [BSD-3-Clause](https://github.com/adams85/acornima/blob/main/LICENSE.txt) |
 
 ## Editor Frontend (npm)
 
