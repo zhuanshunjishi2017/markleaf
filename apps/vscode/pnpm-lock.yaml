@@ -12,6 +12,9 @@ importers:
         specifier: 24.43.1
         version: 24.43.1
     devDependencies:
+      '@markleaf/editor-core':
+        specifier: link:../../packages/editor-core
+        version: link:../../packages/editor-core
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1

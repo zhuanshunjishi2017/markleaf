@@ -29,6 +29,25 @@ public sealed class EditorProtocolTests
     }
 
     [TestMethod]
+    public void TryDeserializeEditorMessage_AcceptsStylesAppliedAcknowledgement()
+    {
+        var json = $$"""
+            {
+              "protocolVersion": 1,
+              "type": "stylesApplied",
+              "documentId": "{{Guid.NewGuid()}}",
+              "revision": 0
+            }
+            """;
+
+        var accepted = EditorProtocol.TryDeserializeEditorMessage(json, out var message, out var error);
+
+        Assert.IsTrue(accepted, error);
+        Assert.IsNotNull(message);
+        Assert.AreEqual("stylesApplied", message.Type);
+    }
+
+    [TestMethod]
     public void TryDeserializeEditorMessage_RejectsVersionTypeAndDocumentId()
     {
         const string json = """

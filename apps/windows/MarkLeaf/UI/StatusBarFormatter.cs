@@ -49,6 +49,7 @@ internal static class StatusBarFormatter
             "\r\n" => "CRLF",
             "\n" => "LF",
             "\r" => "CR",
+            "Mixed" => "Mixed",
             _ => Loc.Get("statusBar.newline.unknown"),
         };
     }

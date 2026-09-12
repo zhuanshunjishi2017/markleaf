@@ -1,13 +1,6 @@
 import Foundation
 import PDFKit
 
-/// PDF 导出大纲条目：页码由已生成 PDF 的文本流定位。
-struct PDFHeading: Equatable {
-    let level: Int
-    let text: String
-    let page: Int
-}
-
 enum PDFOutlineBuilder {
     static func headings(in html: String) -> [String] {
         let pattern = #"<h([1-6])(?:\s[^>]*)?>(.*?)</h\1>"#
@@ -37,59 +30,54 @@ enum PDFOutlineBuilder {
               let document = PDFDocument(data: data),
               document.pageCount > 0 else { return nil }
 
-        let normalizedPages = (0..<document.pageCount).compactMap { index in
+        // A page with no extractable text still occupies its original PDF page index.
+        let normalizedPages = (0..<document.pageCount).map { index in
             document.page(at: index)?.string.map(normalize)
         }
+        // Rebuild a writable PDF before assigning destinations to its pages.
+        let writableDocument = PDFDocument()
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { return nil }
+            writableDocument.insert(page, at: writableDocument.pageCount)
+        }
+        let root = PDFOutline()
+        var addedHeadings = 0
         var searchPage = 0
-        var headings: [PDFHeading] = []
-        var cursor = normalizedPages.first.map { $0.startIndex }
+        var cursor: String.Index?
 
         for title in titles {
             let target = normalize(title)
+            guard !target.isEmpty else { continue }
             var page = searchPage
-            var location: String.Index?
+            var location: Range<String.Index>?
             while page < normalizedPages.count {
-                let text = normalizedPages[page]
+                guard let text = normalizedPages[page] else {
+                    page += 1
+                    continue
+                }
                 let start = page == searchPage ? (cursor ?? text.startIndex) : text.startIndex
                 if let range = text.range(of: target, options: [.caseInsensitive, .diacriticInsensitive], range: start..<text.endIndex) {
-                    location = range.lowerBound
+                    location = range
                     break
                 }
                 page += 1
-                cursor = nil
             }
-            guard let found = location else { continue }
-            headings.append(PDFHeading(level: 1, text: title, page: page + 1))
-            searchPage = page
-            cursor = found
-        }
+            guard let found = location, let pdfPage = writableDocument.page(at: page) else { continue }
 
-        guard !headings.isEmpty else { return nil }
-        let writableDocument = PDFDocument()
-        for index in 0..<document.pageCount {
-            if let page = document.page(at: index) {
-                writableDocument.insert(page, at: writableDocument.pageCount)
-            }
-        }
-
-        let root = writableDocument.outlineRoot ?? PDFOutline()
-        var stack: [(outline: PDFOutline, level: Int)] = []
-
-        for heading in headings {
+            // Keep each title and its actual destination together. Unmatched titles
+            // have no bookmark and never consume another title's page mapping.
             let outline = PDFOutline()
-            outline.label = heading.text
-            if let page = writableDocument.page(at: max(0, heading.page - 1)) {
-                outline.destination = PDFDestination(
-                    page: page,
-                    at: NSPoint(x: 0, y: page.bounds(for: .mediaBox).height)
-                )
-            }
-            while let last = stack.last, last.level >= 1 {
-                stack.removeLast()
-            }
-            root.insertChild(outline, at: max(0, root.numberOfChildren))
-            stack.append((outline, 1))
+            outline.label = title
+            outline.destination = PDFDestination(
+                page: pdfPage,
+                at: NSPoint(x: 0, y: pdfPage.bounds(for: .mediaBox).height)
+            )
+            root.insertChild(outline, at: root.numberOfChildren)
+            addedHeadings += 1
+            searchPage = page
+            cursor = found.upperBound
         }
+        guard addedHeadings > 0 else { return nil }
         writableDocument.outlineRoot = root
         return writableDocument.dataRepresentation()
     }

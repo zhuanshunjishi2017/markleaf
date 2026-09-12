@@ -423,29 +423,6 @@ internal sealed class EditorHostController : IDisposable
         });
     }
 
-    public void ExecuteExpandedSourceCommand(string command, string? text = null)
-    {
-        if (command is "undo" or "redo")
-        {
-            EnqueueOrRun(() => Post("command", new { command }));
-            return;
-        }
-
-        var script = command switch
-        {
-            // Do not focus the editor before copying: focusing a contenteditable
-            // element collapses the user's current selection and would copy the
-            // entire formula instead of the selected text.
-            "copy" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); const selection = window.getSelection(); if (!target || !selection || selection.rangeCount === 0 || !target.contains(selection.anchorNode) || !target.contains(selection.focusNode)) return false; const text = selection.toString(); if (!text) return false; if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true).catch(() => document.execCommand('copy')); return document.execCommand('copy'); })()",
-            "cut" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('cut'); })()",
-            "paste" when text is not null => $"(() => {{ const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); return document.execCommand('insertText', false, {System.Text.Json.JsonSerializer.Serialize(text)}); }})()",
-            "paste" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); target?.focus(); return document.execCommand('paste'); })()",
-            "selectAll" => "(() => { const target = document.querySelector('.markleaf-expanded-source-editor'); if (!target) return false; target.focus(); const selection = window.getSelection(); const range = document.createRange(); range.selectNodeContents(target); selection?.removeAllRanges(); selection?.addRange(range); return true; })()",
-            _ => "false",
-        };
-        EnqueueOrRun(() => _webView.CoreWebView2?.ExecuteScriptAsync($"(() => {{ return {script}; }})()"));
-    }
-
     public async Task RestartEditorAsync()
     {
         if (!IsDocumentLoaded)
@@ -525,10 +502,9 @@ internal sealed class EditorHostController : IDisposable
     public void ExecuteCommand(
         string command,
         string? text = null,
-        bool applyToCurrentTextBlockWhenEmpty = false,
         string? html = null)
     {
-        EnqueueOrRun(() => Post("command", new { command, text, html, applyToCurrentTextBlockWhenEmpty }));
+        EnqueueOrRun(() => Post("command", new { command, text, html }));
     }
 
     public void ClearBlockHighlight()

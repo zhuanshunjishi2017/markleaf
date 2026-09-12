@@ -1,0 +1,65 @@
+{
+  "name": "@markleaf/editor-core",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "type": "module",
+  "description": "MarkLeaf 共享内核：文档规则、渲染、编辑、导出与排版，独立构建后供产品加载。",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/renderer/editor-core.js"
+    },
+    "./editor-state": "./src/editor-state.ts",
+    "./command-state": "./src/command-state.ts",
+    "./styles.css": "./src/styles.css",
+    "./build": "./build/index.ts",
+    "./document": {
+      "types": "./src/document/native-entry.ts",
+      "default": "./dist/document-kernel.cjs"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:document": "tsc --project tsconfig.document.json && vite build --config vite.document.config.ts",
+    "build": "corepack pnpm build:document && vite build --config vite.renderer.config.ts"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.4",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.1",
+    "@lezer/highlight": "^1.2.3",
+    "@tiptap/core": "3.29.2",
+    "@tiptap/extension-bold": "3.29.2",
+    "@tiptap/extension-code-block": "3.29.2",
+    "@tiptap/extension-image": "3.29.2",
+    "@tiptap/extension-italic": "3.29.2",
+    "@tiptap/extension-link": "3.29.2",
+    "@tiptap/extension-list": "3.29.2",
+    "@tiptap/extension-table": "3.29.2",
+    "@tiptap/extension-task-item": "3.29.2",
+    "@tiptap/extension-task-list": "3.29.2",
+    "@tiptap/extension-underline": "3.29.2",
+    "@tiptap/markdown": "3.29.2",
+    "@tiptap/pm": "3.29.2",
+    "@tiptap/starter-kit": "3.29.2",
+    "katex": "0.16.21",
+    "mermaid": "^11.17.0",
+    "yaml": "2.8.1",
+    "marked": "17.0.6",
+    "entities": "8.1.0",
+    "parse5": "8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "jsdom": "27.2.0",
+    "type-fest": "5.8.0",
+    "typescript": "5.9.3",
+    "vite": "7.2.4",
+    "vitest": "4.0.15"
+  }
+}

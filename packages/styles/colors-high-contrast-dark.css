@@ -22,6 +22,23 @@
   --theme-dark:          #FFFFFF;
   --highlight:           #6F6800;
   --highlight-current:   #A39A00;
+
+  /* 文档表面分级：高对比模式下分隔线必须保持可辨识，填充层级维持极低亮度。 */
+  --ml-surface-1:        #040404;
+  --ml-fill-quaternary:  #0F0F0F;
+  --ml-fill-tertiary:    #1A1A1A;
+  --ml-separator:        #C0C0C0;
+  --ml-separator-strong: #FFFFFF;
+  /* 高对比模式刻意保留强表头线，不做降档。 */
+  --ml-table-header-rule: #FFFFFF;
+
+  /* 提示框语义色：高对比模式取更亮的变体（纯黑底上均 >= 7:1）。 */
+  --ml-alert-note:       #79C0FF;
+  --ml-alert-tip:        #56D364;
+  --ml-alert-important:  #D2A8FF;
+  --ml-alert-warning:    #E3B341;
+  --ml-alert-caution:    #FF7B72;
+  --ml-alert-on-color:   #000000;
 }
 
 /* 高对比度主题保留的可访问性覆盖。 */

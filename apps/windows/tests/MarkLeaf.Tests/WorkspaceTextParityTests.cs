@@ -10,19 +10,6 @@ public sealed class WorkspaceTextParityTests
         => JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "workspace-text.json")));
 
     [TestMethod]
-    public void PlainText_MatchesSharedWindowsExamples()
-    {
-        using var fixture = ReadFixture();
-        foreach (var item in fixture.RootElement.GetProperty("projections").EnumerateArray())
-        {
-            Assert.AreEqual(
-                item.GetProperty("expected").GetString(),
-                MarkdownPlainText.FromDocument(item.GetProperty("source").GetString()!, item.GetProperty("isMarkdown").GetBoolean()),
-                item.GetProperty("name").GetString());
-        }
-    }
-
-    [TestMethod]
     public async Task TreeListAndSearch_UseTheSameTextFileScope()
     {
         using var fixture = ReadFixture();

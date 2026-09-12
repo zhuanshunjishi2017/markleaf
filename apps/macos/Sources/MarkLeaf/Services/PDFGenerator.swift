@@ -303,7 +303,6 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
     /// completion(.success(true)) = 已打印/已保存；.success(false) = 用户取消。
     func printPDF(
         html: String,
-        headings: [PDFHeading] = [],
         paperSize: PaperSize,
         landscape: Bool,
         margins: ExportMargins,

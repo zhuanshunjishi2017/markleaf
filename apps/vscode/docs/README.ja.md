@@ -6,7 +6,7 @@ MarkLeaf の Tiptap/ProseMirror 編集コア、KaTeX、Mermaid、組版スタイ
 
 現在のバージョン **0.2.7** は 36 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。
 
-ツールバーメニューは、外側のクリック、Escape、別メニューへの切り替え、拡張機能からのフォーカス移動で閉じます。数式と Mermaid のソースパネルは明暗テーマに対応した不透明な背景を持ち、対応する内容の下に開いて文書と一緒に画面外へスクロールします。空き領域に応じた上下の反転や、ウィンドウ下端への固定は行いません。数式記号パネルは利用可能な領域に合わせてレイアウトを調整します。
+ツールバーメニューは、外側のクリック、Escape、別メニューへの切り替え、拡張機能からのフォーカス移動で閉じます。数式と Mermaid のソースパネルは明暗テーマに対応した不透明な背景を持ち、ネイティブ製品と同じ共有カーネルの配置を使います。内容の下を優先し、空き領域が足りない場合はビューポート内で位置を調整します。数式記号パネルは利用可能な領域に合わせてレイアウトを調整します。
 
 プロジェクトと拡張機能の README は 4 言語で提供します。UI の翻訳範囲は「組版と設定」を参照してください。
 
@@ -57,7 +57,7 @@ VS Code 1.120 以降では、`.md` と `.markdown` の作業ツリー、ステ�
 | 文字・段落 | ツールバーと「格式…」（書式）から、太字、斜体、下線、取り消し線、ハイライト、インラインコード、書式解除、H1–H6、見出しレベル変更、前後への段落挿入、複製・削除、リストのインデント、5 種類の GitHub アラートを操作できます。操作名で検索できます。 |
 | 書式のコピー・段落ハンドル | 書式付きの文字を選択し、書式コピーを有効にして対象をドラッグ選択します。1 回適用すると終了し、Escape でキャンセルできます。段落左側のハンドルは編集内容の外にあり、その段落のメニューを開きます。 |
 | 表 | 行列数を指定して挿入、行列の追加・削除、列の配置、キャプションの設定・解除、表の削除ができます。カーソル位置に応じて操作が表示されます。 |
-| 数式・Mermaid | インライン数式・独立数式の挿入、番号設定、種類の切り替え、削除に対応します。数式や図をダブルクリックすると、数式記号入力補助を含む共有ソースコントロールが開きます。Mermaid コードの描画・編集・再描画にも対応します。 |
+| 数式・Mermaid | インライン数式・独立数式の挿入、番号設定、種類の切り替え、削除に対応します。数式や図をクリックして選択し、もう一度クリックすると、数式記号入力補助を含む共有ソースコントロールが開きます。Mermaid コードの描画・編集・再描画にも対応します。 |
 | 脚注・メタデータ | 脚注挿入、ラベル変更、参照へ戻る、参照解除、定義削除、YAML Front Matter の表示・挿入ができます。既存の定義や参照で使われるラベルは重複使用できません。 |
 | コード | コードブロックの言語選択、コピー、ブロックからの退出、構文強調の切り替えに対応します。 |
 | クリップボード | 「编辑」（編集）で Markdown・プレーンテキスト・HTML ソースとしてコピーできます。通常のコピーは選択テキストと HTML を提供します。ビジュアル編集では通常のテキスト貼り付けと「プレーンテキスト貼り付け」の両方が Windows と同じ規則で Markdown を解析します。ソース編集では文字をそのまま挿入し、ステータスバーに解析・書式変換・フォールバック理由・失敗を表示します。 |
@@ -150,19 +150,18 @@ Webview は一度に 1 件の編集を送り、バージョン確認後に蓄積
 
 対象はデスクトップ版 VS Code で、ブラウザ版の拡張入口はありません。リモート URI は VS Code のファイルシステム・リソース API を使用しますが、Windows、Linux、SSH/WSL や実際のクリップボード、ドラッグ、IME、キー操作は各環境での確認が必要です。ビルド、Vitest、モックホストのテストは、インストール後の UI 検証を代替しません。
 
-PDF、HTML ファイル、縦長画像のPDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。ネイティブアプリのエクスポート機能は引き続き利用できます。[機能対応表（簡体字中国語）](./feature-parity.md) も参照してください。
+PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しています。ネイティブアプリのエクスポート機能は引き続き利用できます。[機能対応表（簡体字中国語）](./feature-parity.md) も参照してください。
 
 ## 開発とビルド
 
-Node.js 22.12 以降とプロジェクト指定の pnpm を使用し、リポジトリのルートで実行します。
+Node.js 22.12 以降と Corepack 経由でプロジェクト指定の pnpm 11.9.0 を使用し、リポジトリのルートで実行します。
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm build:vscode
-pnpm test:editor-web
-pnpm package:vscode
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+インストールはカーネル、Webview、拡張ホストの依存を準備します。パッケージ作成時はこの順にビルドし、`artifacts/markleaf-vscode-0.2.7.vsix` を生成します。ビルドのみは `corepack pnpm build:vscode`、アダプターのテストは別途 `corepack pnpm test:vscode` で実行します。
 
 開発時は既存の VS Code を使用できます。
 
@@ -170,4 +169,16 @@ pnpm package:vscode
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` が拡張フロントエンド、`apps/vscode/src/extension.ts` が文書アダプターです。Windows/macOS は `main.ts` とネイティブホストプロトコルを使用します。拡張の出力は `apps/vscode/dist`、ネイティブフロントエンドは `packages/editor-web/dist` です。
+レンダリングは共有カーネルが担い、拡張側はプロトコルとアダプターのみを保持します。
+
+| パス | 役割 |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | 共有レンダリングカーネルの入口（`@markleaf/editor-core`）。3 つのホストで共用 |
+| `packages/editor-core/dist/document-kernel.cjs` | 拡張プロセスが読み込む共有 DOM 非依存の文書成果物 |
+| `apps/vscode/webview/src/vscode.ts` | 拡張フロントエンド：拡張プロトコル、設定、エクスポート、ショートカット |
+| `apps/vscode/src/extension.ts` | 拡張プロセス：VS Code 文書アダプター（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts` | Windows/macOS の入口。`protocol.ts` のネイティブホストプロトコルと併用 |
+
+ビルド出力：拡張フロントエンドは `apps/vscode/dist/webview`（`webviewHtml()` が `.vite/manifest.json` 経由で読み込み）、拡張プロセスは `apps/vscode/dist/extension.js`、ネイティブフロントエンドは `packages/editor-web/dist` です。
+
+カーネルはリポジトリの `build:kernel` で一度ビルドします。Webview は `dist/renderer/` の JS/CSS をそのまま読み込み、拡張プロセスは DOM 非依存の `document-kernel.cjs`（`@markleaf/editor-core/document`）と型契約を使用します。文書内容と保存の管理は引き続き `TextDocument` が担い、DOM レンダラーは Node プロセスに含めません。

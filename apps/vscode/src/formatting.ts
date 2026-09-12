@@ -1,23 +1,12 @@
 import * as vscode from 'vscode'
-import { formatGroups, resolveShortcuts, shortcutLabel } from '../../../packages/editor-web/src/vscode-shortcuts'
-import type { ActionContext, EditorCommand } from '../../../packages/editor-web/src/vscode-protocol'
+import { formatGroups, resolveShortcuts, shortcutLabel } from '../webview/src/vscode-shortcuts'
+import type { ActionContext, EditorCommand } from '../webview/src/vscode-protocol'
 
 type FormatItem = vscode.QuickPickItem & { command?: string }
 
 
 export function applicable(command: string, context: ActionContext): boolean {
-  if (['addRowBefore', 'addRowAfter', 'deleteRow', 'addColumnBefore', 'addColumnAfter', 'deleteColumn',
-    'alignTableLeft', 'alignTableCenter', 'alignTableRight', 'setTableCaption', 'deleteTable'].includes(command)) return context.inTable === true
-  if (['editMath', 'convertMath', 'deleteMath'].includes(command)) return context.mathInline === true || context.mathBlock === true
-  if (command === 'setMathNumber') return context.mathBlock === true
-  if (['editMermaid', 'deleteMermaid', 'rerenderMermaid'].includes(command)) return context.mermaidSelected === true
-  if (command === 'updateMermaid') return context.codeBlockLanguage?.toLowerCase() === 'mermaid'
-  if (command === 'rerenderAllMermaid') return (context.mermaidCount ?? 0) > 0
-  if (['resetFootnoteLabel', 'goToFootnoteReference', 'clearFootnoteReferences', 'deleteFootnote'].includes(command)) return !!context.footnoteDefinitionLabel
-  if (['setCodeBlockLanguage', 'exitCode'].includes(command)) return context.codeBlock === true
-  if (command === 'copyCodeBlock') return context.codeBlock === true || context.frontMatter === true
-  if (command === 'formatPainter') return context.canStartFormatPainter === true || context.formatPainterArmed === true
-  return true
+  return context.actions?.[command]?.enabled === true
 }
 
 export async function pickFormat(context: ActionContext = {}, block = false, shortcuts: unknown = {}, mac = false): Promise<EditorCommand | undefined> {

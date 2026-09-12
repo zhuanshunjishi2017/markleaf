@@ -6,7 +6,7 @@
 
 目前版本 **0.2.7** 提供 36 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。現已支援 PDF、HTML、PNG/JPG 長圖、預覽和列印。
 
-工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，始終展開在對應內容下方，隨文件捲動移出視野，不會根據可用空間上下跳轉或固定在視窗底部。公式符號面板會根據可用空間調整版面。
+工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，與原生產品共用核心的浮層定位：優先在內容下方展開，空間不足時調整位置以保持可見。公式符號面板會根據可用空間調整版面。
 
 專案與擴充功能 README 均提供四種語言；介面翻譯範圍見下方「排版和偏好」。
 
@@ -57,7 +57,7 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 | 文字與段落 | 工具列和「格式…」支援粗體、斜體、底線、刪除線、醒目提示、行內程式碼、清除格式、H1–H6、標題升降級、段落前後插入、複製和刪除、清單縮排，以及五種 GitHub 提示框。選單支援依操作名稱搜尋。 |
 | 格式刷與段落操作柄 | 選取已有格式的文字，點擊格式刷，再拖曳選取目標文字；套用一次後退出，Escape 取消。段落左側操作柄開啟目前段落的選單，操作柄位於可編輯內容外。 |
 | 表格 | 指定行列數插入、新增刪除行列、欄對齊、設定或清除表格標題、刪除表格。選單依游標位置顯示適用操作。 |
-| 公式與 Mermaid | 插入行內／獨立公式、公式編號、轉換類型、刪除；雙擊公式與圖表可開啟共享原始碼控制項，保留數學輸入輔助。支援 Mermaid 程式碼渲染、編輯和重新渲染。 |
+| 公式與 Mermaid | 插入行內／獨立公式、公式編號、轉換類型、刪除；點擊選取公式或圖表後，再次點擊展開共享原始碼控制項，保留數學輸入輔助。支援 Mermaid 程式碼渲染、編輯和重新渲染。 |
 | 註腳與中繼資料 | 插入註腳、重新命名標籤、回到參照、清除參照、刪除定義；顯示或插入 YAML Front Matter。標籤不能重複占用既有定義或參照。 |
 | 程式碼 | 選擇程式碼區塊語言、複製程式碼、退出區塊，支援語法醒目提示開關。 |
 | 剪貼簿 | 「編輯」提供複製為 Markdown、純文字或 HTML 原始碼，以及貼上純文字。一般複製同時提供選取文字和 HTML；視覺模式的一般文字貼上和「貼上純文字」均依 Windows 規則解析 Markdown。原始碼編輯保留字面文字；狀態列顯示解析、格式轉換、降級原因或失敗結果。 |
@@ -154,15 +154,14 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 
 ## 開發與建置
 
-從儲存庫根目錄執行，Node.js 22.12+，使用專案指定的 pnpm：
+從儲存庫根目錄執行，Node.js 22.12+，使用 Corepack 啟動專案固定的 pnpm 11.9.0：
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm build:vscode
-pnpm test:editor-web
-pnpm package:vscode
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+安裝入口依序準備核心、Webview 與擴充宿主。打包入口依序建置並產生 `artifacts/markleaf-vscode-0.2.7.vsix`。僅建置使用 `corepack pnpm build:vscode`；適配層測試單獨使用 `corepack pnpm test:vscode`。
 
 開發時可使用既有 VS Code，無需額外桌面執行環境：
 
@@ -170,4 +169,16 @@ pnpm package:vscode
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` 是擴充前端入口，`apps/vscode/src/extension.ts` 是 VS Code 文件適配層。Windows/macOS 入口使用 `main.ts` 和原生宿主協定。擴充建置輸出至 `apps/vscode/dist`，原生前端輸出至 `packages/editor-web/dist`。
+渲染由共享核心提供，擴充側只保留協定與適配層：
+
+| 路徑 | 職責 |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | 共享渲染核心入口（`@markleaf/editor-core`），三端共用 |
+| `packages/editor-core/dist/document-kernel.cjs` | 由擴充行程載入的共享無 DOM 文件產物 |
+| `apps/vscode/webview/src/vscode.ts` | 擴充前端入口：擴充協定、設定、匯出、快捷鍵裝配 |
+| `apps/vscode/src/extension.ts` | 擴充行程：VS Code 文件適配層（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts` | Windows/macOS 入口，搭配 `protocol.ts` 原生宿主協定 |
+
+建置輸出：擴充前端 `apps/vscode/dist/webview`（由 `webviewHtml()` 經 `.vite/manifest.json` 讀取）、擴充行程 `apps/vscode/dist/extension.js`、原生前端 `packages/editor-web/dist`。
+
+核心由儲存庫的 `build:kernel` 統一編譯。Webview 原樣載入 `dist/renderer/` 的 JS/CSS；擴充行程載入無 DOM 的 `document-kernel.cjs`（`@markleaf/editor-core/document`）與型別契約。`TextDocument` 繼續管理實際文件及儲存生命週期，DOM 渲染入口不進入 Node 行程。

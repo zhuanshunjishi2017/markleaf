@@ -4,9 +4,9 @@ import { homedir } from 'node:os'
 import { readSettings } from './settings'
 import { browserExecutable, exportWithBrowser } from './export-browser'
 import { embedExportImages } from './export-resources'
-import { exportDefaults, isExportOptions, type ExportFormat, type ExportHtmlResult, type ExportOptions } from '../../../packages/editor-web/src/vscode-export-options'
-import { exportStrings } from '../../../packages/editor-web/src/vscode-export-strings'
-import type { ExtensionMessage, WebviewMessage } from '../../../packages/editor-web/src/vscode-protocol'
+import { exportDefaults, isExportOptions, type ExportFormat, type ExportHtmlResult, type ExportOptions } from '../webview/src/vscode-export-options'
+import { exportStrings } from '../webview/src/vscode-export-strings'
+import type { ExtensionMessage, WebviewMessage } from '../webview/src/vscode-protocol'
 
 type Rendered = Extract<WebviewMessage, { type: 'exportRendered' }>
 type Pending = { requestId: number; resolve(result: ExportHtmlResult): void; reject(error: unknown): void }

@@ -1,0 +1,24 @@
+{
+  "name": "@markleaf/vscode-webview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MarkLeaf VS Code 扩展的 webview 适配层：扩展协议、设置、导出与快捷键装配，渲染能力来自 @markleaf/editor-core。",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@markleaf/editor-core": "link:../../../packages/editor-core"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/vscode": "1.95.0",
+    "jsdom": "27.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.2.4",
+    "vitest": "4.0.15"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

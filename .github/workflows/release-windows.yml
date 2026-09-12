@@ -36,7 +36,9 @@ jobs:
         with:
           node-version: '24.x'
           cache: pnpm
-          cache-dependency-path: packages/editor-web/pnpm-lock.yaml
+          cache-dependency-path: |
+            packages/editor-core/pnpm-lock.yaml
+            packages/editor-web/pnpm-lock.yaml
       - name: Resolve release metadata
         shell: pwsh
         run: |
@@ -52,12 +54,13 @@ jobs:
       - name: Build EditorWeb
         shell: pwsh
         run: |
+          # editor-web 以 link: 方式依赖 @markleaf/editor-core，内核自身的依赖
+          # 必须先装好，符号链接才可用。
+          pnpm --dir packages/editor-core install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # editor-web 的测试会引用 apps/vscode 源码做跨包校验，类型检查需要那边的
-          # @types/vscode 与 puppeteer-core，因此这里必须先装扩展依赖。
-          # 只用于类型检查，跳过构建脚本以免受 pnpm 构建策略影响。
-          pnpm --dir apps/vscode install --frozen-lockfile --ignore-scripts
+          pnpm --dir packages/editor-core build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --dir packages/editor-web build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

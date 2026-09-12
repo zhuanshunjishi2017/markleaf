@@ -22,4 +22,25 @@
   --theme-dark:          #0070E0;
   --highlight:           #6F6800;
   --highlight-current:   #A39A00;
+
+  /* 文档表面分级（Apple HIG：暗色用抬升表面与填充层级区分内容，不靠描边）。 */
+  --ml-surface-1:        #262628;  /* 代码块 / Mermaid 画布 */
+  --ml-fill-quaternary:  #2C2C2E;  /* 行内代码底 */
+  --ml-fill-tertiary:    #343436;  /* 表头底 */
+  --ml-separator:        #3C3C3F;  /* 表格网格、分隔线 */
+  --ml-separator-strong: #68686B;  /* 标题下划线、引用左边线；与底色约 3.1:1 */
+  /* 极简排版的表头线为 2px，取值介于两级分隔线之间，避免形成强调亮条。 */
+  --ml-table-header-rule: #4E4E51;
+  /* systemBlue 在暗色下的高对比变体：#0070E0 仅 3.6:1，正文链接需 >= 4.5:1。 */
+  --ml-link:             #409CFF;  /* 与底色约 6.1:1 */
+  /* 满饱和蓝配白字仅 3.6:1；改用去饱和选区蓝，与 #E5E5EA 约 5.0:1。 */
+  --ml-selection-bg:     #3F638B;
+
+  /* 提示框语义色：浅色变体在暗底上仅约 3.3:1，此处换用暗色变体（均 >= 5:1）。 */
+  --ml-alert-note:       #58A6FF;
+  --ml-alert-tip:        #3FB950;
+  --ml-alert-important:  #BC8CFF;
+  --ml-alert-warning:    #D29922;
+  --ml-alert-caution:    #F85149;
+  --ml-alert-on-color:   #1C1C1E;  /* 语义色实底转亮，压在其上的文字改深色 */
 }

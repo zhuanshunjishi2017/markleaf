@@ -1,0 +1,12 @@
+packages:
+  - '.'
+
+verifyDepsBeforeRun: error
+
+allowBuilds:
+  esbuild: true
+
+# mermaid 的类型声明依赖 type-fest，5.9 起引用了当前 TS lib 尚未提供的
+# Float16Array。锁回 5.8.0，与 editor-web 既有依赖保持一致。
+overrides:
+  type-fest: 5.8.0

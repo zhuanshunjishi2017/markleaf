@@ -46,7 +46,7 @@ expect(DocumentEncodingPolicy.decode(shiftJISData, using: .shiftJIS) == "日本�
 do {
     _ = try EncodingConversionTransaction.encodedData(markdown: "中文", target: .usASCII)
     expect(false, "unrepresentable text should throw instead of being converted lossily")
-} catch EncodingConversionTransactionError.unrepresentableText {
+} catch let error as DocumentKernelFailure where error.code == "unrepresentable_text" {
     // Expected.
 }
 

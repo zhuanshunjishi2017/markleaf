@@ -26,42 +26,16 @@ internal sealed partial class MainForm
         }
 
         if (_editorCommandStatus.ExpandedSource
-            && (keyData & Keys.Control) != Keys.None
-            && (keyData & Keys.Alt) == Keys.None
-            && (keyData & Keys.KeyCode) is Keys.C or Keys.V or Keys.X)
+            && (keyData & (Keys.Control | Keys.Alt)) == Keys.Control
+            && (keyData & Keys.KeyCode) is Keys.C or Keys.V or Keys.X or Keys.A)
         {
-            if ((keyData & Keys.KeyCode) == Keys.C)
+            ExecuteCommand((keyData & Keys.KeyCode) switch
             {
-                _editorHost?.ExecuteExpandedSourceCommand("copy");
-            }
-            else if ((keyData & Keys.KeyCode) == Keys.V)
-            {
-                try
-                {
-                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
-                    {
-                        _editorHost?.ExecuteExpandedSourceCommand(
-                            "paste", Clipboard.GetText(TextDataFormat.UnicodeText));
-                    }
-                }
-                catch (ExternalException)
-                {
-                    // 剪贴板暂时被其他进程占用时保持无操作。
-                }
-            }
-            else if (_document?.IsReadOnly != true)
-            {
-                _editorHost?.ExecuteExpandedSourceCommand("cut");
-            }
-            return true;
-        }
-
-        if (_editorCommandStatus.ExpandedSource
-            && (keyData & Keys.KeyCode) == Keys.A
-            && (keyData & Keys.Control) != Keys.None
-            && (keyData & Keys.Alt) == Keys.None)
-        {
-            _editorHost?.ExecuteExpandedSourceCommand("selectAll");
+                Keys.C => AppCommand.Copy,
+                Keys.V => AppCommand.PastePlainText,
+                Keys.X => AppCommand.Cut,
+                _ => AppCommand.SelectAll,
+            });
             return true;
         }
 
@@ -157,89 +131,21 @@ internal sealed partial class MainForm
             return new CommandState(true);
         }
 
-        if (command is AppCommand.Paste or AppCommand.PastePlainText)
-        {
-            return new CommandState(_document is not null
-                && _editorHost?.IsDocumentLoaded == true
-                && _document?.IsReadOnly != true
-                && HasClipboardContent());
-        }
-
         var context = new CommandContext(
             DocumentAvailable: _document is not null,
             EditorReady: _editorHost?.IsDocumentLoaded == true,
-            CanUndo: _editorCommandStatus.CanUndo,
-            CanRedo: _editorCommandStatus.CanRedo,
-            HasSelection: _editorCommandStatus.HasSelection,
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
-            EditorFocusMode: _editorFocusMode,
-            EditorTypewriterMode: _editorTypewriterMode,
-            SourceMode: _editorCommandStatus.SourceMode,
-            ReadOnly: _document?.IsReadOnly == true,
-            IsPlainText: IsPlainTextDocument,
-            ParagraphActive: _editorCommandStatus.Paragraph,
-            HeadingLevel: _editorCommandStatus.HeadingLevel,
-            BoldActive: _editorCommandStatus.Bold,
-            ItalicActive: _editorCommandStatus.Italic,
-            UnderlineActive: _editorCommandStatus.Underline,
-            StrikeActive: _editorCommandStatus.Strike,
-            HighlightActive: _editorCommandStatus.Highlight,
-            InlineCodeActive: _editorCommandStatus.InlineCode,
-            LinkActive: _editorCommandStatus.Link,
-            QuoteActive: _editorCommandStatus.Blockquote,
-            CodeBlockActive: _editorCommandStatus.CodeBlock,
-            FrontMatterActive: _editorCommandStatus.FrontMatter,
-            CodeBlockLanguage: _editorCommandStatus.CodeBlockLanguage,
-            CodeBlockText: _editorCommandStatus.CodeBlockText,
-            BulletListActive: _editorCommandStatus.BulletList,
-            OrderedListActive: _editorCommandStatus.OrderedList,
-            TaskListActive: _editorCommandStatus.TaskList,
-            InTable: _editorCommandStatus.InTable,
-            TableAlign: _editorCommandStatus.TableAlign,
-             ImageSelected: _editorCommandStatus.ImageSelected,
-             MermaidSelected: _editorCommandStatus.MermaidSelected,
-             MermaidCount: _editorCommandStatus.MermaidCount,
-            MathInline: _editorCommandStatus.MathInline,
-            MathBlock: _editorCommandStatus.MathBlock,
             EditorFullScreen: _editorFullScreen,
-             CanStartFormatPainter: _editorCommandStatus.CanStartFormatPainter,
-            FormatPainterArmed: _editorCommandStatus.FormatPainterArmed,
-            DocumentSaved: _document?.FilePath is not null,
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
-            FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
             ShowCodeHighlight: _settings.Appearance.ShowCodeHighlight,
             ListViewActive: _workspaceListViewActive,
             IndependentOutlineSidebar: _outlineDetached,
-            FootnoteDefinitionLabel: _editorCommandStatus.FootnoteDefinitionLabel);
+            EditorActions: _editorCommandStatus.Actions);
         var state = CommandStateResolver.Resolve(command, context);
-        if (state.IsEnabled
-            && context.DocumentAvailable
-            && context.EditorReady
-            && IsEditorCommand(command)
-            && command != AppCommand.InsertImage
-            && command != AppCommand.InsertImageFromUrl
-            && command != AppCommand.EditMath
-            && command != AppCommand.EditMermaid
-            && command != AppCommand.ChangeImage
-            && command != AppCommand.SaveImageAs
-            && command is not AppCommand.ResizeImage100
-                and not AppCommand.ResizeImage50
-                and not AppCommand.ResizeImage75
-                and not AppCommand.ResizeImage90
-            && command is not AppCommand.Cut
-                and not AppCommand.Copy
-                and not AppCommand.CopyMarkdown
-                and not AppCommand.CopyPlainText
-                and not AppCommand.CopyHtml
-                and not AppCommand.CopyCodeBlock
-                and not AppCommand.Paste
-            && command is not AppCommand.Find and not AppCommand.Replace and not AppCommand.ToggleSourceMode
-            && !TryMapEditorCommand(command, out _))
-        {
-            return new CommandState(false, state.IsChecked);
-        }
+        if (command is AppCommand.Paste or AppCommand.PastePlainText)
+            return state with { IsEnabled = state.IsEnabled && HasClipboardContent() };
 
         return state;
     }
@@ -261,40 +167,6 @@ internal sealed partial class MainForm
 
     private void ExecuteCommand(AppCommand command)
     {
-        if (_expandedSourceContextMenuOpen
-            && command is AppCommand.Undo or AppCommand.Redo
-                or AppCommand.Copy or AppCommand.Paste or AppCommand.Cut or AppCommand.SelectAll)
-        {
-            var expandedCommand = command switch
-            {
-                AppCommand.Undo => "undo",
-                AppCommand.Redo => "redo",
-                AppCommand.Copy => "copy",
-                AppCommand.Paste => "paste",
-                AppCommand.Cut => "cut",
-                _ => "selectAll",
-            };
-            if (expandedCommand == "paste")
-            {
-                try
-                {
-                    if (Clipboard.ContainsText(TextDataFormat.UnicodeText))
-                    {
-                        _editorHost?.ExecuteExpandedSourceCommand("paste", Clipboard.GetText(TextDataFormat.UnicodeText));
-                    }
-                }
-                catch (ExternalException)
-                {
-                    // 剪贴板暂时被其他进程占用时保持原有的无操作行为。
-                }
-            }
-            else
-            {
-                _editorHost?.ExecuteExpandedSourceCommand(expandedCommand);
-            }
-            return;
-        }
-
         switch (command)
         {
             case AppCommand.NewDocument:
@@ -568,11 +440,9 @@ internal sealed partial class MainForm
                     break;
                 }
 
-                if (_editorHost?.IsDocumentLoaded == true && TryMapEditorCommand(command, out var editorCommand))
+                if (_editorHost?.IsDocumentLoaded == true && EditorCommandBindings.TryGetCommand(command, out var editorCommand))
                 {
-                    _editorHost.ExecuteCommand(
-                        editorCommand,
-                        applyToCurrentTextBlockWhenEmpty: IsInlineFormatCommand(command));
+                    _editorHost.ExecuteCommand(editorCommand);
                     SetStatus(CommandStatusFormatter.FormatExecuted(command));
                     break;
                 }
@@ -664,83 +534,6 @@ internal sealed partial class MainForm
         _findReplaceDialog.Open(this, replace, query);
     }
 
-    private static bool TryMapEditorCommand(AppCommand command, out string editorCommand)
-    {
-        editorCommand = command switch
-        {
-            AppCommand.Undo => "undo",
-            AppCommand.Redo => "redo",
-            AppCommand.ToggleBold => "toggleBold",
-            AppCommand.ToggleItalic => "toggleItalic",
-            AppCommand.ToggleUnderline => "toggleUnderline",
-            AppCommand.ToggleStrike => "toggleStrike",
-            AppCommand.ToggleHighlight => "toggleHighlight",
-            AppCommand.ToggleInlineCode => "toggleCode",
-            AppCommand.PromoteHeading => "promoteHeading",
-            AppCommand.DemoteHeading => "demoteHeading",
-            AppCommand.SetParagraph => "setParagraph",
-            AppCommand.SetHeading1 => "setHeading1",
-            AppCommand.SetHeading2 => "setHeading2",
-            AppCommand.SetHeading3 => "setHeading3",
-            AppCommand.SetHeading4 => "setHeading4",
-            AppCommand.SetHeading5 => "setHeading5",
-            AppCommand.SetHeading6 => "setHeading6",
-            AppCommand.InsertLink => "setLink",
-            AppCommand.RotateImageClockwise => "rotateImageClockwise",
-            AppCommand.ToggleQuote => "toggleBlockquote",
-            AppCommand.ToggleCodeBlock => "toggleCodeBlock",
-            AppCommand.InsertHorizontalRule => "insertHorizontalRule",
-            AppCommand.ToggleBulletList => "toggleBulletList",
-            AppCommand.ToggleOrderedList => "toggleOrderedList",
-            AppCommand.ToggleTaskList => "toggleTaskList",
-            AppCommand.IncreaseListIndent => "indentListItem",
-            AppCommand.DecreaseListIndent => "outdentListItem",
-            AppCommand.InsertTable => "insertTable",
-            AppCommand.AddTableRowBefore => "addRowBefore",
-            AppCommand.AddTableRowAfter => "addRowAfter",
-            AppCommand.DeleteTableRow => "deleteRow",
-            AppCommand.AddTableColumnBefore => "addColumnBefore",
-            AppCommand.AddTableColumnAfter => "addColumnAfter",
-            AppCommand.DeleteTableColumn => "deleteColumn",
-            AppCommand.AlignTableLeft => "alignTableLeft",
-            AppCommand.AlignTableCenter => "alignTableCenter",
-            AppCommand.AlignTableRight => "alignTableRight",
-            AppCommand.DeleteTable => "deleteTable",
-            AppCommand.InsertLineBefore => "insertLineBefore",
-            AppCommand.InsertLineAfter => "insertLineAfter",
-            AppCommand.DuplicateParagraph => "duplicateParagraph",
-            AppCommand.DeleteParagraph => "deleteParagraph",
-            AppCommand.InsertMathInline => "insertMathInline",
-            AppCommand.InsertMathBlock => "insertMathBlock",
-            AppCommand.InsertMermaid => "insertMermaid",
-            AppCommand.ShowFrontMatter => "showFrontMatter",
-            AppCommand.InsertAlertNote => "insertAlertNote",
-            AppCommand.InsertAlertTip => "insertAlertTip",
-            AppCommand.InsertAlertImportant => "insertAlertImportant",
-            AppCommand.InsertAlertWarning => "insertAlertWarning",
-            AppCommand.InsertAlertCaution => "insertAlertCaution",
-            AppCommand.InsertFootnote => "insertFootnote",
-            AppCommand.ResetFootnoteLabel => "resetFootnoteLabel",
-            AppCommand.GoToFootnoteReference => "goToFootnoteReference",
-            AppCommand.ClearFootnoteReferences => "clearFootnoteReferences",
-            AppCommand.DeleteFootnote => "deleteFootnote",
-            AppCommand.SelectAll => "selectAll",
-            AppCommand.ExitCode => "exitCode",
-            AppCommand.ConvertMath => "convertMath",
-            AppCommand.SetMathNumber => "setMathNumber",
-            AppCommand.DeleteMath => "deleteMath",
-            AppCommand.DeclareCodeLanguage => "setCodeBlockLanguage",
-            AppCommand.EditMermaid => "editMermaid",
-            AppCommand.RerenderMermaid => "rerenderMermaid",
-            AppCommand.DeleteMermaid => "deleteMermaid",
-            AppCommand.RerenderAllMermaid => "rerenderAllMermaid",
-            AppCommand.ClearFormat => "clearFormat",
-            AppCommand.FormatPainter => "formatPainter",
-            _ => string.Empty,
-        };
-        return editorCommand.Length > 0;
-    }
-
     private static bool IsEditorCommand(AppCommand command)
     {
         return command is >= AppCommand.Undo and <= AppCommand.Replace
@@ -767,10 +560,6 @@ internal sealed partial class MainForm
             || command is AppCommand.FormatPainter
             || command == AppCommand.ToggleSourceMode;
     }
-
-    private static bool IsInlineFormatCommand(AppCommand command) =>
-        command is AppCommand.ToggleBold or AppCommand.ToggleItalic
-            or AppCommand.ToggleUnderline or AppCommand.ToggleStrike or AppCommand.ToggleHighlight;
 
     private void OnEditorCommandStateChanged(object? sender, EditorCommandStatus status)
     {
@@ -820,14 +609,12 @@ internal sealed partial class MainForm
                 : request.SourceMode
                 ? _editorCommandStatus with { SourceMode = true, ExpandedSource = false }
                 : _editorCommandStatus;
-            _expandedSourceContextMenuOpen = request.ExpandedSource;
             _menuService.ShowEditorContextMenu(Handle, screenPoint, status);
         }
         finally
         {
             // 原生菜单关闭时，同步隐藏前端格式菜单，保证两者同现同隐。
             _editorHost.ExecuteCommand("hideFormatMenu");
-            _expandedSourceContextMenuOpen = false;
         }
     }
 
@@ -1112,7 +899,7 @@ internal sealed partial class MainForm
         try
         {
             var clipboardData = Clipboard.GetDataObject();
-            if (_editorCommandStatus.SourceMode
+            if ((_editorCommandStatus.SourceMode || _editorCommandStatus.ExpandedSource)
                 && TryGetClipboardPlainTextForSourceMode(clipboardData, out var sourcePlainText))
             {
                 var result = await _editorHost.ExecuteCommandResultAsync("pasteText", sourcePlainText);
@@ -1209,9 +996,9 @@ internal sealed partial class MainForm
         {
             "markdown" => Loc.Get("status.pastedMarkdown"),
             "normalized" => Loc.Get("status.pastedMarkdownNormalized"),
-            "plainText" when !_editorCommandStatus.SourceMode && !string.IsNullOrWhiteSpace(result.Error) =>
+            "plainText" when !_editorCommandStatus.SourceMode && !_editorCommandStatus.ExpandedSource && !string.IsNullOrWhiteSpace(result.Error) =>
                 Loc.Format("status.pastedPlainTextFallbackReason", result.Error),
-            "plainText" when !_editorCommandStatus.SourceMode => Loc.Get("status.pastedPlainTextFallback"),
+            "plainText" when !_editorCommandStatus.SourceMode && !_editorCommandStatus.ExpandedSource => Loc.Get("status.pastedPlainTextFallback"),
             "formatted" => Loc.Get("status.pastedFormatted"),
             _ when formattedRequested => Loc.Get("status.pastedFormatted"),
             _ => Loc.Get("status.pastedPlainText"),

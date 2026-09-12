@@ -1,8 +1,8 @@
 import * as vscode from 'vscode'
 import { extname } from 'node:path'
 import { resolveDocumentLink } from './resources'
-import type { ExportHtmlResult } from '../../../packages/editor-web/src/vscode-export-options'
-import { exportStrings } from '../../../packages/editor-web/src/vscode-export-strings'
+import type { ExportHtmlResult } from '../webview/src/vscode-export-options'
+import { exportStrings } from '../webview/src/vscode-export-strings'
 
 const maxImageBytes = 16 * 1024 * 1024
 const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif' }

@@ -6,7 +6,7 @@
 
 当前版本 **0.2.7** 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
 
-工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，始终展开在对应内容下方，随文档滚动移出视野，不会随视口空间上下跳转或固定在窗口底部。公式符号面板会根据可用空间调整布局。
+工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，与原生产品共用内核的浮层定位：优先在内容下方展开，空间不足时调整位置以保持可见。公式符号面板会根据可用空间调整布局。
 
 项目与扩展 README 均提供四种语言；界面翻译范围见下方“排版和偏好”。
 
@@ -57,7 +57,7 @@ MarkLeaf 使用 VS Code 的默认自定义编辑器声明。若已为 Markdown �
 | 文字与段落 | 工具栏和“格式…”支持粗体、斜体、下划线、删除线、高亮、行内代码、清除格式、H1–H6、标题升降级、段落前后插入、复制和删除、列表缩进，以及五种 GitHub 提示框。菜单支持按名称搜索。 |
 | 格式刷与段落操作柄 | 选择已有格式的文字，点击格式刷，再拖选目标文字；应用一次后退出，Escape 取消。段落左侧操作柄打开当前段落菜单，操作柄位于可编辑内容外。 |
 | 表格 | 指定行列数插入、增删行列、列对齐、设置或清除表格标题、删除表格。菜单依据光标位置显示适用操作。 |
-| 公式与 Mermaid | 插入行内/独立公式、公式编号、转换类型、删除；公式与图表双击打开共享源码控件，保留数学输入辅助。支持 Mermaid 代码渲染、编辑和重新渲染。 |
+| 公式与 Mermaid | 插入行内/独立公式、公式编号、转换类型、删除；点击选中公式或图表后，再次点击展开共享源码控件，保留数学输入辅助。支持 Mermaid 代码渲染、编辑和重新渲染。 |
 | 脚注与元数据 | 插入脚注、重命名标签、回到引用、清除引用、删除脚注；显示或插入 YAML Front Matter。标签不能重复占用已有定义或引用。 |
 | 代码 | 选择代码块语言、复制代码、退出代码块，支持语法高亮开关。 |
 | 剪贴板 | “编辑”提供复制为 Markdown、纯文本或 HTML 源码，以及粘贴纯文本。普通复制同时提供选区文本和 HTML；可视模式的普通文本粘贴和“粘贴纯文本”均按 Windows 规则解析 Markdown。源码编辑保留字面文本；状态栏显示解析、格式转换、降级原因或失败结果。 |
@@ -154,15 +154,14 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 
 ## 开发与构建
 
-从仓库根目录执行，Node.js 22.12+，使用项目指定的 pnpm：
+从仓库根目录执行，Node.js 22.12+，通过 Corepack 使用项目固定的 pnpm 11.9.0：
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm build:vscode
-pnpm test:editor-web
-pnpm package:vscode
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+安装入口依次准备共享内核、VS Code Webview 和扩展宿主。打包入口先统一编译内核，再编译两个扩展包，生成 `artifacts/markleaf-vscode-0.2.7.vsix`。仅编译使用 `corepack pnpm build:vscode`；适配层测试单独使用 `corepack pnpm test:vscode`。
 
 开发运行可使用已有 VS Code，无需安装额外桌面运行时：
 
@@ -170,4 +169,16 @@ pnpm package:vscode
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` 是扩展前端入口，`apps/vscode/src/extension.ts` 是 VS Code 文档适配层。Windows/macOS 入口继续使用 `main.ts` 和原生宿主协议。扩展构建输出到 `apps/vscode/dist`，原生前端仍输出到 `packages/editor-web/dist`。
+渲染能力由共享内核提供，扩展侧只保留协议与适配层：
+
+| 目录 | 职责 |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | 共享渲染内核入口（`@markleaf/editor-core`），三端共用 |
+| `packages/editor-core/dist/document-kernel.cjs` | 共享无 DOM 文档产物：由扩展进程加载 |
+| `apps/vscode/webview/src/vscode.ts` | 扩展前端入口：扩展协议、设置、导出、快捷键装配 |
+| `apps/vscode/src/extension.ts` | 扩展进程：VS Code 文档适配层（`TextDocument` / `WorkspaceEdit`） |
+| `packages/editor-web/src/main.ts` | Windows/macOS 入口，配合 `protocol.ts` 原生宿主协议 |
+
+构建输出：扩展前端 `apps/vscode/dist/webview`（由 `webviewHtml()` 经 `.vite/manifest.json` 读取），扩展进程 `apps/vscode/dist/extension.js`，原生前端 `packages/editor-web/dist`。
+
+内核由仓库 `build:kernel` 统一编译。Webview 原样加载 `dist/renderer/` 的 JS/CSS，扩展进程加载无 DOM 的 `document-kernel.cjs`（`@markleaf/editor-core/document`）和纯类型契约。`TextDocument` 仍拥有实际文档与保存生命周期，DOM 渲染入口不进入 Node 进程。

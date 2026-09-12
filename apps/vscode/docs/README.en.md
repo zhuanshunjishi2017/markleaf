@@ -6,7 +6,7 @@ Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror c
 
 Version **0.2.7** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
 
-Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They always open below the corresponding content and scroll out of view with the document; they do not flip to the other side or dock at the bottom of the window. The math symbol panel adapts its layout to the available space.
+Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They use the same kernel positioning as the native products: prefer the space below the content and adjust within the viewport when space is limited. The math symbol panel adapts its layout to the available space.
 
 Project and extension READMEs are available in four languages. UI translation coverage is described under “Typography and preferences” below.
 
@@ -57,7 +57,7 @@ The extension supplies defaults through `workbench.diffEditorAssociations` witho
 | Text and paragraphs | The toolbar and “格式…” (Format) menu offer bold, italic, underline, strikethrough, highlight, inline code, clear formatting, H1–H6, heading-level changes, insert before/after, duplicate/delete paragraph, list indentation, and five GitHub alert types. Search menus by action name. |
 | Format painter and block handle | Select formatted text, activate the painter, then drag over the target. It exits after one application; Escape cancels. The handle beside a paragraph opens its actions and stays outside editable content. |
 | Tables | Insert with row/column counts, add/delete rows and columns, align columns, set/clear captions, and delete tables. Available actions depend on the cursor position. |
-| Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Double-click a formula or diagram to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. |
+| Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Click a formula or diagram to select it, then click again to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. |
 | Footnotes and metadata | Insert footnotes, rename labels, return to references, clear references, delete definitions, and display/insert YAML Front Matter. A label cannot reuse an existing definition or reference. |
 | Code | Choose a block language, copy code, exit a block, and toggle syntax highlighting. |
 | Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML source, and pasting plain text. Normal copy supplies selected text and HTML. In visual mode, both ordinary text paste and Paste Plain Text parse Markdown using the Windows rules. Source editing keeps literal text; the status bar reports parsing, formatting conversion, fallback reasons, or failure. |
@@ -154,15 +154,14 @@ See the [feature mapping (Simplified Chinese)](./feature-parity.md).
 
 ## Development and build
 
-From the repository root, use Node.js 22.12+ and the project's specified pnpm version:
+From the repository root, use Node.js 22.12+ and the project's pinned pnpm 11.9.0 through Corepack:
 
 ```bash
-pnpm --dir packages/editor-web install --frozen-lockfile
-pnpm --dir apps/vscode install --frozen-lockfile
-pnpm build:vscode
-pnpm test:editor-web
-pnpm package:vscode
+corepack pnpm install:vscode
+corepack pnpm package:vscode
 ```
+
+The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.2.7.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
 
 Use an existing VS Code installation for development:
 
@@ -170,4 +169,16 @@ Use an existing VS Code installation for development:
 code --new-window --extensionDevelopmentPath="$PWD/apps/vscode" path/to/document.md
 ```
 
-`packages/editor-web/src/vscode.ts` is the extension frontend; `apps/vscode/src/extension.ts` adapts VS Code documents. Windows/macOS retain `main.ts` and the native host protocol. Extension output goes to `apps/vscode/dist`; native frontend output remains in `packages/editor-web/dist`.
+Rendering comes from the shared kernel; the extension keeps only protocol and adapter code:
+
+| Path | Responsibility |
+| --- | --- |
+| `packages/editor-core/src/index.ts` | Shared rendering kernel entry (`@markleaf/editor-core`), used by all three hosts |
+| `packages/editor-core/dist/document-kernel.cjs` | Shared DOM-free document artifact loaded by the extension process |
+| `apps/vscode/webview/src/vscode.ts` | Extension frontend: extension protocol, settings, export, shortcut wiring |
+| `apps/vscode/src/extension.ts` | Extension process: VS Code document adapter (`TextDocument` / `WorkspaceEdit`) |
+| `packages/editor-web/src/main.ts` | Windows/macOS entry, paired with the `protocol.ts` native host protocol |
+
+Build output: extension frontend in `apps/vscode/dist/webview` (read by `webviewHtml()` through `.vite/manifest.json`), extension process in `apps/vscode/dist/extension.js`, and native frontend in `packages/editor-web/dist`.
+
+The repository builds the kernel once with `build:kernel`. Webviews load the unchanged JS/CSS from `dist/renderer/`; the extension process loads the DOM-free `document-kernel.cjs` (`@markleaf/editor-core/document`) and type contracts. `TextDocument` still owns document content and the save lifecycle. The DOM renderer never enters the Node process.

@@ -1,8 +1,9 @@
+import { invoke } from '@markleaf/editor-core/document'
 /** Preserve the document's EOL convention and existing final newline. */
 export function normalizeDocumentMarkdown(markdown: string, original: string, eol: string): string {
-  let normalized = markdown.replace(/\r\n?/g, '\n')
-  if (original.endsWith('\n') && !normalized.endsWith('\n')) normalized += '\n'
-  return eol === '\r\n' ? normalized.replace(/\n/g, '\r\n') : normalized
+  const result = JSON.parse(invoke(JSON.stringify({ method: 'preserveDocumentLineEndings', payload: { text: markdown, original, eol } })))
+  if (!result.ok) throw new Error(result.error.message)
+  return result.value
 }
 
 /** A single minimal contiguous replacement, expressed as UTF-16 offsets. */

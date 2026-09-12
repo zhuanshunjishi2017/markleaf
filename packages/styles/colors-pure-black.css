@@ -22,4 +22,21 @@
   --theme-dark:          #888888;
   --highlight:           #6F6800;
   --highlight-current:   #A39A00;
+
+  /* 文档表面分级（OLED 纯黑：抬升表面保持极低亮度，避免破坏黑场）。 */
+  --ml-surface-1:        #0C0C0C;
+  --ml-fill-quaternary:  #131313;
+  --ml-fill-tertiary:    #1D1D1D;
+  --ml-separator:        #262626;
+  --ml-separator-strong: #595959;  /* 与纯黑约 3.0:1 */
+  /* 极简排版的表头线为 2px，取值介于两级分隔线之间，避免形成强调亮条。 */
+  --ml-table-header-rule: #3A3A3A;
+
+  /* 提示框语义色：暗色变体（纯黑底上均 >= 6:1）。 */
+  --ml-alert-note:       #58A6FF;
+  --ml-alert-tip:        #3FB950;
+  --ml-alert-important:  #BC8CFF;
+  --ml-alert-warning:    #D29922;
+  --ml-alert-caution:    #F85149;
+  --ml-alert-on-color:   #000000;
 }

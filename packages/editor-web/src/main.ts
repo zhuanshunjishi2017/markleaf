@@ -1,20 +1,22 @@
-import { createBlockHandle } from './block-handle'
-import './styles.css'
-import { NodeSelection, Selection } from '@tiptap/pm/state'
+import '@markleaf/editor-core/styles.css'
+import { resolveNativeCapabilities, nativeImageResources } from './native-capabilities'
 import {
+  Selection,
+  createEditorInteractions,
+  createReadingBehavior,
+  getDocumentOutline,
+  getActiveOutlinePosition,
+  resolveTypographyStyle,
+  resolveMermaidTheme,
   createEditor,
   clearFindHighlights,
   executeEditorCommand,
   exportEditorSelection,
   findInEditor,
   findFootnoteDefinitionBody,
-  getEditorCommandState,
+  getEditorCommandPresentation,
   getEditorStatus,
-  getBlockHandleInfo,
-  expandSourceEditor,
-  hasExpandedSourceEditor,
-  isSourceEditorExpanded,
-  collapseSourceEditor,
+  selectEditorContextAt,
   setEditorFocusMode,
   getMarkdown,
   setAutoConvertUnsafeEmphasis,
@@ -22,7 +24,6 @@ import {
   captureVisualSelection,
   collapseVisualSelection,
   getSourceModeJumpTarget,
-  isAllowedLink,
   isLocalFileLink,
   replaceAllInEditor,
   replaceCurrentInEditor,
@@ -32,33 +33,30 @@ import {
   pasteClipboardContentWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
-  scrollToFootnoteDefinition,
-  setBlockHighlight,
   setBlockHandleVisible,
   setBlockTypeLabels,
   setCodeBlockControlHandlers,
   setEditorSharedStrings,
   restoreVisualSelection,
-  renderEscapedCaptionHtml,
   type VisualSelectionSnapshot,
-} from './editor'
-import { katexCss, renderMathInHtml } from './math'
+} from '@markleaf/editor-core'
 import {
-  renderMermaidInHtml,
   rerenderMermaidElements,
   setMermaidStrings,
-  type MermaidThemeName,
-} from './mermaid'
-import { SourceEditor, type UnsafeEmphasisRequest } from './source-editor'
-import { generateExportHtml as generateSharedExportHtml, escapeHtml as escapeExportHtml } from './export-html'
-import { isPlainTextDocumentType, type DocumentType } from './document-mode'
-import {
-  executeFormatPainterApply,
-  FormatPainterController,
-  captureFormat,
-  normalizeContextMenuCaretPosition,
-} from './format-painter'
-import { applyFormatPainterFromDomSelection } from './format-painter-dom-events'
+  SourceEditor,
+  type UnsafeEmphasisRequest,
+  generateExportHtml as generateSharedExportHtml,
+  escapeHtml as escapeExportHtml,
+  isPlainTextDocumentType,
+  type DocumentType,
+  preserveViewportDuringLayoutChange,
+  type ViewportAnchorReader,
+  setImageResourceResolver,
+  normalizeSharedEditorLanguage,
+  sharedEditorStrings,
+  isHostCommandAllowed,
+} from '@markleaf/editor-core'
+// 原生宿主消息协议不属于内核，由 macOS / Windows 适配层持有。
 import {
   isHostMessage,
   isRestoreViewportPayload,
@@ -67,11 +65,6 @@ import {
   protocolVersion,
   type HostMessage,
 } from './protocol'
-import { preserveViewportDuringLayoutChange, type ViewportAnchorReader } from './zoom-anchor'
-import { bindReducedMotionPreference, createScrollbarAlphaController } from './scrollbar-motion'
-import { hasPrimaryActivationModifier, resolveHostCapabilities } from './host-capabilities'
-import { normalizeSharedEditorLanguage, sharedEditorStrings } from './shared-editor-strings'
-import { isHostCommandAllowed } from './host-command-policy'
 
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
@@ -82,15 +75,9 @@ const editorMount = editorElement
 const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
-bindReducedMotionPreference(
-  window.matchMedia('(prefers-reduced-motion: reduce)'),
-  document.documentElement,
-  document.body,
-)
-
-const hostCapabilities = resolveHostCapabilities(window.chrome?.webview?.hostPlatform)
+const hostCapabilities = resolveNativeCapabilities(window.chrome?.webview?.hostPlatform)
 document.documentElement.classList.toggle(
-  'markleaf-host-macos',
+  'markleaf-themed-visual-selection',
   hostCapabilities.usesThemedVisualSelection,
 )
 
@@ -115,68 +102,27 @@ let editorFocusMode = false
 let editorTypewriterMode = false
 let autoConvertUnsafeEmphasis = true
 
+setImageResourceResolver(nativeImageResources)
 const editorCreationOptions = {
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
   handlePaste: handleVisualEditorPaste,
+  sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
+    sendEditorState()
+    send('contextMenuRequested', { clientX, clientY, menuHeight: 0, readOnly, sourceMode: false, expandedSource: true,
+      canStartFormatPainter: false, formatPainterArmed: false })
+  },
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
 setCodeBlockControlHandlers({
   editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
   copyCode: text => send('copyCodeBlockRequested', { text }),
 })
-const formatPainter = new FormatPainterController()
 let contextMenuSelection: { from: number; to: number } | null = null
 let lastVisualSelection = captureVisualSelection(editor)
-let typewriterAnimationFrame = 0
-
-function animateEditorScrollTo(target: number, duration = 100): void {
-  if (typewriterAnimationFrame !== 0) {
-    window.cancelAnimationFrame(typewriterAnimationFrame)
-    typewriterAnimationFrame = 0
-  }
-
-  const scrollingElement = document.scrollingElement ?? document.documentElement
-  const start = scrollingElement.scrollTop
-  const destination = Math.max(0, target)
-  const distance = destination - start
-  if (Math.abs(distance) <= 2) {
-    scrollingElement.scrollTop = destination
-    return
-  }
-
-  const startedAt = performance.now()
-  const step = (now: number): void => {
-    const progress = Math.min(1, (now - startedAt) / duration)
-    const eased = progress * (2 - progress)
-    scrollingElement.scrollTop = start + distance * eased
-    if (progress < 1) {
-      typewriterAnimationFrame = window.requestAnimationFrame(step)
-    } else {
-      typewriterAnimationFrame = 0
-    }
-  }
-  typewriterAnimationFrame = window.requestAnimationFrame(step)
-}
-
-function scrollEditorCursorToCenter(): void {
-  if (!editorTypewriterMode || sourceMode || readOnly) return
-
-  const position = editor.state.selection.from
-  let coords: { top: number }
-  try {
-    coords = editor.view.coordsAtPos(position)
-  } catch {
-    return
-  }
-  const scrollingElement = document.scrollingElement ?? document.documentElement
-  animateEditorScrollTo(scrollingElement.scrollTop + coords.top - 320)
-}
-
+const readingBehavior = createReadingBehavior(() => editor)
+const scrollEditorCursorToCenter = readingBehavior.cursorMoved
 function updateEditorTypewriterMode(scrollToCursor = true): void {
-  editorMount.classList.toggle('markleaf-editor-typewriter', editorTypewriterMode && !sourceMode && !readOnly)
-  if (scrollToCursor && editorTypewriterMode && !sourceMode && !readOnly) {
-    window.requestAnimationFrame(scrollEditorCursorToCenter)
-  }
+  readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode && !readOnly, scrollToCursor)
 }
 
 function updateEditorFocusLine(): void {
@@ -235,18 +181,24 @@ document.addEventListener('focusin', updateCaretVisibility)
 document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibility, 0))
 updateCaretVisibility()
 
-const blockHandleOverlay = createBlockHandle(editorMount, () => editor, () => !sourceMode && !readOnly,
-  (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
-  sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
-)
-const blockHandleButton = blockHandleOverlay.button
-const ensureBlockHandleOverlay = blockHandleOverlay.ensure
-const updateBlockHandleOverlay = blockHandleOverlay.update
-const hideBlockHandleOverlay = blockHandleOverlay.hide
+const interactions = createEditorInteractions({
+  mount: editorMount, getEditor: () => editor, enabled: () => !sourceMode && !readOnly,
+  onMenu: (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
+  label: sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
+  onStateChanged: () => sendEditorState(),
+  links: {
+    primaryModifier: hostCapabilities.primaryActivationModifier,
+    openLink: url => send('openLink', { url }),
+    missingFootnote: (kind, label) => send(kind === 'definition' ? 'footnoteDefinitionMissing' : 'footnoteReferenceMissing', { label }),
+  },
+})
+const blockHandleButton = interactions.button
+const ensureBlockHandleOverlay = interactions.ensure
+const updateBlockHandleOverlay = interactions.update
+window.addEventListener('unload', () => { interactions.dispose(); readingBehavior.dispose() })
 
 let baseCss = ''
 let styleCatalog: { id: string; css: string; dependsOn?: string }[] = []
-let scrollbarHideTimer = 0
 
 type VisualVariablePayload = {
   lineHeight: string
@@ -467,13 +419,7 @@ function sendWithAdditionalObjects(
 }
 
 function sendOutline(): void {
-  const headings: Array<{ level: number; text: string; position: number }> = []
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name === 'heading') {
-      headings.push({ level: node.attrs.level as number, text: node.textContent, position })
-    }
-  })
-  send('outlineChanged', { headings })
+  send('outlineChanged', { headings: sourceMode ? [] : getDocumentOutline(editor) })
 }
 
 function scheduleOutline(): void {
@@ -490,42 +436,24 @@ function sendOutlineSelection(position: number | null): void {
 }
 
 function sendOutlineSelectionFromCursor(): void {
-  const cursor = editor.state.selection.from
-  let activePosition: number | null = null
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name === 'heading' && position < cursor) {
-      activePosition = position
-    }
-  })
-  sendOutlineSelection(activePosition)
+  sendOutlineSelection(sourceMode ? null : getActiveOutlinePosition(editor, 'cursor'))
 }
 
 function sendOutlineSelectionFromScroll(): void {
-  const headings = Array.from(editor.view.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'))
-  if (headings.length === 0) {
-    sendOutlineSelection(null)
-    return
-  }
-
-  const threshold = Math.max(80, window.innerHeight * 0.2)
-  const active = headings.filter(heading => heading.getBoundingClientRect().top <= threshold).at(-1) ?? headings[0]!
-  sendOutlineSelection(editor.view.posAtDOM(active, 0))
+  sendOutlineSelection(sourceMode ? null : getActiveOutlinePosition(editor, 'scroll'))
 }
 
 function sendCommandState(): void {
   const sourceSelection = sourceEditor?.view.state.selection.main
-  const visualState = getEditorCommandState(editor)
-  send('commandStateChanged', {
-    ...visualState,
-    expandedSource: hasExpandedSourceEditor(editor),
-    canUndo: sourceEditor?.canUndo() ?? visualState.canUndo,
-    canRedo: sourceEditor?.canRedo() ?? visualState.canRedo,
-    hasSelection: sourceSelection ? !sourceSelection.empty : visualState.hasSelection,
-    sourceMode,
-    readOnly,
-    canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
-    formatPainterArmed: !sourceMode && formatPainter.isArmed,
+  const state = getEditorCommandPresentation(editor, {
+    readOnly, sourceMode, documentType, focusMode: editorFocusMode, typewriterMode: editorTypewriterMode,
+  }, {
+    ...(sourceEditor && sourceSelection ? {
+      canUndo: sourceEditor.canUndo(), canRedo: sourceEditor.canRedo(), hasSelection: !sourceSelection.empty,
+    } : {}),
+    ...interactions.state(),
   })
+  send('commandStateChanged', { ...state, sourceMode, readOnly })
 }
 
 function sendEditorStatus(): void {
@@ -541,52 +469,7 @@ function sendEditorState(): void {
   sendEditorStatus()
 }
 
-function updateFormatPainterCursor(): void {
-  editorMount.classList.toggle('format-painter-armed', !sourceMode && formatPainter.isArmed)
-}
-
-// Listen on the stable editor container: a backward drag that ends exactly at
-// a line start can release over the container padding rather than ProseMirror.
-editorMount.addEventListener('mouseup', (event) => {
-  if (compositionActive || sourceMode) return
-  const target = event.target
-  if (!(target instanceof Node)
-    || (target !== editorMount && !editor.view.dom.contains(target))) {
-    return
-  }
-  window.setTimeout(() => {
-    if (compositionActive || sourceMode) return
-    const wasArmed = formatPainter.isArmed
-    applyFormatPainterFromDomSelection(
-      editor,
-      formatPainter,
-      document.getSelection(),
-    )
-    if (wasArmed !== formatPainter.isArmed) {
-      updateFormatPainterCursor()
-      sendEditorState()
-    }
-  }, 0)
-})
-
-// 格式刷拖选时若鼠标最终移到编辑器/窗口外释放，editorMount 收不到 mouseup；
-// 只要画刷仍处于武装状态且选区落在编辑器 DOM 内，就在 window 级捕获释放并应用。
-window.addEventListener('mouseup', () => {
-  if (compositionActive || sourceMode) return
-  const sel = document.getSelection()
-  const dom = editor.view.dom
-  if (!sel || sel.isCollapsed
-    || !sel.anchorNode || !sel.focusNode
-    || !dom.contains(sel.anchorNode) || !dom.contains(sel.focusNode)) {
-    return
-  }
-  const wasArmed = formatPainter.isArmed
-  applyFormatPainterFromDomSelection(editor, formatPainter, sel)
-  if (wasArmed !== formatPainter.isArmed) {
-    updateFormatPainterCursor()
-    sendEditorState()
-  }
-})
+const updateFormatPainterCursor = () => interactions.update()
 
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', ({ transaction }) => {
@@ -643,13 +526,6 @@ function bindEditorEvents(targetEditor: typeof editor): void {
 }
 
 bindEditorEvents(editor)
-window.addEventListener('scroll', updateBlockHandleOverlay, true)
-window.addEventListener('resize', updateBlockHandleOverlay)
-editorMount.addEventListener('mousemove', updateBlockHandleOverlay)
-editorMount.addEventListener('mouseenter', updateBlockHandleOverlay)
-editorMount.addEventListener('focusin', updateBlockHandleOverlay)
-editorMount.addEventListener('click', () => window.setTimeout(updateBlockHandleOverlay, 0))
-
 function markSourceChanged(documentChanged: boolean): void {
   if (documentChanged) {
     revision += 1
@@ -681,7 +557,7 @@ function getActiveMarkdown(): string {
 function setSourceMode(enabled: boolean): void {
   if (documentType === 'plainText') return
   if (enabled === sourceMode) return
-  formatPainter.cancel()
+  interactions.cancel()
   updateFormatPainterCursor()
   if (enabled) {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
@@ -706,7 +582,7 @@ function setSourceMode(enabled: boolean): void {
     sourceEditor = null
     visualSelectionBeforeSourceMode = null
     suppressUpdate = true
-    editor = replaceEditorDocument(editor, editorMount, markdown, false, editorCreationOptions)
+    editor = replaceEditorDocument(editor, editorMount, markdown, readOnly, editorCreationOptions)
     bindEditorEvents(editor)
     ensureBlockHandleOverlay()
     suppressUpdate = false
@@ -756,13 +632,7 @@ function replaceEveryMatch(): void {
 
 sourceToggle.addEventListener('click', () => setSourceMode(!sourceMode))
 window.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && formatPainter.isArmed) {
-    event.preventDefault()
-    formatPainter.cancel()
-    updateFormatPainterCursor()
-    sendEditorState()
-    return
-  }
+  if (event.defaultPrevented) return
   if (event.key === 'Escape') {
     // Esc 折叠当前选区：视觉/源码编辑器的高亮装饰随选区清空而消失。
     const collapsed = sourceMode
@@ -785,49 +655,6 @@ window.addEventListener('scroll', () => {
     sendOutlineSelectionFromScroll()
   })
 }, { passive: true })
-
-editorMount.addEventListener('mousedown', (event) => {
-  if (!(event.target instanceof Element)) {
-    return
-  }
-  if (event.button !== 0 || !hasPrimaryActivationModifier(event, hostCapabilities)) {
-    return
-  }
-
-  const footnoteRef = event.target.closest<HTMLElement>('sup[data-footnote-ref]')
-  const footnoteLabel = footnoteRef?.getAttribute('data-footnote-ref')
-  if (footnoteLabel) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    if (!scrollToFootnoteDefinition(editor, footnoteLabel)) {
-      send('footnoteDefinitionMissing', { label: footnoteLabel })
-    }
-    sendEditorState()
-    return
-  }
-
-  const footnoteDef = event.target.closest<HTMLElement>('p.markleaf-footnote-def')
-  if (footnoteDef) {
-    const label = footnoteDef.getAttribute('data-footnote-label') ?? ''
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    if (!executeEditorCommand(editor, 'goToFootnoteReference', label)) {
-      send('footnoteReferenceMissing', { label })
-    }
-    sendEditorState()
-    return
-  }
-
-  const anchor = event.target.closest<HTMLAnchorElement>('a[href]')
-  const url = anchor?.getAttribute('href')
-  if (!url || !isAllowedLink(url)) {
-    return
-  }
-
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  send('openLink', { url })
-}, true)
 
 // ---- 链接 / 注释角标悬停提示（手形光标 + 提示文本） ----
 const editorTooltip = document.createElement('div')
@@ -933,101 +760,6 @@ editorMount.addEventListener('mousedown', () => {
   hideEditorTooltip()
 })
 
-function findMathNodeAt(pos: number): number | null {
-  const node = editor.state.doc.nodeAt(pos)
-  if (node && (node.type.name === 'mathInline' || node.type.name === 'mathBlock')) {
-    return pos
-  }
-  const before = pos > 0 ? editor.state.doc.nodeAt(pos - 1) : null
-  if (before && (before.type.name === 'mathInline' || before.type.name === 'mathBlock')) {
-    return pos - 1
-  }
-  return null
-}
-
-function findMathNodeFromTarget(target: EventTarget | null): number | null {
-  if (!(target instanceof Element)) {
-    return null
-  }
-
-  const mathElement = target.closest<HTMLElement>('.markleaf-math')
-  if (!mathElement || !editorMount.contains(mathElement)) {
-    return null
-  }
-
-  let mathPosition: number | null = null
-  editor.state.doc.descendants((node, position) => {
-    if (mathPosition !== null) return false
-    if (node.type.name !== 'mathInline' && node.type.name !== 'mathBlock') return true
-    if (editor.view.nodeDOM(position) === mathElement) {
-      mathPosition = position
-      return false
-    }
-    return true
-  })
-  return mathPosition
-}
-
-function findSpecialNodeFromTarget(target: EventTarget | null, nodeName: 'mathInline' | 'mathBlock' | 'mermaid', className: string): number | null {
-  if (!(target instanceof Element)) return null
-  const element = target.closest<HTMLElement>(className)
-  if (!element || !editorMount.contains(element)) return null
-
-  let position: number | null = null
-  editor.state.doc.descendants((node, nodePosition) => {
-    if (position !== null) return false
-    if (node.type.name === nodeName && editor.view.nodeDOM(nodePosition) === element) {
-      position = nodePosition
-      return false
-    }
-    return true
-  })
-  return position
-}
-
-function findMermaidNodeAt(pos: number): number | null {
-  const node = editor.state.doc.nodeAt(pos)
-  if (node?.type.name === 'mermaid') {
-    return pos
-  }
-  const before = pos > 0 ? editor.state.doc.nodeAt(pos - 1) : null
-  if (before?.type.name === 'mermaid') {
-    return pos - 1
-  }
-  return null
-}
-
-function findHorizontalRuleAtY(clientY: number): number | null {
-  let closestPosition: number | null = null
-  let closestDistance = Number.POSITIVE_INFINITY
-
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name !== 'horizontalRule') return true
-
-    const nodeDom = editor.view.nodeDOM(position)
-    if (!(nodeDom instanceof HTMLElement)) return false
-
-    const rect = nodeDom.getBoundingClientRect()
-    const computed = window.getComputedStyle(nodeDom)
-    const marginTop = Number.parseFloat(computed.marginTop)
-    const marginBottom = Number.parseFloat(computed.marginBottom)
-    const lineHeight = Number.parseFloat(computed.lineHeight)
-    const fallbackPadding = Number.isFinite(lineHeight) ? lineHeight / 2 : 8
-    const rowTop = rect.top - (Number.isFinite(marginTop) ? marginTop : fallbackPadding)
-    const rowBottom = rect.bottom + (Number.isFinite(marginBottom) ? marginBottom : fallbackPadding)
-    if (clientY < rowTop || clientY > rowBottom) return false
-
-    const distance = Math.abs(clientY - (rect.top + rect.bottom) / 2)
-    if (distance < closestDistance) {
-      closestDistance = distance
-      closestPosition = position
-    }
-    return false
-  })
-
-  return closestPosition
-}
-
 const formatMenu = document.createElement('div')
 formatMenu.id = 'format-menu'
 formatMenu.className = 'format-menu'
@@ -1055,17 +787,15 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     }
     if (command === 'formatPainter') {
       if (contextMenuSelection) editor.commands.setTextSelection(contextMenuSelection)
-      if (formatPainter.isArmed) formatPainter.cancel()
-      else formatPainter.arm(editor)
+      if (interactions.state().formatPainterArmed) interactions.cancel()
+      else interactions.arm()
       contextMenuSelection = null
       updateFormatPainterCursor()
       hideFormatMenu()
       sendEditorState()
       return
     }
-    const applyToBlock = command === 'toggleBold' || command === 'toggleItalic' || command === 'toggleUnderline'
-      || command === 'toggleStrike' || command === 'toggleHighlight'
-    executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
+    executeEditorCommand(editor, command)
     hideFormatMenu()
     sendEditorState()
   })
@@ -1166,7 +896,7 @@ let formatMenuHideTimer = 0
 function showFormatMenu(
   clientX: number,
   clientY: number,
-  state: ReturnType<typeof getEditorCommandState>,
+  state: ReturnType<typeof getEditorCommandPresentation>,
 ): void {
   window.clearTimeout(formatMenuHideTimer)
   formatMenu.classList.toggle('format-menu-dark', isDarkTheme())
@@ -1176,27 +906,15 @@ function showFormatMenu(
   void formatMenu.offsetWidth
   formatMenu.classList.add('format-menu-visible')
 
-  const activeByCommand: Record<string, boolean> = {
-    toggleBold: state.bold,
-    toggleItalic: state.italic,
-    toggleUnderline: state.underline,
-    toggleStrike: state.strike,
-    toggleHighlight: state.highlight,
+  for (const button of [...formatButtonElements, ...headingButtonElements]) {
+    const action = state.actions[button.dataset.command ?? '']
+    button.classList.toggle('format-menu-button-active', action?.checked === true)
+    button.disabled = action?.enabled !== true
   }
-  for (const button of formatButtonElements) {
-    button.classList.toggle(
-      'format-menu-button-active',
-      activeByCommand[button.dataset.command ?? ''] === true,
-    )
-  }
-
   const isHeading = state.headingLevel !== null
   formatSeparator.hidden = !isHeading
-  for (const button of headingButtonElements) {
-    button.hidden = !isHeading
-  }
-  promoteHeadingButton.disabled = state.headingLevel === 1
-  demoteHeadingButton.disabled = state.headingLevel === 6
+  for (const button of headingButtonElements) button.hidden = !isHeading
+
 }
 
 function hideFormatMenu(): void {
@@ -1208,24 +926,6 @@ function hideFormatMenu(): void {
   formatMenuHideTimer = window.setTimeout(() => {
     formatMenu.hidden = true
   }, 60)
-}
-
-function shouldShowFormatMenu(state: ReturnType<typeof getEditorCommandState>): boolean {
-  if (!frontendFormatMenuEnabled) {
-    return false
-  }
-  if (readOnly) {
-    return false
-  }
-  if (sourceMode) {
-    return false
-  }
-  if (state.imageSelected || state.mathInline || state.mathBlock || state.mermaidSelected) {
-    return false
-  }
-  const inFormattableBlock = state.headingLevel !== null || state.paragraph
-    || state.bulletList || state.orderedList || state.taskList || state.blockquote || state.inTable
-  return state.hasSelection || inFormattableBlock
 }
 
 editorMount.addEventListener('contextmenu', (event) => {
@@ -1248,29 +948,15 @@ editorMount.addEventListener('contextmenu', (event) => {
     })
     return
   }
-  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-  if (resolved) {
-    const mathPos = findMathNodeAt(resolved.pos)
-    const mermaidPos = mathPos === null ? findMermaidNodeAt(resolved.pos) : null
-    if (mathPos !== null) {
-      editor.commands.setNodeSelection(mathPos)
-    } else if (mermaidPos !== null) {
-      editor.commands.setNodeSelection(mermaidPos)
-    } else {
-      const selection = editor.state.selection
-      if (selection.empty || resolved.pos < selection.from || resolved.pos > selection.to) {
-        editor.commands.setTextSelection(normalizeContextMenuCaretPosition(editor, resolved.pos))
-      }
-    }
-  }
+  selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
   editor.commands.focus()
   contextMenuSelection = {
     from: editor.state.selection.from,
     to: editor.state.selection.to,
   }
   sendEditorState()
-  const state = getEditorCommandState(editor)
-  const showFormat = shouldShowFormatMenu(state)
+  const state = getEditorCommandPresentation(editor, { readOnly, sourceMode, documentType }, interactions.state())
+  const showFormat = frontendFormatMenuEnabled && state.actions.toggleBold?.enabled === true
   if (showFormat) {
     showFormatMenu(event.clientX, event.clientY, state)
   } else {
@@ -1280,105 +966,12 @@ editorMount.addEventListener('contextmenu', (event) => {
     clientX: event.clientX,
     clientY: event.clientY,
     menuHeight: showFormat ? formatMenu.offsetHeight : 0,
-    canStartFormatPainter: !sourceMode && captureFormat(editor) !== null,
-    formatPainterArmed: !sourceMode && formatPainter.isArmed,
+    canStartFormatPainter: interactions.state().canStartFormatPainter,
+    formatPainterArmed: !sourceMode && interactions.state().formatPainterArmed,
     readOnly,
   })
 })
 
-let pendingSpecialClick: {
-  kind: 'math' | 'mermaid'
-  position: number
-  wasSelected: boolean
-} | null = null
-
-editorMount.addEventListener('mousedown', (event) => {
-  if (sourceMode || event.button !== 0) {
-    pendingSpecialClick = null
-    return
-  }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
-    pendingSpecialClick = null
-    return
-  }
-
-  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-  const mathPosition = findMathNodeFromTarget(event.target)
-    ?? (resolved ? findMathNodeAt(resolved.pos) : null)
-  const mermaidPosition = mathPosition === null
-    ? findSpecialNodeFromTarget(event.target, 'mermaid', '.markleaf-mermaid')
-      ?? (resolved ? findMermaidNodeAt(resolved.pos) : null)
-    : null
-  const position = mathPosition ?? mermaidPosition
-  if (position === null) {
-    pendingSpecialClick = null
-    return
-  }
-
-  const selected = editor.state.selection
-  pendingSpecialClick = {
-    kind: mathPosition !== null ? 'math' : 'mermaid',
-    position,
-    wasSelected: selected instanceof NodeSelection && selected.from === position,
-  }
-}, true)
-
-editorMount.addEventListener('click', (event) => {
-  if (sourceMode) {
-    return
-  }
-  if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
-    return
-  }
-  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-  const horizontalRulePosition = findHorizontalRuleAtY(event.clientY)
-  if (horizontalRulePosition !== null) {
-    event.preventDefault()
-    pendingSpecialClick = null
-    editor.commands.setNodeSelection(horizontalRulePosition)
-    sendEditorState()
-    return
-  }
-  const mathPosition = findMathNodeFromTarget(event.target)
-    ?? (resolved ? findMathNodeAt(resolved.pos) : null)
-  const mermaidPosition = mathPosition === null
-    ? findSpecialNodeFromTarget(event.target, 'mermaid', '.markleaf-mermaid')
-      ?? (resolved ? findMermaidNodeAt(resolved.pos) : null)
-    : null
-  const position = mathPosition ?? mermaidPosition
-  if (position === null) {
-    pendingSpecialClick = null
-    return
-  }
-
-  const kind = mathPosition !== null ? 'math' : 'mermaid'
-  const pending = pendingSpecialClick
-  pendingSpecialClick = null
-  const wasSelected = pending?.kind === kind
-    && pending.position === position
-    && pending.wasSelected
-
-  event.preventDefault()
-  if (!wasSelected) {
-    editor.commands.setNodeSelection(position)
-    sendEditorState()
-    return
-  }
-
-  if (kind === 'math') {
-    const selectedNode = editor.state.doc.nodeAt(position)
-    if (selectedNode?.type.name !== 'mathInline' && selectedNode?.type.name !== 'mathBlock') return
-    const selectedKind = selectedNode.type.name === 'mathInline' ? 'mathInline' : 'mathBlock'
-    if (isSourceEditorExpanded(editor, position, selectedKind)) collapseSourceEditor(editor)
-    else expandSourceEditor(editor, position, selectedKind)
-    sendEditorState()
-    return
-  }
-  editor.commands.setNodeSelection(position)
-  if (isSourceEditorExpanded(editor, position, 'mermaid')) collapseSourceEditor(editor)
-  else expandSourceEditor(editor, position, 'mermaid')
-  sendEditorState()
-})
 sourceMount.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   sourceEditor?.focus()
@@ -1391,22 +984,6 @@ sourceMount.addEventListener('contextmenu', (event) => {
     readOnly,
     sourceMode: true,
     expandedSource: false,
-  })
-})
-
-window.addEventListener('markleaf-expanded-source-contextmenu', (event) => {
-  const detail = event instanceof CustomEvent
-    ? event.detail as { clientX?: number; clientY?: number }
-    : {}
-  send('contextMenuRequested', {
-    clientX: typeof detail.clientX === 'number' ? detail.clientX : 0,
-    clientY: typeof detail.clientY === 'number' ? detail.clientY : 0,
-    menuHeight: 0,
-    canStartFormatPainter: false,
-    formatPainterArmed: false,
-    readOnly,
-    sourceMode: false,
-    expandedSource: true,
   })
 })
 
@@ -1493,10 +1070,11 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
       syncThemeModeClass()
+      send('stylesApplied')
       break
     }
     case 'loadDocument': {
-      formatPainter.cancel()
+      interactions.cancel()
       updateFormatPainterCursor()
       const payload = message.payload as {
         markdown?: unknown
@@ -1593,7 +1171,7 @@ async function handleMessage(value: unknown): Promise<void> {
       const nextType = isPlainTextDocumentType(payload?.documentType) ? 'plainText' : 'markdown'
       if (nextType === documentType) break
       const markdown = getActiveMarkdown()
-      formatPainter.cancel()
+      interactions.cancel()
       updateFormatPainterCursor()
       suppressUpdate = true
       sourceEditor?.destroy()
@@ -1648,7 +1226,6 @@ async function handleMessage(value: unknown): Promise<void> {
         html?: unknown
         clientX?: unknown
         clientY?: unknown
-        applyToCurrentTextBlockWhenEmpty?: unknown
       }
       if (typeof payload?.command === 'string') {
         if (!isHostCommandAllowed(payload.command, { readOnly, documentType })) {
@@ -1769,12 +1346,12 @@ async function handleMessage(value: unknown): Promise<void> {
           let success = false
           if (sourceMode) {
             success = false
-          } else if (formatPainter.isArmed) {
+          } else if (interactions.state().formatPainterArmed) {
             // 再次点击 = 关闭（对齐 Word 的切换语义）。
-            formatPainter.cancel()
+            interactions.cancel()
             success = true
           } else {
-            success = formatPainter.arm(editor)
+            success = interactions.arm()
           }
           updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)
@@ -1787,7 +1364,7 @@ async function handleMessage(value: unknown): Promise<void> {
             if (contextMenuSelection) {
               editor.commands.setTextSelection(contextMenuSelection)
             }
-            success = formatPainter.arm(editor)
+            success = interactions.arm()
           }
           contextMenuSelection = null
           updateFormatPainterCursor()
@@ -1796,7 +1373,7 @@ async function handleMessage(value: unknown): Promise<void> {
           break
         }
         if (payload.command === 'formatPainterApply') {
-          const success = executeFormatPainterApply(editor, formatPainter, sourceMode)
+          const success = interactions.apply()
           updateFormatPainterCursor()
           if (message.requestId) send('commandResult', { success }, message.requestId)
           sendEditorState()
@@ -1852,8 +1429,7 @@ async function handleMessage(value: unknown): Promise<void> {
               baseCss,
               title,
               // 宿主专属截图规则：WKWebView 需要滚动范围，WebView2 需要裁剪容器。
-              hostClass: window.chrome?.webview?.hostPlatform === 'macOS'
-                ? 'markleaf-host-macos' : 'markleaf-host-windows',
+              imageCaptureMode: hostCapabilities.imageCaptureMode,
               keepTablesTogether,
               keepHeadingsWithNextBlock,
               editorLoc,
@@ -1915,7 +1491,6 @@ async function handleMessage(value: unknown): Promise<void> {
                 payload.command,
                 commandText,
                 coordinates,
-                payload.applyToCurrentTextBlockWhenEmpty === true,
               )
         if (message.requestId) {
           send('commandResult', { success, outcome: commandOutcome, error: commandError }, message.requestId)
@@ -1958,72 +1533,7 @@ if (hostCapabilities.installsFrontendWheelHandler) {
   )
 }
 
-// 自动隐藏滚动条：滚动时或鼠标移至右边缘时显示滑块，停止后约 800ms 隐藏。
-// 同时操作 html 和 body，覆盖不同 overflow 归属场景下的滚动条。
-const isAutoHideScrollbarActive = () =>
-  document.documentElement.classList.contains('markleaf-auto-hide-scrollbar')
-
-const onScrollShow = () => {
-  if (!isAutoHideScrollbarActive()) {
-    return
-  }
-  showScrollbar()
-}
-window.addEventListener('scroll', onScrollShow, { passive: true, capture: true })
-document.addEventListener('scroll', onScrollShow, { passive: true, capture: true })
-
-window.addEventListener(
-  'mousemove',
-  (event) => {
-    if (!isAutoHideScrollbarActive()) {
-      return
-    }
-    if (event.clientX >= window.innerWidth - 20) {
-      showScrollbar()
-    }
-  },
-  { passive: true },
-)
-
-function showScrollbar(): void {
-  animateScrollbarAlphaTo(1)
-  window.clearTimeout(scrollbarHideTimer)
-  scrollbarHideTimer = window.setTimeout(() => {
-    animateScrollbarAlphaTo(0)
-  }, 800)
-}
-
-const alphaFrameScheduler = {
-  now: () => performance.now(),
-  requestFrame: (cb: (time: number) => void) => requestAnimationFrame(cb),
-  cancelFrame: (id: number) => cancelAnimationFrame(id),
-}
-
-// WKWebView 不支持滚动条透明度的 CSS transition。控制器记录当前动画目标，
-// 连续滚动期间重复请求显示时不会取消并重启同一段逐帧动画。
-const scrollbarAlphaController = createScrollbarAlphaController(
-  0,
-  200,
-  (alpha) => document.documentElement.style.setProperty('--ml-scrollbar-alpha', String(alpha)),
-  alphaFrameScheduler,
-)
-
-function reducedMotionActive(): boolean {
-  return document.documentElement.classList.contains('markleaf-reduced-motion')
-}
-
-function animateScrollbarAlphaTo(target: number): void {
-  scrollbarAlphaController.animateTo(target, reducedMotionActive())
-}
-
-function applyAutoHideScrollbar(enabled: boolean): void {
-  document.documentElement.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
-  document.body.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
-  if (!enabled) {
-    window.clearTimeout(scrollbarHideTimer)
-    scrollbarAlphaController.reset(0)
-  }
-}
+const applyAutoHideScrollbar = readingBehavior.setAutoHideScrollbar
 
 let markleafLanguage = 'zh-Hans'
 
@@ -2032,7 +1542,6 @@ let findQuery = ''
 let findReplace = ''
 let findCaseSensitive = false
 let findWholeWord = false
-type StyleEntry = { id: string; css: string; dependsOn?: string }
 
 function injectStyleSheet(id: string, css: string): void {
   let style = document.getElementById(id) as HTMLStyleElement | null
@@ -2068,41 +1577,7 @@ send('ready')
   sendEditorState()
 }
 
-function resolveStyle(styleId: string): { rootClass: string; css: string } {
-  const def = styleCatalog.find((entry) => entry.id === styleId)
-  if (!def) {
-    return { rootClass: '', css: '' }
-  }
-
-  const classes: string[] = []
-  const cssParts: string[] = []
-  const seen = new Set<string>()
-
-  const visit = (current: StyleEntry | undefined): void => {
-    if (!current || seen.has(current.id)) {
-      return
-    }
-    seen.add(current.id)
-    // 依赖样式先于自身注入，保证自身规则在级联中后出现并覆盖依赖。
-    if (current.dependsOn) {
-      visit(styleCatalog.find((entry) => entry.id === current.dependsOn))
-    }
-    if (current.css.trim()) {
-      classes.push(`markleaf-style-${current.id}`)
-      cssParts.push(current.css)
-    }
-  }
-
-  visit(def)
-  return { rootClass: classes.join(' '), css: cssParts.join('\n') }
-}
-
-function resolveMermaidTheme(css: string): MermaidThemeName | undefined {
-  const declarations = Array.from(css.matchAll(
-    /--ml-mermaid-theme\s*:\s*(default|dark|forest|neutral|base)\s*;/gi,
-  ))
-  return declarations.at(-1)?.[1]?.toLowerCase() as MermaidThemeName | undefined
-}
+const resolveStyle = (styleId: string) => resolveTypographyStyle(styleId, styleCatalog)
 
 function applyMarkleafStyle(styleId: string): void {
   const resolved = resolveStyle(styleId)

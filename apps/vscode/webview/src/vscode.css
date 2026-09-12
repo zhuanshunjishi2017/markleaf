@@ -1,0 +1,219 @@
+:root {
+  font-family: var(--vscode-font-family, sans-serif);
+  --bg-primary: var(--vscode-editor-background);
+  --bg-secondary: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+  --bg-hover: var(--vscode-toolbar-hoverBackground);
+  --bg-selected: var(--vscode-panel-border, #8884);
+  --bg-selected-hover: var(--vscode-widget-border, #8886);
+  --text-primary: var(--vscode-editor-foreground);
+  --text-secondary: var(--vscode-foreground);
+  --text-tertiary: var(--vscode-descriptionForeground);
+  --text-selected: var(--vscode-editor-selectionForeground, var(--vscode-editor-foreground));
+  --text-tertiary-selected: var(--text-selected);
+  --theme-light: var(--vscode-editor-selectionBackground);
+  --theme-dark: var(--vscode-textLink-foreground);
+  --highlight: var(--vscode-editor-findMatchHighlightBackground);
+  --highlight-current: var(--vscode-editor-findMatchBackground);
+  --icon: var(--text-primary);
+  --icon-secondary: var(--text-tertiary);
+  --scrollbar-idle: var(--vscode-scrollbarSlider-background);
+  --scrollbar-active: var(--vscode-scrollbarSlider-activeBackground);
+  /* Overlay chrome. Apple HIG treats menus and dialogs as elevated surfaces:
+     in dark mode a drop shadow alone is nearly invisible, so the surface is
+     lifted and a hairline border carries the boundary. VS Code exposes the
+     matching semantic tokens, which keeps third party themes consistent. */
+  --ml-ui-surface: var(--vscode-editorWidget-background, var(--bg-primary));
+  --ml-ui-border: var(--vscode-widget-border, var(--bg-selected));
+  --ml-ui-shadow: var(--vscode-widget-shadow, #0006);
+}
+html { scroll-padding-top: 74px; }
+body { padding: 0; color: var(--text-primary); background: var(--bg-primary); }
+/* Neutral document surfaces belong to the editor, not toolbar hover/selection.
+   Only ordinary dark views opt in; light, high contrast and exports retain
+   their own palettes. Blend with the active background instead of replacing it.
+   Levels follow Apple HIG dark mode: elevated surface + fill tiers + separator,
+   all derived from the live theme so Dark+, Dark Modern and third party themes
+   stay self consistent. */
+@media not (forced-colors: active) {
+  :where(body[data-markleaf-soft-dark]) #editor {
+    --ml-surface-1: color-mix(in srgb, var(--bg-primary), var(--text-primary) 5%);
+    --ml-fill-quaternary: color-mix(in srgb, var(--bg-primary), var(--text-primary) 8%);
+    --ml-fill-tertiary: color-mix(in srgb, var(--bg-primary), var(--text-primary) 12%);
+    --ml-separator: color-mix(in srgb, var(--bg-primary), var(--text-primary) 16%);
+    /* Non text boundaries need ~3:1, which lands near systemGray2 in dark mode. */
+    --ml-separator-strong: color-mix(in srgb, var(--bg-primary), var(--text-primary) 40%);
+    /* Some dark themes ship links below 4.5:1; lift them toward the foreground. */
+    --ml-link: color-mix(in srgb, var(--vscode-textLink-foreground) 82%, var(--text-primary) 18%);
+    --ml-table-header: var(--ml-fill-tertiary);
+    --ml-table-border: var(--ml-separator);
+    /* The minimal typography draws this rule at 2px. A separator-strong tint
+       reads as a bright accent bar at that weight, so the header rule sits
+       between the two separator tiers and lets the header fill carry the
+       hierarchy instead. */
+    --ml-table-header-rule: color-mix(in srgb, var(--bg-primary), var(--text-primary) 24%);
+    --ml-mermaid-surface: color-mix(in srgb, var(--bg-primary), var(--text-primary) 2%);
+    --ml-mermaid-surface-border: var(--ml-separator);
+    --ml-mermaid-node: color-mix(in srgb, var(--bg-primary), var(--text-primary) 7%);
+    --ml-mermaid-node-border: color-mix(in srgb, var(--bg-primary), var(--text-primary) 36%);
+    --ml-mermaid-line: color-mix(in srgb, var(--bg-primary), var(--text-primary) 61%);
+    --ml-mermaid-text: var(--text-primary);
+    /* Alert accents ship as light variants and only reach ~3.3:1 on dark
+       surfaces, so dark views switch to the dark semantic set (>= 5:1). */
+    --ml-alert-note: #58A6FF;
+    --ml-alert-tip: #3FB950;
+    --ml-alert-important: #BC8CFF;
+    --ml-alert-warning: #D29922;
+    --ml-alert-caution: #F85149;
+    --ml-alert-on-color: var(--bg-primary);
+  }
+}
+/* High contrast dark themes skip the soft dark surfaces above, but still need
+   alert accents that clear the black background. */
+@media not (forced-colors: active) {
+  :where(body.vscode-high-contrast) #editor {
+    --ml-alert-note: #79C0FF;
+    --ml-alert-tip: #56D364;
+    --ml-alert-important: #D2A8FF;
+    --ml-alert-warning: #E3B341;
+    --ml-alert-caution: #FF7B72;
+    --ml-alert-on-color: var(--bg-primary);
+  }
+}
+#toolbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 8px 12px; background: var(--bg-primary);
+  border-bottom: 1px solid var(--bg-selected);
+  font-size: 12px;
+}
+.brand { padding: 0 8px 0 2px; font-size: 13px; letter-spacing: .2px; }
+button {
+  font: inherit; color: var(--text-primary); background: transparent;
+  border: 1px solid transparent; border-radius: 4px; padding: 4px 7px;
+  min-height: 28px; cursor: pointer;
+}
+button:hover, button[aria-pressed="true"] { background: var(--bg-hover); }
+button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+button:disabled { opacity: .4; cursor: default; }
+.divider { width: 1px; height: 20px; background: var(--bg-selected); margin: 0 4px; }
+.spacer { flex: 1; }
+#editor { padding: 28px clamp(16px, 4vw, 48px) 80px; }
+#editor .ProseMirror { min-height: calc(100vh - 180px); }
+#editor .ProseMirror:focus-within { caret-color: var(--vscode-editorCursor-foreground, var(--text-primary)); }
+#editor[data-read-only="true"] { cursor: auto; }
+#editor[data-read-only="true"] .markleaf-image-resize-handle { display: none; }
+#editor .markleaf-document pre { font-family: var(--vscode-editor-font-family, monospace); }
+#notice { position: sticky; top: 45px; z-index: 90; padding: 10px 18px; background: var(--vscode-inputValidation-warningBackground, var(--bg-secondary)); border-bottom: 1px solid var(--vscode-inputValidation-warningBorder, var(--bg-selected)); font-size: 13px; }
+#notice button { margin-left: 8px; color: var(--vscode-textLink-foreground); text-decoration: underline; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; display: flex; justify-content: space-between; padding: 5px 16px; color: var(--text-tertiary); background: var(--bg-primary); border-top: 1px solid var(--bg-selected); font-size: 11px; }
+[hidden] { display: none !important; }
+.toolbar-menu { position: relative; }
+.toolbar-menu summary { cursor: pointer; padding: 6px; border-radius: 4px; }
+.toolbar-menu summary:hover { background: var(--bg-hover); }
+.menu-content { position: absolute; inset-inline-end: 0; top: 100%; min-width: 190px; padding: 5px; display: grid; background: var(--ml-ui-surface); border: 1px solid var(--ml-ui-border); border-radius: 6px; box-shadow: 0 8px 24px var(--ml-ui-shadow); max-height: 70vh; overflow: auto; }
+.menu-content button { text-align: start; }
+#document-area { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+#document-area.with-outline { grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); }
+#outline { position: sticky; top: 94px; max-height: calc(100vh - 130px); overflow: auto; padding: 16px 8px; border-inline-end: 1px solid var(--bg-selected); font-size: 12px; }
+#outline strong { display: block; margin: 0 8px 10px; }
+#outline button { display: block; width: 100%; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#outline button[aria-current="true"] { background: var(--bg-selected); color: var(--theme-dark); }
+#find-bar { position: sticky; top: 0; z-index: 101; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--bg-primary); border-bottom: 1px solid var(--bg-selected); font-size: 12px; }
+#find-bar input:not([type="checkbox"]) { width: min(200px, 40vw); padding: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--bg-selected)); }
+#find-bar label { display: inline-flex; align-items: center; gap: 3px; }
+#replace-controls { display: flex; gap: 4px; }
+#editor { min-width: 0; }
+footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code,
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-editor { font-family: var(--ml-source-font-family); font-size: var(--ml-source-font-size); }
+.editor-tooltip.markleaf-expanded-source { z-index: 80; }
+/* VS Code theme tokens may be translucent. A floating code editor needs an
+   opaque document surface underneath the code tint, just like an inline block. */
+.editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
+  background: linear-gradient(var(--bg-secondary), var(--bg-secondary)), var(--bg-primary);
+}
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-toolbar {
+  flex-wrap: wrap;
+}
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-groups { flex-wrap: wrap; }
+.editor-tooltip.markleaf-expanded-source .markleaf-formula-symbol-panel {
+  max-width: min(400px, calc(100vw - 32px));
+  max-height: min(260px, 35vh);
+}
+@media (max-width: 520px) { .brand, .divider { display: none; } #toolbar { gap: 1px; padding: 6px; } }
+@media (max-width: 680px) { #document-area.with-outline { grid-template-columns: minmax(110px, 25%) minmax(0, 1fr); } #outline { padding: 8px 2px; } }
+
+#markleaf-shortcuts {
+  box-sizing: border-box; width: min(740px, calc(100vw - 24px)); max-width: none;
+  height: min(760px, calc(100vh - 24px)); max-height: calc(100vh - 24px); padding: 0;
+  color: var(--vscode-editor-foreground); background: var(--ml-ui-surface);
+  border: 1px solid var(--ml-ui-border); border-radius: 8px;
+  box-shadow: 0 16px 48px var(--ml-ui-shadow); font: 13px/1.5 var(--vscode-font-family, sans-serif);
+}
+#markleaf-shortcuts[open] { display: flex; flex-direction: column; }
+#markleaf-shortcuts::backdrop { background: #0008; }
+#markleaf-shortcuts button { color: inherit; flex-shrink: 0; }
+#markleaf-shortcuts h2, #markleaf-shortcuts h3, #markleaf-shortcuts p { margin: 0; }
+.shortcut-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
+#markleaf-shortcuts h2 { font-size: 20px; }
+.shortcut-header p, .shortcut-intro p { color: var(--vscode-descriptionForeground); }
+.shortcut-header button { font-size: 22px; }
+.shortcut-intro { padding: 0 20px 12px; }
+.shortcut-intro p { margin-bottom: 4px !important; font-size: 12px; }
+.shortcut-intro [data-native] { padding: 3px 0; color: var(--vscode-textLink-foreground) !important; }
+.shortcut-search { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+#markleaf-shortcuts input { box-sizing: border-box; min-width: 0; padding: 7px 9px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--ml-ui-border)); border-radius: 4px; }
+.shortcut-search input { flex: 1; }
+#markleaf-shortcuts input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.shortcut-list { min-height: 60px; overflow: auto; padding: 0 20px 12px; border-block: 1px solid var(--ml-ui-border); flex: 1; }
+#markleaf-shortcuts .shortcut-list h3 { font-size: 12px; font-weight: 600; padding: 14px 0 5px; color: var(--vscode-descriptionForeground); }
+.shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ml-ui-border); }
+.shortcut-row kbd { font: 12px var(--vscode-editor-font-family, monospace); padding: 3px 6px; border: 1px solid var(--ml-ui-border); border-radius: 4px; white-space: nowrap; }
+.shortcut-row button, .shortcut-buttons button { border: 1px solid var(--vscode-button-border, var(--ml-ui-border)); }
+.shortcut-recorder { padding: 10px 20px 14px; border-top: 1px solid var(--ml-ui-border); }
+#markleaf-shortcuts .shortcut-recorder h3 { font-size: 14px; margin-bottom: 8px; }
+.shortcut-recorder label { display: flex; align-items: center; gap: 12px; }
+.shortcut-recorder input { flex: 1; font-family: var(--vscode-editor-font-family, monospace) !important; }
+.shortcut-recorder p { font-size: 12px; margin: 8px 0 !important; min-height: 18px; }
+.shortcut-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+#markleaf-shortcuts [data-save] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.shortcut-result { padding: 8px 20px; min-height: 18px; font-size: 12px; }
+#markleaf-shortcuts .shortcut-error, #markleaf-shortcuts [data-config-error] { color: var(--vscode-errorForeground, #e86565); }
+#markleaf-shortcuts [data-config-error] { max-height: 60px; overflow: auto; }
+@media (max-width: 440px), (max-height: 560px) {
+  .shortcut-header { padding: 10px 12px 6px; }
+  .shortcut-intro { padding: 0 12px 8px; }
+  .shortcut-recorder { padding: 8px 12px; }
+  .shortcut-list { padding-inline: 12px; }
+  .shortcut-row { gap: 6px; }
+  .shortcut-intro p { font-size: 11px; }
+}
+
+#markleaf-export {
+  width: min(760px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); padding: 0;
+  color: var(--vscode-editor-foreground); background: var(--ml-ui-surface);
+  border: 1px solid var(--ml-ui-border); border-radius: 10px;
+  box-shadow: 0 16px 48px var(--ml-ui-shadow); font: 13px/1.6 var(--vscode-font-family, sans-serif);
+}
+#markleaf-export::backdrop { background: #0008; }
+#markleaf-export form { display: flex; flex-direction: column; max-height: calc(100vh - 26px); }
+#markleaf-export header { flex-shrink: 0; display: flex; justify-content: space-between; gap: 12px; padding: 20px 24px 12px; }
+#markleaf-export h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+#markleaf-export p { margin: 0; color: var(--vscode-descriptionForeground); }
+#markleaf-export [data-close] { align-self: start; font-size: 22px; }
+#markleaf-export .export-fields { flex: 1; min-height: 0; overflow: auto; border: 0; margin: 0; padding: 6px 24px 18px; }
+#markleaf-export .export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin-bottom: 18px; }
+#markleaf-export label { display: flex; flex-direction: column; gap: 5px; }
+#markleaf-export input, #markleaf-export select { box-sizing: border-box; width: 100%; padding: 7px 9px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--ml-ui-border)); border-radius: 4px; font: inherit; }
+#markleaf-export input:focus, #markleaf-export select:focus { outline: 1px solid var(--vscode-focusBorder); }
+#markleaf-export .export-check { flex-direction: row; align-items: center; margin: 7px 0; }
+#markleaf-export input[type=checkbox] { width: auto; accent-color: var(--vscode-button-background); }
+#markleaf-export .export-hint { font-size: 12px; margin: 8px 0 16px; }
+#markleaf-export [data-result] { padding: 0 24px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }
+#markleaf-export .export-error { color: var(--vscode-errorForeground); }
+#markleaf-export .export-buttons { position: relative; flex-shrink: 0; background: var(--ml-ui-surface); display: flex; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--ml-ui-border); }
+#markleaf-export .export-buttons span { flex: 1; }
+#markleaf-export button { color: inherit; }
+#markleaf-export .export-buttons button { border: 1px solid var(--ml-ui-border); border-radius: 4px; padding: 6px 10px; }
+#markleaf-export [data-save] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+@media (max-width: 440px) { #markleaf-export .export-grid { grid-template-columns: 1fr; } #markleaf-export header, #markleaf-export .export-fields, #markleaf-export .export-buttons { padding-inline: 14px; } }

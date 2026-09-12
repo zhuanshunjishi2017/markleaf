@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
-import { defaultSettings, colorThemes, typographyStyles, type MarkLeafSettings } from '../../../packages/editor-web/src/vscode-settings'
-import { isFormatCommand, parseShortcut, resolveShortcuts, shortcutObject, type ShortcutSettings } from '../../../packages/editor-web/src/vscode-shortcuts'
+import { defaultSettings, colorThemes, typographyStyles, type MarkLeafSettings } from '../webview/src/vscode-settings'
+import { isFormatCommand, parseShortcut, resolveShortcuts, shortcutObject, type ShortcutSettings } from '../webview/src/vscode-shortcuts'
 
 function shortcutRegistrationError(config: vscode.WorkspaceConfiguration): string | undefined {
   // Reading with a fallback does not mean the workbench registered the setting.

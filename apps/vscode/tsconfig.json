@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // 仅用于 tsc --noEmit 类型检查；产物由 scripts/build.mjs 交给 esbuild
+    // 打成 CommonJS。Bundler 解析才能读取 @markleaf/editor-core 的 exports
+    // 子路径（如 ./editor-state）。
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
@@ -10,5 +13,8 @@
     "types": ["node", "vscode"],
     "lib": ["ES2022"]
   },
+  // 只检查扩展进程源码；被引用的 webview/src 纯逻辑模块（协议、设置、
+  // 快捷键、导出选项）由 tsc 沿 import 自动纳入。webview 的 DOM 侧代码
+  // 有独立的 webview/tsconfig.json 负责。
   "include": ["src"]
 }

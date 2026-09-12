@@ -2,8 +2,8 @@ import * as vscode from 'vscode'
 import { randomUUID } from 'node:crypto'
 import { posix } from 'node:path'
 import { documentDirectory, resolveDocumentLink } from './resources'
-import type { ImageUpload } from '../../../packages/editor-web/src/vscode-protocol'
-import type { MarkLeafSettings } from '../../../packages/editor-web/src/vscode-settings'
+import type { ImageUpload } from '../webview/src/vscode-protocol'
+import type { MarkLeafSettings } from '../webview/src/vscode-settings'
 
 const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']
 const maximumImageBytes = 16 * 1024 * 1024

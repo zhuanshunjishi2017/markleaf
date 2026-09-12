@@ -16,6 +16,7 @@ export type EditorMessage = {
   protocolVersion: number
   type:
     | 'ready'
+    | 'stylesApplied'
     | 'documentLoaded'
     | 'commandResult'
     | 'dirtyChanged'

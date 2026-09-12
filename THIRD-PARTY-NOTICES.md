@@ -8,6 +8,8 @@ included in the distribution package or available at the listed URLs.
 | Package | Version | License |
 | --- | --- | --- |
 | Microsoft.Web.WebView2 | 1.0.4078.44 | [Microsoft package license](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4078.44/License) |
+| Jint | 4.16.2 | [BSD-2-Clause](https://github.com/sebastienros/jint/blob/main/LICENSE.txt) |
+| Acornima (Jint parser) | 1.7.0 | [BSD-3-Clause](https://github.com/adams85/acornima/blob/main/LICENSE.txt) |
 
 ## Editor Frontend (npm)
 
@@ -29,6 +31,10 @@ included in the distribution package or available at the listed URLs.
 | @codemirror/language | 6.11.3 | MIT |
 | @codemirror/commands | 6.8.1 | MIT |
 | @codemirror/lang-markdown | 6.3.4 | MIT |
+| marked | 17.0.6 | MIT |
+| entities | 8.1.0 | BSD-2-Clause |
+| parse5 | 8.0.1 | MIT |
+| KaTeX | 0.16.21 | MIT (code), OFL-1.1 (fonts) |
 
 Tiptap is built on [ProseMirror](https://prosemirror.net/) (MIT), which is
 bundled via `@tiptap/pm`.
@@ -58,8 +64,7 @@ in `apps/vscode/licenses/puppeteer-LICENSE` because its npm packages omit that f
 
 ## Fonts
 
-The editor uses the following system font stacks and does not bundle font
-files:
+The editor bundles KaTeX WOFF2 math fonts under OFL-1.1. Other text uses the following system font stacks:
 
 - UI sans-serif: Segoe UI, system-ui
 - Editor body: charter, Georgia, Cambria, "Times New Roman", "宋体", serif
@@ -72,5 +77,5 @@ licenses. No GPL or AGPL code is included. A full transitive dependency
 tree with license metadata is available via:
 
 ```
-pnpm --dir packages/editor-web licenses list --json
+corepack pnpm --dir packages/editor-core licenses list --json
 ```
