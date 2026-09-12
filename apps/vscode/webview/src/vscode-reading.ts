@@ -27,8 +27,7 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
   document.head.append(theme, typography, custom)
   let headings: Array<{ position: number; level: number; text: string; button: HTMLButtonElement }> = []
   function headerBottom(): number {
-    return document.querySelector('#find-bar:not([hidden])')?.getBoundingClientRect().bottom
-      ?? document.querySelector('#toolbar')?.getBoundingClientRect().bottom ?? 0
+    return document.querySelector('#editor-chrome')!.getBoundingClientRect().bottom
   }
   function markCurrent(fromCursor: boolean): void {
     const position = getActiveOutlinePosition(editor, fromCursor ? 'cursor' : 'scroll', headerBottom())

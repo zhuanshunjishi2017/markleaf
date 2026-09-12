@@ -23,6 +23,7 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
 <title>MarkLeaf</title>
 </head><body>
 <div id="app">
+  <div id="editor-chrome">
   <header id="toolbar" aria-label="Markdown 工具栏">
     <strong class="brand">MarkLeaf</strong>
     <button id="mode" type="button" title="切换阅读与编辑模式">阅读</button>
@@ -72,6 +73,7 @@ ${(entry.css ?? []).map(css => `<link rel="stylesheet" href="${assetUrl(css)}">`
     <button data-action="openSourceBeside" type="button" title="在侧边打开 VS Code 源码编辑器">并排</button>
   </header>
   <div id="notice" role="status" hidden><span id="notice-text"></span><button id="recover" type="button" hidden>将未同步内容打开为草稿</button></div>
+  </div>
   <main id="editor" class="markleaf-style-minimal" aria-label="Markdown 文档" aria-busy="true"></main>
   <footer><span id="sync-status" role="status">正在加载…</span><span id="word-count"></span></footer>
 </div>
