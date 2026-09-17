@@ -126,6 +126,8 @@ let editorFocusMode = false
 let editorTypewriterMode = false
 let autoConvertUnsafeEmphasis = true
 let typographyProjectionPreferred = false
+let typographyProjectionWidth = -1
+let typographyResizeTimer = 0
 
 setImageResourceResolver(nativeImageResources)
 setExternalCodeFormatter({
@@ -219,12 +221,29 @@ function typographyProjectionAllowed(): boolean {
 function updateTypographyProjection(): void {
   const enabled = typographyProjectionPreferred && typographyProjectionAllowed()
   const content = document.querySelector<HTMLElement>('.markleaf-document') ?? editorMount
+  const availableWidth = content.clientWidth || editorMount.clientWidth
+  if (enabled && availableWidth === typographyProjectionWidth) return
+  typographyProjectionWidth = availableWidth
   setTypographyProjectionEnabled(editor, enabled, {
     availableWidth: content.clientWidth || editorMount.clientWidth,
     measure: typographyMeasurement,
   })
   send('typographyProjectionChanged', getTypographyProjectionDiagnostics(editor))
 }
+
+function scheduleTypographyProjectionUpdate(): void {
+  window.clearTimeout(typographyResizeTimer)
+  typographyResizeTimer = window.setTimeout(() => {
+    typographyResizeTimer = 0
+    updateTypographyProjection()
+  }, 80)
+}
+
+const typographyResizeObserver = new ResizeObserver(() => {
+  scheduleTypographyProjectionUpdate()
+})
+typographyResizeObserver.observe(editorMount)
+window.addEventListener('resize', scheduleTypographyProjectionUpdate)
 function updateEditorTypewriterMode(scrollToCursor = true): void {
   readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode, scrollToCursor)
 }
