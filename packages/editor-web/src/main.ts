@@ -21,8 +21,12 @@ import {
   findFootnoteDefinitionBody,
   getEditorCommandPresentation,
   getEditorStatus,
+  createDomTypographyMeasurement,
+  getTypographyProjectionDiagnostics,
+  parseTypographyProjectionCommand,
   selectEditorContextAt,
   setEditorFocusMode,
+  setTypographyProjectionEnabled,
   getMarkdown,
   setAutoConvertUnsafeEmphasis,
   setMarkdownEditingSettings,
@@ -121,6 +125,7 @@ let readOnly = false
 let editorFocusMode = false
 let editorTypewriterMode = false
 let autoConvertUnsafeEmphasis = true
+let typographyProjectionPreferred = false
 
 setImageResourceResolver(nativeImageResources)
 setExternalCodeFormatter({
@@ -203,6 +208,23 @@ document.addEventListener('mousedown', (event) => {
 let lastVisualSelection = captureVisualSelection(editor)
 const readingBehavior = createReadingBehavior(() => editor)
 const scrollEditorCursorToCenter = readingBehavior.cursorMoved
+const typographyMeasurement = createDomTypographyMeasurement(
+  () => document.querySelector<HTMLElement>('.markleaf-document') ?? editorMount,
+)
+
+function typographyProjectionAllowed(): boolean {
+  return !sourceMode && documentType === 'markdown'
+}
+
+function updateTypographyProjection(): void {
+  const enabled = typographyProjectionPreferred && typographyProjectionAllowed()
+  const content = document.querySelector<HTMLElement>('.markleaf-document') ?? editorMount
+  setTypographyProjectionEnabled(editor, enabled, {
+    availableWidth: content.clientWidth || editorMount.clientWidth,
+    measure: typographyMeasurement,
+  })
+  send('typographyProjectionChanged', getTypographyProjectionDiagnostics(editor))
+}
 function updateEditorTypewriterMode(scrollToCursor = true): void {
   readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode, scrollToCursor)
 }
@@ -823,6 +845,7 @@ function setSourceMode(enabled: boolean): void {
   }
   updateCaretVisibility()
   updateBlockHandleOverlay()
+  updateTypographyProjection()
   sendEditorState()
 }
 
@@ -1463,6 +1486,7 @@ async function handleMessage(value: unknown): Promise<void> {
       )
       updateBlockHandleOverlay()
       sendOutline()
+      updateTypographyProjection()
       sendEditorState()
       sendOutlineSelectionFromCursor()
       break
@@ -1523,6 +1547,7 @@ async function handleMessage(value: unknown): Promise<void> {
       suppressUpdate = false
       updateCaretVisibility()
       updateBlockHandleOverlay()
+      updateTypographyProjection()
       sendEditorState()
       sendOutline()
       sendOutlineSelectionFromCursor()
@@ -1720,6 +1745,15 @@ async function handleMessage(value: unknown): Promise<void> {
           editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
+        }
+        if (payload.command === 'setTypographyProjection') {
+          const command = parseTypographyProjectionCommand(payload)
+          if (command) {
+            typographyProjectionPreferred = command.enabled
+            updateTypographyProjection()
+            if (message.requestId) send('commandResult', { success: true }, message.requestId)
+            break
+          }
         }
         if (payload.command === 'setAutoHideScrollbar') {
           applyAutoHideScrollbar(payload.text === '1')

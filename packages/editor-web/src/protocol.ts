@@ -42,6 +42,7 @@ export type EditorMessage = {
     | 'exportContent'
     | 'zoomWheel'
     | 'unsafeEmphasisRequested'
+    | 'typographyProjectionChanged'
     | 'footnoteDefinitionMissing'
     | 'footnoteReferenceMissing'
     | 'codeFormatRequested'

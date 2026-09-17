@@ -5,6 +5,7 @@
   "type": "module",
   "description": "macOS 与 Windows 原生宿主的 webview 适配层：宿主消息协议与入口装配，渲染能力来自 @markleaf/editor-core。",
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:watch": "vitest"

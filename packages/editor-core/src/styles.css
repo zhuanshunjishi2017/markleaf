@@ -1208,3 +1208,12 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
   pointer-events: none;
   user-select: none;
 }
+
+.markleaf-typography-measure {
+  position: absolute;
+  top: -10000px;
+  left: -10000px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+}
