@@ -44,6 +44,20 @@ function lastContentIndex(items: LayoutItem[]): number {
   return -1
 }
 
+function lineStartIndex(
+  items: LayoutItem[],
+  startIndex: number,
+  sourceFrom: number,
+): number {
+  let index = startIndex
+  while (index < items.length) {
+    const item = items[index]!
+    if (item.kind !== 'glue' || item.to > sourceFrom) break
+    index += 1
+  }
+  return index
+}
+
 function makeLine(
   items: LayoutItem[],
   fromIndex: number,
@@ -55,6 +69,7 @@ function makeLine(
   flagged: boolean,
   reason: TypographyLine['breakReason'],
 ) {
+  from = items[fromIndex]?.from ?? from
   const metrics = lineMetrics(items, fromIndex, toIndex)
   const adjustment = lineAdjustment({
     availableWidth,
@@ -113,9 +128,14 @@ function pathLines(
 
   while (cursor.previous) {
     const previous = cursor.previous
-    const line = makeLine(
+    const fromIndex = lineStartIndex(
       items,
       previous.breakIndex + 1,
+      previous.sourceTo,
+    )
+    const line = makeLine(
+      items,
+      fromIndex,
       cursor.breakIndex,
       previous.sourceTo,
       cursor.sourceTo,
@@ -164,7 +184,11 @@ export function breakParagraph(input: {
 
     let best: { path: Path; cost: number } | null = null
     for (const previous of paths) {
-      const fromIndex = previous.breakIndex + 1
+      const fromIndex = lineStartIndex(
+        input.items,
+        previous.breakIndex + 1,
+        previous.sourceTo,
+      )
       if (fromIndex > candidate.itemIndex) continue
 
       const line = makeLine(
@@ -210,6 +234,11 @@ export function breakParagraph(input: {
   } | null = null
 
   for (const path of paths) {
+    const fromIndex = lineStartIndex(
+      input.items,
+      path.breakIndex + 1,
+      path.sourceTo,
+    )
     if (path.breakIndex === contentEnd) {
       const lines = pathLines(path, input.items, input.availableWidth)
       const lastLine = lines.at(-1)
@@ -236,7 +265,6 @@ export function breakParagraph(input: {
       continue
     }
 
-    const fromIndex = path.breakIndex + 1
     if (fromIndex > contentEnd) continue
     const finalLine = makeLine(
       input.items,

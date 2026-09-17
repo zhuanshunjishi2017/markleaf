@@ -77,6 +77,11 @@ describe('Knuth–Plass breaker', () => {
     expect(adjustedLines.every((line) => line.naturalWidth + line.adjustment.amount === line.adjustedWidth)).toBe(true)
     expect(adjustedLines.every((line) => Number.isInteger(line.spaceCount))).toBe(true)
     expect(adjustedLines.every((line) => line.contentTo <= line.to)).toBe(true)
+    expect(adjustedLines.every((line) => {
+      const visibleText = '中文 English 中文 English'.slice(line.from, line.contentTo)
+      const visibleSpaces = Array.from(visibleText).filter((character) => character.trim() === '').length
+      return visibleSpaces === line.spaceCount
+    })).toBe(true)
     expect(result.lines.at(-1)!.adjustment.type).toBe('natural')
     expect(result.lines.at(-1)!.adjustment.amount).toBe(0)
   })
