@@ -9,10 +9,10 @@ import {
 
 const cleanup: Array<() => void> = []
 
-function setup(markdown: string) {
+function setup(markdown: string, { externalHistory = true }: { externalHistory?: boolean } = {}) {
   document.body.innerHTML = '<main id="editor"></main>'
   const mount = document.querySelector<HTMLElement>('#editor')!
-  const editor = createEditor(mount, markdown, false, { externalHistory: true })
+  const editor = createEditor(mount, markdown, false, { externalHistory })
   cleanup.push(() => editor.destroy())
   return { editor, mount }
 }
@@ -114,4 +114,48 @@ describe('enabled typography projection', () => {
     expect(getTypographyProjectionDiagnostics(editor).status).toBe('disabled')
     expect(editor.view.dom.querySelectorAll('.markleaf-typography-break')).toHaveLength(0)
   })
+
+  it('marks paragraphs with inline code as fallbacks', () => {
+    const { editor } = setup('中文 `code` 中文')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 120,
+      measure: fixedMeasure,
+    })
+
+    const diagnostics = getTypographyProjectionDiagnostics(editor)
+    expect(diagnostics.status).toBe('fallback')
+    expect(diagnostics.fallbackParagraphs).toBe(1)
+    expect(editor.view.dom.querySelectorAll('.markleaf-typography-break')).toHaveLength(0)
+  })
+
+  it('recomputes decorations after document changes', () => {
+    const { editor } = setup('中文 English')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 120,
+      measure: fixedMeasure,
+    })
+    const before = getTypographyProjectionDiagnostics(editor).lineBreaks
+
+    editor.commands.insertContentAt(editor.state.doc.content.size, '\n\n中文 English 中文 English')
+    const after = getTypographyProjectionDiagnostics(editor)
+
+    expect(after.eligibleParagraphs).toBe(2)
+    expect(after.lineBreaks).toBeGreaterThan(before)
+  })
+
+it('keeps typography projections out of undo history', () => {
+  const { editor } = setup('one\n\n中文 English 中文 English 中文 English', { externalHistory: false })
+  const before = getMarkdown(editor)
+  editor.commands.insertContentAt(2, '!')
+  const markdownAfterEdit = getMarkdown(editor)
+  setTypographyProjectionEnabled(editor, true, {
+    availableWidth: 120,
+    measure: fixedMeasure,
+  })
+  editor.commands.undo()
+
+  expect(getMarkdown(editor)).toBe(before)
+  expect(markdownAfterEdit).toBe('o!ne\n\n中文 English 中文 English 中文 English')
+  expect(editor.view.dom.querySelectorAll('.markleaf-typography-break').length).toBeGreaterThan(0)
+})
 })
