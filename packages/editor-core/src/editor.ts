@@ -44,6 +44,7 @@ import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMar
 import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
+import { TypographyProjection } from './typography/projection'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -3914,6 +3915,7 @@ const editorExtensions = [
   ContinuousInlineInput,
   MarkdownEmoji,
   CjkAutoSpacing,
+  TypographyProjection,
   MarkdownHighlight,
   MarkdownAlert,
   EmptyBlockEnter,

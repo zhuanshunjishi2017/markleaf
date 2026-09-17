@@ -32,6 +32,7 @@
     "build": "corepack pnpm build:document && vite build --config vite.renderer.config.ts"
   },
   "dependencies": {
+    "@markleaf/typography": "link:../typography",
     "@codemirror/commands": "6.8.1",
     "@codemirror/lang-markdown": "6.3.4",
     "@codemirror/language": "6.11.3",

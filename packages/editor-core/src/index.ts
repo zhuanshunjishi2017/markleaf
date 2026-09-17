@@ -50,6 +50,7 @@ export { selectEditorContextAt } from './document-pointer'
 export * from './outline'
 export * from './reading-behavior'
 export * from './typography'
+export * from './typography/projection'
 export * from './image-resources'
 export * from './mermaid-image-export'
 
