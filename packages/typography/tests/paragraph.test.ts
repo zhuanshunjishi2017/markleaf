@@ -31,6 +31,16 @@ describe('paragraph construction', () => {
     ))).toBe(true)
   })
 
+  it('creates a legal break between directly adjacent Latin and CJK', () => {
+    const paragraph = buildParagraph({
+      text: 'English中文',
+      availableWidth: 1000,
+      measure,
+    })
+
+    expect(paragraph.breaks.some((candidate) => candidate.sourceTo === 7)).toBe(true)
+  })
+
   it('does not break before closing punctuation', () => {
     const paragraph = buildParagraph({
       text: '中文，',

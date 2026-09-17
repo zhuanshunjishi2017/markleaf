@@ -100,6 +100,21 @@ export function buildParagraph(input: {
         return { items, breaks: [] }
       }
       appendBox(items, text, script, from, end, input.measure)
+      const next = clusters[end]
+      const lastCluster = text.at(-1) ?? ''
+      if (
+        next &&
+        classifyCharacter(next) !== 'space' &&
+        canBreakAfter(lastCluster) &&
+        canBreakBefore(next)
+      ) {
+        breaks.push({
+          itemIndex: items.length - 1,
+          sourceTo: end,
+          penalty: -100,
+          flagged: false,
+        })
+      }
       index = end
       continue
     }
