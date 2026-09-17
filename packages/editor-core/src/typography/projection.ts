@@ -3,8 +3,8 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import type { ScriptClass, TextMetrics } from '@markleaf/typography'
-import { splitGraphemes } from '@markleaf/typography'
+import type { LayoutPlan, ScriptClass, TextMetrics } from '@markleaf/typography'
+import { layoutParagraph, splitGraphemes } from '@markleaf/typography'
 
 export type TypographyProjectionStatus =
   | 'disabled'
@@ -76,7 +76,13 @@ export const TypographyProjection = Extension.create({
         init: disabledState,
         apply: (transaction, previous) => {
           const meta = transaction.getMeta(typographyProjectionKey) as ProjectionMeta | undefined
-          if (meta && !meta.enabled) return disabledState()
+          if (meta) {
+            return projectionStateFor(transaction.doc, meta.enabled, meta.options)
+          }
+          if (!previous.enabled || !previous.options) return previous
+          if (transaction.docChanged) {
+            return projectionStateFor(transaction.doc, true, previous.options)
+          }
           return {
             ...previous,
             decorations: previous.decorations.map(transaction.mapping, transaction.doc),
@@ -136,4 +142,101 @@ export function extractTypographyParagraphs(doc: PMNode): ExtractedTypographyPar
   })
 
   return paragraphs
+}
+
+type PlannedParagraph = {
+  nodeFrom: number
+  nodeTo: number
+  textFrom: number
+  plan: LayoutPlan
+  clusterOffsets: number[]
+}
+
+function projectionStateFor(
+  doc: PMNode,
+  enabled: boolean,
+  options?: TypographyProjectionOptions,
+): ProjectionState {
+  if (!enabled || !options || !Number.isFinite(options.availableWidth) || options.availableWidth <= 0) {
+    return disabledState()
+  }
+
+  const decorations: Decoration[] = []
+  const paragraphs = extractTypographyParagraphs(doc)
+  let planned = 0
+  let fallback = 0
+  let lineBreaks = 0
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph.eligible) {
+      fallback += 1
+      continue
+    }
+
+    const plan = layoutParagraph({
+      text: paragraph.text,
+      availableWidth: options.availableWidth,
+      measure: options.measure,
+    })
+
+    if (plan.fallback || plan.lines.length === 0) {
+      fallback += 1
+      continue
+    }
+
+    planned += 1
+    lineBreaks += plan.lines.length - 1
+    decorations.push(Decoration.node(
+      paragraph.nodeFrom,
+      paragraph.nodeTo,
+      { class: 'markleaf-typography-planned' },
+    ))
+
+    for (const line of plan.lines.slice(0, -1)) {
+      const position = paragraph.from + (paragraph.clusterOffsets[line.to] ?? paragraph.text.length)
+      decorations.push(Decoration.widget(
+        position,
+        () => {
+          const element = document.createElement('span')
+          element.className = 'markleaf-typography-break'
+          element.setAttribute('aria-hidden', 'true')
+          element.setAttribute('contenteditable', 'false')
+          return element
+        },
+        {
+          side: 1,
+          ignoreSelection: true,
+          marks: [],
+          key: `typography-break-${paragraph.from}-${line.to}`,
+        },
+      ))
+    }
+  }
+
+  const status: TypographyProjectionStatus = planned === 0
+    ? 'fallback'
+    : fallback === 0 ? 'planned' : 'partial'
+
+  return {
+    enabled: true,
+    options,
+    diagnostics: {
+      status,
+      eligibleParagraphs: paragraphs.filter(paragraph => paragraph.eligible).length,
+      plannedParagraphs: planned,
+      fallbackParagraphs: fallback,
+      lineBreaks,
+    },
+    decorations: DecorationSet.create(doc, decorations),
+  }
+}
+
+export function setTypographyProjectionEnabled(
+  editor: Editor,
+  enabled: boolean,
+  options?: TypographyProjectionOptions,
+): void {
+  editor.view.dispatch(editor.state.tr
+    .setMeta(typographyProjectionKey, { enabled, options })
+    .setMeta('addToHistory', false))
 }

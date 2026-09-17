@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  getMarkdown,
   createEditor,
   extractTypographyParagraphs,
   getTypographyProjectionDiagnostics,
+  setTypographyProjectionEnabled,
 } from '../src/index'
 
 const cleanup: Array<() => void> = []
@@ -74,5 +76,42 @@ describe('typography paragraph extraction', () => {
       eligible: false,
       fallbackReason: 'inline-atom',
     })
+  })
+})
+
+const fixedMeasure = (text: string) => ({
+  width: text.length * 10,
+  stretch: text.trim() === '' ? 4 : 0,
+  shrink: text.trim() === '' ? 2 : 0,
+})
+
+describe('enabled typography projection', () => {
+  it('plans line breaks without changing Markdown', () => {
+    const { editor } = setup('中文 English 中文 English')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 120,
+      measure: fixedMeasure,
+    })
+
+    const diagnostics = getTypographyProjectionDiagnostics(editor)
+    expect(diagnostics.status).toBe('planned')
+    expect(diagnostics.eligibleParagraphs).toBe(1)
+    expect(diagnostics.plannedParagraphs).toBe(1)
+    expect(diagnostics.lineBreaks).toBeGreaterThan(0)
+    expect(editor.view.dom.querySelectorAll('.markleaf-typography-planned')).toHaveLength(1)
+    expect(editor.view.dom.querySelectorAll('.markleaf-typography-break').length).toBeGreaterThan(0)
+    expect(getMarkdown(editor)).toBe('中文 English 中文 English')
+  })
+
+  it('returns to disabled state and removes decorations', () => {
+    const { editor } = setup('中文 English')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 120,
+      measure: fixedMeasure,
+    })
+    setTypographyProjectionEnabled(editor, false)
+
+    expect(getTypographyProjectionDiagnostics(editor).status).toBe('disabled')
+    expect(editor.view.dom.querySelectorAll('.markleaf-typography-break')).toHaveLength(0)
   })
 })
