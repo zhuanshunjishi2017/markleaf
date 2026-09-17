@@ -100,7 +100,28 @@ describe('enabled typography projection', () => {
     expect(diagnostics.lineBreaks).toBeGreaterThan(0)
     expect(editor.view.dom.querySelectorAll('.markleaf-typography-planned')).toHaveLength(1)
     expect(editor.view.dom.querySelectorAll('.markleaf-typography-break').length).toBeGreaterThan(0)
+    const adjustedLines = Array.from(
+      editor.view.dom.querySelectorAll<HTMLElement>('[data-markleaf-typography-line="true"]'),
+    )
+    expect(adjustedLines.length).toBe(diagnostics.lineBreaks)
+    expect(adjustedLines.every((line) => line.classList.contains('markleaf-typography-line'))).toBe(true)
+    expect(adjustedLines.every((line) => line.hasAttribute('data-markleaf-typography-space-count'))).toBe(true)
+    expect(adjustedLines.every((line) => line.style.getPropertyValue('--ml-typography-line-adjust') !== '')).toBe(true)
     expect(getMarkdown(editor)).toBe('中文 English 中文 English')
+  })
+
+  it('uses character spacing for CJK lines without spaces', () => {
+    const { editor } = setup('中文English中文English中文English中文English')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 240,
+      measure: fixedMeasure,
+    })
+
+    const lines = Array.from(
+      editor.view.dom.querySelectorAll<HTMLElement>('[data-markleaf-typography-line="true"]'),
+    )
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.every((line) => line.classList.contains('markleaf-typography-line-characters'))).toBe(true)
   })
 
   it('returns to disabled state and removes decorations', () => {

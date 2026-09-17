@@ -144,14 +144,6 @@ export function extractTypographyParagraphs(doc: PMNode): ExtractedTypographyPar
   return paragraphs
 }
 
-type PlannedParagraph = {
-  nodeFrom: number
-  nodeTo: number
-  textFrom: number
-  plan: LayoutPlan
-  clusterOffsets: number[]
-}
-
 function projectionStateFor(
   doc: PMNode,
   enabled: boolean,
@@ -193,9 +185,37 @@ function projectionStateFor(
     ))
 
     for (const line of plan.lines.slice(0, -1)) {
-      const position = paragraph.from + (paragraph.clusterOffsets[line.to] ?? paragraph.text.length)
+      const fromPosition = paragraph.from + (paragraph.clusterOffsets[line.from] ?? 0)
+      const contentPosition = paragraph.from + (paragraph.clusterOffsets[line.contentTo] ?? paragraph.text.length)
+      const toPosition = paragraph.from + (paragraph.clusterOffsets[line.to] ?? paragraph.text.length)
+      const clusterCount = Math.max(line.contentTo - line.from, 1)
+      const spacingPoints = line.spaceCount > 0
+        ? line.spaceCount
+        : Math.max(clusterCount - 1, 1)
+      const lineClass = line.spaceCount > 0
+        ? 'markleaf-typography-line markleaf-typography-line-words'
+        : 'markleaf-typography-line markleaf-typography-line-characters'
+
+      decorations.push(Decoration.inline(
+        fromPosition,
+        contentPosition,
+        {
+          class: lineClass,
+          'data-markleaf-typography-line': 'true',
+          'data-markleaf-typography-space-count': String(line.spaceCount),
+          style: [
+            `--ml-typography-line-adjust:${line.adjustment.amount}px`,
+            `--ml-typography-space-count:${line.spaceCount}`,
+            `--ml-typography-spacing-points:${spacingPoints}`,
+          ].join(';'),
+        },
+        {
+          key: `typography-line-${paragraph.from}-${line.from}-${line.to}`,
+        },
+      ))
+
       decorations.push(Decoration.widget(
-        position,
+        toPosition,
         () => {
           const element = document.createElement('span')
           element.className = 'markleaf-typography-break'

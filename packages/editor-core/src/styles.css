@@ -1202,6 +1202,24 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
   display: none !important;
 }
 
+.markleaf-typography-line-words {
+  word-spacing: calc(
+    var(--ml-typography-line-adjust) /
+    max(var(--ml-typography-space-count), 1)
+  ) !important;
+}
+
+.markleaf-typography-line-characters {
+  letter-spacing: calc(
+    var(--ml-typography-line-adjust) /
+    max(var(--ml-typography-spacing-points), 1)
+  ) !important;
+  margin-right: calc(
+    -1 * var(--ml-typography-line-adjust) /
+    max(var(--ml-typography-spacing-points), 1)
+  ) !important;
+}
+
 .markleaf-typography-break {
   display: block;
   width: 0;
