@@ -1197,6 +1197,11 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
   text-align: left !important;
 }
 
+/* The LayoutPlan owns CJK/Latin glue in controlled paragraphs. */
+.markleaf-typography-planned .markleaf-cjk-autospace-widget {
+  display: none !important;
+}
+
 .markleaf-typography-break {
   display: block;
   width: 0;
