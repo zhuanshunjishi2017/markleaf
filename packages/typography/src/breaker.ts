@@ -60,6 +60,22 @@ function makeLine(
     availableWidth,
     ...metrics,
   })
+  const adjustmentAmount = metrics.naturalWidth <= availableWidth
+    ? availableWidth - metrics.naturalWidth
+    : -(metrics.naturalWidth - availableWidth)
+  const adjustmentType = reason === 'paragraph-end'
+    ? 'natural'
+    : adjustment.type
+  const lineAdjustmentValue = adjustmentType === 'stretch' || adjustmentType === 'shrink'
+    ? adjustmentAmount
+    : 0
+  let spaceCount = 0
+  for (let index = fromIndex; index <= toIndex; index += 1) {
+    const item = items[index]
+    if (item?.kind === 'glue' && item.script === 'space') {
+      spaceCount += Array.from(item.text).length
+    }
+  }
   const lineBadness =
     reason === 'paragraph-end' && metrics.naturalWidth <= availableWidth
       ? 0
@@ -72,11 +88,14 @@ function makeLine(
     line: {
       from,
       to,
+      contentTo: items[toIndex]?.to ?? to,
       naturalWidth: metrics.naturalWidth,
-      adjustedWidth: metrics.naturalWidth
-        + (adjustment.type === 'stretch' || adjustment.type === 'shrink'
-          ? adjustment.amount
-          : 0),
+      adjustedWidth: metrics.naturalWidth + lineAdjustmentValue,
+      adjustment: {
+        type: adjustmentType,
+        amount: reason === 'paragraph-end' ? 0 : adjustmentAmount,
+      },
+      spaceCount,
       badness: lineBadness,
       breakReason: reason,
     } satisfies TypographyLine,

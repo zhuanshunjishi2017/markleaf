@@ -13,6 +13,11 @@ export type PunctuationCompression =
   | 'adjacent'
   | 'terminal';
 
+export type TypographyLineAdjustment = {
+  type: 'natural' | 'stretch' | 'shrink' | 'overflow';
+  amount: number;
+};
+
 export type LayoutItem =
   | {
       kind: 'box';
@@ -50,8 +55,11 @@ export type BreakCandidate = {
 export type TypographyLine = {
   from: number;
   to: number;
+  contentTo: number;
   naturalWidth: number;
   adjustedWidth: number;
+  adjustment: TypographyLineAdjustment;
+  spaceCount: number;
   badness: number;
   breakReason: 'optimal' | 'forced' | 'paragraph-end';
 };

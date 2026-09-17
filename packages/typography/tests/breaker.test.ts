@@ -70,6 +70,15 @@ describe('Knuth–Plass breaker', () => {
     expect(result.lines.every((line) => line.naturalWidth <= 120)).toBe(true)
     expect(result.lines.every((line) => Number.isFinite(line.badness))).toBe(true)
     expect(result.lines.every((line) => line.badness >= 0)).toBe(true)
+
+    const adjustedLines = result.lines.slice(0, -1)
+    expect(adjustedLines.length).toBeGreaterThan(0)
+    expect(adjustedLines.every((line) => line.adjustment.type !== 'overflow')).toBe(true)
+    expect(adjustedLines.every((line) => line.naturalWidth + line.adjustment.amount === line.adjustedWidth)).toBe(true)
+    expect(adjustedLines.every((line) => Number.isInteger(line.spaceCount))).toBe(true)
+    expect(adjustedLines.every((line) => line.contentTo <= line.to)).toBe(true)
+    expect(result.lines.at(-1)!.adjustment.type).toBe('natural')
+    expect(result.lines.at(-1)!.adjustment.amount).toBe(0)
   })
 
   it('falls back when no legal break exists', () => {
