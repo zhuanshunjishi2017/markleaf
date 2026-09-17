@@ -1,0 +1,7 @@
+packages:
+  - '.'
+
+verifyDepsBeforeRun: error
+
+allowBuilds:
+  esbuild: true
