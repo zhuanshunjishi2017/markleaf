@@ -2,7 +2,9 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import type { ScriptClass, TextMetrics } from '@markleaf/typography'
+import { splitGraphemes } from '@markleaf/typography'
 
 export type TypographyProjectionStatus =
   | 'disabled'
@@ -26,6 +28,17 @@ export type TypographyMeasurement = (
 export type TypographyProjectionOptions = {
   availableWidth: number
   measure: TypographyMeasurement
+}
+
+export type ExtractedTypographyParagraph = {
+  nodeFrom: number
+  nodeTo: number
+  from: number
+  to: number
+  text: string
+  clusterOffsets: number[]
+  eligible: boolean
+  fallbackReason?: 'unsupported-block' | 'inline-atom' | 'inline-code'
 }
 
 type ProjectionMeta = {
@@ -79,4 +92,48 @@ export const TypographyProjection = Extension.create({
 
 export function getTypographyProjectionDiagnostics(editor: Editor): TypographyProjectionDiagnostics {
   return typographyProjectionKey.getState(editor.state)?.diagnostics ?? disabledState().diagnostics
+}
+
+export function extractTypographyParagraphs(doc: PMNode): ExtractedTypographyParagraph[] {
+  const paragraphs: ExtractedTypographyParagraph[] = []
+
+  doc.forEach((node, offset) => {
+    const paragraph: ExtractedTypographyParagraph = {
+      nodeFrom: offset,
+      nodeTo: offset + node.nodeSize,
+      from: offset + 1,
+      to: offset + node.nodeSize - 1,
+      text: node.textContent,
+      clusterOffsets: [0],
+      eligible: node.type.name === 'paragraph',
+      fallbackReason: node.type.name === 'paragraph' ? undefined : 'unsupported-block',
+    }
+
+    if (paragraph.eligible) {
+      let hasInlineAtom = false
+      let hasInlineCode = false
+      node.forEach(child => {
+        if (!child.isText) hasInlineAtom = true
+        if (child.marks.some(mark => mark.type.name === 'code')) hasInlineCode = true
+      })
+      if (hasInlineAtom) {
+        paragraph.eligible = false
+        paragraph.fallbackReason = 'inline-atom'
+      } else if (hasInlineCode) {
+        paragraph.eligible = false
+        paragraph.fallbackReason = 'inline-code'
+      }
+    }
+
+    if (paragraph.eligible) {
+      for (const cluster of splitGraphemes(paragraph.text)) {
+        const previous = paragraph.clusterOffsets.at(-1) ?? 0
+        paragraph.clusterOffsets.push(previous + cluster.length)
+      }
+    }
+
+    paragraphs.push(paragraph)
+  })
+
+  return paragraphs
 }
