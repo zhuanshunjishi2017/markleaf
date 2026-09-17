@@ -159,7 +159,12 @@ export function breakParagraph(input: {
         candidate.flagged && previous.flagged,
         'optimal',
       )
-      if (line.line.badness > maxBadness) continue
+      if (
+        line.line.badness > maxBadness &&
+        !(line.line.naturalWidth <= input.availableWidth && line.line.from < line.line.to)
+      ) {
+        continue
+      }
 
       const cost = previous.totalDemerits + line.demerits
       if (!best || cost < best.cost) best = { path: previous, cost }

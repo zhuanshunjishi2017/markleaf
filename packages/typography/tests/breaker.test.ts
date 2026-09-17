@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { breakParagraph } from '../src/breaker'
 import { buildParagraph } from '../src/paragraph'
+import { layoutParagraph } from '../src/plan'
 
 function build(text: string, width: number) {
   return buildParagraph({
@@ -13,6 +14,12 @@ function build(text: string, width: number) {
     }),
   })
 }
+
+const measure = (value: string) => ({
+  width: value.length * 10,
+  stretch: value.trim() === '' ? 4 : 0,
+  shrink: value.trim() === '' ? 2 : 0,
+})
 
 describe('Knuth–Plass breaker', () => {
   it('fits a paragraph on one optimal line', () => {
@@ -79,4 +86,40 @@ describe('Knuth–Plass breaker', () => {
       fallbackReason: 'no-legal-break',
     })
   })
+})
+
+it('does not split emoji', () => {
+  const paragraph = buildParagraph({
+    text: '中文👍English',
+    availableWidth: 100,
+    measure: (value) => ({ width: value.length * 12, stretch: 0, shrink: 0 }),
+  })
+  const result = breakParagraph({
+    items: paragraph.items,
+    breaks: paragraph.breaks,
+    availableWidth: 100,
+  })
+
+  const boxText = paragraph.items
+    .filter((item) => item.kind === 'box')
+    .map((item) => item.kind === 'box' ? item.text : '')
+    .join('')
+
+  expect(boxText).toContain('👍')
+  expect(result.fallback).toBe(false)
+})
+
+it('returns identical plans for repeated input', () => {
+  const first = layoutParagraph({
+    text: '中文 English 中文 English',
+    availableWidth: 140,
+    measure,
+  })
+  const second = layoutParagraph({
+    text: '中文 English 中文 English',
+    availableWidth: 140,
+    measure,
+  })
+
+  expect(first).toEqual(second)
 })
