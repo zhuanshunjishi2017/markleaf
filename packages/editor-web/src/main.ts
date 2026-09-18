@@ -232,11 +232,11 @@ function updateTypographyProjection(): void {
 }
 
 function scheduleTypographyProjectionUpdate(): void {
-  window.clearTimeout(typographyResizeTimer)
-  typographyResizeTimer = window.setTimeout(() => {
+  if (typographyResizeTimer) return
+  typographyResizeTimer = window.requestAnimationFrame(() => {
     typographyResizeTimer = 0
     updateTypographyProjection()
-  }, 80)
+  })
 }
 
 const typographyResizeObserver = new ResizeObserver(() => {
