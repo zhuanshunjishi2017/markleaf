@@ -284,6 +284,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var documentId = UUID().uuidString.lowercased()
     private var startupRecoveryNotice: (documentID: String, text: String)?
     private var revision: Int64 = 0
+    /// Hidden Phase 1A experiment switch: launch with MARKLEAF_TYPOGRAPHY=1 to
+    /// send the explicit command after each document finishes loading.
+    private let enableTypographyProjectionExperiment =
+        ProcessInfo.processInfo.environment["MARKLEAF_TYPOGRAPHY"] == "1"
     private var fileMonitorSource: DispatchSourceFileSystemObject?
     private var monitoredFileDescriptor: Int32 = -1
     private var externalWatchGeneration = ExternalDocumentWatchGeneration()
@@ -1692,6 +1696,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         if isTypewriterMode {
             execute("setEditorTypewriterMode", text: "1")
+        }
+        if enableTypographyProjectionExperiment {
+            execute("setTypographyProjection", text: "1")
         }
     }
 
