@@ -169,7 +169,7 @@ describe('enabled typography projection', () => {
     expect(after.lineBreaks).toBeGreaterThan(before)
   })
 
-it('keeps typography projections out of undo history', () => {
+  it('keeps typography projections out of undo history', () => {
   const { editor } = setup('one\n\n中文 English 中文 English 中文 English', { externalHistory: false })
   const before = getMarkdown(editor)
   editor.commands.insertContentAt(2, '!')
@@ -182,6 +182,26 @@ it('keeps typography projections out of undo history', () => {
 
   expect(getMarkdown(editor)).toBe(before)
   expect(markdownAfterEdit).toBe('o!ne\n\n中文 English 中文 English 中文 English')
-  expect(editor.view.dom.querySelectorAll('.markleaf-typography-break').length).toBeGreaterThan(0)
-})
+    expect(editor.view.dom.querySelectorAll('.markleaf-typography-break').length).toBeGreaterThan(0)
+  })
+
+  it('clamps projected drag selection to the origin paragraph', () => {
+    const { editor } = setup('first projected paragraph\n\n# Heading\n\nsecond paragraph')
+    setTypographyProjectionEnabled(editor, true, {
+      availableWidth: 900,
+      measure: fixedMeasure,
+    })
+    const paragraph = extractTypographyParagraphs(editor.state.doc)[0]!
+
+    editor.commands.setTextSelection({ from: paragraph.from + 1, to: paragraph.to - 1 })
+    editor.commands.setTextSelection({
+      from: paragraph.from,
+      to: editor.state.doc.content.size - 1,
+    })
+
+    const { from, to } = editor.state.selection
+    expect(from).toBeGreaterThanOrEqual(paragraph.from)
+    expect(to).toBeLessThanOrEqual(paragraph.to)
+    expect(editor.state.doc.textBetween(from, to, ' ', ' ')).not.toContain('Heading')
+  })
 })

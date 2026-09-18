@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -91,6 +91,33 @@ export const TypographyProjection = Extension.create({
       },
       props: {
         decorations: state => typographyProjectionKey.getState(state)?.decorations ?? DecorationSet.empty,
+      },
+      appendTransaction(transactions, oldState, newState) {
+        if (!typographyProjectionKey.getState(newState)?.enabled) return null
+        if (!transactions.some(transaction => transaction.selectionSet)) return null
+        if (!(oldState.selection instanceof TextSelection) || oldState.selection.empty) return null
+        if (!(newState.selection instanceof TextSelection) || newState.selection.empty) return null
+
+        const oldFrom = oldState.selection.from
+        const oldTo = oldState.selection.to
+        const origin = extractTypographyParagraphs(newState.doc).find(paragraph => (
+          paragraph.eligible && oldFrom >= paragraph.from && oldTo <= paragraph.to
+        ))
+        if (!origin) return null
+
+        const { from, to } = newState.selection
+        if (from >= origin.from && to <= origin.to) return null
+
+        const nextFrom = Math.min(Math.max(from, origin.from), origin.to)
+        const nextTo = Math.min(Math.max(to, origin.from), origin.to)
+        if (nextFrom === from && nextTo === to) return null
+
+        const forward = oldState.selection.head >= oldState.selection.anchor
+        return newState.tr.setSelection(TextSelection.create(
+          newState.doc,
+          forward ? nextFrom : nextTo,
+          forward ? nextTo : nextFrom,
+        )).setMeta('addToHistory', false)
       },
     })]
   },
