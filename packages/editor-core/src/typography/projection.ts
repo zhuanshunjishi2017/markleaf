@@ -176,6 +176,16 @@ function projectionStateFor(
       continue
     }
 
+    // Phase 1B safety: Chromium/WebKit fragment inline decorations at
+    // script/widget boundaries. Distributing spacing across CJK clusters
+    // duplicates the compensation and destabilises selection. Only use
+    // word-space paragraphs in this experiment.
+    const adjustableLines = plan.lines.slice(0, -1)
+    if (adjustableLines.some(line => line.spaceCount === 0)) {
+      fallback += 1
+      continue
+    }
+
     planned += 1
     lineBreaks += plan.lines.length - 1
     decorations.push(Decoration.node(
@@ -188,19 +198,13 @@ function projectionStateFor(
       const fromPosition = paragraph.from + (paragraph.clusterOffsets[line.from] ?? 0)
       const contentPosition = paragraph.from + (paragraph.clusterOffsets[line.contentTo] ?? paragraph.text.length)
       const toPosition = paragraph.from + (paragraph.clusterOffsets[line.to] ?? paragraph.text.length)
-      const clusterCount = Math.max(line.contentTo - line.from, 1)
-      const spacingPoints = line.spaceCount > 0
-        ? line.spaceCount
-        : Math.max(clusterCount - 1, 1)
-      const lineClass = line.spaceCount > 0
-        ? 'markleaf-typography-line markleaf-typography-line-words'
-        : 'markleaf-typography-line markleaf-typography-line-characters'
+      const spacingPoints = line.spaceCount
 
       decorations.push(Decoration.inline(
         fromPosition,
         contentPosition,
         {
-          class: lineClass,
+          class: 'markleaf-typography-line markleaf-typography-line-words',
           'data-markleaf-typography-line': 'true',
           'data-markleaf-typography-space-count': String(line.spaceCount),
           style: [
@@ -217,7 +221,7 @@ function projectionStateFor(
       decorations.push(Decoration.widget(
         toPosition,
         () => {
-          const element = document.createElement('span')
+          const element = document.createElement('br')
           element.className = 'markleaf-typography-break'
           element.setAttribute('aria-hidden', 'true')
           element.setAttribute('contenteditable', 'false')
