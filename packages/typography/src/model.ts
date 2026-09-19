@@ -22,11 +22,13 @@ export type LayoutItem =
   | {
       kind: 'box';
       text: string;
-      script: ScriptClass;
-      from: number;
-      to: number;
-      width: number;
-    }
+    script: ScriptClass;
+    from: number;
+    to: number;
+    width: number;
+    stretch: number;
+    shrink: number;
+  }
   | {
       kind: 'glue';
       text: string;

@@ -44,7 +44,7 @@ import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMar
 import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
-import { TypographyProjection } from './typography/projection'
+import { TypographyProjection, typographyPlannedParagraphRanges } from './typography/projection'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -156,8 +156,12 @@ function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
   return DecorationSet.create(doc, decorations)
 }
 
-function buildCjkAutoSpacingDecorations(doc: any): DecorationSet {
+function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
   const decorations: Decoration[] = []
+  const plannedRanges = typographyPlannedParagraphRanges(state)
+  const isPlannedParagraph = (position: number) => plannedRanges.some(
+    range => position >= range.from && position <= range.to,
+  )
   const isCjk = (character: string): boolean => /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
   const isLatinOrNumber = (character: string): boolean => /[A-Za-z0-9]/.test(character)
 
@@ -169,7 +173,8 @@ function buildCjkAutoSpacingDecorations(doc: any): DecorationSet {
       for (let index = 1; index < text.length; index += 1) {
         const previous = text[index - 1]!
         const current = text[index]!
-        if (!((isCjk(previous) && isLatinOrNumber(current))
+        if (isPlannedParagraph(position + index)
+          || !((isCjk(previous) && isLatinOrNumber(current))
           || (isLatinOrNumber(previous) && isCjk(current)))) continue
         // A zero-width widget inserts a real node into the text flow. WebKit
         // can anchor a drag selection before that node and paint the previous
@@ -190,8 +195,8 @@ function buildCjkAutoSpacingDecorations(doc: any): DecorationSet {
     })
   }
 
-  visit(doc, 0, false, true)
-  return DecorationSet.create(doc, decorations)
+  visit(state.doc, 0, false, true)
+  return DecorationSet.create(state.doc, decorations)
 }
 
 const MarkdownEmoji = Extension.create({
@@ -212,7 +217,7 @@ const CjkAutoSpacing = Extension.create({
     return [new Plugin({
       key: new PluginKey('markleaf-cjk-auto-spacing'),
       props: {
-        decorations: state => buildCjkAutoSpacingDecorations(state.doc),
+        decorations: state => buildCjkAutoSpacingDecorations(state),
       },
     })]
   },

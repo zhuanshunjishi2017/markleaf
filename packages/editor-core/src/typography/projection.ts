@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -50,6 +50,7 @@ type ProjectionState = {
   enabled: boolean
   options?: TypographyProjectionOptions
   diagnostics: TypographyProjectionDiagnostics
+  plannedRanges: Array<{ from: number; to: number }>
   decorations: DecorationSet
 }
 
@@ -64,6 +65,7 @@ const disabledState = (): ProjectionState => ({
     fallbackParagraphs: 0,
     lineBreaks: 0,
   },
+  plannedRanges: [],
   decorations: DecorationSet.empty,
 })
 
@@ -92,33 +94,6 @@ export const TypographyProjection = Extension.create({
       props: {
         decorations: state => typographyProjectionKey.getState(state)?.decorations ?? DecorationSet.empty,
       },
-      appendTransaction(transactions, oldState, newState) {
-        if (!typographyProjectionKey.getState(newState)?.enabled) return null
-        if (!transactions.some(transaction => transaction.selectionSet)) return null
-        if (!(oldState.selection instanceof TextSelection) || oldState.selection.empty) return null
-        if (!(newState.selection instanceof TextSelection) || newState.selection.empty) return null
-
-        const oldFrom = oldState.selection.from
-        const oldTo = oldState.selection.to
-        const origin = extractTypographyParagraphs(newState.doc).find(paragraph => (
-          paragraph.eligible && oldFrom >= paragraph.from && oldTo <= paragraph.to
-        ))
-        if (!origin) return null
-
-        const { from, to } = newState.selection
-        if (from >= origin.from && to <= origin.to) return null
-
-        const nextFrom = Math.min(Math.max(from, origin.from), origin.to)
-        const nextTo = Math.min(Math.max(to, origin.from), origin.to)
-        if (nextFrom === from && nextTo === to) return null
-
-        const forward = oldState.selection.head >= oldState.selection.anchor
-        return newState.tr.setSelection(TextSelection.create(
-          newState.doc,
-          forward ? nextFrom : nextTo,
-          forward ? nextTo : nextFrom,
-        )).setMeta('addToHistory', false)
-      },
     })]
   },
 })
@@ -130,42 +105,85 @@ export function getTypographyProjectionDiagnostics(editor: Editor): TypographyPr
 export function extractTypographyParagraphs(doc: PMNode): ExtractedTypographyParagraph[] {
   const paragraphs: ExtractedTypographyParagraph[] = []
 
-  doc.forEach((node, offset) => {
-    const paragraph: ExtractedTypographyParagraph = {
-      nodeFrom: offset,
-      nodeTo: offset + node.nodeSize,
-      from: offset + 1,
-      to: offset + node.nodeSize - 1,
-      text: node.textContent,
-      clusterOffsets: [0],
-      eligible: node.type.name === 'paragraph',
-      fallbackReason: node.type.name === 'paragraph' ? undefined : 'unsupported-block',
-    }
-
-    if (paragraph.eligible) {
-      let hasInlineAtom = false
-      let hasInlineCode = false
-      node.forEach(child => {
-        if (!child.isText) hasInlineAtom = true
-        if (child.marks.some(mark => mark.type.name === 'code')) hasInlineCode = true
-      })
-      if (hasInlineAtom) {
-        paragraph.eligible = false
-        paragraph.fallbackReason = 'inline-atom'
-      } else if (hasInlineCode) {
-        paragraph.eligible = false
-        paragraph.fallbackReason = 'inline-code'
+  doc.nodesBetween(0, doc.content.size, (node, position) => {
+    if (!node.isBlock) return true
+    if (node.type.name !== 'paragraph') {
+      // Container nodes (lists, blockquotes, table cells) are visited through
+      // their children. Only leaf text blocks remain explicit fallbacks.
+      if (node.isTextblock) {
+        paragraphs.push({
+          nodeFrom: position,
+          nodeTo: position + node.nodeSize,
+          from: position + 1,
+          to: position + node.nodeSize - 1,
+          text: node.textContent,
+          clusterOffsets: [0],
+          eligible: false,
+          fallbackReason: 'unsupported-block',
+        })
       }
+      return true
     }
 
-    if (paragraph.eligible) {
-      for (const cluster of splitGraphemes(paragraph.text)) {
-        const previous = paragraph.clusterOffsets.at(-1) ?? 0
-        paragraph.clusterOffsets.push(previous + cluster.length)
+    const nodeFrom = position
+    const nodeTo = position + node.nodeSize
+    const makeParagraph = (
+      from: number,
+      to: number,
+      text: string,
+      eligible: boolean,
+      fallbackReason?: ExtractedTypographyParagraph['fallbackReason'],
+    ): ExtractedTypographyParagraph => {
+      const clusterOffsets = [0]
+      if (eligible) {
+        for (const cluster of splitGraphemes(text)) {
+          const previous = clusterOffsets.at(-1) ?? 0
+          clusterOffsets.push(previous + cluster.length)
+        }
       }
+      return { nodeFrom, nodeTo, from, to, text, clusterOffsets, eligible, fallbackReason }
     }
 
-    paragraphs.push(paragraph)
+    // Phase 1A measures one top-level content width. Nested textblocks have a
+    // smaller measure, so keep them on native justified fallback until the
+    // measurement contract carries per-paragraph widths.
+    if (doc.resolve(position).depth > 1) {
+      paragraphs.push(makeParagraph(position + 1, position + node.nodeSize - 1,
+        node.textContent, false, 'unsupported-block'))
+      return true
+    }
+
+    let hasInlineAtom = false
+    let hasInlineCode = false
+    node.forEach(child => {
+      if (!child.isText && child.type.name !== 'hardBreak') hasInlineAtom = true
+      if (child.isText && child.marks.some(mark => mark.type.name === 'code')) hasInlineCode = true
+    })
+
+    if (hasInlineAtom || hasInlineCode) {
+      paragraphs.push(makeParagraph(position + 1, position + node.nodeSize - 1,
+        node.textContent, false, hasInlineAtom ? 'inline-atom' : 'inline-code'))
+      return true
+    }
+
+    // A hard break is an explicit paragraph-local break. Preserve it as a
+    // segment boundary, but still run every text segment through the typography
+    // engine so CJK word boundaries and punctuation rules are not lost.
+    let segmentText = ''
+    let segmentFrom = position + 1
+    node.forEach((child, offset) => {
+      if (child.isText) {
+        segmentText += child.text ?? ''
+        return
+      }
+      if (child.type.name === 'hardBreak') {
+        const segmentTo = position + 1 + offset
+        paragraphs.push(makeParagraph(segmentFrom, segmentTo, segmentText, true))
+        segmentFrom = segmentTo + child.nodeSize
+        segmentText = ''
+      }
+    })
+    paragraphs.push(makeParagraph(segmentFrom, position + node.nodeSize - 1, segmentText, true))
   })
 
   return paragraphs
@@ -185,11 +203,25 @@ function projectionStateFor(
   let planned = 0
   let fallback = 0
   let lineBreaks = 0
+    const plannedRanges: Array<{ from: number; to: number }> = []
 
-  for (const paragraph of paragraphs) {
-    if (!paragraph.eligible) {
+    for (const paragraph of paragraphs) {
+      if (!paragraph.eligible) {
+        fallback += 1
+        const fallbackNode = doc.nodeAt(paragraph.nodeFrom)
+        if (fallbackNode?.type.name === 'paragraph') {
+          decorations.push(Decoration.node(paragraph.nodeFrom, paragraph.nodeTo, {
+            class: 'markleaf-typography-native',
+          }))
+        }
+        continue
+      }
+
+    const nativeFallback = () => {
       fallback += 1
-      continue
+      decorations.push(Decoration.node(paragraph.nodeFrom, paragraph.nodeTo, {
+        class: 'markleaf-typography-native',
+      }))
     }
 
     const plan = layoutParagraph({
@@ -199,22 +231,14 @@ function projectionStateFor(
     })
 
     if (plan.fallback || plan.lines.length === 0) {
-      fallback += 1
+      nativeFallback()
       continue
     }
 
-    // Phase 1B safety: Chromium/WebKit fragment inline decorations at
-    // script/widget boundaries. Distributing spacing across CJK clusters
-    // duplicates the compensation and destabilises selection. Only use
-    // word-space paragraphs in this experiment.
     const adjustableLines = plan.lines.slice(0, -1)
-    if (adjustableLines.some(line => line.spaceCount === 0)) {
-      fallback += 1
-      continue
-    }
-
     planned += 1
     lineBreaks += plan.lines.length - 1
+    plannedRanges.push({ from: paragraph.from, to: paragraph.to })
     decorations.push(Decoration.node(
       paragraph.nodeFrom,
       paragraph.nodeTo,
@@ -225,25 +249,71 @@ function projectionStateFor(
       const fromPosition = paragraph.from + (paragraph.clusterOffsets[line.from] ?? 0)
       const contentPosition = paragraph.from + (paragraph.clusterOffsets[line.contentTo] ?? paragraph.text.length)
       const toPosition = paragraph.from + (paragraph.clusterOffsets[line.to] ?? paragraph.text.length)
-      const spacingPoints = line.spaceCount
-
+      const clusterCount = Math.max(0, line.contentTo - line.from)
+      const adjustmentAmount = line.adjustment.amount
+      let wordSpacing = 0
+      let characterSpacing = 0
+      let adjustmentMode: 'word' | 'character' = 'character'
+      if (adjustmentAmount > 0) {
+        if (line.spaceCount > 0) {
+          wordSpacing = adjustmentAmount / line.spaceCount
+          adjustmentMode = 'word'
+        } else if (clusterCount > 1) {
+          characterSpacing = adjustmentAmount / (clusterCount - 1)
+          adjustmentMode = 'character'
+        }
+      } else if (adjustmentAmount < 0 && clusterCount > 1) {
+        characterSpacing = adjustmentAmount / (clusterCount - 1)
+        adjustmentMode = 'character'
+      }
+      const plannedGapCount = adjustmentMode === 'word'
+        ? Math.max(1, line.spaceCount)
+        : Math.max(1, clusterCount - 1)
+      const lastClusterLength = clusterCount > 0
+        ? (paragraph.clusterOffsets[line.contentTo] ?? 0)
+          - (paragraph.clusterOffsets[line.contentTo - 1] ?? 0)
+        : 0
       decorations.push(Decoration.inline(
         fromPosition,
         contentPosition,
         {
           class: 'markleaf-typography-line markleaf-typography-line-words',
           'data-markleaf-typography-line': 'true',
+          'data-markleaf-typography-line-id': `${paragraph.from}:${line.from}:${line.to}`,
           'data-markleaf-typography-space-count': String(line.spaceCount),
+          'data-markleaf-typography-adjustment-mode': adjustmentMode,
+          'data-markleaf-typography-gap-count': String(plannedGapCount),
           style: [
             `--ml-typography-line-adjust:${line.adjustment.amount}px`,
             `--ml-typography-space-count:${line.spaceCount}`,
-            `--ml-typography-spacing-points:${spacingPoints}`,
+            `--ml-typography-word-spacing:${wordSpacing}px`,
+            `--ml-typography-character-spacing:${characterSpacing}px`,
           ].join(';'),
         },
         {
           key: `typography-line-${paragraph.from}-${line.from}-${line.to}`,
         },
       ))
+
+      if (characterSpacing !== 0 && lastClusterLength > 0) {
+        decorations.push(Decoration.inline(
+          contentPosition - lastClusterLength,
+          contentPosition,
+          {
+            class: 'markleaf-typography-line-tail',
+            style: '--ml-typography-character-spacing:0px',
+          },
+          {
+            key: `typography-line-tail-${paragraph.from}-${line.contentTo}`,
+          },
+        ))
+      }
+
+      if (toPosition > contentPosition) {
+        decorations.push(Decoration.inline(contentPosition, toPosition, {
+          class: 'markleaf-typography-consumed',
+        }))
+      }
 
       decorations.push(Decoration.widget(
         toPosition,
@@ -278,8 +348,27 @@ function projectionStateFor(
       fallbackParagraphs: fallback,
       lineBreaks,
     },
+    plannedRanges,
     decorations: DecorationSet.create(doc, decorations),
   }
+}
+
+export function typographyPlannedParagraphRanges(state: unknown): Array<{ from: number; to: number }> {
+  const projectionState = typographyProjectionKey.getState(state as never)
+  return projectionState?.enabled ? projectionState.plannedRanges : []
+}
+
+export function shouldApplyTypographyProjection(input: {
+  previousEditor: unknown
+  nextEditor: unknown
+  previousEnabled: boolean
+  nextEnabled: boolean
+  previousWidth: number
+  nextWidth: number
+}): boolean {
+  return input.previousEditor !== input.nextEditor
+    || input.previousEnabled !== input.nextEnabled
+    || input.previousWidth !== input.nextWidth
 }
 
 export function setTypographyProjectionEnabled(

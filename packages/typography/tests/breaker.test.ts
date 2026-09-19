@@ -9,7 +9,7 @@ function build(text: string, width: number) {
     availableWidth: width,
     measure: (value) => ({
       width: value.length * 10,
-      stretch: value.trim() === '' ? 4 : 0,
+      stretch: value.trim() === '' ? 40 : value.length * 10,
       shrink: value.trim() === '' ? 2 : 0,
     }),
   })
@@ -17,7 +17,7 @@ function build(text: string, width: number) {
 
 const measure = (value: string) => ({
   width: value.length * 10,
-  stretch: value.trim() === '' ? 4 : 0,
+  stretch: value.trim() === '' ? 40 : value.length * 10,
   shrink: value.trim() === '' ? 2 : 0,
 })
 
@@ -100,18 +100,40 @@ describe('Knuth–Plass breaker', () => {
       fallbackReason: 'no-legal-break',
     })
   })
+
+  it('does not strand line-start-forbidden punctuation after a space break', () => {
+    const text = '中文 中文 。'
+    const paragraph = buildParagraph({
+      text,
+      availableWidth: 50,
+      measure: value => ({
+        width: value.length * 10,
+        stretch: value.trim() === '' ? 40 : value.length * 20,
+        shrink: value.trim() === '' ? 2 : 0,
+      }),
+    })
+    const result = breakParagraph({
+      items: paragraph.items,
+      breaks: paragraph.breaks,
+      availableWidth: 50,
+    })
+
+    expect(result.fallback).toBe(false)
+    expect(result.lines.slice(1).every(line => !text.slice(line.from, line.to).trimStart().startsWith('。'))).toBe(true)
+    expect(result.lines.slice(1).every(line => !/^\s/u.test(text.slice(line.from, line.to)))).toBe(true)
+  })
 })
 
 it('does not split emoji', () => {
   const paragraph = buildParagraph({
     text: '中文👍English',
-    availableWidth: 100,
+    availableWidth: 140,
     measure: (value) => ({ width: value.length * 12, stretch: 0, shrink: 0 }),
   })
   const result = breakParagraph({
     items: paragraph.items,
     breaks: paragraph.breaks,
-    availableWidth: 100,
+    availableWidth: 140,
   })
 
   const boxText = paragraph.items
@@ -136,4 +158,70 @@ it('returns identical plans for repeated input', () => {
   })
 
   expect(first).toEqual(second)
+})
+
+it('uses CJK box stretch when scoring pure CJK lines', () => {
+  const text = '中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文'
+  const result = layoutParagraph({
+    text,
+    availableWidth: 105,
+    measure: value => ({
+      width: value.length * 10,
+      stretch: value.length * 2,
+      shrink: value.length,
+    }),
+  })
+
+  expect(result.fallback).toBe(false)
+  const first = result.lines[0]!
+  expect(first.from).toBe(0)
+  expect(first.to).toBe(10)
+  expect(first.adjustment.type).toBe('stretch')
+  expect(first.adjustment.amount).toBeLessThanOrEqual(first.naturalWidth * 0.25)
+})
+
+it('does not break inside dictionary-segmented CJK words', () => {
+  const text = '中文中文English中文中文中文English中文中文中文中文'
+  const result = layoutParagraph({
+    text,
+    availableWidth: 240,
+    measure: value => ({
+      width: value.length * 10,
+      stretch: value.length * 2,
+      shrink: value.length,
+    }),
+  })
+  const boundaries = new Set<number>([0, text.length])
+  for (const segment of new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)) {
+    boundaries.add(segment.index + segment.segment.length)
+  }
+
+  expect(result.fallback).toBe(false)
+  for (const line of result.lines.slice(0, -1)) {
+    expect(boundaries.has(line.to)).toBe(true)
+  }
+})
+
+it('applies max badness to underfull intermediate lines', () => {
+  const paragraph = buildParagraph({
+    text: 'AA BB CC DD',
+    availableWidth: 45,
+    measure: value => ({
+      width: value.length * 10,
+      stretch: value.trim() === '' ? 1 : 0,
+      shrink: value.trim() === '' ? 1 : 0,
+    }),
+  })
+  const result = breakParagraph({
+    items: paragraph.items,
+    breaks: paragraph.breaks,
+    availableWidth: 45,
+    maxBadness: 0,
+  })
+
+  expect(result).toEqual({
+    lines: [],
+    fallback: true,
+    fallbackReason: 'badness-exceeded',
+  })
 })

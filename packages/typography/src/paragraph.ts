@@ -1,6 +1,6 @@
 import type { BreakCandidate, LayoutItem, ScriptClass, TextMetrics } from './model'
-import { classifyCharacter, splitGraphemes } from './script'
 import { canBreakAfter, canBreakBefore } from './punctuation'
+import { classifyCharacter, splitGraphemes } from './script'
 
 export type ParagraphMeasurements = (
   text: string,
@@ -13,7 +13,7 @@ function appendBox(
   script: ScriptClass,
   from: number,
   to: number,
-  measure: ParagraphMeasurements,
+  metrics: TextMetrics,
 ): void {
   items.push({
     kind: 'box',
@@ -21,7 +21,9 @@ function appendBox(
     script,
     from,
     to,
-    width: measure(text, script).width,
+    width: metrics.width,
+    stretch: metrics.stretch,
+    shrink: metrics.shrink,
   })
 }
 
@@ -33,6 +35,22 @@ export function buildParagraph(input: {
   const items: LayoutItem[] = []
   const breaks: BreakCandidate[] = []
   const clusters = splitGraphemes(input.text)
+  const wordBoundaries = new Set<number>([0, clusters.reduce((offset, cluster) => offset + cluster.length, 0)])
+  const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
+  for (const segment of wordSegmenter.segment(input.text)) {
+    wordBoundaries.add(segment.index + segment.segment.length)
+  }
+  const nextContentIndex = (start: number): number => {
+    let index = start
+    while (index < clusters.length && classifyCharacter(clusters[index]!) === 'space') {
+      index += 1
+    }
+    return index
+  }
+  const breakBeforeNextContent = (start: number): boolean => {
+    const index = nextContentIndex(start)
+    return index >= clusters.length || canBreakBefore(clusters[index]!)
+  }
   let index = 0
 
   while (index < clusters.length) {
@@ -59,12 +77,16 @@ export function buildParagraph(input: {
         shrink: metrics.shrink,
       })
       if (items.length >= 2) {
-        breaks.push({
-          itemIndex: items.length - 2,
-          sourceTo: end,
-          penalty: 0,
-          flagged: false,
-        })
+        // Do not let a whitespace break strand a line-start-forbidden
+        // punctuation mark on the next line.
+        if (breakBeforeNextContent(end)) {
+          breaks.push({
+            itemIndex: items.length - 2,
+            sourceTo: end,
+            penalty: 0,
+            flagged: false,
+          })
+        }
       }
       index = end
       continue
@@ -96,17 +118,17 @@ export function buildParagraph(input: {
         })
       }
       if (metrics.width > input.availableWidth) {
-        appendBox(items, text, script, from, end, input.measure)
+        appendBox(items, text, script, from, end, metrics)
         return { items, breaks: [] }
       }
-      appendBox(items, text, script, from, end, input.measure)
+      appendBox(items, text, script, from, end, metrics)
       const next = clusters[end]
       const lastCluster = text.at(-1) ?? ''
       if (
         next &&
         classifyCharacter(next) !== 'space' &&
         canBreakAfter(lastCluster) &&
-        canBreakBefore(next)
+        breakBeforeNextContent(end)
       ) {
         breaks.push({
           itemIndex: items.length - 1,
@@ -138,16 +160,17 @@ export function buildParagraph(input: {
       })
     }
     if (metrics.width > input.availableWidth) {
-      appendBox(items, cluster, script, from, index + 1, input.measure)
+      appendBox(items, cluster, script, from, index + 1, metrics)
       return { items, breaks: [] }
     }
-    appendBox(items, cluster, script, from, index + 1, input.measure)
+    appendBox(items, cluster, script, from, index + 1, metrics)
 
     const next = clusters[index + 1]
-    if (next && canBreakAfter(cluster) && canBreakBefore(next)) {
+    const sourceTo = nextContentIndex(index + 1)
+    if (next && canBreakAfter(cluster) && breakBeforeNextContent(index + 1) && wordBoundaries.has(index + 1)) {
       breaks.push({
         itemIndex: items.length - 1,
-        sourceTo: index + 1,
+        sourceTo,
         penalty: script === 'cjk' ? -50 : -100,
         flagged: script === 'cjk',
       })

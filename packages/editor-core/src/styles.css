@@ -1190,11 +1190,23 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
 
 /* Typography Phase 1A: explicit LayoutPlan projection. Disabled by default;
    class is added only through the explicit setTypographyProjection command. */
+.markleaf-typography-native {
+  text-align: justify !important;
+  text-align-last: auto !important;
+  text-autospace: normal !important;
+}
+
+#editor .markleaf-typography-native .markleaf-cjk-autospace-widget,
+.markleaf-typography-native .markleaf-cjk-autospace-widget {
+  display: none !important;
+}
+
 .markleaf-typography-planned {
   white-space: nowrap !important;
   overflow-wrap: normal !important;
   word-break: normal !important;
   text-align: left !important;
+  font-feature-settings: "halt" 1 !important;
 }
 
 /* The LayoutPlan owns CJK/Latin glue in controlled paragraphs. */
@@ -1203,10 +1215,28 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
 }
 
 .markleaf-typography-line-words {
-  word-spacing: calc(
-    var(--ml-typography-line-adjust) /
-    max(var(--ml-typography-space-count), 1)
-  ) !important;
+  /* The projection computes exact spacing. Do not delegate this to
+     text-align-last, which WebKit can distribute across only a few CJK/Latin
+     break points and turn into very large gaps. */
+  display: inline-block !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  text-align: left !important;
+  word-spacing: var(--ml-typography-word-spacing, 0px) !important;
+  letter-spacing: var(--ml-typography-character-spacing, 0px) !important;
+}
+
+/* Letter-spacing also applies after the final cluster. Keep the rendered box
+   from carrying that invisible trailing space into text selection. */
+.markleaf-typography-line-tail {
+  letter-spacing: 0 !important;
+}
+
+/* Spaces consumed by a planned break must not paint beyond the planned edge. */
+.markleaf-typography-consumed {
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+  word-spacing: 0 !important;
 }
 
 .markleaf-typography-break {
@@ -1224,7 +1254,6 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
   position: absolute;
   top: -10000px;
   left: -10000px;
-  visibility: hidden;
   pointer-events: none;
   white-space: pre;
 }

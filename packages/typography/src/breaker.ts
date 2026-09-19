@@ -24,7 +24,7 @@ function lineMetrics(items: LayoutItem[], fromIndex: number, toIndex: number) {
     const item = items[index]
     if (!item || item.kind === 'penalty') continue
     naturalWidth += item.width
-    if (item.kind === 'glue') {
+    if ('stretch' in item && 'shrink' in item) {
       stretchWidth += item.stretch
       shrinkWidth += item.shrink
     }
@@ -203,8 +203,7 @@ export function breakParagraph(input: {
         'optimal',
       )
       if (
-        line.line.badness > maxBadness &&
-        !(line.line.naturalWidth <= input.availableWidth && line.line.from < line.line.to)
+        line.line.badness > maxBadness
       ) {
         continue
       }

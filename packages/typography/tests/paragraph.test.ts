@@ -16,7 +16,7 @@ describe('paragraph construction', () => {
     })
 
     expect(paragraph.items.some((item) => item.kind === 'glue')).toBe(true)
-    expect(paragraph.breaks.length).toBeGreaterThan(3)
+    expect(paragraph.breaks.length).toBeGreaterThan(2)
   })
 
   it('creates zero-width glue between directly adjacent CJK and Latin', () => {
