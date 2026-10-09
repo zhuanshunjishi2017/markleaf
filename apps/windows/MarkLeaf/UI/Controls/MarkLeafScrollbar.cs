@@ -7,7 +7,8 @@ internal sealed class MarkLeafScrollbar : Control
 {
     // 视觉宽度对齐编辑器滚动条（6 CSS px）。控件布局宽即视觉宽，
     // 滑块满宽绘制、贴右缘。
-    private const float ControlLayoutWidthPoints = 6F;
+    // 视觉宽度基准是 CSS 像素（与编辑器 6px 一致），换算用 96dpi 而非点数。
+    private const float ControlLayoutWidthPixels = 6F;
     private const int ThumbRadius = 3;
     private const int MinThumbHeight = 24;
     private const int MaxThumbHeight = 128;
@@ -245,7 +246,7 @@ internal sealed class MarkLeafScrollbar : Control
 
     private void UpdateLayoutWidth()
     {
-        Width = Math.Max(1, (int)Math.Round(ControlLayoutWidthPoints * DeviceDpi / 72F));
+        Width = Math.Max(1, (int)Math.Round(ControlLayoutWidthPixels * DeviceDpi / 96F));
     }
 
     private int GetMaximumScrollValue() => Math.Max(0, _maximum - _largeChange + 1);
