@@ -26,6 +26,8 @@ internal sealed class MarkLeafScrollbar : Control
     private bool _thumbHovered;
     private bool _dragging;
     private int _dragThumbOffset;
+    private bool _scrollActivity;
+    private readonly System.Windows.Forms.Timer _activityTimer = new() { Interval = 900 };
 
     public MarkLeafScrollbar()
     {
@@ -34,6 +36,15 @@ internal sealed class MarkLeafScrollbar : Control
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
         TabStop = false;
+        // 滚动活动让滑块短暂浮现（对齐编辑区滚动条“滚动即显示、空闲隐藏”），
+        // 否则自动隐藏开启时滑块只在鼠标恰好悬停 7pt 宽条时才可见，用户
+        // 感知为“没有滚动条”。
+        _activityTimer.Tick += (_, _) =>
+        {
+            _scrollActivity = false;
+            Invalidate();
+        };
+        Disposed += (_, _) => _activityTimer.Dispose();
         UpdateLayoutWidth();
     }
 
@@ -121,6 +132,20 @@ internal sealed class MarkLeafScrollbar : Control
         set => base.Visible = value;
     }
 
+    /// <summary>宿主视图发生滚动（滚轮、键盘、程序滚动）时调用：滑块短暂可见。</summary>
+    public void NotifyScrollActivity()
+    {
+        if (!AutoHide)
+        {
+            return;
+        }
+
+        _scrollActivity = true;
+        _activityTimer.Stop();
+        _activityTimer.Start();
+        Invalidate();
+    }
+
     public void SetMouseNearRightEdge(bool near)
     {
         if (_mouseNearRightEdge != near)
@@ -135,7 +160,7 @@ internal sealed class MarkLeafScrollbar : Control
         Scroll?.Invoke(this, new ScrollEventArgs(type, _value));
     }
 
-    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging;
+    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging || _scrollActivity;
 
     private void UpdateLayoutWidth()
     {

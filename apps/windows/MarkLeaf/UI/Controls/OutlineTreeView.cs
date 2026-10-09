@@ -325,6 +325,7 @@ internal sealed class OutlineTreeView : Control
         }
         var delta = eventArgs.Delta > 0 ? -_scrollBar.SmallChange : _scrollBar.SmallChange;
         _scrollBar.Value = Math.Clamp(_scrollBar.Value + delta, 0, GetMaximumScrollValue());
+        _scrollBar.NotifyScrollActivity();
         Invalidate();
     }
 

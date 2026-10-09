@@ -528,6 +528,7 @@ internal sealed class WorkspaceTreeView : Control
         }
         var delta = eventArgs.Delta > 0 ? -_scrollBar.SmallChange : _scrollBar.SmallChange;
         _scrollBar.Value = Math.Clamp(_scrollBar.Value + delta, 0, GetMaximumScrollValue());
+        _scrollBar.NotifyScrollActivity();
         Invalidate();
     }
 
@@ -594,9 +595,15 @@ internal sealed class WorkspaceTreeView : Control
         var row = _visibleRows.FirstOrDefault(r => PathEquals(r.Node.Entry.FullPath, node.Entry.FullPath));
         if (row.Node is null) return;
         if (row.Bounds.Top < 0)
+        {
             _scrollBar.Value = Math.Clamp(_scrollBar.Value + row.Bounds.Top, 0, GetMaximumScrollValue());
+            _scrollBar.NotifyScrollActivity();
+        }
         else if (row.Bounds.Bottom > ClientSize.Height)
+        {
             _scrollBar.Value = Math.Clamp(_scrollBar.Value + row.Bounds.Bottom - ClientSize.Height, 0, GetMaximumScrollValue());
+            _scrollBar.NotifyScrollActivity();
+        }
     }
 
     protected override void OnResize(EventArgs eventArgs)
@@ -674,9 +681,15 @@ internal sealed class WorkspaceTreeView : Control
 
         // Auto-scroll near edges.
         if (clientPoint.Y < _rowHeight)
+        {
             _scrollBar.Value = Math.Max(0, _scrollBar.Value - _scrollBar.SmallChange);
+            _scrollBar.NotifyScrollActivity();
+        }
         else if (clientPoint.Y > ClientSize.Height - _rowHeight)
+        {
             _scrollBar.Value = Math.Min(GetMaximumScrollValue(), _scrollBar.Value + _scrollBar.SmallChange);
+            _scrollBar.NotifyScrollActivity();
+        }
     }
 
     protected override void OnDragLeave(EventArgs eventArgs)
