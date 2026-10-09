@@ -308,7 +308,12 @@ export class SourceEditor {
   }
 
   gotoSourceHeading(text: string, approximatePosition?: number): boolean {
-    const chapters = this.getSourceChapters().filter(chapter => chapter.text === text)
+    // 可视化大纲的标题文本不含行内标记（反引号/强调符号被渲染掉），而源码
+    // 章节文本保留原始 Markdown——精确匹配会让任何带行内代码或强调的标题
+    // 永远匹配失败（点击无反应）。两边都做同样的标记剥离后再比较。
+    const plain = (value: string) => value.replace(/[`*_~]+/g, '').replace(/\s+/g, ' ').trim()
+    const target = plain(text)
+    const chapters = this.getSourceChapters().filter(chapter => plain(chapter.text) === target)
     if (chapters.length === 0) return false
     const chapter = chapters.reduce((nearest, candidate) => {
       if (approximatePosition === undefined) return nearest

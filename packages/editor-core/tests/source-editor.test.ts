@@ -98,6 +98,22 @@ describe('SourceEditor chapter jump lifecycle', () => {
     expect(measure.mock.calls.map(([position]) => position)).toEqual([chapters[1]!.position + 1])
   })
 
+  it('matches headings whose inline marks are rendered away in the visual outline', () => {
+    const mount = document.createElement('main')
+    document.body.append(mount)
+    const editor = new SourceEditor(
+      mount,
+      '# Plain\n\n## 4.2 workspace `~/dir` with **bold**\n\nbody',
+      () => {},
+    )
+    editors.push(editor)
+    // 可视化大纲侧传来的标题文本不含反引号/星号（行内代码与强调已渲染）。
+    const jumped = editor.gotoSourceHeading('4.2 workspace ~/dir with bold')
+    expect(jumped).toBe(true)
+    expect(editor.view.state.selection.main.from).toBe(editor.view.state.doc.line(3).from)
+    editor.destroy()
+  })
+
   it('stops using an old chapter position when the document changes before calibration', () => {
     const { editor, measure, chapters } = setup()
     editor.gotoSourceChapter(chapters[1]!)
