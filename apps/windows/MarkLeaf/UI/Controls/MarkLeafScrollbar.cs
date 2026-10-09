@@ -26,8 +26,16 @@ internal sealed class MarkLeafScrollbar : Control
     private bool _thumbHovered;
     private bool _dragging;
     private int _dragThumbOffset;
-    private bool _scrollActivity;
-    private readonly System.Windows.Forms.Timer _activityTimer = new() { Interval = 900 };
+
+    // 滑块透明度动画：滚动/悬停时快速淡入，空闲后缓慢淡出（对齐编辑器的
+    // CSS alpha 过渡手感），避免瞬间出现/消失造成的闪烁感。
+    private const int FadeInMilliseconds = 140;
+    private const int FadeOutMilliseconds = 320;
+    private const int IdleHideMilliseconds = 900;
+    private const int AnimationIntervalMilliseconds = 16;
+    private float _thumbAlpha = 1f;
+    private int _lastActivityTick;
+    private readonly System.Windows.Forms.Timer _alphaTimer = new() { Interval = AnimationIntervalMilliseconds };
 
     public MarkLeafScrollbar()
     {
@@ -36,15 +44,8 @@ internal sealed class MarkLeafScrollbar : Control
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
         TabStop = false;
-        // 滚动活动让滑块短暂浮现（对齐编辑区滚动条“滚动即显示、空闲隐藏”），
-        // 否则自动隐藏开启时滑块只在鼠标恰好悬停 7pt 宽条时才可见，用户
-        // 感知为“没有滚动条”。
-        _activityTimer.Tick += (_, _) =>
-        {
-            _scrollActivity = false;
-            Invalidate();
-        };
-        Disposed += (_, _) => _activityTimer.Dispose();
+        _alphaTimer.Tick += (_, _) => AlphaTick();
+        Disposed += (_, _) => _alphaTimer.Dispose();
         UpdateLayoutWidth();
     }
 
@@ -118,6 +119,15 @@ internal sealed class MarkLeafScrollbar : Control
         set
         {
             _autoHide = value;
+            if (!_autoHide)
+            {
+                _alphaTimer.Stop();
+                _thumbAlpha = 1f;
+            }
+            else
+            {
+                _thumbAlpha = 0f;
+            }
             Invalidate();
         }
     }
@@ -132,18 +142,12 @@ internal sealed class MarkLeafScrollbar : Control
         set => base.Visible = value;
     }
 
-    /// <summary>宿主视图发生滚动（滚轮、键盘、程序滚动）时调用：滑块短暂可见。</summary>
+    /// <summary>宿主视图发生滚动（滚轮、键盘、程序滚动）时调用：滑块淡入并保持到空闲。</summary>
     public void NotifyScrollActivity()
     {
-        if (!AutoHide)
-        {
-            return;
-        }
-
-        _scrollActivity = true;
-        _activityTimer.Stop();
-        _activityTimer.Start();
-        Invalidate();
+        if (!AutoHide) return;
+        _lastActivityTick = Environment.TickCount;
+        EnsureAlphaTimerRunning();
     }
 
     public void SetMouseNearRightEdge(bool near)
@@ -151,7 +155,59 @@ internal sealed class MarkLeafScrollbar : Control
         if (_mouseNearRightEdge != near)
         {
             _mouseNearRightEdge = near;
+            EnsureAlphaTimerRunning();
             Invalidate();
+        }
+    }
+
+    private float CurrentThumbAlpha()
+    {
+        return InteractionShowsThumb() ? 1f : _thumbAlpha;
+    }
+
+    private void EnsureAlphaTimerRunning()
+    {
+        if (!_alphaTimer.Enabled) _alphaTimer.Start();
+    }
+
+    /// <summary>
+    /// 动画帧：目标透明度由交互状态与空闲时长决定，按帧间隔线性逼近；
+    /// 完全隐藏或常显时停表，空闲计时期内保持走表等待淡出触发。
+    /// </summary>
+    private void AlphaTick()
+    {
+        var target = 0f;
+        if (!_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging)
+        {
+            target = 1f;
+        }
+        else if (Environment.TickCount - _lastActivityTick < IdleHideMilliseconds)
+        {
+            target = 1f;
+        }
+
+        var duration = target > _thumbAlpha ? FadeInMilliseconds : FadeOutMilliseconds;
+        var step = (float)AnimationIntervalMilliseconds / Math.Max(1, duration);
+        var next = Math.Clamp(_thumbAlpha + Math.Sign(target - _thumbAlpha) * step, 0f, 1f);
+
+        if (Math.Abs(next - _thumbAlpha) > 0.001f)
+        {
+            _thumbAlpha = next;
+            Invalidate();
+        }
+        else
+        {
+            _thumbAlpha = target;
+        }
+
+        var settled = Math.Abs(_thumbAlpha - target) < 0.001f;
+        var waitingForIdle = _autoHide
+            && _thumbAlpha > 0f
+            && Environment.TickCount - _lastActivityTick < IdleHideMilliseconds
+            && !_mouseInControl && !_mouseNearRightEdge && !_dragging;
+        if (settled && !waitingForIdle && (!_autoHide || _thumbAlpha == 0f))
+        {
+            _alphaTimer.Stop();
         }
     }
 
@@ -160,7 +216,7 @@ internal sealed class MarkLeafScrollbar : Control
         Scroll?.Invoke(this, new ScrollEventArgs(type, _value));
     }
 
-    private bool IsThumbVisible() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging || _scrollActivity;
+    private bool InteractionShowsThumb() => !_autoHide || _mouseInControl || _mouseNearRightEdge || _dragging;
 
     private void UpdateLayoutWidth()
     {
@@ -217,12 +273,16 @@ internal sealed class MarkLeafScrollbar : Control
         e.Graphics.Clear(BackColor);
 
         var canScroll = _maximum > _minimum;
-        var showParts = !_autoHide || IsThumbVisible();
+        var alpha = CurrentThumbAlpha();
+        var showParts = alpha > 0.01f;
 
         e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
         if (canScroll && showParts)
         {
-            var color = _dragging || _thumbHovered ? _thumbActive : _thumbIdle;
+            var baseColor = _dragging || _thumbHovered ? _thumbActive : _thumbIdle;
+            var color = Color.FromArgb(
+                (byte)Math.Clamp(baseColor.A * alpha, 0, 255),
+                baseColor.R, baseColor.G, baseColor.B);
             using var brush = new SolidBrush(color);
             SidebarGdi.FillRoundedRect(e.Graphics, ThumbBounds(), this.ScaleForDpi(ThumbRadius), brush);
         }
@@ -234,6 +294,7 @@ internal sealed class MarkLeafScrollbar : Control
     {
         base.OnMouseEnter(e);
         _mouseInControl = true;
+        EnsureAlphaTimerRunning();
         Invalidate();
     }
 
@@ -242,6 +303,8 @@ internal sealed class MarkLeafScrollbar : Control
         base.OnMouseLeave(e);
         _mouseInControl = false;
         _thumbHovered = false;
+        _lastActivityTick = Environment.TickCount;
+        EnsureAlphaTimerRunning();
         Invalidate();
     }
 
@@ -258,6 +321,8 @@ internal sealed class MarkLeafScrollbar : Control
             _dragging = true;
             _dragThumbOffset = e.Y - thumbBounds.Top;
             Capture = true;
+            _lastActivityTick = Environment.TickCount;
+            EnsureAlphaTimerRunning();
             Invalidate();
             return;
         }
@@ -320,6 +385,8 @@ internal sealed class MarkLeafScrollbar : Control
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
+        _lastActivityTick = Environment.TickCount;
+        EnsureAlphaTimerRunning();
         if (_dragging)
         {
             _dragging = false;
