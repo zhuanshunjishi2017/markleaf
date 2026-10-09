@@ -1,5 +1,12 @@
 # MarkLeaf Changelog
 
+## 1.7.8 — 2026-10-10
+
+### Fixed
+
+- Fixed the sidebar scrollbars not auto-hiding.
+- Fixed inaccurate heading or paragraph positioning for outline jumps in source mode.
+
 ## 1.7.7 — 2026-10-8
 
 ### Added
