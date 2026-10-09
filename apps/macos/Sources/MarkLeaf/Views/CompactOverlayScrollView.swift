@@ -62,7 +62,10 @@ enum CompactOverlayScrollView {
 
 /// 滚动时显示滑块、空闲后淡出的控制器（AppKit 原生 overlay 淡出不适用于
 /// 自定义 NSScroller 子类）。
-final class ScrollKnobFadeController {
+// NSTrackingArea 的 owner 必须经 ObjC 消息派发响应 mouseEntered/Exited，
+// 因此继承 NSObject 并显式暴露这两个选择器；纯 Swift 类会让 AppKit 走
+// 消息转发并以 doesNotRecognizeSelector 崩溃（闪退）。
+final class ScrollKnobFadeController: NSObject {
     private weak var scrollView: NSScrollView?
     private var observers: [Any] = []
     private var hideItem: DispatchWorkItem?
@@ -81,6 +84,7 @@ final class ScrollKnobFadeController {
     }
 
     init(scrollView: NSScrollView) {
+        super.init()
         self.scrollView = scrollView
         let clip = scrollView.contentView
         clip.postsBoundsChangedNotifications = true
