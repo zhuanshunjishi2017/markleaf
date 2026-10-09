@@ -63,15 +63,27 @@ internal sealed partial class MainForm
         _outlineTree.SelectedPosition = position;
     }
 
-    private void ActivateOutlinePosition(int position)
+    private void ActivateOutlinePosition(EditorOutlineItem item)
     {
         if (_editorHost?.IsDocumentLoaded == true)
         {
-            _pendingOutlinePosition = position;
+            _pendingOutlinePosition = item.Position;
             _pendingOutlineUntilUtc = DateTime.UtcNow.AddMilliseconds(750);
-            _activeOutlinePosition = position;
-            _outlineTree.SelectedPosition = position;
-            _editorHost.ExecuteCommand("scrollToPosition", position.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _activeOutlinePosition = item.Position;
+            _outlineTree.SelectedPosition = item.Position;
+            // 源码模式的标题定位必须以标题文本为锚（scrollToSourceHeading）：
+            // 可视化大纲的 position 是 ProseMirror 偏移，比源码字符偏移小，
+            // 直接当源码位置用会固定落在标题前面。与 macOS 宿主同款契约。
+            if (_editorCommandStatus.SourceMode)
+            {
+                _editorHost.ExecuteCommand(
+                    "scrollToSourceHeading",
+                    $"{item.Position.ToString(System.Globalization.CultureInfo.InvariantCulture)}\t{item.Text}");
+            }
+            else
+            {
+                _editorHost.ExecuteCommand("scrollToPosition", item.Position.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
         }
 
         ExitOutlineSearch();

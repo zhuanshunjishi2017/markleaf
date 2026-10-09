@@ -68,7 +68,7 @@ internal sealed class OutlineTreeView : Control
         }
     }
 
-    public event EventHandler<int>? NodeActivated;
+    public event EventHandler<EditorOutlineItem>? NodeActivated;
 
     public event EventHandler<Point>? ContextMenuRequested;
 
@@ -291,7 +291,7 @@ internal sealed class OutlineTreeView : Control
         }
 
         SelectedPosition = node.Item.Position;
-        NodeActivated?.Invoke(this, node.Item.Position);
+        NodeActivated?.Invoke(this, node.Item);
     }
 
     protected override void OnMouseMove(MouseEventArgs eventArgs)
@@ -362,7 +362,7 @@ internal sealed class OutlineTreeView : Control
                 Invalidate();
                 break;
             case Keys.Enter when index >= 0:
-                NodeActivated?.Invoke(this, nodes[index].Item.Position);
+                NodeActivated?.Invoke(this, nodes[index].Item);
                 break;
             default:
                 return;

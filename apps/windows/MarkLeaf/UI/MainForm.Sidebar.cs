@@ -274,7 +274,7 @@ internal sealed partial class MainForm
 
     private OutlineTreeView CreateOutlineTree()
     {
-        _outlineTree.NodeActivated += (_, position) => ActivateOutlinePosition(position);
+        _outlineTree.NodeActivated += (_, item) => ActivateOutlinePosition(item);
         _outlineTree.ContextMenuRequested += (_, screenPoint) => ShowOutlineContextMenu(screenPoint);
         return _outlineTree;
     }
