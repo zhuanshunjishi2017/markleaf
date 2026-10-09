@@ -5,9 +5,10 @@ namespace MarkLeaf.UI.Controls;
 
 internal sealed class MarkLeafScrollbar : Control
 {
-    private const float ControlLayoutWidthPoints = 7F;
-    private const float ThumbRightPaddingPoints = 1F;
-    private const int ThumbRadius = 4;
+    // 视觉宽度对齐编辑器滚动条（6 CSS px）。控件布局宽即视觉宽，
+    // 滑块满宽绘制、贴右缘。
+    private const float ControlLayoutWidthPoints = 6F;
+    private const int ThumbRadius = 3;
     private const int MinThumbHeight = 24;
     private const int MaxThumbHeight = 128;
 
@@ -278,9 +279,7 @@ internal sealed class MarkLeafScrollbar : Control
 
     private Rectangle ThumbBounds()
     {
-        var t = ThumbTop();
-        var rightPadding = Math.Max(1, (int)Math.Round(ThumbRightPaddingPoints * DeviceDpi / 72F));
-        return new Rectangle(0, t, Math.Max(1, ClientSize.Width - rightPadding), ThumbHeight());
+        return new Rectangle(0, ThumbTop(), ClientSize.Width, ThumbHeight());
     }
 
     private Rectangle ThumbDragBounds()
