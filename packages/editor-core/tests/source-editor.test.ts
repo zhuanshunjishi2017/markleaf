@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SourceEditor } from '../src/source-editor'
 
 describe('SourceEditor runtime mode', () => {
@@ -62,5 +62,47 @@ describe('SourceEditor long-document chapters', () => {
     expect(editor.view.state.selection.main.from).toBe(28)
     expect(editor.getActiveSourceChapterPosition()).toBe(28)
     editor.destroy()
+  })
+})
+
+describe('SourceEditor chapter jump lifecycle', () => {
+  const editors: SourceEditor[] = []
+  afterEach(() => {
+    editors.splice(0).forEach(editor => editor.destroy())
+    vi.restoreAllMocks(); vi.useRealTimers(); document.body.replaceChildren()
+  })
+
+  function setup() {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] })
+    const mount = document.createElement('main')
+    document.body.append(mount)
+    const editor = new SourceEditor(mount, '# First\ntext\n\n## Second\nmore text', () => {})
+    editors.push(editor)
+    const measure = vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue(null)
+    return { editor, measure, chapters: editor.getSourceChapters() }
+  }
+
+  it('does not measure or reschedule a chapter jump after destruction', () => {
+    const { editor, measure, chapters } = setup()
+    editor.gotoSourceChapter(chapters[1]!)
+    editor.destroy()
+    vi.runAllTimers()
+    expect(measure).not.toHaveBeenCalled()
+  })
+
+  it('calibrates only the latest target when chapter jumps arrive before a frame', () => {
+    const { editor, measure, chapters } = setup()
+    editor.gotoSourceChapter(chapters[0]!)
+    editor.gotoSourceChapter(chapters[1]!)
+    vi.advanceTimersToNextFrame()
+    expect(measure.mock.calls.map(([position]) => position)).toEqual([chapters[1]!.position + 1])
+  })
+
+  it('stops using an old chapter position when the document changes before calibration', () => {
+    const { editor, measure, chapters } = setup()
+    editor.gotoSourceChapter(chapters[1]!)
+    editor.view.dispatch({ changes: { from: 0, to: editor.view.state.doc.length, insert: 'short' } })
+    expect(() => vi.runAllTimers()).not.toThrow()
+    expect(measure).not.toHaveBeenCalled()
   })
 })

@@ -21,6 +21,28 @@ afterEach(() => {
 })
 
 describe('completed rendered editing features', () => {
+  it('defers hidden outlines and refreshes current headings when opened without cursor layout reads', () => {
+    const { editor, mount } = setup('# Before\n\ntext')
+    const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    const reading = createReadingView(editor, mount, document.querySelector('#count')!)
+    cleanup.push(reading.dispose)
+    reading.apply(defaultSettings)
+    reading.rebuildOutline()
+    reading.update()
+    expect(document.querySelectorAll('#outline [role="treeitem"]')).toHaveLength(0)
+    expect(geometry).not.toHaveBeenCalled()
+    editor.commands.setContent('# After\n\n## Child', { contentType: 'markdown' })
+    expect(document.querySelectorAll('#outline [role="treeitem"]')).toHaveLength(0)
+    geometry.mockClear()
+    reading.apply({ ...defaultSettings, showOutline: true })
+    expect([...document.querySelectorAll('#outline [role="treeitem"]')].map(button => button.textContent)).toEqual(['After', 'Child'])
+    expect(geometry).not.toHaveBeenCalled()
+    const first = document.querySelector('#outline [role="treeitem"]')
+    reading.apply({ ...defaultSettings, showOutline: true })
+    reading.rebuildOutline()
+    expect(document.querySelector('#outline [role="treeitem"]')).toBe(first)
+  })
+
   it('runs find/replace UI without writing on find and prevents replacement while reading', () => {
     const { editor } = setup('Hello hello shelloworld')
     const bar = createFindBar(editor, document.querySelector('#toolbar')!)
@@ -60,7 +82,7 @@ describe('completed rendered editing features', () => {
     expect(changed).not.toHaveBeenCalled()
     expect(mount.classList.contains('markleaf-style-serif')).toBe(true)
     expect(document.documentElement.style.getPropertyValue('--ml-font-size')).toBe('25px')
-    const headings = Array.from(document.querySelectorAll<HTMLButtonElement>('#outline button'))
+    const headings = Array.from(document.querySelectorAll<HTMLElement>('#outline [role="treeitem"]'))
     expect(headings.map(heading => heading.textContent)).toEqual(['Same', 'Same'])
     expect(headings[0]?.dataset.position).not.toBe(headings[1]?.dataset.position)
     expect(mount.classList.contains('markleaf-editor-focus-mode')).toBe(true)

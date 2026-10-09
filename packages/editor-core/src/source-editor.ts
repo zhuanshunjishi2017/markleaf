@@ -127,6 +127,7 @@ export class SourceEditor {
   private readonly onSelectionChanged?: (from: number, to: number) => void
   private readonly pendingUnsafeEmphasis = new Map<string, UnsafeEmphasisMatch>()
   private cachedSourceChapters: SourceChapter[] | null = null
+  private chapterScrollFrame = 0
 
   constructor(
     parent: HTMLElement,
@@ -320,6 +321,7 @@ export class SourceEditor {
 
   gotoSourcePosition(position: number): boolean {
     if (!Number.isFinite(position)) return false
+    window.cancelAnimationFrame(this.chapterScrollFrame)
     const length = this.view.state.doc.length
     const target = Math.max(0, Math.min(length, Math.trunc(position)))
     const line = this.view.state.doc.lineAt(target)
@@ -336,7 +338,8 @@ export class SourceEditor {
     // estimated height. After CodeMirror scrolls it into view, calibrate with
     // the real rendered coordinates so wrapped paragraphs above cannot leave
     // the heading one or two paragraphs away from the top.
-    const line = this.view.state.doc.lineAt(position)
+    const document = this.view.state.doc
+    const line = document.lineAt(position)
     // A position at line.from sits on the boundary between the previous line
     // and the heading. CodeMirror may resolve that boundary to the previous
     // paragraph's rect, which makes sidebar jumps land one or two blocks high.
@@ -345,8 +348,10 @@ export class SourceEditor {
     this.view.dispatch({
       effects: EditorView.scrollIntoView(scrollTarget, { y: 'start' }),
     })
-    window.requestAnimationFrame(() => {
-      if (this.view.state.doc.lineAt(position).from !== position) return
+    this.chapterScrollFrame = window.requestAnimationFrame(() => {
+      this.chapterScrollFrame = 0
+      // A document edit invalidates both the target position and its geometry.
+      if (this.view.state.doc !== document) return
       const coords = this.view.coordsAtPos(scrollTarget, 1)
       const viewport = this.view.scrollDOM.getBoundingClientRect()
       if (coords) {
@@ -358,7 +363,10 @@ export class SourceEditor {
       // layout may settle over several frames. Keep correcting until the
       // layout has had time to converge instead of accepting that first value.
       if (attempt < 8) {
-        window.requestAnimationFrame(() => this.scrollSourceChapterIntoView(position, attempt + 1))
+        this.chapterScrollFrame = window.requestAnimationFrame(() => {
+          this.chapterScrollFrame = 0
+          if (this.view.state.doc === document) this.scrollSourceChapterIntoView(position, attempt + 1)
+        })
       }
     })
   }
@@ -614,6 +622,8 @@ export class SourceEditor {
   }
 
   destroy(): void {
+    window.cancelAnimationFrame(this.chapterScrollFrame)
+    this.chapterScrollFrame = 0
     this.view.destroy()
   }
 

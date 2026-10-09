@@ -53,6 +53,7 @@ afterEach(() => {
   host.textEditor = undefined
   host.provider = undefined
   vi.clearAllMocks()
+  vi.restoreAllMocks()
 })
 
 describe('VS Code shortcut command and focus boundary', () => {
@@ -61,11 +62,11 @@ describe('VS Code shortcut command and focus boundary', () => {
     for (const target of [true, 'terminal', undefined]) expect(isWebviewMessage({ type: 'focus', target })).toBe(false)
   })
 
-  it('switches both ways, waits for pending text, and releases focus on blur, tab changes and disposal', async () => {
-    const { Uri } = await import('vscode')
+  it.each(['markleaf.markleaf', 'custom-publisher.markleaf'])('routes settings/help for %s and preserves switching, synchronization and focus', async (extensionId) => {
+    const { Uri, window } = await import('vscode')
     const uri = Uri.file('/project/readme.md')
     const document = { uri, languageId: 'markdown', version: 1, getText: () => '# Title' } as vscode.TextDocument
-    activate({ extensionUri: Uri.file('/extension'), subscriptions } as vscode.ExtensionContext)
+    activate({ extensionUri: Uri.file('/extension'), extension: { id: extensionId }, subscriptions } as vscode.ExtensionContext)
     const toggle = host.commands.get('markleaf.toggleEditor')!
     host.textEditor = { document } as vscode.TextEditor
     await toggle()
@@ -89,6 +90,11 @@ describe('VS Code shortcut command and focus boundary', () => {
     await host.provider!.resolveCustomTextEditor(document, panel as unknown as vscode.WebviewPanel, {} as vscode.CancellationToken)
     receive({ type: 'ready' })
     await vi.waitFor(() => expect(messages.some(message => message.type === 'document')).toBe(true))
+    receive({ type: 'action', action: 'help' })
+    await vi.waitFor(() => expect(host.execute).toHaveBeenCalledWith('workbench.action.openWalkthrough', `${extensionId}#markleaf.start`))
+    vi.spyOn(window, 'showQuickPick').mockResolvedValueOnce({ label: '全部 MarkLeaf 设置…' })
+    receive({ type: 'action', action: 'preferences' })
+    await vi.waitFor(() => expect(host.execute).toHaveBeenCalledWith('workbench.action.openSettings', `@ext:${extensionId}`))
     await host.commands.get('markleaf.insertMathInline')!()
     expect(messages.at(-1)).toEqual({ type: 'requestFormatCommand', command: 'insertMathInline' })
     await host.commands.get('markleaf.shortcuts')!()

@@ -1,55 +1,32 @@
 import type { Editor } from '@markleaf/editor-core'
 import {
-  createReadingBehavior, getDocumentOutline, getActiveOutlinePosition, scrollToOutlineHeading, getEditorStatus, rerenderMermaidElements, setAutoConvertUnsafeEmphasis, setBlockHandleVisible,
+  createReadingBehavior, getEditorStatus, rerenderMermaidElements, setAutoConvertUnsafeEmphasis, setBlockHandleVisible,
   setBlockTypeLabels, setCodeHighlightVisible, setEditorFocusMode, setEditorSharedStrings,
   setMarkdownEditingSettings, setMermaidStrings, sharedEditorStrings,
 } from '@markleaf/editor-core'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
+import { createOutlineView } from './vscode-outline'
 
 import { styles, resolveTypography, stylesGlobPrefix } from './vscode-styles'
 
 export function createReadingView(editor: Editor, mount: HTMLElement, count: HTMLElement) {
   let settings = { ...defaultSettings }
   let lastFocus: boolean | undefined
-  let scrollFrame = 0
-  const events = new AbortController()
+  let applied = false
+  let appliedCss = ''
+  let appliedLanguage = ''
   const behavior = createReadingBehavior(() => editor, headerBottom)
   const area = document.createElement('div')
   area.id = 'document-area'
-  const outline = document.createElement('nav')
-  outline.id = 'outline'
-  outline.setAttribute('aria-label', '文档大纲')
+  const outline = createOutlineView(editor, headerBottom)
   mount.replaceWith(area)
-  area.append(outline, mount)
+  area.append(outline.element, mount)
   const theme = document.createElement('style')
   const typography = document.createElement('style')
   const custom = document.createElement('style')
   document.head.append(theme, typography, custom)
-  let headings: Array<{ position: number; level: number; text: string; button: HTMLButtonElement }> = []
   function headerBottom(): number {
     return document.querySelector('#editor-chrome')!.getBoundingClientRect().bottom
-  }
-  function markCurrent(fromCursor: boolean): void {
-    const position = getActiveOutlinePosition(editor, fromCursor ? 'cursor' : 'scroll', headerBottom())
-    for (const heading of headings) heading.button.setAttribute('aria-current', String(heading.position === position))
-  }
-  function rebuildOutline(): void {
-    headings = []
-    const title = document.createElement('strong')
-    title.textContent = '大纲'
-    outline.replaceChildren(title)
-    for (const { position, level, text } of getDocumentOutline(editor)) {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.textContent = text || '（空标题）'
-      button.style.paddingInlineStart = `${8 + (level - 1) * 12}px`
-      button.dataset.position = String(position)
-      button.addEventListener('click', () => scrollToOutlineHeading(editor, position, headerBottom()))
-      headings.push({ position, level, text, button })
-      outline.append(button)
-    }
-    if (!headings.length) { const empty = document.createElement('p'); empty.textContent = '文档中没有标题'; outline.append(empty) }
-    markCurrent(true)
   }
   function update(): void {
     const state = getEditorStatus(editor)
@@ -62,23 +39,23 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
     if (focus !== lastFocus) { lastFocus = focus; setEditorFocusMode(editor, focus) }
     mount.classList.toggle('markleaf-editor-focus-mode', focus)
     behavior.setTypewriter(settings.typewriterMode && editor.isEditable, false)
-    markCurrent(true)
   }
   function cursorMoved(): void {
     update()
+    outline.updateCurrent('cursor')
     behavior.cursorMoved()
   }
-  window.addEventListener('scroll', () => {
-    if (scrollFrame) return
-    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; markCurrent(false) })
-  }, { signal: events.signal, passive: true })
-  editor.on('update', rebuildOutline)
   editor.on('selectionUpdate', cursorMoved)
-  rebuildOutline()
   return {
-    update, rebuildOutline,
+    update, rebuildOutline: outline.refresh,
     apply(next: MarkLeafSettings, customCss = '', language = 'zh-Hans'): void {
+      const diagramStyleChanged = applied && (settings.fontFamily !== next.fontFamily
+        || settings.typography !== next.typography || settings.colorTheme !== next.colorTheme
+        || appliedCss !== customCss || appliedLanguage !== language)
       settings = next
+      applied = true
+      appliedCss = customCss
+      appliedLanguage = language
       const root = document.documentElement
       root.style.setProperty('--ml-font-size', `${Math.max(10, Math.min(32, next.fontSize)) * Math.max(50, Math.min(200, next.zoom)) / 100}px`)
       root.style.setProperty('--ml-max-width', `${Math.max(320, Math.min(1600, next.maxWidth))}px`)
@@ -97,7 +74,7 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       custom.textContent = customCss
       editor.view.dom.style.fontFamily = next.fontFamily
       area.classList.toggle('with-outline', next.showOutline)
-      outline.hidden = !next.showOutline
+      outline.setVisible(next.showOutline)
       const footer = document.querySelector('footer')
       if (footer) footer.hidden = !next.showStatusBar
       setMarkdownEditingSettings(next)
@@ -109,12 +86,14 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       setMermaidStrings(strings)
       setBlockTypeLabels(strings)
       document.querySelector('.ml-block-handle')?.setAttribute('aria-label', strings.blockHandleAria)
+      outline.refresh()
       update()
-      rerenderMermaidElements(mount)
+      // Initial node views render after this synchronous settings pass.
+      if (diagramStyleChanged) rerenderMermaidElements(mount)
     },
     dispose(): void {
-      events.abort(); cancelAnimationFrame(scrollFrame); behavior.dispose()
-      editor.off('update', rebuildOutline); editor.off('selectionUpdate', cursorMoved)
+      outline.dispose(); behavior.dispose()
+      editor.off('selectionUpdate', cursorMoved)
       theme.remove(); typography.remove(); custom.remove()
     },
   }

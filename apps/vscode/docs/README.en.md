@@ -4,7 +4,9 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.2.8** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
+Version **0.3.0** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
+
+Open the outline from the toolbar (视图 → 大纲). Version 0.3.0 follows the Windows desktop hierarchy and adds heading search, expand/collapse, locate current heading, keyboard navigation, and visibility tracking for expanded rows. The sidebar fills the available height and scrolls independently; hover over a truncated heading to read its full text. The existing markleaf.showOutline preference is preserved.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They use the same kernel positioning as the native products: prefer the space below the content and adjust within the viewport when space is limited. The math symbol panel adapts its layout to the available space.
 
@@ -32,10 +34,10 @@ A remote extension host can export files using its filesystem and installed brow
 
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.2.8.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.3.0.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
+code --install-extension artifacts/markleaf-vscode-0.3.0.vsix
 ```
 
 After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
@@ -129,7 +131,7 @@ Each file supports one MarkLeaf visual view alongside native source. Hidden view
 
 Use the typography/settings entry in “视图” (View), then choose “全部 MarkLeaf 设置…” (All MarkLeaf Settings). You can also choose **Extension Settings** from the gear menu on the extension details page, or search for a setting key such as `markleaf.fontSize`. Settings and help use the current extension ID supplied by VS Code, with the same logic on Windows, macOS, and Linux. Settings use existing user, workspace, or workspace-folder scopes.
 
-The current package is **0.2.8**, published under `zhuanshunjishi2017`, with ID `zhuanshunjishi2017.markleaf`. Older local packages used `markleaf.markleaf`. If an old `@ext:` filter produces an empty list, clear it and reopen settings from the extension details page. Configuration keys remain `markleaf.*`; existing settings need no migration. The extension version comes from `version` in `apps/vscode/package.json`, independently of the repository package and native products.
+The current package is **0.3.0**. The default publisher is `markleaf`, with ID `markleaf.markleaf`. From the repository root, run `corepack pnpm package:vscode --publisher <publisher-id>` to override the identity for this package and produce `artifacts/markleaf-vscode-0.3.0-<publisher-id>.vsix`, without rewriting the source configuration. Default packaging still produces `artifacts/markleaf-vscode-0.3.0.vsix`; `--out` accepts an absolute output path or one relative to the extension directory. Settings and help use the installed package's actual ID. If an existing `@ext:` filter produces an empty list, clear it and reopen settings from the extension details page. Configuration keys remain `markleaf.*`; existing settings need no migration. The extension version comes from `version` in `apps/vscode/package.json`, independently of the repository package and native products.
 
 Export and shortcut dialogs keep their titles and actions visible while the content scrolls. Menus stay inside narrow windows; math and diagram overlays use the shared kernel's stacking and positioning.
 
@@ -165,7 +167,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.2.8.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
+The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.3.0.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
 
 Use an existing VS Code installation for development:
 

@@ -42,6 +42,7 @@ function selectDomText(text: string, backwards = false): void {
 }
 
 afterEach(() => {
+  window.dispatchEvent(new Event('unload'))
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()

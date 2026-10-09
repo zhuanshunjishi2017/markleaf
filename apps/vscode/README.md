@@ -4,7 +4,9 @@
 
 在 VS Code 中阅读和可视化编辑 Markdown，复用 MarkLeaf 的 Tiptap/ProseMirror 编辑内核、KaTeX、Mermaid 和排版样式。扩展由 TypeScript 编写，运行时使用 VS Code 提供的 API 与 Webview，没有 Electron 依赖或独立桌面壳。
 
-当前版本 0.2.8 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
+当前版本 0.3.0 提供 36 项设置和 67 项可配置格式操作，支持格式刷、表格、脚注、公式与图表、图片资源、查找替换、大纲和阅读偏好。现已支持 PDF、HTML、PNG/JPG 长图、预览和打印。
+
+通过“视图 → 大纲”开启文档侧栏。大纲采用 Windows 桌面端相同的标题层级关系，提供搜索、展开/折叠、定位当前标题与键盘导航；正文滚动时当前可见目录项会保持在侧栏视野内。侧栏及分割线填满可用高度，目录列表独立滚动，长标题悬停可查看全文。大纲显示继续遵循 `markleaf.showOutline` 设置。
 
 工具栏菜单在点击外部、按 Escape、切换菜单或焦点离开插件时收起。公式与 Mermaid 源码面板使用适配明暗主题的不透明底色，与原生产品共用内核的浮层定位：优先在内容下方展开，空间不足时调整位置以保持可见。公式符号面板会根据可用空间调整布局。
 
@@ -30,10 +32,10 @@ PDF、图片、预览与打印使用已安装的 **Chrome/Edge**，扩展不捆�
 
 ## 安装和打开
 
-本地构建得到 `artifacts/markleaf-vscode-0.2.8.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
+本地构建得到 `artifacts/markleaf-vscode-0.3.0.vsix` 后，在 VS Code 扩展菜单选择 **Install from VSIX…**，或从仓库根目录执行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
+code --install-extension artifacts/markleaf-vscode-0.3.0.vsix
 ```
 
 安装并启用扩展后，新打开的 `.md` 或 `.markdown` 文件默认进入 MarkLeaf 渲染视图，可直接阅读和可视化编辑。已打开的源码标签可以通过 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切换，也可以从资源管理器右键选择 **MarkLeaf: Open Markdown**。
@@ -131,7 +133,7 @@ Webview 同时只提交一次编辑，收到版本确认后再提交期间累积
 
 通过“视图 → 排版、主题与设置…”选择常用选项，再选择“全部 MarkLeaf 设置…”；也可在扩展详情的齿轮菜单选择 **扩展设置 / Extension Settings**，或直接搜索设置键（如 `markleaf.fontSize`）。设置和帮助入口从 VS Code 读取当前扩展 ID，Windows、macOS、Linux 使用相同逻辑。设置遵循已有的用户、工作区或工作区文件夹作用域。
 
-当前包版本为 **0.2.8**，发布者为 `zhuanshunjishi2017`，扩展 ID 为 `zhuanshunjishi2017.markleaf`，与旧本地包的 `markleaf.markleaf` 不同。如果沿用旧的 `@ext:` 搜索条件导致列表为空，清除筛选后从扩展详情重新打开设置。`markleaf.*` 配置键保持不变，无需迁移用户设置。扩展版本来自 `apps/vscode/package.json` 的 `version`，不跟随仓库包或原生产品版本。
+当前包版本为 **0.3.0**，默认发布者为 `markleaf`，扩展 ID 为 `markleaf.markleaf`。在仓库根目录执行 `corepack pnpm package:vscode --publisher <发布者ID>` 可覆盖本次打包的身份，生成 `artifacts/markleaf-vscode-0.3.0-<发布者ID>.vsix`；源配置不被改写。默认打包仍生成 `artifacts/markleaf-vscode-0.3.0.vsix`，也可通过 `--out` 指定输出路径（相对于扩展目录，或使用绝对路径）。设置和帮助按当前安装包的实际扩展 ID 路由；如果已有 `@ext:` 筛选导致列表为空，请清除筛选后从扩展详情重新打开设置。`markleaf.*` 配置键保持不变，无需迁移用户设置。扩展版本来自 `apps/vscode/package.json` 的 `version`，不跟随仓库包或原生产品版本。
 
 导出和快捷键窗口固定标题与操作区，中间内容独立滚动；窄窗口菜单限制在可见区域内，公式与图表浮层沿用共享内核的层级和定位。
 
@@ -169,7 +171,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-安装入口依次准备共享内核、VS Code Webview 和扩展宿主。打包入口先统一编译内核，再编译两个扩展包，生成 `artifacts/markleaf-vscode-0.2.8.vsix`。仅编译使用 `corepack pnpm build:vscode`；适配层测试单独使用 `corepack pnpm test:vscode`。
+安装入口依次准备共享内核、VS Code Webview 和扩展宿主。打包入口先统一编译内核，再编译两个扩展包，生成 `artifacts/markleaf-vscode-0.3.0.vsix`。仅编译使用 `corepack pnpm build:vscode`；适配层测试单独使用 `corepack pnpm test:vscode`。
 
 开发运行可使用已有 VS Code，无需安装额外桌面运行时：
 

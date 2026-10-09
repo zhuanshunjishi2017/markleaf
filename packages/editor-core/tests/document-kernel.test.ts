@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { TextDecoder } from 'node:util'
 import { readFileSync } from 'node:fs'

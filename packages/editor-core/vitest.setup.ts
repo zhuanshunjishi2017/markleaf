@@ -11,3 +11,12 @@ class ResizeObserverStub {
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
 }
+
+// jsdom supplies no text layout. Match its empty Element geometry for Range
+// so active CodeMirror views can measure; real geometry belongs in browser tests.
+if (typeof Range !== 'undefined' && typeof Range.prototype.getClientRects === 'undefined') {
+  Range.prototype.getClientRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList
+}
+if (typeof Range !== 'undefined' && typeof Range.prototype.getBoundingClientRect === 'undefined') {
+  Range.prototype.getBoundingClientRect = () => new DOMRect()
+}

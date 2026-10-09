@@ -93,8 +93,12 @@ describe('shared editor in a VS Code text host', () => {
     }, getState: () => undefined, setState: () => {} }))
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     let visual: ReturnType<typeof createEditor> | undefined
+    let initiallyEditable: boolean | undefined
+    let setEditable: ReturnType<typeof vi.spyOn> | undefined
     const create = vi.spyOn(editorModule, 'createEditor').mockImplementation((...args) => {
       visual = createEditorOriginal(...args)
+      initiallyEditable = visual.isEditable
+      setEditable = vi.spyOn(visual, 'setEditable')
       return visual
     })
     await import('../src/vscode')
@@ -102,7 +106,23 @@ describe('shared editor in a VS Code text host', () => {
     receive({ type: 'document', markdown: '# Title\n\nHello\n', version: 1, writable: true })
     expect(messages).toEqual([{ type: 'ready', mac: /Mac/i.test(navigator.platform) }, { type: 'focus', target: null }])
     const instance = visual!
-    expect(create).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(String), true, expect.objectContaining({ externalHistory: true }))
+    expect(initiallyEditable).toBe(true)
+    expect(instance.isEditable).toBe(true)
+    expect(setEditable).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledWith(expect.any(HTMLElement), expect.any(String), false, expect.objectContaining({ externalHistory: true }))
+    expect(create.mock.calls[0]?.[3]).toMatchObject({ codeHighlightVisible: true })
+    await Promise.resolve()
+    const rerender = vi.spyOn(editorModule, 'rerenderMermaidElements')
+    document.body.classList.add('markleaf-auto-hide-scrollbar')
+    document.body.classList.add('markleaf-reduced-motion')
+    await Promise.resolve()
+    expect(rerender).not.toHaveBeenCalled()
+    document.body.classList.add('vscode-dark')
+    await Promise.resolve()
+    expect(rerender).toHaveBeenCalledOnce()
+    document.body.dataset.vscodeThemeId = 'another-dark-theme'
+    await Promise.resolve()
+    expect(rerender).toHaveBeenCalledTimes(2)
     // jsdom has no text layout; this test checks editing and transport, not
     // browser scroll geometry after toolbar commands restore focus.
     instance.view.setProps({ handleScrollToSelection: () => true })
@@ -242,7 +262,7 @@ describe('shared editor in a VS Code text host', () => {
     mode.click(); mode.click()
     expect(instance.state.doc).toBe(beforeSettings)
     expect(messages.filter(message => message.type === 'edit')).toHaveLength(editsBeforeSettings)
-    expect(document.querySelector('#outline button')?.textContent).toBe('Heading')
+    expect(document.querySelector('#outline [role="treeitem"]')?.textContent).toBe('Heading')
 
     // Windows treats the clipboard's plain-text format as Markdown in visual mode.
     receive({ type: 'document', markdown: 'target', version: 11, writable: true })

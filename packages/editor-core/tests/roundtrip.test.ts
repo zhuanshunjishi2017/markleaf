@@ -1127,42 +1127,32 @@ describe('paragraph menu commands', () => {
     expect(getMarkdown(editor).match(/- \[ \]/g)).toHaveLength(1)
   })
 
-  it('renders absolute image paths through the isolated asset host', () => {
-    // 模拟原生宿主注入的资源解析器；URL 契约与 editor-web 的
-    // native-capabilities.ts（assets.local）保持一致。
-    setImageResourceResolver({
-      resolve(path) {
-        let decoded = path
-        try { decoded = decodeURIComponent(path) } catch { /* 字面百分号属于路径本身 */ }
-        return `https://assets.local/image?path=${encodeURIComponent(decoded)}`
-      },
-    })
+  it('renders images through the supplied host resolver while preserving Markdown paths', () => {
+    const resolve = vi.fn(() => 'https://test-host.local/resolved-image')
+    setImageResourceResolver({ resolve })
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '![diagram](C:/Pictures/my%20image.png)')
     editors.push(editor)
 
     const image = element.querySelector('img')
-    expect(image?.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fmy%20image.png')
+    expect(image?.getAttribute('src')).toBe('https://test-host.local/resolved-image')
+    expect(resolve).toHaveBeenCalledWith('C:/Pictures/my%20image.png')
     expect(image?.getAttribute('data-markleaf-path')).toMatch(/C:\/Pictures\/my(?:%20| )image\.png/)
     expect(getMarkdown(editor)).toMatch(/C:\/Pictures\/my(?:%20| )image\.png/)
   })
 
   it('inserts an image node through the host command payload', () => {
-    setImageResourceResolver({
-      resolve(path) {
-        let decoded = path
-        try { decoded = decodeURIComponent(path) } catch { /* 字面百分号属于路径本身 */ }
-        return `https://assets.local/image?path=${encodeURIComponent(decoded)}`
-      },
-    })
+    const resolve = vi.fn(() => 'https://test-host.local/inserted-image')
+    setImageResourceResolver({ resolve })
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '')
     editors.push(editor)
 
     expect(executeEditorCommand(editor, 'insertImage', 'C:/Pictures/image.png\npasted image')).toBe(true)
-    expect(element.querySelector('img')?.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fimage.png')
+    expect(element.querySelector('img')?.getAttribute('src')).toBe('https://test-host.local/inserted-image')
+    expect(resolve).toHaveBeenCalledWith('C:/Pictures/image.png')
     expect(getMarkdown(editor)).toContain('![pasted image](C:/Pictures/image.png)')
   })
 

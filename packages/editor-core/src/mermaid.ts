@@ -6,7 +6,9 @@ type MermaidModule = typeof import('mermaid')
 let mermaidPromise: Promise<MermaidModule> | null = null
 let mermaidInitializationKey: string | null = null
 let mermaidSequence = 0
+const MERMAID_PREPARATION_TIMEOUT_MS = 10_000
 const MERMAID_RENDER_TIMEOUT_MS = 1000
+const MERMAID_RELEASE_TIMEOUT_MS = 5000
 let mermaidStrings = sharedEditorStrings('zh-Hans', 'ctrl')
 let markdownCodeFence: 'backtick' | 'tilde' = 'backtick'
 // Mermaid measures labels with this font. Keep measurement and display stable
@@ -119,17 +121,56 @@ export function setMermaidMarkdownCodeFence(preference: 'backtick' | 'tilde'): v
 }
 
 export function setMermaidStrings(
-  strings: Pick<SharedEditorStrings, 'mermaidEmpty' | 'mermaidError' | 'mermaidTimeout'>,
+  strings: Pick<SharedEditorStrings, 'mermaidEmpty' | 'mermaidError' | 'mermaidTimeout'>
+    & Partial<Pick<SharedEditorStrings, 'mermaidLoading' | 'mermaidLoadError' | 'mermaidLoadTimeout' | 'mermaidBlocked' | 'mermaidRetry'>>,
 ): void {
   mermaidStrings = { ...mermaidStrings, ...strings }
 }
 
-class MermaidRenderTimeoutError extends Error {}
-type MermaidRenderResult = 'rendered' | 'empty' | 'error' | 'timeout'
+type MermaidFailure = 'error' | 'timeout' | 'load-error' | 'load-timeout' | 'blocked'
+class MermaidRenderError extends Error {
+  constructor(readonly reason: Exclude<MermaidFailure, 'error'>, message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'MermaidRenderError'
+  }
+}
+type MermaidRenderResult = 'rendered' | 'empty' | 'cancelled' | MermaidFailure
+let mermaidRenderQueue: Promise<void> = Promise.resolve()
+let blockedRender: { released: Promise<void>; deadline: number } | undefined
 
 async function loadMermaid(): Promise<MermaidModule> {
-  mermaidPromise ??= import('mermaid')
+  if (!mermaidPromise) {
+    // The renderer build keeps Mermaid and its lazy layout dependencies together:
+    // a successful import prepares every supported diagram before render starts.
+    const pending = import('mermaid')
+    const preparation = withTimeout(pending, MERMAID_PREPARATION_TIMEOUT_MS,
+      new MermaidRenderError('load-timeout', 'Mermaid module preparation timed out'))
+      .catch(error => {
+        if (error instanceof MermaidRenderError) throw error
+        throw new MermaidRenderError('load-error', 'Could not load Mermaid', { cause: error })
+      })
+    mermaidPromise = preparation
+    // A late load can serve a later explicit retry; it cannot overwrite a failed
+    // node. Keep one shared deadline so queued nodes do not each wait 10 seconds.
+    void pending.then(module => {
+      if (mermaidPromise === preparation) mermaidPromise = Promise.resolve(module)
+    }, () => {})
+  }
   return mermaidPromise
+}
+
+function mermaidFailure(error: unknown): MermaidFailure {
+  return error instanceof MermaidRenderError ? error.reason : 'error'
+}
+
+function mermaidFailureMessage(reason: MermaidFailure): string {
+  switch (reason) {
+    case 'timeout': return mermaidStrings.mermaidTimeout
+    case 'load-error': return mermaidStrings.mermaidLoadError
+    case 'load-timeout': return mermaidStrings.mermaidLoadTimeout
+    case 'blocked': return mermaidStrings.mermaidBlocked
+    default: return mermaidStrings.mermaidError
+  }
 }
 
 async function ensureMermaidInitialized(module: MermaidModule, settings: MermaidThemeSettings): Promise<void> {
@@ -156,33 +197,75 @@ function nextMermaidId(prefix: string): string {
   return `${prefix}-${mermaidSequence}`
 }
 
+function renderQueuedMermaid(source: string, settings: MermaidThemeSettings, isCurrent: () => boolean = () => true) {
+  const result = mermaidRenderQueue.then(async () => {
+    if (!isCurrent()) return null
+    // A timed-out Promise still owns Mermaid's global renderer. Wait for that
+    // owner to release, using one deadline shared by all queued editor/export
+    // jobs. Never overlap it, and never label unstarted diagrams as timed out.
+    const blocked = blockedRender
+    if (blocked) {
+      const remaining = blocked.deadline - Date.now()
+      const error = new MermaidRenderError('blocked', 'Previous Mermaid render has not finished; this diagram was not started')
+      if (remaining <= 0) throw error
+      await withTimeout(blocked.released, remaining, error)
+      if (!isCurrent()) return null
+    }
+    const module = await loadMermaid()
+    // Once the runtime is loaded, Mermaid can complete entirely in microtasks.
+    // Yield between diagrams so a long document can paint and handle input.
+    await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+    if (!isCurrent()) return null
+    await ensureMermaidInitialized(module, settings)
+    const pending = module.default.render(nextMermaidId('markleaf-mermaid'), source)
+    try {
+      // Only the active diagram spends its rendering budget. Both editor and
+      // export jobs enter here, so Mermaid's internal queue stays empty.
+      return await withTimeout(pending, MERMAID_RENDER_TIMEOUT_MS,
+        new MermaidRenderError('timeout', 'Mermaid diagram rendering timed out'))
+    } catch (error) {
+      if (error instanceof MermaidRenderError && error.reason === 'timeout') {
+        const blocked = {
+          released: pending.then(() => {}, () => {}),
+          deadline: Date.now() + MERMAID_RELEASE_TIMEOUT_MS,
+        }
+        blockedRender = blocked
+        void blocked.released.then(() => { if (blockedRender === blocked) blockedRender = undefined })
+      }
+      throw error
+    }
+  })
+  mermaidRenderQueue = result.then(() => {}, () => {})
+  return result
+}
+
 async function renderMermaidSvgInto(
   host: HTMLElement,
   source: string,
+  settings: MermaidThemeSettings,
+  isCurrent: () => boolean,
 ): Promise<MermaidRenderResult> {
   if (!source.trim()) {
     renderMermaidMessage(host, mermaidStrings.mermaidEmpty, 'empty')
     return 'empty'
   }
-  const module = await loadMermaid()
-  await ensureMermaidInitialized(module, getActiveMermaidTheme())
-  const id = nextMermaidId('markleaf-mermaid')
-  return Promise.resolve().then(() => withTimeout(
-    module.default.render(id, sourceWithDocumentColors(source)), MERMAID_RENDER_TIMEOUT_MS,
-  )).then(({ svg }) => {
+  return renderQueuedMermaid(source, settings, isCurrent).then((result) => {
+    if (!result || !isCurrent()) return 'cancelled' as const
+    const { svg } = result
     host.innerHTML = svg
-    normalizeMermaidSvg(host)
+    normalizeMermaidSvg(host, settings.fontFamily)
     return 'rendered' as const
   }).catch((error: unknown) => {
     cleanupMermaidErrorArtifacts()
-    return error instanceof MermaidRenderTimeoutError ? 'timeout' : 'error'
+    if (!isCurrent()) return 'cancelled' as const
+    return mermaidFailure(error)
   })
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, error: Error): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(
-      () => reject(new MermaidRenderTimeoutError('Mermaid render timed out')),
+      () => reject(error),
       timeoutMs,
     )
     promise.then(
@@ -207,14 +290,22 @@ function cleanupMermaidErrorArtifacts(root: ParentNode = document): void {
     })
 }
 
-function renderMermaidMessage(host: HTMLElement, text: string, kind: 'empty' | 'error'): void {
+function renderMermaidMessage(host: HTMLElement, text: string, kind: 'empty' | 'error' | 'loading', retry?: () => void): void {
   const message = document.createElement('div')
   message.className = `markleaf-mermaid-message markleaf-mermaid-message-${kind}`
   message.textContent = text
+  if (retry) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'markleaf-mermaid-retry'
+    button.textContent = mermaidStrings.mermaidRetry
+    button.addEventListener('click', retry)
+    message.append(button)
+  }
   host.replaceChildren(message)
 }
 
-function normalizeMermaidSvg(root: ParentNode): void {
+function normalizeMermaidSvg(root: ParentNode, fontFamily = getActiveMermaidFontFamily()): void {
   root.querySelectorAll<HTMLElement | SVGElement>('svg, svg *, foreignObject, foreignObject *')
     .forEach((element) => {
       ;(element as HTMLElement | SVGElement).style.textIndent = '0px'
@@ -223,7 +314,7 @@ function normalizeMermaidSvg(root: ParentNode): void {
       // the browser can render with a different font than Mermaid measured.
       ;(element as HTMLElement | SVGElement).style.setProperty(
         'font-family',
-        getActiveMermaidFontFamily(),
+        fontFamily,
         'important',
       )
     })
@@ -235,23 +326,52 @@ const MermaidNodeView = ({ node }: { node: { type?: { name: string }; textConten
   wrapper.contentEditable = 'false'
 
   let lastSource = node.textContent
+  let scheduled = false
+  let destroyed = false
+  let generation = 0
+  let pendingKey: string | undefined
   const section = document.createElement('div')
   section.className = 'markleaf-mermaid-view'
   wrapper.append(section)
 
   const renderCurrent = () => {
-    section.replaceChildren()
-    void renderMermaidSvgInto(section, lastSource).then((result) => {
-      if ((result === 'error' || result === 'timeout') && section.isConnected) {
-        renderMermaidMessage(
-          section,
-          result === 'timeout' ? mermaidStrings.mermaidTimeout : mermaidStrings.mermaidError,
-          'error',
-        )
+    if (scheduled || destroyed) return
+    scheduled = true
+    // Hosts finish applying typography before the initial diagram starts.
+    // Same-turn invalidations become one request with the final settings.
+    queueMicrotask(() => {
+      scheduled = false
+      if (destroyed) return
+      let settings: MermaidThemeSettings
+      let source: string
+      try {
+        settings = getActiveMermaidTheme()
+        source = sourceWithDocumentColors(lastSource)
+      } catch {
+        // Color conversion errors still belong to this node, even though
+        // preparation now runs before the asynchronous render queue.
+        generation += 1
+        pendingKey = undefined
+        renderMermaidMessage(section, mermaidStrings.mermaidError, 'error')
+        return
       }
-      // 等最终 SVG 或错误提示插入 DOM 后再通知浮层重新测量锚点高度。
-      window.requestAnimationFrame(() => {
-        if (section.isConnected) window.dispatchEvent(new Event('markleaf-mermaid-rendered'))
+      const key = JSON.stringify([source, settings])
+      if (pendingKey === key) return
+      const version = ++generation
+      pendingKey = key
+      const isCurrent = () => !destroyed && version === generation
+      renderMermaidMessage(section, mermaidStrings.mermaidLoading, 'loading')
+      void renderMermaidSvgInto(section, source, settings, isCurrent).then((result) => {
+        if (!isCurrent()) return
+        pendingKey = undefined
+        if (result !== 'rendered' && result !== 'empty' && result !== 'cancelled') {
+          renderMermaidMessage(section, mermaidFailureMessage(result), 'error',
+            result === 'load-error' || result === 'error' ? undefined : renderCurrent)
+        }
+        // Notify only after the current result has entered the document.
+        window.requestAnimationFrame(() => {
+          if (isCurrent() && section.isConnected) window.dispatchEvent(new Event('markleaf-mermaid-rendered'))
+        })
       })
     })
   }
@@ -269,6 +389,8 @@ const MermaidNodeView = ({ node }: { node: { type?: { name: string }; textConten
       return true
     },
     destroy: () => {
+      destroyed = true
+      generation += 1
       wrapper.removeEventListener('markleaf-rerender-mermaid', renderCurrent)
     },
   }
@@ -339,11 +461,10 @@ export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName
   const placeholders = Array.from(parsed.body.querySelectorAll<HTMLElement>('.markleaf-mermaid[data-mermaid="1"]'))
   if (placeholders.length === 0) return html
 
-  const module = await loadMermaid()
-  await ensureMermaidInitialized(module, getActiveMermaidTheme(theme))
+  const settings = getActiveMermaidTheme(theme)
   await Promise.all(placeholders.map(async (placeholder) => {
     const source = placeholder.textContent ?? ''
-      if (!source.trim()) {
+    if (!source.trim()) {
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       const message = parsed.createElement('div')
@@ -355,12 +476,13 @@ export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName
     }
 
     try {
-      const id = nextMermaidId('markleaf-export-mermaid')
-      const { svg } = await withTimeout(module.default.render(id, sourceWithDocumentColors(source, theme)), MERMAID_RENDER_TIMEOUT_MS)
+      const result = await renderQueuedMermaid(sourceWithDocumentColors(source, theme), settings)
+      if (!result) return
+      const { svg } = result
       const host = parsed.createElement('div')
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       host.innerHTML = svg
-      normalizeMermaidSvg(host)
+      normalizeMermaidSvg(host, settings.fontFamily)
       placeholder.replaceWith(host)
     } catch (error) {
       cleanupMermaidErrorArtifacts(parsed)
@@ -369,9 +491,7 @@ export async function renderMermaidInHtml(html: string, theme?: MermaidThemeName
       host.className = 'markleaf-mermaid markleaf-mermaid-export'
       const message = parsed.createElement('div')
       message.className = 'markleaf-mermaid-message markleaf-mermaid-message-error'
-      message.textContent = error instanceof MermaidRenderTimeoutError
-        ? mermaidStrings.mermaidTimeout
-        : mermaidStrings.mermaidError
+      message.textContent = mermaidFailureMessage(mermaidFailure(error))
       host.append(message)
       placeholder.replaceWith(host)
     }

@@ -66,7 +66,7 @@ export function createScrollbarAlphaController(
  * 驱动滚动条不透明度从 from 平滑过渡到 to。
  *
  * WebKit 的 ::-webkit-scrollbar-thumb 不参与 CSS transition，所以这里用
- * requestAnimationFrame 逐帧写入 CSS alpha 变量，让滚动条真正产生淡入/淡出。
+ * requestAnimationFrame 逐帧更新滚动条自身的颜色，让滚动条真正产生淡入/淡出。
  * reducedMotion 为 true 时直接跳到目标值，不产生动画。
  */
 export function scrollbarAlphaAnimation(

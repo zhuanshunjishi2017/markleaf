@@ -76,7 +76,7 @@ The workspace, window, and built-in source-mode features below primarily describ
 
 All three hosts share the editor core and typography. The VS Code extension uses the existing VS Code runtime without adding a separate Electron dependency or desktop shell. It supports reading and visual editing, a format painter, tables, footnotes, math and Mermaid, image paste and drop, find and replace, an outline, and reading preferences. VS Code manages saving, undo/redo, tabs, and native Markdown source editing, including switching views and opening source alongside the rendered document.
 
-Extension 0.2.8 provides 36 settings and 67 configurable formatting actions. Math and diagram selection, subsequent-click expansion, and viewport positioning follow the shared kernel. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
+Extension 0.3.0 provides 36 settings and 67 configurable formatting actions. Math and diagram selection, subsequent-click expansion, and viewport positioning follow the shared kernel. Shortcut configuration affects MarkLeaf in VS Code only; native application shortcuts are independent. Project and extension READMEs are available in Simplified Chinese, English, Japanese, and Traditional Chinese. The extension UI is only partly localized; see the [extension guide](../apps/vscode/docs/README.en.md) and [feature mapping (Simplified Chinese)](../apps/vscode/docs/feature-parity.md) for details.
 
 All three products follow the Windows copy/paste rules: Copy HTML produces source text; ordinary text paste and Paste Plain Text parse Markdown in visual editing, while source editing keeps literal text. Paste feedback distinguishes success, formatting conversion, plain-text fallback, and failure, retaining fallback reasons.
 
@@ -142,9 +142,9 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-The package is written to `artifacts/markleaf-vscode-0.2.8.vsix`.
+The package is written to `artifacts/markleaf-vscode-0.3.0.vsix`.
 
-The extension version is managed by `version` in `apps/vscode/package.json`, independently of native products. Its current ID is `zhuanshunjishi2017.markleaf`. Open settings through MarkLeaf's All Settings entry or **Extension Settings** on the extension details page. These entries use the running package's ID; avoid reusing an old local package's search filter. Configuration keys remain `markleaf.*`.
+The extension version is managed by `version` in `apps/vscode/package.json`, independently of native products. The default publisher is `markleaf`, with extension ID `markleaf.markleaf`. From the repository root, run `corepack pnpm package:vscode --publisher <publisher-id>` to override the packaged identity without rewriting the source configuration. Open settings through MarkLeaf's All Settings entry or **Extension Settings** on the extension details page. These entries use the running package's ID; avoid reusing an old local package's search filter. Configuration keys remain `markleaf.*`.
 
 Install the generated package with **Install from VSIX…** in VS Code. Newly opened `.md` and `.markdown` files use MarkLeaf by default. For existing source tabs, use **Reopen Editor With… → MarkLeaf**; change an existing association with **Configure default editor for…**. **Ctrl+Shift+V** (**Cmd+Shift+V** on macOS) switches between native source and rendered views.
 

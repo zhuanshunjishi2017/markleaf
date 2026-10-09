@@ -1827,6 +1827,7 @@ const EditorFocusMode = Extension.create({
 })
 
 export function setEditorFocusMode(editor: Editor, enabled: boolean): void {
+  if (editorFocusModeKey.getState(editor.state) === enabled) return
   editor.view.dispatch(editor.state.tr.setMeta(editorFocusModeKey, enabled).setMeta('skipTrailingNode', true))
 }
 
@@ -1835,6 +1836,7 @@ export function setBlockHighlight(editor: Editor, position: number | null): void
 }
 
 export function setBlockHandleVisible(editor: Editor, visible: boolean): void {
+  if (blockHandleVisible === visible) return
   blockHandleVisible = visible
   editor.view.dispatch(editor.state.tr.setMeta(blockHandleKey, {} satisfies BlockHandleMeta).setMeta('skipTrailingNode', true))
 }
@@ -3857,6 +3859,7 @@ const editorExtensions = [
 
 export type EditorCreationOptions = {
   themedVisualSelection?: boolean
+  codeHighlightVisible?: boolean
   handlePaste?: (event: ClipboardEvent) => boolean
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
@@ -3871,6 +3874,9 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
+  // Apply the host's initial preference before creating the document view.
+  // Enabling it afterwards rebuilds decorations across the whole document.
+  codeHighlightVisible = options.codeHighlightVisible ?? codeHighlightVisible
   const extensions = editorExtensions.map(extension => {
     if (extension.name === 'starterKit') {
       return extension.configure({
@@ -4208,6 +4214,7 @@ export function shouldParsePastedTextAsMarkdown(editor: Editor, plainText: strin
 }
 
 export function setCodeHighlightVisible(editor: Editor, visible: boolean): void {
+  if (codeHighlightVisible === visible) return
   codeHighlightVisible = visible
   // Display-only transactions must not cause StarterKit to append content.
   editor.view.dispatch(editor.state.tr.setMeta('skipTrailingNode', true))

@@ -24,6 +24,11 @@ export type SharedEditorStrings = {
   mermaidEmpty: string
   mermaidError: string
   mermaidTimeout: string
+  mermaidLoading: string
+  mermaidLoadError: string
+  mermaidLoadTimeout: string
+  mermaidBlocked: string
+  mermaidRetry: string
   copyCodeBlock: string
   declareLanguage: string
   formulaInputAssistant: string
@@ -73,6 +78,11 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 图表',
     mermaidError: 'Mermaid 图表文本格式错误',
     mermaidTimeout: 'Mermaid 图表渲染超时',
+    mermaidLoading: '正在准备图表…',
+    mermaidLoadError: '图表组件加载失败，请重新打开文档',
+    mermaidLoadTimeout: '图表组件加载超时',
+    mermaidBlocked: '前一张图表仍在处理，本图尚未渲染',
+    mermaidRetry: '重试',
     copyCodeBlock: '复制代码块', declareLanguage: '...',
     formulaInputAssistant: '公式键入辅助',
     formulaGroupGreek: '希腊字母', formulaGroupOperators: '运算符', formulaGroupRelations: '关系符号',
@@ -98,6 +108,11 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空 Mermaid 圖表',
     mermaidError: 'Mermaid 圖表文字格式錯誤',
     mermaidTimeout: 'Mermaid 圖表算繪逾時',
+    mermaidLoading: '正在準備圖表…',
+    mermaidLoadError: '圖表元件載入失敗，請重新開啟文件',
+    mermaidLoadTimeout: '圖表元件載入逾時',
+    mermaidBlocked: '前一張圖表仍在處理，本圖尚未算繪',
+    mermaidRetry: '重試',
     copyCodeBlock: '複製程式碼區塊', declareLanguage: '...',
     formulaInputAssistant: '公式鍵入輔助',
     formulaGroupGreek: '希臘字母', formulaGroupOperators: '運算符', formulaGroupRelations: '關係符號',
@@ -123,6 +138,11 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: 'Empty Mermaid diagram',
     mermaidError: 'Invalid Mermaid diagram text',
     mermaidTimeout: 'Mermaid diagram rendering timed out',
+    mermaidLoading: 'Preparing diagram…',
+    mermaidLoadError: 'Diagram component failed to load. Reopen the document.',
+    mermaidLoadTimeout: 'Diagram component loading timed out',
+    mermaidBlocked: 'The previous diagram is still processing. This diagram has not started.',
+    mermaidRetry: 'Retry',
     copyCodeBlock: 'Copy code block', declareLanguage: '...',
     formulaInputAssistant: 'Formula input assistant',
     formulaGroupGreek: 'Greek letters', formulaGroupOperators: 'Operators', formulaGroupRelations: 'Relations',
@@ -148,6 +168,11 @@ const tables: Record<string, LocalizedStrings> = {
     mermaidEmpty: '空の Mermaid 図表',
     mermaidError: 'Mermaid 図表のテキスト形式が正しくありません',
     mermaidTimeout: 'Mermaid 図表の描画がタイムアウトしました',
+    mermaidLoading: '図表を準備しています…',
+    mermaidLoadError: '図表コンポーネントを読み込めませんでした。文書を開き直してください。',
+    mermaidLoadTimeout: '図表コンポーネントの読み込みがタイムアウトしました',
+    mermaidBlocked: '前の図表を処理中のため、この図表の描画は開始されていません',
+    mermaidRetry: '再試行',
     copyCodeBlock: 'コードブロックをコピー', declareLanguage: '...',
     formulaInputAssistant: '数式入力補助',
     formulaGroupGreek: 'ギリシャ文字', formulaGroupOperators: '演算子', formulaGroupRelations: '関係記号',

@@ -28,6 +28,7 @@ if (!globalThis.ClipboardEvent) {
 }
 
 afterEach(() => {
+  window.dispatchEvent(new Event('unload'))
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
@@ -76,7 +77,9 @@ async function createHarness(markdown = ''): Promise<{
   const snapshot = () => {
     const requestId = crypto.randomUUID()
     send('requestSnapshot', undefined, requestId)
-    return (messages.find((message) => message.requestId === requestId)?.payload as { markdown: string }).markdown
+    const response = messages.find((message) => message.requestId === requestId)
+    expect(response?.type).toBe('snapshot')
+    return (response!.payload as { markdown: string }).markdown
   }
   return {
     messages,

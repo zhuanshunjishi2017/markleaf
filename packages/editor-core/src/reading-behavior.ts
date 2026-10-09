@@ -9,8 +9,20 @@ export function createReadingBehavior(getEditor: () => Editor | undefined, topIn
   let hideTimer: ReturnType<typeof setTimeout> | undefined
   const events = new AbortController()
   const unbindMotion = bindReducedMotionPreference(window.matchMedia('(prefers-reduced-motion: reduce)'), document.documentElement, document.body)
+  // Animate only the scrollbar surfaces. Updating an inherited property on
+  // <html> invalidates styles throughout a large document on every frame.
+  // A scoped rule also covers source overlays created after this controller.
+  const scrollbarStyle = document.createElement('style')
+  scrollbarStyle.textContent = `
+    html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+    body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
+    html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb,
+    .markleaf-source-scrollbar-thumb { background-color: transparent; }
+  `
+  document.head.append(scrollbarStyle)
+  const thumbStyle = (scrollbarStyle.sheet!.cssRules[0] as CSSStyleRule).style
   const alpha = createScrollbarAlphaController(0, 200,
-    value => document.documentElement.style.setProperty('--ml-scrollbar-alpha', String(value)), {
+    value => thumbStyle.setProperty('background-color', `color-mix(in srgb, var(--scrollbar-active, rgba(0, 0, 0, 0.35)) ${value * 100}%, transparent)`), {
       now: () => performance.now(), requestFrame: callback => requestAnimationFrame(callback), cancelFrame: id => cancelAnimationFrame(id),
     })
   const reduced = () => document.documentElement.classList.contains('markleaf-reduced-motion')
@@ -47,6 +59,11 @@ export function createReadingBehavior(getEditor: () => Editor | undefined, topIn
       document.body.classList.toggle('markleaf-auto-hide-scrollbar', enabled)
       if (!enabled) { clearTimeout(hideTimer); alpha.reset(1) }
     },
-    dispose(): void { events.abort(); unbindMotion(); cancelAnimationFrame(frame); clearTimeout(hideTimer); alpha.reset(0) },
+    dispose(): void {
+      events.abort(); unbindMotion(); cancelAnimationFrame(frame); clearTimeout(hideTimer); alpha.reset(0)
+      scrollbarStyle.remove()
+      document.documentElement.classList.remove('markleaf-auto-hide-scrollbar')
+      document.body.classList.remove('markleaf-auto-hide-scrollbar')
+    },
   }
 }

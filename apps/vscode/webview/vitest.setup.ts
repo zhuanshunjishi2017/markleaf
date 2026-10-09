@@ -11,3 +11,11 @@ class ResizeObserverStub {
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
 }
+
+// jsdom has no media-query engine. Reading behavior still needs the standard
+// subscription surface even when no reduced-motion preference is active.
+if (typeof window.matchMedia === 'undefined') {
+  window.matchMedia = (media: string): MediaQueryList => Object.assign(new EventTarget(), {
+    media, matches: false, onchange: null, addListener() {}, removeListener() {},
+  }) as MediaQueryList
+}

@@ -114,10 +114,24 @@ button:disabled { opacity: .4; cursor: default; }
 .menu-content button { text-align: start; }
 #document-area { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
 #document-area.with-outline { grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); }
-#outline { position: sticky; top: var(--ml-chrome-height, 0px); max-height: calc(100dvh - var(--ml-chrome-height, 0px) - var(--ml-status-height, 0px)); overflow: auto; padding: 16px 8px; border-inline-end: 1px solid var(--bg-selected); font-size: 12px; }
-#outline strong { display: block; margin: 0 8px 10px; }
-#outline button { display: block; width: 100%; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#outline button[aria-current="true"] { background: var(--bg-selected); color: var(--theme-dark); }
+#outline { position: sticky; top: var(--ml-chrome-height, 0px); height: max(0px, calc(100dvh - var(--ml-chrome-height, 0px) - var(--ml-status-height, 0px))); box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; overflow: hidden; border-inline-end: 1px solid var(--bg-selected); font-size: 12px; }
+.outline-header { flex: none; padding: 12px 8px 8px; display: grid; gap: 8px; }
+.outline-header strong { margin-inline: 4px; }
+.outline-actions { display: flex; flex-wrap: wrap; gap: 2px; }
+.outline-actions button { flex: 1; padding: 3px 4px; font-size: 11px; }
+.outline-header input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px 6px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--bg-selected)); border-radius: 4px; }
+.outline-header input:focus { outline: 1px solid var(--vscode-focusBorder); }
+#outline-list { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 4px 8px; }
+.outline-item { display: flex; align-items: center; gap: 4px; min-height: 28px; padding-inline-end: 6px; border-radius: 4px; cursor: pointer; }
+.outline-item:hover { background: var(--bg-hover); }
+.outline-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.outline-item[aria-current="true"] { background: var(--bg-selected); color: var(--theme-dark); }
+.outline-item[data-level="1"], .outline-item[data-level="2"] { font-weight: 600; }
+.outline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-disclosure { flex: none; width: 14px; height: 24px; display: grid; place-items: center; }
+.outline-item[aria-expanded] .outline-disclosure::before { content: ''; border: 4px solid transparent; border-left-color: currentColor; transform: translateX(2px); }
+.outline-item[aria-expanded="true"] .outline-disclosure::before { transform: translateY(2px) rotate(90deg); }
+.outline-empty { margin: 8px; color: var(--text-tertiary); }
 #find-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--bg-primary); border-bottom: 1px solid var(--bg-selected); font-size: 12px; }
 #find-bar input:not([type="checkbox"]) { width: min(200px, 40vw); min-width: 0; padding: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--bg-selected)); border-radius: 4px; }
 #find-bar label { display: inline-flex; align-items: center; gap: 3px; }
@@ -140,7 +154,7 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   max-height: min(260px, 35vh);
 }
 @media (max-width: 520px) { .brand, .divider { display: none; } #toolbar { gap: 1px; padding: 6px; } }
-@media (max-width: 680px) { #document-area.with-outline { grid-template-columns: minmax(110px, 25%) minmax(0, 1fr); } #outline { padding: 8px 2px; } }
+@media (max-width: 680px) { #document-area.with-outline { grid-template-columns: minmax(130px, 25%) minmax(0, 1fr); } .outline-header { padding: 8px 4px; } }
 
 #markleaf-shortcuts, #markleaf-export {
   box-sizing: border-box; max-width: none; max-height: calc(100dvh - 24px);

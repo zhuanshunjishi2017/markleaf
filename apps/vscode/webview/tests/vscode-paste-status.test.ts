@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { URL as NodeURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { vscodePasteStatus } from '../src/vscode-paste-status'
 
@@ -6,7 +7,7 @@ describe('Windows clipboard status parity', () => {
   it.each([
     ['zh-Hans', 'zh-CN'], ['zh-Hant', 'zh-TW'], ['en', 'en-US'], ['ja', 'ja-JP'],
   ])('keeps %s paste outcomes and fallback reasons aligned with Windows', (language, locale) => {
-    const windows = JSON.parse(readFileSync(`../../apps/windows/MarkLeaf/Resources/Locales/${locale}.json`, 'utf8').replace(/^\uFEFF/, ''))
+    const windows = JSON.parse(readFileSync(new NodeURL(`../../../windows/MarkLeaf/Resources/Locales/${locale}.json`, import.meta.url), 'utf8').replace(/^\uFEFF/, ''))
     for (const [outcome, key] of [
       ['markdown', 'pastedMarkdown'], ['normalized', 'pastedMarkdownNormalized'],
       ['formatted', 'pastedFormatted'], ['plainText', 'pastedPlainTextFallback'],

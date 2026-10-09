@@ -2,12 +2,25 @@ import type { Editor } from '@tiptap/core'
 
 export type OutlineHeading = { level: number; text: string; position: number }
 
-export function getDocumentOutline(editor: Editor): OutlineHeading[] {
+// ProseMirror documents are immutable. Selection and scroll updates can reuse
+// the index; an edit produces a new document and therefore a new index.
+const outlineCache = new WeakMap<Editor['state']['doc'], OutlineHeading[]>()
+
+function documentOutline(editor: Editor): OutlineHeading[] {
+  const document = editor.state.doc
+  const cached = outlineCache.get(document)
+  if (cached) return cached
   const headings: OutlineHeading[] = []
-  editor.state.doc.descendants((node, position) => {
+  document.descendants((node, position) => {
     if (node.type.name === 'heading') headings.push({ level: node.attrs.level, text: node.textContent, position })
   })
+  outlineCache.set(document, headings)
   return headings
+}
+
+export function getDocumentOutline(editor: Editor): OutlineHeading[] {
+  // Keep the public snapshot independent from the internal cache.
+  return documentOutline(editor).map(heading => ({ ...heading }))
 }
 
 function normalizeOutlineText(value: string): string {
@@ -18,7 +31,7 @@ function normalizeOutlineText(value: string): string {
 /// stale even though the visible heading text is still authoritative; the old
 /// position remains a tie-breaker for duplicate headings.
 export function resolveOutlineHeading(editor: Editor, position: number, headingText?: string): HTMLElement | null {
-  const headings = getDocumentOutline(editor)
+  const headings = documentOutline(editor)
   const normalizedText = headingText === undefined ? undefined : normalizeOutlineText(headingText)
   const candidates = normalizedText === undefined
     ? headings
@@ -35,15 +48,34 @@ export function resolveOutlineHeading(editor: Editor, position: number, headingT
 }
 
 export function getActiveOutlinePosition(editor: Editor, source: 'cursor' | 'scroll', topInset = 0): number | null {
-  const headings = getDocumentOutline(editor)
-  let active: number | null = source === 'scroll' ? headings[0]?.position ?? null : null
+  const headings = documentOutline(editor)
   const threshold = topInset + Math.max(80, (window.innerHeight - topInset) * .2)
-  for (const heading of headings) {
-    const node = editor.view.nodeDOM(heading.position)
-    if (source === 'cursor' ? heading.position <= editor.state.selection.from
-      : node instanceof HTMLElement && node.getBoundingClientRect().top <= threshold) active = heading.position
+  let low = 0
+  let high = headings.length
+  // Rendered headings follow document order in the vertical editor. Read live
+  // geometry (fonts/diagrams may resize), but only at the binary-search probes.
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    const heading = headings[middle]!
+    let before: boolean
+    if (source === 'cursor') before = heading.position <= editor.state.selection.from
+    else {
+      const node = editor.view.nodeDOM(heading.position)
+      if (!(node instanceof HTMLElement)) {
+        // Retain the previous treatment of headings without a mounted DOM node.
+        let active = headings[0]?.position ?? null
+        for (const candidate of headings) {
+          const element = editor.view.nodeDOM(candidate.position)
+          if (element instanceof HTMLElement && element.getBoundingClientRect().top <= threshold) active = candidate.position
+        }
+        return active
+      }
+      before = node.getBoundingClientRect().top <= threshold
+    }
+    if (before) low = middle + 1
+    else high = middle
   }
-  return active
+  return headings[low - 1]?.position ?? (source === 'scroll' ? headings[0]?.position ?? null : null)
 }
 
 export function scrollToOutlineHeading(editor: Editor, position: number, topInset = 0, headingText?: string): boolean {

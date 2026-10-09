@@ -4,7 +4,9 @@
 
 MarkLeaf の Tiptap/ProseMirror 編集コア、KaTeX、Mermaid、組版スタイルを使い、VS Code 内で Markdown を閲覧・ビジュアル編集できます。TypeScript 製の拡張機能は VS Code の API と Webview を利用し、独立した Electron 依存関係やデスクトップシェルを追加しません。
 
-現在のバージョン **0.2.8** は 36 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。
+現在のバージョン **0.3.0** は 36 項目の設定と 67 項目の設定可能な書式操作を提供します。書式のコピー、表、脚注、数式・図、画像、検索・置換、アウトライン、表示設定に対応します。PDF、HTML、PNG/JPG 画像、プレビュー、印刷に対応しました。
+
+ツールバーの「视图 → 大纲」からアウトラインを表示できます。0.3.0 では Windows デスクトップ版に合わせた階層、見出し検索、展開・折りたたみ、現在の見出しへの移動、キーボード操作と表示中の項目への追従を提供します。サイドバーと区切り線は表示領域の高さを満たし、一覧は独立してスクロールします。長い見出しはホバーで全文を確認できます。既存の markleaf.showOutline 設定は維持されます。
 
 ツールバーメニューは、外側のクリック、Escape、別メニューへの切り替え、拡張機能からのフォーカス移動で閉じます。数式と Mermaid のソースパネルは明暗テーマに対応した不透明な背景を持ち、ネイティブ製品と同じ共有カーネルの配置を使います。内容の下を優先し、空き領域が足りない場合はビューポート内で位置を調整します。数式記号パネルは利用可能な領域に合わせてレイアウトを調整します。
 
@@ -32,10 +34,10 @@ PDF・画像・プレビュー・印刷にはインストール済みの **Chrom
 
 ## インストールと文書の表示
 
-ローカルで `artifacts/markleaf-vscode-0.2.8.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
+ローカルで `artifacts/markleaf-vscode-0.3.0.vsix` を生成し、VS Code の **Install from VSIX…** でインストールします。リポジトリのルートから次のコマンドも使えます。
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.2.8.vsix
+code --install-extension artifacts/markleaf-vscode-0.3.0.vsix
 ```
 
 有効化後、新しく開く `.md` と `.markdown` は既定で MarkLeaf のレンダリング表示になります。既存のソースタブは **Reopen Editor With… → MarkLeaf** または **Ctrl/Cmd+Shift+V** で切り替えます。エクスプローラーの **MarkLeaf: Open Markdown** からも開けます。
@@ -129,7 +131,7 @@ Webview は一度に 1 件の編集を送り、バージョン確認後に蓄積
 
 「视图」（表示）の組版・設定項目で「全部 MarkLeaf 设置…」（すべての MarkLeaf 設定）を選びます。拡張機能の詳細ページの歯車メニューから **拡張機能の設定 / Extension Settings** を開くか、`markleaf.fontSize` などの設定キーを検索することもできます。設定とヘルプの入口は VS Code が提供する現在の拡張機能 ID を使い、Windows、macOS、Linux で同じ処理を行います。ユーザー、ワークスペース、ワークスペースフォルダの既存範囲を使用します。
 
-現在のパッケージは **0.2.8**、発行者は `zhuanshunjishi2017`、ID は `zhuanshunjishi2017.markleaf` です。以前のローカルパッケージの ID は `markleaf.markleaf` でした。古い `@ext:` フィルターで一覧が空になる場合は、フィルターを消して拡張機能の詳細から設定を開き直してください。設定キーは `markleaf.*` のままで、移行は不要です。拡張機能のバージョンは `apps/vscode/package.json` の `version` で管理し、リポジトリやネイティブ製品のバージョンとは独立しています。
+現在のパッケージは **0.3.0**、既定の発行者は `markleaf`、ID は `markleaf.markleaf` です。リポジトリのルートで `corepack pnpm package:vscode --publisher <発行者ID>` を実行すると、ソース設定を書き換えずに今回のパッケージの発行者を変更し、`artifacts/markleaf-vscode-0.3.0-<発行者ID>.vsix` を生成します。既定の出力は `artifacts/markleaf-vscode-0.3.0.vsix` で、`--out` に絶対パスまたは拡張機能ディレクトリからの相対パスも指定できます。設定とヘルプにはインストール済みパッケージの実際の ID を使います。既存の `@ext:` フィルターで一覧が空になる場合は、フィルターを消して拡張機能の詳細から設定を開き直してください。設定キーは `markleaf.*` のままで、移行は不要です。拡張機能のバージョンは `apps/vscode/package.json` の `version` で管理し、リポジトリやネイティブ製品のバージョンとは独立しています。
 
 エクスポートとショートカットのダイアログは、タイトルと操作ボタンを固定して内容だけをスクロールします。メニューは狭いウィンドウ内に収まり、数式と図のパネルは共有カーネルの重なり順と配置に従います。
 
@@ -165,7 +167,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-インストールはカーネル、Webview、拡張ホストの依存を準備します。パッケージ作成時はこの順にビルドし、`artifacts/markleaf-vscode-0.2.8.vsix` を生成します。ビルドのみは `corepack pnpm build:vscode`、アダプターのテストは別途 `corepack pnpm test:vscode` で実行します。
+インストールはカーネル、Webview、拡張ホストの依存を準備します。パッケージ作成時はこの順にビルドし、`artifacts/markleaf-vscode-0.3.0.vsix` を生成します。ビルドのみは `corepack pnpm build:vscode`、アダプターのテストは別途 `corepack pnpm test:vscode` で実行します。
 
 開発時は既存の VS Code を使用できます。
 

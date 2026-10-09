@@ -371,10 +371,23 @@ body.markleaf-theme-dark {
 
 .markleaf-mermaid-message-error {
   color: #d1242f;
+  gap: 0.75em;
+  flex-wrap: wrap;
 }
 
-.markleaf-mermaid-message-empty {
+.markleaf-mermaid-message-empty,
+.markleaf-mermaid-message-loading {
   color: var(--text-secondary, #57606a);
+}
+
+.markleaf-mermaid-retry {
+  font: inherit;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
 }
 
 .markleaf-document pre:has(.markleaf-mermaid-render-button) {
@@ -709,7 +722,7 @@ body.markleaf-theme-dark {
   height: 6px;
 }
 
-/* 自动隐藏滚动条：收窄至 8px，空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
+/* 自动隐藏滚动条：空闲时滑块透明，滚动中或鼠标移至右边缘时显示。
    同时作用于 html 和 body，覆盖不同 overflow 归属场景。 */
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
 body.markleaf-auto-hide-scrollbar::-webkit-scrollbar,
@@ -735,34 +748,15 @@ html.markleaf-auto-hide-scrollbar .cm-scroller {
   left: 0;
   width: 100%;
   border-radius: 3px;
-  background: color-mix(
-    in srgb,
-    var(--scrollbar-active, rgba(0, 0, 0, 0.35))
-    calc(var(--ml-scrollbar-alpha, 0) * 100%),
-    transparent
-  );
+  background-color: var(--scrollbar-active, rgba(0, 0, 0, 0.35));
 }
 
 html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
 body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
-  /* 不透明度由 JS 逐帧驱动的 --ml-scrollbar-alpha 控制，WKWebView 让滚动条实时重绘。
-     color-mix 把主题色与透明按 alpha 混合，从而产生真正的淡入/淡出。 */
-  background: color-mix(
-    in srgb,
-    var(--scrollbar-active, rgba(0, 0, 0, 0.35))
-    calc(var(--ml-scrollbar-alpha, 0) * 100%),
-    transparent
-  );
+  /* Reading behavior animates a scoped thumb rule without changing <html>. */
+  background-color: transparent;
   border-radius: 3px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
-  body.markleaf-auto-hide-scrollbar::-webkit-scrollbar-thumb,
-  html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
-    /* 系统开启“减少动态效果”时，JS 会直接把 alpha 设为终值，这里保留跳变结果。 */
-  }
 }
 
 

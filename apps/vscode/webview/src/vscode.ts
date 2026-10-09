@@ -87,6 +87,10 @@ setCodeBlockControlHandlers({
   },
 })
 
+function canEditDocument(): boolean {
+  return writable && mode === 'edit' && !sync.conflict && !renderingFailed
+}
+
 const sync = new TextDocumentSync({
   post,
   render(document) {
@@ -98,9 +102,11 @@ const sync = new TextDocumentSync({
         interactions?.cancel()
         collapseSourceEditor(editor)
         updateEditorMarkdown(editor, document.markdown)
+        reading?.rebuildOutline()
       } else {
-        editor = createEditor(mount, document.markdown, true, {
+        editor = createEditor(mount, document.markdown, !canEditDocument(), {
           externalHistory: true,
+          codeHighlightVisible: settings.showCodeHighlight,
           handlePaste(event) {
             if (!editor?.isEditable) return false
             const files = Array.from(event.clipboardData?.files ?? []).filter(file => file.type.startsWith('image/'))
@@ -132,7 +138,6 @@ const sync = new TextDocumentSync({
         reading = createReadingView(editor, mount, count)
         reading.apply(settings, customCss, language)
       }
-      reading?.rebuildOutline()
       findBar?.refresh()
       mount.setAttribute('aria-busy', 'false')
       renderingFailed = false
@@ -149,7 +154,7 @@ const sync = new TextDocumentSync({
 
 function updateStatus(): void {
     if (!editor) return
-    const editable = writable && mode === 'edit' && !sync.conflict && !renderingFailed
+    const editable = canEditDocument()
     if (editor.isEditable !== editable) {
       if (!editable) collapseSourceEditor(editor)
       editor.setEditable(editable, false)
@@ -524,6 +529,7 @@ window.addEventListener('scroll', () => {
     vscode.setState({ mode, scrollTop: window.scrollY })
   })
 }, { passive: true })
+let appliedTheme: string | undefined
 function updateTheme(): void {
   const dark = settings.colorTheme === 'vscode' ? document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
     : ['apple-dark', 'dark', 'deep-sea', 'espresso', 'high-contrast-dark', 'morandi-dark', 'pure-black'].includes(settings.colorTheme)
@@ -532,7 +538,12 @@ function updateTheme(): void {
     ? document.body.classList.contains('vscode-high-contrast') || document.body.classList.contains('vscode-high-contrast-light')
     : settings.colorTheme.startsWith('high-contrast-')
   document.body.toggleAttribute('data-markleaf-soft-dark', dark && !highContrast)
-  rerenderMermaidElements(mount)
+  const theme = JSON.stringify([settings.colorTheme, document.body.dataset.vscodeThemeId, dark, highContrast])
+  const changed = appliedTheme !== undefined && appliedTheme !== theme
+  appliedTheme = theme
+  // Scrollbar and motion preferences also change body.class. Only actual
+  // theme changes invalidate diagrams, including light-to-light themes.
+  if (changed) rerenderMermaidElements(mount)
 }
 const themeObserver = new MutationObserver(updateTheme)
 themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-vscode-theme-id'] })

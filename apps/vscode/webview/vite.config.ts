@@ -16,7 +16,11 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: { input: 'src/vscode.ts' },
   },
   test: {
-    alias: [{ find: /^@markleaf\/editor-core$/, replacement: fileURLToPath(new URL('../../../packages/editor-core/src/index.ts', import.meta.url)) }, { find: 'vscode', replacement: fileURLToPath(new URL('./tests/vscode-mock.ts', import.meta.url)) }],
+    alias: [
+      { find: /^@markleaf\/editor-core$/, replacement: fileURLToPath(new URL('../../../packages/editor-core/src/index.ts', import.meta.url)) },
+      { find: '@markleaf/editor-core/export', replacement: fileURLToPath(new URL('../../../packages/editor-core/src/export-entry.ts', import.meta.url)) },
+      { find: 'vscode', replacement: fileURLToPath(new URL('./tests/vscode-mock.ts', import.meta.url)) },
+    ],
     // 阅读视图测试需要读取排版样式原文及其 @depends 元数据。
     css: { include: [/\/styles\/[^/]+\.css\?raw(?:$|&)/] },
     environment: 'jsdom',
