@@ -355,7 +355,12 @@ export class SourceEditor {
       const coords = this.view.coordsAtPos(scrollTarget, 1)
       const viewport = this.view.scrollDOM.getBoundingClientRect()
       if (coords) {
-        const delta = coords.top - viewport.top - 56
+        // 与可视化模式的大纲跳转一致（topInset + 半行高）：标题贴近视口顶部，
+        // 而不是停在 56px 的固定间隙后——那个间隙在源码行高下约为三行，
+        // 用户感知为"跳到了标题前面几行"。
+        const lineHeight = Number.parseFloat(window.getComputedStyle(this.view.scrollDOM).lineHeight)
+        const gap = Number.isFinite(lineHeight) ? lineHeight / 2 : 12
+        const delta = coords.top - viewport.top - gap
         if (Math.abs(delta) > 1) this.view.scrollDOM.scrollTop += delta
       }
       // CodeMirror virtualizes distant lines. The first measured coordinate
