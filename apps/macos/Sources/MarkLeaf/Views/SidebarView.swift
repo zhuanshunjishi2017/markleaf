@@ -45,6 +45,13 @@ final class SidebarView: NSView {
     /// Exposes the native search field to @testable layout regression tests.
     var searchFieldForTesting: NSSearchField { searchField }
 
+    /// 「自动隐藏滚动条」偏好变更：作用于工作区/大纲/搜索滚动容器。
+    func applyAutoHideScrollbars(_ enabled: Bool) {
+        CompactOverlayScrollView.setAutoHide(enabled, for: workspaceScroll)
+        CompactOverlayScrollView.setAutoHide(enabled, for: outlineScroll)
+        CompactOverlayScrollView.setAutoHide(enabled, for: searchScroll)
+    }
+
     init(
         session: EditorSession,
         persistSidebarTab: @escaping (String) -> Void = { tab in

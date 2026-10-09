@@ -1728,6 +1728,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     func applyViewState() {
         guard let splitView, let sidebarView, let sidebar = sidebarContainerView else { return }
 
+        sidebarView.applyAutoHideScrollbars(SettingsService.shared.settings.autoHideScrollbars)
+
         // 动画只在“侧边栏状态发生变化”时播放（启动/打开文件时状态未变，直接对齐，避免闪烁和重复收起动画）。
         let shouldAnimate = lastAppliedSidebarVisible != nil && lastAppliedSidebarVisible != session.sidebarVisible
         let sidebarVisibilityChanged = lastAppliedSidebarVisible != nil && lastAppliedSidebarVisible != session.sidebarVisible
