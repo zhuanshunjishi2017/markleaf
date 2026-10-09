@@ -27,12 +27,15 @@ internal sealed class MarkLeafScrollbar : Control
     private bool _dragging;
     private int _dragThumbOffset;
 
-    // 滑块透明度动画：滚动/悬停时快速淡入，空闲后缓慢淡出（对齐编辑器的
-    // CSS alpha 过渡手感），避免瞬间出现/消失造成的闪烁感。
-    private const int FadeInMilliseconds = 140;
-    private const int FadeOutMilliseconds = 320;
-    private const int IdleHideMilliseconds = 900;
+    // 滑块透明度动画。参数与共享内核 scrollbar-motion 的编辑器滚动条保持
+    // 一致：单一过渡时长 200ms、空闲 800ms 后淡出、二次缓入缓出（quad
+    // ease-in-out），让侧栏与编辑区的滚动条动画节奏相同。
+    private const int FadeMilliseconds = 200;
+    private const int IdleHideMilliseconds = 800;
     private const int AnimationIntervalMilliseconds = 16;
+    private int _animationStartTick;
+    private float _animationFromAlpha;
+    private float _thumbTargetAlpha = 1f;
     private float _thumbAlpha = 1f;
     private int _lastActivityTick;
     private readonly System.Windows.Forms.Timer _alphaTimer = new() { Interval = AnimationIntervalMilliseconds };
@@ -122,11 +125,11 @@ internal sealed class MarkLeafScrollbar : Control
             if (!_autoHide)
             {
                 _alphaTimer.Stop();
-                _thumbAlpha = 1f;
+                _thumbAlpha = _thumbTargetAlpha = 1f;
             }
             else
             {
-                _thumbAlpha = 0f;
+                _thumbAlpha = _thumbTargetAlpha = 0f;
             }
             Invalidate();
         }
@@ -165,14 +168,24 @@ internal sealed class MarkLeafScrollbar : Control
         return InteractionShowsThumb() ? 1f : _thumbAlpha;
     }
 
+    private void BeginAlphaTransition(float target)
+    {
+        if (target == _thumbTargetAlpha) return;
+        _thumbTargetAlpha = target;
+        _animationFromAlpha = CurrentThumbAlpha();
+        _animationStartTick = Environment.TickCount;
+        EnsureAlphaTimerRunning();
+    }
+
     private void EnsureAlphaTimerRunning()
     {
         if (!_alphaTimer.Enabled) _alphaTimer.Start();
     }
 
     /// <summary>
-    /// 动画帧：目标透明度由交互状态与空闲时长决定，按帧间隔线性逼近；
-    /// 完全隐藏或常显时停表，空闲计时期内保持走表等待淡出触发。
+    /// 动画帧：目标透明度由交互状态与空闲时长决定；过渡使用与内核
+    /// scrollbar-motion 相同的二次缓入缓出曲线和 200ms 时长，保证侧栏与
+    /// 编辑区滚动条动画一致。完全隐藏或常显时停表。
     /// </summary>
     private void AlphaTick()
     {
@@ -186,23 +199,34 @@ internal sealed class MarkLeafScrollbar : Control
             target = 1f;
         }
 
-        var duration = target > _thumbAlpha ? FadeInMilliseconds : FadeOutMilliseconds;
-        var step = (float)AnimationIntervalMilliseconds / Math.Max(1, duration);
-        var next = Math.Clamp(_thumbAlpha + Math.Sign(target - _thumbAlpha) * step, 0f, 1f);
+        if (target != _thumbTargetAlpha)
+        {
+            _thumbTargetAlpha = target;
+            _animationFromAlpha = CurrentThumbAlpha();
+            _animationStartTick = Environment.TickCount;
+        }
 
-        if (Math.Abs(next - _thumbAlpha) > 0.001f)
+        var progress = Math.Clamp(
+            (Environment.TickCount - _animationStartTick) / (float)FadeMilliseconds, 0f, 1f);
+        // quad ease-in-out，与 scrollbarAlphaAnimation 的实现一致。
+        var eased = progress < 0.5f
+            ? 2 * progress * progress
+            : 1f - MathF.Pow(-2 * progress + 2, 2) / 2f;
+        var next = _animationFromAlpha + (_thumbTargetAlpha - _animationFromAlpha) * eased;
+
+        if (Math.Abs(next - CurrentThumbAlpha()) > 0.001f)
         {
             _thumbAlpha = next;
             Invalidate();
         }
-        else
+        else if (progress >= 1f)
         {
-            _thumbAlpha = target;
+            _thumbAlpha = _thumbTargetAlpha;
         }
 
-        var settled = Math.Abs(_thumbAlpha - target) < 0.001f;
+        var settled = progress >= 1f;
         var waitingForIdle = _autoHide
-            && _thumbAlpha > 0f
+            && _thumbTargetAlpha > 0f
             && Environment.TickCount - _lastActivityTick < IdleHideMilliseconds
             && !_mouseInControl && !_mouseNearRightEdge && !_dragging;
         if (settled && !waitingForIdle && (!_autoHide || _thumbAlpha == 0f))
