@@ -1350,6 +1350,9 @@ const TableCellSelectionLock = Extension.create({
     let dragCell: Element | null = null
     let dragPosition = 0
     let cellSelectionLocked = false
+    // 从表格外发起的拖选一旦进入某表格，整表提升为 CellSelection；
+    // 记录已提升的表格，保证后续同表的移动是幂等的。
+    let promotedTable: Element | null = null
     // 单格拖选的"冻结原生选区"依赖 ThemedSelection 接管绘制（WebKit 的异步
     // 选区管线会与 ProseMirror 竞争）。Chromium 的原生选区是同步的，锁掉
     // 反而让 Windows 等平台的单格字符选择失去唯一高亮来源，因此仅在主题化
@@ -1440,6 +1443,7 @@ const TableCellSelectionLock = Extension.create({
             // mousedown 处理折叠选区。否则 filterTransaction 会把折叠交易一并
             // 拦下，右键菜单关闭后高亮就再也点不掉（与正文行为不一致）。
             if (cellSelectionLocked) unlockCellDrag(view)
+            promotedTable = null
             return
           }
           const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
@@ -1456,10 +1460,46 @@ const TableCellSelectionLock = Extension.create({
             .setSelection(selection)
             .setMeta('addToHistory', false))
         }
+        // 把整张表提升为 CellSelection（首格到末格）。从表格外拖进表格时，
+        // WebKit 的原生文本选区会跨过表格边界持续存在——与锁定绘制逐帧
+        // 竞争造成闪烁，松开后输入也无法替换；整表 CellSelection 是稳定
+        // 的 decoration，且正符合“拖过整张表就想选中整张表”的意图。
+        const promoteWholeTable = (view: Editor['view'], cell: Element): boolean => {
+          const table = cell.closest('table')
+          if (!table || !view.dom.contains(table)) return false
+          const cells = Array.from(table.querySelectorAll('td,th')).filter(c => view.dom.contains(c))
+          if (cells.length === 0) return false
+          const first = cellPosition(view, cells[0])
+          const last = cellPosition(view, cells[cells.length - 1])
+          if (first === null || last === null) return false
+          cellSelectionLocked = true
+          view.dom.classList.add('markleaf-cell-selection-locked')
+          clearDomSelection(view.dom.ownerDocument)
+          view.dispatch(view.state.tr
+            .setSelection(CellSelection.create(view.state.doc, first, last))
+            .setMeta('addToHistory', false))
+          return true
+        }
+
         const moveDrag = (event: MouseEvent) => {
-          if (!dragCell || event.buttons !== 1) return
+          if (event.buttons !== 1) return
           const cell = cellFromEvent(view, event)
           if (!cell) return
+
+          // 拖选源自表格外（dragCell 为空）：首次进入某表格时整表提升，
+          // 之后同表的移动保持该选中不变。
+          if (!dragCell) {
+            const table = cell.closest('table')
+            if (promotedTable === table) {
+              clearDomSelection(view.dom.ownerDocument)
+              return
+            }
+            if (promoteWholeTable(view, cell)) {
+              promotedTable = table
+            }
+            return
+          }
+
           const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
           if (!resolved) return
 
@@ -1496,6 +1536,7 @@ const TableCellSelectionLock = Extension.create({
           if (cell) upgradeFullCell(view, cell)
           if (!cellSelectionLocked) unlockCellDrag(view)
           dragCell = null
+          promotedTable = null
         }
 
         // Chromium 在 user-select:none 内容里持有非折叠原生选区时（右键菜单

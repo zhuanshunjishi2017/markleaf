@@ -338,6 +338,35 @@ describe('shared editing interactions', () => {
     expect(editor.state.selection.empty).toBe(true)
   })
 
+  it('promotes a drag from outside the table to a whole-table selection', () => {
+    // 从表格外（如上方标题）拖进表格：整表提升为 CellSelection，替代
+    // WebKit 跨表格边界的原生文本选区（闪烁、输入失效、松开回缩的根源）。
+    const { editor } = setup('before\n\n| a | b |\n| - | - |\n| 1 | 2 |', true)
+    const cellDom = editor.view.dom.querySelector('td,th')!
+    const outside = editor.view.dom.querySelector('p')!
+
+    // 表格外按下（插件不接管），拖动进入首个单元格
+    outside.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1, clientX: 10, clientY: 10,
+    }))
+    cellDom.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, button: 0, buttons: 1, clientX: 10, clientY: 10,
+    }))
+
+    expect(editor.state.selection).toBeInstanceOf(CellSelection)
+    const cellCount = editor.state.selection.ranges.length
+    expect(cellCount).toBeGreaterThan(1)
+    expect(editor.view.dom.classList.contains('markleaf-cell-selection-locked')).toBe(true)
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+
+    // 松开后保持整表选中；随后点击表格之外可正常取消
+    expect(editor.state.selection).toBeInstanceOf(CellSelection)
+    editor.view.dom.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1, clientX: 5, clientY: 5,
+    }))
+    expect(editor.view.dom.classList.contains('markleaf-cell-selection-locked')).toBe(false)
+  })
+
   it('keeps native character selection inside one cell when themed selection is off', () => {
     // Chromium 等平台没有 ThemedSelection 接管绘制，单格拖选的高亮来源就是
     // 原生 DOM 选区；冻结逻辑必须保持关闭，否则字符选择不可见。
