@@ -1532,11 +1532,20 @@ const TableCellSelectionLock = Extension.create({
           }
         }
         const endDrag = (event: MouseEvent) => {
+          const describe = () => {
+            const sel = view.state.selection
+            const domSel = view.dom.ownerDocument.getSelection()
+            return `${sel.constructor.name}@${sel.from}-${sel.to} ranges=${'ranges' in sel ? (sel as { ranges: unknown[] }).ranges.length : '-'} dom=${domSel ? (domSel.isCollapsed ? 'collapsed' : 'range') : 'none'}`
+          }
+          const before = describe()
           const cell = cellFromEvent(view, event) ?? dragCell
           if (cell) upgradeFullCell(view, cell)
           if (!cellSelectionLocked) unlockCellDrag(view)
           dragCell = null
           promotedTable = null
+          // @ts-ignore debug
+          if (typeof window !== 'undefined' && (window as any).__markleafDebugHook)
+            (window as any).__markleafDebugHook(`endDrag before=${before} after=${describe()}`)
         }
 
         // Chromium 在 user-select:none 内容里持有非折叠原生选区时（右键菜单
@@ -1573,7 +1582,11 @@ const TableCellSelectionLock = Extension.create({
       filterTransaction: transaction => {
         if (!cellSelectionLocked) return true
         if (transaction.getMeta(tableEditingKey) != null) return true
-        return transaction.docChanged || transaction.selection instanceof CellSelection
+        const allowed = transaction.docChanged || transaction.selection instanceof CellSelection
+        // @ts-ignore debug
+        if (typeof window !== 'undefined' && (window as any).__markleafDebugHook && !allowed)
+          (window as any).__markleafDebugHook(`FILTERED sel=${transaction.selection?.constructor?.name ?? '?'}@${transaction.selection?.from}-${transaction.selection?.to} doc=${transaction.docChanged}`)
+        return allowed
       },
     })]
   },

@@ -231,6 +231,10 @@ declare global {
 
 
 
+// TODO(cell-debug): 临时诊断——内核选区诊断钩子转发宿主日志，验收后删除。
+;(window as unknown as { __markleafDebugHook?: (msg: string) => void }).__markleafDebugHook =
+  (msg: string) => send('error', { message: `celldbg2 ${msg}` })
+
 window.__markleafSetWindowActive = setNativeWindowActive
 window.addEventListener('blur', () => setNativeWindowActive(false))
 window.addEventListener('focus', () => setNativeWindowActive(true))
