@@ -1577,6 +1577,59 @@ const TableCellSelectionLock = Extension.create({
         view.dom.ownerDocument.addEventListener('selectionchange', clearStrayNativeSelection)
         view.dom.ownerDocument.addEventListener('selectstart', suppressNativeSelectionStart, true)
 
+        // 非 macOS 平台：原生引擎驱动拖选，但 PM 的选区同步会把端点钳回
+        // 块级原子（分割线等）前的文本末尾并经 selectionToDOM 覆盖原生选
+        // 区——高亮表现为"回退到分割线"。在 mousemove 上检测并穿越原子。
+        let dragButtonsPressed = false
+        const handleAtomCrossing = (event: MouseEvent) => {
+          dragButtonsPressed = event.buttons === 1
+          if (!dragButtonsPressed) return
+          if (nativeSelectionSuppressed) return
+          const selection = view.state.selection
+          if (!(selection instanceof TextSelection) || selection.empty) return
+
+          const skipBlockAtoms = (from: number): number => {
+            let pos = from
+            for (let guard = 0; guard < 32; guard++) {
+              const $pos = view.state.doc.resolve(pos)
+              const after = $pos.nodeAfter
+              if (!after || !after.isAtom || !after.isBlock) break
+              pos += after.nodeSize
+            }
+            return pos
+          }
+          const skipBlockAtomsBackward = (from: number): number => {
+            let pos = from
+            for (let guard = 0; guard < 32; guard++) {
+              const $pos = view.state.doc.resolve(pos)
+              const before = $pos.nodeBefore
+              if (!before || !before.isAtom || !before.isBlock) break
+              pos -= before.nodeSize
+            }
+            return pos
+          }
+
+          const forward = event.movementY >= 0
+          const newFrom = forward ? selection.from : skipBlockAtomsBackward(selection.from)
+          const newTo = forward ? skipBlockAtoms(selection.to) : selection.to
+          if (newFrom === selection.from && newTo === selection.to) return
+
+          try {
+            const extended = TextSelection.between(
+              view.state.doc.resolve(newFrom),
+              view.state.doc.resolve(newTo),
+            )
+            if (!extended.eq(selection) && !extended.empty) {
+              view.dispatch(view.state.tr
+                .setSelection(extended)
+                .setMeta('addToHistory', false))
+            }
+          } catch {
+            // 边界间的瞬时端点不需要处理；下一帧会重新检测。
+          }
+        }
+        view.dom.ownerDocument.addEventListener('mousemove', handleAtomCrossing, true)
+
         const onKeyDown = (event: KeyboardEvent) => {
           if (event.key !== 'Shift') unlockCellDrag(view)
         }
@@ -1608,6 +1661,7 @@ const TableCellSelectionLock = Extension.create({
             view.dom.ownerDocument.removeEventListener('keydown', onKeyDown, true)
             view.dom.ownerDocument.removeEventListener('selectionchange', clearStrayNativeSelection)
             view.dom.ownerDocument.removeEventListener('selectstart', suppressNativeSelectionStart, true)
+            view.dom.ownerDocument.removeEventListener('mousemove', handleAtomCrossing, true)
           },
         }
       },
