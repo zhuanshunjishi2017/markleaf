@@ -1,11 +1,13 @@
 # MarkLeaf Changelog
 
-## 1.7.8 — 2026-10-10
+## 1.7.8 — 2026-10-11
 
 ### Fixed
 
 - Fixed the sidebar scrollbars not auto-hiding.
 - Fixed inaccurate heading or paragraph positioning for outline jumps in source mode.
+- Fixed flickering highlights, the highlight collapsing to a single cell on release, and typing failing to replace the selection when dragging from outside a table into it.
+- Fixed the highlight retreating to a horizontal rule when a drag crosses it.
 
 ## 1.7.7 — 2026-10-8
 
