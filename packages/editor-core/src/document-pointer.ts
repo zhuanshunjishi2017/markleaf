@@ -179,6 +179,16 @@ export function bindDocumentPointerInteractions(
     if (event.target instanceof Element && event.target.closest('.markleaf-expanded-source, .ml-block-handle')) {
       return
     }
+    // ThemedSelection owns a drag that ended on a horizontal rule. The browser
+    // still emits a synthetic click after mouseup; consuming it here prevents
+    // the horizontal-rule affordance from replacing the final text selection
+    // with a NodeSelection at the divider.
+    if (editorMount.dataset.markleafManagedDrag === '1') {
+      delete editorMount.dataset.markleafManagedDrag
+      pendingSpecialClick = null
+      event.preventDefault()
+      return
+    }
     const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
     const horizontalRulePosition = findHorizontalRuleAtY(event.clientY)
     if (horizontalRulePosition !== null) {

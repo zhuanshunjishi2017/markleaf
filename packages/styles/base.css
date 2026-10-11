@@ -49,11 +49,33 @@
   -webkit-text-fill-color: var(--text-selected) !important;
 }
 
+/* macOS visual-selection mode paints one CSS Custom Highlight range. Keep the
+   browser's native range transparent everywhere, including table cells, so
+   it cannot stack a second darker layer over the editor-owned highlight. */
+.markleaf-themed-visual-selection .markleaf-document::selection,
+.markleaf-themed-visual-selection .markleaf-document *::selection {
+  background: transparent !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
+}
+
 /* WYSIWYG 编辑器选区装饰（WebKit 对 contenteditable 忽略 ::selection） */
 .markleaf-themed-selection {
   background: var(--ml-selection-bg, var(--theme-light));
   color: var(--text-selected);
   -webkit-text-fill-color: var(--text-selected);
+}
+
+/* The fallback decoration wraps selected text rather than replacing the
+   token spans used by headings and code highlighting. Give its descendants
+   the same foreground too, otherwise a token color can leak through after a
+   drag or while the native range is being hidden. */
+.markleaf-themed-selection,
+.markleaf-themed-selection *,
+.ml-source-selection,
+.ml-source-selection * {
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
 }
 ::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
@@ -347,17 +369,6 @@
 .ProseMirror td.selectedCell,
 .ProseMirror th.selectedCell {
   background-color: color-mix(in srgb, var(--theme-light) 24%, transparent);
-}
-
-/* Keep native text highlighting active for partial selections inside one
-   table cell; themed-selection mode hides native selection elsewhere. */
-.markleaf-themed-visual-selection .markleaf-document td::selection,
-.markleaf-themed-visual-selection .markleaf-document td *::selection,
-.markleaf-themed-visual-selection .markleaf-document th::selection,
-.markleaf-themed-visual-selection .markleaf-document th *::selection {
-  background: var(--ml-selection-bg, var(--theme-light)) !important;
-  color: var(--text-selected) !important;
-  -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 /* A CellSelection owns the whole-cell highlight.  Its hidden PM anchor/head

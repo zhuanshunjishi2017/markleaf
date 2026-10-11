@@ -227,13 +227,13 @@ body.markleaf-theme-dark {
 :root:not(.markleaf-themed-visual-selection) .markleaf-document *::selection,
 .markleaf-themed-visual-selection .markleaf-themed-selection,
 .ml-source-selection {
-  background: var(--theme-light);
+  background: var(--ml-selection-bg, var(--theme-light));
   color: var(--text-selected);
 }
 
 /* macOS paints large drag selections without wrapping every selected node. */
 ::highlight(markleaf-selection) {
-  background: var(--theme-light);
+  background: var(--ml-selection-bg, var(--theme-light));
   color: var(--text-selected);
 }
 
@@ -257,15 +257,15 @@ body.markleaf-theme-dark {
   color: inherit;
 }
 
-/* During a normal drag that starts outside a table, the editor owns the
-   endpoint and paints one CSS Highlight. Hide WebKit's own range while that
-   state is being updated; otherwise its asynchronous endpoint can flash at a
-   table-cell boundary. */
+/* During any ordinary editable drag, the editor owns the endpoint and paints
+   one CSS Highlight. Hide WebKit's own range while that state is being
+   updated; otherwise its asynchronous endpoint can flash at a table-cell
+   boundary. */
 .markleaf-managed-selection-active .markleaf-document::selection,
 .markleaf-managed-selection-active .markleaf-document *::selection {
   background: transparent !important;
-  color: inherit !important;
-  -webkit-text-fill-color: inherit !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 .markleaf-managed-selection-active .markleaf-document,

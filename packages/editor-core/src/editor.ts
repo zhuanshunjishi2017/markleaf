@@ -5,11 +5,11 @@ import { resolveEditorActions, getEditorSemanticContext, type EditorActionContex
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
 import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
-import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
+import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { DOMSerializer, type Mark as ProseMirrorMark, type NodeType } from '@tiptap/pm/model'
-import { CellSelection, TableMap, cellAround, tableEditingKey } from '@tiptap/pm/tables'
+import { CellSelection, TableMap, tableEditingKey } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { Table, TableRow, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
@@ -1187,15 +1187,64 @@ const ThemedSelection = Extension.create({
             }
           }, 16)
         }
-        const isSingleCellTextSelection = () => {
-          const selection = view.state.selection
-          if (!(selection instanceof TextSelection)) return false
-          const anchorCell = cellAround(selection.$anchor)
-          const headCell = cellAround(selection.$head)
-          return !!anchorCell && !!headCell && anchorCell.pos === headCell.pos
-        }
         let managedDragActive = false
         let managedDragAnchor: number | null = null
+        let managedDragMoved = false
+        const resolveDragPosition = (event: MouseEvent): { pos: number } | null => {
+          const validPosition = (position: number | null | undefined): { pos: number } | null => {
+            const max = view.state.doc.content.size
+            return typeof position === 'number'
+              && Number.isFinite(position)
+              && position >= 0
+              && position <= max
+              ? { pos: position }
+              : null
+          }
+          const direct = view.posAtCoords({ left: event.clientX, top: event.clientY })
+          const directPosition = validPosition(direct?.pos)
+          if (directPosition) return directPosition
+
+          // `posAtCoords` can be empty in the gutter/outer whitespace around a
+          // ProseMirror view. Ask the browser for its caret first, then clamp
+          // the point into the document view so those pixels use the same
+          // selection engine as text and table cells.
+          const ownerDocument = view.dom.ownerDocument as Document & {
+            caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+            caretRangeFromPoint?: (x: number, y: number) => Range | null
+          }
+          try {
+            const caret = ownerDocument.caretPositionFromPoint?.(event.clientX, event.clientY)
+            if (caret) {
+              const position = validPosition(view.posAtDOM(caret.offsetNode, caret.offset))
+              if (position) return position
+            }
+          } catch {
+            // Fall through to the range/clamped-point strategies.
+          }
+          try {
+            const range = ownerDocument.caretRangeFromPoint?.(event.clientX, event.clientY)
+            if (range?.startContainer) {
+              const position = validPosition(view.posAtDOM(range.startContainer, range.startOffset))
+              if (position) return position
+            }
+          } catch {
+            // Fall through to the clamped-point strategy.
+          }
+
+          try {
+            const rect = view.dom.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              const left = Math.min(Math.max(event.clientX, rect.left + 1), rect.right - 1)
+              const top = Math.min(Math.max(event.clientY, rect.top + 1), rect.bottom - 1)
+              const clamped = view.posAtCoords({ left, top })
+              const clampedPosition = validPosition(clamped?.pos)
+              if (clampedPosition) return clampedPosition
+            }
+          } catch {
+            // Keep the current document position as a final stable fallback.
+          }
+          return validPosition(view.state.selection.from)
+        }
         const paintSelectionHighlight = () => {
           const { from, to, empty } = view.state.selection
           if (view.state.selection instanceof NodeSelection) {
@@ -1217,7 +1266,12 @@ const ThemedSelection = Extension.create({
             }, 0)
             return
           }
-          if (!(view.state.selection instanceof TextSelection) || empty || from === to) {
+          if (!(view.state.selection instanceof TextSelection)
+            && !(view.state.selection instanceof AllSelection)) {
+            clearSelectionHighlight()
+            return
+          }
+          if (empty || from === to) {
             clearSelectionHighlight()
             return
           }
@@ -1257,6 +1311,11 @@ const ThemedSelection = Extension.create({
 
         const finishManagedDrag = () => {
           if (!managedDragActive) return
+          // The synthetic click follows mouseup in the same browser event
+          // turn, before the deferred cleanup below. Publish the guard now so
+          // document-pointer cannot reinterpret a drag endpoint as a click on
+          // a horizontal rule (or another special block).
+          if (managedDragMoved) mount.dataset.markleafManagedDrag = '1'
           // Keep the transparent native-selection shield in place until the
           // browser has delivered its final mouseup/selectionchange turn. If
           // it is removed synchronously, WebKit can briefly paint its stale
@@ -1265,7 +1324,12 @@ const ThemedSelection = Extension.create({
             if (!managedDragActive) return
             managedDragActive = false
             managedDragAnchor = null
+            managedDragMoved = false
             clearDomSelection(view.dom.ownerDocument)
+            // Clearing the DOM range moves the browser selection to the body.
+            // Restore focus so the final TextSelection remains the insertion
+            // range when the user types immediately after releasing the drag.
+            view.focus()
             mount.classList.remove('markleaf-managed-selection-active')
             paintSelectionHighlight()
           }, 0)
@@ -1273,13 +1337,16 @@ const ThemedSelection = Extension.create({
 
         const handleManagedDragStart = (event: MouseEvent) => {
           if (!view.editable || event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.detail > 1) return
+          delete mount.dataset.markleafManagedDrag
           const target = event.target instanceof Element
             ? event.target
             : event.target instanceof globalThis.Node ? event.target.parentElement : null
-          // 格内起始交给 prosemirror-tables 的原生 CellSelection；托管拖选
-          // 只负责文本域（含边缘/表外），两引擎各管各的输入域，零冲突。
-          if (target?.closest('td,th,a,button,input,select,textarea,img,.markleaf-math,.markleaf-mermaid,[contenteditable="false"],.markleaf-code-block-controls,.markleaf-expanded-source')) return
-          const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
+          if (target && target !== mount && !mount.contains(target)) return
+          // Links, controls and rendered atoms have their own click/selection
+          // semantics. Every editable text surface—including table cells and
+          // the whitespace around the document—uses this one drag engine.
+          if (target?.closest('a,button,input,select,textarea,img,.markleaf-math,.markleaf-mermaid,[contenteditable="false"],.markleaf-code-block-controls,.markleaf-expanded-source')) return
+          const resolved = resolveDragPosition(event)
           if (!resolved) return
 
           event.preventDefault()
@@ -1306,7 +1373,7 @@ const ThemedSelection = Extension.create({
           }
           event.preventDefault()
           event.stopPropagation()
-          const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
+          const resolved = resolveDragPosition(event)
           if (!resolved) return
           try {
             const selection = TextSelection.between(
@@ -1314,6 +1381,7 @@ const ThemedSelection = Extension.create({
               view.state.doc.resolve(resolved.pos),
             )
             if (!selection.eq(view.state.selection)) {
+              managedDragMoved = true
               view.dispatch(view.state.tr
                 .setSelection(selection)
                 .setMeta('addToHistory', false))
@@ -1325,21 +1393,11 @@ const ThemedSelection = Extension.create({
           }
         }
         paintSelectionHighlight()
-
-        const handleBackgroundMouseDown = (event: MouseEvent) => {
-          if (event.button !== 0 || event.target !== mount || view.state.selection.empty) {
+        const handleMouseUp = () => {
+          if (managedDragActive) {
+            finishManagedDrag()
             return
           }
-
-          event.preventDefault()
-          const collapsed = Selection.near(view.state.doc.resolve(view.state.selection.from), 1)
-          view.dispatch(view.state.tr.setSelection(collapsed).setMeta('addToHistory', false))
-          view.focus()
-        }
-
-        mount.addEventListener('mousedown', handleBackgroundMouseDown)
-        const handleMouseUp = () => {
-          if (managedDragActive) finishManagedDrag()
           if (view.state.selection instanceof NodeSelection) {
             clearNativeNodeSelection()
             return
@@ -1348,7 +1406,6 @@ const ThemedSelection = Extension.create({
             clearDomSelection(view.dom.ownerDocument)
             return
           }
-          if (isSingleCellTextSelection()) return
           // Async autoscroll and WebKit selection tracking can leave the DOM
           // selection at an older endpoint. At mouse-up, normalize both PM and
           // DOM to the same range so upward drags can reliably shrink it.
@@ -1379,14 +1436,13 @@ const ThemedSelection = Extension.create({
             view.focus()
           }, 0)
         }
-        view.dom.addEventListener('mousedown', handleManagedDragStart, true)
+        mount.addEventListener('mousedown', handleManagedDragStart, true)
         view.dom.ownerDocument.addEventListener('mousemove', handleManagedDragMove, true)
         view.dom.ownerDocument.addEventListener('mouseup', handleMouseUp, true)
         return {
             destroy() {
-              view.dom.removeEventListener('mousedown', handleManagedDragStart, true)
+              mount.removeEventListener('mousedown', handleManagedDragStart, true)
               view.dom.ownerDocument.removeEventListener('mousemove', handleManagedDragMove, true)
-              mount.removeEventListener('mousedown', handleBackgroundMouseDown)
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)
               clearSelectionHighlight()
               highlightRegistry?.delete(selectionHighlightName)
@@ -1407,7 +1463,11 @@ const ThemedSelection = Extension.create({
             return DecorationSet.empty
           }
           const { from, to, empty } = state.selection
-          if (!(state.selection instanceof TextSelection) || empty || from === to) {
+          if (!(state.selection instanceof TextSelection)
+            && !(state.selection instanceof AllSelection)) {
+            return DecorationSet.empty
+          }
+          if (empty || from === to) {
             return DecorationSet.empty
           }
           return DecorationSet.create(state.doc, [
@@ -1439,94 +1499,20 @@ const ThemedSelection = Extension.create({
   },
 })
 
-// WebKit keeps its own asynchronous drag-selection pipeline. In a table that
-// pipeline races with ProseMirror's CellSelection and makes the two highlight
-// modes alternate. MarkLeaf therefore owns plain mouse selection inside table
-// cells: character selection is synthesized inside one cell, and full-cell or
-// cross-cell drags are represented directly by CellSelection.
+// Keep explicit CellSelection state visually stable. Ordinary mouse drags are
+// owned by ThemedSelection above and always remain TextSelection; this plugin
+// only protects an explicitly-created cell selection from a stale native DOM
+// range.
 const TableCellSelectionLock = Extension.create({
   name: 'markleafTableCellSelectionLock',
   addProseMirrorPlugins() {
-    let cellSelectionLocked = false
     // Once a table-cell selection owns the visual highlight, WebKit must not
-    // be allowed to publish another native text range.  Keeping this separate
-    // from `cellSelectionLocked` makes the suppression explicit at the DOM
-    // event boundary and avoids a clear/rebuild race during cross-table drags.
+    // be allowed to publish another native text range. This suppression is
+    // only for explicit CellSelection, never for ordinary text drags.
     let nativeSelectionSuppressed = false
     let clearingNativeSelection = false
-    // 拖选从表格外开始时，继续交给 ProseMirror/WebKit 的普通文字选区
-    // 管线；只有表格内发起的拖选才由本扩展接管。
-    // 单格拖选的"冻结原生选区"依赖 ThemedSelection 接管绘制（WebKit 的异步
-    // 选区管线会与 ProseMirror 竞争）。Chromium 的原生选区是同步的，锁掉
-    // 反而让 Windows 等平台的单格字符选择失去唯一高亮来源，因此仅在主题化
-    // 选区扩展生效时冻结。
-    const themedSelectionActive = this.editor.extensionManager.extensions
-      .some(extension => extension.name === 'markleafThemedSelection')
-
-    const elementFromTarget = (target: EventTarget | null): Element | null => {
-      if (target instanceof Element) return target
-      if (target instanceof globalThis.Node) return target.parentElement
-      return null
-    }
-    const cellFromEvent = (view: Editor['view'], event: MouseEvent): Element | null => {
-      const element = elementFromTarget(event.target)
-      const cell = element?.closest('td,th') ?? null
-      return cell && view.dom.contains(cell) ? cell : null
-    }
-    const cellPosition = (view: Editor['view'], cell: Element): number | null => {
-      let position: number | null = null
-      view.state.doc.descendants((node, pos) => {
-        if (position !== null) return false
-        if ((node.type.name === 'tableCell' || node.type.name === 'tableHeader')
-          && view.nodeDOM(pos) === cell) {
-          position = pos
-          return false
-        }
-        return true
-      })
-      return position
-    }
-    const inlineTextRange = (view: Editor['view'], cell: Element): { from: number; to: number } | null => {
-      let range: { from: number; to: number } | null = null
-      view.state.doc.descendants((node, pos) => {
-        if (range) return false
-        if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
-        if (view.nodeDOM(pos) !== cell) return true
-
-        node.descendants((child, childPos) => {
-          if (!child.isInline || !child.isLeaf) return true
-          const from = pos + 1 + childPos
-          const to = from + child.nodeSize
-          range = range
-            ? { from: Math.min(range.from, from), to: Math.max(range.to, to) }
-            : { from, to }
-          return true
-        })
-        return false
-      })
-      return range
-    }
-    const upgradeFullCell = (view: Editor['view'], cell: Element): boolean => {
-      const { selection, doc } = view.state
-      if (!(selection instanceof TextSelection) || selection.empty) return false
-      const range = inlineTextRange(view, cell)
-      if (!range || selection.from > range.from || selection.to < range.to) return false
-
-      const position = cellPosition(view, cell)
-      if (position === null) return false
-
-      view.dom.classList.add('markleaf-cell-selection-locked')
-      cellSelectionLocked = true
-      nativeSelectionSuppressed = true
-
-      view.dispatch(view.state.tr
-        .setSelection(CellSelection.create(doc, position))
-        .setMeta('addToHistory', false))
-      return true
-    }
     const unlockCellDrag = (view: Editor['view']): void => {
       view.dom.classList.remove('markleaf-cell-selection-locked')
-      cellSelectionLocked = false
       nativeSelectionSuppressed = false
     }
     const clearLockedNativeSelection = (view: Editor['view'], settle = false): void => {
@@ -1550,10 +1536,8 @@ const TableCellSelectionLock = Extension.create({
 
     return [new Plugin({
       view(view) {
-        // 统一选区模型：文本/边缘起始的拖选由 ThemedSelection 的托管会话
-        // （macOS）或原生引擎（Windows/VS Code）驱动；格内起始交给
-        // prosemirror-tables 的原生 CellSelection。本插件不再维护自绘
-        // 拖选会话——仅保留 CellSelection 的锁定维护与原生选区清洁。
+        // 统一选区模型：macOS 的普通拖选全部由 ThemedSelection 托管；
+        // 本插件只保留显式 CellSelection 的锁定维护与原生选区清洁。
 
         // Chromium/WebKit 在 user-select:none 内容里持有非折叠原生选区时
         // （右键菜单关闭后焦点恢复，或跨表格拖选管线晚到），会持续重算并
@@ -1589,7 +1573,6 @@ const TableCellSelectionLock = Extension.create({
             const wasCell = prevState.selection instanceof CellSelection
             if (isCell === wasCell) return
             if (isCell) {
-              cellSelectionLocked = true
               nativeSelectionSuppressed = true
               updatedView.dom.classList.add('markleaf-cell-selection-locked')
               // 清原生选区延迟到下一帧：同步清会触发 selectionchange →

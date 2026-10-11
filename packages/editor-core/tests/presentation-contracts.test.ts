@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { TextSelection } from '@tiptap/pm/state'
+import { AllSelection, TextSelection } from '@tiptap/pm/state'
 import { createEditor } from '../src/editor'
 import { assignHeadingAnchors } from '../src/outline'
 import { resolveTypographyStyle } from '../src/typography'
@@ -34,11 +34,29 @@ it('hides native text ranges while a CellSelection owns table highlighting', () 
   expect(css).toMatch(/markleaf-cell-selection-locked[^}]*td \*::selection[\s\S]*?background:\s*transparent\s*!important/s)
 })
 
+it('hides the native range across themed table text', () => {
+  const css = readFileSync(resolve(import.meta.dirname, '../../styles/base.css'), 'utf8')
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]*?background:\s*transparent\s*!important/)
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document \*::selection[\s\S]*?color:\s*var\(--text-selected\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-selected\)\s*!important/)
+  expect(css).not.toMatch(/\.markleaf-themed-visual-selection \.markleaf-document td::selection,[\s\S]*?background:\s*var\(--ml-selection-bg/)
+})
+
 it('hides the native drag selection while the editor-owned highlight is active', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
   expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document::selection[\s\S]*?background:\s*transparent\s*!important/s)
-  expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document \*::selection[\s\S]*?-webkit-text-fill-color:\s*inherit\s*!important/s)
+  expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document \*::selection[\s\S]*?color:\s*var\(--text-selected\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-selected\)\s*!important/s)
   expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document,\s*\n\.markleaf-managed-selection-active \.markleaf-document \*\s*\{[\s\S]*?user-select:\s*none\s*!important/s)
+})
+
+it('uses the shared selection color for the editor-owned CSS highlight', () => {
+  const css = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-themed-selection,[\s\S]*?background:\s*var\(--ml-selection-bg,\s*var\(--theme-light\)\)/)
+  expect(css).toMatch(/::highlight\(markleaf-selection\)\s*\{[^}]*background:\s*var\(--ml-selection-bg,\s*var\(--theme-light\)\)/s)
+})
+
+it('keeps colored descendants from overriding the editor-owned selection foreground', () => {
+  const css = readFileSync(resolve(import.meta.dirname, '../../styles/base.css'), 'utf8')
+  expect(css).toMatch(/\.markleaf-themed-selection,\s*\n\.markleaf-themed-selection \*,\s*\n\.ml-source-selection,\s*\n\.ml-source-selection \*\s*\{[\s\S]*?color:\s*var\(--text-selected\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-selected\)\s*!important/s)
 })
 
 it('keeps the previous themed highlight when a table-edge range cannot be painted', () => {
@@ -85,6 +103,35 @@ it('keeps the previous themed highlight when a table-edge range cannot be painte
     const currentHighlight = registry.get('markleaf-selection') as TestHighlight
     expect(currentHighlight).toBe(firstHighlight)
     expect(currentHighlight.ranges).toHaveLength(1)
+  } finally {
+    editor.destroy()
+    if (originalCSS === undefined) delete (window as unknown as { CSS?: unknown }).CSS
+    else Object.defineProperty(window, 'CSS', { configurable: true, value: originalCSS })
+    if (originalHighlight === undefined) delete (window as unknown as { Highlight?: unknown }).Highlight
+    else Object.defineProperty(window, 'Highlight', { configurable: true, value: originalHighlight })
+  }
+})
+
+it('paints AllSelection through the same themed highlight layer', () => {
+  const originalCSS = (window as unknown as { CSS?: unknown }).CSS
+  const originalHighlight = (window as unknown as { Highlight?: unknown }).Highlight
+  const registry = new Map<string, unknown>()
+  class TestHighlight {
+    ranges: Range[] = []
+    clear() { this.ranges = [] }
+    add(range: Range) { this.ranges.push(range) }
+  }
+  Object.defineProperty(window, 'CSS', { configurable: true, value: { highlights: registry } })
+  Object.defineProperty(window, 'Highlight', { configurable: true, value: TestHighlight })
+
+  const mount = document.createElement('div')
+  document.body.appendChild(mount)
+  const editor = createEditor(mount, '# title\n\nbody', false, { themedVisualSelection: true })
+  try {
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)))
+    expect(editor.state.selection).toBeInstanceOf(AllSelection)
+    const highlight = registry.get('markleaf-selection') as TestHighlight
+    expect(highlight.ranges).toHaveLength(1)
   } finally {
     editor.destroy()
     if (originalCSS === undefined) delete (window as unknown as { CSS?: unknown }).CSS
