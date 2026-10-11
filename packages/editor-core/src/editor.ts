@@ -1468,9 +1468,11 @@ const TableCellSelectionLock = Extension.create({
           const table = cell.closest('table')
           if (!table || !view.dom.contains(table)) return false
           const cells = Array.from(table.querySelectorAll('td,th')).filter(c => view.dom.contains(c))
-          if (cells.length === 0) return false
-          const first = cellPosition(view, cells[0])
-          const last = cellPosition(view, cells[cells.length - 1])
+          const firstCell = cells[0]
+          const lastCell = cells[cells.length - 1]
+          if (!firstCell || !lastCell) return false
+          const first = cellPosition(view, firstCell)
+          const last = cellPosition(view, lastCell)
           if (first === null || last === null) return false
           cellSelectionLocked = true
           view.dom.classList.add('markleaf-cell-selection-locked')
@@ -1491,7 +1493,10 @@ const TableCellSelectionLock = Extension.create({
           if (!dragCell) {
             const table = cell.closest('table')
             if (promotedTable === table) {
-              clearDomSelection(view.dom.ownerDocument)
+              // 已提升：不再每次 move 清原生选区——每次清除都触发重绘，
+              // 与 WebKit 的异步重建交替形成清除风暴（末格闪烁的实测来源）。
+              // 锁定类的透明 ::selection 负责视觉隐藏，非折叠残留由
+              // selectionchange 清洁器统一处理。
               return
             }
             if (promoteWholeTable(view, cell)) {
@@ -1532,20 +1537,16 @@ const TableCellSelectionLock = Extension.create({
           }
         }
         const endDrag = (event: MouseEvent) => {
-          const describe = () => {
-            const sel = view.state.selection
-            const domSel = view.dom.ownerDocument.getSelection()
-            return `${sel.constructor.name}@${sel.from}-${sel.to} ranges=${'ranges' in sel ? (sel as { ranges: unknown[] }).ranges.length : '-'} dom=${domSel ? (domSel.isCollapsed ? 'collapsed' : 'range') : 'none'}`
+          // 表外拖入已提升为整表选区：松开保持整表。upgradeFullCell 会把它
+          // 收缩到落点单格（诊断实测：松开前 ranges=33，经 upgrade 后仅剩
+          // 落点一格——即"退回当前单元格"的来源）。
+          if (!promotedTable) {
+            const cell = cellFromEvent(view, event) ?? dragCell
+            if (cell) upgradeFullCell(view, cell)
           }
-          const before = describe()
-          const cell = cellFromEvent(view, event) ?? dragCell
-          if (cell) upgradeFullCell(view, cell)
           if (!cellSelectionLocked) unlockCellDrag(view)
           dragCell = null
           promotedTable = null
-          // @ts-ignore debug
-          if (typeof window !== 'undefined' && (window as any).__markleafDebugHook)
-            (window as any).__markleafDebugHook(`endDrag before=${before} after=${describe()}`)
         }
 
         // Chromium 在 user-select:none 内容里持有非折叠原生选区时（右键菜单
@@ -1582,11 +1583,7 @@ const TableCellSelectionLock = Extension.create({
       filterTransaction: transaction => {
         if (!cellSelectionLocked) return true
         if (transaction.getMeta(tableEditingKey) != null) return true
-        const allowed = transaction.docChanged || transaction.selection instanceof CellSelection
-        // @ts-ignore debug
-        if (typeof window !== 'undefined' && (window as any).__markleafDebugHook && !allowed)
-          (window as any).__markleafDebugHook(`FILTERED sel=${transaction.selection?.constructor?.name ?? '?'}@${transaction.selection?.from}-${transaction.selection?.to} doc=${transaction.docChanged}`)
-        return allowed
+        return transaction.docChanged || transaction.selection instanceof CellSelection
       },
     })]
   },
