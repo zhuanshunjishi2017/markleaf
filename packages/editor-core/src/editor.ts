@@ -1492,13 +1492,12 @@ const TableCellSelectionLock = Extension.create({
           // 之后同表的移动保持该选中不变。
           if (!dragCell) {
             const table = cell.closest('table')
-            if (promotedTable === table) {
-              // 已提升：不再每次 move 清原生选区——每次清除都触发重绘，
-              // 与 WebKit 的异步重建交替形成清除风暴（末格闪烁的实测来源）。
-              // 锁定类的透明 ::selection 负责视觉隐藏，非折叠残留由
-              // selectionchange 清洁器统一处理。
-              return
-            }
+            // 阻止 WebKit 在拖动中继续延伸原生选区（其 endpoint 落在指针
+            // 所在格并逐帧重绘——末格闪烁的直接来源）。preventDefault 在
+            // WebKit 的 mousemove 上可阻止进行中的拖选延伸。
+            event.preventDefault()
+            event.stopPropagation()
+            if (promotedTable === table) return
             if (promoteWholeTable(view, cell)) {
               promotedTable = table
             }
