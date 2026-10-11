@@ -1276,6 +1276,8 @@ const ThemedSelection = Extension.create({
           const target = event.target instanceof Element
             ? event.target
             : event.target instanceof globalThis.Node ? event.target.parentElement : null
+          // 格内起始交给 prosemirror-tables 的原生 CellSelection；托管拖选
+          // 只负责文本域（含边缘/表外），两引擎各管各的输入域，零冲突。
           if (target?.closest('td,th,a,button,input,select,textarea,img,.markleaf-math,.markleaf-mermaid,[contenteditable="false"],.markleaf-code-block-controls,.markleaf-expanded-source')) return
           const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
           if (!resolved) return
@@ -1445,8 +1447,6 @@ const ThemedSelection = Extension.create({
 const TableCellSelectionLock = Extension.create({
   name: 'markleafTableCellSelectionLock',
   addProseMirrorPlugins() {
-    let dragCell: Element | null = null
-    let dragPosition = 0
     let cellSelectionLocked = false
     // Once a table-cell selection owns the visual highlight, WebKit must not
     // be allowed to publish another native text range.  Keeping this separate
@@ -1456,7 +1456,6 @@ const TableCellSelectionLock = Extension.create({
     let clearingNativeSelection = false
     // 拖选从表格外开始时，继续交给 ProseMirror/WebKit 的普通文字选区
     // 管线；只有表格内发起的拖选才由本扩展接管。
-    let outsideDragActive = false
     // 单格拖选的"冻结原生选区"依赖 ThemedSelection 接管绘制（WebKit 的异步
     // 选区管线会与 ProseMirror 竞争）。Chromium 的原生选区是同步的，锁掉
     // 反而让 Windows 等平台的单格字符选择失去唯一高亮来源，因此仅在主题化
@@ -1551,127 +1550,10 @@ const TableCellSelectionLock = Extension.create({
 
     return [new Plugin({
       view(view) {
-        const managedOutsideDrag = (): boolean => (
-          view.dom.parentElement?.classList.contains('markleaf-managed-selection-active') ?? false
-        )
-        const interactiveTarget = (target: EventTarget | null): boolean => {
-          const element = elementFromTarget(target)
-          return !!element?.closest('a,button,input,select,textarea,.markleaf-code-block-controls,.markleaf-expanded-source')
-        }
-        const startDrag = (event: MouseEvent) => {
-          outsideDragActive = false
-          // Keep the outside-drag guard armed through the browser's delayed
-          // mouseup/selectionchange settlement after an outside drag. The
-          // next mouse gesture or keyboard action resets it before normal
-          // editing resumes.
-          if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey) return
-          // Native double/triple click semantics remain available; ordinary
-          // presses outside tables are left entirely to ProseMirror.
-          if (event.detail > 1 || interactiveTarget(event.target)) return
-          if (managedOutsideDrag()) {
-            outsideDragActive = true
-            dragCell = null
-            if (cellSelectionLocked) unlockCellDrag(view)
-            return
-          }
-          const cell = cellFromEvent(view, event)
-          if (!cell) {
-            // 点击表格之外是普通的"取消选择"手势：解锁让 ProseMirror 自己的
-            // mousedown 处理折叠选区。否则 filterTransaction 会把折叠交易一并
-            // 拦下，右键菜单关闭后高亮就再也点不掉（与正文行为不一致）。
-            if (cellSelectionLocked) unlockCellDrag(view)
-            dragCell = null
-            outsideDragActive = true
-            return
-          }
-          const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
-          if (!resolved) return
-          event.preventDefault()
-          event.stopPropagation()
-          unlockCellDrag(view)
-          dragCell = cell
-          view.focus()
-          const bias = 'bias' in resolved && typeof resolved.bias === 'number' ? resolved.bias : 1
-          const selection = TextSelection.near(view.state.doc.resolve(resolved.pos), bias)
-          dragPosition = selection.anchor
-          view.dispatch(view.state.tr
-            .setSelection(selection)
-            .setMeta('addToHistory', false))
-        }
-        const moveDrag = (event: MouseEvent) => {
-          if (event.buttons !== 1) return
-          if (managedOutsideDrag()) {
-            outsideDragActive = true
-            dragCell = null
-            return
-          }
-          // A drag that began outside a table must remain a normal text drag.
-          // In particular, do not preventDefault when its pointer enters a
-          // cell: doing so starts the old whole-table promotion/flicker path.
-          if (!dragCell && outsideDragActive) return
-          const cell = cellFromEvent(view, event)
-          if (!cell) return
-
-          if (!dragCell) {
-            return
-          }
-
-          const resolved = view.posAtCoords({ left: event.clientX, top: event.clientY })
-          if (!resolved) return
-
-          if (cell !== dragCell) {
-            const anchorCellPosition = cellPosition(view, dragCell)
-            const headCellPosition = cellPosition(view, cell)
-            if (anchorCellPosition === null || headCellPosition === null) return
-            const selection = CellSelection.create(view.state.doc, anchorCellPosition, headCellPosition)
-            if (view.state.selection instanceof CellSelection && view.state.selection.eq(selection)) {
-              return
-            }
-            cellSelectionLocked = true
-            nativeSelectionSuppressed = true
-            view.dom.classList.add('markleaf-cell-selection-locked')
-            view.dispatch(view.state.tr
-              .setSelection(selection)
-              .setMeta('addToHistory', false))
-            clearLockedNativeSelection(view)
-            return
-          }
-
-          const anchor = view.state.doc.resolve(Math.min(dragPosition, resolved.pos))
-          const head = view.state.doc.resolve(Math.max(dragPosition, resolved.pos))
-          const selection = TextSelection.between(anchor, head)
-          if (!selection.empty && !selection.eq(view.state.selection)) {
-            view.dispatch(view.state.tr
-              .setSelection(selection)
-              .setMeta('addToHistory', false))
-          }
-          if (upgradeFullCell(view, cell)) {
-            clearLockedNativeSelection(view, true)
-          } else {
-            if (themedSelectionActive) {
-              view.dom.classList.add('markleaf-cell-selection-locked')
-              clearDomSelection(view.dom.ownerDocument)
-            }
-          }
-        }
-        const endDrag = (event: MouseEvent) => {
-          if (managedOutsideDrag()) {
-            outsideDragActive = true
-            dragCell = null
-            return
-          }
-          if (dragCell) {
-            const cell = cellFromEvent(view, event) ?? dragCell
-            if (cell && upgradeFullCell(view, cell)) {
-              clearLockedNativeSelection(view, true)
-            }
-          }
-          if (nativeSelectionSuppressed && view.state.selection instanceof CellSelection) {
-            clearLockedNativeSelection(view, true)
-          }
-          if (!cellSelectionLocked) unlockCellDrag(view)
-          dragCell = null
-        }
+        // 统一选区模型：文本/边缘起始的拖选由 ThemedSelection 的托管会话
+        // （macOS）或原生引擎（Windows/VS Code）驱动；格内起始交给
+        // prosemirror-tables 的原生 CellSelection。本插件不再维护自绘
+        // 拖选会话——仅保留 CellSelection 的锁定维护与原生选区清洁。
 
         // Chromium/WebKit 在 user-select:none 内容里持有非折叠原生选区时
         // （右键菜单关闭后焦点恢复，或跨表格拖选管线晚到），会持续重算并
@@ -1694,66 +1576,42 @@ const TableCellSelectionLock = Extension.create({
         view.dom.ownerDocument.addEventListener('selectionchange', clearStrayNativeSelection)
         view.dom.ownerDocument.addEventListener('selectstart', suppressNativeSelectionStart, true)
 
-        view.dom.addEventListener('mousedown', startDrag, true)
-        view.dom.ownerDocument.addEventListener('mousemove', moveDrag, true)
-        view.dom.ownerDocument.addEventListener('mouseup', endDrag, true)
         const onKeyDown = (event: KeyboardEvent) => {
-          outsideDragActive = false
           if (event.key !== 'Shift') unlockCellDrag(view)
         }
         view.dom.ownerDocument.addEventListener('keydown', onKeyDown, true)
 
         return {
+          update(updatedView: Editor['view'], prevState: Editor['state']) {
+            // 跟随选区类型：CellSelection 出现/消失时自动锁定/解锁，
+            // 无论其来源（tableEditing 拖选、程序化构造、恢复等）。
+            const isCell = updatedView.state.selection instanceof CellSelection
+            const wasCell = prevState.selection instanceof CellSelection
+            if (isCell === wasCell) return
+            if (isCell) {
+              cellSelectionLocked = true
+              nativeSelectionSuppressed = true
+              updatedView.dom.classList.add('markleaf-cell-selection-locked')
+              // 清原生选区延迟到下一帧：同步清会触发 selectionchange →
+              // PM 的选区观察器 → 派发折叠交易 → 与刚设的 CellSelection
+              // 竞争（jsdom 测试中会在同一同步周期内搅掉锁定状态）。
+              window.setTimeout(() => {
+                if (nativeSelectionSuppressed && updatedView.state.selection instanceof CellSelection) {
+                  clearLockedNativeSelection(updatedView, true)
+                }
+              }, 0)
+            } else {
+              unlockCellDrag(updatedView)
+            }
+          },
           destroy() {
-            view.dom.removeEventListener('mousedown', startDrag, true)
-            view.dom.ownerDocument.removeEventListener('mousemove', moveDrag, true)
-            view.dom.ownerDocument.removeEventListener('mouseup', endDrag, true)
             view.dom.ownerDocument.removeEventListener('keydown', onKeyDown, true)
             view.dom.ownerDocument.removeEventListener('selectionchange', clearStrayNativeSelection)
             view.dom.ownerDocument.removeEventListener('selectstart', suppressNativeSelectionStart, true)
           },
         }
       },
-      filterTransaction: (transaction, state) => {
-        // The themed-selection plugin owns an outside drag from mousedown
-        // through the delayed mouseup turn. The DOM class is intentionally
-        // used here because this filter has no EditorView argument; it also
-        // covers a CellSelection transaction emitted by tableEditing before
-        // the table plugin's own mouse listener sees the gesture.
-        const managedDrag = typeof document !== 'undefined'
-          && document.querySelector('.markleaf-managed-selection-active') !== null
-        if (managedDrag && transaction.selection instanceof CellSelection && !transaction.docChanged) {
-          return false
-        }
-        // During a drag that began outside a table, prosemirror-tables may
-        // append a normalization transaction when the native endpoint lands
-        // exactly at the next cell's start. That transaction shortens the
-        // text selection back to the previous cell and causes the native
-        // highlight to alternate at the border. Keep the original text range
-        // for this gesture; normal table-selection transactions are untouched.
-        if (outsideDragActive) {
-          const currentSelection = state.selection
-          const fromCell = currentSelection instanceof TextSelection
-            ? cellAround(currentSelection.$from)
-            : null
-          const toCell = currentSelection instanceof TextSelection
-            ? cellAround(currentSelection.$to)
-            : null
-          if (currentSelection instanceof TextSelection
-            && transaction.selection instanceof TextSelection
-            && currentSelection.from === transaction.selection.from
-            && currentSelection.to !== transaction.selection.to
-            && fromCell !== null
-            && toCell !== null
-            && fromCell.pos !== toCell.pos) {
-            return false
-          }
-        }
-        if (!cellSelectionLocked) return true
-        if (transaction.getMeta(tableEditingKey) != null) return true
-        return transaction.docChanged || transaction.selection instanceof CellSelection
-      },
-    })]
+})]
   },
 })
 
