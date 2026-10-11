@@ -295,6 +295,35 @@ describe('shared editing interactions', () => {
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
   })
 
+  it('does not churn the same cross-cell selection at a cell edge', () => {
+    const { editor } = setup('| left | right |\n| --- | --- |', true)
+    const [firstCell, secondCell] = Array.from(editor.view.dom.querySelectorAll('td,th'))
+    const positions: number[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
+      positions.push(pos)
+      return false
+    })
+    vi.spyOn(Object.getPrototypeOf(editor.view), 'posAtCoords')
+      .mockReturnValueOnce({ pos: positions[0]!, inside: -1 })
+      .mockReturnValue({ pos: positions[1]!, inside: -1 })
+    const dispatchSpy = vi.spyOn(editor.view, 'dispatch')
+
+    firstCell!.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+    secondCell!.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+    secondCell!.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+
+    expect(editor.state.selection).toBeInstanceOf(CellSelection)
+    expect(dispatchSpy.mock.calls.filter(([tr]) => tr.selection instanceof CellSelection)).toHaveLength(1)
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  })
+
   it('collapses a locked cell selection when clicking outside the table', () => {
     // 右键菜单关闭后，点击表格之外应与正文一致地取消选择；filterTransaction
     // 不能把这次用户手势的折叠交易一并拦掉。
@@ -338,33 +367,215 @@ describe('shared editing interactions', () => {
     expect(editor.state.selection.empty).toBe(true)
   })
 
-  it('promotes a drag from outside the table to a whole-table selection', () => {
-    // 从表格外（如上方标题）拖进表格：整表提升为 CellSelection，替代
-    // WebKit 跨表格边界的原生文本选区（闪烁、输入失效、松开回缩的根源）。
+  it('keeps a text drag from outside the table as a text selection', () => {
+    // 从表格外（如上方标题）拖进表格时，继续沿用普通文字选区；进入第一个
+    // 单元格不能立即把选区提升为整表 CellSelection。
     const { editor } = setup('before\n\n| a | b |\n| - | - |\n| 1 | 2 |', true)
     const cellDom = editor.view.dom.querySelector('td,th')!
     const outside = editor.view.dom.querySelector('p')!
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => outside,
+    })
 
     // 表格外按下（插件不接管），拖动进入首个单元格
     outside.dispatchEvent(new MouseEvent('mousedown', {
       bubbles: true, button: 0, buttons: 1, clientX: 10, clientY: 10,
     }))
-    cellDom.dispatchEvent(new MouseEvent('mousemove', {
+    const move = new MouseEvent('mousemove', {
       bubbles: true, button: 0, buttons: 1, clientX: 10, clientY: 10,
-    }))
+    })
+    cellDom.dispatchEvent(move)
 
-    expect(editor.state.selection).toBeInstanceOf(CellSelection)
-    const cellCount = editor.state.selection.ranges.length
-    expect(cellCount).toBeGreaterThan(1)
-    expect(editor.view.dom.classList.contains('markleaf-cell-selection-locked')).toBe(true)
+    expect(move.defaultPrevented).toBe(false)
+    expect(editor.state.selection).not.toBeInstanceOf(CellSelection)
+    expect(editor.view.dom.classList.contains('markleaf-cell-selection-locked')).toBe(false)
+
+    let cellTextPosition: number | null = null
+    editor.state.doc.descendants((node, pos) => {
+      if (cellTextPosition !== null) return false
+      if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
+        cellTextPosition = pos + 2
+        return false
+      }
+      return true
+    })
+    expect(cellTextPosition).not.toBeNull()
+    const textSelection = TextSelection.create(editor.state.doc, 1, cellTextPosition!)
+    editor.view.dispatch(editor.state.tr.setSelection(textSelection))
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
 
-    // 松开后保持整表选中；随后点击表格之外可正常取消
-    expect(editor.state.selection).toBeInstanceOf(CellSelection)
-    editor.view.dom.dispatchEvent(new MouseEvent('mousedown', {
-      bubbles: true, button: 0, buttons: 1, clientX: 5, clientY: 5,
-    }))
+    // 松开后不能把跨表格文字选区收缩成落点单元格。
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
     expect(editor.view.dom.classList.contains('markleaf-cell-selection-locked')).toBe(false)
+  })
+
+  it('does not convert a late native selection after an outside drag enters a table', () => {
+    const { editor } = setup('before\n\n| a | b |\n| - | - |\n| 1 | 2 |', true)
+    const cellDom = editor.view.dom.querySelector('td,th')!
+    const outside = editor.view.dom.querySelector('p')!
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => outside,
+    })
+    editor.view.focus()
+    expect(editor.view.hasFocus()).toBe(true)
+
+    outside.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+    cellDom.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+    expect(editor.state.selection).not.toBeInstanceOf(CellSelection)
+
+    // A late native range is valid for a text drag; it must not be converted
+    // to a cell selection by the table lock.
+    const domSelection = window.getSelection()!
+    const nativeRange = document.createRange()
+    nativeRange.selectNodeContents(cellDom)
+    domSelection.removeAllRanges()
+    domSelection.addRange(nativeRange)
+    document.dispatchEvent(new Event('selectionchange'))
+
+    expect(domSelection.rangeCount).toBe(1)
+    expect(editor.state.selection).not.toBeInstanceOf(CellSelection)
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  })
+
+  it('preserves a cross-cell text selection at a cell edge during an outside drag', () => {
+    const { editor } = setup('before\n\n| left | right |\n| --- | --- |\n| one | two |', true)
+    const outside = editor.view.dom.querySelector('p')!
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => outside,
+    })
+    outside.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+
+    const cells: number[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
+      cells.push(pos)
+      return false
+    })
+    const firstText = cells[0]! + 2
+    const secondCellStart = cells[1]! + 2
+    editor.view.dispatch(editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, firstText, secondCellStart),
+    ))
+
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.from).toBe(firstText)
+    expect(editor.state.selection.to).toBe(secondCellStart)
+  })
+
+  it('uses the managed selection layer during an outside visual drag', async () => {
+    const { editor, mount } = setup('before\n\n| left | right |\n| --- | --- |\n| one | two |', true)
+    const outside = editor.view.dom.querySelector('p')!
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => outside,
+    })
+    outside.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1,
+    }))
+
+    // The editor owns the endpoint before WebKit starts its asynchronous drag
+    // pipeline, so the themed CSS Highlight remains the only visual layer.
+    expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(true)
+
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(false)
+  })
+
+  it('takes ownership of an outside drag before it reaches a table edge', () => {
+    const { editor, mount } = setup('before\n\n| left | right |\n| --- | --- |\n| one | two |', true)
+    const outside = editor.view.dom.querySelector('p')!
+    const cells: number[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
+      cells.push(pos)
+      return false
+    })
+    const posAtCoords = vi.spyOn(Object.getPrototypeOf(editor.view), 'posAtCoords')
+      .mockReturnValueOnce({ pos: 1, inside: -1 })
+      .mockReturnValue({ pos: cells[1]! + 2, inside: -1 })
+
+    const down = new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1,
+      clientX: 10, clientY: 10,
+    })
+    outside.dispatchEvent(down)
+
+    expect(down.defaultPrevented).toBe(true)
+    expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(true)
+
+    // The table plugin must not be able to replace this editor-owned text
+    // drag with a CellSelection while the pointer is near a cell boundary.
+    editor.view.dispatch(editor.state.tr.setSelection(
+      CellSelection.create(editor.state.doc, cells[0]!, cells[1]!),
+    ))
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+
+    const move = new MouseEvent('mousemove', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1,
+      clientX: 20, clientY: 20,
+    })
+    document.dispatchEvent(move)
+
+    expect(move.defaultPrevented).toBe(true)
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.from).toBe(1)
+    expect(editor.state.selection.to).toBeGreaterThan(editor.state.selection.from)
+    expect(editor.state.selection).not.toBeInstanceOf(CellSelection)
+    expect(posAtCoords).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-normalize the edge selection during mouseup settlement', async () => {
+    const { editor } = setup('before\n\n| left | right |\n| --- | --- |\n| one | two |', true)
+    const outside = editor.view.dom.querySelector('p')!
+    const [firstCell, secondCell] = Array.from(editor.view.dom.querySelectorAll('td,th'))
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => outside,
+    })
+    outside.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, button: 0, buttons: 1,
+    }))
+
+    const cells: number[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
+      cells.push(pos)
+      return false
+    })
+    const firstText = cells[0]! + 2
+    const secondCellStart = cells[1]! + 2
+    editor.view.dispatch(editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, firstText, secondCellStart),
+    ))
+
+    const firstTextNode = firstCell!.querySelector('p')!.firstChild!
+    const secondTextNode = secondCell!.querySelector('p')!.firstChild!
+    const nativeRange = document.createRange()
+    nativeRange.setStart(firstTextNode, 0)
+    nativeRange.setEnd(secondTextNode, 0)
+    const nativeSelection = window.getSelection()!
+    nativeSelection.removeAllRanges()
+    nativeSelection.addRange(nativeRange)
+    vi.spyOn(editor.view, 'posAtDOM')
+      .mockReturnValueOnce(firstText)
+      .mockReturnValueOnce(secondCellStart)
+
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    expect(editor.state.selection.from).toBe(firstText)
+    expect(editor.state.selection.to).toBe(secondCellStart)
   })
 
   it('keeps native character selection inside one cell when themed selection is off', () => {

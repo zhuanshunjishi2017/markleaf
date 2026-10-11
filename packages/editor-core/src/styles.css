@@ -257,6 +257,22 @@ body.markleaf-theme-dark {
   color: inherit;
 }
 
+/* During a normal drag that starts outside a table, the editor owns the
+   endpoint and paints one CSS Highlight. Hide WebKit's own range while that
+   state is being updated; otherwise its asynchronous endpoint can flash at a
+   table-cell boundary. */
+.markleaf-managed-selection-active .markleaf-document::selection,
+.markleaf-managed-selection-active .markleaf-document *::selection {
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+.markleaf-managed-selection-active .markleaf-document,
+.markleaf-managed-selection-active .markleaf-document * {
+  user-select: none !important;
+}
+
 /* 段落左侧浮动操作按钮（块手柄） */
 .markleaf-document {
   position: relative;

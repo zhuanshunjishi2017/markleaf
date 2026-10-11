@@ -360,6 +360,18 @@
   -webkit-text-fill-color: var(--text-selected) !important;
 }
 
+/* A CellSelection owns the whole-cell highlight.  Its hidden PM anchor/head
+   range must not be painted by the themed text-selection rule above, or the
+   last cell can flash with a second native highlight during a drag. */
+.markleaf-themed-visual-selection .markleaf-document.ProseMirror.markleaf-cell-selection-locked td::selection,
+.markleaf-themed-visual-selection .markleaf-document.ProseMirror.markleaf-cell-selection-locked td *::selection,
+.markleaf-themed-visual-selection .markleaf-document.ProseMirror.markleaf-cell-selection-locked th::selection,
+.markleaf-themed-visual-selection .markleaf-document.ProseMirror.markleaf-cell-selection-locked th *::selection {
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
 .markleaf-document .markleaf-mermaid {
   margin: 1em 0;
   display: flex;
