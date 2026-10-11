@@ -3,7 +3,10 @@ import type { HostCapabilities, ImageResourceResolver } from '@markleaf/editor-c
 export function resolveNativeCapabilities(hostPlatform?: 'macOS'): HostCapabilities & { imageCaptureMode: 'scroll' | 'fullSurface' } {
   const macOS = hostPlatform === 'macOS'
   return {
-    usesThemedVisualSelection: macOS,
+    // 统一选区模型：所有原生宿主使用主题化托管选区（::highlight API，
+    // Chromium 与 WebKit 均支持），单一绘制源消灭引擎交替。原生引擎仅
+    // 保留给 VS Code webview 等无 ::highlight 能力的环境。
+    usesThemedVisualSelection: true,
     primaryActivationModifier: macOS ? 'meta' : 'ctrl',
     installsFrontendWheelHandler: !macOS,
     imageCaptureMode: macOS ? 'scroll' : 'fullSurface',
