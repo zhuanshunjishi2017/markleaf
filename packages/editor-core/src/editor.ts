@@ -1376,9 +1376,26 @@ const ThemedSelection = Extension.create({
           const resolved = resolveDragPosition(event)
           if (!resolved) return
           try {
+            // 拖选经过块级原子节点（分割线、代码块控件等）时，posAtCoords
+            // 解析到原子边界，TextSelection.between 会把端点钳回原子前的
+            // 文本末尾——高亮表现为"回退到分割线"。把落在原子上的端点推进
+            // 到原子之后，使拖选能够穿越块级原子。
+            const skipBlockAtoms = (from: number): number => {
+              let pos = from
+              for (let guard = 0; guard < 32; guard++) {
+                const $pos = view.state.doc.resolve(pos)
+                const after = $pos.nodeAfter
+                if (!after || !after.isAtom || !after.isBlock) break
+                pos += after.nodeSize
+              }
+              return pos
+            }
+            const forward = resolved.pos >= managedDragAnchor
+            const anchorPos = forward ? skipBlockAtoms(managedDragAnchor) : managedDragAnchor
+            const endpointPos = forward ? skipBlockAtoms(resolved.pos) : resolved.pos
             const selection = TextSelection.between(
-              view.state.doc.resolve(managedDragAnchor),
-              view.state.doc.resolve(resolved.pos),
+              view.state.doc.resolve(anchorPos),
+              view.state.doc.resolve(endpointPos),
             )
             if (!selection.eq(view.state.selection)) {
               managedDragMoved = true
