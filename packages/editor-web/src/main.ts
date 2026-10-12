@@ -960,12 +960,34 @@ const formatMenu = document.createElement('div')
 formatMenu.id = 'format-menu'
 formatMenu.className = 'format-menu'
 formatMenu.hidden = true
-const formatButtons: Array<{ command: string; glyph: string; label: string }> = [
-  { command: 'toggleBold', glyph: '', label: 'Bold' },
-  { command: 'toggleItalic', glyph: '', label: 'Italic' },
-  { command: 'toggleUnderline', glyph: '', label: 'Underline' },
-  { command: 'toggleStrike', glyph: '\uEDE0', label: 'Strikethrough' },
-  { command: 'toggleHighlight', glyph: '\uE7E6', label: 'Text highlight' },
+// 图标不使用 Segoe Fluent Icons 等平台字体（WKWebView 无该字体，会渲染成豆腐块）：
+// B/I/U/S 用样式化字母，高亮/格式刷/清除用内联 SVG（currentColor 跟随深浅色）。
+const formatButtons: Array<{ command: string; label: string; content: string }> = [
+  {
+    command: 'toggleBold',
+    label: 'Bold',
+    content: '<span class="format-menu-glyph format-menu-glyph-bold">B</span>',
+  },
+  {
+    command: 'toggleItalic',
+    label: 'Italic',
+    content: '<span class="format-menu-glyph format-menu-glyph-italic">I</span>',
+  },
+  {
+    command: 'toggleUnderline',
+    label: 'Underline',
+    content: '<span class="format-menu-glyph format-menu-glyph-underline">U</span>',
+  },
+  {
+    command: 'toggleStrike',
+    label: 'Strikethrough',
+    content: '<span class="format-menu-glyph format-menu-glyph-strike">S</span>',
+  },
+  {
+    command: 'toggleHighlight',
+    label: 'Text highlight',
+    content: '<svg class="format-menu-glyph-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8.1 1.8c.2-.45.85-.45 1.05 0l3.1 6.9c.14.32-.02.7-.36.82-.32.12-.68-.04-.82-.36l-.62-1.4H6.8l-.62 1.4c-.14.32-.5.48-.82.36-.34-.12-.5-.5-.36-.82l3.1-6.9ZM7.35 5.9 8.62 3l1.27 2.9H7.35Z"/><rect x="2.2" y="11.2" width="11.6" height="2.6" rx="1.3"/></svg>',
+  },
 ]
 const formatButtonElements: HTMLButtonElement[] = []
 
@@ -1004,7 +1026,7 @@ for (const entry of formatButtons) {
   button.type = 'button'
   button.className = 'format-menu-button'
   button.dataset.command = entry.command
-  button.textContent = entry.glyph
+  button.innerHTML = entry.content
   button.setAttribute('aria-label', entry.label)
   attachFormatCommand(button, entry.command)
   formatButtonElements.push(button)
@@ -1039,7 +1061,8 @@ const formatPainterButton = document.createElement('button')
 formatPainterButton.type = 'button'
 formatPainterButton.className = 'format-menu-button'
 formatPainterButton.dataset.command = 'formatPainter'
-formatPainterButton.textContent = '\uEC34'
+formatPainterButton.innerHTML =
+  '<svg class="format-menu-glyph-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.7 1.6c.5.5.5 1.3 0 1.8l-4.9 4.9-1.7-1.7 4.9-4.9c.5-.5 1.3-.5 1.7 0ZM6.3 7.2l1.9 1.9-.6.6c-.3.3-.4.6-.4 1-.05 1.4-1.1 2.6-2.5 2.8-1.2.2-2.5-.05-3.5-.75.9-.3 1.5-.9 1.75-1.8.25-1 .9-1.75 1.9-2.05.5-.15 1-.05 1.45.25Z"/><path d="M2.2 13.2c.5.35 1.15.5 1.75.4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>'
 formatPainterButton.setAttribute('aria-label', 'Format painter')
 formatPainterButton.title = 'Format painter'
 attachFormatCommand(formatPainterButton, 'formatPainter')
@@ -1049,7 +1072,8 @@ const clearFormatButton = document.createElement('button')
 clearFormatButton.type = 'button'
 clearFormatButton.className = 'format-menu-button'
 clearFormatButton.dataset.command = 'clearFormat'
-clearFormatButton.textContent = '\uE75C'
+clearFormatButton.innerHTML =
+  '<svg class="format-menu-glyph-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8.9 2.3c.45-.45 1.15-.45 1.6 0l2.9 2.9c.45.45.45 1.15 0 1.6l-5.4 5.4c-.3.3-.7.45-1.1.45H4.3L2 10.4c-.45-.45-.45-1.15 0-1.6L8.9 2.3Zm-.8 2 3.3 3.3 1.6-1.6-3.3-3.3-1.6 1.6Z"/><path d="M4.2 14h9.6c.4 0 .7.3.7.7s-.3.7-.7.7H4.2c-.4 0-.7-.3-.7-.7s.3-.7.7-.7Z"/></svg>'
 clearFormatButton.setAttribute('aria-label', 'Clear formatting')
 clearFormatButton.title = 'Clear formatting'
 attachFormatCommand(clearFormatButton, 'clearFormat')

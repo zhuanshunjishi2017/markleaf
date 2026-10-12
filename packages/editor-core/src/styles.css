@@ -813,14 +813,40 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   border: none;
   background: transparent;
   color: #24292f;
-  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
-  font-size: 14px;
+  font-family: inherit;
+  font-size: 13px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 2px;
   cursor: default;
+}
+
+/* 工具条字形：字母 + 内联 SVG，跨平台一致（不依赖平台图标字体）。 */
+.format-menu-glyph {
+  display: block;
+  line-height: 1;
+}
+.format-menu-glyph-bold {
+  font-weight: 700;
+}
+.format-menu-glyph-italic {
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.format-menu-glyph-underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.format-menu-glyph-strike {
+  text-decoration: line-through;
+}
+.format-menu-glyph-svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  display: block;
 }
 
 .format-menu-dark .format-menu-button {
