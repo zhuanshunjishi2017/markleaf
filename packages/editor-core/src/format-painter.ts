@@ -14,12 +14,9 @@ export type FormatPainterSnapshot = {
 }
 
 const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code'] as const
-const forbiddenAncestorNames = new Set([
-  'table',
-  'tableRow',
-  'tableCell',
-  'tableHeader',
-])
+// 表格单元格内的段落可以吸附/涂抹行内标记；块类型转换（列表、标题）
+// 仍只在表格外生效，避免把单元格内容改写成 Markdown 序列化不支持的块。
+const cellAncestorNames = new Set(['tableCell', 'tableHeader'])
 
 const listTypes = new Set(['bulletList', 'orderedList', 'taskList'])
 
@@ -82,25 +79,30 @@ export function normalizeContextMenuCaretPosition(editor: Editor, position: numb
 }
 
 /// 光标/选区所在块是否为可涂抹的块：段落、标题，或列表（列表项按所在列表类型计）。
+/// 单元格内的段落视为 'paragraph'，但仅用于行内标记的吸附与涂抹。
 function blockAt($from: ResolvedPos): PaintableBlock | null {
+  let inCell = false
   for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if (forbiddenAncestorNames.has($from.node(depth).type.name)) return null
+    const name = $from.node(depth).type.name
+    if (cellAncestorNames.has(name)) {
+      inCell = true
+      break
+    }
   }
   const listType = listTypeAt($from)
-  if (listType) return listType
+  if (listType) return inCell ? null : listType
   const parent = $from.parent
   const name = parent.type.name
-  let block: PaintableBlock
   if (name === 'paragraph') {
-    block = 'paragraph'
-  } else if (name === 'heading') {
+    return 'paragraph'
+  }
+  if (inCell) return null
+  if (name === 'heading') {
     const level = parent.attrs.level as unknown
     if (typeof level !== 'number' || level < 1 || level > 6) return null
-    block = `heading${level}` as PaintableBlock
-  } else {
-    return null
+    return `heading${level}` as PaintableBlock
   }
-  return block
+  return null
 }
 
 /**
@@ -177,6 +179,16 @@ function rangeContainsMark(editor: Editor, from: number, to: number, markName: s
   return found
 }
 
+/// 目标位置是否位于表格单元格内。单元格内只涂抹行内标记，
+/// 不做块类型转换（列表/标题），保证 Markdown 表格序列化不被破坏。
+function positionInTableCell(editor: Editor, pos: number): boolean {
+  const $pos = editor.state.doc.resolve(pos)
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if (cellAncestorNames.has($pos.node(depth).type.name)) return true
+  }
+  return false
+}
+
 /// 吸附格式：有选区时取选区内统一标记；无选区（光标）时取光标处激活的标记。
 export function captureFormat(editor: Editor): FormatPainterSnapshot | null {
   const selection = editor.state.selection
@@ -230,14 +242,19 @@ export function applyCapturedFormat(editor: Editor, snapshot: FormatPainterSnaps
   if (snapshot.marks.code && rangeContainsMark(editor, targetFrom, targetTo, 'link')) return false
 
   const sourceIsList = listTypes.has(snapshot.block)
-  const targetList = targetBlocks
-    ?.map((entry) => entry.block)
-    .find((block) => listTypes.has(block)) ?? listTypeAt($from)
+  const targetInCell = positionInTableCell(editor, targetFrom)
+  const targetList = targetInCell
+    ? null
+    : targetBlocks
+        ?.map((entry) => entry.block)
+        .find((block) => listTypes.has(block)) ?? listTypeAt($from)
   let chain = editor.chain().focus()
   if (!hasSelection || targetFrom !== from || targetTo !== to) {
     chain = chain.setTextSelection({ from: targetFrom, to: targetTo })
   }
-  if (sourceIsList) {
+  if (targetInCell) {
+    // 单元格内只刷行内标记，块类型保持原样。
+  } else if (sourceIsList) {
     // 目标已是同类型列表：仅改行内标记；否则先退出当前列表（如有），再进入目标列表。
     if (targetList !== snapshot.block) {
       if (targetList) {
