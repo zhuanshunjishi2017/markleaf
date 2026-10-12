@@ -256,7 +256,7 @@ require_text "$MAC_CONTEXT" 'L10n.t("撤销"), "undo"'
 require_text "$MAC_CONTEXT" 'L10n.t("重做"), "redo"'
 require_text "$MAC_CONTEXT" 'L10n.t("全选"), "selectAll"'
 # 格式刷必须独立成组（在剪贴板与「格式」之间），不能再躺在「格式」子菜单里。
-require_text "$MAC_CONTEXT" 'painter.representedObject = "formatPainterArm"'
+require_text "$MAC_CONTEXT" 'painter.representedObject = "formatPainter"'
 require_text "$MAC_CONTEXT" 'apply.representedObject = "formatPainterApply"'
 reject_text "$MAC_CONTEXT" 'format.addItem(painter'
 

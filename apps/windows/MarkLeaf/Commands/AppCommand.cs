@@ -174,6 +174,10 @@ public enum AppCommand
     DuplicateParagraph,
     DeleteParagraph,
     LocateCurrentDocumentInWorkspace,
+
+    // 右键菜单对齐新增（0x134x 段被文档标签命令的自动编号占用）。
+    NormalizeInlineCode = 0x1351,
+    FormatPainterApply = 0x1352,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);

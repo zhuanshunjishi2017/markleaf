@@ -638,12 +638,15 @@ internal sealed class NativeMenuService : IDisposable
 
             if (status.SourceMode)
             {
+                AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
+                AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
+                AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-                commands.AddRange([AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
+                commands.AddRange([AppCommand.Undo, AppCommand.Redo, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
             }
             else if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
             {
@@ -739,17 +742,19 @@ internal sealed class NativeMenuService : IDisposable
             }
             else
             {
-                AppendCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
-                AppendCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.InsertLink, Loc.Get("contextMenu.insertLink"));
-                AppendPopup(menu, Loc.Get("contextMenu.insertImage"), BuildInsertImageSubmenu());
+                // 普通上下文（对齐 macOS showEditorContextMenu 普通分支）：
+                // [整理行内代码] 历史 剪贴板 行内命令 图片 段落▸ 格式刷 格式▸ 清除格式。
+                if (status.Actions.TryGetValue("normalizeInlineCode", out var normalizeAction)
+                    && normalizeAction.IsEnabled)
+                {
+                    AppendCommand(menu, AppCommand.NormalizeInlineCode, Loc.Get("contextMenu.normalizeInlineCode"));
+                    AppendSeparator(menu);
+                }
+
+                AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
+                AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
                 AppendSeparator(menu);
 
-                var paragraphMenu = BuildBlockHandleMenu();
-                AppendPopup(menu, Loc.Get("contextMenu.paragraphGroup"), paragraphMenu);
-
-                AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
 
@@ -759,17 +764,46 @@ internal sealed class NativeMenuService : IDisposable
                 AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
                 AppendSeparator(copyPasteAs);
                 AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
-                AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
+                AppendPopup(menu, Loc.Get("contextMenu.copyAs"), copyPasteAs);
 
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
+                AppendSeparator(menu);
+
+                AppendCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
+                AppendCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
+                AppendCommand(menu, AppCommand.InsertLink, Loc.Get("contextMenu.insertLink"));
+                AppendPopup(menu, Loc.Get("contextMenu.insertImage"), BuildInsertImageSubmenu());
+                AppendSeparator(menu);
+
+                AppendPopup(menu, Loc.Get("contextMenu.paragraphGroup"), BuildBlockHandleMenu());
+                AppendSeparator(menu);
+
+                AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("contextMenu.formatPainter"));
+                AppendCommand(menu, AppCommand.FormatPainterApply, Loc.Get("contextMenu.formatPainterApply"));
+                AppendSeparator(menu);
+
+                var format = CreateMenu(true);
+                AppendCommand(format, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
+                AppendCommand(format, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
+                AppendCommand(format, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
+                AppendCommand(format, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
+                AppendCommand(format, AppCommand.ToggleHighlight, Loc.Get("menu.format.highlight"));
+                AppendPopup(menu, Loc.Get("contextMenu.formatGroup"), format);
+                AppendSeparator(menu);
+
+                AppendCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.format.clearFormat"));
                 commands.AddRange(BlockHandleCommands);
                 commands.AddRange([
+                    AppCommand.Undo, AppCommand.Redo, AppCommand.NormalizeInlineCode,
                     AppCommand.ToggleInlineCode, AppCommand.InsertMathInline,
                     AppCommand.InsertLink, AppCommand.InsertImage, AppCommand.InsertImageFromUrl,
                     AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
-                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
+                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll,
+                    AppCommand.FormatPainter, AppCommand.FormatPainterApply,
+                    AppCommand.ToggleBold, AppCommand.ToggleItalic, AppCommand.ToggleUnderline,
+                    AppCommand.ToggleStrike, AppCommand.ToggleHighlight, AppCommand.ClearFormat]);
             }
 
             return (menu, commands.ToArray());
