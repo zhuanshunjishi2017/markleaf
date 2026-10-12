@@ -6,7 +6,7 @@ extension EditorSession {
             "rotateImage": "rotateImageClockwise", "declareCodeLanguage": "setCodeBlockLanguage",
             "editTableCaption": "setTableCaption", "editImageCaption": "setImageCaption",
             "sourceMode": "toggleSourceMode", "toggleEditorFocusMode": "setEditorFocusMode",
-            "toggleTypewriterMode": "setEditorTypewriterMode", "tableEditing": "addRowAfter",
+            "toggleTypewriterMode": "setEditorTypewriterMode",
             "resizeImage100": "resizeImage", "resizeImage75": "resizeImage",
             "resizeImage90": "resizeImage", "resizeImage50": "resizeImage",
         ]

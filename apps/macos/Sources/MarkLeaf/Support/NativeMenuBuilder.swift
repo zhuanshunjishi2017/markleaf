@@ -209,24 +209,6 @@ final class NativeMenuBuilder {
         return menu
     }
 
-    private func tableEditingMenu() -> NSMenu {
-        let menu = NSMenu(title: L10n.t("表格"))
-        menu.addItem(commandItem(L10n.t("在上方添加行"), "addRowBefore"))
-        menu.addItem(commandItem(L10n.t("在下方添加行"), "addRowAfter"))
-        menu.addItem(commandItem(L10n.t("删除当前行"), "deleteRow"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("在左侧添加列"), "addColumnBefore"))
-        menu.addItem(commandItem(L10n.t("在右侧添加列"), "addColumnAfter"))
-        menu.addItem(commandItem(L10n.t("删除当前列"), "deleteColumn"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("左对齐"), "alignTableLeft"))
-        menu.addItem(commandItem(L10n.t("居中对齐"), "alignTableCenter"))
-        menu.addItem(commandItem(L10n.t("右对齐"), "alignTableRight"))
-        menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("删除表格"), "deleteTable"))
-        return menu
-    }
-
     private func formatMenu() -> NSMenu {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
@@ -246,11 +228,6 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
         menu.addItem(commandItem(L10n.t("格式化代码块"), "formatCodeBlock", key: "f", mask: [.shift, .option]))
         menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true, validationCommand: "insertAlertNote"))
-        let tableItem = popup(L10n.t("表格"), tableEditingMenu())
-        tableItem.representedObject = "tableEditing"
-        tableItem.target = MenuRouter.shared
-        tableItem.action = #selector(MenuRouter.validateSubmenuParent(_:))
-        menu.addItem(tableItem)
         menu.addItem(commandItem(L10n.t("YAML 前置元数据"), "showFrontMatter"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("清除格式"), "clearFormat"))

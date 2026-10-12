@@ -72,7 +72,7 @@ mac_format="$(method_body "$MAC_MENU" formatMenu)"
 require_text "$mac_format" 'paragraphStyleMenu()'
 require_text "$mac_format" '"toggleBlockquote"'
 require_text "$mac_format" '"toggleCodeBlock"'
-require_text "$mac_format" 'tableEditingMenu()'
+reject_text "$mac_format" 'tableEditingMenu()'
 require_text "$mac_format" 'clearFormat'
 reject_text "$mac_format" '"toggleCode"'
 for command in rotateImage resizeImage saveImageAs toggleCodeHighlight importTheme revealThemeFolder; do
@@ -89,9 +89,6 @@ mac_lists="$(method_body "$MAC_MENU" listsMenu)"
 for command in toggleBulletList toggleOrderedList toggleTaskList; do
   require_text "$mac_lists" "\"$command\""
 done
-
-mac_table_edit="$(method_body "$MAC_MENU" tableEditingMenu)"
-require_text "$mac_table_edit" 'addRowBefore'
 
 mac_view="$(method_body "$MAC_MENU" viewMenu)"
 for text in 主题设置 设置缩放; do
