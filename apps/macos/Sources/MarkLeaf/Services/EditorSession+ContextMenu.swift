@@ -422,6 +422,9 @@ extension EditorSession {
 
     private func addTableCommands(to menu: NSMenu, state: EditorContextMenuState) {
         guard EditorMenuPolicy.allows(.tableRows, state: state) else { return }
+        // 顺序对齐 Windows NativeMenuService.AppendTableCommands(includeClipboard: true)。
+        addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
+        menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("在上方添加行"), "addRowBefore")
         addFormatCommand(menu, L10n.t("在下方添加行"), "addRowAfter")
         addFormatCommand(menu, L10n.t("删除当前行"), "deleteRow")
@@ -438,7 +441,9 @@ extension EditorSession {
         alignItem.submenu = align
         menu.addItem(alignItem)
         menu.addItem(.separator())
-        addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
+        addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: editorCommandEnabled("cut"))
+        addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: editorCommandEnabled("copy"))
+        addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: editorCommandEnabled("paste"))
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("删除表格"), "deleteTable")
     }
