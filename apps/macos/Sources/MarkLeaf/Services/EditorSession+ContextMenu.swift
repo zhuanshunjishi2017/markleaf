@@ -240,8 +240,9 @@ extension EditorSession {
         let windowPoint = webView.convert(pointInView, to: nil)
         var screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
         if menuHeight > 0, let screen = window.screen ?? NSScreen.main {
-            // 工具条占据右键点下方 menuHeight + 间距的高度；估算菜单展开后的
-            // 底边越出屏幕可视区即会向上翻转盖住工具条，此时隐藏工具条并锚回右键点。
+            // 工具条占据右键点下方 menuHeight + 间距的高度：原生菜单优先在其下方
+            // 展开；下方放不下时把菜单整体移到工具条上方（底边贴工具条顶），
+            // 保证工具条与菜单互不遮挡、始终同时可见。
             let contextMenuGap: CGFloat = 10
             let offsetPoint = Self.editorContextMenuPoint(
                 clientX: clientX,
@@ -253,8 +254,11 @@ extension EditorSession {
             let offsetScreenPoint = window.convertToScreen(NSRect(origin: offsetWindowPoint, size: .zero)).origin
             let estimatedMenuHeight = menu.size.height
             if estimatedMenuHeight > 0,
-               offsetScreenPoint.y + estimatedMenuHeight > screen.visibleFrame.maxY {
-                execute("hideFormatMenu")
+               offsetScreenPoint.y - estimatedMenuHeight < screen.visibleFrame.minY {
+                // 菜单底边贴工具条顶：popUp 的锚点是菜单左上角，故上移一个菜单高度。
+                screenPoint = NSPoint(
+                    x: screenPoint.x,
+                    y: min(screen.visibleFrame.maxY, screenPoint.y + estimatedMenuHeight))
             } else {
                 screenPoint = offsetScreenPoint
             }

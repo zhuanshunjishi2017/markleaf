@@ -625,7 +625,6 @@ internal sealed partial class MainForm
                 Handle,
                 request,
                 (clientX, clientY) => _editorHost.EditorPointToScreen(clientX, clientY),
-                () => _editorHost.ExecuteCommand("hideFormatMenu"),
                 status);
         }
         finally

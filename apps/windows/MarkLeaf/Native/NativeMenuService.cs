@@ -348,28 +348,35 @@ internal sealed class NativeMenuService : IDisposable
     }
 
     /// 弹出编辑器右键菜单。
-    /// 前端浮动格式工具条占据右键点下方 menuHeight + 间距的高度，原生菜单正常在其下方展开；
-    /// 当下方空间不足以容纳整个菜单（会被 Win32 翻转成向上展开压住工具条）时，
-    /// 先隐藏工具条并让菜单锚回右键点本身。
+    /// 前端浮动格式工具条占据右键点下方 menuHeight + 间距的高度：原生菜单优先在其
+    /// 下方展开；下方放不下时把菜单整体移到工具条上方（底边贴工具条顶），
+    /// 保证工具条与菜单互不遮挡、始终同时可见。
     public void ShowEditorContextMenu(
         nint window,
         EditorContextMenuRequest request,
         Func<double, double, Point> editorPointToScreen,
-        Action hideFloatingFormatMenu,
         EditorCommandStatus status)
     {
         const double contextMenuGap = 10;
-        var screenPoint = editorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap);
         var anchorPoint = editorPointToScreen(request.ClientX, request.ClientY);
+        var screenPoint = request.MenuHeight > 0
+            ? editorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap)
+            : anchorPoint;
         var (menu, commands) = status.ExpandedSource
             ? BuildExpandedSourceContextMenu()
             : BuildEditorContextMenu(status);
         try
         {
-            if (request.MenuHeight > 0 && MenuWouldFlipUpwards(window, menu, screenPoint))
+            if (request.MenuHeight > 0)
             {
-                hideFloatingFormatMenu();
-                screenPoint = anchorPoint;
+                var estimatedHeight = EstimateMenuHeight(menu);
+                var workArea = System.Windows.Forms.Screen.GetWorkingArea(screenPoint);
+                if (estimatedHeight > 0 && screenPoint.Y + estimatedHeight > workArea.Bottom)
+                {
+                    screenPoint = new Point(
+                        anchorPoint.X,
+                        Math.Max(workArea.Top, anchorPoint.Y - contextMenuGap - estimatedHeight));
+                }
             }
             foreach (var command in commands)
             {
@@ -638,15 +645,13 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    /// 估算原生菜单在锚点下方展开是否会越出工作区（Win32 会将其整体翻转向上，
-    /// 盖住前端浮动格式工具条）。用菜单项数 × 系统菜单行高近似实际高度。
-    private static bool MenuWouldFlipUpwards(nint window, nint menu, Point screenPoint)
+    /// 估算弹出菜单的实际像素高度：菜单项数 × 系统菜单行高（SM_CYMENUSIZE，
+    /// 随进程 DPI 缩放），加边框与分隔线的余量。
+    private static int EstimateMenuHeight(nint menu)
     {
         var itemCount = NativeMethods.GetMenuItemCount(menu);
-        if (itemCount <= 0) return false;
-        var estimatedHeight = itemCount * System.Windows.Forms.SystemInformation.MenuHeight;
-        var workArea = System.Windows.Forms.Screen.GetWorkingArea(screenPoint);
-        return screenPoint.Y + estimatedHeight > workArea.Bottom;
+        if (itemCount <= 0) return 0;
+        return itemCount * NativeMethods.GetSystemMetrics(NativeMethods.SmCyMenuSize) + 12;
     }
 
     private (nint Menu, AppCommand[] Commands) BuildEditorContextMenu(EditorCommandStatus status)
