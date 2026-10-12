@@ -160,7 +160,7 @@ internal sealed class EditorHostController : IDisposable
         return EditorPointToScreen(request.ClientX, request.ClientY);
     }
 
-    private Point EditorPointToScreen(double clientX, double clientY)
+    public Point EditorPointToScreen(double clientX, double clientY)
     {
         var devicePoint = EditorCoordinateConverter.CssToDevicePoint(
             clientX,

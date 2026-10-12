@@ -119,6 +119,8 @@ final class StyleManager {
             }
             return dict
         }
+        // 启用编辑区右键位置的浮动格式工具条（与 Windows 端一致）。
+        payload["frontendFormatMenu"] = true
         payload["activeStyle"] = defaultStyleId
         return payload
     }

@@ -621,7 +621,12 @@ internal sealed partial class MainForm
                 : request.SourceMode
                 ? _editorCommandStatus with { SourceMode = true, ExpandedSource = false }
                 : _editorCommandStatus;
-            _menuService.ShowEditorContextMenu(Handle, screenPoint, status);
+            _menuService.ShowEditorContextMenu(
+                Handle,
+                request,
+                (clientX, clientY) => _editorHost.EditorPointToScreen(clientX, clientY),
+                () => _editorHost.ExecuteCommand("hideFormatMenu"),
+                status);
         }
         finally
         {

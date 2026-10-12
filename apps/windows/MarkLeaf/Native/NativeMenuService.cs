@@ -347,13 +347,30 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    public void ShowEditorContextMenu(nint window, Point screenPoint, EditorCommandStatus status)
+    /// 弹出编辑器右键菜单。
+    /// 前端浮动格式工具条占据右键点下方 menuHeight + 间距的高度，原生菜单正常在其下方展开；
+    /// 当下方空间不足以容纳整个菜单（会被 Win32 翻转成向上展开压住工具条）时，
+    /// 先隐藏工具条并让菜单锚回右键点本身。
+    public void ShowEditorContextMenu(
+        nint window,
+        EditorContextMenuRequest request,
+        Func<double, double, Point> editorPointToScreen,
+        Action hideFloatingFormatMenu,
+        EditorCommandStatus status)
     {
+        const double contextMenuGap = 10;
+        var screenPoint = editorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap);
+        var anchorPoint = editorPointToScreen(request.ClientX, request.ClientY);
         var (menu, commands) = status.ExpandedSource
             ? BuildExpandedSourceContextMenu()
             : BuildEditorContextMenu(status);
         try
         {
+            if (request.MenuHeight > 0 && MenuWouldFlipUpwards(window, menu, screenPoint))
+            {
+                hideFloatingFormatMenu();
+                screenPoint = anchorPoint;
+            }
             foreach (var command in commands)
             {
                 var state = _router.GetState(command);
@@ -619,6 +636,17 @@ internal sealed class NativeMenuService : IDisposable
             NativeMethods.DestroyMenu(menu);
             throw;
         }
+    }
+
+    /// 估算原生菜单在锚点下方展开是否会越出工作区（Win32 会将其整体翻转向上，
+    /// 盖住前端浮动格式工具条）。用菜单项数 × 系统菜单行高近似实际高度。
+    private static bool MenuWouldFlipUpwards(nint window, nint menu, Point screenPoint)
+    {
+        var itemCount = NativeMethods.GetMenuItemCount(menu);
+        if (itemCount <= 0) return false;
+        var estimatedHeight = itemCount * System.Windows.Forms.SystemInformation.MenuHeight;
+        var workArea = System.Windows.Forms.Screen.GetWorkingArea(screenPoint);
+        return screenPoint.Y + estimatedHeight > workArea.Bottom;
     }
 
     private (nint Menu, AppCommand[] Commands) BuildEditorContextMenu(EditorCommandStatus status)

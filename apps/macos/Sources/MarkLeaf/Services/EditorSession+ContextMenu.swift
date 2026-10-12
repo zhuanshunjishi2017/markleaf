@@ -102,9 +102,13 @@ extension EditorSession {
     }
 
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
+    /// menuHeight：前端浮动格式工具条的高度；原生菜单正常在其下方展开，
+    /// 当下方空间不足以容纳整个菜单（AppKit 会翻转成向上展开压住工具条）时，
+    /// 先隐藏工具条并让菜单锚回右键点本身。
     func showEditorContextMenu(
         clientX: Double,
         clientY: Double,
+        menuHeight: Double = 0,
         canStartFormatPainter: Bool? = nil,
         formatPainterArmed: Bool? = nil
     ) {
@@ -234,7 +238,27 @@ extension EditorSession {
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
         let windowPoint = webView.convert(pointInView, to: nil)
-        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        var screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        if menuHeight > 0, let screen = window.screen ?? NSScreen.main {
+            // 工具条占据右键点下方 menuHeight + 间距的高度；估算菜单展开后的
+            // 底边越出屏幕可视区即会向上翻转盖住工具条，此时隐藏工具条并锚回右键点。
+            let contextMenuGap: CGFloat = 10
+            let offsetPoint = Self.editorContextMenuPoint(
+                clientX: clientX,
+                clientY: clientY + menuHeight + Double(contextMenuGap),
+                viewHeight: webView.bounds.height,
+                isFlipped: webView.isFlipped
+            )
+            let offsetWindowPoint = webView.convert(offsetPoint, to: nil)
+            let offsetScreenPoint = window.convertToScreen(NSRect(origin: offsetWindowPoint, size: .zero)).origin
+            let estimatedMenuHeight = menu.size.height
+            if estimatedMenuHeight > 0,
+               offsetScreenPoint.y + estimatedMenuHeight > screen.visibleFrame.maxY {
+                execute("hideFormatMenu")
+            } else {
+                screenPoint = offsetScreenPoint
+            }
+        }
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
     }
 

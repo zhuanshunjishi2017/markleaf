@@ -572,6 +572,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 showEditorContextMenu(
                     clientX: x,
                     clientY: y,
+                    menuHeight: payload["menuHeight"] as? Double ?? 0,
                     canStartFormatPainter: payload["canStartFormatPainter"] as? Bool,
                     formatPainterArmed: payload["formatPainterArmed"] as? Bool
                 )
