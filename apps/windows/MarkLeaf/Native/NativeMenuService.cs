@@ -375,7 +375,7 @@ internal sealed class NativeMenuService : IDisposable
                 {
                     screenPoint = new Point(
                         anchorPoint.X,
-                        Math.Max(workArea.Top, anchorPoint.Y - contextMenuGap - estimatedHeight));
+                        Math.Max(workArea.Top, anchorPoint.Y - (int)contextMenuGap - estimatedHeight));
                 }
             }
             foreach (var command in commands)
