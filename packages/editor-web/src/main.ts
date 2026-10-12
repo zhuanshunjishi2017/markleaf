@@ -1191,6 +1191,9 @@ editorMount.addEventListener('contextmenu', (event) => {
     from: editor.state.selection.from,
     to: editor.state.selection.to,
   }
+  // 原生菜单弹出会夺走 WebView 焦点触发 blur；标记期间保留选区，
+  // 避免主题化选区高亮被 blur 处理器塌缩（菜单关闭时由 hideFormatMenu 清除）。
+  editor.view.dom.dataset.markleafPreserveSelection = '1'
   sendEditorState()
   const state = getEditorCommandPresentation(editor, { readOnly, sourceMode, documentType }, interactions.state())
   const showFormat = frontendFormatMenuEnabled && state.actions.toggleBold?.enabled === true
@@ -1558,6 +1561,13 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'hideFormatMenu') {
           hideFormatMenu()
+          // 右键菜单关闭：解除“菜单期间保留选区”标记（配合 ThemedSelection 的
+          // blur 守卫），并确认 PM 选区仍为右键时的范围。
+          delete editor.view.dom.dataset.markleafPreserveSelection
+          if (contextMenuSelection) {
+            editor.commands.setTextSelection(contextMenuSelection)
+            contextMenuSelection = null
+          }
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }

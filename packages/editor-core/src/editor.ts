@@ -1493,6 +1493,13 @@ const ThemedSelection = Extension.create({
         },
         handleDOMEvents: {
           blur(view) {
+            // 原生右键菜单（NSMenu/TrackPopupMenu）弹出时 WebView 会失焦触发
+            // blur；此时必须保留选区，否则菜单打开后高亮消失、菜单命令失去
+            // 作用范围。前端在 contextmenu 时打 markleafPreserveSelection 标，
+            // 菜单关闭随 hideFormatMenu 清除。
+            if (view.dom.dataset.markleafPreserveSelection === '1') {
+              return false
+            }
             const selection = view.state.selection
             if (!selection.empty) {
               const collapsed = Selection.near(view.state.doc.resolve(selection.from), 1)

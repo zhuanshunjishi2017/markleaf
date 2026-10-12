@@ -264,6 +264,9 @@ extension EditorSession {
             }
         }
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        // 对齐 Windows 的 finally 语义：原生菜单关闭时同步隐藏前端浮动格式
+        // 工具条，并解除“菜单期间保留选区”的标记（见 ThemedSelection blur 守卫）。
+        execute("hideFormatMenu")
     }
 
     static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat, isFlipped: Bool) -> NSPoint {
@@ -408,6 +411,9 @@ extension EditorSession {
         let windowPoint = webView.convert(pointInView, to: nil)
         let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        // 对齐 Windows 的 finally 语义：原生菜单关闭时同步隐藏前端浮动格式
+        // 工具条，并解除“菜单期间保留选区”的标记（见 ThemedSelection blur 守卫）。
+        execute("hideFormatMenu")
     }
 
     private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {
