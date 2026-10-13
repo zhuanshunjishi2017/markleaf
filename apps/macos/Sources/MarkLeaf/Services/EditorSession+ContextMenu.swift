@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import WebKit
 
 extension EditorSession {
     /// 段落左侧句柄菜单（对应 Windows ParagraphBlockHandleMenu）。
@@ -102,17 +103,15 @@ extension EditorSession {
     }
 
     /// 编辑器右键菜单（对应 C# OnEditorContextMenuRequested）。
-    /// menuHeight：前端浮动格式工具条的高度；原生菜单正常在其下方展开，
-    /// 当下方空间不足以容纳整个菜单（AppKit 会翻转成向上展开压住工具条）时，
-    /// 先隐藏工具条并让菜单锚回右键点本身。
+    /// 快捷格式行与普通菜单项共用同一个 NSMenu 和菜单跟踪生命周期。
     func showEditorContextMenu(
         clientX: Double,
         clientY: Double,
-        menuHeight: Double = 0,
         canStartFormatPainter: Bool? = nil,
         formatPainterArmed: Bool? = nil
     ) {
         guard let webView, let window = webView.window else { return }
+        activeNativeFormatMenuSession?.finish()
         if editorMenuState.expandedSource {
             showExpandedSourceContextMenu(clientX: clientX, clientY: clientY)
             return
@@ -131,6 +130,20 @@ extension EditorSession {
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         let state = editorMenuState
         let semanticContext = EditorMenuPolicy.semanticContext(for: state)
+        let session = NativeFormatMenuSession(owner: self, menu: menu)
+        if !state.isSourceMode && !state.isReadOnly && state.actions["toggleBold"]?.enabled == true {
+            let toolbar = NativeFormatToolbarView(
+                actions: state.actions,
+                canStartFormatPainter: canStartFormatPainter,
+                formatPainterArmed: formatPainterArmed
+            )
+            toolbar.onPreview = { [weak session] command in session?.preview(command) }
+            toolbar.onCommand = { [weak session] command in session?.commit(command) }
+            let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            item.view = toolbar
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
         if state.isSourceMode {
             // 源码模式：历史 + 剪贴板 + 全选（对齐 Windows 源码分支 + 历史区）。
             if state.isReadOnly {
@@ -215,58 +228,17 @@ extension EditorSession {
             let paragraph = NSMenu(title: L10n.t("段落"))
             addOrdinaryBlockHandleCommands(to: paragraph)
             menu.addItem(submenuItem(L10n.t("段落"), paragraph))
-            menu.addItem(.separator())
-            addFormatPainterCommands(
-                menu,
-                canStart: canStartFormatPainter,
-                armed: formatPainterArmed
-            )
-            menu.addItem(.separator())
-
-            let format = NSMenu(title: L10n.t("格式"))
-            addFormatCommand(format, L10n.t("粗体"), "toggleBold", "b")
-            addFormatCommand(format, L10n.t("斜体"), "toggleItalic", "i")
-            addFormatCommand(format, L10n.t("下划线"), "toggleUnderline", "u")
-            addFormatCommand(format, L10n.t("删除线"), "toggleStrike")
-            addFormatCommand(format, L10n.t("高亮"), "toggleHighlight")
-            menu.addItem(submenuItem(L10n.t("格式"), format))
-            menu.addItem(.separator())
-            addFormatCommand(menu, L10n.t("清除格式"), "clearFormat")
         }
 
         guard !menu.items.isEmpty else { return }
 
         // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
         let windowPoint = webView.convert(pointInView, to: nil)
-        var screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
-        if menuHeight > 0, let screen = window.screen ?? NSScreen.main {
-            // 工具条占据右键点下方 menuHeight + 间距的高度：原生菜单优先在其下方
-            // 展开；下方放不下时把菜单整体移到工具条上方（底边贴工具条顶），
-            // 保证工具条与菜单互不遮挡、始终同时可见。
-            let contextMenuGap: CGFloat = 10
-            let offsetPoint = Self.editorContextMenuPoint(
-                clientX: clientX,
-                clientY: clientY + menuHeight + Double(contextMenuGap),
-                viewHeight: webView.bounds.height,
-                isFlipped: webView.isFlipped
-            )
-            let offsetWindowPoint = webView.convert(offsetPoint, to: nil)
-            let offsetScreenPoint = window.convertToScreen(NSRect(origin: offsetWindowPoint, size: .zero)).origin
-            let estimatedMenuHeight = menu.size.height
-            if estimatedMenuHeight > 0,
-               offsetScreenPoint.y - estimatedMenuHeight < screen.visibleFrame.minY {
-                // 菜单底边贴工具条顶：popUp 的锚点是菜单左上角，故上移一个菜单高度。
-                screenPoint = NSPoint(
-                    x: screenPoint.x,
-                    y: min(screen.visibleFrame.maxY, screenPoint.y + estimatedMenuHeight))
-            } else {
-                screenPoint = offsetScreenPoint
-            }
-        }
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        activeNativeFormatMenuSession = session
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
-        // 对齐 Windows 的 finally 语义：原生菜单关闭时同步隐藏前端浮动格式
-        // 工具条，并解除“菜单期间保留选区”的标记（见 ThemedSelection blur 守卫）。
-        execute("hideFormatMenu")
+        // menuDidClose 通常会先于 popUp 返回；这里作为异常路径兜底，finish 是幂等的。
+        session.finish()
     }
 
     static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat, isFlipped: Bool) -> NSPoint {
@@ -389,6 +361,7 @@ extension EditorSession {
     /// 公式/Mermaid 浮层中的右键菜单只作用于浮层源码。
     private func showExpandedSourceContextMenu(clientX: Double, clientY: Double) {
         guard let webView, let window = webView.window else { return }
+        activeNativeFormatMenuSession?.finish()
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         // 对齐 Windows BuildExpandedSourceContextMenu：拷贝 / 粘贴 / 剪切 ─ 全选。
@@ -410,10 +383,10 @@ extension EditorSession {
         )
         let windowPoint = webView.convert(pointInView, to: nil)
         let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        let session = NativeFormatMenuSession(owner: self, menu: menu)
+        activeNativeFormatMenuSession = session
         menu.popUp(positioning: nil, at: screenPoint, in: nil)
-        // 对齐 Windows 的 finally 语义：原生菜单关闭时同步隐藏前端浮动格式
-        // 工具条，并解除“菜单期间保留选区”的标记（见 ThemedSelection blur 守卫）。
-        execute("hideFormatMenu")
+        session.finish()
     }
 
     private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {
@@ -577,27 +550,6 @@ extension EditorSession {
         addEnabledCommand(menu, L10n.t("重做"), "redo", enabled: editorCommandEnabled("redo"))
     }
 
-    /// 格式刷区块：把「格式刷 / 应用格式刷」从「格式」子菜单里提出来单独成组，
-    /// 放在剪贴板与「格式」之间，避免高频操作要先进子菜单。
-    private func addFormatPainterCommands(_ menu: NSMenu, canStart: Bool?, armed: Bool?) {
-        _ = canStart
-        let currentArmed = armed ?? isFormatPainterArmed
-
-        let painter = menuItem(L10n.t("格式刷"), #selector(handleCommand(_:)))
-        painter.representedObject = "formatPainter"
-        applyShortcut(to: painter, command: "formatPainter")
-        painter.isEnabled = editorCommandEnabled("formatPainter")
-        painter.state = currentArmed ? .on : .off
-        menu.addItem(painter)
-
-        // 与主菜单一致：只有已经吸取了格式才允许应用。
-        let apply = menuItem(L10n.t("应用格式刷"), #selector(handleCommand(_:)))
-        apply.representedObject = "formatPainterApply"
-        applyShortcut(to: apply, command: "formatPainterApply")
-        apply.isEnabled = editorCommandEnabled("formatPainterApply")
-        menu.addItem(apply)
-    }
-
     private func addEnabledCommand(_ menu: NSMenu, _ title: String, _ command: String, enabled: Bool) {
         let item = menuItem(title, #selector(handleCommand(_:)))
         item.representedObject = command
@@ -619,4 +571,54 @@ extension EditorSession {
     @objc func copyHtml(_ sender: Any?) { copySelectionAs(.html) }
     @objc func pasteFromClipboardAction(_ sender: Any?) { pasteFromClipboard() }
     @objc func pastePlainTextFromClipboardAction(_ sender: Any?) { pastePlainTextFromClipboard() }
+}
+
+/// 菜单内按钮与普通菜单项共用 AppKit 的跟踪循环，不再监听网页浮层坐标。
+final class NativeFormatMenuSession: NSObject, NSMenuDelegate {
+    private weak var owner: EditorSession?
+    private weak var menu: NSMenu?
+    private var previewCommand: String?
+    private var didFinish = false
+
+    init(owner: EditorSession, menu: NSMenu) {
+        self.owner = owner
+        self.menu = menu
+        super.init()
+        menu.delegate = self
+    }
+
+    func preview(_ command: String?) {
+        guard !didFinish, previewCommand != command else { return }
+        previewCommand = command
+        owner?.execute("previewFormat", text: command)
+    }
+
+    func commit(_ command: String) {
+        guard !didFinish else { return }
+        preview(nil)
+        // 先提交命令，再结束菜单会话；前端命令路径负责恢复原选区。
+        owner?.execute(command)
+        menu?.cancelTracking()
+    }
+
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        // 离开快捷行进入普通项/子菜单后，立即撤销临时预览。
+        // 自定义菜单行不对应普通高亮项，AppKit 会发出 nil；不能因此
+        // 撤销按钮刚刚发出的悬停预览。离开按钮由它自己的 mouseExited 负责。
+        if let item, !(item.view is NativeFormatToolbarView) { preview(nil) }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        finish()
+    }
+
+    func finish() {
+        guard !didFinish else { return }
+        didFinish = true
+        owner?.execute("endContextMenu")
+        if owner?.activeNativeFormatMenuSession === self {
+            owner?.activeNativeFormatMenuSession = nil
+        }
+    }
+
 }

@@ -137,6 +137,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isReadOnly = false
     private(set) var editorActions: [String: EditorActionState] = [:]
     private(set) var editorSemanticContext: EditorSemanticContext = .ordinaryBlock
+    /// 当前右键菜单会话；由原生菜单跟踪循环统一协调浮动快捷条的预览与关闭。
+    var activeNativeFormatMenuSession: NativeFormatMenuSession?
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
     static let readOnlyBlockedCommands: Set<String> = Set([
@@ -569,13 +571,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "contextMenuRequested":
             if let payload, let x = payload["clientX"] as? Double, let y = payload["clientY"] as? Double {
-                showEditorContextMenu(
-                    clientX: x,
-                    clientY: y,
-                    menuHeight: payload["menuHeight"] as? Double ?? 0,
-                    canStartFormatPainter: payload["canStartFormatPainter"] as? Bool,
-                    formatPainterArmed: payload["formatPainterArmed"] as? Bool
-                )
+                let requestedDocument = documentId
+                // NSMenu.popUp 是同步跟踪循环。不能在 WebKit 消息回调或主队列
+                // block 内进入它，否则菜单悬停期间的 WebKit 消息可能一直排队到
+                // 菜单关闭。让当前桥接回调返回，在默认 RunLoop 中单独开启菜单。
+                RunLoop.main.perform(inModes: [.default]) { [weak self] in
+                    guard let self, self.documentId == requestedDocument,
+                          self.webView?.window?.isVisible == true else { return }
+                    self.showEditorContextMenu(
+                        clientX: x,
+                        clientY: y,
+                        canStartFormatPainter: payload["canStartFormatPainter"] as? Bool,
+                        formatPainterArmed: payload["formatPainterArmed"] as? Bool
+                    )
+                }
             }
 
         case "blockMenuRequested":

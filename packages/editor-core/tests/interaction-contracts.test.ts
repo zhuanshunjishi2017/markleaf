@@ -22,6 +22,22 @@ afterEach(() => {
 })
 
 describe('shared editing interactions', () => {
+  it('ignores a mouseup DOM range outside the editor instead of resolving position -1', () => {
+    const { editor } = setup('selected text', true)
+    editor.commands.setTextSelection({ from: 1, to: 9 })
+    const selection = editor.state.selection.toJSON()
+    const outside = document.querySelector('footer span')!
+    outside.textContent = 'outside editor'
+    window.getSelection()!.setBaseAndExtent(outside.firstChild!, 0, outside.firstChild!, 7)
+    vi.useFakeTimers()
+    try {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      expect(() => vi.runOnlyPendingTimers()).not.toThrow()
+      expect(editor.state.selection.toJSON()).toEqual(selection)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('inserts and removes the visual indent inside code blocks with Tab', () => {
     const { editor } = setup('```js\nconst value = 1\n```')
     const codeBlock = editor.state.doc.firstChild!

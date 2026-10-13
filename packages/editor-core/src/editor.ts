@@ -57,6 +57,8 @@ type ImageMetadata = {
 
 const findHighlightKey = new PluginKey<FindHighlightState>('markleaf-find-highlight')
 const editorFocusModeKey = new PluginKey<boolean>('markleaf-editor-focus-mode')
+type FormatPreviewState = { command: string; from: number; to: number } | null
+const formatPreviewKey = new PluginKey<FormatPreviewState>('markleaf-format-preview')
 type TextMatch = { from: number; to: number }
 type FindHighlightState = { matches: TextMatch[]; current: number }
 type FootnoteDefinition = { label: string; body: string }
@@ -1124,6 +1126,79 @@ export function isCellSelection(selection: unknown): boolean {
 }
 
 const themedSelectionKey = new PluginKey('markleaf-themed-selection')
+
+const formatPreviewMarkByCommand: Record<string, string> = {
+  toggleBold: 'bold',
+  toggleItalic: 'italic',
+  toggleUnderline: 'underline',
+  toggleStrike: 'strike',
+  toggleHighlight: 'highlight',
+}
+
+function formatPreviewStyle(state: Editor['state'], editable: boolean, command: string, from = state.selection.from, to = state.selection.to): { style: string; state: 'add' | 'remove' } | null {
+  const markName = formatPreviewMarkByCommand[command]
+  if (!markName || !editable || from >= to) return null
+  const markType = state.schema.marks[markName]
+  if (!markType) return null
+  const active = state.doc.rangeHasMark(from, to, markType)
+  switch (command) {
+    case 'toggleBold': return { style: `font-weight: ${active ? 'normal' : '700'} !important`, state: active ? 'remove' : 'add' }
+    case 'toggleItalic': return { style: `font-style: ${active ? 'normal' : 'italic'} !important`, state: active ? 'remove' : 'add' }
+    case 'toggleUnderline': return { style: `text-decoration-line: ${active ? 'none' : 'underline'} !important`, state: active ? 'remove' : 'add' }
+    case 'toggleStrike': return { style: `text-decoration-line: ${active ? 'none' : 'line-through'} !important`, state: active ? 'remove' : 'add' }
+    case 'toggleHighlight': return { style: `background-color: ${active ? 'transparent' : 'var(--highlight, #FFF36D)'} !important`, state: active ? 'remove' : 'add' }
+    default: return null
+  }
+}
+
+const FormatPreview = Extension.create({
+  name: 'markleafFormatPreview',
+  addProseMirrorPlugins() {
+    return [new Plugin<FormatPreviewState>({
+      key: formatPreviewKey,
+      view(view) {
+        const update = () => view.dom.classList.toggle('markleaf-format-preview-active', Boolean(formatPreviewKey.getState(view.state)))
+        update()
+        return { update, destroy: () => view.dom.classList.remove('markleaf-format-preview-active') }
+      },
+      state: {
+        init: () => null,
+        apply(transaction, value, oldState, newState) {
+          const meta = transaction.getMeta(formatPreviewKey) as FormatPreviewState | undefined
+          if (meta !== undefined) return meta
+          if (transaction.docChanged || !transaction.selection.eq(oldState.selection)) return null
+          if (!value || value.from < 0 || value.to > newState.doc.content.size) return null
+          return value
+        },
+      },
+      props: {
+        decorations(state) {
+          const preview = formatPreviewKey.getState(state)
+          if (!preview || preview.from >= preview.to) return DecorationSet.empty
+          const style = formatPreviewStyle(state, true, preview.command, preview.from, preview.to)
+          if (!style) return DecorationSet.empty
+          return DecorationSet.create(state.doc, [Decoration.inline(preview.from, preview.to, {
+            class: `markleaf-format-preview markleaf-format-preview-${preview.command}`,
+            'data-format-preview': preview.command,
+            'data-format-preview-state': style.state,
+            style: style.style,
+          })])
+        },
+      },
+    })]
+  },
+})
+
+export function setEditorFormatPreview(editor: Editor, command: string | null): void {
+  if (!command || !editor.isEditable || editor.state.selection.empty || !formatPreviewStyle(editor.state, editor.isEditable, command)) {
+    editor.view.dispatch(editor.state.tr.setMeta(formatPreviewKey, null).setMeta('addToHistory', false))
+    return
+  }
+  const { from, to } = editor.state.selection
+  editor.view.dispatch(editor.state.tr
+    .setMeta(formatPreviewKey, { command, from, to } satisfies FormatPreviewState)
+    .setMeta('addToHistory', false))
+}
 const selectionHighlightName = 'markleaf-selection'
 
 type SelectionHighlightRegistry = { highlights?: Map<string, unknown> }
@@ -1271,7 +1346,7 @@ const ThemedSelection = Extension.create({
             clearSelectionHighlight()
             return
           }
-          if (empty || from === to) {
+          if (empty || from === to || formatPreviewKey.getState(view.state)) {
             clearSelectionHighlight()
             return
           }
@@ -1427,13 +1502,22 @@ const ThemedSelection = Extension.create({
           // selection at an older endpoint. At mouse-up, normalize both PM and
           // DOM to the same range so upward drags can reliably shrink it.
           window.setTimeout(() => {
+            if (view.isDestroyed || !view.dom.isConnected) return
             const domSelection = view.dom.ownerDocument.getSelection()
             if (!domSelection || domSelection.isCollapsed) return
             const anchorNode = domSelection.anchorNode
             const focusNode = domSelection.focusNode
-            if (!anchorNode || !focusNode) return
-            const anchor = view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset)
-            const head = view.posAtDOM(domSelection.focusNode, domSelection.focusOffset)
+            if (!anchorNode || !focusNode
+              || !view.dom.contains(anchorNode) || !view.dom.contains(focusNode)) return
+            let anchor: number
+            let head: number
+            try {
+              anchor = view.posAtDOM(anchorNode, domSelection.anchorOffset)
+              head = view.posAtDOM(focusNode, domSelection.focusOffset)
+            } catch { return }
+            const max = view.state.doc.content.size
+            if (!Number.isInteger(anchor) || !Number.isInteger(head)
+              || anchor < 0 || head < 0 || anchor > max || head > max) return
             const selection = TextSelection.between(
               view.state.doc.resolve(anchor),
               view.state.doc.resolve(head),
@@ -1466,7 +1550,8 @@ const ThemedSelection = Extension.create({
           },
           update(view, previousState) {
             if (previousState.doc !== view.state.doc
-              || previousState.selection !== view.state.selection) {
+              || previousState.selection !== view.state.selection
+              || formatPreviewKey.getState(previousState) !== formatPreviewKey.getState(view.state)) {
               paintSelectionHighlight()
             }
           },
@@ -1479,6 +1564,9 @@ const ThemedSelection = Extension.create({
           if (selectionHighlightSupport(typeof window === 'undefined' ? null : window)) {
             return DecorationSet.empty
           }
+          // Preview shows the actual result, not the selection tint covering it.
+          // Keep the logical selection so closing/committing uses the same range.
+          if (formatPreviewKey.getState(state)) return DecorationSet.empty
           const { from, to, empty } = state.selection
           if (!(state.selection instanceof TextSelection)
             && !(state.selection instanceof AllSelection)) {
@@ -3990,6 +4078,7 @@ const editorExtensions = [
   VisualIndent,
   BlockHandle,
   EditorFocusMode,
+  FormatPreview,
   MathInline,
   MathBlock,
   Mermaid,

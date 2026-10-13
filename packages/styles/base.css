@@ -77,6 +77,33 @@
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
+
+/* Preview keeps the logical range but temporarily hides selection painting,
+   so its background and the document's own token colours remain visible. */
+.markleaf-document.markleaf-format-preview-active::selection,
+.markleaf-document.markleaf-format-preview-active *::selection {
+  background: transparent !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+.markleaf-format-preview[data-format-preview="toggleBold"],
+.markleaf-format-preview[data-format-preview="toggleBold"] * { font-weight: 700 !important; }
+.markleaf-format-preview[data-format-preview="toggleBold"][data-format-preview-state="remove"],
+.markleaf-format-preview[data-format-preview="toggleBold"][data-format-preview-state="remove"] * { font-weight: normal !important; }
+.markleaf-format-preview[data-format-preview="toggleItalic"],
+.markleaf-format-preview[data-format-preview="toggleItalic"] * { font-style: italic !important; }
+.markleaf-format-preview[data-format-preview="toggleItalic"][data-format-preview-state="remove"],
+.markleaf-format-preview[data-format-preview="toggleItalic"][data-format-preview-state="remove"] * { font-style: normal !important; }
+.markleaf-format-preview[data-format-preview="toggleUnderline"],
+.markleaf-format-preview[data-format-preview="toggleUnderline"] * { text-decoration-line: underline !important; }
+.markleaf-format-preview[data-format-preview="toggleUnderline"][data-format-preview-state="remove"],
+.markleaf-format-preview[data-format-preview="toggleUnderline"][data-format-preview-state="remove"] * { text-decoration-line: none !important; }
+.markleaf-format-preview[data-format-preview="toggleStrike"],
+.markleaf-format-preview[data-format-preview="toggleStrike"] * { text-decoration-line: line-through !important; }
+.markleaf-format-preview[data-format-preview="toggleStrike"][data-format-preview-state="remove"],
+.markleaf-format-preview[data-format-preview="toggleStrike"][data-format-preview-state="remove"] * { text-decoration-line: none !important; }
+.markleaf-format-preview[data-format-preview="toggleHighlight"] { background-color: var(--highlight, #FFF36D) !important; }
+.markleaf-format-preview[data-format-preview="toggleHighlight"][data-format-preview-state="remove"] { background-color: transparent !important; }
 ::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;

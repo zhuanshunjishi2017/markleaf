@@ -11,6 +11,7 @@ import {
   createEditor,
   clearFindHighlights,
   executeEditorCommand,
+  setEditorFormatPreview,
   exportEditorSelection,
   findInEditor,
   findFootnoteDefinitionBody,
@@ -82,6 +83,7 @@ const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 const hostCapabilities = resolveNativeCapabilities(window.chrome?.webview?.hostPlatform)
+const usesNativeFormatMenu = window.chrome?.webview?.hostPlatform === 'macOS'
 document.documentElement.classList.toggle('markleaf-host-macos', window.chrome?.webview?.hostPlatform === 'macOS')
 document.documentElement.classList.toggle(
   'markleaf-themed-visual-selection',
@@ -150,6 +152,7 @@ setCodeBlockControlHandlers({
 })
 let contextMenuSelection: { from: number; to: number } | null = null
 let selectionBeforeContextMenu: { from: number; to: number } | null = null
+let contextMenuCommandCommitted = false
 
 // WebKit collapses an existing selection to the clicked word during a
 // right-button mousedown. Capture the selection before that default action so
@@ -991,10 +994,16 @@ const formatButtons: Array<{ command: string; label: string; content: string }> 
 ]
 const formatButtonElements: HTMLButtonElement[] = []
 
-// 原生菜单弹出期间是模态的并捕获鼠标，按下按钮时该 mousedown 会先关闭原生菜单、
-// 再透传给 WebView2。这里用 mousedown 而非 click，确保在菜单关闭、宿主发送
-// hideFormatMenu 之前就触发命令，避免按钮在 click 的 down/up 之间被隐藏而失效。
+// 使用 mousedown 让格式命令先于菜单关闭通知提交；同时由当前菜单会话保存的
+// 选区在命令执行前恢复，避免不同宿主的菜单跟踪循环改变操作范围。
 function attachFormatCommand(button: HTMLButtonElement, command: string): void {
+  const previewable = new Set(['toggleBold', 'toggleItalic', 'toggleUnderline', 'toggleStrike', 'toggleHighlight'])
+  if (previewable.has(command)) {
+    button.addEventListener('mouseenter', () => setEditorFormatPreview(editor, command))
+    button.addEventListener('mouseleave', () => setEditorFormatPreview(editor, null))
+    button.addEventListener('focus', () => setEditorFormatPreview(editor, command))
+    button.addEventListener('blur', () => setEditorFormatPreview(editor, null))
+  }
   button.addEventListener('mousedown', (event) => {
     if (event.button !== 0) {
       return
@@ -1002,6 +1011,10 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     event.preventDefault()
     if (sourceMode) {
       return
+    }
+    setEditorFormatPreview(editor, null)
+    if (contextMenuSelection) {
+      editor.commands.setTextSelection(contextMenuSelection)
     }
     if (command === 'formatPainter') {
       if (contextMenuSelection) editor.commands.setTextSelection(contextMenuSelection)
@@ -1015,7 +1028,11 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
     }
     const applyToBlock = command === 'toggleBold' || command === 'toggleItalic'
       || command === 'toggleUnderline' || command === 'toggleStrike' || command === 'toggleHighlight'
-    executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
+    const success = executeEditorCommand(editor, command, undefined, undefined, applyToBlock)
+    if (success) {
+      contextMenuSelection = null
+      contextMenuCommandCommitted = true
+    }
     hideFormatMenu()
     sendEditorState()
   })
@@ -1043,6 +1060,7 @@ function createHeadingButton(command: string): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'format-menu-button format-menu-heading-button'
+  button.dataset.command = command
   button.hidden = true
   attachFormatCommand(button, command)
   formatMenu.appendChild(button)
@@ -1079,7 +1097,8 @@ clearFormatButton.title = 'Clear formatting'
 attachFormatCommand(clearFormatButton, 'clearFormat')
 formatMenu.appendChild(clearFormatButton)
 
-document.body.appendChild(formatMenu)
+// macOS 的快捷行属于 NSMenu，不再安装独立网页浮层；Windows 保留原入口。
+if (!usesNativeFormatMenu) document.body.appendChild(formatMenu)
 
 function parseCssColor(value: string): [number, number, number] | null {
   const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
@@ -1128,7 +1147,7 @@ function showFormatMenu(
   void formatMenu.offsetWidth
   formatMenu.classList.add('format-menu-visible')
 
-  for (const button of [...formatButtonElements, ...headingButtonElements]) {
+  for (const button of [...formatButtonElements, ...headingButtonElements, formatPainterButton, clearFormatButton]) {
     const action = state.actions[button.dataset.command ?? '']
     button.classList.toggle('format-menu-button-active', action?.checked === true)
     // Keep the toolbar clickable when a host supplies an older/incomplete
@@ -1142,6 +1161,7 @@ function showFormatMenu(
 }
 
 function hideFormatMenu(): void {
+  setEditorFormatPreview(editor, null)
   if (formatMenu.hidden) {
     return
   }
@@ -1149,7 +1169,17 @@ function hideFormatMenu(): void {
   window.clearTimeout(formatMenuHideTimer)
   formatMenuHideTimer = window.setTimeout(() => {
     formatMenu.hidden = true
-  }, 60)
+  }, 160)
+}
+
+function endContextMenuSession(): void {
+  hideFormatMenu()
+  delete editor.view.dom.dataset.markleafPreserveSelection
+  if (contextMenuSelection && !contextMenuCommandCommitted) {
+    editor.commands.setTextSelection(contextMenuSelection)
+  }
+  contextMenuSelection = null
+  contextMenuCommandCommitted = false
 }
 
 editorMount.addEventListener('contextmenu', (event) => {
@@ -1191,12 +1221,13 @@ editorMount.addEventListener('contextmenu', (event) => {
     from: editor.state.selection.from,
     to: editor.state.selection.to,
   }
+  contextMenuCommandCommitted = false
   // 原生菜单弹出会夺走 WebView 焦点触发 blur；标记期间保留选区，
   // 避免主题化选区高亮被 blur 处理器塌缩（菜单关闭时由 hideFormatMenu 清除）。
   editor.view.dom.dataset.markleafPreserveSelection = '1'
   sendEditorState()
   const state = getEditorCommandPresentation(editor, { readOnly, sourceMode, documentType }, interactions.state())
-  const showFormat = frontendFormatMenuEnabled && state.actions.toggleBold?.enabled === true
+  const showFormat = !usesNativeFormatMenu && frontendFormatMenuEnabled && state.actions.toggleBold?.enabled === true
   if (showFormat) {
     showFormatMenu(event.clientX, event.clientY, state)
   } else {
@@ -1560,14 +1591,20 @@ async function handleMessage(value: unknown): Promise<void> {
           break
         }
         if (payload.command === 'hideFormatMenu') {
-          hideFormatMenu()
-          // 右键菜单关闭：解除“菜单期间保留选区”标记（配合 ThemedSelection 的
-          // blur 守卫），并确认 PM 选区仍为右键时的范围。
-          delete editor.view.dom.dataset.markleafPreserveSelection
-          if (contextMenuSelection) {
-            editor.commands.setTextSelection(contextMenuSelection)
-            contextMenuSelection = null
-          }
+          endContextMenuSession()
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'endContextMenu') {
+          endContextMenuSession()
+          if (message.requestId) send('commandResult', { success: true }, message.requestId)
+          break
+        }
+        if (payload.command === 'previewFormat') {
+          const previewCommand = typeof payload.text === 'string' && payload.text.length > 0
+            ? payload.text
+            : null
+          setEditorFormatPreview(editor, previewCommand)
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }
@@ -1771,6 +1808,11 @@ async function handleMessage(value: unknown): Promise<void> {
           : undefined
         const commandText = typeof payload.text === 'string' ? payload.text : undefined
         const commandHtml = typeof payload.html === 'string' ? payload.html : undefined
+        const contextSelectionForCommand = contextMenuSelection
+        if (contextSelectionForCommand) {
+          editor.commands.setTextSelection(contextSelectionForCommand)
+          setEditorFormatPreview(editor, null)
+        }
         if (!sourceMode
           && (payload.command === 'indentListItem' || payload.command === 'outdentListItem')) {
           restoreVisualSelection(editor, lastVisualSelection)
@@ -1831,6 +1873,10 @@ async function handleMessage(value: unknown): Promise<void> {
               )
         if (message.requestId) {
           send('commandResult', { success, outcome: commandOutcome, error: commandError }, message.requestId)
+        }
+        if (success && contextSelectionForCommand) {
+          contextMenuSelection = null
+          contextMenuCommandCommitted = true
         }
         sendEditorState()
       }

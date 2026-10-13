@@ -28,6 +28,8 @@ const READ_ONLY_ALLOWED_COMMANDS = new Set([
   'goToFootnoteReference',
   'setBlockHighlight',
   'clearBlockHighlight',
+  'previewFormat',
+  'endContextMenu',
 ])
 
 export function isHostCommandAllowed(
