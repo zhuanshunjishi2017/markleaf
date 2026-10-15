@@ -818,6 +818,7 @@
   "prefs.editor.pixels": " px",
   "prefs.editor.sourceIndentWidth": "&Indent width",
   "prefs.editor.showParagraphBlockHandle": "Show Paragraph Format Button",
+  "prefs.editor.inlineCommonActions": "Inline Common Actions",
   "prefs.editor.selectCjkFont": "Choose &CJK Font...",
   "prefs.editor.selectWesternFont": "Choose &Western Font...",
   "prefs.editor.fontSettings": "&Font Settings...",

@@ -317,6 +317,9 @@ public sealed class EditorSettings
 
     public bool ShowParagraphBlockHandle { get; set; } = true;
 
+    /// <summary>Show common formatting as text menu items instead of the quick-action row.</summary>
+    public bool InlineCommonActions { get; set; }
+
     public string? UnsafeEmphasisPreference { get; set; }
 }
 

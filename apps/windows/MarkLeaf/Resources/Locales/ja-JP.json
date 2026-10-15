@@ -818,6 +818,7 @@
   "prefs.editor.pixels": " px",
   "prefs.editor.sourceIndentWidth": "インデント幅(&I)",
   "prefs.editor.showParagraphBlockHandle": "段落の書式ボタンを表示",
+  "prefs.editor.inlineCommonActions": "よく使う操作をメニューに統合",
   "prefs.editor.selectCjkFont": "CJKフォントを選択(&C)...",
   "prefs.editor.selectWesternFont": "欧文フォントを選択(&W)...",
   "prefs.editor.fontSettings": "フォント設定(&F)...",

@@ -647,7 +647,8 @@ internal sealed partial class MainForm
                 command => _editorHost.ExecuteCommand("previewFormat", command, menuSessionId: request.MenuSessionId),
                 status,
                 () => { if (!IsDisposed && !Disposing) _editorHost.ExecuteCommand("hideFormatMenu", menuSessionId: request.MenuSessionId); },
-                (command, isCurrent) => ExecuteContextMenuCommandAsync(command, request.MenuSessionId, isCurrent));
+                (command, isCurrent) => ExecuteContextMenuCommandAsync(command, request.MenuSessionId, isCurrent),
+                inlineCommonActions: _settings.Editor.InlineCommonActions);
         }
         catch (Exception exception)
         {

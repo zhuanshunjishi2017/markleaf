@@ -275,7 +275,15 @@ internal sealed class PreferenceSegmentedTab : Control
 internal sealed class PreferenceOptionsContainer : Control
 {
     private readonly PreferenceSegmentedTab? _tab;
-    private readonly Panel _contentHost = new();
+    private readonly Panel _contentHost = new() { AutoScroll = true };
+    private readonly TableLayoutPanel _pageLayout = new()
+    {
+        Dock = DockStyle.Top,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        ColumnCount = 1,
+        Margin = Padding.Empty,
+    };
     private readonly Control[] _pages;
     private Color _background = SystemColors.ControlLight;
     private Color _border = SystemColors.Control;
@@ -283,16 +291,19 @@ internal sealed class PreferenceOptionsContainer : Control
     public PreferenceOptionsContainer(string[] labels, Control[] pages)
     {
         _pages = pages;
+        PreparePages();
         _tab = new PreferenceSegmentedTab(labels);
         SetStyle(
             ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
-        _contentHost.Controls.Add(pages[0]);
+        InitializePageLayout(pages[0]);
         _tab.TabChanged += (_, index) =>
         {
-            _contentHost.Controls.Clear();
-            _contentHost.Controls.Add(_pages[index]);
+            _pageLayout.Controls.Clear();
+            _contentHost.AutoScrollPosition = Point.Empty;
+            _pageLayout.Controls.Add(_pages[index]);
+            ConstrainPageWidth();
         };
         Controls.Add(_contentHost);
         Controls.Add(_tab);
@@ -301,12 +312,73 @@ internal sealed class PreferenceOptionsContainer : Control
     public PreferenceOptionsContainer(Control page)
     {
         _pages = [page];
+        PreparePages();
         SetStyle(
             ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
             | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw,
             true);
-        _contentHost.Controls.Add(page);
+        InitializePageLayout(page);
         Controls.Add(_contentHost);
+    }
+
+    private void PreparePages()
+    {
+        foreach (var page in _pages)
+        {
+            // Center the natural-width form as a block, retaining left-aligned
+            // labels inside it and its full preferred height for scrolling.
+            page.Dock = DockStyle.None;
+            page.Anchor = AnchorStyles.Top;
+            page.AutoSize = true;
+            if (page is TableLayoutPanel table) table.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        }
+    }
+
+    private void InitializePageLayout(Control page)
+    {
+        _pageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _pageLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _pageLayout.Controls.Add(page);
+        _contentHost.Controls.Add(_pageLayout);
+        _contentHost.ClientSizeChanged += (_, _) => ConstrainPageWidth();
+    }
+
+    private void ConstrainPageWidth()
+    {
+        if (_pageLayout.Controls.Count == 0 || _contentHost.ClientSize.Width <= 0) return;
+        var page = _pageLayout.Controls[0];
+        var available = Math.Max(1, _contentHost.ClientSize.Width - page.Margin.Horizontal);
+        page.MaximumSize = new Size(available, 0);
+        var sectionWidth = page is TableLayoutPanel table && table.ColumnStyles.Count > 1
+            && table.ColumnStyles[0].SizeType == SizeType.Absolute
+            ? (int)table.ColumnStyles[0].Width : 0;
+        ConstrainOptions(page, available - page.Padding.Horizontal - sectionWidth);
+    }
+
+    private static void ConstrainOptions(Control parent, int available)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            var width = Math.Max(1, available - child.Margin.Horizontal);
+            if (child is CheckBox check)
+            {
+                // FlatStyle.System reports a single-line preferred height even
+                // when the native checkbox wraps its label. Measure the text
+                // explicitly, retaining the native glyph/padding dimensions.
+                check.MaximumSize = Size.Empty;
+                var preferred = check.GetPreferredSize(Size.Empty);
+                var singleLine = TextRenderer.MeasureText(check.Text, check.Font,
+                    Size.Empty, TextFormatFlags.SingleLine);
+                var textWidth = Math.Max(1, width - Math.Max(0, preferred.Width - singleLine.Width));
+                var text = TextRenderer.MeasureText(check.Text, check.Font,
+                    new Size(textWidth, 0), TextFormatFlags.WordBreak);
+                check.AutoSize = false;
+                check.Size = new Size(Math.Min(width, preferred.Width),
+                    Math.Max(preferred.Height, text.Height + Math.Max(0, preferred.Height - singleLine.Height)));
+            }
+            else
+                ConstrainOptions(child, width - child.Padding.Horizontal);
+        }
     }
 
     public void ApplyThemeColors(IReadOnlyDictionary<string, Color> colors)
@@ -314,6 +386,7 @@ internal sealed class PreferenceOptionsContainer : Control
         if (colors.TryGetValue("bg-secondary", out var color)) _background = color;
         if (colors.TryGetValue("bg-selected", out color)) _border = color;
         _contentHost.BackColor = _background;
+        _pageLayout.BackColor = _background;
         foreach (var page in _pages)
             page.BackColor = _background;
         _tab?.ApplyThemeColors(colors);

@@ -148,6 +148,117 @@ public sealed class EditorContextMenuDesktopTests
         Assert.IsFalse(menu.Visible);
     }
 
+    [STATestMethod]
+    [TestCategory("InteractiveDesktop")]
+    [DataRow(false, 1)]
+    [DataRow(true, 1)]
+    [DataRow(true, 2)]
+    public void OneOutsideClickDismissesEntireSubmenuChain(bool animate, int depth)
+    {
+        if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");
+        using var dpiScope = new DpiScope();
+        using var owner = new Form { Size = new Size(900, 750), StartPosition = FormStartPosition.CenterScreen };
+        owner.Show();
+        SetForegroundWindow(owner.Handle);
+        var clicks = 0;
+        owner.MouseDown += (_, _) => clicks++;
+        var ended = 0;
+        var executions = 0;
+        var session = new EditorMenuSession(1, _ => new CommandState(true),
+            _ => { executions++; return Task.CompletedTask; }, _ => {}, () => ended++);
+        EditorMenuEntry entry = new(EditorMenuEntryKind.Command, AppCommand.Copy, "Copy", "", new(true), []);
+        for (var i = 0; i < depth; i++)
+            entry = new(EditorMenuEntryKind.Submenu, null, "Submenu", "", new(true), [entry]);
+        using var menu = new EditorContextMenu(new([], [entry]), owner.DeviceDpi, false, true, session, animate);
+        menu.Closed += (_, _) => session.Closed(callback => owner.BeginInvoke(callback));
+        var popups = new List<EditorContextMenu> { menu };
+        menu.Show(owner, new Point(40, 40));
+        for (var i = 0; i < depth; i++)
+        {
+            var parent = popups[^1];
+            PumpUntil(() => parent.Opacity == 1);
+            var item = parent.Items.OfType<ToolStripMenuItem>().Single();
+            item.ShowDropDown();
+            popups.Add((EditorContextMenu)item.DropDown);
+        }
+        PumpUntil(() => popups[^1].Opacity == 1);
+        Cursor.Position = owner.PointToScreen(new Point(30, owner.ClientSize.Height - 30));
+        mouse_event(0x0002, 0, 0, 0, 0);
+        mouse_event(0x0004, 0, 0, 0, 0);
+        PumpUntil(() => popups.All(popup => !popup.Visible));
+        PumpUntil(() => session.Completion.IsCompleted);
+        Assert.AreEqual(1, ended, "The whole menu chain owns one editor selection lifetime.");
+        Assert.AreEqual(0, executions);
+        Assert.AreEqual(1, clicks, "Dismissal must not swallow or replay the outside click.");
+        Assert.IsTrue(popups.All(popup => popup.Dismissed.IsCompleted));
+    }
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint x, uint y, uint data, nuint extra);
+
+    [STATestMethod]
+    [TestCategory("InteractiveDesktop")]
+    public void SwitchingToAnotherWindowDismissesEntireSubmenuChain()
+    {
+        if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");
+        using var dpiScope = new DpiScope();
+        using var other = new Form { Size = new Size(700, 600) };
+        other.Show();
+        using var owner = new Form { Size = new Size(900, 750), StartPosition = FormStartPosition.CenterScreen };
+        owner.Show();
+        SetForegroundWindow(owner.Handle);
+        var session = new EditorMenuSession(1, _ => new CommandState(true), _ => Task.CompletedTask, _ => {}, () => {});
+        var copy = new EditorMenuEntry(EditorMenuEntryKind.Command, AppCommand.Copy, "Copy", "", new(true), []);
+        var branch = new EditorMenuEntry(EditorMenuEntryKind.Submenu, null, "Submenu", "", new(true), [copy]);
+        using var menu = new EditorContextMenu(new([], [branch]), owner.DeviceDpi, false, true, session, animate: true);
+        menu.Closed += (_, _) => session.Closed(callback => owner.BeginInvoke(callback));
+        menu.Show(owner, new Point(40, 40));
+        var item = menu.Items.OfType<ToolStripMenuItem>().Single();
+        item.ShowDropDown();
+        var child = (EditorContextMenu)item.DropDown;
+        PumpUntil(() => child.Opacity == 1 && menu.Opacity == 1);
+        SetForegroundWindow(other.Handle);
+        PumpUntil(() => !menu.Visible && !child.Visible);
+        PumpUntil(() => session.Completion.IsCompleted);
+        Assert.IsFalse(session.HasCommitted);
+    }
+
+    [STATestMethod]
+    [TestCategory("InteractiveDesktop")]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ClosingChildWithinMenuKeepsRootSessionAlive(bool clickAncestor)
+    {
+        if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");
+        using var dpiScope = new DpiScope();
+        using var owner = new Form { Size = new Size(900, 750), StartPosition = FormStartPosition.CenterScreen };
+        owner.Show();
+        SetForegroundWindow(owner.Handle);
+        var session = new EditorMenuSession(1, _ => new CommandState(true), _ => Task.CompletedTask, _ => {}, () => {});
+        var copy = new EditorMenuEntry(EditorMenuEntryKind.Command, AppCommand.Copy, "Copy", "", new(true), []);
+        var branch = new EditorMenuEntry(EditorMenuEntryKind.Submenu, null, "Submenu", "", new(true), [copy]);
+        var disabled = new EditorMenuEntry(EditorMenuEntryKind.Command, AppCommand.Cut, "Disabled", "", new(false), []);
+        using var menu = new EditorContextMenu(new([], [branch, disabled]), owner.DeviceDpi, false, true, session, animate: true);
+        menu.Closed += (_, _) => session.Closed(callback => owner.BeginInvoke(callback));
+        menu.Show(owner, new Point(40, 40));
+        var item = menu.Items.OfType<ToolStripMenuItem>().First();
+        item.ShowDropDown();
+        var child = (EditorContextMenu)item.DropDown;
+        PumpUntil(() => child.Opacity == 1 && menu.Opacity == 1);
+        if (clickAncestor)
+        {
+            Cursor.Position = menu.PointToScreen(Center(menu.Items[^1].Bounds));
+            mouse_event(0x0002, 0, 0, 0, 0);
+            mouse_event(0x0004, 0, 0, 0, 0);
+        }
+        else SendKeys.SendWait("{ESC}");
+        PumpUntil(() => !child.Visible);
+        Assert.IsTrue(menu.Visible, "Only an outside click may dismiss the whole menu chain.");
+        Assert.IsFalse(session.Completion.IsCompleted, "Closing a child must not release the editor selection.");
+        menu.Close(ToolStripDropDownCloseReason.CloseCalled);
+        PumpUntil(() => session.Completion.IsCompleted);
+    }
+
     private static Point Center(Rectangle rectangle) => new(rectangle.Left + rectangle.Width / 2, rectangle.Top + rectangle.Height / 2);
 
     private static void AssertHoverInsets(EditorContextMenu menu, ToolStripMenuItem row)

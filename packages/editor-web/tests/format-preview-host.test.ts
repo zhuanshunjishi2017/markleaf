@@ -141,3 +141,50 @@ it('preserves the selection for macOS synthetic contextmenu without a preceding 
   })
   expect(editorDom.querySelector('.markleaf-format-preview')?.textContent).toBe('source')
 })
+
+it.each([false, true])('does not restore the dismissed menu selection after an outside click (preview=%s)', async (preview) => {
+  const { editorDom, send, messages } = await createHarness('Windows')
+  const paragraph = editorDom.querySelector('p')!
+  const text = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT).nextNode()!
+  const range = document.createRange()
+  range.setStart(text, 2)
+  range.collapse(true)
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => paragraph })
+  Object.defineProperty(document, 'caretRangeFromPoint', { configurable: true, value: () => range })
+  paragraph.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+  const request = messages.find((x: any) => x.type === 'contextMenuRequested') as { payload: { menuSessionId: number } }
+  const base = { protocolVersion: 1, type: 'command', documentId: 'format-preview-host-test', revision: 0 }
+  if (preview) {
+    send({ ...base, payload: { command: 'previewFormat', text: 'toggleBold', menuSessionId: request.payload.menuSessionId } })
+    expect(editorDom.querySelector('.markleaf-format-preview')).not.toBeNull()
+  }
+
+  // The editor receives the click while the native menu is still fading out.
+  paragraph.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }))
+  paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  await new Promise(resolve => window.setTimeout(resolve, 0))
+  const selections = (): { from: number; to: number }[] => messages
+    .filter((x: any) => x.type === 'selectionChanged').map((x: any) => x.payload)
+  expect(selections().at(-1)).toMatchObject({ from: 3, to: 3 })
+  expect(editorDom.dataset.markleafPreserveSelection).toBeUndefined()
+
+  // Delayed hover cleanup/close must not resurrect the original range.
+  send({ ...base, payload: { command: 'previewFormat', text: 'toggleItalic', menuSessionId: request.payload.menuSessionId } })
+  send({ ...base, payload: { command: 'hideFormatMenu', menuSessionId: request.payload.menuSessionId } })
+  expect(selections().at(-1)).toMatchObject({ from: 3, to: 3 })
+  expect(editorDom.querySelector('.markleaf-themed-selection, .markleaf-format-preview')).toBeNull()
+})
+
+it('keeps the original selection when closing the menu without a new editor gesture', async () => {
+  const { editorDom, send, messages } = await createHarness('Windows')
+  const paragraph = editorDom.querySelector('p')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => paragraph })
+  paragraph.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+  const request = messages.find((x: any) => x.type === 'contextMenuRequested') as { payload: { menuSessionId: number } }
+  const base = { protocolVersion: 1, type: 'command', documentId: 'format-preview-host-test', revision: 0 }
+  send({ ...base, payload: { command: 'previewFormat', text: 'toggleItalic', menuSessionId: request.payload.menuSessionId } })
+  send({ ...base, payload: { command: 'hideFormatMenu', menuSessionId: request.payload.menuSessionId } })
+  expect(editorDom.querySelector('.markleaf-format-preview')).toBeNull()
+  expect(editorDom.querySelector('.markleaf-themed-selection')?.textContent).toBe('source')
+  expect(editorDom.dataset.markleafPreserveSelection).toBeUndefined()
+})

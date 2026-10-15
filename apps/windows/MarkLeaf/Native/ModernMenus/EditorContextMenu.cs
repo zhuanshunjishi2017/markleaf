@@ -20,6 +20,7 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     private bool _finishClose;
     private ToolStripDropDownCloseReason _closeReason;
     private ToolStripControlHost? _toolbarHost;
+    private nint _openingForeground;
 
     internal Task Dismissed => _dismissed.Task;
 
@@ -190,10 +191,17 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
 
     private void Commit(AppCommand command) => _session.Select(command, () =>
     {
-        ToolStripDropDown root = this;
-        while (root.OwnerItem?.Owner is ToolStripDropDown parent) root = parent;
-        root.Close(ToolStripDropDownCloseReason.ItemClicked);
+        RootMenu.Close(ToolStripDropDownCloseReason.ItemClicked);
     });
+
+    private EditorContextMenu RootMenu => OwnerItem?.Owner is EditorContextMenu parent ? parent.RootMenu : this;
+
+    private bool PointerIsInsideMenuChain()
+    {
+        for (EditorContextMenu? menu = this; menu is not null; menu = menu.OwnerItem?.Owner as EditorContextMenu)
+            if (menu.Bounds.Contains(Cursor.Position)) return true;
+        return false;
+    }
 
     protected override bool ProcessDialogKey(Keys keyData)
     {
@@ -215,6 +223,7 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     {
         base.OnOpening(e);
         if (e.Cancel) return;
+        _openingForeground = GetForegroundWindow();
         _fadeTimer.Stop();
         _fadingOut = false;
         _dismissed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -239,6 +248,16 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
             _fadeTimer.Stop();
             return;
         }
+        // The native mouse filter walks from child to parent synchronously.
+        // Cancelling a child's close for its fade keeps it active, so that walk
+        // never reaches the root. Start the root fade on the same outside click,
+        // but leave clicks inside an ancestor (and keyboard roll-up) local.
+        // AppFocusChange is also used for ordinary child roll-up: only cascade
+        // it when the foreground window has really changed since opening.
+        var root = RootMenu;
+        if (root != this && (e.CloseReason == ToolStripDropDownCloseReason.AppClicked && !PointerIsInsideMenuChain()
+            || e.CloseReason == ToolStripDropDownCloseReason.AppFocusChange && GetForegroundWindow() != root._openingForeground))
+            root.Close(e.CloseReason);
         e.Cancel = true;
         if (_fadingOut) return;
         _session.Preview(null);
@@ -347,4 +366,7 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint window, int attribute, ref int value, int size);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 }

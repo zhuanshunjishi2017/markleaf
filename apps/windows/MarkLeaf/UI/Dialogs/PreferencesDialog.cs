@@ -79,6 +79,7 @@ internal sealed class PreferencesDialog : Form
 
     private readonly NumericUpDown _sourceIndentWidth;
     private readonly CheckBox _showParagraphBlockHandleCheck;
+    private readonly CheckBox _inlineCommonActionsCheck;
     private string _cjkFontFamily = "Microsoft YaHei";
     private string _westernFontFamily = "Cascadia Mono";
     private int _sourceFontSize = 14;
@@ -303,6 +304,8 @@ internal sealed class PreferencesDialog : Form
 
         _showParagraphBlockHandleCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.showParagraphBlockHandle"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _inlineCommonActionsCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.inlineCommonActions"), AutoSize = true, FlatStyle = FlatStyle.System };
 
         _editShortcutsButton = new Button
         { Text = Loc.Get("prefs.general.editShortcuts"), AutoSize = true, FlatStyle = FlatStyle.System };
@@ -350,7 +353,7 @@ internal sealed class PreferencesDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        Size = new Size(this.ScaleForDpi(460), this.ScaleForDpi(600));
+        Size = new Size(this.ScaleForDpi(500), this.ScaleForDpi(630));
 
         _tabBar.Margin = Padding.Empty;
         _tabContents = [BuildFileTab(), BuildAppearanceTab(), BuildEditorTab(), BuildImagesTab(), BuildGeneralTab()];
@@ -469,6 +472,19 @@ internal sealed class PreferencesDialog : Form
         };
     }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // Apply after WinForms DPI scaling. A larger default must still leave
+        // the title bar and fixed action footer reachable on smaller monitors.
+        var area = Screen.FromControl(Owner ?? this).WorkingArea;
+        Size = new Size(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
+        var center = Owner?.Bounds ?? area;
+        Location = new Point(
+            Math.Clamp(center.Left + (center.Width - Width) / 2, area.Left, area.Right - Width),
+            Math.Clamp(center.Top + (center.Height - Height) / 2, area.Top, area.Bottom - Height));
+    }
+
     private static void ForceComboDark(ComboBox combo)
     {
         if (!combo.IsHandleCreated) return;
@@ -494,8 +510,6 @@ internal sealed class PreferencesDialog : Form
         page.Controls.Add(Gap(), 1, 5);
         page.Controls.Add(NewLabel(Loc.Get("prefs.file.history.label")), 0, 6);
         page.Controls.Add(BuildHistoryPanel(), 1, 6);
-        page.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 7);
-        page.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 7);
         return BuildFramedPage(page);
     }
 
@@ -505,7 +519,7 @@ internal sealed class PreferencesDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            Padding = new Padding(this.ScaleForDpi(17), this.ScaleForDpi(22), this.ScaleForDpi(14), this.ScaleForDpi(7)),
+            Padding = new Padding(this.ScaleForDpi(16), this.ScaleForDpi(22), this.ScaleForDpi(16), this.ScaleForDpi(7)),
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(86)));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -622,8 +636,6 @@ internal sealed class PreferencesDialog : Form
         visual.Controls.Add(Gap(), 1, 1);
         visual.Controls.Add(NewLabel(Loc.Get("prefs.editor.featureSettings.label")), 0, 2);
         visual.Controls.Add(BuildVisualFeaturePanel(), 1, 2);
-        visual.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 3);
-        visual.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 3);
 
         var source = CreateSettingsPage();
         source.Controls.Add(NewLabel(Loc.Get("prefs.editor.displaySettings.label")), 0, 0);
@@ -632,8 +644,6 @@ internal sealed class PreferencesDialog : Form
         source.Controls.Add(Gap(), 1, 1);
         source.Controls.Add(NewLabel(Loc.Get("prefs.editor.featureSettings.label")), 0, 2);
         source.Controls.Add(BuildSourceFeaturePanel(), 1, 2);
-        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 3);
-        source.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 3);
 
         var markdown = CreateSettingsPage();
         markdown.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -647,8 +657,6 @@ internal sealed class PreferencesDialog : Form
         markdown.Controls.Add(Gap(), 1, 1);
         markdown.Controls.Add(NewLabel(Loc.Get("prefs.editor.markdown.syntax.label")), 0, 2);
         markdown.Controls.Add(BuildMarkdownSyntaxPanel(), 1, 2);
-        markdown.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 3);
-        markdown.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 3);
         var markdownHint = new Label
         {
             Text = Loc.Get("prefs.editor.markdown.normalizationHint"),
@@ -736,7 +744,9 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(Gap(), 0, 3);
         panel.Controls.Add(_showParagraphBlockHandleCheck, 0, 4);
         panel.Controls.Add(Gap(), 0, 5);
-        panel.Controls.Add(_codeBlockSpellcheckCheck, 0, 6);
+        panel.Controls.Add(_inlineCommonActionsCheck, 0, 6);
+        panel.Controls.Add(Gap(), 0, 7);
+        panel.Controls.Add(_codeBlockSpellcheckCheck, 0, 8);
         return panel;
     }
 
@@ -919,8 +929,6 @@ internal sealed class PreferencesDialog : Form
         themeFolderRow.Controls.Add(_openThemeFolderButton);
         theme.Controls.Add(NewLabel(Loc.Get("prefs.appearance.themeFiles.label")), 0, 4);
         theme.Controls.Add(themeFolderRow, 1, 4);
-        theme.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 5);
-        theme.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 5);
 
         var window = CreateSettingsPage();
         window.Controls.Add(NewLabel(Loc.Get("prefs.appearance.window.label")), 0, 0);
@@ -941,8 +949,6 @@ internal sealed class PreferencesDialog : Form
         window.Controls.Add(Gap(), 1, 7);
         window.Controls.Add(NewLabel(Loc.Get("prefs.appearance.statusBar.label")), 0, 8);
         window.Controls.Add(_customizeStatusBarButton, 1, 8);
-        window.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
-        window.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 9);
 
         return BuildSegmentedPage(
             [Loc.Get("prefs.appearance.segment.theme"), Loc.Get("prefs.appearance.segment.window")],
@@ -1095,9 +1101,6 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(NewLabel(Loc.Get("prefs.general.advanced.label")), 0, 12);
         panel.Controls.Add(BuildAdvancedPanel(), 1, 12);
 
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 13);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 13);
-
         return BuildFramedPage(panel);
     }
 
@@ -1208,9 +1211,6 @@ internal sealed class PreferencesDialog : Form
 
         panel.Controls.Add(NewLabel(Loc.Get("prefs.images.upload.label")), 0, 8);
         panel.Controls.Add(_imageUploadButton, 1, 8);
-
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 0, 9);
-        panel.Controls.Add(new Panel { Dock = DockStyle.Fill }, 1, 9);
 
         return BuildFramedPage(panel);
     }
@@ -1335,6 +1335,7 @@ internal sealed class PreferencesDialog : Form
         };
         _sourceIndentWidth.Value = editor.SourceIndentWidth;
         _showParagraphBlockHandleCheck.Checked = editor.ShowParagraphBlockHandle;
+        _inlineCommonActionsCheck.Checked = editor.InlineCommonActions;
 
         var appearance = _settings.Appearance;
         _restoreZoomCheck.Checked = appearance.RestoreZoomOnOpen;
@@ -1494,6 +1495,7 @@ internal sealed class PreferencesDialog : Form
         };
         editor.SourceIndentWidth = (int)_sourceIndentWidth.Value;
         editor.ShowParagraphBlockHandle = _showParagraphBlockHandleCheck.Checked;
+        editor.InlineCommonActions = _inlineCommonActionsCheck.Checked;
 
         if (_styleCombo.SelectedIndex >= 0 && _styleCombo.SelectedIndex < _styleOptions.Length)
         {

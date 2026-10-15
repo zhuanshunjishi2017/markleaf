@@ -245,13 +245,13 @@ internal sealed class NativeMenuService : IDisposable
         _editorMenuId++;
     }
 
-    internal EditorMenuModel BuildEditorMenuModel(EditorCommandStatus status) =>
-        new EditorMenuModelBuilder(_router.GetState, command => _shortcutManager.GetShortcutText(command) ?? "").Build(status);
+    internal EditorMenuModel BuildEditorMenuModel(EditorCommandStatus status, bool inlineCommonActions = false) =>
+        new EditorMenuModelBuilder(_router.GetState, command => _shortcutManager.GetShortcutText(command) ?? "").Build(status, inlineCommonActions);
 
     public async Task ShowEditorContextMenuAsync(Form owner, EditorContextMenuRequest request,
         Func<double, double, Point> editorPointToScreen, int dpi, bool darkMode,
         Action<string?> previewFormat, EditorCommandStatus status, Action end,
-        Func<AppCommand, Func<bool>, Task> execute)
+        Func<AppCommand, Func<bool>, Task> execute, bool inlineCommonActions = false)
     {
         CancelEditorContextMenu();
         var previousDisplay = _editorMenuDisplay;
@@ -271,7 +271,7 @@ internal sealed class NativeMenuService : IDisposable
         _editorMenuDisplay = displayFinished.Task;
         try
         {
-            using var menu = new EditorContextMenu(BuildEditorMenuModel(status), dpi, darkMode,
+            using var menu = new EditorContextMenu(BuildEditorMenuModel(status, inlineCommonActions), dpi, darkMode,
                 _showKeyboardShortcutsProvider(), session);
             _editorContextMenu = menu;
             menu.Closed += (_, _) => session.Closed(callback =>

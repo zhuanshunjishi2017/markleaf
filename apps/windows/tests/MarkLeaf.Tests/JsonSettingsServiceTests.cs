@@ -6,6 +6,30 @@ namespace MarkLeaf.Tests;
 public sealed class JsonSettingsServiceTests
 {
     [TestMethod]
+    [DataRow("{}", false)]
+    [DataRow("{\"editor\":{\"inlineCommonActions\":true}}", true)]
+    [DataRow("{\"editor\":{\"inlineCommonActions\":false}}", false)]
+    public async Task InlineCommonActions_SurvivesSaveAndReload(string json, bool expected)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(file, json);
+            var service = new JsonSettingsService(file, new TestLogger());
+            await service.SaveAsync(await service.LoadAsync());
+            var reloaded = await service.LoadAsync();
+            await service.SaveAsync(reloaded);
+            using var saved = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(file));
+            Assert.IsTrue(saved.RootElement.GetProperty("editor").TryGetProperty("inlineCommonActions", out var value),
+                "Saving preferences must retain the context menu presentation choice.");
+            Assert.AreEqual(expected, value.GetBoolean());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
     public async Task SaveAndLoad_RoundTripsWindowSettings()
     {
         var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));

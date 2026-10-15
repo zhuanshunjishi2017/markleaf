@@ -818,6 +818,7 @@
   "prefs.editor.pixels": " px",
   "prefs.editor.sourceIndentWidth": "默认缩进宽度(&I)",
   "prefs.editor.showParagraphBlockHandle": "显示段落格式按钮",
+  "prefs.editor.inlineCommonActions": "内联常用操作",
   "prefs.editor.selectCjkFont": "选择中文字体(&C)...",
   "prefs.editor.selectWesternFont": "选择西文字体(&W)...",
   "prefs.editor.fontSettings": "字体设置(&F)...",

@@ -172,6 +172,10 @@ document.addEventListener('mousedown', (event) => {
   // selection only for right-click preservation.
   if (event.button === 0) {
     selectionBeforeContextMenu = null
+    // A new editor gesture owns the selection now. Native menu dismissal may
+    // arrive after its fade-out; it must not restore the range saved before
+    // this click or deliver another hover preview over the new caret.
+    if (activeMenuSessionId !== null) endContextMenuSession(false)
     return
   }
   if (event.button === 2) {
@@ -1181,10 +1185,10 @@ function hideFormatMenu(): void {
   }, 160)
 }
 
-function endContextMenuSession(): void {
+function endContextMenuSession(restoreSelection = true): void {
   hideFormatMenu()
   delete editor.view.dom.dataset.markleafPreserveSelection
-  if (contextMenuSelection && !contextMenuCommandCommitted) {
+  if (restoreSelection && contextMenuSelection && !contextMenuCommandCommitted) {
     editor.commands.setTextSelection(contextMenuSelection)
   }
   contextMenuSelection = null

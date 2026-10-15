@@ -31,10 +31,16 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
     private static AppCommand[] BlockHandleCommands => NativeMenuService.BlockHandleCommands;
     private sealed class Branch { internal List<EditorMenuEntry> Items { get; } = []; }
 
-    internal EditorMenuModel Build(EditorCommandStatus status)
+    internal EditorMenuModel Build(EditorCommandStatus status, bool inlineCommonActions = false)
     {
-        var branch = status.ExpandedSource ? BuildExpandedSourceContextMenu().Menu : BuildEditorContextMenu(status).Menu;
-        var primary = !status.ReadOnly && !status.SourceMode && !status.ExpandedSource && state(AppCommand.ToggleBold).IsEnabled
+        var (branch, commands) = status.ExpandedSource ? BuildExpandedSourceContextMenu() : BuildEditorContextMenu(status);
+        var canFormat = !status.ReadOnly && !status.SourceMode && !status.ExpandedSource && state(AppCommand.ToggleBold).IsEnabled;
+        // Ordinary paragraphs already contain the traditional group. Add the
+        // same group to editable special contexts (e.g. table cells) when the
+        // quick row is hidden, so the preference never removes those actions.
+        if (inlineCommonActions && canFormat && !commands.Contains(AppCommand.ToggleBold))
+            AppendCommonFormattingCommands(branch);
+        var primary = !inlineCommonActions && canFormat
             ? PrimaryCommands.Select((command, i) => Entry(command, Loc.Get(PrimaryLabels[i]))).ToArray()
             : Array.Empty<EditorMenuEntry>();
         return new(Array.AsReadOnly(primary), Clean(branch.Items, primary.Select(x => x.Command!.Value).ToHashSet()));
@@ -223,20 +229,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendPopup(menu, Loc.Get("contextMenu.paragraphGroup"), BuildBlockHandleMenu());
                 AppendSeparator(menu);
 
-                AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("contextMenu.formatPainter"));
-                AppendCommand(menu, AppCommand.FormatPainterApply, Loc.Get("contextMenu.formatPainterApply"));
-                AppendSeparator(menu);
-
-                var format = CreateMenu(true);
-                AppendCommand(format, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
-                AppendCommand(format, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
-                AppendCommand(format, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
-                AppendCommand(format, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
-                AppendCommand(format, AppCommand.ToggleHighlight, Loc.Get("menu.format.highlight"));
-                AppendPopup(menu, Loc.Get("contextMenu.formatGroup"), format);
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.format.clearFormat"));
+                AppendCommonFormattingCommands(menu);
                 commands.AddRange(BlockHandleCommands);
                 commands.AddRange([
                     AppCommand.Undo, AppCommand.Redo, AppCommand.NormalizeInlineCode,
@@ -256,6 +249,23 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             menu.Items.Clear();
             throw;
         }
+    }
+
+    private void AppendCommonFormattingCommands(Branch menu)
+    {
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("contextMenu.formatPainter"));
+        AppendCommand(menu, AppCommand.FormatPainterApply, Loc.Get("contextMenu.formatPainterApply"));
+        AppendSeparator(menu);
+        var format = CreateMenu(true);
+        AppendCommand(format, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
+        AppendCommand(format, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
+        AppendCommand(format, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
+        AppendCommand(format, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
+        AppendCommand(format, AppCommand.ToggleHighlight, Loc.Get("menu.format.highlight"));
+        AppendPopup(menu, Loc.Get("contextMenu.formatGroup"), format);
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.format.clearFormat"));
     }
 
     private (Branch Menu, AppCommand[] Commands) BuildExpandedSourceContextMenu()
