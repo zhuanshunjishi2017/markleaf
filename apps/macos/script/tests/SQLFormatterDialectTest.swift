@@ -36,6 +36,12 @@ expect(SQLFormatterDialect.allCases.map(\.rawValue) == [
 let decoder = JSONDecoder()
 let defaultSettings = try decoder.decode(AppSettings.self, from: Data("{}".utf8))
 expect(defaultSettings.sqlFormatterDialect == .ansi, "SQL should default to ANSI")
+let defaultObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(defaultSettings)) as! [String: Any]
+expect(defaultObject["inlineCommonActions"] as? Bool == true, "older settings should default to inline common actions")
+let textMenuSettings = try decoder.decode(AppSettings.self, from: Data(#"{"inlineCommonActions":false,"sqlFormatterDialect":"postgres"}"#.utf8))
+let textMenuRoundTrip = try JSONSerialization.jsonObject(with: JSONEncoder().encode(textMenuSettings)) as! [String: Any]
+expect(textMenuRoundTrip["inlineCommonActions"] as? Bool == false, "text menu preference should survive a round trip")
+expect(textMenuSettings.sqlFormatterDialect == .postgres, "menu preference must preserve the SQL dialect")
 
 let explicitSettings = try decoder.decode(AppSettings.self, from: Data(#"{"sqlFormatterDialect":"postgres"}"#.utf8))
 expect(explicitSettings.sqlFormatterDialect == .postgres, "an explicit SQL dialect should survive decoding")

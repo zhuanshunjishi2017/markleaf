@@ -131,7 +131,8 @@ extension EditorSession {
         let state = editorMenuState
         let semanticContext = EditorMenuPolicy.semanticContext(for: state)
         let session = NativeFormatMenuSession(owner: self, menu: menu)
-        if !state.isSourceMode && !state.isReadOnly && state.actions["toggleBold"]?.enabled == true {
+        let inlineCommonActions = SettingsService.shared.settings.inlineCommonActions
+        if inlineCommonActions && !state.isSourceMode && !state.isReadOnly && state.actions["toggleBold"]?.enabled == true {
             let toolbar = NativeFormatToolbarView(
                 actions: state.actions,
                 canStartFormatPainter: canStartFormatPainter,
@@ -228,6 +229,21 @@ extension EditorSession {
             let paragraph = NSMenu(title: L10n.t("段落"))
             addOrdinaryBlockHandleCommands(to: paragraph)
             menu.addItem(submenuItem(L10n.t("段落"), paragraph))
+        }
+
+        // Keep formatting available for editable table/inline contexts too, not
+        // only ordinary paragraphs, when replacing the quick row with text items.
+        if !inlineCommonActions && !state.isSourceMode && !state.isReadOnly
+            && (semanticContext == .ordinaryBlock || state.actions["toggleBold"]?.enabled == true) {
+            NativeFormatTextMenu.append(
+                to: menu, actions: state.actions,
+                canStartFormatPainter: canStartFormatPainter,
+                formatPainterArmed: formatPainterArmed ?? isFormatPainterArmed
+            ) { title, command in
+                let item = self.menuItem(title, #selector(self.handleCommand(_:)))
+                self.applyShortcut(to: item, command: command)
+                return item
+            }
         }
 
         guard !menu.items.isEmpty else { return }

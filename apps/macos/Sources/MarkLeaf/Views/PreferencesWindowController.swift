@@ -56,10 +56,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     private var sourceFontField: FontField!
     private var sourceCjkFontField: FontField!
     private let sourceIndentField = NSTextField(string: "2")
-    private let sqlDialectPopup = NSPopUpButton()
     private var cjkLanguageTag: CJKLanguageTag
     private let ignoreMaxWidthCheck = NSButton(checkboxWithTitle: L10n.t("无视最大宽度限制"), target: nil, action: nil)
     private let blockHandleCheck = NSButton(checkboxWithTitle: L10n.t("显示段落块句柄"), target: nil, action: nil)
+    private let inlineCommonActionsCheck = NSButton(checkboxWithTitle: L10n.t("内联常见操作"), target: nil, action: nil)
 
     // 外观
     private let stylePopup = NSPopUpButton()
@@ -172,10 +172,12 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             self?.controlChanged()
         }
         sourceIndentField.stringValue = "\(settings.sourceIndentWidth)"
-        sqlDialectPopup.addItems(withTitles: SQLFormatterDialect.allCases.map(\.displayName))
-        sqlDialectPopup.selectItem(at: SQLFormatterDialect.allCases.firstIndex(of: settings.sqlFormatterDialect) ?? 0)
         ignoreMaxWidthCheck.state = settings.visualIgnoreMaxWidth ? .on : .off
         blockHandleCheck.state = settings.showParagraphBlockHandle ? .on : .off
+        // The persisted flag describes quick-row visibility, while the checkbox
+        // means moving those actions into the ordinary text menu.
+        inlineCommonActionsCheck.state = settings.inlineCommonActions ? .off : .on
+        inlineCommonActionsCheck.toolTip = L10n.t("将常见格式操作收进右键菜单，不显示顶部快捷按钮。")
         stylePopup.addItems(withTitles: styles.map { L10n.t($0.displayName) })
         if let idx = styles.firstIndex(where: { $0.id == settings.markdownStyle }) {
             stylePopup.selectItem(at: idx)
@@ -256,7 +258,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         imageDirectoryField.widthAnchor.constraint(equalToConstant: 260).isActive = true
         checkboxButtons = [
             multiTabCheck, autoSaveCheck, saveOnSwitchCheck, autoUpdateCheck, recordRecentFilesCheck, recordRecentFoldersCheck,
-                      blockHandleCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
+                      blockHandleCheck, inlineCommonActionsCheck, restoreZoomCheck, ctrlWheelZoomCheck, topMostCheck,
             autoHideScrollbarsCheck, followSystemCheck, codeHighlightCheck, associateMDCheck, associateTextCheck,
             useRelativePathsCheck, prefixDotSlashCheck,
         ]
@@ -290,9 +292,9 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
 
         // 绑定
         let controls: [NSControl] = [startupPopup, externalFileOpenModePopup, workspaceOpenModePopup, multiTabCheck, autoSaveCheck, saveOnSwitchCheck, defaultEncodingPopup, newLinePopup, recordRecentFilesCheck,
-                                     recordRecentFoldersCheck, sqlDialectPopup, stylePopup, themePopup,
+                                     recordRecentFoldersCheck, stylePopup, themePopup,
                                      defaultLightThemePopup, defaultDarkThemePopup,
-                                     restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, topMostCheck, autoHideScrollbarsCheck,
+                                     restoreZoomCheck, ctrlWheelZoomCheck, blockHandleCheck, inlineCommonActionsCheck, topMostCheck, autoHideScrollbarsCheck,
                                      followSystemCheck, languagePopup,
                                      associateMDCheck, associateTextCheck, clipboardImagePopup, fileImagePopup,
                                      useRelativePathsCheck, prefixDotSlashCheck]
@@ -513,7 +515,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             : nil
         return formPage(rows: [
             .header(L10n.t("文档与标签")),
-            .checkboxGroup([multiTabCheck, ignoreMaxWidthCheck, blockHandleCheck]),
+            .checkboxGroup([multiTabCheck, ignoreMaxWidthCheck, blockHandleCheck, inlineCommonActionsCheck]),
             .header(L10n.t("可视化")),
             .field("", linkButton(L10n.t("可视化设置…"), #selector(openVisualSettings))),
             .header(L10n.t("源码模式")),
@@ -521,8 +523,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             .field(L10n.t("默认缩进宽度"), sourceIndentField),
             .header(L10n.t("Markdown 行为")),
             .field("", linkButton(L10n.t("Markdown 行为…"), #selector(openMarkdownBehaviorSettings))),
-            .header(L10n.t("代码格式化器")),
-            .field("", centeredFieldRow(sqlDialectCenteredRow())),
             .header(L10n.t("缩放视图")),
             .field("", restoreZoomCheck),
             .field("", ctrlWheelZoomCheck),
@@ -530,14 +530,6 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         ], labeledFieldLeadingInset: labeledFieldLeadingInset,
            intrinsicallyCenteredCheckboxes: editorCenteredCheckboxes,
            checkboxAlignmentControls: editorAlignedCheckboxes)
-    }
-
-    private func sqlDialectCenteredRow() -> NSView {
-        let labelColumnWidth = ceil((L10n.t("SQL 方言") as NSString).size(
-            withAttributes: [.font: NSFont.systemFont(ofSize: 13)]
-        ).width)
-        let row = fieldRow(L10n.t("SQL 方言"), sqlDialectPopup, labelColumnWidth: labelColumnWidth)
-        return centeredFieldRow(row)
     }
 
     private func appearancePage() -> NSView {
@@ -736,11 +728,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
         settings.cjkLanguageTag = cjkLanguageTag
         settings.visualIgnoreMaxWidth = ignoreMaxWidthCheck.state == .on
         settings.sourceIndentWidth = Int(sourceIndentField.stringValue) ?? 2
-        if sqlDialectPopup.indexOfSelectedItem >= 0,
-           sqlDialectPopup.indexOfSelectedItem < SQLFormatterDialect.allCases.count {
-            settings.sqlFormatterDialect = SQLFormatterDialect.allCases[sqlDialectPopup.indexOfSelectedItem]
-        }
         settings.showParagraphBlockHandle = blockHandleCheck.state == .on
+        settings.inlineCommonActions = inlineCommonActionsCheck.state == .off
 
         if stylePopup.indexOfSelectedItem >= 0, stylePopup.indexOfSelectedItem < styleIDs.count {
             settings.markdownStyle = styleIDs[stylePopup.indexOfSelectedItem]

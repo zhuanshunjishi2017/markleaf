@@ -15,6 +15,8 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
     private let chooseButton = NSButton(title: L10n.t("选择可执行文件…"), target: nil, action: nil)
     private let clearButton = NSButton(title: L10n.t("清除自定义路径"), target: nil, action: nil)
     private let probeButton = NSButton(title: L10n.t("探测"), target: nil, action: nil)
+    private let sqlDialectPopup = NSPopUpButton()
+    private let sqlDialectControls = NSStackView()
 
     init() {
         paths = SettingsService.shared.settings.codeFormatterPaths
@@ -92,6 +94,18 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
         clearButton.action = #selector(clearCustomPath)
         probeButton.target = self
         probeButton.action = #selector(runProbe)
+        sqlDialectPopup.addItems(withTitles: SQLFormatterDialect.allCases.map(\.displayName))
+        sqlDialectPopup.setAccessibilityLabel(L10n.t("SQL 方言"))
+        sqlDialectPopup.target = self
+        sqlDialectPopup.action = #selector(sqlDialectChanged)
+        let sqlLabel = NSTextField(labelWithString: L10n.t("SQL 方言"))
+        sqlLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        sqlDialectPopup.setContentCompressionResistancePriority(.required, for: .horizontal)
+        sqlDialectControls.addArrangedSubview(sqlLabel)
+        sqlDialectControls.addArrangedSubview(sqlDialectPopup)
+        sqlDialectControls.orientation = .horizontal
+        sqlDialectControls.alignment = .centerY
+        sqlDialectControls.spacing = 6
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.usesSingleLineMode = true
@@ -109,19 +123,31 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let buttons = NSStackView(views: [chooseButton, clearButton, probeButton, statusLabel, spacer, closeButton])
+        let buttons = NSStackView(views: [chooseButton, clearButton, probeButton, sqlDialectControls, statusLabel, spacer, closeButton])
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.spacing = 10
+        buttons.detachesHiddenViews = true
         buttons.translatesAutoresizingMaskIntoConstraints = false
         closeButton.widthAnchor.constraint(equalToConstant: 82).isActive = true
+        let fixedControls = [chooseButton, clearButton, probeButton, sqlDialectControls] as [NSView]
+        for control in fixedControls {
+            control.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        // Measure the widest (SQL-visible) action row once, so translated labels
+        // cannot squeeze controls or resize the window when selection changes.
+        let minimumWidth = max(620, ceil(
+            fixedControls.reduce(CGFloat(82), { $0 + $1.fittingSize.width })
+                + buttons.spacing * CGFloat(buttons.views.count - 1) + 36
+        ))
 
         let root = NSView()
         root.addSubview(description)
         root.addSubview(scroll)
         root.addSubview(buttons)
         window.contentView = root
-        window.contentMinSize = NSSize(width: 620, height: 320)
+        window.contentMinSize = NSSize(width: minimumWidth, height: 320)
+        window.setContentSize(NSSize(width: max(window.contentLayoutRect.width, minimumWidth), height: 400))
         NSLayoutConstraint.activate([
             description.topAnchor.constraint(equalTo: root.topAnchor, constant: 18),
             description.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
@@ -133,12 +159,15 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
             buttons.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
             buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
             buttons.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
-            root.widthAnchor.constraint(greaterThanOrEqualToConstant: 620),
+            root.widthAnchor.constraint(greaterThanOrEqualToConstant: minimumWidth),
             root.heightAnchor.constraint(greaterThanOrEqualToConstant: 320),
         ])
     }
 
     func refresh() {
+        sqlDialectPopup.selectItem(at: SQLFormatterDialect.allCases.firstIndex(
+            of: SettingsService.shared.settings.sqlFormatterDialect
+        ) ?? 0)
         paths = SettingsService.shared.settings.codeFormatterPaths
         let currentLanguages = ExternalCodeFormatterCatalog.availableLanguages(configuredPaths: paths)
         let availabilityDidChange = currentLanguages != lastKnownLanguages
@@ -146,10 +175,10 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
         if availabilityDidChange {
             self.probeResults.removeAll()
         }
+        let selectedRow = tableView.selectedRow
         tableView.reloadData()
-        if tableView.selectedRow < 0 {
-            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        }
+        let rowToRestore = tools.indices.contains(selectedRow) ? selectedRow : 0
+        tableView.selectRowIndexes(IndexSet(integer: rowToRestore), byExtendingSelection: false)
         updateControls()
         if availabilityDidChange {
             onDidChange?()
@@ -159,6 +188,13 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
     private var selectedTool: ExternalCodeFormatterTool? {
         let row = tableView.selectedRow
         return row >= 0 && row < tools.count ? tools[row] : nil
+    }
+
+    @objc private func sqlDialectChanged() {
+        let index = sqlDialectPopup.indexOfSelectedItem
+        guard SQLFormatterDialect.allCases.indices.contains(index) else { return }
+        SettingsService.shared.update { $0.sqlFormatterDialect = SQLFormatterDialect.allCases[index] }
+        onDidChange?()
     }
 
     private func resolvedPath(for tool: ExternalCodeFormatterTool) -> String? {
@@ -174,6 +210,7 @@ final class CodeFormatterManagerWindowController: NSWindowController, NSWindowDe
     }
 
     private func updateControls() {
+        sqlDialectControls.isHidden = selectedTool?.languages.contains("sql") != true
         guard let tool = selectedTool else {
             chooseButton.isEnabled = false
             clearButton.isEnabled = false

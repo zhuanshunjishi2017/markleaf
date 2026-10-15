@@ -32,9 +32,9 @@ func assertLayout(_ toolbar: NativeFormatToolbarView, withHeadings: Bool = false
             precondition(frame.minY == dividerFrame.minY && frame.maxY == dividerFrame.maxY,
                 "compact button edges must align with the existing vertical group divider")
         }
-        precondition(button.bounds.size == NSSize(width: 18, height: 18),
+        precondition(button.bounds.size == NSSize(width: 24, height: 24),
             "\(button.identifier!.rawValue): symbol alignment metadata must not enlarge the actual button frame")
-        precondition(frame.minY == 4 && frame.maxY == 22, "\(button.identifier!.rawValue) frame=\(frame) toolbar=\(toolbar.bounds)")
+        precondition(frame.minY == 4 && frame.maxY == 28, "\(button.identifier!.rawValue) frame=\(frame) toolbar=\(toolbar.bounds)")
         precondition(frame.minX >= 16 && frame.maxX <= toolbar.bounds.width - 16, "the button row must respect the native menu separator's side insets")
         if let previous {
             let startsGroup = index == 5 || (withHeadings && index == 7)
@@ -43,7 +43,7 @@ func assertLayout(_ toolbar: NativeFormatToolbarView, withHeadings: Bool = false
         }
         previous = frame
         let imageRect = button.cell!.imageRect(forBounds: button.bounds)
-        precondition(imageRect == NSRect(x: 2.5, y: 2.5, width: 13, height: 13),
+        precondition(imageRect == NSRect(x: 4, y: 4, width: 16, height: 16),
             "all symbols must use one centered icon canvas, independent of their font baseline")
         precondition(button.toolTip != nil && button.accessibilityLabel() == button.toolTip,
             "normalizing icon artwork must retain tooltips and accessibility labels")
@@ -60,8 +60,7 @@ let hoverEvent = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
     modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
     eventNumber: 0, trackingNumber: 0, userData: nil)!
 let bold = controls[0]
-// Exercise the real drawing path: the normal bezel must cover the same tall
-// footprint as the menu hover highlight, rather than only a short native bezel.
+// Exercise production drawing, including the transparent idle hit area.
 func renderButton(_ button: NSButton, scale: CGFloat = 1) -> NSBitmapImageRep {
     let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
         pixelsWide: Int(button.bounds.width * scale), pixelsHigh: Int(button.bounds.height * scale),
@@ -87,10 +86,21 @@ func renderButton(_ button: NSButton, scale: CGFloat = 1) -> NSBitmapImageRep {
 func backgroundAlpha(_ button: NSButton, x: Int, y: Int) -> CGFloat {
     renderButton(button).colorAt(x: x, y: y)!.alphaComponent
 }
-precondition(backgroundAlpha(bold, x: 10, y: 2) > 0.01,
-    "normal background must extend to the same top edge as the tall hover highlight")
-precondition(backgroundAlpha(bold, x: 10, y: 17) > 0.01,
-    "normal background must extend to the same bottom edge as the tall hover highlight")
+func assertIdleIsTransparent(_ button: NSButton, scale: CGFloat) {
+    let bitmap = renderButton(button, scale: scale)
+    // The entire perimeter lies outside the centered icon canvas. Check all
+    // four sides so a residual custom outline cannot pass isBordered == false.
+    for position in 0..<bitmap.pixelsWide {
+        for (x, y) in [(position, 0), (position, bitmap.pixelsHigh - 1),
+                       (0, position), (bitmap.pixelsWide - 1, position)] {
+            precondition(bitmap.colorAt(x: x, y: y)!.alphaComponent < 0.01,
+                "idle buttons must have no painted border or background")
+        }
+    }
+    precondition(bitmap.colorAt(x: Int(12 * scale), y: Int(2 * scale))!.alphaComponent < 0.01,
+        "idle buttons must not add a persistent background behind the menu material")
+}
+assertIdleIsTransparent(bold, scale: 1)
 let normalFrame = bold.frame
 func alignmentInsets(_ button: NSButton) -> [CGFloat] {
     let insets = button.alignmentRectInsets
@@ -98,6 +108,8 @@ func alignmentInsets(_ button: NSButton) -> [CGFloat] {
 }
 let normalAlignmentInsets = alignmentInsets(bold)
 bold.state = .on
+precondition(backgroundAlpha(bold, x: 12, y: 2) > 0.1,
+    "borderless buttons must retain a visible checked-state background")
 var previews: [String?] = []
 toolbar.onPreview = { previews.append($0) }
 bold.mouseEntered(with: hoverEvent)
@@ -106,7 +118,7 @@ precondition(bold.contentTintColor == .selectedMenuItemTextColor && !bold.isBord
 precondition(bold.state == .on && previews.last! == "toggleBold", "hover preserves the checked state and previews the text format")
 precondition(bold.frame == normalFrame && alignmentInsets(bold) == normalAlignmentInsets,
     "hover must not change the button layout or alignment geometry")
-precondition(backgroundAlpha(bold, x: 10, y: 2) > 0.9 && backgroundAlpha(bold, x: 10, y: 17) > 0.9,
+precondition(backgroundAlpha(bold, x: 12, y: 2) > 0.9 && backgroundAlpha(bold, x: 12, y: 22) > 0.9,
     "hover highlight retains its full-height footprint")
 let italic = controls[1]
 italic.mouseEntered(with: hoverEvent)
@@ -118,7 +130,7 @@ italic.mouseExited(with: hoverEvent)
 precondition(previews.last! == nil, "leaving cancels only the temporary text preview")
 bold.isEnabled = false
 bold.mouseEntered(with: hoverEvent)
-_ = backgroundAlpha(bold, x: 10, y: 2)
+_ = backgroundAlpha(bold, x: 12, y: 2)
 precondition(bold.contentTintColor == .tertiaryLabelColor && !bold.isBordered, "disabled actions must not appear hovered")
 italic.mouseEntered(with: hoverEvent)
 italic.viewDidMoveToWindow()
@@ -143,13 +155,14 @@ for name in [NSAppearance.Name.aqua, .darkAqua] {
         for scale: CGFloat in [1, 2] {
             for state: NSControl.StateValue in [.off, .on] {
                 button.state = state
+                if state == .off { assertIdleIsTransparent(button, scale: scale) }
                 button.mouseEntered(with: hoverEvent)
                 let hovered = renderButton(button, scale: scale)
                 if button.isEnabled {
                     var foregroundCoverage: CGFloat = 0
-                    let background = hovered.colorAt(x: Int(9 * scale), y: Int(2 * scale))!
-                    for y in Int(3 * scale)..<Int(15 * scale) {
-                        for x in Int(3 * scale)..<Int(15 * scale) {
+                    let background = hovered.colorAt(x: Int(12 * scale), y: Int(2 * scale))!
+                    for y in Int(4 * scale)..<Int(20 * scale) {
+                        for x in Int(4 * scale)..<Int(20 * scale) {
                             let color = hovered.colorAt(x: x, y: y)!
                             // Integrate antialiased foreground coverage instead of
                             // counting opaque pixels, which small vector glyphs may

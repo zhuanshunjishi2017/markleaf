@@ -129,6 +129,7 @@ struct AppSettings: Codable {
             try container.decodeIfPresent(String.self, forKey: .sqlFormatterDialect) ?? SQLFormatterDialect.ansi.rawValue
         )
         showParagraphBlockHandle = try container.decodeIfPresent(Bool.self, forKey: .showParagraphBlockHandle) ?? true
+        inlineCommonActions = try container.decodeIfPresent(Bool.self, forKey: .inlineCommonActions) ?? true
         showCodeHighlight = try container.decodeIfPresent(Bool.self, forKey: .showCodeHighlight) ?? true
         suppressUnsafeEmphasisPrompt = try container.decodeIfPresent(Bool.self, forKey: .suppressUnsafeEmphasisPrompt) ?? false
         unsafeEmphasisAction = try container.decodeIfPresent(String.self, forKey: .unsafeEmphasisAction) ?? UnsafeEmphasisAction.literal.rawValue
@@ -239,6 +240,7 @@ struct AppSettings: Codable {
     var codeFormatterPaths: [String: String] = [:]
     var sqlFormatterDialect = SQLFormatterDialect.ansi
     var showParagraphBlockHandle = true
+    var inlineCommonActions = true
     var showCodeHighlight = true
     var suppressUnsafeEmphasisPrompt = false
     var unsafeEmphasisAction = UnsafeEmphasisAction.literal.rawValue

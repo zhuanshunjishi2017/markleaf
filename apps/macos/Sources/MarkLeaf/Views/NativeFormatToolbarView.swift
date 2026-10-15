@@ -2,10 +2,9 @@ import AppKit
 
 /// AppKit points, independent of editor zoom and display backing scale.
 private enum NativeFormatToolbarMetrics {
-    static let buttonSize: CGFloat = 18
-    static let iconSize: CGFloat = 13
-    static let cornerRadius: CGFloat = 4
-    static let borderWidth: CGFloat = 1
+    static let buttonSize: CGFloat = 24
+    static let iconSize: CGFloat = 16
+    static let cornerRadius: CGFloat = 5
     static let buttonSpacing: CGFloat = 2
     static let groupSpacing: CGFloat = 8
     // Match the inset of NSMenu's native separator and ordinary menu items.
@@ -54,8 +53,8 @@ final class NativeFormatToolbarView: NSView {
         // SF Symbols 里文字字形符号（B/I/U/S）只占字号约七成高，物件符号
         // （高亮笔/刷/橡皮）几乎撑满符号框；同一点号会让文字类明显偏小。
         // 文字类用更大点号、物件类用更小点号，使两类的实际视觉高度一致。
-        let textSymbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
-        let objectSymbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)
+        let textSymbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let objectSymbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
 
         func add(_ command: String, title: String, symbol: String?, textSymbol: Bool = false, preview: Bool = false, enabled: Bool? = nil, checked: Bool? = nil) {
             let button = NativeFormatToolbarButton(title: title, target: self, action: #selector(activate(_:)))
@@ -70,8 +69,8 @@ final class NativeFormatToolbarView: NSView {
             }
             button.bezelStyle = .texturedRounded
             button.controlSize = .small
-            // 所有状态共用完整按钮区域，不在悬停时切换原生 bezel，
-            // 避免普通边框较矮以及 AppKit alignment inset 随状态变化。
+            // 无常驻边框或底色；所有状态共用完整按钮区域，
+            // 不在悬停时切换原生 bezel 或 AppKit alignment inset。
             button.isBordered = false
             button.focusRingType = .none
             button.refusesFirstResponder = true
@@ -169,26 +168,18 @@ private final class NativeFormatToolbarButton: NSButton {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let inset = NativeFormatToolbarMetrics.borderWidth / 2
-        let background = NSBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset),
+        let background = NSBezierPath(roundedRect: bounds,
                                       xRadius: NativeFormatToolbarMetrics.cornerRadius,
                                       yRadius: NativeFormatToolbarMetrics.cornerRadius)
         let checked = state == .on && isEnabled
         if menuHovered && isEnabled {
-            // 悬停：accent 实底 + 白色图标，描边与普通态保持一致不加粗。
+            // 悬停：accent 实底 + 原生菜单选中文字颜色。
             NSColor.controlAccentColor.setFill()
             background.fill()
-        } else {
-            (checked
-                ? NSColor.controlAccentColor.withAlphaComponent(0.15)
-                : NSColor.controlBackgroundColor.withAlphaComponent(0.12)).setFill()
+        } else if checked {
+            NSColor.controlAccentColor.withAlphaComponent(0.15).setFill()
             background.fill()
         }
-        // All states use the same outline; hover only changes its color.
-        (menuHovered && isEnabled ? NSColor.controlAccentColor
-            : NSColor.separatorColor.withAlphaComponent(0.5)).setStroke()
-        background.lineWidth = NativeFormatToolbarMetrics.borderWidth
-        background.stroke()
         updateContentTint()
         super.draw(dirtyRect)
     }
