@@ -83,7 +83,7 @@ const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 const hostCapabilities = resolveNativeCapabilities(window.chrome?.webview?.hostPlatform)
-const usesNativeFormatMenu = window.chrome?.webview?.hostPlatform === 'macOS'
+const usesNativeFormatMenu = ['macOS', 'Windows'].includes(window.chrome?.webview?.hostPlatform ?? '')
 document.documentElement.classList.toggle('markleaf-host-macos', window.chrome?.webview?.hostPlatform === 'macOS')
 document.documentElement.classList.toggle(
   'markleaf-themed-visual-selection',
@@ -142,6 +142,7 @@ const editorCreationOptions = {
   sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
     sendEditorState()
     send('contextMenuRequested', { clientX, clientY, menuHeight: 0, readOnly, sourceMode: false, expandedSource: true,
+      menuSessionId: beginContextMenuSession(),
       canStartFormatPainter: false, formatPainterArmed: false })
   },
 }
@@ -153,6 +154,14 @@ setCodeBlockControlHandlers({
 let contextMenuSelection: { from: number; to: number } | null = null
 let selectionBeforeContextMenu: { from: number; to: number } | null = null
 let contextMenuCommandCommitted = false
+let menuSessionSequence = 0
+let activeMenuSessionId: number | null = null
+
+function beginContextMenuSession(): number {
+  setEditorFormatPreview(editor, null)
+  activeMenuSessionId = ++menuSessionSequence
+  return activeMenuSessionId
+}
 
 // WebKit collapses an existing selection to the clicked word during a
 // right-button mousedown. Capture the selection before that default action so
@@ -1180,6 +1189,7 @@ function endContextMenuSession(): void {
   }
   contextMenuSelection = null
   contextMenuCommandCommitted = false
+  activeMenuSessionId = null
 }
 
 editorMount.addEventListener('contextmenu', (event) => {
@@ -1192,6 +1202,7 @@ editorMount.addEventListener('contextmenu', (event) => {
   if (outsideDocument) {
     hideFormatMenu()
     send('contextMenuRequested', {
+      menuSessionId: beginContextMenuSession(),
       clientX: event.clientX,
       clientY: event.clientY,
       menuHeight: 0,
@@ -1234,6 +1245,7 @@ editorMount.addEventListener('contextmenu', (event) => {
     hideFormatMenu()
   }
   send('contextMenuRequested', {
+    menuSessionId: beginContextMenuSession(),
     clientX: event.clientX,
     clientY: event.clientY,
     menuHeight: showFormat ? formatMenu.offsetHeight : 0,
@@ -1248,6 +1260,7 @@ sourceMount.addEventListener('contextmenu', (event) => {
   sourceEditor?.focus()
   sendEditorState()
   send('contextMenuRequested', {
+    menuSessionId: beginContextMenuSession(),
     clientX: event.clientX,
     clientY: event.clientY,
     canStartFormatPainter: false,
@@ -1566,8 +1579,13 @@ async function handleMessage(value: unknown): Promise<void> {
         html?: unknown
         clientX?: unknown
         clientY?: unknown
+        menuSessionId?: unknown
       }
       if (typeof payload?.command === 'string') {
+        if (payload.menuSessionId != null && payload.menuSessionId !== activeMenuSessionId) {
+          if (message.requestId) send('commandResult', { success: false }, message.requestId)
+          break
+        }
         if (!isHostCommandAllowed(payload.command, { readOnly, documentType })) {
           if (message.requestId) send('commandResult', { success: false }, message.requestId)
           break

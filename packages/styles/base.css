@@ -79,12 +79,14 @@
 }
 
 /* Preview keeps the logical range but temporarily hides selection painting,
-   so its background and the document's own token colours remain visible. */
+   so its background and the document's own token colours remain visible.
+   `inherit` follows highlight inheritance in Chromium and inherits the parent
+   ::selection's foreground (often white), not the originating text colour. */
 .markleaf-document.markleaf-format-preview-active::selection,
 .markleaf-document.markleaf-format-preview-active *::selection {
   background: transparent !important;
-  color: inherit !important;
-  -webkit-text-fill-color: inherit !important;
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 .markleaf-format-preview[data-format-preview="toggleBold"],
 .markleaf-format-preview[data-format-preview="toggleBold"] * { font-weight: 700 !important; }

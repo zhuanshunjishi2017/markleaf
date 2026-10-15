@@ -1,6 +1,6 @@
 import type { HostCapabilities, ImageResourceResolver } from '@markleaf/editor-core'
 
-export function resolveNativeCapabilities(hostPlatform?: 'macOS'): HostCapabilities & { imageCaptureMode: 'scroll' | 'fullSurface' } {
+export function resolveNativeCapabilities(hostPlatform?: 'macOS' | 'Windows'): HostCapabilities & { imageCaptureMode: 'scroll' | 'fullSurface' } {
   const macOS = hostPlatform === 'macOS'
   return {
     // 统一选区模型：所有原生宿主使用主题化托管选区（::highlight API，

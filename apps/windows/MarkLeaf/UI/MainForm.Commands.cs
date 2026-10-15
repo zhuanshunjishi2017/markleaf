@@ -173,6 +173,19 @@ internal sealed partial class MainForm
 
     private async void ExecuteCommand(AppCommand command)
     {
+        try { await ExecuteCommandCoreAsync(command); }
+        catch (Exception error) { _logger.Error($"Command failed: {command}.", error); }
+    }
+
+    private async Task ExecuteContextMenuCommandAsync(AppCommand command, long? menuSessionId, Func<bool> isCurrent)
+    {
+        if (_editorHost is null || !isCurrent() || !GetCommandState(command).IsEnabled) return;
+        using var scope = _editorHost.BeginMenuCommandScope(menuSessionId, isCurrent);
+        await ExecuteCommandCoreAsync(command);
+    }
+
+    private async Task ExecuteCommandCoreAsync(AppCommand command)
+    {
         switch (command)
         {
             case AppCommand.NewDocument:
@@ -218,25 +231,25 @@ internal sealed partial class MainForm
                 PrintDocument();
                 break;
             case AppCommand.Cut:
-                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: true);
+                await ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: true);
                 break;
             case AppCommand.Copy:
-                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: false);
+                await ExecuteClipboardCopyAsync(ClipboardCopyMode.Formatted, cut: false);
                 break;
             case AppCommand.CopyMarkdown:
-                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.Markdown, cut: false);
+                await ExecuteClipboardCopyAsync(ClipboardCopyMode.Markdown, cut: false);
                 break;
             case AppCommand.CopyPlainText:
-                _ = ExecuteClipboardCopyAsync(ClipboardCopyMode.PlainText, cut: false);
+                await ExecuteClipboardCopyAsync(ClipboardCopyMode.PlainText, cut: false);
                 break;
             case AppCommand.CopyHtml:
-                _ = CopySelectionHtmlAsync();
+                await CopySelectionHtmlAsync();
                 break;
             case AppCommand.Paste:
-                _ = PasteClipboardContentAsync();
+                await PasteClipboardContentAsync();
                 break;
             case AppCommand.PastePlainText:
-                _ = PasteClipboardPlainTextAsync();
+                await PasteClipboardPlainTextAsync();
                 break;
             case AppCommand.Find:
                 OpenFindReplaceDialog(replace: false);
@@ -340,7 +353,7 @@ internal sealed partial class MainForm
                 InsertMermaid();
                 break;
             case AppCommand.InsertFootnote:
-                InsertFootnote();
+                await InsertFootnote();
                 break;
             case AppCommand.ResetFootnoteLabel:
                 ResetFootnoteLabel();
@@ -367,19 +380,19 @@ internal sealed partial class MainForm
                 EditTableCaption();
                 break;
             case AppCommand.InsertImage:
-                _ = SelectAndInsertImagesAsync();
+                await SelectAndInsertImagesAsync();
                 break;
             case AppCommand.InsertImageFromUrl:
-                _ = InsertImageFromUrlAsync();
+                await InsertImageFromUrlAsync();
                 break;
             case AppCommand.InsertTable:
                 InsertTable();
                 break;
             case AppCommand.ChangeImage:
-                _ = ChangeImageAsync();
+                await ChangeImageAsync();
                 break;
             case AppCommand.SaveImageAs:
-                _ = SaveImageAsAsync();
+                await SaveImageAsAsync();
                 break;
             case AppCommand.ResizeImage100:
                 _editorHost?.ExecuteCommand("resizeImage", "100");
@@ -586,13 +599,17 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
-    private void OnEditorContextMenuRequested(object? sender, EditorContextMenuRequest request)
+    private async void OnEditorContextMenuRequested(object? sender, EditorContextMenuRequest request)
     {
         if (InvokeRequired)
         {
             BeginInvoke(() => OnEditorContextMenuRequested(sender, request));
             return;
         }
+
+        _logger.Info(
+            $"context-menu requested: menuHeight={request.MenuHeight} outside={request.OutsideDocument} " +
+            $"source={request.SourceMode} expanded={request.ExpandedSource} client=({request.ClientX},{request.ClientY})");
 
         if (_editorHost?.IsDocumentLoaded != true)
         {
@@ -621,16 +638,20 @@ internal sealed partial class MainForm
                 : request.SourceMode
                 ? _editorCommandStatus with { SourceMode = true, ExpandedSource = false }
                 : _editorCommandStatus;
-            _menuService.ShowEditorContextMenu(
-                Handle,
+            await _menuService.ShowEditorContextMenuAsync(
+                this,
                 request,
                 (clientX, clientY) => _editorHost.EditorPointToScreen(clientX, clientY),
-                status);
+                DeviceDpi,
+                _menuDarkMode,
+                command => _editorHost.ExecuteCommand("previewFormat", command, menuSessionId: request.MenuSessionId),
+                status,
+                () => { if (!IsDisposed && !Disposing) _editorHost.ExecuteCommand("hideFormatMenu", menuSessionId: request.MenuSessionId); },
+                (command, isCurrent) => ExecuteContextMenuCommandAsync(command, request.MenuSessionId, isCurrent));
         }
-        finally
+        catch (Exception exception)
         {
-            // 原生菜单关闭时，同步隐藏前端格式菜单，保证两者同现同隐。
-            _editorHost.ExecuteCommand("hideFormatMenu");
+            _logger.Error("Editor context menu failed.", exception);
         }
     }
 

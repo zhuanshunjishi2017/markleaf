@@ -21,6 +21,7 @@ internal sealed class EditorHostController : IDisposable
     private readonly WebView2 _webView;
     private readonly EditorLoadingView _loadingView;
     private readonly EditorSession _session;
+    private readonly EditorMenuCommandScope _menuCommands;
     private readonly IAppLogger _logger;
     private readonly string _editorWebPath;
     private readonly string _webView2UserDataDirectory;
@@ -113,6 +114,7 @@ internal sealed class EditorHostController : IDisposable
         _webView = webView;
         _loadingView = loadingView;
         _session = session;
+        _menuCommands = new EditorMenuCommandScope(() => _session.DocumentId);
         _logger = logger;
         _editorWebPath = editorWebPath;
         _webView2UserDataDirectory = webView2UserDataDirectory;
@@ -150,9 +152,7 @@ internal sealed class EditorHostController : IDisposable
 
     public Point EditorPointToScreen(EditorContextMenuRequest request)
     {
-        // 前端格式菜单占据右键位置上方一段高度，原生菜单需在其下方偏移 menuHeight + 10px 间距。
-        const double contextMenuGap = 10;
-        return EditorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap);
+        return EditorPointToScreen(request.ClientX, request.ClientY);
     }
 
     public Point EditorPointToScreen(EditorBlockMenuRequest request)
@@ -214,6 +214,8 @@ internal sealed class EditorHostController : IDisposable
                 // ArgumentException，让重试永远失败——直接复用现有实例。
                 _initializationCancellation.Cancel();
             }
+            await _webView.CoreWebView2!.AddScriptToExecuteOnDocumentCreatedAsync(
+                "window.chrome.webview.hostPlatform = 'Windows';");
             ConfigureCoreWebView2();
 
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
@@ -587,8 +589,8 @@ internal sealed class EditorHostController : IDisposable
                 style.DependsOn,
             }),
             activeStyle,
-            // 混合前端右键菜单仅 Windows 端启用。
-            frontendFormatMenu = true,
+            // 快捷操作由同一个原生上下文菜单承载，不再启用独立 HTML 浮层。
+            frontendFormatMenu = false,
         };
         EnqueueOrRun(() => Post("applyStyles", payload));
     }
@@ -608,12 +610,22 @@ internal sealed class EditorHostController : IDisposable
         EnqueueOrRun(() => Post("localizeFindBar", payload));
     }
 
+    internal IDisposable BeginMenuCommandScope(long? menuSessionId, Func<bool> isCurrent) =>
+        _menuCommands.Begin(menuSessionId, isCurrent);
+
     public void ExecuteCommand(
         string command,
         string? text = null,
-        string? html = null)
+        string? html = null,
+        long? menuSessionId = null)
     {
-        EnqueueOrRun(() => Post("command", new { command, text, html }));
+        var scope = _menuCommands.Current;
+        if (scope is not null && !scope.IsCurrent) return;
+        menuSessionId ??= scope?.MenuSessionId;
+        EnqueueOrRun(() =>
+        {
+            if (scope is null || scope.IsCurrent) Post("command", new { command, text, html, menuSessionId });
+        });
     }
 
     public void ClearBlockHighlight()
@@ -653,13 +665,20 @@ internal sealed class EditorHostController : IDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
+        var scope = _menuCommands.Current;
+        if (scope is not null && !scope.IsCurrent) return new EditorCommandResult(false, Error: "Context menu expired.");
         var requestId = Guid.NewGuid().ToString("N");
         var completion = new TaskCompletionSource<EditorCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _commandRequests.Add(requestId, completion);
         EnqueueOrRun(() =>
         {
+            if (scope is not null && !scope.IsCurrent)
+            {
+                completion.TrySetResult(new EditorCommandResult(false, Error: "Context menu expired."));
+                return;
+            }
             var registeredId = _session.RegisterRequest("commandResult", requestId);
-            Post("command", new { command, text, html, clientX, clientY }, registeredId);
+            Post("command", new { command, text, html, clientX, clientY, menuSessionId = scope?.MenuSessionId }, registeredId);
         });
 
         using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(10));
@@ -682,14 +701,17 @@ internal sealed class EditorHostController : IDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
+        var scope = _menuCommands.Current;
+        if (scope is not null && !scope.IsCurrent) throw new OperationCanceledException("Context menu expired.");
         var requestId = Guid.NewGuid().ToString("N");
         var completion = new TaskCompletionSource<EditorSelectionExport>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         _selectionExportRequests.Add(requestId, completion);
         EnqueueOrRun(() =>
         {
+            if (scope is not null && !scope.IsCurrent) { completion.TrySetCanceled(); return; }
             var registeredId = _session.RegisterRequest("selectionExport", requestId);
-            Post("command", new { command = "exportSelection" }, registeredId);
+            Post("command", new { command = "exportSelection", menuSessionId = scope?.MenuSessionId }, registeredId);
         });
 
         using var timeoutCancellation = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(10));
@@ -1449,7 +1471,10 @@ internal sealed class EditorHostController : IDisposable
                         message.Payload.TryGetProperty("expandedSource", out var expandedSource)
                             && expandedSource.ValueKind == System.Text.Json.JsonValueKind.True,
                         message.Payload.TryGetProperty("outsideDocument", out var outsideDocument)
-                            && outsideDocument.ValueKind == System.Text.Json.JsonValueKind.True));
+                            && outsideDocument.ValueKind == System.Text.Json.JsonValueKind.True,
+                        message.Payload.TryGetProperty("menuSessionId", out var menuSessionId)
+                            && menuSessionId.ValueKind == System.Text.Json.JsonValueKind.Number
+                            && menuSessionId.TryGetInt64(out var sessionId) ? sessionId : null));
                 break;
             case "blockMenuRequested":
                 BlockMenuRequested?.Invoke(

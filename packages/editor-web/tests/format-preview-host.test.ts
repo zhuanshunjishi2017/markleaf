@@ -11,19 +11,21 @@ afterEach(() => {
   Reflect.deleteProperty(document, 'caretRangeFromPoint')
 })
 
-async function createHarness(hostPlatform?: 'macOS'): Promise<{
+async function createHarness(hostPlatform?: 'macOS' | 'Windows'): Promise<{
   editorDom: HTMLElement
   send: (message: unknown) => void
+  messages: unknown[]
 }> {
   Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
   document.body.innerHTML = '<div id="app"><div id="editor"></div><div id="source-editor" hidden></div><button id="source-toggle" hidden></button></div>'
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
 
   let receiveFromHost: ((event: MessageEvent) => void) | undefined
+  const messages: unknown[] = []
   window.chrome = {
     webview: {
       hostPlatform,
-      postMessage() {},
+      postMessage(message) { messages.push(message) },
       addEventListener(_type, listener) {
         receiveFromHost = listener
       },
@@ -45,6 +47,7 @@ async function createHarness(hostPlatform?: 'macOS'): Promise<{
   return {
     editorDom: document.querySelector<HTMLElement>('.ProseMirror')!,
     send,
+    messages,
   }
 }
 
@@ -84,9 +87,43 @@ it('does not install an independent HTML formatting surface on macOS', async () 
   expect(document.querySelector('#format-menu')).toBeNull()
 })
 
-it('keeps the existing HTML formatting surface for Windows', async () => {
+it('keeps the HTML formatting surface for hosts without a native toolbar', async () => {
   await createHarness()
   expect(document.querySelector('#format-menu')).not.toBeNull()
+})
+
+it('uses one native formatting surface on Windows and clears preview on menu close', async () => {
+  const { editorDom, send } = await createHarness('Windows')
+  expect(document.querySelector('#format-menu')).toBeNull()
+  const base = { protocolVersion: 1, type: 'command', documentId: 'format-preview-host-test', revision: 0 }
+  send({ ...base, payload: { command: 'previewFormat', text: 'toggleItalic' } })
+  expect(editorDom.querySelector('.markleaf-format-preview')?.getAttribute('data-format-preview')).toBe('toggleItalic')
+  send({ ...base, payload: { command: 'hideFormatMenu' } })
+  expect(editorDom.querySelector('.markleaf-format-preview')).toBeNull()
+  expect(editorDom.textContent).toBe('source')
+})
+
+it('ignores stale Windows menu cleanup and hover after a new context request', async () => {
+  const { editorDom, send, messages } = await createHarness('Windows')
+  const paragraph = editorDom.querySelector('p')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => paragraph })
+  const context = (): number => {
+    paragraph.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+    const requests = messages.filter((x: any) => x.type === 'contextMenuRequested') as { payload: { menuSessionId: number } }[]
+    return requests.at(-1)!.payload.menuSessionId
+  }
+  const first = context()
+  const second = context()
+  expect(second).toBeGreaterThan(first)
+  const base = { protocolVersion: 1, type: 'command', documentId: 'format-preview-host-test', revision: 0 }
+  send({ ...base, payload: { command: 'previewFormat', text: 'toggleItalic', menuSessionId: second } })
+  expect(editorDom.querySelector('.markleaf-format-preview')).not.toBeNull()
+  send({ ...base, payload: { command: 'hideFormatMenu', menuSessionId: first } })
+  send({ ...base, payload: { command: 'previewFormat', text: 'toggleBold', menuSessionId: first } })
+  expect(editorDom.dataset.markleafPreserveSelection).toBe('1')
+  expect(editorDom.querySelector('.markleaf-format-preview')?.getAttribute('data-format-preview')).toBe('toggleItalic')
+  send({ ...base, payload: { command: 'hideFormatMenu', menuSessionId: second } })
+  expect(editorDom.querySelector('.markleaf-format-preview')).toBeNull()
 })
 
 it('preserves the selection for macOS synthetic contextmenu without a preceding DOM mousedown', async () => {

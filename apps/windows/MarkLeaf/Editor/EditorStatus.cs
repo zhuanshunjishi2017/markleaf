@@ -48,7 +48,8 @@ internal sealed record EditorContextMenuRequest(
     bool ReadOnly,
     bool SourceMode = false,
     bool ExpandedSource = false,
-    bool OutsideDocument = false);
+    bool OutsideDocument = false,
+    long? MenuSessionId = null);
 
 internal sealed record EditorBlockMenuRequest(double ClientX, double ClientY, int Position);
 

@@ -1114,6 +1114,7 @@ internal sealed partial class MainForm
 
     private void LoadDocumentIntoEditor(MarkdownDocument document, bool restoreScrollPosition = true)
     {
+        _menuService.CancelEditorContextMenu();
         _editorCommandStatus = EditorCommandStatus.Empty;
         _editorStatus = EditorStatus.Empty;
         if (!_editorPanel.Visible)

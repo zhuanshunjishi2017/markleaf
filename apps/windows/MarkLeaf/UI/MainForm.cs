@@ -239,7 +239,8 @@ internal sealed partial class MainForm : Form
             () => _settings.Appearance.ShowMenuMnemonics,
             () => _settings.General.UiLanguage,
             () => _openDocuments.Select(document => document.DisplayName).ToArray(),
-            () => _activeDocumentIndex);
+            () => _activeDocumentIndex,
+            line => _logger.Info(line));
         _shortcutManager.Changed += () =>
         {
             _menuService.RebuildMenu();
@@ -369,6 +370,7 @@ internal sealed partial class MainForm : Form
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemPreferenceChanged;
         DpiChanged += (_, args) =>
         {
+            _menuService.CancelEditorContextMenu();
             if (_options.LayoutDpiOverride is null)
             {
                 _effectiveDpi = args.DeviceDpiNew;
@@ -416,6 +418,15 @@ internal sealed partial class MainForm : Form
 
     protected override void WndProc(ref Message message)
     {
+        if (_menuService is null)
+        {
+            base.WndProc(ref message);
+            return;
+        }
+        if (_menuService.HandleContextMenuMessage(ref message))
+        {
+            return;
+        }
         const int wmCommand = 0x0111;
         const int wmInitMenu = 0x0116;
         const int wmInitMenuPopup = 0x0117;
@@ -497,13 +508,13 @@ internal sealed partial class MainForm : Form
             _autoSaveTimer.Dispose();
             _recoveryService.Dispose();
             _workspaceLoadCancellation?.Dispose();
+            _menuService.Dispose();
             _editorHost?.Dispose();
             if (_findReplaceDialog is { IsDisposed: false })
             {
                 _findReplaceDialog.Dispose();
             }
             _findReplaceDialog = null;
-            _menuService.Dispose();
             _menuBgBrush.Dispose();
             _menuHighlightBrush.Dispose();
             _menuSeparatorBrush.Dispose();

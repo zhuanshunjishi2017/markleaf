@@ -27,6 +27,18 @@ internal static class NativeMethods
     internal const uint TpmLeftButton = 0x0000;
     internal const uint TpmRightButton = 0x0002;
     internal const uint TpmReturnCommand = 0x0100;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWindowsHookEx(int idHook, nint lpfn, nint hMod, uint dwThreadId);
+
+    [DllImport("user32.dll")]
+    internal static extern bool UnhookWindowsHookEx(nint hhk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
     internal const uint WmNull = 0x0000;
 
     [DllImport("user32.dll")]

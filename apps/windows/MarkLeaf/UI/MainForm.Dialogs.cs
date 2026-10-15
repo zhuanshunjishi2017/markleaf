@@ -1020,7 +1020,7 @@ internal sealed partial class MainForm
         SetStatus(isBlock ? Loc.Get("status.mathBlockInserted") : Loc.Get("status.mathInlineInserted"));
     }
 
-    private async void InsertFootnote()
+    private async Task InsertFootnote()
     {
         if (_editorHost?.IsDocumentLoaded != true)
         {

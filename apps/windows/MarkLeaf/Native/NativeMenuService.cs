@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using MarkLeaf.Commands;
 using MarkLeaf.Editor;
+using MarkLeaf.Native.ModernMenus;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
@@ -9,6 +10,11 @@ namespace MarkLeaf.Native;
 
 internal sealed class NativeMenuService : IDisposable
 {
+    private EditorMenuSession? _editorMenuSession;
+    private CancellationTokenSource? _editorMenuCancellation;
+    private long _editorMenuId;
+    private Task _editorMenuDisplay = Task.CompletedTask;
+    private EditorContextMenu? _editorContextMenu;
     internal static readonly AppCommand[] BlockHandleCommands =
     [
         AppCommand.SetParagraph,
@@ -87,6 +93,12 @@ internal sealed class NativeMenuService : IDisposable
     private nint _colorMenu;
     private nint _documentTabMenu;
     private readonly Dictionary<uint, int> _documentTabCommandIds = new();
+    private readonly Action<string>? _diagnosticSink;
+    private NativeFormatMenuSession? _formatMenuSession;
+
+    internal delegate nint HookProc(int nCode, nint wParam, nint lParam);
+
+    private void Diagnose(string line) => _diagnosticSink?.Invoke(line);
 
     public NativeMenuService(
         CommandRouter router,
@@ -101,7 +113,8 @@ internal sealed class NativeMenuService : IDisposable
         Func<bool> showMnemonicsProvider,
         Func<string> uiLanguageProvider,
         Func<IReadOnlyList<string>> openDocumentTabProvider,
-        Func<int> activeDocumentTabProvider)
+        Func<int> activeDocumentTabProvider,
+        Action<string>? diagnosticSink = null)
     {
         _router = router;
         _shortcutManager = shortcutManager;
@@ -116,6 +129,7 @@ internal sealed class NativeMenuService : IDisposable
         _uiLanguageProvider = uiLanguageProvider;
         _openDocumentTabProvider = openDocumentTabProvider;
         _activeDocumentTabProvider = activeDocumentTabProvider;
+        _diagnosticSink = diagnosticSink;
     }
 
     public void Attach(nint window)
@@ -217,7 +231,73 @@ internal sealed class NativeMenuService : IDisposable
         _documentTabCommandIds.Clear();
     }
 
-    public void Dispose() => Detach();
+    public void Dispose()
+    {
+        CancelEditorContextMenu();
+        Detach();
+    }
+
+    public void CancelEditorContextMenu()
+    {
+        _editorMenuSession?.Cancel();
+        _editorMenuCancellation?.Cancel();
+        _editorContextMenu?.Close(ToolStripDropDownCloseReason.CloseCalled);
+        _editorMenuId++;
+    }
+
+    internal EditorMenuModel BuildEditorMenuModel(EditorCommandStatus status) =>
+        new EditorMenuModelBuilder(_router.GetState, command => _shortcutManager.GetShortcutText(command) ?? "").Build(status);
+
+    public async Task ShowEditorContextMenuAsync(Form owner, EditorContextMenuRequest request,
+        Func<double, double, Point> editorPointToScreen, int dpi, bool darkMode,
+        Action<string?> previewFormat, EditorCommandStatus status, Action end,
+        Func<AppCommand, Func<bool>, Task> execute)
+    {
+        CancelEditorContextMenu();
+        var previousDisplay = _editorMenuDisplay;
+        var id = ++_editorMenuId;
+        try { await previousDisplay; }
+        catch (Exception error) { Diagnose($"Previous native menu failed: {error.Message}"); }
+        if (id != _editorMenuId || owner.IsDisposed) return;
+        using var cancellation = new CancellationTokenSource();
+        EditorMenuSession? session = null;
+        session = new EditorMenuSession(id, _router.GetState,
+            command => id == _editorMenuId ? execute(command, () => id == _editorMenuId && session!.IsCurrent) : Task.CompletedTask,
+            command => { if (id == _editorMenuId) previewFormat(command); },
+            () => { if (id == _editorMenuId) end(); });
+        _editorMenuSession = session;
+        _editorMenuCancellation = cancellation;
+        var displayFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _editorMenuDisplay = displayFinished.Task;
+        try
+        {
+            using var menu = new EditorContextMenu(BuildEditorMenuModel(status), dpi, darkMode,
+                _showKeyboardShortcutsProvider(), session);
+            _editorContextMenu = menu;
+            menu.Closed += (_, _) => session.Closed(callback =>
+            {
+                if (!owner.IsDisposed && owner.IsHandleCreated) owner.BeginInvoke(callback);
+                else session.Cancel();
+            });
+            menu.Show(owner, owner.PointToClient(editorPointToScreen(request.ClientX, request.ClientY)));
+            await session.Completion;
+            // A command can finish before the short closing fade. Keep the
+            // popup alive until Closed, and serialize a subsequent right click.
+            if (menu.Visible) await menu.Dismissed;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            session.Cancel();
+            displayFinished.TrySetResult();
+            if (ReferenceEquals(_editorMenuSession, session))
+            {
+                _editorMenuSession = null;
+                _editorMenuCancellation = null;
+                _editorContextMenu = null;
+            }
+        }
+    }
 
     public int? ShowFullScreenMainMenu(nint window, Point screenPoint)
     {
@@ -348,36 +428,27 @@ internal sealed class NativeMenuService : IDisposable
     }
 
     /// 弹出编辑器右键菜单。
-    /// 前端浮动格式工具条占据右键点下方 menuHeight + 间距的高度：原生菜单优先在其
-    /// 下方展开；下方放不下时把菜单整体移到工具条上方（底边贴工具条顶），
-    /// 保证工具条与菜单互不遮挡、始终同时可见。
+    /// 快捷操作与菜单共享 HMENU，系统统一计算大小与屏幕边缘放置。
     public void ShowEditorContextMenu(
         nint window,
         EditorContextMenuRequest request,
         Func<double, double, Point> editorPointToScreen,
-        EditorCommandStatus status)
+        int dpi,
+        bool darkMode,
+        Action<string?> previewFormat,
+        EditorCommandStatus status,
+        Action<AppCommand>? select = null)
     {
-        const double contextMenuGap = 10;
         var anchorPoint = editorPointToScreen(request.ClientX, request.ClientY);
-        var screenPoint = request.MenuHeight > 0
-            ? editorPointToScreen(request.ClientX, request.ClientY + request.MenuHeight + contextMenuGap)
-            : anchorPoint;
-        var (menu, commands) = status.ExpandedSource
+        var (menu, commands, ownerDraw) = status.ExpandedSource
             ? BuildExpandedSourceContextMenu()
             : BuildEditorContextMenu(status);
         try
         {
-            if (request.MenuHeight > 0)
-            {
-                var estimatedHeight = EstimateMenuHeight(menu);
-                var workArea = System.Windows.Forms.Screen.GetWorkingArea(screenPoint);
-                if (estimatedHeight > 0 && screenPoint.Y + estimatedHeight > workArea.Bottom)
-                {
-                    screenPoint = new Point(
-                        anchorPoint.X,
-                        Math.Max(workArea.Top, anchorPoint.Y - (int)contextMenuGap - estimatedHeight));
-                }
-            }
+            var quickActions = !status.ReadOnly && !status.SourceMode && !status.ExpandedSource
+                && _router.GetState(AppCommand.ToggleBold).IsEnabled;
+            _formatMenuSession = new NativeFormatMenuSession(window, menu, dpi, darkMode,
+                _router.GetState, previewFormat, Diagnose, ownerDraw, quickActions);
             foreach (var command in commands)
             {
                 var state = _router.GetState(command);
@@ -395,21 +466,32 @@ internal sealed class NativeMenuService : IDisposable
             var selectedCommand = NativeMethods.TrackPopupMenuEx(
                 menu,
                 NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
-                screenPoint.X,
-                screenPoint.Y,
+                anchorPoint.X,
+                anchorPoint.Y,
                 window,
                 0);
             NativeMethods.PostMessage(window, NativeMethods.WmNull, 0, 0);
-            if (selectedCommand != 0)
+            if (_formatMenuSession?.SelectedCommand is { } quickCommand)
             {
-                _router.TryExecuteById((int)selectedCommand);
+                if (select is not null) select(quickCommand); else _router.ExecuteIfEnabled(quickCommand);
+            }
+            else if (selectedCommand != 0 && selectedCommand != NativeFormatMenuSession.ItemId)
+            {
+                if (select is not null && CommandCatalog.TryGetById((int)selectedCommand, out var command)) select(command);
+                else _router.TryExecuteById((int)selectedCommand);
             }
         }
         finally
         {
-            NativeMethods.DestroyMenu(menu);
+            _formatMenuSession?.Dispose();
+            _formatMenuSession = null;
+            previewFormat(null);
+            ownerDraw.Dispose();
         }
     }
+
+    public bool HandleContextMenuMessage(ref Message message) =>
+        _formatMenuSession?.HandleMessage(ref message) == true;
 
     public void ShowBlockHandleMenu(nint window, Point screenPoint, EditorCommandStatus status)
     {
@@ -645,207 +727,12 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    /// 估算弹出菜单的实际像素高度：菜单项数 × 系统菜单行高（SM_CYMENUSIZE，
-    /// 随进程 DPI 缩放），加边框与分隔线的余量。
-    private static int EstimateMenuHeight(nint menu)
+    private (nint Menu, AppCommand[] Commands, ModernMenuBuilder OwnerDraw) BuildEditorContextMenu(EditorCommandStatus status)
     {
-        var itemCount = NativeMethods.GetMenuItemCount(menu);
-        if (itemCount <= 0) return 0;
-        return itemCount * NativeMethods.GetSystemMetrics(NativeMethods.SmCyMenuSize) + 12;
-    }
-
-    private (nint Menu, AppCommand[] Commands) BuildEditorContextMenu(EditorCommandStatus status)
-    {
-        var menu = CreateMenu(true);
-        var commands = new List<AppCommand>();
-        try
-        {
-            if (status.ReadOnly)
-            {
-                AppendReadOnlyContextMenu(menu);
-                commands.AddRange([
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
-                    AppCommand.PastePlainText, AppCommand.Paste, AppCommand.SelectAll]);
-                return (menu, commands.ToArray());
-            }
-
-            if (status.SourceMode)
-            {
-                AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
-                AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-                commands.AddRange([AppCommand.Undo, AppCommand.Redo, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
-            }
-            else if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
-            {
-                AppendFootnoteCommands(menu);
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-
-                var copyPasteAs = CreateMenu(true);
-                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
-                AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
-                AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
-                AppendSeparator(copyPasteAs);
-                AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
-                AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
-
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-                commands.AddRange([
-                    AppCommand.GoToFootnoteReference, AppCommand.ResetFootnoteLabel,
-                    AppCommand.ClearFootnoteReferences, AppCommand.DeleteFootnote,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
-                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
-            }
-            else if (status.InTable)
-            {
-                AppendTableCommands(menu, includeClipboard: true);
-                commands.AddRange([
-                    AppCommand.EditTableCaption,
-                    AppCommand.AddTableRowBefore, AppCommand.AddTableRowAfter, AppCommand.DeleteTableRow,
-                    AppCommand.AddTableColumnBefore, AppCommand.AddTableColumnAfter, AppCommand.DeleteTableColumn,
-                    AppCommand.AlignTableLeft, AppCommand.AlignTableCenter, AppCommand.AlignTableRight,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.Paste,
-                    AppCommand.DeleteTable]);
-            }
-            else if (status.MathInline || status.MathBlock)
-            {
-                AppendCommand(menu, AppCommand.EditMath, Loc.Get("contextMenu.math.edit"));
-                if (status.MathBlock)
-                {
-                    AppendCommand(menu, AppCommand.SetMathNumber, Loc.Get("contextMenu.math.number"));
-                }
-                AppendCommand(menu, AppCommand.ConvertMath,
-                    status.MathBlock ? Loc.Get("contextMenu.math.toInline") : Loc.Get("contextMenu.math.toBlock"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.DeleteMath, Loc.Get("contextMenu.math.delete"));
-                commands.Add(AppCommand.EditMath);
-                if (status.MathBlock) commands.Add(AppCommand.SetMathNumber);
-                commands.AddRange([AppCommand.ConvertMath, AppCommand.DeleteMath]);
-            }
-            else if (status.MermaidSelected)
-            {
-                AppendCommand(menu, AppCommand.EditMermaid, Loc.Get("contextMenu.mermaid.edit"));
-                AppendCommand(menu, AppCommand.RerenderMermaid, Loc.Get("contextMenu.mermaid.rerender"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.DeleteMermaid, Loc.Get("contextMenu.mermaid.delete"));
-                commands.AddRange([AppCommand.EditMermaid, AppCommand.RerenderMermaid, AppCommand.DeleteMermaid]);
-            }
-            else if (status.ImageSelected)
-            {
-                AppendCommand(menu, AppCommand.ChangeImage, Loc.Get("contextMenu.image.change"));
-                AppendCommand(menu, AppCommand.EditImageCaption, Loc.Get("contextMenu.image.caption"));
-
-                AppendPopup(menu, Loc.Get("contextMenu.image.resize"), BuildResizeImageSubmenu());
-
-                AppendCommand(menu, AppCommand.RotateImageClockwise, Loc.Get("contextMenu.image.rotate"));
-                AppendCommand(menu, AppCommand.SaveImageAs, Loc.Get("contextMenu.image.saveAs"));
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                commands.AddRange([
-                    AppCommand.ChangeImage, AppCommand.EditImageCaption, AppCommand.ResizeImage100, AppCommand.ResizeImage50,
-                    AppCommand.ResizeImage75, AppCommand.ResizeImage90, AppCommand.RotateImageClockwise,
-                    AppCommand.SaveImageAs, AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
-            }
-            else if (status.FrontMatter)
-            {
-                AppendCodeContextMenu(menu, commands, includeLanguage: false, includeFormat: false);
-            }
-            else if (status.CodeBlock)
-            {
-                // 格式化入口的可用性由前端 actions 决定：内置格式化器语言本地处理，
-                // 外部格式化器语言需宿主已通过 setCodeFormatterSettings 下发。
-                AppendCodeContextMenu(
-                    menu,
-                    commands,
-                    includeLanguage: true,
-                    includeFormat: status.Actions.TryGetValue("formatCodeBlock", out var formatAction)
-                        && formatAction.IsEnabled);
-            }
-            else
-            {
-                // 普通上下文（对齐 macOS showEditorContextMenu 普通分支）：
-                // [整理行内代码] 历史 剪贴板 行内命令 图片 段落▸ 格式刷 格式▸ 清除格式。
-                if (status.Actions.TryGetValue("normalizeInlineCode", out var normalizeAction)
-                    && normalizeAction.IsEnabled)
-                {
-                    AppendCommand(menu, AppCommand.NormalizeInlineCode, Loc.Get("contextMenu.normalizeInlineCode"));
-                    AppendSeparator(menu);
-                }
-
-                AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
-                AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-                AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-
-                var copyPasteAs = CreateMenu(true);
-                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
-                AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
-                AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
-                AppendSeparator(copyPasteAs);
-                AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
-                AppendPopup(menu, Loc.Get("contextMenu.copyAs"), copyPasteAs);
-
-                AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.ToggleInlineCode, Loc.Get("menu.format.inlineCode"));
-                AppendCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
-                AppendCommand(menu, AppCommand.InsertLink, Loc.Get("contextMenu.insertLink"));
-                AppendPopup(menu, Loc.Get("contextMenu.insertImage"), BuildInsertImageSubmenu());
-                AppendSeparator(menu);
-
-                AppendPopup(menu, Loc.Get("contextMenu.paragraphGroup"), BuildBlockHandleMenu());
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.FormatPainter, Loc.Get("contextMenu.formatPainter"));
-                AppendCommand(menu, AppCommand.FormatPainterApply, Loc.Get("contextMenu.formatPainterApply"));
-                AppendSeparator(menu);
-
-                var format = CreateMenu(true);
-                AppendCommand(format, AppCommand.ToggleBold, Loc.Get("menu.format.bold"));
-                AppendCommand(format, AppCommand.ToggleItalic, Loc.Get("menu.format.italic"));
-                AppendCommand(format, AppCommand.ToggleUnderline, Loc.Get("menu.format.underline"));
-                AppendCommand(format, AppCommand.ToggleStrike, Loc.Get("menu.format.strikethrough"));
-                AppendCommand(format, AppCommand.ToggleHighlight, Loc.Get("menu.format.highlight"));
-                AppendPopup(menu, Loc.Get("contextMenu.formatGroup"), format);
-                AppendSeparator(menu);
-
-                AppendCommand(menu, AppCommand.ClearFormat, Loc.Get("menu.format.clearFormat"));
-                commands.AddRange(BlockHandleCommands);
-                commands.AddRange([
-                    AppCommand.Undo, AppCommand.Redo, AppCommand.NormalizeInlineCode,
-                    AppCommand.ToggleInlineCode, AppCommand.InsertMathInline,
-                    AppCommand.InsertLink, AppCommand.InsertImage, AppCommand.InsertImageFromUrl,
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
-                    AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll,
-                    AppCommand.FormatPainter, AppCommand.FormatPainterApply,
-                    AppCommand.ToggleBold, AppCommand.ToggleItalic, AppCommand.ToggleUnderline,
-                    AppCommand.ToggleStrike, AppCommand.ToggleHighlight, AppCommand.ClearFormat]);
-            }
-
-            return (menu, commands.ToArray());
-        }
-        catch
-        {
-            NativeMethods.DestroyMenu(menu);
-            throw;
-        }
+        var model = BuildEditorMenuModel(status);
+        var ownerDraw = new ModernMenuBuilder();
+        var menu = ownerDraw.Build(model, _showKeyboardShortcutsProvider());
+        return (menu, ownerDraw.Commands.ToArray(), ownerDraw);
     }
 
     private nint BuildFullScreenMainMenu()
@@ -915,48 +802,9 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
-    private (nint Menu, AppCommand[] Commands) BuildExpandedSourceContextMenu()
-    {
-        var menu = CreateMenu(true);
-        try
-        {
-            AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-            AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-            AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-            AppendSeparator(menu);
-            AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-            return (menu, [AppCommand.Copy, AppCommand.Paste, AppCommand.Cut, AppCommand.SelectAll]);
-        }
-        catch
-        {
-            NativeMethods.DestroyMenu(menu);
-            throw;
-        }
-    }
+    private (nint Menu, AppCommand[] Commands, ModernMenuBuilder OwnerDraw) BuildExpandedSourceContextMenu() =>
+        BuildEditorContextMenu(EditorCommandStatus.Empty with { ExpandedSource = true });
 
-    private void AppendCodeContextMenu(nint menu, List<AppCommand> commands, bool includeLanguage, bool includeFormat)
-    {
-        if (includeLanguage)
-        {
-            AppendCommand(menu, AppCommand.DeclareCodeLanguage, Loc.Get("contextMenu.code.declareLanguage"));
-            commands.Add(AppCommand.DeclareCodeLanguage);
-        }
-        if (includeFormat)
-        {
-            AppendCommand(menu, AppCommand.FormatCodeBlock, Loc.Get("contextMenu.code.formatBlock"));
-            commands.Add(AppCommand.FormatCodeBlock);
-        }
-        AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.code.copyBlock"));
-        AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.exitCode"));
-        AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-        AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-        AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-        commands.AddRange([
-            AppCommand.CopyCodeBlock, AppCommand.ExitCode,
-            AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
-    }
 
     private void AppendFootnoteCommands(nint menu)
     {
@@ -999,23 +847,6 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.DeleteTable, Loc.Get("menu.paragraph.deleteTable"));
     }
 
-    private void AppendReadOnlyContextMenu(nint menu)
-    {
-        AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
-        AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
-
-        var copyPasteAs = CreateMenu(true);
-        AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
-        AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
-        AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
-        AppendSeparator(copyPasteAs);
-        AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
-        AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
-
-        AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
-        AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
-    }
 
     private nint BuildParagraphMenu()
     {
