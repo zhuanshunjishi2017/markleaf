@@ -92,7 +92,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
         self.lease = lease
         self.binding = binding
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1160, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false)
@@ -100,6 +100,8 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
         window.isReleasedWhenClosed = false
         FloatingWindowChrome.configure(window, classification: .content)
         window.minSize = NSSize(width: 960, height: 680)
+        // 记住用户上次调整的窗口大小（仅尺寸；位置仍居中）。
+        window.setFrameAutosaveName("ExportWindow")
         super.init(window: window)
         window.delegate = self
         buildContent()

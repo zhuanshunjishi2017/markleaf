@@ -356,6 +356,9 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
         let host = PrintHost.shared
         host.window.setContentSize(NSSize(width: pageWidth, height: pageHeight))
         host.webView.frame = NSRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        // 上次导出结束后宿主窗口已被收起（orderOut）；本轮渲染前必须重新上屏，
+        // 否则 WKWebView 合成渲染空白。
+        host.window.orderFrontRegardless()
         let webView = host.webView
         webView.navigationDelegate = self
         self.webView = webView
@@ -624,6 +627,10 @@ final class PDFGenerator: NSObject, WKNavigationDelegate {
             self.targetWindow = nil
             self.showsPrintPanel = true
             self.strongSelf = nil
+            // 打印结束把离屏宿主窗口收起来：它停在 (-4000,-4000) 且被系统视为
+            // “可见窗口”，常驻上屏会让 Dock 重开判定“应用已有可见窗口”而失效，
+            // 调度中心/Stage Manager 里也会出现一个黑色空窗口。下次导出会重新上屏。
+            PrintHost.shared.window.orderOut(nil)
         }
     }
 
@@ -702,6 +709,9 @@ private final class PrintHost {
             defer: false)
         window.contentView?.addSubview(webView)
         window.setFrameOrigin(NSPoint(x: -4000, y: -4000))
+        // 工具窗口标识：Dock 重开决策用它把本窗口从“可见窗口”里排除。
+        window.identifier = NSUserInterfaceItemIdentifier("com.markleaf.print-host")
+        window.isExcludedFromWindowsMenu = true
         // WKWebView 需要所在窗口保持“已上屏”状态才能合成渲染，否则打印输出空白页。
         window.orderFrontRegardless()
         self.window = window

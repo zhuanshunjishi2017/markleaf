@@ -1024,7 +1024,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dock activation side effect. Always activate first so a visible
         // window is brought forward instead of leaving the Dock click silent.
         NSApp.activate(ignoringOtherApps: true)
-        AppWindowManager.shared.handleApplicationReopen(hasVisibleWindows: flag)
+        // 离屏工具窗口（如 PDF 打印宿主，com.markleaf.print-host）不算“可见窗口”：
+        // 它常驻上屏（停在屏幕外），若计入会让 Dock 重开误判“已有可见窗口”而失效。
+        let relevantVisibleWindows = flag || NSApp.windows.contains {
+            $0.isVisible && $0.identifier?.rawValue != "com.markleaf.print-host"
+        }
+        AppWindowManager.shared.handleApplicationReopen(hasVisibleWindows: relevantVisibleWindows)
         return true
     }
 
