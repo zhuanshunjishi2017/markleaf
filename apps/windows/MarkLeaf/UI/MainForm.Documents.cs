@@ -2,6 +2,7 @@ using System.Drawing.Imaging;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
@@ -746,11 +747,22 @@ internal sealed partial class MainForm
             return;
         }
 
-        await _settingsService.SaveAsync(_settings, SettingsSaveScope.ClearRecentHistory);
-        _settings.Workspace.RecentFiles.Clear();
-        _settings.Workspace.RecentFolders.Clear();
-        _menuService.RefreshStates();
-        SetStatus(Loc.Get("status.historyCleared"));
+        try
+        {
+            await _settingsService.SaveAsync(_settings, SettingsSaveScope.ClearRecentHistory);
+            _settings.Workspace.RecentFiles.Clear();
+            _settings.Workspace.RecentFolders.Clear();
+            _menuService.RefreshStates();
+            await SettingsChangeChannel.BroadcastAsync(new SettingsPeerNotice(
+                SharedSettings: null,
+                RecentHistory: new RecentHistoryNotice([], [])));
+            SetStatus(Loc.Get("status.historyCleared"));
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Clearing recent history failed.", exception);
+            SetStatus(Loc.Get("status.historyClearFailed"));
+        }
     }
 
     private async Task ResolveMissingImagesAsync(MarkdownDocument document)

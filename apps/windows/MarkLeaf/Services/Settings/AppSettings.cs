@@ -17,15 +17,13 @@ public static class SettingsReset
     public static void Apply(AppSettings target, AppSettings defaults)
     {
         target.SchemaVersion = defaults.SchemaVersion;
-        target.MainWindow = defaults.MainWindow;
-        target.Workspace = defaults.Workspace;
         target.File = defaults.File;
         target.Editor = defaults.Editor;
         target.Appearance = defaults.Appearance;
         target.General = defaults.General;
         target.Image = defaults.Image;
         target.Export = defaults.Export;
-        target.Shortcut = defaults.Shortcut;
+        target.Shortcut.ApplyFrom(defaults.Shortcut);
         target.MarkdownStyle = defaults.MarkdownStyle;
         target.ColorTheme = defaults.ColorTheme;
     }
@@ -35,8 +33,7 @@ public static class CodeFormatterSettingsReset
 {
     public static void Apply(CodeFormatterSettings target, CodeFormatterSettings defaults)
     {
-        target.ToolPaths.Clear();
-        target.SqlDialect = defaults.SqlDialect;
+        target.ApplyFrom(defaults);
     }
 }
 
@@ -167,6 +164,19 @@ public sealed class ShortcutSettings
     public Dictionary<string, string> Overrides { get; set; } = [];
 
     public List<string> Cleared { get; set; } = [];
+
+    public void ApplyFrom(ShortcutSettings source)
+    {
+        Overrides.Clear();
+        Cleared.Clear();
+
+        foreach (var (name, shortcut) in source.Overrides)
+        {
+            Overrides[name] = shortcut;
+        }
+
+        Cleared.AddRange(source.Cleared);
+    }
 }
 
 public sealed class ExportSettings
@@ -372,6 +382,17 @@ public sealed class CodeFormatterSettings
     public Dictionary<string, string> ToolPaths { get; set; } = [];
 
     public string SqlDialect { get; set; } = "ansi";
+
+    public void ApplyFrom(CodeFormatterSettings source)
+    {
+        ToolPaths.Clear();
+        foreach (var (toolId, path) in source.ToolPaths)
+        {
+            ToolPaths[toolId] = path;
+        }
+
+        SqlDialect = source.SqlDialect;
+    }
 }
 
 public sealed class FileSettings

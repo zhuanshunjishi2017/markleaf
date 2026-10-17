@@ -388,6 +388,7 @@
   "status.fileAssociationAdded": "MarkLeafを「プログラムから開く」に追加：{0}",
   "status.fileAssociationRemoved": "MarkLeafを「プログラムから開く」から削除",
   "status.historyCleared": "履歴を消去",
+  "status.historyClearFailed": "履歴の消去に失敗しました。",
   "status.newWindowOpened": "新しいウィンドウを開きました",
   "status.documentOpenedInNewWindow": "ドキュメントを新しいウィンドウで開きました",
   "status.recoveredUnsaved": "未保存ドキュメントを復元",

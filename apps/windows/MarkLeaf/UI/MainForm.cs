@@ -427,7 +427,7 @@ internal sealed partial class MainForm : Form
         _settingsChangeChannel ??= new SettingsChangeChannel(SettingsChangeChannel.CurrentIdentity, notice =>
         {
             if (IsDisposed || Disposing || !IsHandleCreated) return;
-            try { BeginInvoke(() => ApplyPeerAppearanceSettings(notice)); }
+            try { BeginInvoke(() => ApplyPeerSettings(notice)); }
             catch (InvalidOperationException) { /* The window closed during dispatch. */ }
         });
         ApplyMenuPresentation();

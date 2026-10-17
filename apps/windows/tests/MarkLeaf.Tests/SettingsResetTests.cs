@@ -13,10 +13,13 @@ public sealed class SettingsResetTests
     {
         var target = new AppSettings
         {
+            MainWindow = new WindowSettings { Width = 1234, Height = 567 },
+            Workspace = new WorkspaceSettings(),
             Export = new ExportSettings { Format = "html", Landscape = true },
             Shortcut = new ShortcutSettings(),
             CodeFormatter = new CodeFormatterSettings { SqlDialect = "postgres" },
         };
+        target.Workspace.RecentFiles.Add("C:\\Docs\\kept.md");
         target.Shortcut.Overrides[nameof(AppCommand.ToggleBold)] = "Ctrl+Alt+B";
         target.CodeFormatter.ToolPaths["black"] = "C:\\Tools\\black.exe";
         var codeFormatterBefore = target.CodeFormatter;
@@ -32,6 +35,27 @@ public sealed class SettingsResetTests
         Assert.AreSame(codeFormatterBefore, target.CodeFormatter);
         Assert.AreEqual("postgres", target.CodeFormatter.SqlDialect);
         Assert.AreEqual("C:\\Tools\\black.exe", target.CodeFormatter.ToolPaths["black"]);
+    }
+
+    [TestMethod]
+    public void SettingsReset_PreservesShortcutManagerObjectOwnership()
+    {
+        var target = new AppSettings
+        {
+            MainWindow = new WindowSettings { Width = 1234, Height = 567 },
+            Workspace = new WorkspaceSettings(),
+        };
+        target.Workspace.RecentFiles.Add("C:\\Docs\\kept.md");
+        var targetShortcut = target.Shortcut;
+        target.Shortcut.Overrides[nameof(AppCommand.ToggleBold)] = "Ctrl+Alt+B";
+
+        SettingsReset.Apply(target, AppSettings.CreateDefaults());
+
+        Assert.AreSame(targetShortcut, target.Shortcut);
+        Assert.IsEmpty(target.Shortcut.Overrides);
+        Assert.AreEqual(1234, target.MainWindow.Width);
+        Assert.AreEqual(567, target.MainWindow.Height);
+        Assert.AreEqual("C:\\Docs\\kept.md", target.Workspace.RecentFiles.Single());
     }
 
     [TestMethod]
@@ -61,16 +85,26 @@ public sealed class SettingsResetTests
         source.CodeFormatter.ToolPaths["black"] = "C:\\Tools\\dialog-black.exe";
         var target = new AppSettings
         {
+            MainWindow = new WindowSettings { Width = 1234, Height = 567 },
+            Workspace = new WorkspaceSettings(),
             Editor = new EditorSettings { SourceFontSize = 14 },
+            Shortcut = new ShortcutSettings(),
             CodeFormatter = new CodeFormatterSettings { SqlDialect = "ansi" },
         };
+        target.Workspace.RecentFiles.Add("C:\\Docs\\target-kept.md");
         target.CodeFormatter.ToolPaths["black"] = "C:\\Tools\\target-black.exe";
+        var targetShortcut = target.Shortcut;
 
         typeof(PreferencesDialog)
             .GetMethod("CopySettings", BindingFlags.NonPublic | BindingFlags.Static)!
             .Invoke(null, [source, target]);
 
         Assert.AreEqual(22, target.Editor.SourceFontSize);
+        Assert.AreSame(targetShortcut, target.Shortcut);
+        Assert.IsEmpty(target.Shortcut.Overrides);
+        Assert.AreEqual(1234, target.MainWindow.Width);
+        Assert.AreEqual(567, target.MainWindow.Height);
+        Assert.AreEqual("C:\\Docs\\target-kept.md", target.Workspace.RecentFiles.Single());
         Assert.AreEqual("ansi", target.CodeFormatter.SqlDialect);
         Assert.AreEqual("C:\\Tools\\target-black.exe", target.CodeFormatter.ToolPaths["black"]);
     }

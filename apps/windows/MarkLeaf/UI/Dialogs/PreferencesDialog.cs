@@ -1539,16 +1539,13 @@ internal sealed class PreferencesDialog : Form
 
     private static void CopySettings(AppSettings source, AppSettings target)
     {
-        target.SchemaVersion = source.SchemaVersion;
-        target.MainWindow = source.MainWindow;
-        target.Workspace = source.Workspace;
         target.File = source.File;
         target.Editor = source.Editor;
         target.Appearance = source.Appearance;
         target.General = source.General;
         target.Image = source.Image;
         target.Export = source.Export;
-        target.Shortcut = source.Shortcut;
+        target.Shortcut.ApplyFrom(source.Shortcut);
         target.MarkdownStyle = source.MarkdownStyle;
         target.ColorTheme = source.ColorTheme;
     }

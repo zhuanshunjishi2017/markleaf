@@ -1,6 +1,7 @@
 using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Services.Settings;
+using System.Text.Json;
 
 namespace MarkLeaf.Tests;
 
@@ -27,7 +28,11 @@ public sealed class SharedSettingsNoticeTests
 
         var notice = SharedSettingsNotice.From(source);
         var target = new AppSettings();
-        notice.ApplySharedTo(target);
+        target.CodeFormatter.SqlDialect = "mysql";
+        target.CodeFormatter.ToolPaths["kept"] = "C:\\Tools\\kept.exe";
+        var targetCodeFormatter = target.CodeFormatter;
+        var targetShortcut = target.Shortcut;
+        notice.ApplyTo(target);
 
         Assert.IsTrue(target.File.AutoSaveEnabled);
         Assert.AreEqual(22, target.Editor.SourceFontSize);
@@ -42,5 +47,12 @@ public sealed class SharedSettingsNoticeTests
         Assert.AreEqual("html", target.Export.Format);
         Assert.AreEqual("Ctrl+Alt+B", target.Shortcut.Overrides[nameof(AppCommand.ToggleBold)]);
         Assert.AreEqual("postgres", target.CodeFormatter.SqlDialect);
+        Assert.AreSame(targetShortcut, target.Shortcut);
+        Assert.AreSame(targetCodeFormatter, target.CodeFormatter);
+        Assert.IsFalse(target.CodeFormatter.ToolPaths.ContainsKey("kept"));
+
+        var serialized = JsonSerializer.Serialize(notice.Shared);
+        Assert.DoesNotContain("\"mainWindow\"", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"workspace\"", serialized, StringComparison.OrdinalIgnoreCase);
     }
 }

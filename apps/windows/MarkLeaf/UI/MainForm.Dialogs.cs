@@ -75,6 +75,8 @@ internal sealed partial class MainForm
         ApplySidebarAutoHideScrollbar();
         RefreshPersistentStatusBar();
         ApplyMenuPresentation();
+        _shortcutManager.ImportSettings(_settings.Shortcut);
+        _menuService.RebuildMenu();
 
         // 仅在文件关联设置实际变化时才修改注册表。
         if (_settings.General.AssociateMarkdownFiles != previousAssociateMarkdown

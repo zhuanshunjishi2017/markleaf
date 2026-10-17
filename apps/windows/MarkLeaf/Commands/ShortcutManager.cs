@@ -133,6 +133,24 @@ public sealed class ShortcutManager
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Replaces peer-broadcast shortcut ownership without triggering a local save.
+    /// Callers are responsible for rebuilding dependent menus.
+    /// </summary>
+    public void ImportSettings(ShortcutSettings source)
+    {
+        _model.Overrides.Clear();
+        _model.Cleared.Clear();
+
+        foreach (var (name, shortcut) in source.Overrides)
+        {
+            _model.Overrides[name] = shortcut;
+        }
+
+        _model.Cleared.AddRange(source.Cleared);
+        Rebuild();
+    }
+
     private void Rebuild()
     {
         _effective.Clear();

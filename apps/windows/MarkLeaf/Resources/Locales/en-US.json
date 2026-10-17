@@ -388,6 +388,7 @@
   "status.fileAssociationAdded": "MarkLeaf added to Open With menu for {0}",
   "status.fileAssociationRemoved": "MarkLeaf removed from Open With menu",
   "status.historyCleared": "History cleared",
+  "status.historyClearFailed": "Failed to clear history.",
   "status.newWindowOpened": "New window opened",
   "status.documentOpenedInNewWindow": "Document opened in new window",
   "status.recoveredUnsaved": "Unsaved document recovered",

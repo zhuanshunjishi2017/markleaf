@@ -125,7 +125,9 @@ internal sealed partial class MainForm
             "Settings saved.",
             "Settings could not be saved.",
             IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full);
-        _ = SettingsChangeChannel.BroadcastAsync(SharedSettingsNotice.From(_settings));
+        _ = SettingsChangeChannel.BroadcastAsync(new SettingsPeerNotice(
+            SharedSettings: SharedSettingsNotice.From(_settings),
+            RecentHistory: null));
     }
 
     private void PersistSettings(
@@ -144,20 +146,77 @@ internal sealed partial class MainForm
         }
     }
 
-    private void ApplyPeerAppearanceSettings(SharedSettingsNotice notice)
+    private void ApplyPeerSettings(SettingsPeerNotice notice)
     {
         if (IsDisposed || Disposing) return;
-        notice.ApplySharedTo(_settings);
+        if (notice.SharedSettings is not null)
+        {
+            ApplyPeerSharedSettings(notice.SharedSettings);
+        }
+
+        if (notice.RecentHistory is not null)
+        {
+            ApplyPeerRecentHistory(notice.RecentHistory);
+        }
+    }
+
+    private void ApplyPeerSharedSettings(SharedSettingsNotice shared)
+    {
+        var previousGeneral = _settings.General;
+        var previousLanguage = _settings.General.UiLanguage ?? "";
+
+        shared.ApplyTo(_settings);
 
         ColorThemeService.DefaultLightThemeId = _settings.Appearance.DefaultLightThemeId;
         ColorThemeService.DefaultDarkThemeId = _settings.Appearance.DefaultDarkThemeId;
-        SetMarkdownStyle(_settings.MarkdownStyle);
+
+        var newLanguage = _settings.General.UiLanguage ?? "";
+        if (!string.Equals(previousLanguage, newLanguage, StringComparison.Ordinal))
+        {
+            ReloadUiLanguage(newLanguage);
+        }
+
+        _recoveryTimer.Interval = Math.Clamp(_settings.File.SnapshotIntervalSeconds, 10, 300) * 1000;
+        _recoveryTimer.Stop();
+        _recoveryTimer.Start();
+
+        var editor = _settings.Editor;
+        _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing, editor.VisualIgnoreMaxContentWidth);
+        _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
+        _editorHost?.ApplyAutoConvertUnsafeEmphasis(editor.AutoConvertUnsafeEmphasis);
+        _editorHost?.ApplyMarkdownEditingSettings(editor);
+        ApplyCodeFormatterSettings();
         ApplyCodeHighlightVisibility();
-        if (_settings.Appearance.FollowSystemColorMode)
-            ApplyEffectiveColorTheme();
-        else
-            ApplyColorTheme(_settings.ColorTheme, persistManualChoice: false);
+        ApplyBlockHandleVisibility();
+
         _menuService.RefreshStates();
+
+        if (_settings.General.AssociateMarkdownFiles != previousGeneral.AssociateMarkdownFiles
+            || _settings.General.AssociateTextFiles != previousGeneral.AssociateTextFiles)
+        {
+            ApplyFileAssociations();
+        }
+
+        SetMarkdownStyle(_settings.MarkdownStyle);
+        ApplyEffectiveColorTheme();
+        SetZoomPercent(_settings.Appearance.ZoomPercent);
+        TopMost = _settings.Appearance.TopMostWindow;
+        _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
+        ApplySidebarAutoHideScrollbar();
+        RefreshPersistentStatusBar();
+        ApplyMenuPresentation();
+        _shortcutManager.ImportSettings(_settings.Shortcut);
+        _menuService.RebuildMenu();
+        UpdateDocumentChrome();
+    }
+
+    private void ApplyPeerRecentHistory(RecentHistoryNotice notice)
+    {
+        if (IsDisposed || Disposing) return;
+
+        _settings.Workspace.RecentFiles = notice.RecentFiles.ToList();
+        _settings.Workspace.RecentFolders = notice.RecentFolders.ToList();
+        _menuService.RebuildMenu();
     }
 
     private bool IsolatedWindow =>

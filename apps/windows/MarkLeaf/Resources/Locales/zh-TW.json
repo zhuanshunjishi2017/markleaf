@@ -388,6 +388,7 @@
   "status.fileAssociationAdded": "已將 MarkLeaf 新增到開啟方式：{0}",
   "status.fileAssociationRemoved": "已將 MarkLeaf 從開啟方式移除",
   "status.historyCleared": "已清除歷史記錄",
+  "status.historyClearFailed": "清除歷史記錄失敗。",
   "status.newWindowOpened": "已開啟新視窗",
   "status.documentOpenedInNewWindow": "文件已在新視窗中開啟",
   "status.recoveredUnsaved": "已復原未儲存文件",

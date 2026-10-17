@@ -24,6 +24,7 @@ internal sealed class CodeFormatterSettingsDialog : Form
     private readonly Button _probeButton = new();
     private readonly Button _restoreDefaultsButton = new();
     private readonly Label _statusLabel = new();
+    private bool _suppressSqlDialectChanged;
 
     public CodeFormatterSettingsDialog(CodeFormatterSettings settings, Action onChanged)
     {
@@ -64,6 +65,11 @@ internal sealed class CodeFormatterSettingsDialog : Form
         _sqlDialectCombo.SelectedIndex = Math.Max(0, SqlDialects.IndexOf(_settings.SqlDialect));
         _sqlDialectCombo.SelectedIndexChanged += (_, _) =>
         {
+            if (_suppressSqlDialectChanged)
+            {
+                return;
+            }
+
             if (_sqlDialectCombo.SelectedItem is { } selected)
             {
                 _settings.SqlDialect = (string)selected;
@@ -87,7 +93,7 @@ internal sealed class CodeFormatterSettingsDialog : Form
         var pathRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 6,
+            ColumnCount = 7,
             AutoSize = true,
             Margin = new Padding(0, this.ScaleForDpi(6), 0, 0),
         };
@@ -200,7 +206,15 @@ internal sealed class CodeFormatterSettingsDialog : Form
     internal void RestoreDefaults()
     {
         CodeFormatterSettingsReset.Apply(_settings, AppSettings.CreateDefaults().CodeFormatter);
-        _sqlDialectCombo.SelectedIndex = Math.Max(0, SqlDialects.IndexOf(_settings.SqlDialect));
+        _suppressSqlDialectChanged = true;
+        try
+        {
+            _sqlDialectCombo.SelectedIndex = Math.Max(0, SqlDialects.IndexOf(_settings.SqlDialect));
+        }
+        finally
+        {
+            _suppressSqlDialectChanged = false;
+        }
         RefreshToolList();
         OnSelectedToolChanged();
         _onChanged();

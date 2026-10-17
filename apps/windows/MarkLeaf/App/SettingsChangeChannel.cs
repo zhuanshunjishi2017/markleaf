@@ -7,25 +7,55 @@ using MarkLeaf.Services.Settings;
 
 namespace MarkLeaf.App;
 
-internal sealed record SharedSettingsNotice(AppSettings Shared)
+internal sealed class SharedSettingsState
 {
-    public static SharedSettingsNotice From(AppSettings settings) => new(CopySharedSource(settings));
+    public FileSettings File { get; set; } = new();
+    public EditorSettings Editor { get; set; } = new();
+    public AppearanceSettings Appearance { get; set; } = new();
+    public GeneralSettings General { get; set; } = new();
+    public ImageSettings Image { get; set; } = new();
+    public ExportSettings Export { get; set; } = new();
+    public ShortcutSettings Shortcut { get; set; } = new();
+    public CodeFormatterSettings CodeFormatter { get; set; } = new();
+    public string MarkdownStyle { get; set; } = "serif";
+    public string ColorTheme { get; set; } = "apple-blue";
+}
 
-    public void ApplySharedTo(AppSettings settings)
+internal sealed record SharedSettingsNotice(SharedSettingsState Shared)
+{
+    public static SharedSettingsNotice From(AppSettings settings)
     {
-        settings.File = Shared.File;
-        settings.Editor = Shared.Editor;
-        settings.Appearance = Shared.Appearance;
-        settings.General = Shared.General;
-        settings.Image = Shared.Image;
-        settings.Export = Shared.Export;
-        settings.Shortcut = Shared.Shortcut;
-        settings.CodeFormatter = Shared.CodeFormatter;
+        var shared = new SharedSettingsState
+        {
+            File = CloneSharedSection(settings.File),
+            Editor = CloneSharedSection(settings.Editor),
+            Appearance = CloneSharedSection(settings.Appearance),
+            General = CloneSharedSection(settings.General),
+            Image = CloneSharedSection(settings.Image),
+            Export = CloneSharedSection(settings.Export),
+            Shortcut = CloneSharedSection(settings.Shortcut),
+            CodeFormatter = CloneSharedSection(settings.CodeFormatter),
+            MarkdownStyle = settings.MarkdownStyle,
+            ColorTheme = settings.ColorTheme,
+        };
+        return new(shared);
+    }
+
+    public void ApplyTo(AppSettings settings)
+    {
+        settings.File = CloneSharedSection(Shared.File);
+        settings.Editor = CloneSharedSection(Shared.Editor);
+        settings.Appearance = CloneSharedSection(Shared.Appearance);
+        settings.General = CloneSharedSection(Shared.General);
+        settings.Image = CloneSharedSection(Shared.Image);
+        settings.Export = CloneSharedSection(Shared.Export);
+        settings.Shortcut.ApplyFrom(CloneSharedSection(Shared.Shortcut));
+        settings.CodeFormatter.ApplyFrom(CloneSharedSection(Shared.CodeFormatter));
         settings.MarkdownStyle = Shared.MarkdownStyle;
         settings.ColorTheme = Shared.ColorTheme;
     }
 
-    private static AppSettings CopySharedSource(AppSettings source)
+    private static T CloneSharedSection<T>(T source) where T : class
     {
         var options = new JsonSerializerOptions
         {
@@ -34,31 +64,41 @@ internal sealed record SharedSettingsNotice(AppSettings Shared)
         using var stream = new MemoryStream();
         JsonSerializer.Serialize(stream, source, options);
         stream.Position = 0;
-        return JsonSerializer.Deserialize<AppSettings>(stream, options) ?? new AppSettings();
+        return JsonSerializer.Deserialize<T>(stream, options)
+            ?? throw new InvalidOperationException("Could not clone shared settings section.");
     }
 }
 
-// Every Windows window owns a process. A full settings object is deliberately
-// not broadcast: this carries only shared appearance ownership. Window state
-// remains local to each process.
+internal sealed record RecentHistoryNotice(IReadOnlyList<string> RecentFiles, IReadOnlyList<string> RecentFolders)
+{
+    public RecentHistoryNotice(IEnumerable<string> recentFiles, IEnumerable<string> recentFolders)
+        : this(recentFiles.ToArray(), recentFolders.ToArray()) { }
+}
+
+internal sealed record SettingsPeerNotice(
+    SharedSettingsNotice? SharedSettings,
+    RecentHistoryNotice? RecentHistory);
+
+// Every Windows window owns a process. Peer notices carry shared ownership only;
+// MainWindow and document-restore state are never broadcast.
 internal sealed class SettingsChangeChannel : IDisposable
 {
     private readonly CancellationTokenSource _stop = new();
     private readonly string _identity;
-    private readonly Action<SharedSettingsNotice> _receive;
+    private readonly Action<SettingsPeerNotice> _receive;
     private readonly Task _listener;
     private static readonly string Scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         (Environment.ProcessPath ?? "MarkLeaf") + ":" + Process.GetCurrentProcess().SessionId)))[..16];
     internal static string CurrentIdentity => Scope + "." + Environment.ProcessId;
 
-    internal SettingsChangeChannel(string identity, Action<SharedSettingsNotice> receive)
+    internal SettingsChangeChannel(string identity, Action<SettingsPeerNotice> receive)
     {
         _identity = identity;
         _receive = receive;
         _listener = ListenAsync();
     }
 
-    internal static async Task BroadcastAsync(SharedSettingsNotice notice)
+    internal static async Task BroadcastAsync(SettingsPeerNotice notice)
     {
         using var current = Process.GetCurrentProcess();
         var peers = Process.GetProcessesByName(current.ProcessName);
@@ -70,7 +110,7 @@ internal sealed class SettingsChangeChannel : IDisposable
         finally { foreach (var peer in peers) peer.Dispose(); }
     }
 
-    private static async Task SendAsync(string identity, SharedSettingsNotice notice)
+    private static async Task SendAsync(string identity, SettingsPeerNotice notice)
     {
         try
         {
@@ -98,8 +138,11 @@ internal sealed class SettingsChangeChannel : IDisposable
                 using var reader = new StreamReader(server, Encoding.UTF8);
                 var json = await reader.ReadLineAsync(_stop.Token);
                 if (json is null || json.Length > 65536) continue;
-                var notice = JsonSerializer.Deserialize<SharedSettingsNotice>(json);
-                if (notice is not null) _receive(notice);
+                var notice = JsonSerializer.Deserialize<SettingsPeerNotice>(json);
+                if (notice is not null && (notice.SharedSettings is not null || notice.RecentHistory is not null))
+                {
+                    _receive(notice);
+                }
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
             catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { }
