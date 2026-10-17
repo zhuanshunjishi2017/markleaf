@@ -7,6 +7,7 @@ enum TabStateSync {
         fileName: String?,
         isDirty: Bool,
         isReadOnly: Bool = false,
+        isReadOnlyLocked: Bool? = nil,
         hasPendingExternalChange: Bool = false,
         scrollTop: Double? = nil,
         readingAnchor: ReadingAnchor? = nil,
@@ -21,6 +22,7 @@ enum TabStateSync {
     ) {
         tab.isDirty = isDirty
         tab.isReadOnly = isReadOnly
+        tab.isReadOnlyLocked = isReadOnlyLocked ?? isReadOnly
         tab.hasPendingExternalChange = hasPendingExternalChange
         if let scrollTop { tab.scrollTop = scrollTop }
         if let readingAnchor { tab.readingAnchor = readingAnchor }

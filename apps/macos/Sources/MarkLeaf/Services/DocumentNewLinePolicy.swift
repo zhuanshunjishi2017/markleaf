@@ -8,6 +8,9 @@ enum DocumentNewLineStyle: String, Equatable {
 }
 
 enum DocumentNewLinePolicy {
+    static func canSelect(_ style: DocumentNewLineStyle, isReadOnly: Bool) -> Bool {
+        !isReadOnly && style != .mixed
+    }
     static func detect(_ text: String) -> DocumentNewLineStyle {
         var hasLF = false
         var hasCRLF = false

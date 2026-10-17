@@ -33,6 +33,8 @@ expect(missing == EditorCommandStatePayload(
     sourceMode: false,
     readOnly: false,
     frontMatter: false,
+    mathBlock: false,
+    expandedSource: false,
     codeBlock: false,
     codeBlockLanguage: nil,
     codeBlockText: nil,
@@ -57,3 +59,8 @@ let emptyText = EditorCommandStatePayload.decode(["codeBlockText": ""])
 expect(emptyText.codeBlockText == "", "an empty code block must remain distinct from a missing value")
 
 print("PASS")
+expect(EditorCommandStatePayload.decode(["selectionScope": "cells"]).selectionScope == "cells", "decode explicit cell scope")
+expect(EditorCommandStatePayload.decode(["selectionScope": "bogus"]).selectionScope == nil, "unknown scope must not enable object commands")
+expect(missing.selectionScope == nil, "missing scope is conservative")
+expect(EditorCommandStatePayload.decode(["linkHref": "https://example.com"]).linkHref == "https://example.com", "single link target decodes")
+expect(EditorCommandStatePayload.decode(["footnoteReferenceLabel": "one"]).footnoteReferenceLabel == "one", "single reference decodes")

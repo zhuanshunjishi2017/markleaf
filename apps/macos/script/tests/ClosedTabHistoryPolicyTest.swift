@@ -50,4 +50,10 @@ history = (0..<ClosedTabHistoryPolicy.maximumCount + 5).map { record(path: "/tmp
 expect(history.count == ClosedTabHistoryPolicy.maximumCount, "history must stay bounded")
 expect(history.first?.path == "/tmp/5.md", "history must drop the oldest entries first")
 
+let firstWindow = ClosedTabHistory()
+let secondWindow = ClosedTabHistory()
+firstWindow.push(record(path: "/tmp/one.md"))
+expect(firstWindow.hasRecords && !secondWindow.hasRecords, "closed-tab history belongs to its window")
+expect(firstWindow.pop()?.path == "/tmp/one.md", "reopen consumes only that window's latest close")
+expect(!firstWindow.hasRecords, "history empties after its last record is consumed")
 print("ClosedTabHistoryPolicy tests passed")

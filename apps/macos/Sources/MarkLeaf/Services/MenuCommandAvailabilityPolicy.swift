@@ -16,7 +16,7 @@ enum MenuCommandAvailabilityPolicy {
         state: MenuCommandAvailabilityState
     ) -> Bool {
         switch command {
-        case "tabNext", "closeOtherTabs":
+        case "tabNext", "tabPrevious", "closeOtherTabs":
             return state.tabCount > 1
         case "closeCurrentTab":
             return state.tabCount > 0

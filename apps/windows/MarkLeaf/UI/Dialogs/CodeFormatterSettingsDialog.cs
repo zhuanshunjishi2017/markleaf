@@ -44,23 +44,17 @@ internal sealed class CodeFormatterSettingsDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
-            AutoSize = true,
+            RowCount = 3,
+            // The tool list owns the flexible height; AutoSize here would let
+            // ListView's tiny preferred height collapse it and push all unused
+            // vertical space into the path row.
+            AutoSize = false,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        layout.Controls.Add(new Label
-        {
-            Text = Loc.Get("codeFormatter.sqlDialect"),
-            AutoSize = true,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(0, this.ScaleForDpi(4), this.ScaleForDpi(6), 0),
-        }, 0, 0);
         foreach (var dialect in SqlDialects)
         {
             _sqlDialectCombo.Items.Add(dialect);
@@ -75,7 +69,6 @@ internal sealed class CodeFormatterSettingsDialog : Form
                 _onChanged();
             }
         };
-        layout.Controls.Add(_sqlDialectCombo, 1, 0);
 
         _toolList.Dock = DockStyle.Fill;
         _toolList.View = View.Details;
@@ -87,17 +80,19 @@ internal sealed class CodeFormatterSettingsDialog : Form
         _toolList.Columns.Add(Loc.Get("codeFormatter.column.languages"), this.ScaleForDpi(210));
         _toolList.Columns.Add(Loc.Get("codeFormatter.column.status"), this.ScaleForDpi(130));
         _toolList.SelectedIndexChanged += (_, _) => OnSelectedToolChanged();
-        layout.Controls.Add(_toolList, 0, 1);
+        layout.Controls.Add(_toolList, 0, 0);
         layout.SetColumnSpan(_toolList, 2);
 
         var pathRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 6,
             AutoSize = true,
             Margin = new Padding(0, this.ScaleForDpi(6), 0, 0),
         };
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -107,10 +102,12 @@ internal sealed class CodeFormatterSettingsDialog : Form
         pathRow.Controls.Add(_pathTextBox, 0, 0);
         _browseButton.Text = Loc.Get("codeFormatter.browse");
         _browseButton.AutoSize = true;
+        _browseButton.Anchor = AnchorStyles.Left;
         _browseButton.Click += (_, _) => BrowseToolPath();
         pathRow.Controls.Add(_browseButton, 1, 0);
         _clearButton.Text = Loc.Get("codeFormatter.clearPath");
         _clearButton.AutoSize = true;
+        _clearButton.Anchor = AnchorStyles.Left;
         _clearButton.Click += (_, _) =>
         {
             if (SelectedTool() is not { } tool)
@@ -128,24 +125,37 @@ internal sealed class CodeFormatterSettingsDialog : Form
         // 与 macOS 一致：未安装或自定义路径无效的工具提供官网链接，可直接跳转获取。
         _websiteLink.Text = Loc.Get("codeFormatter.website");
         _websiteLink.AutoSize = true;
+        // LinkLabel auto-sizes to text, which is shorter than the neighboring
+        // buttons. Keep its minimum height button-sized so the auto-size row
+        // vertically centers text and buttons on the same visual baseline.
+        _websiteLink.MinimumSize = new Size(0, this.ScaleForDpi(28));
+        _websiteLink.Anchor = AnchorStyles.Left;
+        _websiteLink.TextAlign = ContentAlignment.MiddleLeft;
         _websiteLink.LinkBehavior = LinkBehavior.HoverUnderline;
-        _websiteLink.Padding = new Padding(this.ScaleForDpi(8), this.ScaleForDpi(4), 0, 0);
+        _websiteLink.Padding = new Padding(this.ScaleForDpi(8), 0, 0, 0);
         _websiteLink.Visible = false;
         _websiteLink.Click += (_, _) => OpenSelectedToolWebsite();
         pathRow.Controls.Add(_websiteLink, 3, 0);
 
         _probeButton.Text = Loc.Get("codeFormatter.probe");
         _probeButton.AutoSize = true;
+        _probeButton.Anchor = AnchorStyles.Left;
         _probeButton.Click += async (_, _) => await ProbeSelectedToolAsync();
         pathRow.Controls.Add(_probeButton, 4, 0);
-        layout.Controls.Add(pathRow, 0, 2);
+
+        _sqlDialectCombo.Anchor = AnchorStyles.Left;
+        _sqlDialectCombo.Width = this.ScaleForDpi(128);
+        _sqlDialectCombo.AccessibleName = Loc.Get("codeFormatter.sqlDialect");
+        _sqlDialectCombo.Visible = false;
+        pathRow.Controls.Add(_sqlDialectCombo, 5, 0);
+        layout.Controls.Add(pathRow, 0, 1);
         layout.SetColumnSpan(pathRow, 2);
 
         _statusLabel.AutoSize = true;
         _statusLabel.ForeColor = SystemColors.GrayText;
         _statusLabel.Text = Loc.Get("codeFormatter.hint");
         _statusLabel.Margin = new Padding(0, this.ScaleForDpi(6), 0, 0);
-        layout.Controls.Add(_statusLabel, 0, 3);
+        layout.Controls.Add(_statusLabel, 0, 2);
         layout.SetColumnSpan(_statusLabel, 2);
 
         Controls.Add(layout);
@@ -206,6 +216,7 @@ internal sealed class CodeFormatterSettingsDialog : Form
             _pathTextBox.Text = string.Empty;
             _browseButton.Enabled = _clearButton.Enabled = false;
             _websiteLink.Visible = false;
+            _sqlDialectCombo.Visible = false;
             return;
         }
 
@@ -223,6 +234,7 @@ internal sealed class CodeFormatterSettingsDialog : Form
         // 没解析到可执行文件的工具没有可探测的对象：隐藏按钮而不是置灰，
         // 引导用户走"浏览"指定路径或官网链接获取。
         _probeButton.Visible = ExternalCodeFormatterCatalog.ResolveExecutable(tool, _settings.ToolPaths) is not null;
+        _sqlDialectCombo.Visible = tool.Languages.Contains("sql", StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>仅探测当前选中的格式化器，验证版本命令可运行。</summary>

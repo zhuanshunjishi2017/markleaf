@@ -43,6 +43,11 @@ internal sealed record EditorCommandStatus(
     bool ExpandedSource = false)
 {
     public IReadOnlyDictionary<string, CommandState> Actions { get; init; } = new Dictionary<string, CommandState>();
+    public string? SelectionScope { get; init; }
+    public string? LinkHref { get; init; }
+    public string? ImageSource { get; init; }
+    public bool MermaidRendered { get; init; }
+    public string? FootnoteReferenceLabel { get; init; }
 
     public static EditorCommandStatus Empty { get; } = new(
         false, false, false, false, null, false, false, false, false, false, false, false, false, false, null, null, false, false,
@@ -112,6 +117,12 @@ internal sealed record EditorCommandStatus(
             payload.TryGetProperty("highlight", out var highlight) && highlight.ValueKind == JsonValueKind.True,
             payload.TryGetProperty("expandedSource", out var expandedSource) && expandedSource.ValueKind == JsonValueKind.True)
         {
+            LinkHref = payload.TryGetProperty("linkHref", out var href) && href.ValueKind == JsonValueKind.String ? href.GetString() : null,
+            ImageSource = payload.TryGetProperty("imageSource", out var source) && source.ValueKind == JsonValueKind.String ? source.GetString() : null,
+            MermaidRendered = payload.TryGetProperty("mermaidRendered", out var rendered) && rendered.ValueKind == JsonValueKind.True,
+            FootnoteReferenceLabel = payload.TryGetProperty("footnoteReferenceLabel", out var label) && label.ValueKind == JsonValueKind.String ? label.GetString() : null,
+            SelectionScope = payload.TryGetProperty("selectionScope", out var scope) && scope.ValueKind == JsonValueKind.String
+                && scope.GetString() is "caret" or "text" or "cells" or "singleObject" or "mixed" ? scope.GetString() : null,
             Actions = payload.GetProperty("actions").EnumerateObject().ToDictionary(
                 property => property.Name,
                 property => new CommandState(property.Value.GetProperty("enabled").GetBoolean(), property.Value.GetProperty("checked").GetBoolean()))

@@ -63,6 +63,9 @@ struct SessionTabRecord: Codable, Equatable {
     var scrollTop: Double?
     var readingAnchor: ReadingAnchor?
     var snapshotFileName: String?
+    var isReadOnly: Bool? = nil
+    var isReadOnlyLocked: Bool? = nil
+    var detachedFileExtension: String? = nil
 }
 
 struct SessionWindowRecord: Codable, Equatable {

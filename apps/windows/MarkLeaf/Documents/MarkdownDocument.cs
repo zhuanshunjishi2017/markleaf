@@ -11,6 +11,19 @@ public sealed class MarkdownDocument
     public NewDocumentKind Kind { get; set; } = NewDocumentKind.Markdown;
 
     public string Markdown { get; set; } = string.Empty;
+    // Null means no trustworthy saved baseline is available (e.g. recovered content).
+    public string? SavedMarkdown { get; set; }
+    public bool SourceMode { get; set; }
+
+    public void ApplySnapshot(MarkLeaf.Editor.EditorSnapshot snapshot)
+    {
+        Markdown = snapshot.Markdown;
+        Revision = Math.Max(Revision, snapshot.Revision);
+        ScrollTop = snapshot.ScrollTop;
+        ReadingAnchor = snapshot.ReadingAnchor;
+        SavedMarkdown = snapshot.SavedMarkdown;
+        SourceMode = snapshot.SourceMode;
+    }
 
     public Encoding Encoding { get; set; } = new UTF8Encoding(false, true);
 
@@ -21,6 +34,10 @@ public sealed class MarkdownDocument
     public string NewLine { get; set; } = Environment.NewLine;
 
     public bool IsDirty { get; set; }
+
+    // Non-text changes (deleted backing file, newline/encoding) remain dirty
+    // even when the editor reports that text equals its saved baseline.
+    public bool HasUnsavedMetadataChanges { get; set; }
 
     public bool IsReadOnly { get; set; }
 

@@ -17,6 +17,8 @@ final class DocumentTab {
     var untitledSequence: Int?
     var isDirty = false
     var isReadOnly = false
+    var isReadOnlyLocked = false
+    var detachedFileExtension: String?
     var hasPendingExternalChange = false
     var contentRevision: Int64 = 0
     var encoding: String

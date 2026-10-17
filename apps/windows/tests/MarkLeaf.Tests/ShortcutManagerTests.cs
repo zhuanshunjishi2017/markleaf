@@ -9,6 +9,37 @@ public sealed class ShortcutManagerTests
     private static ShortcutManager Create() => new(new ShortcutSettings());
 
     [TestMethod]
+    public void ApprovedDefaultsAreUniqueAndPreserveOverrides()
+    {
+        var manager = Create();
+        Assert.AreEqual("Ctrl+K", manager.GetShortcutText(AppCommand.InsertLink));
+        Assert.AreEqual("Ctrl+Alt+T", manager.GetShortcutText(AppCommand.ToggleTaskList));
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Shift | Keys.T, out var command));
+        Assert.AreEqual(AppCommand.ReopenClosedTab, command);
+        var defaults = ShortcutCatalog.Entries.Where(e => e.DefaultShortcut != Keys.None).Select(e => e.DefaultShortcut).ToArray();
+        Assert.AreEqual(defaults.Length, defaults.Distinct().Count());
+        var settings = new ShortcutSettings();
+        settings.Overrides[nameof(AppCommand.InsertLink)] = "Ctrl+Alt+L";
+        settings.Cleared.Add(nameof(AppCommand.ToggleTaskList));
+        manager = new(settings);
+        Assert.AreEqual("Ctrl+Alt+L", manager.GetShortcutText(AppCommand.InsertLink));
+        Assert.IsNull(manager.GetShortcutText(AppCommand.ToggleTaskList));
+    }
+
+    [TestMethod]
+    public void LoadedConflictIsReportedInsteadOfSilentlyOverwriting()
+    {
+        var settings = new ShortcutSettings();
+        settings.Overrides[nameof(AppCommand.ToggleBold)] = "Ctrl+Alt+G";
+        settings.Overrides[nameof(AppCommand.ToggleItalic)] = "Ctrl+Alt+G";
+        var manager = new ShortcutManager(settings);
+        Assert.HasCount(1, manager.LoadedConflicts);
+        Assert.IsTrue(manager.TryGetCommand(Keys.Control | Keys.Alt | Keys.G, out var command));
+        Assert.AreEqual(AppCommand.ToggleBold, command);
+        Assert.AreEqual("Ctrl+Alt+G", settings.Overrides[nameof(AppCommand.ToggleItalic)]);
+    }
+
+    [TestMethod]
     public void Default_ResolvesCatalogDefaults()
     {
         var manager = Create();

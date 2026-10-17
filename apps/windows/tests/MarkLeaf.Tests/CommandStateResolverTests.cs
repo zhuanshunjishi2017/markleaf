@@ -15,14 +15,15 @@ public sealed class CommandStateResolverTests
         var ready = empty with { DocumentAvailable = true, EditorReady = true, SidebarVisible = true };
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SaveDocument, ready).IsEnabled);
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready));
-        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready with { FocusMode = true }).IsEnabled);
-        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SwitchToOutline, ready with { IndependentOutlineSidebar = true }).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready with { FocusMode = true }).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SwitchToOutline, ready with { IndependentOutlineSidebar = true }).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SwitchToWorkspace, ready with { SidebarVisible = false, FocusMode = true }).IsEnabled);
     }
 
     [TestMethod]
     public void Resolve_EditorCommandsConsumeProjectedEnabledAndCheckedState()
     {
-        var context = new CommandContext(DocumentAvailable: true, EditorReady: true,
+        var context = new CommandContext(DocumentAvailable: true, EditorReady: true, SelectionScope: "cells",
             EditorActions: new Dictionary<string, CommandState>
             {
                 ["toggleBold"] = new(true, true),
@@ -34,6 +35,8 @@ public sealed class CommandStateResolverTests
         Assert.AreEqual(new CommandState(false, true), CommandStateResolver.Resolve(AppCommand.SetHeading2, context));
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.InsertLink, context).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.AddTableRowAfter, context).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.AddTableRowAfter, context with { SelectionScope = null }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.AddTableRowAfter, context with { SelectionScope = "mixed" }).IsEnabled);
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.DeleteTable, context).IsEnabled);
     }
 

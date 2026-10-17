@@ -345,28 +345,6 @@ internal sealed partial class MainForm
         }
     }
 
-    private uint ShowStatusBarPopupMenu(nint menu, ToolStripItem item)
-    {
-        var owner = item.GetCurrentParent();
-        if (owner is null)
-        {
-            return 0;
-        }
-
-        var bounds = item.Bounds;
-        var screenPoint = owner.PointToScreen(new Point(bounds.Left, bounds.Bottom));
-        NativeMethods.SetForegroundWindow(Handle);
-        var selected = NativeMethods.TrackPopupMenuEx(
-            menu,
-            NativeMethods.TpmLeftButton | NativeMethods.TpmReturnCommand,
-            screenPoint.X,
-            screenPoint.Y,
-            Handle,
-            0);
-        NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
-        return selected;
-    }
-
     private bool AppendStatusBarMenuItem(nint menu, uint flags, nuint command, string text)
     {
         var formattedText = MenuTextFormatter.Format(
@@ -531,6 +509,12 @@ internal sealed partial class MainForm
         if (_outlineAnimationTargetDetached is not null) return;
 
         var collapsed = _sidebarAnimationTargetCollapsed ?? _sidebarSplit.Panel1Collapsed;
+        if (_focusMode && collapsed)
+        {
+            _sidebarVisibleBeforeFocus = true;
+            ToggleFocusMode();
+            return;
+        }
         if (collapsed)
         {
             ExpandSidebar();
@@ -811,6 +795,12 @@ internal sealed partial class MainForm
         if (_outlineDetached
             || _outlineAnimationTargetDetached is not null
             || _sidebarAnimationTargetCollapsed is not null) return;
+        if (_focusMode)
+        {
+            _outlineDetachedBeforeFocus = true;
+            ToggleFocusMode();
+            return;
+        }
 
         _sidebarSearchBar.ClearSearch();
         _detachedOutlineSearchBar.ClearSearch();
@@ -1130,6 +1120,33 @@ internal sealed partial class MainForm
             RequestOutlineRefreshAfterVisibilityChange();
         }
         _menuService.RefreshStates();
+    }
+
+    private void RevealSidebarView(bool outline)
+    {
+        var plan = ViewNavigationPolicy.NavigateToSidebar(
+            outline ? SidebarTarget.Outline : SidebarTarget.Workspace,
+            _focusMode,
+            _sidebarSplit.Panel1Collapsed);
+        foreach (var step in plan.Steps)
+        {
+            switch (step)
+            {
+                case ViewNavigationStep.ExitMinimalMode:
+                    ToggleFocusMode();
+                    break;
+                case ViewNavigationStep.ExpandSidebar:
+                    ExpandSidebar();
+                    break;
+                case ViewNavigationStep.ShowTarget:
+                    ShowSidebarView(outline);
+                    break;
+                case ViewNavigationStep.FocusTarget:
+                    var target = outline ? (Control)_outlineTree : _workspaceTree;
+                    if (target.Visible) target.Focus();
+                    break;
+            }
+        }
     }
 
     /// <summary>

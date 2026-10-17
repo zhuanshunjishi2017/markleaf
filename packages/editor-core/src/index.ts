@@ -50,6 +50,7 @@ export * from './outline'
 export * from './reading-behavior'
 export * from './typography'
 export * from './image-resources'
+export * from './mermaid-image-export'
 
 // ---- 视图行为：选区同步、滚动与缩放 ----
 export * from './dom-selection-sync'

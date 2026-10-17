@@ -10,10 +10,10 @@ export type PaintableBlock =
   | 'taskList'
 export type FormatPainterSnapshot = {
   block: PaintableBlock
-  marks: { bold: boolean; italic: boolean; underline: boolean; strike: boolean; code: boolean }
+  marks: { bold: boolean; italic: boolean; underline: boolean; strike: boolean; code: boolean; highlight: boolean }
 }
 
-const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code'] as const
+const supportedMarks = ['bold', 'italic', 'underline', 'strike', 'code', 'highlight'] as const
 // 表格单元格内的段落可以吸附/涂抹行内标记；块类型转换（列表、标题）
 // 仍只在表格外生效，避免把单元格内容改写成 Markdown 序列化不支持的块。
 const cellAncestorNames = new Set(['tableCell', 'tableHeader'])
@@ -35,6 +35,7 @@ function marksSnapshotFromNames(names: ReadonlySet<string>): FormatPainterSnapsh
     underline: names.has('underline'),
     strike: names.has('strike'),
     code: names.has('code'),
+    highlight: names.has('highlight'),
   }
 }
 
@@ -145,6 +146,7 @@ function uniformMarksInRange(editor: Editor, from: number, to: number): FormatPa
     underline: false,
     strike: false,
     code: false,
+    highlight: false,
   }
   let sawText = false
   let uniform = true

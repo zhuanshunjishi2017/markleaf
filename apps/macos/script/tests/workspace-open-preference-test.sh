@@ -32,6 +32,9 @@ require_block_contains "$SESSION" 'func openWorkspaceEntry' 'func moveWorkspaceE
   'workspace.openDocumentRequest' \
   'workspace entries must delegate routing to the owning window session'
 require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \
+  'tabStore.tab(withIdentity: FileIdentityPolicy.identity(for: url))' \
+  'workspace opening must deduplicate before applying the target preference'
+require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \
   'WorkspaceOpenRoutingPolicy.route' \
   'window workspace routing must honor the new-tab preference and empty-tab fallback'
 require_block_contains "$WINDOW_SESSION" 'func openWorkspaceDocument' 'func attach(session:' \

@@ -43,7 +43,6 @@ final class AppWindowManager {
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private(set) var isTerminationCommitted = false
     private lazy var sessionScheduler = SessionWriteScheduler(store: .shared)
-    private var closedTabHistory: [ClosedTabRecord] = []
 
     init() {
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification,
@@ -183,6 +182,7 @@ final class AppWindowManager {
         )
         tab.isDirty = detachedDocument.isDirty
         tab.isReadOnly = detachedDocument.isReadOnly
+        tab.isReadOnlyLocked = detachedDocument.isReadOnlyLocked ?? detachedDocument.isReadOnly
         tab.visualSelectionFrom = detachedDocument.selection?.visualFrom
         tab.visualSelectionTo = detachedDocument.selection?.visualTo
         tab.sourceSelectionFrom = detachedDocument.selection?.sourceFrom
@@ -208,6 +208,7 @@ final class AppWindowManager {
             markdown: detachedDocument.markdown,
             fileURL: detachedDocument.fileURL,
             readOnly: detachedDocument.isReadOnly,
+            readOnlyLocked: detachedDocument.isReadOnlyLocked,
             encoding: detachedDocument.encoding,
             documentKind: detachedDocument.documentKind,
             initialDirty: detachedDocument.isDirty,
@@ -282,7 +283,7 @@ final class AppWindowManager {
         let windows = windowControllers.compactMap { controller -> SessionWindowRecord? in
             guard let session = windowSessions[controller] else { return nil }
             let tabs = session.tabStore.tabs.map { tab in
-                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo, scrollTop: tab.scrollTop, readingAnchor: tab.readingAnchor, snapshotFileName: tab.snapshotFileName)
+                SessionTabRecord(tabID: tab.tabID.rawValue, path: tab.path, title: tab.title, untitledSequence: tab.untitledSequence, isDirty: tab.isDirty, revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine, fingerprintModificationSeconds: tab.fingerprintModificationSeconds, fingerprintSize: tab.fingerprintSize, cursorPosition: tab.cursorPosition, selectionAnchor: tab.selectionAnchor, selectionHead: tab.selectionHead, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo, scrollTop: tab.scrollTop, readingAnchor: tab.readingAnchor, snapshotFileName: tab.snapshotFileName, isReadOnly: tab.isReadOnly, isReadOnlyLocked: tab.isReadOnlyLocked, detachedFileExtension: tab.detachedFileExtension)
             }
             let frame = controller.window?.frame
             return SessionWindowRecord(windowID: session.windowID, frameX: frame.map { Double($0.origin.x) }, frameY: frame.map { Double($0.origin.y) }, frameWidth: frame.map { Double($0.size.width) }, frameHeight: frame.map { Double($0.size.height) }, workspacePath: session.workspace.root, sidebarVisible: controller.session.sidebarVisible, sidebarTab: controller.session.sidebarTabIndex == 1 ? "outline" : "workspace", sidebarWidth: SettingsService.shared.settings.workspaceWidth, outlineDetached: controller.session.outlineDetached, outlineWidth: SettingsService.shared.settings.outlineWidth, statusBarVisible: controller.session.statusBarVisible, tabOrder: tabs.map(\.tabID), activeTabID: session.tabStore.activeTabID?.rawValue, tabs: tabs)
@@ -341,6 +342,9 @@ final class AppWindowManager {
             for item in ordered {
                 let tab = DocumentTab(tabID: DocumentTabID(item.tabID), path: item.path, title: item.title, encoding: item.encoding, newLine: item.newLine, untitledSequence: item.untitledSequence)
                 tab.isDirty = item.isDirty; tab.contentRevision = item.revision
+                tab.isReadOnly = item.isReadOnly ?? false
+                tab.isReadOnlyLocked = item.isReadOnlyLocked ?? false
+                tab.detachedFileExtension = item.detachedFileExtension
                 tab.fingerprintModificationSeconds = item.fingerprintModificationSeconds; tab.fingerprintSize = item.fingerprintSize
                 tab.cursorPosition = item.cursorPosition; tab.selectionAnchor = item.selectionAnchor; tab.selectionHead = item.selectionHead
                 tab.visualSelectionFrom = item.visualSelectionFrom; tab.visualSelectionTo = item.visualSelectionTo
@@ -407,17 +411,43 @@ final class AppWindowManager {
     }
 
     var canRestoreClosedTab: Bool {
-        !closedTabHistory.isEmpty
+        activeWindowSession?.closedTabHistory.hasRecords == true
+    }
+
+    /// Only preparation happens before Trash succeeds. A failure must leave all
+    /// file identities and edit buffers untouched.
+    func prepareWorkspaceDeletion(at url: URL, isDirectory: Bool) throws -> [DocumentTabID: String] {
+        var snapshots: [DocumentTabID: String] = [:]
+        for (_, window) in windowSessions {
+            for tab in window.tabStore.tabs where WorkspaceDeletionPolicy.deletesOpenDocument(
+                openDocument: tab.path.map { URL(fileURLWithPath: $0) }, deletedEntry: url, isDirectory: isDirectory
+            ) {
+                guard window.session(for: tab.tabID)?.isReady != true, let path = tab.path else { continue }
+                // Prefer pending/restored buffers; disk may be older than an unsaved tab.
+                let markdown: String
+                if let pending = window.session(for: tab.tabID)?.pendingBufferMarkdown {
+                    markdown = pending
+                } else if let snapshot = tab.snapshotFileName, let content = SessionSnapshotIO.read(fileName: snapshot) {
+                    markdown = content
+                } else {
+                    markdown = try PreparedDocument.read(from: URL(fileURLWithPath: path)).markdown
+                }
+                snapshots[tab.tabID] = try SessionStore.shared.writeSnapshot(
+                    tabID: tab.tabID.rawValue, content: markdown,
+                    revision: tab.contentRevision, encoding: tab.encoding, newLine: tab.newLine
+                )
+            }
+        }
+        return snapshots
     }
 
     func registerClosedTab(_ record: ClosedTabRecord) {
-        closedTabHistory = ClosedTabHistoryPolicy.push(record, into: closedTabHistory)
+        activeWindowSession?.closedTabHistory.push(record)
         NativeMenuBuilder.refreshIfNeeded()
     }
 
     func takeLastClosedTab() -> ClosedTabRecord? {
-        guard !closedTabHistory.isEmpty else { return nil }
-        let record = closedTabHistory.removeLast()
+        let record = activeWindowSession?.closedTabHistory.pop()
         NativeMenuBuilder.refreshIfNeeded()
         return record
     }

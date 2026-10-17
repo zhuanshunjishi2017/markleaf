@@ -2,9 +2,14 @@ import AppKit
 import QuartzCore
 
 enum TabContextAction {
+    case save
+    case saveAs
     case close
     case closeOthers
     case closeToRight
+    case revealInWorkspace
+    case copyPath
+    case revealInFinder
 }
 
 /// 右侧编辑区顶部的标签栏：文件名、脏状态圆点、关闭按钮。
@@ -651,6 +656,9 @@ final class TabBarController: NSView {
         guard let index = tabStore.tabs.firstIndex(where: { $0.tabID == tabID }) else { return }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.addItem(contextMenuItem(L10n.t("保存"), action: .save, tabID: tabID))
+        menu.addItem(contextMenuItem(L10n.t("另存为…"), action: .saveAs, tabID: tabID))
+        menu.addItem(.separator())
         menu.addItem(contextMenuItem(L10n.t("关闭标签"), action: .close, tabID: tabID))
         let closeOthers = contextMenuItem(L10n.t("关闭其他标签"), action: .closeOthers, tabID: tabID)
         closeOthers.isEnabled = tabStore.tabs.count > 1
@@ -658,6 +666,10 @@ final class TabBarController: NSView {
         let closeToRight = contextMenuItem(L10n.t("关闭右侧标签"), action: .closeToRight, tabID: tabID)
         closeToRight.isEnabled = index < tabStore.tabs.count - 1
         menu.addItem(closeToRight)
+        menu.addItem(.separator())
+        menu.addItem(contextMenuItem(L10n.t("在工作区中显示"), action: .revealInWorkspace, tabID: tabID))
+        menu.addItem(contextMenuItem(L10n.t("拷贝文件路径"), action: .copyPath, tabID: tabID))
+        menu.addItem(contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID))
         NSMenu.popUpContextMenu(menu, with: event, for: cell)
     }
 

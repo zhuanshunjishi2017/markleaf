@@ -11,7 +11,7 @@ afterEach(() => {
   Reflect.deleteProperty(document, 'caretRangeFromPoint')
 })
 
-async function createHarness(hostPlatform?: 'macOS' | 'Windows'): Promise<{
+async function createHarness(hostPlatform?: 'macOS' | 'Windows', markdown = 'source'): Promise<{
   editorDom: HTMLElement
   send: (message: unknown) => void
   messages: unknown[]
@@ -42,7 +42,7 @@ async function createHarness(hostPlatform?: 'macOS' | 'Windows'): Promise<{
     type: 'loadDocument',
     documentId: 'format-preview-host-test',
     revision: 0,
-    payload: { markdown: 'source', visualSelection: { from: 1, to: 7 } },
+    payload: { markdown, visualSelection: { from: 1, to: 7 } },
   })
   return {
     editorDom: document.querySelector<HTMLElement>('.ProseMirror')!,
@@ -65,6 +65,30 @@ it('bridges native hover preview commands without changing the document', async 
   expect(preview).not.toBeNull()
   expect(preview?.getAttribute('data-format-preview')).toBe('toggleBold')
   expect(editorDom.textContent).toBe('source')
+})
+
+it('keeps an object selection usable by native context-menu commands', async () => {
+  const { editorDom, send, messages } = await createHarness('Windows', 'value $$x$$')
+  const math = editorDom.querySelector('.markleaf-math')!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => math })
+  math.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 0, clientY: 0 }))
+  math.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: 0 }))
+  math.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: 0 }))
+  math.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 0, clientY: 0 }))
+  send({
+    protocolVersion: 1,
+    type: 'command',
+    documentId: 'format-preview-host-test',
+    revision: 0,
+    requestId: 'rotate-image',
+    payload: { command: 'convertMath' },
+  })
+
+  const result = messages.find((message: any) => message.type === 'commandResult' && message.requestId === 'rotate-image') as
+    | { payload?: { success?: boolean } }
+    | undefined
+  expect(result?.payload?.success).toBe(true)
+  expect(editorDom.querySelector('.markleaf-math-block')).toBeNull()
 })
 
 it('clears the native hover preview when the host ends the menu session', async () => {

@@ -3,14 +3,7 @@ import AppKit
 extension EditorSession {
     func toggleCodeBlockWithLanguage() {
         guard !isReadOnly, !isPlainText, !isSourceMode else { return }
-        if editorMenuState.codeBlock {
-            execute("toggleCodeBlock")
-            return
-        }
-        showCodeBlockLanguagePicker(initialLanguage: "") { [weak self] language in
-            guard let self, let language else { return }
-            self.execute("insertCodeBlockWithLanguage", text: language)
-        }
+        execute("toggleCodeBlock")
     }
 
     func declareCodeBlockLanguage() {

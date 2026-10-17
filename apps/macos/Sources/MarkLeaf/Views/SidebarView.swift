@@ -161,6 +161,7 @@ final class SidebarView: NSView {
         outlineTree.configure(session: session) { [weak session] heading in
             session?.scrollToPosition(heading.position, headingText: heading.text)
         }
+        outlineTree.onClearSearch = { [weak self] in self?.endSearch() }
 
         // 树放入滚动容器，Auto Layout 固定填满；两棵常驻，用 isHidden 切换
         workspaceScroll.documentView = workspaceTree
@@ -505,6 +506,8 @@ final class DetachedOutlineView: NSView, NSTextFieldDelegate {
     private let searchField = NSSearchField()
     private let outlineTree = OutlineTreeView()
 
+    func focusOutline() { window?.makeFirstResponder(outlineTree) }
+
     init(session: EditorSession) {
         self.session = session
         super.init(frame: .zero)
@@ -521,6 +524,7 @@ final class DetachedOutlineView: NSView, NSTextFieldDelegate {
         searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
 
         outlineTree.configure(session: session)
+        outlineTree.onClearSearch = { [weak self] in self?.searchField.stringValue = "" }
         let scroll = NSScrollView()
         scroll.documentView = outlineTree
         CompactOverlayScrollView.configure(scroll)
@@ -1231,8 +1235,12 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         guard !entry.isDirectory else { return false }
         let ext = (entry.path as NSString).pathExtension.lowercased()
         guard ["md", "txt", "markdown"].contains(ext) else { return false }
-        if session?.documentURL?.path == entry.path {
-            return session?.hasContent ?? false
+        if let session {
+            let owner = AppWindowManager.shared.windowSessions.values.first { $0.workspace === session.workspace }
+            let identity = FileIdentityPolicy.identity(forPath: entry.path)
+            if let tab = owner?.tabStore.tab(withIdentity: identity), let opened = owner?.session(for: tab.tabID), opened.isReady {
+                return opened.hasContent
+            }
         }
         let attributes = try? FileManager.default.attributesOfItem(atPath: entry.path)
         let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
@@ -1507,20 +1515,28 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     private var suppressScrollSyncUntil: Date?
     private var filter = ""
     private var roots: [OutlineNode] = []
+    private struct HeadingKey: Hashable {
+        let level: Int
+        let text: String
+        let occurrence: Int
+    }
+    private var expansionByHeading: [HeadingKey: Bool] = [:]
+    private var filteredRoots: [OutlineNode] = []
+    var onClearSearch: (() -> Void)?
 
     func setFilter(_ value: String) {
+        rememberExpansion()
         filter = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        reloadData(activePosition: session?.activeOutlinePosition)
+        reloadData(activePosition: session?.activeOutlinePosition, captureExpansion: false)
     }
 
     private var visibleRoots: [OutlineNode] {
         guard !filter.isEmpty else { return roots }
-        return OutlineHierarchy.flatten(roots)
-            .filter { $0.heading.text.lowercased().contains(filter) }
-            .map { OutlineNode(heading: $0.heading) }
+        return filteredRoots
     }
 
     func rebind(to session: EditorSession) {
+        if self.session !== session { roots = []; expansionByHeading = [:] }
         self.session = session
         onHeadingActivated = { [weak session] heading in
             session?.scrollToPosition(heading.position, headingText: heading.text)
@@ -1575,11 +1591,32 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
         scrollRowToVisible(row)
     }
 
-    func reloadData(activePosition: Int?) {
+    private func keyedNodes() -> [(OutlineNode, HeadingKey)] {
+        var counts: [String: Int] = [:]
+        return OutlineHierarchy.flatten(roots).map { node in
+            let base = "\(node.heading.level):\(node.heading.text)"
+            let ordinal = counts[base, default: 0]
+            counts[base] = ordinal + 1
+            return (node, HeadingKey(level: node.heading.level, text: node.heading.text, occurrence: ordinal))
+        }
+    }
+
+    private func rememberExpansion() {
+        guard filter.isEmpty, !roots.isEmpty else { return }
+        expansionByHeading = Dictionary(uniqueKeysWithValues: keyedNodes().map { ($1, isItemExpanded($0)) })
+    }
+
+    func reloadData(activePosition: Int?, captureExpansion: Bool = true) {
+        if captureExpansion { rememberExpansion() }
         roots = OutlineHierarchy.makeNodes(session?.outlineHeadings ?? [])
+        filteredRoots = OutlineHierarchy.flatten(roots)
+            .filter { $0.heading.text.lowercased().contains(filter) }
+            .map { OutlineNode(heading: $0.heading) }
         super.reloadData()
         if filter.isEmpty {
-            expandItem(nil, expandChildren: true)
+            for (node, key) in keyedNodes() where expansionByHeading[key] ?? true {
+                expandItem(node)
+            }
         }
         synchronizeSelection(to: activePosition)
     }
@@ -1656,19 +1693,44 @@ final class OutlineTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineVi
     }
 
     @objc private func expandAllHeadings() {
+        clearSearchForHierarchyCommand()
         expandItem(nil, expandChildren: true)
     }
 
     @objc private func collapseAllHeadings() {
+        clearSearchForHierarchyCommand()
         collapseItem(nil, collapseChildren: true)
     }
 
     @objc private func locateCurrentHeading() {
+        clearSearchForHierarchyCommand()
+        guard let position = session?.activeOutlinePosition else { return }
+        func reveal(_ nodes: [OutlineNode]) -> Bool {
+            for node in nodes {
+                if node.heading.position == position { return true }
+                if reveal(node.children) { expandItem(node); return true }
+            }
+            return false
+        }
+        _ = reveal(roots)
+        suppressScrollSyncUntil = nil
         synchronizeSelection(to: session?.activeOutlinePosition)
     }
 
+    private func clearSearchForHierarchyCommand() {
+        guard !filter.isEmpty else { return }
+        onClearSearch?()
+        setFilter("")
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let hasHierarchy = !sessionOutlineNodes().allSatisfy { $0.children.isEmpty }
+        menu.items.prefix(2).forEach { $0.isEnabled = hasHierarchy }
         menu.items.last?.isEnabled = session?.activeOutlinePosition != nil
+    }
+
+    private func sessionOutlineNodes() -> [OutlineNode] {
+        OutlineHierarchy.makeNodes(session?.outlineHeadings ?? [])
     }
 
 }

@@ -1,18 +1,13 @@
+using MarkLeaf.Commands;
 using MarkLeaf.Editor;
 using MarkLeaf.Native;
+using MarkLeaf.Native.ModernMenus;
 using MarkLeaf.Services;
 
 namespace MarkLeaf.UI;
 
 internal sealed partial class MainForm
 {
-    private enum OutlinePopupCommand : uint
-    {
-        ExpandAll = 0x7101,
-        CollapseAll,
-        LocateCurrent,
-    }
-
     private int? _activeOutlinePosition;
     private int? _pendingOutlinePosition;
     private DateTime _pendingOutlineUntilUtc;
@@ -91,55 +86,33 @@ internal sealed partial class MainForm
 
     private void ShowOutlineContextMenu(Point screenPoint)
     {
-        var menu = CreateNativePopupMenu();
-        try
-        {
-            AppendNativeMenu(
-                menu,
-                NativeMethods.MfString,
-                (nuint)OutlinePopupCommand.ExpandAll,
-                Loc.Get("outlineMenu.expandAll"));
-            AppendNativeMenu(
-                menu,
-                NativeMethods.MfString,
-                (nuint)OutlinePopupCommand.CollapseAll,
-                Loc.Get("outlineMenu.collapseAll"));
-            AppendNativeMenuSeparator(menu);
-            AppendNativeMenu(
-                menu,
-                NativeMethods.MfString | (_activeOutlinePosition is null ? NativeMethods.MfGrayed : NativeMethods.MfEnabled),
-                (nuint)OutlinePopupCommand.LocateCurrent,
-                Loc.Get("outlineMenu.locateCurrent"));
+        _ = ShowOutlineContextMenuAsync(screenPoint);
+    }
 
-            NativeMethods.SetForegroundWindow(Handle);
-            var selected = NativeMethods.TrackPopupMenuEx(
-                menu,
-                NativeMethods.TpmRightButton | NativeMethods.TpmReturnCommand,
-                screenPoint.X,
-                screenPoint.Y,
-                Handle,
-                0);
-            NativeMethods.PostMessage(Handle, NativeMethods.WmNull, 0, 0);
-
-            switch ((OutlinePopupCommand)selected)
-            {
-                case OutlinePopupCommand.ExpandAll:
-                    ExitOutlineSearch();
-                    _outlineTree.ExpandAll();
-                    break;
-                case OutlinePopupCommand.CollapseAll:
-                    ExitOutlineSearch();
-                    _outlineTree.CollapseAll();
-                    break;
-                case OutlinePopupCommand.LocateCurrent when _activeOutlinePosition is { } position:
-                    ExitOutlineSearch();
-                    _outlineTree.RevealPosition(position);
-                    break;
-            }
-        }
-        finally
+    private async Task ShowOutlineContextMenuAsync(Point screenPoint)
+    {
+        var model = HostPopupMenuModel.Outline(command => command switch
         {
-            NativeMethods.DestroyMenu(menu);
+            AppCommand.OutlineExpandAll => new CommandState(OutlineHasHierarchy()),
+            AppCommand.OutlineCollapseAll => new CommandState(OutlineHasHierarchy()),
+            AppCommand.OutlineLocateCurrent => new CommandState(_activeOutlinePosition is not null),
+            _ => new CommandState(false),
+        }, command => _shortcutManager.GetShortcutText(command) ?? "");
+        var command = await _menuService.ShowHostPopupMenuAsync(this, screenPoint, DeviceDpi, _menuDarkMode, model);
+        switch (command)
+        {
+            case AppCommand.OutlineExpandAll:
+                ExitOutlineSearch();
+                _outlineTree.ExpandAll();
+                break;
+            case AppCommand.OutlineCollapseAll:
+                ExitOutlineSearch();
+                _outlineTree.CollapseAll();
+                break;
+            case AppCommand.OutlineLocateCurrent when _activeOutlinePosition is { } position:
+                ExitOutlineSearch();
+                _outlineTree.RevealPosition(position);
+                break;
         }
     }
 
@@ -168,8 +141,22 @@ internal sealed partial class MainForm
         }
 
         _outlineSearchActive = false;
+        _sidebarSearchBar.ClearSearch();
+        _detachedOutlineSearchBar.ClearSearch();
         _outlineTree.SetItems(_currentOutline);
         _outlineTree.SelectedPosition = _activeOutlinePosition;
+    }
+
+    private bool OutlineHasHierarchy()
+    {
+        var levels = new Stack<int>();
+        foreach (var item in _currentOutline)
+        {
+            while (levels.Count > 0 && levels.Peek() >= item.Level) levels.Pop();
+            if (levels.Count > 0) return true;
+            levels.Push(item.Level);
+        }
+        return false;
     }
 
     private void ClearDocumentOutline()
@@ -178,6 +165,8 @@ internal sealed partial class MainForm
         _activeOutlinePosition = null;
         _pendingOutlinePosition = null;
         _outlineSearchActive = false;
+        _sidebarSearchBar.ClearSearch();
+        _detachedOutlineSearchBar.ClearSearch();
         _outlineTree.SelectedPosition = null;
         _outlineTree.SetItems([]);
     }

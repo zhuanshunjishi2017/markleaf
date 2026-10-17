@@ -189,6 +189,47 @@ it('keeps native pasteText Markdown punctuation literal in visual mode', async (
   expect(harness.editorDom().querySelector('p')?.textContent).toBe('# plain text')
 })
 
+it('keeps an unsaved restored buffer dirty after editing and undoing back to that buffer', async () => {
+  const h = await createHarness()
+  h.send('loadDocument', { markdown: 'AB', savedMarkdown: 'A', initialDirty: true })
+  h.send('command', { command: 'selectAll' })
+  h.send('command', { command: 'pasteText', text: 'ABX' })
+  h.send('command', { command: 'undo' })
+  expect(h.snapshot()).toBe('AB')
+  expect(h.messages.filter(m => m.type === 'dirtyChanged').at(-1)?.payload).toEqual({ dirty: true })
+  h.send('requestSnapshot', undefined, 'baseline')
+  expect(h.messages.find(m => m.requestId === 'baseline')?.payload).toMatchObject({ savedMarkdown: 'A' })
+})
+
+it('restores the source mode of a reactivated Markdown tab', async () => {
+  const h = await createHarness()
+  h.send('loadDocument', { markdown: '**source**', sourceMode: true })
+  expect(document.querySelector<HTMLElement>('#source-editor')!.hidden).toBe(false)
+  h.send('requestSnapshot', undefined, 'source-state')
+  expect(h.messages.find(m => m.requestId === 'source-state')?.payload).toMatchObject({ sourceMode: true })
+})
+
+it('opens a selected readonly link through the host without modifying the document', async () => {
+  const h = await createHarness()
+  h.send('loadDocument', { markdown: '[example](https://example.com)', readOnly: true, visualSelection: { from: 2, to: 5 } })
+  const before = h.snapshot()
+  h.send('command', { command: 'openLink', text: 'https://example.com' })
+  expect(h.messages.filter(m => m.type === 'openLink').at(-1)?.payload).toEqual({ url: 'https://example.com' })
+  expect(h.snapshot()).toBe(before)
+})
+
+it('keeps a restored buffer with unknown saved contents dirty until an explicit save', async () => {
+  const h = await createHarness()
+  h.send('loadDocument', { markdown: 'unsaved', initialDirty: true })
+  h.send('command', { command: 'selectAll' })
+  h.send('command', { command: 'pasteText', text: 'edited' })
+  h.send('command', { command: 'undo' })
+  expect(h.snapshot()).toBe('unsaved')
+  expect(h.messages.filter(m => m.type === 'dirtyChanged').at(-1)?.payload).toEqual({ dirty: true })
+  h.send('markSaved', { markdown: h.snapshot() })
+  expect(h.messages.filter(m => m.type === 'dirtyChanged').at(-1)?.payload).toEqual({ dirty: false })
+})
+
 it('retains an HTML-only native clipboard fallback', async () => {
   const harness = await createHarness()
   harness.send('command', {

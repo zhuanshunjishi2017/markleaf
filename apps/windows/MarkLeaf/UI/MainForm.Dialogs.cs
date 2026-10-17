@@ -35,8 +35,7 @@ internal sealed partial class MainForm
             ClearLogs,
             OpenSettingsJson,
             ClearHistory,
-            () => _ = CheckForUpdatesAsync(),
-            ShowCodeFormatterManager);
+            () => _ = CheckForUpdatesAsync());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
         ApplyPreferencesChanges(previousAssociateMarkdown, previousAssociateText, previousLanguage);
     }
@@ -160,6 +159,31 @@ internal sealed partial class MainForm
         ShowModal(() => dialog.ShowDialog(this));
     }
 
+    private async Task OpenBundledSampleAsync(string fileName)
+    {
+        var sourcePath = Path.Combine(AppContext.BaseDirectory, "Resources", "Samples", fileName);
+        if (!File.Exists(sourcePath))
+        {
+            SetStatus(Loc.Get("welcome.notFound"));
+            return;
+        }
+
+        var cacheDirectory = Path.Combine(_paths.DataDirectory, "Cache", "Samples");
+        var cachePath = Path.Combine(cacheDirectory, $"{Guid.NewGuid():N}-{fileName}");
+        try
+        {
+            Directory.CreateDirectory(cacheDirectory);
+            File.Copy(sourcePath, cachePath, overwrite: false);
+        }
+        catch
+        {
+            SetStatus(Loc.Get("welcome.openFailed"));
+            return;
+        }
+
+        await OpenDocumentPathAsync(cachePath);
+    }
+
     private async void ShowWelcome()
     {
         var culture = _settings.General.UiLanguage;
@@ -216,7 +240,26 @@ internal sealed partial class MainForm
         }
     }
 
-    private async Task ExportPdfAsync()
+    private Task ExportPdfAsync() => ShowExportDialogAsync(ExportDialogMode.Pdf);
+
+    private Task ExportHtmlAsync() => ShowExportDialogAsync(ExportDialogMode.Html);
+
+    private Task ExportImageAsync() => ShowExportDialogAsync(ExportDialogMode.Image);
+
+    /// <summary>Opens the unified macOS-compatible export window with the saved format preselected.</summary>
+    private Task ExportDocumentAsync()
+    {
+        var format = NormalizeExportFormat(_settings.Export.Format);
+        var mode = format switch
+        {
+            "html" => ExportDialogMode.Html,
+            "image" => ExportDialogMode.Image,
+            _ => ExportDialogMode.Pdf,
+        };
+        return ShowExportDialogAsync(mode);
+    }
+
+    private async Task ShowExportDialogAsync(ExportDialogMode mode)
     {
         if (_editorHost?.IsDocumentLoaded != true || _document is null)
         {
@@ -232,7 +275,7 @@ internal sealed partial class MainForm
         using var dialog = new ExportDialog(
             docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
             _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
-            ExportDialogMode.Pdf, _settings.Export);
+            mode, _settings.Export);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -248,78 +291,13 @@ internal sealed partial class MainForm
         if (dialog.ExportedPath is not null)
         {
             SaveLastExportOptions(options);
-            // 预览 PDF 已复制到目标路径，无需重新生成。
+            // The PDF preview is already copied to the confirmed destination;
+            // rerunning the export would duplicate expensive rendering work.
             var exportedName = Path.GetFileName(dialog.ExportedPath);
             var exportedDir = Path.GetDirectoryName(dialog.ExportedPath) ?? "";
             SetStatus(Loc.Get("export.complete"));
             _logger.Info($"Document exported: {options.Format}/{options.Style} → {dialog.ExportedPath}");
             ShowExportCompleteDialog(exportedName, dialog.ExportedPath, exportedDir);
-            return;
-        }
-
-        SaveLastExportOptions(options);
-        await RunExportAsync(options, defaultName);
-    }
-
-    private async Task ExportHtmlAsync()
-    {
-        if (_editorHost?.IsDocumentLoaded != true || _document is null)
-        {
-            return;
-        }
-
-        var docName = _document.FilePath is not null
-            ? Path.GetFileName(_document.FilePath)
-            : Loc.Get("common.unnamed");
-        var defaultName = _document.FilePath is not null
-            ? Path.GetFileNameWithoutExtension(_document.FilePath)
-            : Loc.Get("common.unnamed");
-        using var dialog = new ExportDialog(
-            docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
-            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
-            ExportDialogMode.Html, _settings.Export);
-        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
-        {
-            return;
-        }
-
-        var options = dialog.Options;
-        if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
-        {
-            SetStatus(Loc.Get("export.emptyPath"));
-            return;
-        }
-
-        SaveLastExportOptions(options);
-        await RunExportAsync(options, defaultName);
-    }
-
-    private async Task ExportImageAsync()
-    {
-        if (_editorHost?.IsDocumentLoaded != true || _document is null)
-        {
-            return;
-        }
-
-        var docName = _document.FilePath is not null
-            ? Path.GetFileName(_document.FilePath)
-            : Loc.Get("common.unnamed");
-        var defaultName = _document.FilePath is not null
-            ? Path.GetFileNameWithoutExtension(_document.FilePath)
-            : Loc.Get("common.unnamed");
-        using var dialog = new ExportDialog(
-            docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
-            _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
-            ExportDialogMode.Image, _settings.Export);
-        if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
-        {
-            return;
-        }
-
-        var options = dialog.Options;
-        if (options is null || string.IsNullOrWhiteSpace(options.OutputPath))
-        {
-            SetStatus(Loc.Get("export.emptyPath"));
             return;
         }
 
@@ -973,14 +951,14 @@ internal sealed partial class MainForm
         ShowModal(() => TaskDialog.ShowDialog(this, page));
     }
 
-    private void InsertLink()
+    private void InsertLink(string? initialAddress = null)
     {
         if (_editorHost?.IsDocumentLoaded != true)
         {
             return;
         }
 
-        using var dialog = new LinkInputDialog();
+        using var dialog = new LinkInputDialog(initialAddress);
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;
@@ -1090,7 +1068,7 @@ internal sealed partial class MainForm
         return false;
     }
 
-    private void ResetFootnoteLabel()
+    private async Task ResetFootnoteLabel()
     {
         if (_editorHost?.IsDocumentLoaded != true
             || string.IsNullOrWhiteSpace(_editorCommandStatus.FootnoteDefinitionLabel))
@@ -1119,8 +1097,27 @@ internal sealed partial class MainForm
             oldLabel,
             newLabel,
         });
-        _editorHost.ExecuteCommand("resetFootnoteLabel", payload);
-        SetStatus(Loc.Get("status.footnoteLabelReset"));
+        var result = await _editorHost.ExecuteCommandResultAsync("resetFootnoteLabel", payload);
+        if (result.Success) SetStatus(Loc.Get("status.footnoteLabelReset"));
+        else ShowMessage(this, Loc.Get("dialog.footnoteInvalidLabel"), Loc.Get("dialog.footnoteResetTitle"),
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    private async Task GoToFootnoteReferenceAsync()
+    {
+        if (_editorHost?.IsDocumentLoaded != true
+            || string.IsNullOrWhiteSpace(_editorCommandStatus.FootnoteDefinitionLabel))
+        {
+            return;
+        }
+
+        var success = await _editorHost.ExecuteCommandAsync(
+            "goToFootnoteReference", _editorCommandStatus.FootnoteDefinitionLabel);
+        if (!success)
+        {
+            ShowMessage(this, Loc.Get("dialog.footnoteReferenceMissing"), Loc.Get("dialog.footnoteResetTitle"),
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
     }
 
     private void EditMath()
@@ -1197,7 +1194,13 @@ internal sealed partial class MainForm
             return;
         }
 
-        _editorHost.ExecuteCommand("setMathNumber", dialog.InputText);
+        if (!MathNumberPolicy.IsValid(dialog.InputText))
+        {
+            ShowModal(() => MessageBox.Show(this, Loc.Get("dialog.mathNumberLabel"), Loc.Get("dialog.mathNumberTitle"),
+                MessageBoxButtons.OK, MessageBoxIcon.Warning));
+            return;
+        }
+        _editorHost.ExecuteCommand("setMathNumber", dialog.InputText.Trim());
     }
 
     private void InsertMermaid()

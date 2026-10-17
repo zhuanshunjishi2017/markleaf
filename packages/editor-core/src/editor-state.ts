@@ -4,6 +4,14 @@ export type EditorCommandState = {
   canRedo: boolean
   expandedSource?: boolean
   hasSelection: boolean
+  paragraphOperationAvailable?: boolean
+  alertType?: string | null
+  canSetAlert?: boolean
+  selectionScope?: 'caret' | 'text' | 'cells' | 'singleObject' | 'mixed'
+  linkHref?: string | null
+  footnoteReferenceLabel?: string | null
+  canDeleteTableRow?: boolean
+  canDeleteTableColumn?: boolean
   paragraph: boolean
   headingLevel: number | null
   bold: boolean
@@ -20,6 +28,7 @@ export type EditorCommandState = {
   codeBlockText: string | null
   mermaid: boolean
   mermaidSelected: boolean
+  mermaidRendered?: boolean
   mermaidSource: string | null
   mermaidCount: number
   bulletList: boolean
@@ -28,6 +37,7 @@ export type EditorCommandState = {
   inTable: boolean
   tableAlign: 'left' | 'center' | 'right' | null
   imageSelected: boolean
+  imageSource?: string | null
   mathInline: boolean
   mathBlock: boolean
   mathLatex: string | null

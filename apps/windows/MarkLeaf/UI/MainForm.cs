@@ -31,6 +31,8 @@ internal sealed partial class MainForm : Form
     private readonly DocumentFileService _documentFileService = new();
     private readonly ImageAssetService _imageAssetService;
     private readonly WorkspaceService _workspaceService = new();
+    private WorkspaceMutationChannel? _workspaceMutationChannel;
+    private bool _documentBatchInProgress;
     private readonly WorkspaceTreeView _workspaceTree;
     private readonly WorkspaceDocumentListView _workspaceDocumentList;
     private Control _workspacePanelHost = default!;
@@ -156,6 +158,7 @@ internal sealed partial class MainForm : Form
     private bool _editorTypewriterMode;
     private bool _sidebarVisibleBeforeFocus = true;
     private bool _outlineDetachedBeforeFocus;
+    private bool _statusBarVisibleBeforeFocus = true;
     private bool _restoreDetachedOutlineAfterSidebarExpand;
     private bool _editorSmokeStarted;
     private bool _editorCommandSmokeStarted;
@@ -225,6 +228,8 @@ internal sealed partial class MainForm : Form
         _modeButton.Width = _viewToggleButton.Width;
         _modeButton.Margin = new Padding(0, 0, this.ScaleForDpi(2), 0);
         _shortcutManager = new ShortcutManager(_settings.Shortcut);
+        foreach (var conflict in _shortcutManager.LoadedConflicts)
+            _logger.Warning($"Shortcut conflict: {conflict.Command} ({conflict.Conflict.Kind}, {conflict.Conflict.OtherCommand}); stored preference preserved.");
         _commandRouter = new CommandRouter(_shortcutManager, GetCommandState, ExecuteCommand);
         _menuService = new NativeMenuService(
             _commandRouter,
@@ -407,6 +412,12 @@ internal sealed partial class MainForm : Form
     protected override void OnHandleCreated(EventArgs eventArgs)
     {
         base.OnHandleCreated(eventArgs);
+        _workspaceMutationChannel ??= new WorkspaceMutationChannel(WorkspaceMutationChannel.CurrentIdentity, notice =>
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            try { BeginInvoke(() => ApplyPeerWorkspaceMutation(notice)); }
+            catch (InvalidOperationException) { /* The window closed during dispatch. */ }
+        });
         ApplyMenuPresentation();
     }
 
@@ -498,6 +509,8 @@ internal sealed partial class MainForm : Form
     {
         if (disposing)
         {
+            _workspaceMutationChannel?.Dispose();
+            _workspaceMutationChannel = null;
             StopWatchingDocument();
             StopWatchingWorkspace();
             _externalChangeTimer.Dispose();

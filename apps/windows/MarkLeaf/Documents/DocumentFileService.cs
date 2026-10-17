@@ -92,9 +92,22 @@ public sealed class DocumentFileService
         long revision,
         string targetPath,
         bool forceOverwrite = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DocumentEncodingPolicy? encodingOverride = null)
     {
+        // Freeze the write's settings before any await; publish only after atomic replacement.
+        var originalPath = document.FilePath;
+        var originalEncoding = document.EncodingPolicyId;
+        var originalBom = document.HasBom;
+        var newLine = document.NewLine;
+        var encodingPolicy = encodingOverride ?? DocumentEncodingPolicy.FromId(originalEncoding);
+        var normalizedMarkdown = NormalizeNewLines(markdown, newLine);
+        var contentBytes = encodingPolicy.CreateEncoding().GetBytes(normalizedMarkdown);
+        var preamble = encodingPolicy.HasBom ? DocumentEncodingPolicy.GetPreamble(encodingPolicy) : [];
         var fullPath = Path.GetFullPath(targetPath);
+        if ((document.IsReadOnly || document.IsUserReadOnly)
+            && DocumentPathIdentity.Equals(document.FilePath, fullPath))
+            throw new UnauthorizedAccessException("A read-only source can only be saved as a different file.");
         var directory = Path.GetDirectoryName(fullPath)
             ?? throw new IOException("The target file has no parent directory.");
         Directory.CreateDirectory(directory);
@@ -144,10 +157,6 @@ public sealed class DocumentFileService
                 throw new ExternalDocumentChangedException(fullPath);
             }
 
-            var normalizedMarkdown = NormalizeNewLines(markdown, document.NewLine);
-            var encodingPolicy = DocumentEncodingPolicy.FromId(document.EncodingPolicyId);
-            var contentBytes = document.Encoding.GetBytes(normalizedMarkdown);
-            var preamble = document.HasBom ? DocumentEncodingPolicy.GetPreamble(encodingPolicy) : [];
             temporaryPath = Path.Combine(
                 directory,
                 $".{Path.GetFileName(fullPath)}.markleaf-{Guid.NewGuid():N}.tmp");
@@ -181,15 +190,24 @@ public sealed class DocumentFileService
 
             temporaryPath = null;
             var savedFingerprint = await CreateFingerprintAsync(fullPath, cancellationToken);
+            // A deleted/renamed backing file must not be silently reattached by an older save.
+            if (!string.Equals(document.FilePath, originalPath, StringComparison.OrdinalIgnoreCase)) return;
+            var metadataChanged = document.NewLine != newLine
+                || document.EncodingPolicyId != originalEncoding || document.HasBom != originalBom;
             document.FilePath = fullPath;
             document.Kind = NewDocumentKindExtensions.FromExtension(Path.GetExtension(fullPath));
-            document.Markdown = normalizedMarkdown;
-            document.Encoding = encodingPolicy.CreateEncoding();
-            document.EncodingPolicyId = encodingPolicy.Id;
-            document.HasBom = encodingPolicy.HasBom;
-            document.Revision = revision;
-            document.IsDirty = false;
+            if (document.Revision <= revision) document.Markdown = normalizedMarkdown;
+            if (!metadataChanged)
+            {
+                document.Encoding = encodingPolicy.CreateEncoding();
+                document.EncodingPolicyId = encodingPolicy.Id;
+                document.HasBom = encodingPolicy.HasBom;
+            }
+            document.Revision = Math.Max(document.Revision, revision);
+            document.IsDirty = document.Revision > revision || metadataChanged;
+            document.HasUnsavedMetadataChanges = metadataChanged;
             document.IsReadOnly = false;
+            document.IsUserReadOnly = false;
             document.LastKnownWriteTime = savedFingerprint.LastWriteTime;
             document.LastKnownFingerprint = savedFingerprint;
         }
@@ -208,6 +226,16 @@ public sealed class DocumentFileService
         {
             await (targetLock?.DisposeAsync() ?? ValueTask.CompletedTask);
         }
+    }
+
+    public Task ConvertEncodingAsync(MarkdownDocument document, string markdown, long revision,
+        DocumentEncodingPolicy target, CancellationToken cancellationToken = default)
+    {
+        if (document.IsReadOnly || document.IsUserReadOnly)
+            throw new UnauthorizedAccessException("Read-only documents cannot change encoding.");
+        var path = document.FilePath ?? throw new InvalidOperationException("An unnamed document has no disk encoding to convert.");
+        return SaveAsync(document, markdown, revision, path, cancellationToken: cancellationToken,
+            encodingOverride: target);
     }
 
     internal static string DetectNewLine(string text)

@@ -4,4 +4,6 @@ public sealed record EditorSnapshot(
     string Markdown,
     long Revision,
     double ScrollTop = 0,
-    ReadingAnchor? ReadingAnchor = null);
+    ReadingAnchor? ReadingAnchor = null,
+    string? SavedMarkdown = null,
+    bool SourceMode = false);

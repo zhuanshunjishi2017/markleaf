@@ -1150,7 +1150,7 @@ internal sealed class DocumentTabBar : Control
         [
             FormatExpandedMenuLabel("menu.file.label"),
             FormatExpandedMenuLabel("menu.edit.label"),
-            FormatExpandedMenuLabel("menu.paragraph.label"),
+            FormatExpandedMenuLabel("menu.insert.label"),
             FormatExpandedMenuLabel("menu.format.label"),
             FormatExpandedMenuLabel("menu.view.label"),
             FormatExpandedMenuLabel("menu.help.label"),
@@ -1161,7 +1161,7 @@ internal sealed class DocumentTabBar : Control
         [
             Loc.Get("menu.file.label"),
             Loc.Get("menu.edit.label"),
-            Loc.Get("menu.paragraph.label"),
+            Loc.Get("menu.insert.label"),
             Loc.Get("menu.format.label"),
             Loc.Get("menu.view.label"),
             Loc.Get("menu.help.label"),

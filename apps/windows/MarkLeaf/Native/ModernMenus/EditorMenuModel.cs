@@ -28,7 +28,6 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         "menu.format.bold", "menu.format.italic", "menu.format.underline",
         "menu.format.strikethrough", "menu.format.highlight", "contextMenu.formatPainter", "menu.format.clearFormat",
     ];
-    private static AppCommand[] BlockHandleCommands => NativeMenuService.BlockHandleCommands;
     private sealed class Branch { internal List<EditorMenuEntry> Items { get; } = []; }
 
     internal EditorMenuModel Build(EditorCommandStatus status, bool inlineCommonActions = false)
@@ -44,6 +43,18 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             ? PrimaryCommands.Select((command, i) => Entry(command, Loc.Get(PrimaryLabels[i]))).ToArray()
             : Array.Empty<EditorMenuEntry>();
         return new(Array.AsReadOnly(primary), Clean(branch.Items, primary.Select(x => x.Command!.Value).ToHashSet()));
+    }
+
+    internal EditorMenuModel BuildBlock(EditorCommandStatus status)
+    {
+        var branch = CreateMenu(true);
+        if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
+            AppendFootnoteCommands(branch);
+        else if (status.InTable)
+            AppendTableCommands(branch, includeClipboard: false);
+        else
+            branch = BuildBlockHandleMenu(status);
+        return new(Array.Empty<EditorMenuEntry>(), Clean(branch.Items, []));
     }
 
     private static IReadOnlyList<EditorMenuEntry> Clean(IEnumerable<EditorMenuEntry> entries, HashSet<AppCommand> primary)
@@ -76,15 +87,6 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         var commands = new List<AppCommand>();
         try
         {
-            if (status.ReadOnly)
-            {
-                AppendReadOnlyContextMenu(menu);
-                commands.AddRange([
-                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
-                    AppCommand.PastePlainText, AppCommand.Paste, AppCommand.SelectAll]);
-                return (menu, commands.ToArray());
-            }
-
             if (status.SourceMode)
             {
                 AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
@@ -134,6 +136,9 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             }
             else if (status.MathInline || status.MathBlock)
             {
+                if (status.ReadOnly) AppendCommand(menu, AppCommand.ViewMathSource, Loc.Get("contextMenu.math.viewSource"));
+                else
+                {
                 AppendCommand(menu, AppCommand.EditMath, Loc.Get("contextMenu.math.edit"));
                 if (status.MathBlock)
                 {
@@ -146,13 +151,19 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 commands.Add(AppCommand.EditMath);
                 if (status.MathBlock) commands.Add(AppCommand.SetMathNumber);
                 commands.AddRange([AppCommand.ConvertMath, AppCommand.DeleteMath]);
+                }
             }
             else if (status.MermaidSelected)
             {
-                AppendCommand(menu, AppCommand.EditMermaid, Loc.Get("contextMenu.mermaid.edit"));
+                AppendCommand(menu, status.ReadOnly ? AppCommand.ViewMermaidSource : AppCommand.EditMermaid,
+                    Loc.Get(status.ReadOnly ? "contextMenu.mermaid.viewSource" : "contextMenu.mermaid.edit"));
                 AppendCommand(menu, AppCommand.RerenderMermaid, Loc.Get("contextMenu.mermaid.rerender"));
-                AppendSeparator(menu);
-                AppendCommand(menu, AppCommand.DeleteMermaid, Loc.Get("contextMenu.mermaid.delete"));
+                AppendCommand(menu, AppCommand.SaveMermaidAs, Loc.Get("contextMenu.mermaid.saveAs"));
+                if (!status.ReadOnly)
+                {
+                    AppendSeparator(menu);
+                    AppendCommand(menu, AppCommand.DeleteMermaid, Loc.Get("contextMenu.mermaid.delete"));
+                }
                 commands.AddRange([AppCommand.EditMermaid, AppCommand.RerenderMermaid, AppCommand.DeleteMermaid]);
             }
             else if (status.ImageSelected)
@@ -176,7 +187,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             }
             else if (status.FrontMatter)
             {
-                AppendCodeContextMenu(menu, commands, includeLanguage: false, includeFormat: false);
+                AppendCodeContextMenu(menu, commands, status, includeLanguage: false, includeFormat: false);
             }
             else if (status.CodeBlock)
             {
@@ -185,9 +196,16 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendCodeContextMenu(
                     menu,
                     commands,
+                    status,
                     includeLanguage: true,
-                    includeFormat: status.Actions.TryGetValue("formatCodeBlock", out var formatAction)
-                        && formatAction.IsEnabled);
+                    includeFormat: true);
+            }
+            else if (status.ReadOnly)
+            {
+                AppendReadOnlyContextMenu(menu);
+                commands.AddRange([
+                    AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
+                    AppCommand.PastePlainText, AppCommand.Paste, AppCommand.SelectAll]);
             }
             else
             {
@@ -211,11 +229,10 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
                 AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
-                AppendSeparator(copyPasteAs);
-                AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
                 AppendPopup(menu, Loc.Get("contextMenu.copyAs"), copyPasteAs);
 
                 AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+                AppendCommand(menu, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
                 AppendSeparator(menu);
@@ -230,7 +247,6 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendSeparator(menu);
 
                 AppendCommonFormattingCommands(menu);
-                commands.AddRange(BlockHandleCommands);
                 commands.AddRange([
                     AppCommand.Undo, AppCommand.Redo, AppCommand.NormalizeInlineCode,
                     AppCommand.ToggleInlineCode, AppCommand.InsertMathInline,
@@ -242,6 +258,28 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                     AppCommand.ToggleStrike, AppCommand.ToggleHighlight, AppCommand.ClearFormat]);
             }
 
+            if (status.Actions.TryGetValue("cancelAlert", out var cancelAlert) && cancelAlert.IsEnabled)
+            {
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.CancelAlert, Loc.Get("contextMenu.cancelAlert"));
+            }
+            if (status.LinkHref is not null)
+            {
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.OpenLink, Loc.Get("contextMenu.link.open"));
+                AppendCommand(menu, AppCommand.CopyLinkAddress, Loc.Get("contextMenu.link.copy"));
+                if (!status.ReadOnly)
+                {
+                    AppendCommand(menu, AppCommand.EditLink, Loc.Get("contextMenu.link.edit"));
+                    AppendCommand(menu, AppCommand.RemoveLink, Loc.Get("contextMenu.link.remove"));
+                }
+            }
+            if (status.FootnoteReferenceLabel is not null)
+            {
+                AppendSeparator(menu);
+                AppendCommand(menu, AppCommand.GoToFootnoteDefinition, Loc.Get("contextMenu.footnote.goToDefinition"));
+                if (!status.ReadOnly) AppendCommand(menu, AppCommand.DeleteFootnoteReference, Loc.Get("contextMenu.footnote.deleteReference"));
+            }
             return (menu, commands.ToArray());
         }
         catch
@@ -287,8 +325,33 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         }
     }
 
-    private void AppendCodeContextMenu(Branch menu, List<AppCommand> commands, bool includeLanguage, bool includeFormat)
+    private void AppendCodeContextMenu(
+        Branch menu, List<AppCommand> commands, EditorCommandStatus status, bool includeLanguage, bool includeFormat)
     {
+        if (status.FrontMatter)
+        {
+            AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.frontMatter.copyMetadata"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.frontMatter.moveAfter"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
+            AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+            AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+            AppendSeparator(menu);
+            AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
+            commands.AddRange([
+                AppCommand.CopyCodeBlock, AppCommand.ExitCode,
+                AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
+            return;
+        }
+
+        if (!status.ReadOnly)
+        {
+            AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
+            AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
+            AppendSeparator(menu);
+            commands.AddRange([AppCommand.Undo, AppCommand.Redo]);
+        }
         if (includeLanguage)
         {
             AppendCommand(menu, AppCommand.DeclareCodeLanguage, Loc.Get("contextMenu.code.declareLanguage"));
@@ -296,19 +359,24 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         }
         if (includeFormat)
         {
-            AppendCommand(menu, AppCommand.FormatCodeBlock, Loc.Get("contextMenu.code.formatBlock"));
+            AppendCommand(
+                menu,
+                AppCommand.FormatCodeBlock,
+                Loc.Get(status.HasSelection ? "contextMenu.code.formatSelection" : "contextMenu.code.formatBlock"));
             commands.Add(AppCommand.FormatCodeBlock);
         }
         AppendCommand(menu, AppCommand.CopyCodeBlock, Loc.Get("contextMenu.code.copyBlock"));
         AppendSeparator(menu);
-        AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.exitCode"));
+        AppendCommand(menu, AppCommand.ExitCode, Loc.Get("contextMenu.code.toParagraph"));
         AppendSeparator(menu);
         AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
         AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
         AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
+        AppendSeparator(menu);
+        AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
         commands.AddRange([
             AppCommand.CopyCodeBlock, AppCommand.ExitCode,
-            AppCommand.Cut, AppCommand.Copy, AppCommand.Paste]);
+            AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
     }
 
     private void AppendFootnoteCommands(Branch menu)
@@ -370,11 +438,22 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
     }
 
-    private Branch BuildBlockHandleMenu()
+    private Branch BuildBlockHandleMenu(EditorCommandStatus? status = null)
     {
         var menu = CreateMenu(true);
         try
         {
+            if (status is { CodeBlock: true })
+            {
+                AppendCodeContextMenu(
+                    menu,
+                    [],
+                    status,
+                    includeLanguage: true,
+                    includeFormat: true);
+                return menu;
+            }
+
             AppendCommand(menu, AppCommand.SetParagraph, Loc.Get("menu.paragraph.paragraph"));
 
             var headings = CreateMenu(true);

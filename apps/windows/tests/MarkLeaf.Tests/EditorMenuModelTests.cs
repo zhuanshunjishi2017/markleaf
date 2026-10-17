@@ -35,8 +35,61 @@ public sealed class EditorMenuModelTests
         AssertContains(EditorCommandStatus.Empty with { FootnoteDefinitionLabel = "note" }, AppCommand.DeleteFootnote);
         AssertContains(EditorCommandStatus.Empty with { FrontMatter = true }, AppCommand.ExitCode);
         var code = EditorCommandStatus.Empty with { CodeBlock = true, Actions = new Dictionary<string, CommandState> { ["formatCodeBlock"] = new(true) } };
-        AssertContains(code, AppCommand.DeclareCodeLanguage, AppCommand.FormatCodeBlock);
-        Assert.DoesNotContain(AppCommand.FormatCodeBlock, Flatten(Build(code with { Actions = new Dictionary<string, CommandState>() }).Secondary).Select(x => x.Command).ToArray());
+        AssertContains(code, AppCommand.Undo, AppCommand.Redo, AppCommand.DeclareCodeLanguage, AppCommand.FormatCodeBlock,
+            AppCommand.CopyCodeBlock, AppCommand.ExitCode, AppCommand.SelectAll);
+        var unsupported = new EditorMenuModelBuilder(command => new CommandState(command != AppCommand.FormatCodeBlock), _ => "")
+            .Build(code with { Actions = new Dictionary<string, CommandState>() });
+        var format = Flatten(unsupported.Secondary).Single(x => x.Command == AppCommand.FormatCodeBlock);
+        Assert.IsFalse(format.State.IsEnabled);
+    }
+
+    [TestMethod]
+    public void ReadonlyObjectKeepsViewAndSaveActions()
+    {
+        var model = Build(EditorCommandStatus.Empty with { ReadOnly = true, ImageSelected = true });
+        var commands = Flatten(model.Secondary).Select(x => x.Command).ToArray();
+
+        Assert.IsEmpty(model.Primary);
+        Assert.Contains((AppCommand?)AppCommand.SaveImageAs, commands);
+        Assert.Contains((AppCommand?)AppCommand.Copy, commands);
+    }
+
+    [TestMethod]
+    public void ContextOrderKeepsPlainPasteTopLevel()
+    {
+        var model = Build();
+        var topLevel = model.Secondary.Select(x => x.Command).ToArray();
+        var pasteIndex = Array.IndexOf(topLevel, AppCommand.Paste);
+        var plainPasteIndex = Array.IndexOf(topLevel, AppCommand.PastePlainText);
+        Assert.HasCount(1, model.Secondary.Where(x => x.Children.Any(child => child.Command == AppCommand.CopyMarkdown)).ToArray());
+        Assert.IsGreaterThanOrEqualTo(0, pasteIndex);
+
+        Assert.AreEqual(pasteIndex + 1, plainPasteIndex);
+        Assert.HasCount(1, Flatten(model.Secondary).Where(x => x.Command == AppCommand.PastePlainText).ToArray());
+    }
+
+    [TestMethod]
+    public void BlockMenuUsesModernModelAndKeepsStatusSpecificCommands()
+    {
+        var builder = new EditorMenuModelBuilder(_ => new CommandState(true), _ => "");
+        var ordinary = builder.BuildBlock(EditorCommandStatus.Empty);
+        var table = builder.BuildBlock(EditorCommandStatus.Empty with { InTable = true });
+        var footnote = builder.BuildBlock(EditorCommandStatus.Empty with { FootnoteDefinitionLabel = "note" });
+        var code = builder.BuildBlock(EditorCommandStatus.Empty with { CodeBlock = true });
+
+        Assert.IsEmpty(ordinary.Primary);
+        var ordinaryCommands = Flatten(ordinary.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();
+        var tableCommands = Flatten(table.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();
+        Assert.Contains(AppCommand.SetParagraph, ordinaryCommands);
+        Assert.Contains(AppCommand.InsertLineBefore, ordinaryCommands);
+        Assert.Contains(AppCommand.AddTableRowBefore, tableCommands);
+        Assert.DoesNotContain(AppCommand.SetParagraph, tableCommands);
+        var codeCommands = Flatten(code.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();
+        Assert.DoesNotContain(AppCommand.SetParagraph, codeCommands);
+        Assert.Contains(AppCommand.DeclareCodeLanguage, codeCommands);
+        Assert.Contains(AppCommand.FormatCodeBlock, codeCommands);
+        Assert.Contains(AppCommand.SelectAll, codeCommands);
+        Assert.Contains(AppCommand.GoToFootnoteReference, Flatten(footnote.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray());
     }
 
     [TestMethod]

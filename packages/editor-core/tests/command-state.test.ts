@@ -11,7 +11,7 @@ describe('shared command availability', () => {
 
   it('allows read-only selection export while disabling document mutations', () => {
     const actions = resolveEditorActions({ hasSelection: true, inTable: true, canUndo: true }, { readOnly: true })
-    for (const command of ['copy', 'copyHtml', 'find', 'selectAll', 'exportDocument']) expect(actions[command]?.enabled).toBe(true)
+    for (const command of ['copy', 'copyHtml', 'find', 'selectAll', 'exportDocument', 'setEditorFocusMode', 'setEditorTypewriterMode']) expect(actions[command]?.enabled).toBe(true)
     for (const command of ['cut', 'paste', 'undo', 'toggleBold', 'deleteTable', 'replace']) expect(actions[command]?.enabled).toBe(false)
   })
 
@@ -22,7 +22,7 @@ describe('shared command availability', () => {
   })
 
   it('keeps table text formatting available without offering nested block insertion', () => {
-    const actions = resolveEditorActions({ inTable: true, tableAlign: 'center' }, { readOnly: false })
+    const actions = resolveEditorActions({ inTable: true, tableAlign: 'center', selectionScope: 'caret' }, { readOnly: false })
     expect(actions.toggleBold?.enabled).toBe(true)
     expect(actions.addRowAfter?.enabled).toBe(true)
     expect(actions.alignTableCenter).toEqual({ enabled: true, checked: true })

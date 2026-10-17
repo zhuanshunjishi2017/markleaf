@@ -15,6 +15,19 @@ struct ClosedTabRecord: Equatable {
     let scrollTop: Double?
     let snapshotFileName: String?
     let documentKind: NewDocumentKind
+    var isReadOnlyLocked: Bool? = nil
+    var markdown: String? = nil
+}
+
+/// One instance per WindowSession; unlike the app singleton it cannot leak
+/// closed buffers into another window's Reopen action.
+final class ClosedTabHistory {
+    private var records: [ClosedTabRecord] = []
+    var hasRecords: Bool { !records.isEmpty }
+    var latest: ClosedTabRecord? { records.last }
+    func push(_ record: ClosedTabRecord) { records = ClosedTabHistoryPolicy.push(record, into: records) }
+    func pop() -> ClosedTabRecord? { records.popLast() }
+    func consume(_ record: ClosedTabRecord) { records.removeAll { $0 == record } }
 }
 
 enum TabCloseReason {

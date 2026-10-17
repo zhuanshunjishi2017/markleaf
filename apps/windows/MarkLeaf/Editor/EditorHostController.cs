@@ -27,6 +27,7 @@ internal sealed class EditorHostController : IDisposable
     private readonly string _webView2UserDataDirectory;
     private readonly Uri _editorUri;
     private readonly Action _stateChanged;
+    private readonly Action<string>? _hostMessageTransport;
     private readonly Queue<Action> _readyActions = new();
     private readonly Dictionary<string, TaskCompletionSource<EditorSnapshot>> _snapshotRequests =
         new(StringComparer.Ordinal);
@@ -40,6 +41,7 @@ internal sealed class EditorHostController : IDisposable
     private CancellationTokenSource? _initializationCancellation;
     private CancellationTokenSource? _readyTimeoutCancellation;
     private bool _eventsAttached;
+    private readonly Dictionary<string, TaskCompletionSource<MermaidImageExportPayload>> _mermaidImageRequests = new(StringComparer.Ordinal);
     private bool _disposed;
     private bool _failureShown;
     private bool _documentLoaded;
@@ -47,6 +49,9 @@ internal sealed class EditorHostController : IDisposable
     private long _lastDocumentRevision;
     private string _lastDocumentMarkdown = string.Empty;
     private bool _lastDocumentReadOnly;
+    private bool _lastDocumentInitialDirty;
+    private string? _lastSavedMarkdown;
+    private bool _lastDocumentSourceMode;
     private string? _lastDocumentType;
     private string? _lastDocumentPath;
     private ReadingAnchor? _lastDocumentReadingAnchor;
@@ -109,7 +114,8 @@ internal sealed class EditorHostController : IDisposable
         IAppLogger logger,
         string editorWebPath,
         string webView2UserDataDirectory,
-        Action stateChanged)
+        Action stateChanged,
+        Action<string>? hostMessageTransport = null)
     {
         _webView = webView;
         _loadingView = loadingView;
@@ -120,6 +126,7 @@ internal sealed class EditorHostController : IDisposable
         _webView2UserDataDirectory = webView2UserDataDirectory;
         _editorUri = CreateVersionedEditorUri(editorWebPath);
         _stateChanged = stateChanged;
+        _hostMessageTransport = hostMessageTransport;
         _loadingView.RetryRequested += (_, _) => _ = RetryAsync();
     }
 
@@ -269,12 +276,20 @@ internal sealed class EditorHostController : IDisposable
         int? sourceSelectionTo = null,
         double scrollTop = 0,
         bool restoreViewState = true,
-        ReadingAnchor? readingAnchor = null)
+        ReadingAnchor? readingAnchor = null,
+        bool initialDirty = false,
+        string? savedMarkdown = null,
+        bool sourceMode = false)
     {
         _lastDocumentId = documentId;
+        foreach (var request in _mermaidImageRequests.Values) request.TrySetCanceled();
+        _mermaidImageRequests.Clear();
         _lastDocumentRevision = revision;
         _lastDocumentMarkdown = markdown;
         _lastDocumentReadOnly = readOnly;
+        _lastDocumentInitialDirty = initialDirty;
+        _lastSavedMarkdown = savedMarkdown;
+        _lastDocumentSourceMode = sourceMode;
         _lastDocumentType = documentType;
         _lastDocumentPath = documentPath;
         _lastDocumentReadingAnchor = readingAnchor;
@@ -286,6 +301,9 @@ internal sealed class EditorHostController : IDisposable
             {
                 markdown,
                 readOnly,
+                initialDirty,
+                savedMarkdown,
+                sourceMode,
                 documentType,
                 documentPath,
                 visualSelection = visualSelectionFrom is { } visualFrom
@@ -695,6 +713,30 @@ internal sealed class EditorHostController : IDisposable
         {
             _commandRequests.Remove(requestId);
         }
+    }
+
+    public async Task<MermaidImageExportPayload> RequestMermaidImageExportAsync(string format, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (format is not ("png" or "svg")) throw new ArgumentException("Unknown image format.", nameof(format));
+        var documentId = _session.DocumentId;
+        var revision = _session.ConfirmedRevision;
+        var requestId = Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<MermaidImageExportPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _mermaidImageRequests.Add(requestId, completion);
+        EnqueueOrRun(() =>
+        {
+            if (_session.DocumentId != documentId || _session.ConfirmedRevision != revision) { completion.TrySetCanceled(); return; }
+            _session.RegisterRequest("mermaidImageExport", requestId);
+            Post("command", new { command = "exportMermaidImage", text = format }, requestId);
+        });
+        try
+        {
+            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            if (_disposed || _session.DocumentId != documentId || _session.ConfirmedRevision != revision) throw new OperationCanceledException("Export target changed.");
+            return result;
+        }
+        finally { _mermaidImageRequests.Remove(requestId); _session.CompleteRequest(requestId, "mermaidImageExport"); }
     }
 
     public async Task<EditorSelectionExport> RequestSelectionExportAsync(
@@ -1214,6 +1256,8 @@ internal sealed class EditorHostController : IDisposable
             request.TrySetCanceled();
         }
         _selectionExportRequests.Clear();
+        foreach (var request in _mermaidImageRequests.Values) request.TrySetCanceled();
+        _mermaidImageRequests.Clear();
         foreach (var request in _exportRequests.Values)
         {
             request.TrySetCanceled();
@@ -1611,7 +1655,9 @@ internal sealed class EditorHostController : IDisposable
                             ? ReadingAnchor.FromJson(anchorElement)
                             : null;
                         completion.TrySetResult(
-                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision, scrollTop, readingAnchor));
+                            new EditorSnapshot(markdownElement.GetString() ?? string.Empty, message.Revision, scrollTop, readingAnchor,
+                                message.Payload.TryGetProperty("savedMarkdown", out var baseline) && baseline.ValueKind == JsonValueKind.String ? baseline.GetString() : null,
+                                message.Payload.TryGetProperty("sourceMode", out var snapshotSourceMode) && snapshotSourceMode.ValueKind == JsonValueKind.True));
                     }
                     SnapshotReceived?.Invoke(this, message);
                 }
@@ -1641,6 +1687,14 @@ internal sealed class EditorHostController : IDisposable
                 else
                 {
                     _logger.Warning("Rejected unmatched editor command response.");
+                }
+                break;
+            case "mermaidImageExport":
+                if (_session.CompleteRequest(message.RequestId, "mermaidImageExport")
+                    && message.RequestId is not null && _mermaidImageRequests.TryGetValue(message.RequestId, out var imageCompletion))
+                {
+                    try { imageCompletion.TrySetResult(MermaidImageExportPayload.Parse(message.Payload)); }
+                    catch (InvalidDataException exception) { imageCompletion.TrySetException(exception); }
                 }
                 break;
             case "selectionExport":
@@ -1708,6 +1762,9 @@ internal sealed class EditorHostController : IDisposable
             {
                 markdown = _lastDocumentMarkdown,
                 readOnly = _lastDocumentReadOnly,
+                initialDirty = _lastDocumentInitialDirty,
+                savedMarkdown = _lastSavedMarkdown,
+                sourceMode = _lastDocumentSourceMode,
                 documentType = _lastDocumentType,
                 documentPath = _lastDocumentPath,
                 readingAnchor = _lastDocumentReadingAnchor?.ToPayload(),
@@ -1751,18 +1808,19 @@ internal sealed class EditorHostController : IDisposable
 
     private void Post(string type, object? payload = null, string? requestId = null)
     {
-        if (_webView.CoreWebView2 is null)
+        if (_hostMessageTransport is null && _webView.CoreWebView2 is null)
         {
             return;
         }
 
-        _webView.CoreWebView2.PostWebMessageAsJson(
-            EditorProtocol.SerializeHostMessage(
+        var message = EditorProtocol.SerializeHostMessage(
                 type,
                 _session.DocumentId,
                 _session.ConfirmedRevision,
                 payload,
-                requestId));
+                requestId);
+        if (_hostMessageTransport is not null) _hostMessageTransport(message);
+        else _webView.CoreWebView2!.PostWebMessageAsJson(message);
     }
 
     private void Fail(string message, Exception? exception)

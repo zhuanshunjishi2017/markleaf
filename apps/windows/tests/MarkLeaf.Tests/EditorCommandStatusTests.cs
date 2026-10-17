@@ -8,6 +8,17 @@ namespace MarkLeaf.Tests;
 public sealed class EditorCommandStatusTests
 {
     [TestMethod]
+    public void FromPayload_ValidatesSelectionScope()
+    {
+        foreach (var scope in new[] { "caret", "text", "cells", "singleObject", "mixed", "invalid" })
+        {
+            var json = CommandStatePayload().GetRawText().TrimEnd('}') + ",\"selectionScope\":\"" + scope + "\"}";
+            using var document = JsonDocument.Parse(json);
+            Assert.AreEqual(scope == "invalid" ? null : scope, EditorCommandStatus.FromPayload(document.RootElement).SelectionScope);
+        }
+        Assert.IsNull(EditorCommandStatus.FromPayload(CommandStatePayload()).SelectionScope);
+    }
+    [TestMethod]
     public void FromPayload_ParsesFormatPainterFields()
     {
         var payload = CommandStatePayload(canStartFormatPainter: true, formatPainterArmed: false);

@@ -18,6 +18,8 @@ internal sealed class OutlineTreeView : Control
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
+    private readonly HashSet<int> _collapsedPositions = [];
+    private bool _usingFlatItems;
     private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _selectedFont = new("Microsoft YaHei", 10F, FontStyle.Bold, GraphicsUnit.Point);
@@ -106,6 +108,11 @@ internal sealed class OutlineTreeView : Control
 
     public void SetItems(IReadOnlyList<EditorOutlineItem> items)
     {
+        if (!_usingFlatItems)
+        {
+            _collapsedPositions.Clear();
+            CollectCollapsedPositions(_roots);
+        }
         _roots.Clear();
         var parents = new Stack<OutlineNode>();
         foreach (var item in items)
@@ -126,6 +133,8 @@ internal sealed class OutlineTreeView : Control
             }
             parents.Push(node);
         }
+        ApplyCollapsedPositions(_roots);
+        _usingFlatItems = false;
 
         UpdateScrollBar();
         EnsureSelectionVisible();
@@ -139,6 +148,7 @@ internal sealed class OutlineTreeView : Control
         {
             _roots.Add(new OutlineNode(item, 0));
         }
+        _usingFlatItems = true;
 
         UpdateScrollBar();
         EnsureSelectionVisible();
@@ -284,7 +294,7 @@ internal sealed class OutlineTreeView : Control
         var expanderRight = this.ScaleForDpi(24) + this.ScaleForDpi(9) * node.Depth;
         if (eventArgs.X <= expanderRight && node.Children.Count > 0)
         {
-            node.Expanded = !node.Expanded;
+            SetNodeExpanded(node, !node.Expanded);
             UpdateScrollBar();
             Invalidate();
             return;
@@ -352,12 +362,12 @@ internal sealed class OutlineTreeView : Control
                 SelectNode(nodes[Math.Min(nodes.Length - 1, index < 0 ? 0 : index + 1)]);
                 break;
             case Keys.Left when index >= 0 && nodes[index].Children.Count > 0:
-                nodes[index].Expanded = false;
+                SetNodeExpanded(nodes[index], false);
                 UpdateScrollBar();
                 Invalidate();
                 break;
             case Keys.Right when index >= 0 && nodes[index].Children.Count > 0:
-                nodes[index].Expanded = true;
+                SetNodeExpanded(nodes[index], true);
                 UpdateScrollBar();
                 Invalidate();
                 break;
@@ -449,16 +459,16 @@ internal sealed class OutlineTreeView : Control
         }
     }
 
-    private static void SetExpandedRecursively(IEnumerable<OutlineNode> nodes, bool expanded)
+    private void SetExpandedRecursively(IEnumerable<OutlineNode> nodes, bool expanded)
     {
         foreach (var node in nodes)
         {
-            node.Expanded = expanded;
+            SetNodeExpanded(node, expanded);
             SetExpandedRecursively(node.Children, expanded);
         }
     }
 
-    private static bool ExpandPathToPosition(OutlineNode node, int position)
+    private bool ExpandPathToPosition(OutlineNode node, int position)
     {
         if (node.Item.Position == position)
         {
@@ -472,11 +482,36 @@ internal sealed class OutlineTreeView : Control
                 continue;
             }
 
-            node.Expanded = true;
+            SetNodeExpanded(node, true);
             return true;
         }
 
         return false;
+    }
+
+    private void SetNodeExpanded(OutlineNode node, bool expanded)
+    {
+        node.Expanded = expanded;
+        if (!expanded) _collapsedPositions.Add(node.Item.Position);
+        else _collapsedPositions.Remove(node.Item.Position);
+    }
+
+    private void CollectCollapsedPositions(IEnumerable<OutlineNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (!node.Expanded) _collapsedPositions.Add(node.Item.Position);
+            CollectCollapsedPositions(node.Children);
+        }
+    }
+
+    private void ApplyCollapsedPositions(IEnumerable<OutlineNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.Expanded = !_collapsedPositions.Contains(node.Item.Position);
+            ApplyCollapsedPositions(node.Children);
+        }
     }
 
     private int GetContentHeight() => 0 + EnumerateVisibleNodes().Sum(GetRowHeight);

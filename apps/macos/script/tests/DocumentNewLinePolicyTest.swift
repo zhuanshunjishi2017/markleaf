@@ -21,4 +21,8 @@ expect(DocumentNewLinePolicy.normalize("one\r\ntwo\n", to: .crlf) == "one\r\ntwo
 expect(DocumentNewLinePolicy.normalize("one\r\ntwo\n", to: .mixed) == "one\r\ntwo\n",
        "mixed output should preserve the caller-provided line endings")
 
+expect(!DocumentNewLinePolicy.canSelect(.mixed, isReadOnly: false), "mixed is a detected value, not a conversion target")
+expect(!DocumentNewLinePolicy.canSelect(.lf, isReadOnly: true), "read-only blocks newline changes")
+expect(DocumentNewLinePolicy.canSelect(.crlf, isReadOnly: false), "editable documents can select CRLF")
+
 print("PASS")

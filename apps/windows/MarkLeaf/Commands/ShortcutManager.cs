@@ -19,6 +19,8 @@ public sealed class ShortcutManager
 {
     private readonly ShortcutSettings _model;
     private readonly Dictionary<Keys, AppCommand> _effective = new();
+    private readonly List<(AppCommand Command, ShortcutConflict Conflict)> _loadedConflicts = [];
+    public IReadOnlyList<(AppCommand Command, ShortcutConflict Conflict)> LoadedConflicts => _loadedConflicts;
 
     public event Action? Changed;
 
@@ -134,7 +136,9 @@ public sealed class ShortcutManager
     private void Rebuild()
     {
         _effective.Clear();
-        foreach (var entry in ShortcutCatalog.Entries)
+        _loadedConflicts.Clear();
+        // Explicit preferences win over defaults; two explicit preferences never silently overwrite each other.
+        foreach (var entry in ShortcutCatalog.Entries.OrderByDescending(entry => _model.Overrides.ContainsKey(entry.Command.ToString())))
         {
             var name = entry.Command.ToString();
             if (_model.Cleared.Contains(name))
@@ -142,14 +146,19 @@ public sealed class ShortcutManager
                 continue;
             }
 
-            if (_model.Overrides.TryGetValue(name, out var text)
-                && ShortcutTextFormatter.TryParse(text, out var keys))
+            if (_model.Overrides.TryGetValue(name, out var text))
             {
-                _effective[keys] = entry.Command;
+                if (!ShortcutTextFormatter.TryParse(text, out var keys))
+                { _loadedConflicts.Add((entry.Command, new(ShortcutConflictKind.Invalid, default))); continue; }
+                var conflict = Validate(keys, entry.Command);
+                if (conflict.Kind != ShortcutConflictKind.None) _loadedConflicts.Add((entry.Command, conflict));
+                else _effective.Add(keys, entry.Command);
             }
             else if (entry.DefaultShortcut != Keys.None)
             {
-                _effective[entry.DefaultShortcut] = entry.Command;
+                var conflict = Validate(entry.DefaultShortcut, entry.Command);
+                if (conflict.Kind != ShortcutConflictKind.None) _loadedConflicts.Add((entry.Command, conflict));
+                else _effective.Add(entry.DefaultShortcut, entry.Command);
             }
         }
     }

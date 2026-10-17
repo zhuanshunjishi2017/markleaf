@@ -35,6 +35,28 @@ function selectText(editor: ReturnType<typeof createEditor>, needle: string): vo
 }
 
 describe('format painter across table cells', () => {
+  it('captures and paints highlight without copying link destinations or task state', () => {
+    const editor = setup('- [x] ==[source](https://example.com)==\n\nplain target')
+    selectText(editor, 'source')
+    const snapshot = captureFormat(editor)
+    expect(snapshot?.marks.highlight).toBe(true)
+    const painter = new FormatPainterController()
+    expect(painter.arm(editor)).toBe(true)
+    selectText(editor, 'plain target')
+    expect(painter.applyOnSelection(editor)).toBe(true)
+    expect(painter.isArmed).toBe(false)
+    const target = editor.state.doc.nodeAt(textPosition(editor, 'plain target'))!
+    expect(target.marks.some(mark => mark.type.name === 'highlight')).toBe(true)
+    expect(target.marks.some(mark => mark.type.name === 'link')).toBe(false)
+    const last = editor.state.doc.lastChild!
+    if (last.type.name === 'taskList') expect(last.firstChild?.attrs.checked).toBe(false)
+  })
+
+  it('rejects a mixed highlight source', () => {
+    const editor = setup('==marked== plain')
+    editor.commands.selectAll()
+    expect(captureFormat(editor)).toBeNull()
+  })
   it('captures a uniform inline-code selection inside a cell', () => {
     const editor = setup('| 名称 | 命令 |\n| --- | --- |\n| C2 | 使用 `tftp -i 127.0.0.1` 下载 |')
     selectText(editor, 'tftp -i 127.0.0.1')
@@ -98,7 +120,7 @@ describe('format painter across table cells', () => {
     const snapshot = captureFormat(editor)
     expect(snapshot).toEqual({
       block: 'heading1',
-      marks: { bold: false, italic: false, underline: false, strike: false, code: false },
+      marks: { bold: false, italic: false, underline: false, strike: false, code: false, highlight: false },
     })
     const painter = new FormatPainterController()
     expect(painter.arm(editor)).toBe(true)

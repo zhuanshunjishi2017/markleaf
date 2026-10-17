@@ -42,3 +42,16 @@ expect(partial?.windows.isEmpty == true && !diagnostics.isEmpty, "invalid window
 diagnostics = []
 expect(SessionManifestCodec.decode(Data("{ not json".utf8), diagnostics: &diagnostics) == nil, "unparseable manifest rejected")
 print("PASS")
+var lockedTab = tab
+lockedTab.isReadOnly = true
+lockedTab.isReadOnlyLocked = false
+lockedTab.detachedFileExtension = "txt"
+var lockedWindow = window
+lockedWindow.tabs = [lockedTab]
+var lockedManifest = manifest
+lockedManifest.windows = [lockedWindow]
+let lockedData = try SessionManifestCodec.encode(lockedManifest)
+let lockedDecoded = SessionManifestCodec.decode(lockedData, diagnostics: &diagnostics)?.windows.first?.tabs.first
+expect(lockedDecoded?.isReadOnly == true && lockedDecoded?.isReadOnlyLocked == false,
+       "user read-only must remain reversible after restart")
+expect(lockedDecoded?.detachedFileExtension == "txt", "deleted text files retain their document kind")

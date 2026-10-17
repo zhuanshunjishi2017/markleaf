@@ -1,6 +1,9 @@
 using MarkLeaf.Commands;
 using MarkLeaf.Editor;
 using MarkLeaf.Native;
+using MarkLeaf.Native.ModernMenus;
+using MarkLeaf.Services;
+using MarkLeaf.Services.Settings;
 
 namespace MarkLeaf.Tests;
 
@@ -17,10 +20,19 @@ public sealed class NativeMenuServiceTests
         AppCommand.PastePlainText,
     ];
 
+    private static NativeMenuService CreateService() =>
+        new(new CommandRouter(new ShortcutManager(new ShortcutSettings()), _ => new CommandState(true), _ => { }),
+            new ShortcutManager(new ShortcutSettings()), () => [], () => [], () => "serif", () => 100,
+            () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+
+    private static AppCommand[] Commands(EditorMenuModel model) =>
+        Flatten(model.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();
+
     [TestMethod]
-    public void GetBlockHandleCommands_InTableUsesTableContextCommandsWithoutClipboard()
+    public void BuildBlockMenuModel_InTableUsesTableContextCommandsWithoutClipboard()
     {
-        var commands = NativeMenuService.GetBlockHandleCommands(EditorCommandStatus.Empty with { InTable = true });
+        using var service = CreateService();
+        var commands = Commands(service.BuildBlockMenuModel(EditorCommandStatus.Empty with { InTable = true }));
 
         CollectionAssert.AreEqual(
             new AppCommand[]
@@ -42,10 +54,11 @@ public sealed class NativeMenuServiceTests
     }
 
     [TestMethod]
-    public void GetBlockHandleCommands_InFootnoteUsesFootnoteContextCommandsWithoutClipboard()
+    public void BuildBlockMenuModel_InFootnoteUsesFootnoteContextCommandsWithoutClipboard()
     {
-        var commands = NativeMenuService.GetBlockHandleCommands(
-            EditorCommandStatus.Empty with { FootnoteDefinitionLabel = "note" });
+        using var service = CreateService();
+        var commands = Commands(service.BuildBlockMenuModel(
+            EditorCommandStatus.Empty with { FootnoteDefinitionLabel = "note" }));
 
         CollectionAssert.AreEqual(
             new AppCommand[]
@@ -60,10 +73,17 @@ public sealed class NativeMenuServiceTests
     }
 
     [TestMethod]
-    public void GetBlockHandleCommands_OutsideSpecialBlocksUsesParagraphCommands()
+    public void BuildBlockMenuModel_OutsideSpecialBlocksUsesParagraphCommands()
     {
-        var commands = NativeMenuService.GetBlockHandleCommands(EditorCommandStatus.Empty);
+        using var service = CreateService();
+        var commands = Commands(service.BuildBlockMenuModel(EditorCommandStatus.Empty));
 
-        CollectionAssert.AreEqual(NativeMenuService.BlockHandleCommands, commands);
+        Assert.Contains(AppCommand.SetParagraph, commands);
+        Assert.Contains(AppCommand.InsertLineBefore, commands);
+        Assert.Contains(AppCommand.DeleteParagraph, commands);
+        Assert.IsFalse(commands.Intersect(ClipboardCommands).Any());
     }
+
+    private static IEnumerable<EditorMenuEntry> Flatten(IEnumerable<EditorMenuEntry> entries) =>
+        entries.SelectMany(x => new[] { x }.Concat(Flatten(x.Children)));
 }

@@ -38,6 +38,7 @@ export type EditorMessage = {
     | 'pasteImage'
     | 'findResult'
     | 'selectionExport'
+    | 'mermaidImageExport'
     | 'exportContent'
     | 'zoomWheel'
     | 'unsafeEmphasisRequested'

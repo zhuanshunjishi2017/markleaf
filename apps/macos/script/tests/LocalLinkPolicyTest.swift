@@ -9,4 +9,7 @@ expect(LocalLinkPolicy.resolve("./images/a.png", documentPath: doc) == "/tmp/mar
 expect(LocalLinkPolicy.resolve("../notes.txt", documentPath: doc) == "/tmp/markleaf-links/notes.txt", "parent relative link resolves")
 expect(LocalLinkPolicy.resolve("https://example.com", documentPath: doc) == nil, "remote link is not treated as local")
 expect(!LocalLinkPolicy.isOpenableFile("/tmp/markleaf-links/docs"), "directories should not be opened as local links")
+expect(LocalLinkPolicy.isAllowedAddress("#heading"), "anchor links remain editable")
+expect(LocalLinkPolicy.isAllowedAddress("../notes.md"), "relative links remain editable")
+expect(!LocalLinkPolicy.isAllowedAddress("javascript:alert(1)"), "unsafe schemes are rejected")
 print("PASS")

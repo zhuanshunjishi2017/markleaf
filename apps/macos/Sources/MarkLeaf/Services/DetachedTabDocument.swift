@@ -12,4 +12,5 @@ struct DetachedTabDocument {
     let untitledSequence: Int?
     let documentKind: NewDocumentKind
     let selection: PendingDocumentSelection?
+    var isReadOnlyLocked: Bool? = nil
 }

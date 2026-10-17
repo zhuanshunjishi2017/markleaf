@@ -10,9 +10,6 @@ enum ReadOnlyModePolicy {
         isDirty: Bool,
         fileURLIsWritable: Bool
     ) -> ReadOnlyModeTransition {
-        if !currentReadOnly && isDirty {
-            return .resolveUnsavedChanges
-        }
         if currentReadOnly && !fileURLIsWritable {
             return .blockedFileNotWritable
         }

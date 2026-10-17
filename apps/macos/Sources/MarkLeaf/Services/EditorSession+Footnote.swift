@@ -106,14 +106,22 @@ extension EditorSession {
             let newLabel = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !newLabel.isEmpty, newLabel != oldLabel,
                   let payload = self.footnotePayload(["oldLabel": oldLabel, "newLabel": newLabel]) else { return }
-            self.execute("resetFootnoteLabel", text: payload)
-            self.statusText = L10n.t("已重设注释编号")
+            self.execute("resetFootnoteLabel", text: payload, completion: { [weak self] success in
+                guard let self else { return }
+                if success {
+                    self.statusText = L10n.t("已重设注释编号")
+                } else {
+                    self.presentError(L10n.t("注释编号不能为空，且不能包含 ] 或换行符"))
+                }
+            })
         }
     }
 
     func goToFootnoteReference() {
         guard EditorMenuPolicy.allows(.goToFootnoteReference, state: editorMenuState) else { return }
-        execute("goToFootnoteReference", text: footnoteDefinitionLabel)
+        execute("goToFootnoteReference", text: footnoteDefinitionLabel, completion: { [weak self] success in
+            if !success { self?.presentFootnoteReferenceMissingAlert() }
+        })
     }
 
     func clearFootnoteReferences() {

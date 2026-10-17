@@ -40,6 +40,7 @@
     "@lezer/highlight": "^1.2.3",
     "@tiptap/core": "3.29.2",
     "@tiptap/extension-bold": "3.29.2",
+    "@tiptap/extension-code": "3.29.2",
     "@tiptap/extension-code-block": "3.29.2",
     "@tiptap/extension-image": "3.29.2",
     "@tiptap/extension-italic": "3.29.2",

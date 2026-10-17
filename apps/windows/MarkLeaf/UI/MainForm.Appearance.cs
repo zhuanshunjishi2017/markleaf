@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using MarkLeaf.Commands;
 using MarkLeaf.Native;
+using MarkLeaf.Native.ModernMenus;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
@@ -376,36 +378,16 @@ internal sealed partial class MainForm
         _menuService.RefreshStates();
     }
 
-    private void ShowZoomMenu()
+    private async void ShowZoomMenu()
     {
-        var menu = NativeMethods.CreatePopupMenu();
-        if (menu == 0)
+        var options = AppearanceSettings.ZoomPercentOptions;
+        var model = StatusBarMenuModel.Zoom(_zoomPercent, options);
+        var command = await _menuService.ShowHostPopupMenuAsync(
+            this, StatusBarPopupPoint(_zoomLabel), DeviceDpi, _menuDarkMode, model);
+        var index = (int?)command - (int)AppCommand.StatusZoom50;
+        if (index >= 0 && index < options.Length)
         {
-            return;
-        }
-
-        try
-        {
-            var options = AppearanceSettings.ZoomPercentOptions;
-            for (var index = 0; index < options.Length; index++)
-            {
-                var percent = options[index];
-                var flags = NativeMethods.MfString
-                    | (percent == _zoomPercent
-                        ? NativeMethods.MfChecked | NativeMethods.MfGrayed
-                        : NativeMethods.MfUnchecked);
-                AppendStatusBarMenuItem(menu, flags, (nuint)(index + 1), $"{percent}%");
-            }
-
-            var selected = ShowStatusBarPopupMenu(menu, _zoomLabel);
-            if (selected is > 0 && selected <= (uint)options.Length)
-            {
-                SetZoomPercent(options[(int)selected - 1]);
-            }
-        }
-        finally
-        {
-            NativeMethods.DestroyMenu(menu);
+            SetZoomPercent(options[index.Value]);
         }
     }
 
@@ -575,6 +557,7 @@ internal sealed partial class MainForm
         {
             _sidebarVisibleBeforeFocus = !_sidebarSplit.Panel1Collapsed;
             _outlineDetachedBeforeFocus = _outlineDetached;
+            _statusBarVisibleBeforeFocus = _statusStrip?.Visible != false;
             if (_outlineDetachedBeforeFocus)
                 MergeOutlineSidebarImmediately();
             if (_sidebarVisibleBeforeFocus)
@@ -595,7 +578,11 @@ internal sealed partial class MainForm
         ApplyMenuPresentation();
         if (!IsDisposed)
         {
-            if (_statusStrip is not null) _statusStrip.Visible = true;
+            if (_statusStrip is not null)
+                _statusStrip.Visible = ViewNavigationPolicy.RestoreStatusBarVisible(new(
+                    _sidebarVisibleBeforeFocus,
+                    _outlineDetachedBeforeFocus,
+                    _statusBarVisibleBeforeFocus));
         }
         _documentTabBar.SetDisplaySuppressed(false);
         // With the tab-bar menu style, the tab bar also hosts the menu when

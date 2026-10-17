@@ -22,7 +22,6 @@ internal sealed class PreferencesDialog : Form
     private readonly Action? _onClearHistory;
     private readonly Action? _onAddTheme;
     private readonly Action? _onCheckForUpdates;
-    private readonly Action? _onShowCodeFormatterManager;
     private readonly List<PreferenceOptionsContainer> _optionContainers = [];
 
     private readonly Button _resetAllButton = new()
@@ -179,8 +178,7 @@ internal sealed class PreferencesDialog : Form
         Action? onClearLogs = null,
         Action? onOpenSettingsJson = null,
         Action? onClearHistory = null,
-        Action? onCheckForUpdates = null,
-        Action? onShowCodeFormatterManager = null)
+        Action? onCheckForUpdates = null)
     {
         _targetSettings = settings;
         _settings = CloneSettings(settings);
@@ -194,7 +192,6 @@ internal sealed class PreferencesDialog : Form
         _onOpenSettingsJson = onOpenSettingsJson;
         _onClearHistory = onClearHistory;
         _onCheckForUpdates = onCheckForUpdates;
-        _onShowCodeFormatterManager = onShowCodeFormatterManager;
 
         _languageCombo.Items.Add(Loc.Get("language.zh-CN"));
         _languageCombo.Items.Add(Loc.Get("language.zh-TW"));
@@ -811,16 +808,6 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(_markdownBulletMarkerCombo, 1, 4);
         panel.Controls.Add(Gap(), 0, 5);
         panel.Controls.Add(Gap(), 1, 5);
-        var codeFormatterButton = new Button
-        {
-            Text = Loc.Get("prefs.editor.markdown.codeFormatter.manage"),
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Enabled = _onShowCodeFormatterManager is not null,
-        };
-        codeFormatterButton.Click += (_, _) => _onShowCodeFormatterManager?.Invoke();
-        panel.Controls.Add(NewPreferenceLabel(Loc.Get("prefs.editor.markdown.codeFormatter.label")), 0, 6);
-        panel.Controls.Add(codeFormatterButton, 1, 6);
         return panel;
     }
 

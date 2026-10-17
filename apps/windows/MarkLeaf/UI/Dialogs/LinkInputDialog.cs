@@ -11,7 +11,7 @@ internal sealed class LinkInputDialog : Form
         PlaceholderText = "https://example.com",
     };
 
-    public LinkInputDialog()
+    public LinkInputDialog(string? initialAddress = null)
     {
         Text = Loc.Get("dialog.insertLinkTitle");
         BackColor = DialogColors.Secondary;
@@ -74,15 +74,17 @@ internal sealed class LinkInputDialog : Form
 
         AcceptButton = okButton;
         CancelButton = cancelButton;
+        _address.Text = initialAddress ?? string.Empty;
     }
 
     public string LinkAddress => _address.Text.Trim();
 
     private static bool IsAllowedLink(string value)
     {
-        return Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
-            && (uri.Scheme == Uri.UriSchemeHttp
-                || uri.Scheme == Uri.UriSchemeHttps
-                || uri.Scheme == Uri.UriSchemeMailto);
+        var text = value.Trim();
+        if (text.Length == 0 || text.Any(char.IsControl)) return false;
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+            return uri.Scheme is "http" or "https" or "mailto" or "file";
+        return !text.Contains(':');
     }
 }

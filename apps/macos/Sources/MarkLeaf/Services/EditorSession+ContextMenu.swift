@@ -25,6 +25,12 @@ extension EditorSession {
             addFootnoteCommands(to: menu, state: state)
         case .table:
             addTableCommands(to: menu, state: state, includeClipboard: false)
+        case .codeBlock:
+            addCodeContextMenu(
+                menu,
+                state: state,
+                includeLanguage: true,
+                includeFormat: true)
         default:
             // 对齐 Windows：句柄菜单除脚注/表格外一律使用段落命令全集。
             if !state.isReadOnly && !state.isSourceMode {
@@ -126,6 +132,16 @@ extension EditorSession {
             isFlipped: webView.isFlipped
         )
 
+        let (menu, session) = buildEditorContextMenu(canStartFormatPainter: canStartFormatPainter, formatPainterArmed: formatPainterArmed)
+        guard !menu.items.isEmpty else { session.finish(); return }
+        let windowPoint = webView.convert(pointInView, to: nil)
+        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
+        activeNativeFormatMenuSession = session
+        menu.popUp(positioning: nil, at: screenPoint, in: nil)
+        session.finish()
+    }
+
+    func buildEditorContextMenu(canStartFormatPainter: Bool? = nil, formatPainterArmed: Bool? = nil) -> (NSMenu, NativeFormatMenuSession) {
         let menu = NSMenu()
         EditorContextMenuState.preserveExplicitAvailability(in: menu)
         let state = editorMenuState
@@ -187,18 +203,22 @@ extension EditorSession {
             menu.addItem(.separator())
             addClipboardCommands(menu, includeCopyAs: false)
         } else if semanticContext == .math {
+            if state.isReadOnly {
+                addFormatCommand(menu, L10n.t("查看公式源码"), "viewMathSource")
+            } else {
             // 公式：编辑 / 行内块级互转 / 删除
             addFormatCommand(menu, L10n.t("编辑公式源码"), "editMath")
-            addFormatCommand(menu, L10n.t("公式编号…"), "setMathNumber")
+            if mathBlock { addFormatCommand(menu, L10n.t("公式编号…"), "setMathNumber") }
             addFormatCommand(menu, mathBlock ? L10n.t("转为行内公式") : L10n.t("转为块级公式"), "convertMath")
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("删除公式"), "deleteMath")
+            }
         } else if semanticContext == .codeBlock {
             addCodeContextMenu(
                 menu,
                 state: state,
                 includeLanguage: true,
-                includeFormat: editorCommandEnabled("formatCodeBlock"))
+                includeFormat: true)
         } else if state.isReadOnly {
             addClipboardCommands(menu)
         } else {
@@ -231,6 +251,25 @@ extension EditorSession {
             menu.addItem(submenuItem(L10n.t("段落"), paragraph))
         }
 
+        if linkHref != nil {
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("打开链接"), "openLink")
+            addFormatCommand(menu, L10n.t("复制链接地址"), "copyLinkAddress")
+            if !state.isReadOnly {
+                addFormatCommand(menu, L10n.t("编辑链接…"), "editLink")
+                addFormatCommand(menu, L10n.t("移除链接"), "removeLink")
+            }
+        }
+        if footnoteReferenceLabel != nil {
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("转到脚注正文"), "goToFootnoteDefinition")
+            if !state.isReadOnly { addFormatCommand(menu, L10n.t("删除此引用"), "deleteFootnoteReference") }
+        }
+        if editorCommandEnabled("cancelAlert") {
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("取消提示块"), "cancelAlert")
+        }
+
         // Keep formatting available for editable table/inline contexts too, not
         // only ordinary paragraphs, when replacing the quick row with text items.
         if !inlineCommonActions && !state.isSourceMode && !state.isReadOnly
@@ -246,15 +285,7 @@ extension EditorSession {
             }
         }
 
-        guard !menu.items.isEmpty else { return }
-
-        // 将 WebView 局部坐标换算为屏幕坐标后，以 in: nil（屏幕坐标系）弹出。
-        let windowPoint = webView.convert(pointInView, to: nil)
-        let screenPoint = window.convertToScreen(NSRect(origin: windowPoint, size: .zero)).origin
-        activeNativeFormatMenuSession = session
-        menu.popUp(positioning: nil, at: screenPoint, in: nil)
-        // menuDidClose 通常会先于 popUp 返回；这里作为异常路径兜底，finish 是幂等的。
-        session.finish()
+        return (menu, session)
     }
 
     static func editorContextMenuPoint(clientX: Double, clientY: Double, viewHeight: CGFloat, isFlipped: Bool) -> NSPoint {
@@ -307,28 +338,73 @@ extension EditorSession {
 
     /// 图片另存为（对应 Windows SaveImageAsAsync）。
     func saveImageAs() {
-        requestSelectionExport { [weak self] result in
-            guard let self, case .success(let export) = result else { return }
-            guard let src = Self.extractImageSrc(from: export.markdown),
-                  let sourceURL = self.resolveImagePath(src),
-                  FileManager.default.fileExists(atPath: sourceURL.path) else {
-                self.statusText = L10n.t("未选中图片")
-                return
-            }
-            guard let window = self.webView?.window else { return }
-            let panel = NSSavePanel()
-            panel.title = L10n.t("将图片另存为")
-            panel.nameFieldStringValue = sourceURL.lastPathComponent
-            panel.beginSheetModal(for: window) { response in
-                guard response == .OK, let url = panel.url else { return }
-                do {
-                    try FileManager.default.copyItem(at: sourceURL, to: url)
-                    self.statusText = L10n.t("图片已另存为")
-                } catch {
-                    self.presentError(L10n.f("图片另存为失败：%@", error.localizedDescription))
+        guard imageSelected, let source = imageSource, let window = webView?.window else { return }
+        let identity = currentDocumentIdentifier
+        let sourceDocument = documentURL
+        Task { [weak self] in
+            do {
+                let image = try await ImageOriginalExportService.read(source: source, documentURL: sourceDocument)
+                guard let self, self.currentDocumentIdentifier == identity, self.imageSource == source else { return }
+                let panel = NSSavePanel()
+                panel.title = L10n.t("将图片另存为")
+                panel.allowedContentTypes = [UTType(filenameExtension: image.fileExtension) ?? .image]
+                let stem = URL(string: source)?.deletingPathExtension().lastPathComponent ?? "image"
+                panel.nameFieldStringValue = "\(stem.isEmpty ? "image" : stem).\(image.fileExtension)"
+                panel.beginSheetModal(for: window) { response in
+                    guard response == .OK, let url = panel.url,
+                          self.currentDocumentIdentifier == identity else { return }
+                    do {
+                        try ImageOriginalExportService.write(image, to: url)
+                        self.statusText = L10n.t("图片已另存为")
+                    } catch {
+                        self.presentError(L10n.f("图片另存为失败：%@", error.localizedDescription))
+                    }
                 }
+            } catch is CancellationError { }
+            catch { self?.presentError(L10n.f("图片另存为失败：%@", error.localizedDescription)) }
+        }
+    }
+
+    func saveMermaidAs() {
+        guard mermaidSelected, mermaidRendered, let window = webView?.window else { return }
+        let identity = currentDocumentIdentifier
+        let sourceRevision = currentRevision
+        let panel = NSSavePanel()
+        panel.title = L10n.t("将图表另存为图片")
+        panel.nameFieldStringValue = "diagram.png"
+        panel.allowedContentTypes = [.png, .svg]
+        let format = NSPopUpButton(frame: .zero, pullsDown: false)
+        format.addItems(withTitles: ["PNG (2×)", "SVG"])
+        format.target = self
+        format.action = #selector(mermaidExportFormatChanged(_:))
+        panel.accessoryView = NSStackView(views: [NSTextField(labelWithString: L10n.t("格式")), format])
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self,
+                  self.currentDocumentIdentifier == identity, self.currentRevision == sourceRevision else { return }
+            let extensionName = format.indexOfSelectedItem == 1 ? "svg" : "png"
+            // Do not silently write a different format under a confirmed filename.
+            guard url.pathExtension.lowercased() == extensionName else {
+                self.presentError(L10n.t("文件扩展名与所选图片格式不一致，请重新导出")); return
+            }
+            self.requestMermaidImageExport(format: extensionName) { [weak self] result in
+                guard let self, self.currentDocumentIdentifier == identity, self.currentRevision == sourceRevision else { return }
+                do {
+                    let image = try result.get()
+                    try image.data.write(to: url, options: .atomic)
+                    self.statusText = L10n.t("图片已另存为")
+                } catch let error as CocoaError where error.code == .userCancelled { }
+                catch { self.presentError(error.localizedDescription) }
             }
         }
+    }
+
+    @objc private func mermaidExportFormatChanged(_ sender: NSPopUpButton) {
+        guard let panel = sender.window as? NSSavePanel else { return }
+        let extensionName = sender.indexOfSelectedItem == 1 ? "svg" : "png"
+        panel.allowedContentTypes = extensionName == "svg" ? [.svg] : [.png]
+        let currentName = panel.nameFieldStringValue
+        let stem = URL(fileURLWithPath: currentName).deletingPathExtension().lastPathComponent
+        panel.nameFieldStringValue = "\(stem.isEmpty ? "diagram" : stem).\(extensionName)"
     }
 
     /// 从选区导出的 Markdown 中提取第一张图片的 src。
@@ -420,7 +496,11 @@ extension EditorSession {
     /// 表格命令组（对齐 Windows AppendTableCommands）。
     /// 右键菜单携带剪贴板（includeClipboard: true）；段落句柄菜单不带。
     private func addTableCommands(to menu: NSMenu, state: EditorContextMenuState, includeClipboard: Bool) {
-        guard EditorMenuPolicy.allows(.tableRows, state: state) else { return }
+        guard state.inTable else { return }
+        if state.isReadOnly {
+            addClipboardCommands(menu, includeCopyAs: true, includeSelectAll: true)
+            return
+        }
         addFormatCommand(menu, L10n.t("编辑表格标题"), "editTableCaption")
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("在上方添加行"), "addRowBefore")
@@ -449,30 +529,45 @@ extension EditorSession {
     }
 
     private func addMermaidCommands(to menu: NSMenu, state: EditorContextMenuState) {
-        let commands: [(String, String, EditorNativeCommand)] = [
-            (L10n.t("编辑 Mermaid 源码"), "editMermaid", .editMermaid),
-            (L10n.t("重新渲染 Mermaid 图表"), "rerenderMermaid", .rerenderMermaid),
-            (L10n.t("删除 Mermaid 图表"), "deleteMermaid", .deleteMermaid),
-        ]
-        for (title, command, nativeCommand) in commands where EditorMenuPolicy.allows(nativeCommand, state: state) {
-            addFormatCommand(menu, title, command)
+        addFormatCommand(menu, L10n.t(state.isReadOnly ? "查看图表源码" : "编辑 Mermaid 源码"), state.isReadOnly ? "viewMermaidSource" : "editMermaid")
+        addFormatCommand(menu, L10n.t("重新渲染 Mermaid 图表"), "rerenderMermaid")
+        addFormatCommand(menu, L10n.t("将图表另存为图片"), "saveMermaidAs")
+        if !state.isReadOnly {
+            menu.addItem(.separator())
+            addFormatCommand(menu, L10n.t("删除 Mermaid 图表"), "deleteMermaid")
         }
     }
 
     /// 代码块/前置元数据命令组（对齐 Windows AppendCodeContextMenu）：
-    /// [声明代码语言] [格式化代码块] 复制整段代码 ─ 退出代码 ─ 剪切/拷贝/粘贴。
+    /// [撤销/重做] [声明代码语言] [格式化代码块] 复制整段代码 ─ 转为正文 ─ 剪贴板/全选。
     private func addCodeContextMenu(
         _ menu: NSMenu,
         state: EditorContextMenuState,
         includeLanguage: Bool,
         includeFormat: Bool
     ) {
+        if state.frontMatterActive {
+            if EditorMenuPolicy.allows(.copyCodeBlock, state: state) {
+                addFormatCommand(menu, L10n.t("复制元数据"), "copyCodeBlock")
+            }
+            if !state.isReadOnly {
+                menu.addItem(.separator())
+                addFormatCommand(menu, L10n.t("移到元数据之后"), "exitCode")
+            }
+            menu.addItem(.separator())
+            addClipboardCommands(menu, includeCopyAs: false, includeSelectAll: true)
+            return
+        }
+        if !state.isReadOnly {
+            addHistoryCommands(menu)
+            menu.addItem(.separator())
+        }
         if includeLanguage, EditorMenuPolicy.allows(.declareCodeLanguage, state: state) {
             addFormatCommand(menu, L10n.t("声明代码语言…"), "declareCodeLanguage")
         }
         if includeFormat {
             let formatItem = menuItem(
-                L10n.t("格式化代码块"),
+                L10n.t(editorCommandEnabled("copy") ? "格式化选中行" : "格式化代码块"),
                 #selector(handleCommand(_:)),
                 key: "f",
                 mask: [.shift, .option]
@@ -487,10 +582,10 @@ extension EditorSession {
         }
         menu.addItem(.separator())
         if !state.isReadOnly {
-            addFormatCommand(menu, L10n.t("退出代码"), "exitCode")
+            addFormatCommand(menu, L10n.t("转为正文"), "exitCode")
             menu.addItem(.separator())
         }
-        addClipboardCommands(menu, includeCopyAs: false, includeSelectAll: false)
+        addClipboardCommands(menu, includeCopyAs: false, includeSelectAll: true)
     }
 
     private func addFormatCommand(
@@ -532,7 +627,7 @@ extension EditorSession {
         if includeCopyAs {
             let canCopyAs = editorCommandEnabled("copyAs")
             let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
-            copyAs.isEnabled = canCopyAs
+            copyAs.isEnabled = canCopyAs || canPaste
             let copyAsMenu = NSMenu()
             let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
             markdown.isEnabled = canCopyAs

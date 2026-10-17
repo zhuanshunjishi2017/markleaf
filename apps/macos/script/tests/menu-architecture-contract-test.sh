@@ -57,25 +57,26 @@ reject_text "$mac_build" 'L10n.t("段落")'
 reject_text "$mac_build" 'L10n.t("外观")'
 
 mac_insert="$(method_body "$MAC_MENU" insertMenu)"
-for command in insertLink insertImage insertImageFromUrl insertMathInline insertMathBlock \
-  insertHorizontalRule insertFootnote insertLineBefore insertLineAfter toggleCode; do
+for command in insertLink insertImage insertImageFromUrl insertMermaid insertMathInline insertMathBlock \
+  insertHorizontalRule insertFootnote showFrontMatter; do
   require_text "$mac_insert" "\"$command\""
 done
 require_text "$mac_insert" 'tableSizePickerSubmenu'
-require_text "$mac_insert" 'mermaidMenu()'
-
-mac_mermaid="$(method_body "$MAC_MENU" mermaidMenu)"
-require_text "$mac_mermaid" '"insertMermaid"'
-require_text "$mac_mermaid" '"rerenderAllMermaid"'
+reject_text "$mac_insert" 'mermaidMenu()'
 
 mac_format="$(method_body "$MAC_MENU" formatMenu)"
 require_text "$mac_format" 'paragraphStyleMenu()'
 require_text "$mac_format" '"toggleBlockquote"'
 require_text "$mac_format" '"toggleCodeBlock"'
-reject_text "$mac_format" 'tableEditingMenu()'
+require_text "$mac_format" 'tableEditingMenu()'
+require_text "$mac_format" 'imageEditingMenu()'
 require_text "$mac_format" 'clearFormat'
-reject_text "$mac_format" '"toggleCode"'
-for command in rotateImage resizeImage saveImageAs toggleCodeHighlight importTheme revealThemeFolder; do
+require_text "$mac_format" '"toggleCode"'
+mac_paragraph_actions="$(method_body "$MAC_MENU" paragraphActionsMenu)"
+for command in insertLineBefore insertLineAfter duplicateParagraph deleteParagraph; do
+  require_text "$mac_paragraph_actions" "\"$command\""
+done
+for command in toggleCodeHighlight importTheme revealThemeFolder; do
   reject_text "$mac_format" "\"$command\""
 done
 
@@ -91,10 +92,10 @@ for command in toggleBulletList toggleOrderedList toggleTaskList; do
 done
 
 mac_view="$(method_body "$MAC_MENU" viewMenu)"
-for text in 主题设置 设置缩放; do
+for text in 主题设置 设置缩放 显示代码高亮 重新渲染所有 Mermaid 图表 进入全屏幕; do
   require_text "$mac_view" "$text"
 done
-for command in toggleCodeHighlight importTheme revealThemeFolder; do
+for command in importTheme revealThemeFolder; do
   reject_text "$mac_view" "\"$command\""
 done
 mac_sidebar="$(printf '%s\n' "$mac_view" | sed -n '/let sidebarSettings = NSMenu/,/menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))/p')"
@@ -112,7 +113,7 @@ require_text "$mac_help" 'openHelp'
 reject_text "$mac_help" 'checkForUpdates'
 require_text "$mac_help" 'openWelcome'
 mac_help_sequence="$(grep -E 'commandItem|separator' <<<"$mac_help" | sed 's/^[[:space:]]*//')"
-expected_mac_help_sequence=$'menu.addItem(commandItem(L10n.t("欢迎"), "openWelcome"))\nmenu.addItem(.separator())\nmenu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))\nmenu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))\nsamples.addItem(commandItem(L10n.t(sample.titleKey), sample.command))\nmenu.addItem(.separator())\nmenu.addItem(commandItem(L10n.t("学习 Markdown…"), "learnMarkdown"))\nmenu.addItem(commandItem(L10n.t("安装可选字体…"), "installOptionalFonts"))\nmenu.addItem(commandItem(L10n.t("代码格式化器…"), "codeFormatterManager"))\nmenu.addItem(.separator())\nmenu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))'
+expected_mac_help_sequence=$'menu.addItem(commandItem(L10n.t("欢迎"), "openWelcome"))\nsamples.addItem(commandItem(L10n.t(sample.titleKey), sample.command))\nmenu.addItem(.separator())\nmenu.addItem(commandItem(L10n.t("快捷键"), "showShortcuts"))\nmenu.addItem(commandItem(L10n.t("更新内容"), "openChangelog"))\nmenu.addItem(commandItem(L10n.t("学习 Markdown…"), "learnMarkdown"))\nmenu.addItem(commandItem(L10n.t("在线帮助"), "openHelp"))\nmenu.addItem(.separator())\nmenu.addItem(commandItem(L10n.t("安装可选字体…"), "installOptionalFonts"))\nmenu.addItem(commandItem(L10n.t("代码格式化器…"), "codeFormatterManager"))'
 [[ "$mac_help_sequence" == "$expected_mac_help_sequence" ]] || fail "macOS help menu order or grouping is incorrect"
 
 require_text "$(method_body "$MAC_MENU" editMenu)" 'commandItem(L10n.t("查找与替换"), "find", key: "f")'
@@ -147,39 +148,47 @@ for command in rotateImage resizeImage100 saveImageAs; do
   require_text "$MAC_CONTEXT" "\"$command\""
 done
 
-# Windows 1.5.1: top-level menus are File/Edit/Paragraph/Format/View/Help.
-# The legacy Insert and Appearance menus were removed: block-level insert
-# commands moved to the Paragraph menu, inline ones (math/link/image) to the
-# Format menu's body and its image submenu.
+# Windows follows the approved six-menu structure. Insert owns creation;
+# Format owns paragraph presentation and object editing.
 win_main="$(method_body "$WIN_MENU" BuildMainMenu)"
 require_text "$win_main" 'BuildFileMenu()'
 require_text "$win_main" 'BuildEditMenu()'
-require_text "$win_main" 'BuildParagraphMenu()'
+require_text "$win_main" 'BuildInsertMenu()'
 require_text "$win_main" 'BuildFormatMenu()'
 require_text "$win_main" 'BuildViewMenu()'
 require_text "$win_main" 'BuildHelpMenu()'
-reject_text "$win_main" 'BuildInsertMenu()'
+reject_text "$win_main" 'BuildParagraphMenu()'
 reject_text "$win_main" 'BuildAppearanceMenu()'
 
+win_insert="$(method_body "$WIN_MENU" BuildInsertMenu)"
+require_text "$win_insert" 'BuildInsertImageSubmenu()'
+for command in InsertTable InsertMermaid InsertLink InsertFootnote InsertMathInline \
+  InsertMathBlock InsertHorizontalRule ShowFrontMatter; do
+  require_text "$win_insert" "AppCommand.$command"
+done
+
 win_paragraph="$(method_body "$WIN_MENU" BuildParagraphMenu)"
-for command in SetParagraph ToggleQuote ToggleCodeBlock ToggleBulletList; do
+for command in SetParagraph PromoteHeading DemoteHeading; do
   require_text "$win_paragraph" "AppCommand.$command"
 done
 for command in InsertMathBlock InsertHorizontalRule InsertFootnote InsertLineBefore InsertLineAfter \
   InsertMermaid RerenderAllMermaid AddTableRowBefore; do
-  require_text "$win_paragraph" "AppCommand.$command"
+  reject_text "$win_paragraph" "AppCommand.$command"
 done
-require_text "$win_paragraph" 'AppendPopup(menu, Loc.Get("menu.paragraph.table"), table)'
-require_text "$win_paragraph" 'AppendMainMenuCommand(table, AppCommand.InsertTable'
-require_text "$win_paragraph" 'AppendPopup(menu, Loc.Get("menu.paragraph.diagram"), diagram)'
 
 win_format="$(method_body "$WIN_MENU" BuildFormatMenu)"
-require_text "$win_format" 'AppCommand.InsertMathInline'
-require_text "$win_format" 'AppCommand.InsertLink'
+require_text "$win_format" 'AppCommand.ToggleInlineCode'
+require_text "$win_format" 'BuildParagraphMenu()'
+require_text "$win_format" 'AppCommand.ToggleQuote'
+require_text "$win_format" 'AppCommand.ToggleCodeBlock'
+require_text "$win_format" 'AppCommand.InsertLineBefore'
+require_text "$win_format" 'AppCommand.InsertLineAfter'
+require_text "$win_format" 'AppendTableCommands(table, includeClipboard: false)'
 require_text "$win_format" 'BuildImageSubmenu()'
+require_text "$win_format" 'AppCommand.FormatPainter'
 require_text "$win_format" 'ClearFormat'
-for command in InsertMathBlock InsertHorizontalRule InsertFootnote InsertLineBefore InsertLineAfter \
-  InsertTable InsertMermaid SetParagraph ToggleQuote ToggleCodeBlock ToggleBulletList; do
+for command in InsertImage InsertImageFromUrl InsertTable InsertMermaid InsertLink InsertFootnote \
+  InsertMathInline InsertMathBlock InsertHorizontalRule ShowFrontMatter; do
   reject_text "$win_format" "AppCommand.$command"
 done
 for command in ShowCodeHighlight AddTheme OpenThemeFolder; do
@@ -190,10 +199,15 @@ for command in RotateImageClockwise ResizeImage100 SaveImageAs; do
 done
 
 win_image="$(method_body "$WIN_MENU" BuildImageSubmenu)"
-for command in InsertImage InsertImageFromUrl RotateImageClockwise SaveImageAs; do
+for command in ChangeImage EditImageCaption RotateImageClockwise SaveImageAs; do
   require_text "$win_image" "AppCommand.$command"
 done
 require_text "$win_image" 'BuildResizeImageSubmenu()'
+
+win_insert_image="$(method_body "$WIN_MENU" BuildInsertImageSubmenu)"
+for command in InsertImage InsertImageFromUrl; do
+  require_text "$win_insert_image" "AppCommand.$command"
+done
 
 win_view="$(method_body "$WIN_MENU" BuildViewMenu)"
 # 上游 1.7.x 把排版样式/颜色主题收进「主题设置」窗口，视图菜单改为：
@@ -212,7 +226,8 @@ done
 
 win_edit="$(method_body "$WIN_MENU" BuildEditMenu)"
 require_text "$win_edit" 'menu.edit.find'
-require_text "$win_edit" 'AppCommand.Replace'
+require_text "$win_edit" 'AppCommand.Find'
+reject_text "$win_edit" 'AppCommand.Replace'
 require_text "$win_edit" 'AppCommand.SelectAll'
 require_text "$WIN_SHORTCUTS" 'new(AppCommand.NewDocument, "shortcut.new", Keys.Control | Keys.N)'
 require_text "$WIN_SHORTCUTS" 'new(AppCommand.SelectAll, "shortcut.selectAll", Keys.Control | Keys.A)'
@@ -245,7 +260,7 @@ require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/TableSizePickerView.swift" 
 
 # 编辑器右键菜单契约：普通文本与源码模式都必须带历史命令和全选，
 # 并统一通过 addClipboardCommands / addHistoryCommands 注入快捷键。
-mac_context_menu="$(method_body "$MAC_CONTEXT" showEditorContextMenu)"
+mac_context_menu="$(method_body "$MAC_CONTEXT" buildEditorContextMenu)"
 require_text "$mac_context_menu" 'addHistoryCommands(menu)'
 require_text "$mac_context_menu" 'addClipboardCommands(menu)'
 require_text "$mac_context_menu" 'NativeFormatToolbarView('

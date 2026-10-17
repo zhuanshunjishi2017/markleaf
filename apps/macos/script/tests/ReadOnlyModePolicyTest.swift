@@ -17,8 +17,8 @@ expect(
         currentReadOnly: false,
         isDirty: true,
         fileURLIsWritable: true
-    ) == .resolveUnsavedChanges,
-    "a dirty document must be resolved before entering read-only mode"
+    ) == .toggle,
+    "user read-only is a view state; entering it must preserve an unsaved buffer"
 )
 expect(
     ReadOnlyModePolicy.action(

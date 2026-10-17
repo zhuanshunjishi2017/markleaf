@@ -1,6 +1,15 @@
 import Foundation
 
 enum LocalLinkPolicy {
+    static func isAllowedAddress(_ value: String) -> Bool {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.rangeOfCharacter(from: .controlCharacters) == nil else { return false }
+        if let scheme = URL(string: text)?.scheme?.lowercased() {
+            return ["http", "https", "mailto", "file"].contains(scheme)
+        }
+        return !text.contains(":")
+    }
+
     static func isOpenableFile(_ path: String) -> Bool {
         (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }

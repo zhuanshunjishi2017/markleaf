@@ -13,3 +13,4 @@ expect(FootnoteLabelPolicy.normalized("") == nil, "empty labels should be invali
 expect(FootnoteLabelPolicy.normalized("bad]label") == nil, "closing brackets should be invalid")
 expect(FootnoteLabelPolicy.normalized("bad\nlabel") == nil, "newlines should be invalid")
 print("PASS")
+expect(FootnoteLabelPolicy.normalized("bad[label") == nil, "opening brackets should also be invalid")

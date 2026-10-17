@@ -10,6 +10,7 @@ using MarkLeaf.Services;
 using MarkLeaf.Services.ExternalLinks;
 using MarkLeaf.Services.Updates;
 using MarkLeaf.UI.Dialogs;
+using MarkLeaf.Workspace;
 
 namespace MarkLeaf.UI;
 
@@ -81,17 +82,22 @@ internal sealed partial class MainForm
             return new CommandState(false, _outlineDetached);
         }
 
-        if (command is >= AppCommand.OpenRecentWorkspace1 and <= AppCommand.OpenRecentWorkspace8)
+        if (Array.IndexOf(RecentCommandCatalog.Folders, command) is var folderIndex && folderIndex >= 0)
         {
-            var index = (int)command - (int)AppCommand.OpenRecentWorkspace1;
-            return new CommandState(index < GetRecentWorkspaces().Count);
+            return new CommandState(folderIndex < GetRecentWorkspaces().Count);
         }
 
-        if (command is >= AppCommand.OpenRecentFile1 and <= AppCommand.OpenRecentFile8)
+        if (Array.IndexOf(RecentCommandCatalog.Files, command) is var fileIndex && fileIndex >= 0)
         {
-            var index = (int)command - (int)AppCommand.OpenRecentFile1;
-            return new CommandState(index < GetRecentFiles().Count);
+            return new CommandState(fileIndex < GetRecentFiles().Count);
         }
+
+        if (command == AppCommand.CopyCurrentFileContents) return new(_document is not null);
+        if (command is AppCommand.CopyCurrentFilePath or AppCommand.ShowCurrentFileInFolder)
+            return new(_document?.FilePath is not null);
+        if (command == AppCommand.RenameCurrentDocument)
+            return new(_document is { FilePath: not null, IsReadOnly: false });
+        if (command == AppCommand.NewPlainText) return new(true);
 
         if (command == AppCommand.CloseFolder)
         {
@@ -115,6 +121,11 @@ internal sealed partial class MainForm
         }
 
         if (command == AppCommand.SwitchToNextDocumentTab)
+        {
+            return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
+        }
+
+        if (command == AppCommand.SwitchToPreviousDocumentTab)
         {
             return new CommandState(_activeDocumentIndex >= 0 && _openDocuments.Count > 1);
         }
@@ -148,7 +159,11 @@ internal sealed partial class MainForm
                 && (readOnlyDocument.IsReadOnly || readOnlyDocument.IsUserReadOnly),
             ReadOnlyCanBeToggled: _document is not null && !_document.IsReadOnly,
             ClosedTabsAvailable: _closedTabHistory.Count > 0,
-            EditorActions: _editorCommandStatus.Actions);
+            EditorActions: _editorCommandStatus.Actions,
+            SelectionScope: _editorCommandStatus.SelectionScope,
+            DocumentDirty: _document?.IsDirty == true,
+            DocumentHasPath: _document?.FilePath is not null,
+            SavableDocumentsAvailable: DocumentMenuPolicy.SaveAllTargets(_openDocuments).Count > 0);
         var state = CommandStateResolver.Resolve(command, context);
         if (command is AppCommand.Paste or AppCommand.PastePlainText)
             return state with { IsEnabled = state.IsEnabled && HasClipboardContent() };
@@ -191,6 +206,32 @@ internal sealed partial class MainForm
             case AppCommand.NewDocument:
                 _ = NewDocumentAsync(NewDocumentKind.Markdown);
                 break;
+            case AppCommand.NewPlainText:
+                await NewDocumentAsync(NewDocumentKind.PlainText);
+                break;
+            case AppCommand.CopyCurrentFilePath:
+                if (_document?.FilePath is { } copyPath) Clipboard.SetText(copyPath);
+                break;
+            case AppCommand.CopyCurrentFileContents:
+                var copyDocument = _document;
+                await SyncActiveDocumentAsync();
+                if (copyDocument is not null)
+                {
+                    if (copyDocument.Markdown.Length == 0) Clipboard.Clear();
+                    else Clipboard.SetText(copyDocument.Markdown);
+                }
+                break;
+            case AppCommand.ShowCurrentFileInFolder:
+                if (_document?.FilePath is { } shownPath) ShowDocumentInExplorer(shownPath);
+                break;
+            case AppCommand.RenameCurrentDocument:
+                if (_document is { FilePath: { } renamePath, IsReadOnly: false })
+                {
+                    using var renameDialog = new TextInputDialog(Loc.Get("workspace.rename"), Loc.Get("workspace.rename"), Path.GetFileName(renamePath));
+                    if (ShowModal(() => renameDialog.ShowDialog(this)) == DialogResult.OK)
+                        await RenameWorkspaceEntryAsync(new WorkspaceEntry(Path.GetFileName(renamePath), renamePath, false), renameDialog.InputText);
+                }
+                break;
             case AppCommand.NewWindow:
                 StartNewWindow();
                 break;
@@ -215,8 +256,14 @@ internal sealed partial class MainForm
             case AppCommand.SaveDocumentAs:
                 _ = SaveDocumentAsync(saveAs: true);
                 break;
+            case AppCommand.SaveAllDocuments:
+                _ = SaveAllDocumentsAsync();
+                break;
             case AppCommand.ExportWithLastSettings:
                 _ = ExportWithLastSettingsAsync();
+                break;
+            case AppCommand.ExportDocument:
+                _ = ExportDocumentAsync();
                 break;
             case AppCommand.ExportPdf:
                 _ = ExportPdfAsync();
@@ -282,11 +329,11 @@ internal sealed partial class MainForm
                 await ReopenLastClosedTabAsync();
                 break;
             case AppCommand.SwitchToWorkspace:
-                ShowSidebarView(outline: false);
+                RevealSidebarView(outline: false);
                 SetStatus(Loc.Get("status.switchedToWorkspace"));
                 break;
             case AppCommand.SwitchToOutline:
-                ShowSidebarView(outline: true);
+                RevealSidebarView(outline: true);
                 SetStatus(Loc.Get("status.switchedToOutline"));
                 break;
             case AppCommand.UseIndependentOutlineSidebar:
@@ -302,13 +349,24 @@ internal sealed partial class MainForm
                 if (!_workspaceListViewActive) ToggleWorkspaceView();
                 break;
             case AppCommand.ShowStatusBar:
-                if (_statusStrip is not null) _statusStrip.Visible = !_statusStrip.Visible;
+                if (_focusMode)
+                {
+                    _statusBarVisibleBeforeFocus = true;
+                    ToggleFocusMode();
+                }
+                else if (_statusStrip is not null)
+                {
+                    _statusStrip.Visible = !_statusStrip.Visible;
+                }
                 break;
             case AppCommand.ShowShortcuts:
                 ShowShortcutHelp();
                 break;
             case AppCommand.InstallOptionalFonts:
                 ShowOptionalFonts();
+                break;
+            case AppCommand.ShowCodeFormatter:
+                ShowCodeFormatterManager();
                 break;
             case AppCommand.ShowColorThemes:
                 ShowColorThemes();
@@ -329,7 +387,19 @@ internal sealed partial class MainForm
                 _ = CheckForUpdatesAsync();
                 break;
             case AppCommand.LearnMarkdown:
-                ExternalLinkService.Open("https://www.runoob.com/markdown/md-tutorial.html");
+                ExternalLinkService.Open("https://markdown.com.cn/basic-syntax/index.html");
+                break;
+            case AppCommand.OpenOnlineHelp:
+                ExternalLinkService.Open("https://github.com/zhuanshunjishi2017/markleaf/blob/main/README.md");
+                break;
+            case AppCommand.OpenSampleAlert:
+                _ = OpenBundledSampleAsync("alert-examples.md");
+                break;
+            case AppCommand.OpenSampleYamlBasic:
+                _ = OpenBundledSampleAsync("yaml-front-matter-basic.md");
+                break;
+            case AppCommand.OpenSampleYamlAdvanced:
+                _ = OpenBundledSampleAsync("yaml-front-matter-advanced.md");
                 break;
             case AppCommand.ShowPreferences:
                 ShowPreferences();
@@ -356,7 +426,10 @@ internal sealed partial class MainForm
                 await InsertFootnote();
                 break;
             case AppCommand.ResetFootnoteLabel:
-                ResetFootnoteLabel();
+                await ResetFootnoteLabel();
+                break;
+            case AppCommand.GoToFootnoteReference:
+                await GoToFootnoteReferenceAsync();
                 break;
             case AppCommand.EditMath:
                 EditMath();
@@ -393,6 +466,18 @@ internal sealed partial class MainForm
                 break;
             case AppCommand.SaveImageAs:
                 await SaveImageAsAsync();
+                break;
+            case AppCommand.SaveMermaidAs:
+                await SaveMermaidAsAsync();
+                break;
+            case AppCommand.OpenLink:
+                if (_editorCommandStatus.LinkHref is { } openHref) _editorHost?.ExecuteCommand("openLink", openHref);
+                break;
+            case AppCommand.CopyLinkAddress:
+                if (_editorCommandStatus.LinkHref is { } copyHref) Clipboard.SetText(copyHref);
+                break;
+            case AppCommand.EditLink:
+                InsertLink(_editorCommandStatus.LinkHref);
                 break;
             case AppCommand.ResizeImage100:
                 _editorHost?.ExecuteCommand("resizeImage", "100");
@@ -444,6 +529,10 @@ internal sealed partial class MainForm
             case AppCommand.SwitchToNextDocumentTab:
                 if (_activeDocumentIndex >= 0 && _openDocuments.Count > 1)
                     _ = SwitchDocumentTabAsync((_activeDocumentIndex + 1) % _openDocuments.Count);
+                break;
+            case AppCommand.SwitchToPreviousDocumentTab:
+                if (_activeDocumentIndex >= 0 && _openDocuments.Count > 1)
+                    _ = SwitchDocumentTabAsync((_activeDocumentIndex - 1 + _openDocuments.Count) % _openDocuments.Count);
                 break;
             case AppCommand.LocateCurrentDocumentInWorkspace:
                 if (_activeDocumentIndex >= 0)
@@ -656,7 +745,7 @@ internal sealed partial class MainForm
         }
     }
 
-    private void OnEditorBlockMenuRequested(object? sender, EditorBlockMenuRequest request)
+    private async void OnEditorBlockMenuRequested(object? sender, EditorBlockMenuRequest request)
     {
         if (InvokeRequired)
         {
@@ -670,8 +759,13 @@ internal sealed partial class MainForm
         }
 
         var screenPoint = _editorHost.EditorPointToScreen(request);
-        _menuService.ShowBlockHandleMenu(Handle, screenPoint, _editorCommandStatus);
-        _editorHost.ClearBlockHighlight();
+        await _menuService.ShowBlockHandleMenuAsync(
+            this,
+            screenPoint,
+            DeviceDpi,
+            _menuDarkMode,
+            _editorCommandStatus,
+            () => { if (!IsDisposed && !Disposing) _editorHost?.ClearBlockHighlight(); });
     }
 
     private async Task CheckForUpdatesAsync(bool silent = false)

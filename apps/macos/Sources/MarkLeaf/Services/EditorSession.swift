@@ -7,6 +7,7 @@ struct PreparedDocument: Equatable {
     let markdown: String
     let encoding: String
     var isReadOnly: Bool = false
+    var isReadOnlyLocked: Bool? = nil
 
     init(url: URL, markdown: String, encoding: String = DocumentEncodingPolicy.utf8.rawValue, isReadOnly: Bool = false) {
         self.url = url
@@ -25,7 +26,8 @@ struct PreparedDocument: Equatable {
         return PreparedDocument(
             url: standardized,
             markdown: markdown,
-            encoding: encoding.rawValue
+            encoding: encoding.rawValue,
+            isReadOnly: !FileManager.default.isWritableFile(atPath: standardized.path)
         )
     }
 }
@@ -88,6 +90,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var zoomPercent = 100 {
         didSet { notify() }
     }
+    weak var windowSession: WindowSession?
 
     private(set) var styles: [StyleDefinition] = []
     private(set) var colorThemes: [ColorThemeInfo] = []
@@ -119,10 +122,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var codeBlockText: String?
     private(set) var frontMatterActive = false
     private(set) var expandedSourceActive = false
+    private(set) var selectionScope: String?
+    private(set) var linkHref: String?
+    private(set) var footnoteReferenceLabel: String?
     private(set) var mermaidSelected = false
+    private(set) var mermaidRendered = false
     private(set) var mermaidSource: String?
     private(set) var mermaidCount = 0
     private(set) var imageSelected = false
+    private(set) var imageSource: String?
     private(set) var inTable = false
     private var newDocumentKind: NewDocumentKind = .markdown
 
@@ -135,6 +143,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private(set) var isFormatPainterArmed = false
     private(set) var headingLevel: Int?
     private(set) var isReadOnly = false
+    /// File permissions / explicit Open Read Only cannot be undone by View.
+    private(set) var isReadOnlyLocked = false
+    private var hasUnsavedMetadataChanges = false
+    private var fileOperationEpoch = UUID()
     private(set) var editorActions: [String: EditorActionState] = [:]
     private(set) var editorSemanticContext: EditorSemanticContext = .ordinaryBlock
     /// 当前右键菜单会话；由原生菜单跟踪循环统一协调浮动快捷条的预览与关闭。
@@ -142,7 +154,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 只读文档（如更新内容）下应禁用/拦截的菜单命令。
     static let readOnlyBlockedCommands: Set<String> = Set([
-        "save", "saveAll", "saveAs", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
+        "save", "undo", "redo", "cut", "paste", "pastePlainText", "replace",
         "replaceOne", "replaceAll", "pasteText", "deleteSelection",
         "setParagraph", "setHeading1", "setHeading2", "setHeading3",
         "setHeading4", "setHeading5", "setHeading6",
@@ -165,7 +177,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "insertAlertWarning", "insertAlertCaution", "showFrontMatter",
         "insertMermaid", "editMermaid", "deleteMermaid", "setCodeBlockLanguage", "setCodeBlockLanguageAt", "insertCodeBlockWithLanguage", "declareCodeLanguage",
         "editTableCaption", "editImageCaption", "insertFootnote", "resetFootnoteLabel",
-        "goToFootnoteReference", "clearFootnoteReferences", "deleteFootnote",
+        "clearFootnoteReferences", "deleteFootnote", "deleteFootnoteReference", "removeLink", "cancelAlert",
     ]).union(EditorPastePolicy.modifyingCommands)
 
     /// 切换当前标签页的只读模式。脏文档先复用统一的保存/放弃处置流程；
@@ -179,7 +191,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         switch ReadOnlyModePolicy.action(
             currentReadOnly: isReadOnly,
             isDirty: isDirty,
-            fileURLIsWritable: fileURLIsWritable
+            fileURLIsWritable: fileURLIsWritable && !isReadOnlyLocked
         ) {
         case .blockedFileNotWritable:
             statusText = L10n.t("文件系统权限为只读")
@@ -199,6 +211,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         isReadOnly = enabled
         statusText = L10n.t(enabled ? "只读模式已开启" : "只读模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    /// Called only after the host confirms conversion of an existing tab.
+    /// No reload/disposition: its buffer, selection and dirty baseline survive.
+    func enterExplicitReadOnlyMode() {
+        isReadOnlyLocked = true
+        applyReadOnlyMode(true)
     }
 
     // 工作区 / 大纲
@@ -289,7 +308,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private let writeCoordinator = SerialWriteCoordinator()
     var pendingExport = false
     var pendingSelectionExport: ((Result<EditorSelectionExport, Error>) -> Void)?
+    private var mermaidExportRequests: [String: (MermaidExportIdentity, (Result<MermaidImageExportPayload, Error>) -> Void)] = [:]
     var pendingPasteCommands: [String: PendingPasteCommand] = [:]
+    private var pendingCommandResults: [String: (Bool) -> Void] = [:]
     var pendingExportContext: ExportContext?
     /// 导出预览：请求时捕获文档 URL，避免异步返回前切换标签改变图片解析基准。
     var pendingExportHTMLRequest: PendingExportHTMLRequest?
@@ -335,6 +356,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var pendingInitialPreparedDocument: PreparedDocument?
     private var pendingInitialSelection: PendingDocumentSelection?
     private var pendingInitialDetachedDocument: RestartDocument?
+    var pendingBufferMarkdown: String? {
+        pendingInitialDetachedDocument?.markdown ?? pendingInitialPreparedDocument?.markdown ?? pendingRestartDocument?.markdown
+    }
     var pendingRestoreScrollTop: Double?
     var pendingRestoreReadingAnchor: ReadingAnchor?
     private struct RestartDocument {
@@ -344,6 +368,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let encoding: String?
         let kind: NewDocumentKind?
         let initialDirty: Bool
+        var readOnlyLocked: Bool? = nil
+        var newLine: String? = nil
     }
     private var pendingRestartDocument: RestartDocument?
 
@@ -375,8 +401,28 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     func handleEditorMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
+        if type == "mermaidImageExport" {
+            guard let requestID = message["requestId"] as? String,
+                  let (identity, completion) = mermaidExportRequests.removeValue(forKey: requestID) else { return }
+            guard identity.matches(requestID: requestID, documentID: message["documentId"] as? String,
+                revision: (message["revision"] as? NSNumber)?.int64Value,
+                currentDocumentID: documentId, currentRevision: revision) else {
+                completion(.failure(CocoaError(.userCancelled))); return
+            }
+            completion(Result { try MermaidImageExportPayload.decode(message["payload"] as? [String: Any] ?? [:]) })
+            return
+        }
         // 只有本会话尚在等待的粘贴回执才能更新状态或修订号。
-        if type == "commandResult" && !handlePasteResult(message) { return }
+        if type == "commandResult" {
+            if handlePasteResult(message) { return }
+            if let requestID = message["requestId"] as? String,
+               let completion = pendingCommandResults.removeValue(forKey: requestID) {
+                let payload = message["payload"] as? [String: Any]
+                completion(payload?["success"] as? Bool ?? false)
+                return
+            }
+            return
+        }
         let payload = message["payload"] as? [String: Any]
         let messageRevision: Int64?
         if let value = message["revision"] as? NSNumber {
@@ -417,6 +463,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     markdown: restart.markdown,
                     fileURL: restart.fileURL,
                     readOnly: restart.readOnly,
+                    readOnlyLocked: restart.readOnlyLocked,
                     encoding: restart.encoding,
                     documentKind: restart.kind,
                     initialDirty: restart.initialDirty
@@ -476,7 +523,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "dirtyChanged":
             let dirty = payload?["dirty"] as? Bool ?? false
-            isDirty = dirty
+            isDirty = dirty || hasUnsavedMetadataChanges
             if dirty {
                 clearStartupRecoveryNotice(for: message)
                 statusText = L10n.t("已修改")
@@ -502,13 +549,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             mathLatex = payload?["mathLatex"] as? String
             mathNumber = payload?["mathNumber"] as? String
             caption = payload?["caption"] as? String
+            imageSource = payload?["imageSource"] as? String
             footnoteDefinitionLabel = payload?["footnoteDefinitionLabel"] as? String
             codeBlock = decoded.codeBlock
             codeBlockLanguage = decoded.codeBlockLanguage
             codeBlockText = decoded.codeBlockText
             frontMatterActive = decoded.frontMatter
             expandedSourceActive = decoded.expandedSource
+            selectionScope = decoded.selectionScope
+            linkHref = decoded.linkHref
+            footnoteReferenceLabel = decoded.footnoteReferenceLabel
             mermaidSelected = decoded.mermaidSelected
+            mermaidRendered = payload?["mermaidRendered"] as? Bool ?? false
             mermaidSource = decoded.mermaidSource
             mermaidCount = decoded.mermaidCount
             isReadOnly = decoded.readOnly
@@ -782,6 +834,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 宿主 -> 编辑器
 
+    func requestMermaidImageExport(format: String, completion: @escaping (Result<MermaidImageExportPayload, Error>) -> Void) {
+        guard isReady, ["png", "svg"].contains(format) else { completion(.failure(CocoaError(.fileReadCorruptFile))); return }
+        let requestID = UUID().uuidString
+        let identity = MermaidExportIdentity(requestID: requestID, documentID: documentId, revision: revision)
+        mermaidExportRequests[requestID] = (identity, completion)
+        send("command", payload: ["command": "exportMermaidImage", "text": format], requestId: requestID, onFailure: { [weak self] in
+            self?.mermaidExportRequests.removeValue(forKey: requestID)?.1(.failure(CocoaError(.fileReadUnknown)))
+        })
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.mermaidExportRequests.removeValue(forKey: requestID)?.1(.failure(URLError(.timedOut)))
+        }
+    }
+
     private func send(_ type: String, payload: [String: Any]? = nil, requestId: String? = nil,
                       onFailure: (() -> Void)? = nil) {
         guard let webView else { onFailure?(); return }
@@ -908,7 +973,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         applyCodeFormatterSettings()
         applyBlockHandleVisibility(settings.showParagraphBlockHandle)
         setCodeHighlightVisible(settings.showCodeHighlight)
-        if settings.restoreZoomOnOpen {
+        if windowSession == nil && settings.restoreZoomOnOpen {
             applyZoom(settings.zoomPercent)
         }
         setAutoHideScrollbar(settings.autoHideScrollbars)
@@ -965,6 +1030,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         markdown: String,
         fileURL: URL?,
         readOnly: Bool = false,
+        readOnlyLocked: Bool? = nil,
         encoding: String? = nil,
         documentKind: NewDocumentKind? = nil,
         initialDirty: Bool = false,
@@ -974,24 +1040,30 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         visualSelectionFrom: Int? = nil,
         visualSelectionTo: Int? = nil,
         sourceSelectionFrom: Int? = nil,
-        sourceSelectionTo: Int? = nil
+        sourceSelectionTo: Int? = nil,
+        newLine: String? = nil
     ) {
         // 替换文档时清理上一个文档的快照
         cancelPendingPasteCommands()
         RecoveryService.shared.delete(documentId: documentId)
         startupRecoveryNotice = nil
         documentId = UUID().uuidString.lowercased()
+        fileOperationEpoch = UUID()
+        hasUnsavedMetadataChanges = false
         revision = 0
-        isDirty = false
+        isDirty = initialDirty
         hasPendingExternalChange = false
         documentURL = fileURL
-        isReadOnly = readOnly
+        isReadOnly = readOnly || fileURL.map { !FileManager.default.isWritableFile(atPath: $0.path) } == true
+        isReadOnlyLocked = (readOnlyLocked ?? readOnly)
+            || fileURL.map { !FileManager.default.isWritableFile(atPath: $0.path) } == true
         newDocumentKind = fileURL.map { NewDocumentKind.from(fileExtension: $0.pathExtension) }
             ?? documentKind
             ?? .markdown
-        documentNewLine = fileURL == nil
+        documentNewLine = newLine ?? (fileURL == nil
             ? DocumentNewLinePolicy.style(from: SettingsService.shared.settings.newLineStyle).rawValue
-            : DocumentNewLinePolicy.detect(markdown).rawValue
+            : DocumentNewLinePolicy.detect(markdown).rawValue)
+        hasUnsavedMetadataChanges = initialDirty && newLine != nil
         documentEncoding = DocumentEncodingPolicy.defaultEncoding(
             rawValue: encoding ?? (fileURL == nil
                 ? SettingsService.shared.settings.defaultEncoding
@@ -1007,21 +1079,21 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         self.scrollTop = scrollTop
         self.readingAnchor = readingAnchor
         statusText = fileURL?.lastPathComponent ?? L10n.t("未命名")
-        if readOnly {
+        if isReadOnly {
             stopExternalChangeWatch()
         } else if let fileURL {
             startExternalChangeWatch(for: fileURL)
         } else {
             stopExternalChangeWatch()
         }
-        if !readOnly {
+        if !isReadOnly || initialDirty {
             startRecoveryTimer()
         }
         isPlainText = newDocumentKind == .plainText
         var loadPayload: [String: Any] = [
             "markdown": markdown,
             "documentType": newDocumentKind.editorDocumentType,
-            "readOnly": readOnly,
+            "readOnly": isReadOnly,
             "initialDirty": initialDirty,
             "scrollTop": scrollTop,
             "restoreViewState": restoreViewState,
@@ -1047,8 +1119,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 从状态栏切换当前文档的换行风格；只读文档只允许查看，不允许转换。
     func setDocumentNewLine(_ style: DocumentNewLineStyle) {
-        guard !isReadOnly, style.rawValue != documentNewLine else { return }
+        guard DocumentNewLinePolicy.canSelect(style, isReadOnly: isReadOnly), style.rawValue != documentNewLine else { return }
         documentNewLine = style.rawValue
+        hasUnsavedMetadataChanges = true
         isDirty = true
         statusText = L10n.t("已修改")
     }
@@ -1068,6 +1141,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             return
         case .updateUnsavedDocumentEncoding:
             documentEncoding = target.rawValue
+            hasUnsavedMetadataChanges = true
             isDirty = true
             statusText = L10n.t("已修改")
         case .prompt(_, let warnsAboutUnsavedChanges):
@@ -1083,6 +1157,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         warnsAboutUnsavedChanges: Bool
     ) {
         guard let window = webView?.window else { return }
+        let targetDocumentID = documentId
+        let operationEpoch = fileOperationEpoch
         let message = warnsAboutUnsavedChanges
             ? L10n.f("请选择直接使用 %@ 重新读取磁盘文件，或将当前编辑内容转换并保存为该编码。直接读取会丢弃当前未保存的修改。", target.rawValue)
             : L10n.f("请选择直接使用 %@ 重新读取磁盘文件，或将当前编辑内容转换并保存为该编码。", target.rawValue)
@@ -1091,12 +1167,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             strings: EncodingChangeSheetStrings(
                 title: L10n.t("更改文档编码"),
                 message: message,
-                directReadButton: L10n.t("直接读取"),
-                convertEncodingButton: L10n.t("转换编码"),
+                directReadButton: L10n.t("按此编码重新打开"),
+                convertEncodingButton: L10n.t("转换并保存为此编码"),
                 cancelButton: L10n.t("取消")
             )
         ) { [weak self] choice in
-            guard let self else { return }
+            guard let self, self.documentId == targetDocumentID,
+                  self.fileOperationEpoch == operationEpoch else { return }
             switch choice {
             case .directRead:
                 self.directlyReadDocument(using: target)
@@ -1134,6 +1211,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     private func presentDirectReadWarning(for target: DocumentEncodingPolicy) {
         guard let window = webView?.window else { return }
+        let targetDocumentID = documentId
+        let operationEpoch = fileOperationEpoch
         let alert = NSAlert()
         alert.messageText = L10n.t("编码可能导致乱码")
         alert.informativeText = L10n.f(
@@ -1144,21 +1223,26 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.addButton(withTitle: L10n.t("继续重新加载"))
         alert.addButton(withTitle: L10n.t("取消"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.directlyReadDocument(using: target, allowingGarblingRisk: true)
+            guard response == .alertFirstButtonReturn, let self,
+                  self.documentId == targetDocumentID, self.fileOperationEpoch == operationEpoch else { return }
+            self.directlyReadDocument(using: target, allowingGarblingRisk: true)
         }
     }
 
     func convertDocumentEncoding(to target: DocumentEncodingPolicy) {
         guard !isReadOnly, let url = documentURL else { return }
+        let targetDocumentID = documentId
+        let operationEpoch = fileOperationEpoch
         writeCoordinator.enqueue { [weak self] finish in
-            guard let self else {
+            guard let self, self.documentId == targetDocumentID,
+                  self.fileOperationEpoch == operationEpoch, !self.isReadOnly else {
                 finish()
                 return
             }
             self.requestVersionedSnapshot { [weak self] result in
                 DispatchQueue.main.async {
-                    guard let self else {
+                    guard let self, self.documentId == targetDocumentID,
+                          self.fileOperationEpoch == operationEpoch, !self.isReadOnly else {
                         finish()
                         return
                     }
@@ -1189,10 +1273,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             }
                             self.startExternalChangeWatch(for: url, acceptingCurrentVersion: true)
                             self.documentEncoding = completed.encoding.rawValue
+                            self.hasUnsavedMetadataChanges = false
                             self.isDirty = DocumentSaveRevisionPolicy.isDirty(
                                 savedRevision: editorSnapshot.revision,
                                 currentRevision: self.revision
                             )
+                            if !self.isDirty {
+                                self.send("markSaved", payload: ["markdown": markdown])
+                            }
                             self.statusText = self.isDirty ? L10n.t("已修改") : L10n.t("已保存")
                             AppLog.info("文档编码已转换为 \(target.rawValue): \(url.path)")
                         } catch {
@@ -1236,7 +1324,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private func recoveryTick() {
         guard isReady, isDirty else { return }
         let settings = SettingsService.shared.settings
-        if settings.autoSaveEnabled, documentURL != nil {
+        if settings.autoSaveEnabled, documentURL != nil, !isReadOnly {
             // 自动保存：直接写回原文件
             writeCurrentDocument(to: documentURL!)
             return
@@ -1256,12 +1344,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 窗口关闭时清理：删除当前文档快照、停止定时器（对应 C# DeleteOwnFiles 的一部分）。
     func cleanupForClose() {
+        let exports = mermaidExportRequests.values.map { $0.1 }
+        mermaidExportRequests.removeAll()
+        exports.forEach { $0(.failure(CocoaError(.userCancelled))) }
         cancelPendingPasteCommands()
         recoveryTimer?.invalidate()
         recoveryTimer = nil
         stopExternalChangeWatch()
-        workspace.closeForSessionTeardown()
         RecoveryService.shared.delete(documentId: documentId)
+        // Invalidate pending dialogs and snapshots owned by the closing tab.
+        documentId = UUID().uuidString.lowercased()
     }
 
     // MARK: - 外部文件变更监控（对应 C# FileSystemWatcher + ExternalChangeDialog）
@@ -1392,13 +1484,25 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func execute(_ command: String, text: String? = nil, html: String? = nil,
-                 requestId: String? = nil, onFailure: (() -> Void)? = nil) {
+                 requestId: String? = nil, onFailure: (() -> Void)? = nil,
+                 completion: ((Bool) -> Void)? = nil) {
         if isReadOnly && Self.readOnlyBlockedCommands.contains(command) {
             onFailure?()
+            completion?(false)
             return
         }
         let payload = EditorPastePolicy.payload(command: command, text: text, html: html)
-        send("command", payload: payload, requestId: requestId, onFailure: onFailure)
+        var requestID = requestId
+        if let completion, requestID == nil {
+            requestID = UUID().uuidString.lowercased()
+            pendingCommandResults[requestID!] = completion
+        }
+        send("command", payload: payload, requestId: requestID) { [weak self] in
+            if let requestID, let pending = self?.pendingCommandResults.removeValue(forKey: requestID) {
+                pending(false)
+            }
+            onFailure?()
+        }
     }
 
     func requestSnapshot(completion: @escaping (Result<String, Error>) -> Void) {
@@ -1566,16 +1670,17 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         AppWindowManager.shared.showFindPanel(for: self, showingReplace: false)
     }
 
-    /// 行内格式命令：空选时应用到整个文本块。
+    /// 行内格式命令：空选区只设置后续输入样式。
     func executeInlineFormat(_ command: String) {
-        let payload: [String: Any] = ["command": command, "applyToCurrentTextBlockWhenEmpty": true]
-        send("command", payload: payload)
+        execute(command)
     }
 
     /// 文档加载完成后应用持久化设置（缩放/自动隐藏滚动条）。
     func applyPostLoadSettings() {
         let settings = SettingsService.shared.settings
-        if settings.restoreZoomOnOpen {
+        if let windowSession {
+            applyZoom(windowSession.zoomPercent)
+        } else if settings.restoreZoomOnOpen {
             setZoom(settings.zoomPercent)
         }
         setAutoHideScrollbar(settings.autoHideScrollbars)
@@ -1687,11 +1792,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     ) {
         let clamped = min(200, max(50, percent))
         zoomPercent = Int(clamped.rounded())
+        windowSession?.updateViewState(from: self)
         preservePointerAnchorForNextVisualUpdate = preservePointerAnchor
         applyVisualVariables(fontSize: nil, maxWidth: nil)
         statusText = L10n.f("缩放 %d%%", zoomPercent)
         if persist {
-            SettingsService.shared.update { $0.zoomPercent = zoomPercent }
+            SettingsService.shared.update({ $0.zoomPercent = zoomPercent }, broadcasting: false)
         }
     }
 
@@ -1818,18 +1924,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let window = webView?.window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                let prepared = try PreparedDocument.read(from: url)
-                self.requestDisposition(for: .replaceDocument) { result in
-                    guard result == .proceed else { return }
-                    var readOnly = prepared
-                    readOnly.isReadOnly = true
-                    self.loadPreparedDocument(readOnly)
-                }
-            } catch {
-                AppLog.error("打开只读文档失败: \(url.path) \(error.localizedDescription)")
-                self.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
-            }
+            if let hook = self.openReadOnlyViaWindow { hook(url) }
+            else { self.openDocumentBypassingRouter(at: url, readOnly: true) }
         }
     }
 
@@ -1842,9 +1938,10 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     /// 打开文档的原始加载逻辑，绕过窗口路由（供窗口去重后的真实加载复用）。
-    func openDocumentBypassingRouter(at url: URL) {
+    func openDocumentBypassingRouter(at url: URL, readOnly: Bool = false) {
         do {
-            let prepared = try PreparedDocument.read(from: url)
+            var prepared = try PreparedDocument.read(from: url)
+            prepared.isReadOnly = prepared.isReadOnly || readOnly
             requestDisposition(for: .replaceDocument) { [weak self] result in
                 guard result == .proceed, let self else { return }
                 self.loadPreparedDocument(prepared)
@@ -1857,6 +1954,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     /// 多标签路由：非 nil 时打开文件交由窗口去重处理。
     var openViaWindow: ((URL) -> Void)?
+    var openReadOnlyViaWindow: ((URL) -> Void)?
 
     /// 多标签窗口中，“新建文档”菜单命令交由窗口创建一个新标签。
     var newTabRequest: ((NewDocumentKind) -> Void)?
@@ -1872,6 +1970,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             markdown: prepared.markdown,
             fileURL: prepared.url,
             readOnly: prepared.isReadOnly,
+            readOnlyLocked: prepared.isReadOnlyLocked,
             encoding: prepared.encoding,
             visualSelectionFrom: selection?.visualFrom,
             visualSelectionTo: selection?.visualTo,
@@ -1889,14 +1988,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         for reason: DocumentDispositionReason,
         completion: @escaping (DocumentDispositionResult) -> Void
     ) -> Bool {
-        if isReadOnly {
+        if isReadOnly && !isDirty {
             completion(.proceed)
             return true
         }
         dispositionRequestCount += 1
         return documentDisposition.request(
             isDirty: isDirty,
-            hasFileURL: documentURL != nil,
+            hasFileURL: documentURL != nil && !isReadOnly,
             reason: reason,
             settings: SettingsService.shared.settings,
             saveExisting: { [weak self] finish in
@@ -1944,21 +2043,26 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func saveDocumentAs(completion: ((Bool) -> Void)? = nil) {
-        guard !isReadOnly else { completion?(false); return }
+        let targetDocumentID = documentId
+        let operationEpoch = fileOperationEpoch
         let panel = NSSavePanel()
         panel.title = L10n.t("保存")
         panel.allowedContentTypes = [.plainText, (UTType(filenameExtension: "md") ?? .plainText)]
         panel.nameFieldStringValue = documentURL?.lastPathComponent ?? L10n.t(newDocumentKind.defaultFileName)
         guard let window = webView?.window else { completion?(false); return }
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { completion?(false); return }
-            self?.writeCurrentDocument(to: url, completion: completion)
+            guard response == .OK, let url = panel.url, let self,
+                  self.documentId == targetDocumentID,
+                  self.fileOperationEpoch == operationEpoch else { completion?(false); return }
+            self.writeCurrentDocument(to: url, completion: completion)
         }
     }
 
     private func writeCurrentDocument(to url: URL, completion: ((Bool) -> Void)? = nil) {
+        let targetDocumentID = documentId
+        let operationEpoch = fileOperationEpoch
         writeCoordinator.enqueue { [weak self] finish in
-            guard let self else {
+            guard let self, self.documentId == targetDocumentID, self.fileOperationEpoch == operationEpoch else {
                 completion?(false)
                 finish()
                 return
@@ -1966,7 +2070,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             let previousDocumentURL = self.documentURL
             self.requestVersionedSnapshot { [weak self] result in
                 DispatchQueue.main.async {
-                    guard let self else {
+                    guard let self, self.documentId == targetDocumentID, self.fileOperationEpoch == operationEpoch else {
                         completion?(false)
                         finish()
                         return
@@ -1974,6 +2078,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     switch result {
                     case .success(let snapshot):
                         do {
+                            if self.isReadOnly, let source = self.documentURL,
+                               FileIdentityPolicy.identity(for: source) == FileIdentityPolicy.identity(for: url) {
+                                self.presentError(L10n.t("只读文档只能另存为不同的文件"))
+                                completion?(false)
+                                finish()
+                                return
+                            }
                             // 保存时统一按当前文档的换行风格写入；状态栏切换对新建和已打开文件均生效。
                             let markdown = DocumentNewLinePolicy.normalize(
                                 snapshot.markdown,
@@ -1989,6 +2100,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             }
                             try data.write(to: url, options: .atomic)
                             try self.externalChangeTracker.finishSelfWrite(at: url)
+                            self.hasUnsavedMetadataChanges = false
+                            if self.isReadOnly {
+                                self.isReadOnlyLocked = false
+                                self.applyReadOnlyMode(false)
+                            }
                             self.documentURL = url
                             self.newDocumentKind = NewDocumentKind.from(fileExtension: url.pathExtension)
                             self.isPlainText = self.newDocumentKind == .plainText
@@ -2141,6 +2257,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     // MARK: - 视图状态（对应 Windows 视图菜单）
 
     func toggleSidebar() {
+        if windowSession?.controller?.isFocusMode == true, !sidebarVisible {
+            windowSession?.controller?.exitFocusMode()
+            sidebarVisible = true
+            SettingsService.shared.update({ $0.sidebarVisible = true }, broadcasting: false)
+            onViewStateChanged?()
+            return
+        }
         sidebarVisible.toggle()
         // Visibility changes already drive this window's animation callback.
         // Broadcasting here would run every window's full preference pass during
@@ -2153,21 +2276,33 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func showWorkspaceTab() {
-        guard sidebarTabIndex != 0 else { return }
+        windowSession?.controller?.exitFocusMode()
+        sidebarVisible = true
         sidebarTabIndex = 0
-        SettingsService.shared.update { $0.sidebarTab = "workspace" }
+        SettingsService.shared.update({ $0.sidebarTab = "workspace"; $0.sidebarVisible = true }, broadcasting: false)
         onViewStateChanged?()
     }
 
     func showOutlineTab() {
-        if outlineDetached { return }
-        guard sidebarTabIndex != 1 else { return }
+        windowSession?.controller?.exitFocusMode()
+        if outlineDetached {
+            windowSession?.controller?.focusDetachedOutline()
+            return
+        }
+        sidebarVisible = true
         sidebarTabIndex = 1
-        SettingsService.shared.update { $0.sidebarTab = "outline" }
+        SettingsService.shared.update({ $0.sidebarTab = "outline"; $0.sidebarVisible = true }, broadcasting: false)
         onViewStateChanged?()
     }
 
     func toggleDetachedOutline() {
+        if windowSession?.controller?.isFocusMode == true, !outlineDetached {
+            windowSession?.controller?.exitFocusMode()
+            outlineDetached = true
+            SettingsService.shared.update { $0.outlineDetached = true }
+            onViewStateChanged?()
+            return
+        }
         outlineDetached.toggle()
         if outlineDetached, sidebarTabIndex == 1 {
             sidebarTabIndex = 0
@@ -2185,6 +2320,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func toggleStatusBar() {
+        if windowSession?.controller?.isFocusMode == true, !statusBarVisible {
+            windowSession?.controller?.exitFocusMode()
+            statusBarVisible = true
+            SettingsService.shared.update { $0.statusBarVisible = true }
+            onViewStateChanged?()
+            return
+        }
         statusBarVisible.toggle()
         SettingsService.shared.update { $0.statusBarVisible = statusBarVisible }
     }
@@ -2277,6 +2419,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func renameWorkspaceEntry(_ entry: WorkspaceEntry, to requestedName: String) {
+        guard workspace.root.map({ FileIdentityPolicy.identity(forPath: $0) != FileIdentityPolicy.identity(forPath: entry.path) }) ?? true else { return }
         let trimmed = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != entry.name else { return }
         let source = URL(fileURLWithPath: entry.path)
@@ -2294,11 +2437,6 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         }
         do {
             try FileManager.default.moveItem(at: source, to: destination)
-            if documentURL?.standardizedFileURL == source.standardizedFileURL {
-                documentURL = destination
-                statusText = destination.lastPathComponent
-                SettingsService.shared.update { $0.lastFile = destination.path }
-            }
             workspace.onEntryMoved?(source.path, destination.path)
             rescanWorkspace()
             statusText = L10n.f("已重命名为 %@", name)
@@ -2308,14 +2446,28 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func adoptRenamedFile(from oldURL: String, to newURL: String) {
-        guard documentURL?.standardizedFileURL.path == URL(fileURLWithPath: oldURL).standardizedFileURL.path else { return }
+        guard let current = (documentURL ?? pendingInitialPreparedDocument?.url ?? pendingInitialDetachedDocument?.fileURL)?.standardizedFileURL.path,
+              current == oldURL || current.hasPrefix(oldURL + "/") else { return }
         stopExternalChangeWatch()
-        documentURL = URL(fileURLWithPath: newURL)
+        fileOperationEpoch = UUID()
+        documentURL = URL(fileURLWithPath: newURL + String(current.dropFirst(oldURL.count)))
+        if let prepared = pendingInitialPreparedDocument {
+            var moved = PreparedDocument(url: documentURL!, markdown: prepared.markdown,
+                                         encoding: prepared.encoding, isReadOnly: prepared.isReadOnly)
+            moved.isReadOnlyLocked = prepared.isReadOnlyLocked
+            pendingInitialPreparedDocument = moved
+        }
+        if let pending = pendingInitialDetachedDocument {
+            pendingInitialDetachedDocument = RestartDocument(markdown: pending.markdown, fileURL: documentURL,
+                readOnly: pending.readOnly, encoding: pending.encoding, kind: pending.kind,
+                initialDirty: pending.initialDirty, readOnlyLocked: pending.readOnlyLocked)
+        }
         statusText = documentURL?.lastPathComponent ?? statusText
         startExternalChangeWatch(for: documentURL!)
     }
 
     func deleteWorkspaceEntry(_ entry: WorkspaceEntry) {
+        guard workspace.root.map({ FileIdentityPolicy.identity(forPath: $0) != FileIdentityPolicy.identity(forPath: entry.path) }) ?? true else { return }
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = L10n.f("确定要删除“%@”吗？", entry.name)
@@ -2327,14 +2479,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             guard response == .alertFirstButtonReturn, let self else { return }
             let url = URL(fileURLWithPath: entry.path)
             do {
-                let resetsOpenDocument = WorkspaceDeletionPolicy.deletesOpenDocument(
-                    openDocument: self.documentURL,
-                    deletedEntry: url,
-                    isDirectory: entry.isDirectory
-                )
+                // Capture suspended buffers before the only copy on disk moves
+                // to Trash. Live editors are retained, never reloaded/cleared.
+                let snapshots = try AppWindowManager.shared.prepareWorkspaceDeletion(at: url, isDirectory: entry.isDirectory)
                 try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                if resetsOpenDocument {
-                    self.loadDocument(markdown: "", fileURL: nil, documentKind: .markdown)
+                for controller in AppWindowManager.shared.windowControllers {
+                    controller.detachDeletedWorkspaceDocuments(at: url, isDirectory: entry.isDirectory, snapshots: snapshots)
                 }
                 self.rescanWorkspace()
                 self.statusText = L10n.f("已删除 %@", entry.name)
@@ -2342,6 +2492,29 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 self.presentError(L10n.f("删除失败：%@", error.localizedDescription))
             }
         }
+    }
+
+    /// A deleted backing file becomes an editable, unsaved copy in the same
+    /// editor. Do not reload: that would discard selection and undo history.
+    func detachDeletedBackingFile(preservedMarkdown: String? = nil) {
+        stopExternalChangeWatch()
+        fileOperationEpoch = UUID()
+        if !isReady, let markdown = preservedMarkdown {
+            let encoding = pendingInitialPreparedDocument?.encoding ?? pendingInitialDetachedDocument?.encoding ?? documentEncoding
+            let kind = pendingInitialDetachedDocument?.kind ?? documentURL.map { NewDocumentKind.from(fileExtension: $0.pathExtension) } ?? newDocumentKind
+            pendingInitialPreparedDocument = nil
+            pendingInitialDetachedDocument = RestartDocument(
+                markdown: markdown, fileURL: nil, readOnly: false, encoding: encoding,
+                kind: kind, initialDirty: true, readOnlyLocked: false
+            )
+        }
+        documentURL = nil
+        isReadOnlyLocked = false
+        applyReadOnlyMode(false)
+        hasUnsavedMetadataChanges = true
+        isDirty = true
+        startRecoveryTimer()
+        flushRecoverySnapshotNow()
     }
 
     func copyWorkspaceEntryPath(_ entry: WorkspaceEntry) {
@@ -2359,9 +2532,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             statusText = L10n.t("无法复制该文件内容")
             return
         }
-        let url = URL(fileURLWithPath: entry.path)
-        guard let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .utf8) else {
+        let identity = FileIdentityPolicy.identity(forPath: entry.path)
+        let owner = AppWindowManager.shared.windowSessions.values.first { $0.workspace === workspace }
+        if let tab = owner?.tabStore.tab(withIdentity: identity), let editor = owner?.session(for: tab.tabID), editor.isReady {
+            editor.requestSnapshot { [weak self] result in
+                guard case .success(let text) = result else { self?.statusText = L10n.t("无法复制该文件内容"); return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                self?.statusText = L10n.f("已复制内容 %@", entry.name)
+            }
+            return
+        }
+        guard let text = try? PreparedDocument.read(from: URL(fileURLWithPath: entry.path)).markdown else {
             statusText = L10n.t("无法复制该文件内容")
             return
         }
@@ -2481,43 +2663,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 数学公式（对应 Windows InsertMath / EditMath）
 
-    /// 行内代码与行内公式保持一致：有选区时套用格式，空选时通过输入框插入内容。
+    /// 行内代码使用共享标记切换；空选区不弹窗、不修改已有内容。
     func insertInlineCode() {
-        if hasSelection {
-            executeInlineFormat("toggleCode")
-            return
-        }
-        guard let window = webView?.window else { return }
-        let alert = NSAlert()
-        alert.messageText = L10n.t("插入行内代码")
-        alert.informativeText = L10n.t("输入代码：")
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: L10n.t("确定"))
-        alert.addButton(withTitle: L10n.t("取消"))
-
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        field.bezelStyle = .roundedBezel
-        DialogTextFieldStyle.apply(to: field)
-        field.placeholderString = "const leaf = 1"
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-
-        let okButton = alert.buttons.first
-        okButton?.isEnabled = false
-        var validationToken: NSObjectProtocol?
-        validationToken = bindAlertInputValidation(field: field, button: okButton) {
-            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        alert.beginSheetModal(for: window) { [weak self] response in
-            if let token = validationToken {
-                NotificationCenter.default.removeObserver(token)
-            }
-            guard response == .alertFirstButtonReturn, let self else { return }
-            let code = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !code.isEmpty else { return }
-            self.execute("toggleCode", text: code)
-            self.statusText = L10n.t("已插入行内代码")
-        }
+        executeInlineFormat("toggleCode")
     }
 
     /// 插入数学公式：交给共享编辑器创建节点并直接打开浮层。
@@ -2579,7 +2727,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 readOnly: self.isReadOnly,
                 encoding: self.documentEncoding,
                 kind: self.newDocumentKind,
-                initialDirty: self.isDirty
+                initialDirty: self.isDirty,
+                readOnlyLocked: self.isReadOnlyLocked
             )
             self.isReady = false
             self.cancelPendingPasteCommands()
@@ -2595,6 +2744,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func toggleEditorFocusMode() {
         guard !isReadOnly, !isPlainText else { return }
         isEditorFocusMode.toggle()
+        windowSession?.updateViewState(from: self)
         execute("setEditorFocusMode", text: isEditorFocusMode ? "1" : "0")
         statusText = L10n.t(isEditorFocusMode ? "专注模式已开启" : "专注模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
@@ -2603,9 +2753,19 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     func toggleTypewriterMode() {
         guard !isReadOnly, !isPlainText else { return }
         isTypewriterMode.toggle()
+        windowSession?.updateViewState(from: self)
         execute("setEditorTypewriterMode", text: isTypewriterMode ? "1" : "0")
         statusText = L10n.t(isTypewriterMode ? "打字机模式已开启" : "打字机模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
+    }
+
+    func applyWindowViewState(zoom: Int, focus: Bool, typewriter: Bool) {
+        if zoomPercent != zoom { applyZoom(zoom) }
+        isEditorFocusMode = focus
+        isTypewriterMode = typewriter
+        execute("setEditorFocusMode", text: focus ? "1" : "0")
+        execute("setEditorTypewriterMode", text: typewriter ? "1" : "0")
+        notify()
     }
 
     /// 公式编号合法性：留空合法；否则必须是 1 / 1.1 式的分级 ASCII 数字编号。
@@ -2651,7 +2811,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
     // MARK: - 插入链接 / 图片（对应 Windows LinkInputDialog / InsertImage）
 
-    func insertLink() {
+    func insertLink(initialAddress: String? = nil) {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = L10n.t("插入超链接")
@@ -2660,6 +2820,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = initialAddress ?? ""
         field.placeholderString = "https://example.com"
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
@@ -2667,9 +2828,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         okButton?.isEnabled = false
         var validationToken: NSObjectProtocol?
         validationToken = bindAlertInputValidation(field: field, button: okButton) { text in
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let url = URL(string: trimmed) else { return false }
-            return url.scheme == "http" || url.scheme == "https" || url.scheme == "mailto"
+            LocalLinkPolicy.isAllowedAddress(text)
         }
         alert.beginSheetModal(for: window) { [weak self] response in
             if let token = validationToken {
@@ -2894,10 +3053,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         markdown: String,
         fileURL: URL?,
         readOnly: Bool,
+        readOnlyLocked: Bool? = nil,
         encoding: String?,
         documentKind: NewDocumentKind?,
         initialDirty: Bool,
-        selection: PendingDocumentSelection?
+        selection: PendingDocumentSelection?,
+        newLine: String? = nil
     ) {
         startFollowingSystemAppearance()
         pendingInitialDetachedDocument = RestartDocument(
@@ -2906,7 +3067,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             readOnly: readOnly,
             encoding: encoding,
             kind: documentKind,
-            initialDirty: initialDirty
+            initialDirty: initialDirty,
+            readOnlyLocked: readOnlyLocked,
+            newLine: newLine
         )
         pendingInitialSelection = selection
         if isReady {
@@ -2933,13 +3096,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 markdown: detached.markdown,
                 fileURL: detached.fileURL,
                 readOnly: detached.readOnly,
+                readOnlyLocked: detached.readOnlyLocked,
                 encoding: detached.encoding,
                 documentKind: detached.kind,
                 initialDirty: detached.initialDirty,
                 visualSelectionFrom: pendingInitialSelection?.visualFrom,
                 visualSelectionTo: pendingInitialSelection?.visualTo,
                 sourceSelectionFrom: pendingInitialSelection?.sourceFrom,
-                sourceSelectionTo: pendingInitialSelection?.sourceTo
+                sourceSelectionTo: pendingInitialSelection?.sourceTo,
+                newLine: detached.newLine
             )
             return
         }

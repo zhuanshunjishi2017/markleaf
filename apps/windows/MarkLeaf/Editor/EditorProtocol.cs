@@ -35,6 +35,7 @@ public static class EditorProtocol
         "pasteImage",
         "findResult",
         "selectionExport",
+        "mermaidImageExport",
         "exportContent",
         "zoomWheel",
         "unsafeEmphasisRequested",

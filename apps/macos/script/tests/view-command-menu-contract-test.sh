@@ -31,10 +31,10 @@ printf '%s' "$toggle_block" | grep -Fq 'menuItem.state = viewStateSession?.outli
 printf '%s' "$toggle_block" | grep -Fq 's?.outlineDetached' \
   && fail "toggleDetachedOutline must not read active-tab outline state" || true
 
-# Preserve the original rule: while the outline is shown on the right, the left
-# sidebar cannot switch to its duplicate outline tab.
+# Navigation remains available: the handler focuses the detached outline rather
+# than creating a duplicate left-side outline.
 outline_tab_block="$(sed -n '/case "outlineTab":/,/case "toggleDetachedOutline":/p' "$MENU")"
-printf '%s' "$outline_tab_block" | grep -Fq 'viewStateSession?.outlineDetached != true' \
-  || fail "outlineTab must stay disabled while the detached outline is enabled"
+printf '%s' "$outline_tab_block" | grep -Fq 'return viewStateSession != nil' \
+  || { echo "FAIL: outline navigation must stay available with a window" >&2; exit 1; }
 
 echo "PASS"

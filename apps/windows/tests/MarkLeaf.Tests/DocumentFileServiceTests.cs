@@ -9,6 +9,77 @@ public sealed class DocumentFileServiceTests
     private string _testDirectory = null!;
     private DocumentFileService _service = null!;
 
+    [TestMethod]
+    public async Task EncodingReadVsConvertUseDifferentSources()
+    {
+        var path = Path.Combine(_testDirectory, "encoding.md");
+        await File.WriteAllTextAsync(path, "disk A");
+        var document = await _service.OpenAsync(path);
+        document.Markdown = "buffer B";
+        document.IsDirty = true;
+        var reopened = await _service.OpenAsync(path, DocumentEncodingPolicy.Utf8);
+        Assert.AreEqual("disk A", reopened.Markdown);
+        await _service.ConvertEncodingAsync(document, "buffer B", 1, DocumentEncodingPolicy.Utf8Bom);
+        CollectionAssert.AreEqual(DocumentEncodingPolicy.Encode("buffer B", DocumentEncodingPolicy.Utf8Bom),
+            await File.ReadAllBytesAsync(path));
+        Assert.AreEqual(DocumentEncodingPolicy.Utf8Bom.Id, document.EncodingPolicyId);
+    }
+
+    [TestMethod]
+    public async Task UnrepresentableCharacterDoesNotReplaceFileOrEncoding()
+    {
+        var path = Path.Combine(_testDirectory, "strict.md");
+        await File.WriteAllTextAsync(path, "original");
+        var document = await _service.OpenAsync(path);
+        document.Markdown = "中文 unsaved";
+        document.IsDirty = true;
+        var beforeBytes = await File.ReadAllBytesAsync(path);
+        var beforeEncoding = document.EncodingPolicyId;
+        var beforeText = document.Markdown;
+        await Assert.ThrowsExactlyAsync<EncoderFallbackException>(() =>
+            _service.ConvertEncodingAsync(document, document.Markdown, 1, DocumentEncodingPolicy.UsAscii));
+        CollectionAssert.AreEqual(beforeBytes, await File.ReadAllBytesAsync(path));
+        Assert.AreEqual(beforeText, document.Markdown);
+        Assert.AreEqual(beforeEncoding, document.EncodingPolicyId);
+        Assert.IsTrue(document.IsDirty);
+    }
+
+    [TestMethod]
+    public async Task ReadOnlyBlocksEncodingAndNewline()
+    {
+        var document = _service.CreateNew("\n");
+        document.IsUserReadOnly = true;
+        Assert.AreEqual(EncodingChangeAction.RejectReadOnly,
+            DocumentEncodingChangePolicy.Action(document, DocumentEncodingPolicy.Utf8Bom));
+        Assert.IsFalse(DocumentEncodingChangePolicy.SetNewLine(document, "\r\n"));
+        Assert.AreEqual("\n", document.NewLine);
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+            _service.ConvertEncodingAsync(document, "text", 1, DocumentEncodingPolicy.Utf8Bom));
+    }
+
+    [TestMethod]
+    public async Task NewlineChangeDoesNotWriteUntilSave()
+    {
+        var path = Path.Combine(_testDirectory, "newline.md");
+        await File.WriteAllTextAsync(path, "one\ntwo");
+        var document = await _service.OpenAsync(path);
+        var beforeBytes = await File.ReadAllBytesAsync(path);
+        Assert.IsTrue(DocumentEncodingChangePolicy.SetNewLine(document, "\r\n"));
+        Assert.IsTrue(document.IsDirty && document.HasUnsavedMetadataChanges);
+        CollectionAssert.AreEqual(beforeBytes, await File.ReadAllBytesAsync(path));
+        Assert.IsFalse(DocumentEncodingChangePolicy.SetNewLine(document, "mixed"));
+        await _service.SaveAsync(document, document.Markdown, 1, path);
+        Assert.AreEqual("one\r\ntwo", await File.ReadAllTextAsync(path));
+    }
+
+    [TestMethod]
+    public void UnnamedEncodingOnlyChangesNextSavePolicy()
+    {
+        var document = _service.CreateNew();
+        Assert.AreEqual(EncodingChangeAction.UpdateNextSave,
+            DocumentEncodingChangePolicy.Action(document, DocumentEncodingPolicy.Utf8Bom));
+    }
+
     [TestInitialize]
     public void Initialize()
     {
@@ -24,6 +95,50 @@ public sealed class DocumentFileServiceTests
         {
             Directory.Delete(_testDirectory, recursive: true);
         }
+    }
+
+    [TestMethod]
+    public async Task SaveAsync_OlderSnapshotDoesNotClearNewerBufferState()
+    {
+        var document = _service.CreateNew("\n");
+        document.Markdown = "newer buffer";
+        document.Revision = 3;
+        document.IsDirty = true;
+        var path = Path.Combine(_testDirectory, "concurrent.md");
+        await _service.SaveAsync(document, "older snapshot", 2, path);
+        Assert.AreEqual("older snapshot", await File.ReadAllTextAsync(path));
+        Assert.AreEqual("newer buffer", document.Markdown);
+        Assert.AreEqual(3L, document.Revision);
+        Assert.IsTrue(document.IsDirty);
+    }
+
+    [TestMethod]
+    public async Task SaveAsync_ReadOnlySourceCannotBeOverwrittenEvenWithForce()
+    {
+        var path = Path.Combine(_testDirectory, "locked.md");
+        await File.WriteAllTextAsync(path, "original");
+        var document = await _service.OpenAsync(path);
+        document.IsUserReadOnly = true;
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(
+            () => _service.SaveAsync(document, "changed", 1, path, forceOverwrite: true));
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        Assert.IsTrue(document.IsUserReadOnly);
+    }
+
+    [TestMethod]
+    public async Task SaveAsync_ReadOnlyCopyKeepsSourceAndBecomesEditable()
+    {
+        var path = Path.Combine(_testDirectory, "source.md");
+        var copy = Path.Combine(_testDirectory, "copy.md");
+        await File.WriteAllTextAsync(path, "original");
+        var document = await _service.OpenAsync(path);
+        document.IsReadOnly = true;
+        document.IsUserReadOnly = true;
+        await _service.SaveAsync(document, "buffer with edits", 1, copy);
+        Assert.AreEqual("original", await File.ReadAllTextAsync(path));
+        Assert.AreEqual("buffer with edits", await File.ReadAllTextAsync(copy));
+        Assert.IsFalse(document.IsReadOnly);
+        Assert.IsFalse(document.IsUserReadOnly);
     }
 
     [TestMethod]

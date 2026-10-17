@@ -1,11 +1,13 @@
 import '@markleaf/editor-core/styles.css'
 import { resolveNativeCapabilities, nativeImageResources } from './native-capabilities'
+import { handleMermaidImageExport } from './media-export-host'
 import {
   Selection,
   createEditorInteractions,
   createReadingBehavior,
   getDocumentOutline,
   getActiveOutlinePosition,
+  scrollToHeadingAnchor,
   resolveTypographyStyle,
   resolveMermaidTheme,
   createEditor,
@@ -13,6 +15,7 @@ import {
   executeEditorCommand,
   setEditorFormatPreview,
   exportEditorSelection,
+  exportSelectedMermaidImage,
   findInEditor,
   findFootnoteDefinitionBody,
   getEditorCommandPresentation,
@@ -94,7 +97,7 @@ let documentId: string = crypto.randomUUID()
 let documentLoaded = false
 let scrollRestoreGeneration = 0
 let revision = 0
-let savedMarkdown = ''
+let savedMarkdown: string | null = ''
 let reportedContentDirty = false
 let compositionActive = false
 let compositionChanged = false
@@ -151,8 +154,9 @@ setCodeBlockControlHandlers({
   editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
   copyCode: text => send('copyCodeBlockRequested', { text }),
 })
-let contextMenuSelection: { from: number; to: number } | null = null
-let selectionBeforeContextMenu: { from: number; to: number } | null = null
+type SerializedSelection = Parameters<typeof Selection.fromJSON>[1]
+let contextMenuSelection: SerializedSelection | null = null
+let selectionBeforeContextMenu: SerializedSelection | null = null
 let contextMenuCommandCommitted = false
 let menuSessionSequence = 0
 let activeMenuSessionId: number | null = null
@@ -161,6 +165,10 @@ function beginContextMenuSession(): number {
   setEditorFormatPreview(editor, null)
   activeMenuSessionId = ++menuSessionSequence
   return activeMenuSessionId
+}
+
+function restoreContextSelection(selection: SerializedSelection): void {
+  editor.view.dispatch(editor.state.tr.setSelection(Selection.fromJSON(editor.state.doc, selection)))
 }
 
 // WebKit collapses an existing selection to the clicked word during a
@@ -181,7 +189,7 @@ document.addEventListener('mousedown', (event) => {
   if (event.button === 2) {
     const selection = editor.state.selection
     if (!selection.empty) {
-      selectionBeforeContextMenu = { from: selection.from, to: selection.to }
+      selectionBeforeContextMenu = selection.toJSON()
       // WebKit uses mousedown to shrink a selection to the clicked word. Let
       // contextmenu still fire, but keep ProseMirror from seeing the press so
       // the selected range stays at its source.
@@ -194,7 +202,7 @@ let lastVisualSelection = captureVisualSelection(editor)
 const readingBehavior = createReadingBehavior(() => editor)
 const scrollEditorCursorToCenter = readingBehavior.cursorMoved
 function updateEditorTypewriterMode(scrollToCursor = true): void {
-  readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode && !readOnly, scrollToCursor)
+  readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode, scrollToCursor)
 }
 
 function updateEditorFocusLine(): void {
@@ -203,7 +211,7 @@ function updateEditorFocusLine(): void {
   })
   editorMount.classList.remove('markleaf-editor-focus-mode')
   sourceMount.classList.remove('markleaf-editor-focus-mode')
-  if (!editorFocusMode || readOnly || sourceMode) return
+  if (!editorFocusMode || sourceMode) return
   editorMount.classList.add('markleaf-editor-focus-mode')
 }
 
@@ -648,7 +656,7 @@ function sendEditorState(): void {
 
 function sendDirtyState(force = false): void {
   if (!documentLoaded) return
-  const dirty = getActiveMarkdown() !== savedMarkdown
+  const dirty = savedMarkdown === null || getActiveMarkdown() !== savedMarkdown
   if (!force && dirty === reportedContentDirty) return
   reportedContentDirty = dirty
   send('dirtyChanged', { dirty })
@@ -802,7 +810,7 @@ function setSourceMode(enabled: boolean): void {
     editorMount.hidden = false
     sourceMode = false
     updateEditorTypewriterMode()
-    if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+    if (editorFocusMode) setEditorFocusMode(editor, true)
     updateEditorFocusLine()
     restoreVisualSelection(editor, visualSelection, true)
     lastVisualSelection = captureVisualSelection(editor)
@@ -1026,11 +1034,9 @@ function attachFormatCommand(button: HTMLButtonElement, command: string): void {
       return
     }
     setEditorFormatPreview(editor, null)
-    if (contextMenuSelection) {
-      editor.commands.setTextSelection(contextMenuSelection)
-    }
+    if (contextMenuSelection) restoreContextSelection(contextMenuSelection)
     if (command === 'formatPainter') {
-      if (contextMenuSelection) editor.commands.setTextSelection(contextMenuSelection)
+      if (contextMenuSelection) restoreContextSelection(contextMenuSelection)
       if (interactions.state().formatPainterArmed) interactions.cancel()
       else interactions.arm()
       contextMenuSelection = null
@@ -1188,9 +1194,9 @@ function hideFormatMenu(): void {
 function endContextMenuSession(restoreSelection = true): void {
   hideFormatMenu()
   delete editor.view.dom.dataset.markleafPreserveSelection
-  if (restoreSelection && contextMenuSelection && !contextMenuCommandCommitted) {
-    editor.commands.setTextSelection(contextMenuSelection)
-  }
+    if (restoreSelection && contextMenuSelection && !contextMenuCommandCommitted) {
+      restoreContextSelection(contextMenuSelection)
+    }
   contextMenuSelection = null
   contextMenuCommandCommitted = false
   activeMenuSessionId = null
@@ -1226,16 +1232,13 @@ editorMount.addEventListener('contextmenu', (event) => {
     && resolved.pos <= previousSelection.to,
   )
   if (shouldPreserveSelection && previousSelection) {
-    editor.commands.setTextSelection(previousSelection)
+    restoreContextSelection(previousSelection)
   } else {
     selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
   }
   selectionBeforeContextMenu = null
   editor.commands.focus()
-  contextMenuSelection = {
-    from: editor.state.selection.from,
-    to: editor.state.selection.to,
-  }
+  contextMenuSelection = editor.state.selection.toJSON()
   contextMenuCommandCommitted = false
   // 原生菜单弹出会夺走 WebView 焦点触发 blur；标记期间保留选区，
   // 避免主题化选区高亮被 blur 处理器塌缩（菜单关闭时由 hideFormatMenu 清除）。
@@ -1369,6 +1372,8 @@ async function handleMessage(value: unknown): Promise<void> {
         documentType?: unknown
         readOnly?: unknown
         initialDirty?: unknown
+        savedMarkdown?: unknown
+        sourceMode?: unknown
         visualSelection?: { from?: unknown; to?: unknown }
         sourceSelection?: { from?: unknown; to?: unknown }
         scrollTop?: unknown
@@ -1392,11 +1397,11 @@ async function handleMessage(value: unknown): Promise<void> {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
       sourceEditor?.destroy()
       sourceEditor = null
-      if (documentType === 'plainText') {
+      if (documentType === 'plainText' || payload.sourceMode === true) {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, false, sendSourceSelection)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType !== 'plainText', sendSourceSelection)
         attachSourceScrollbarOverlay()
         if (restoreViewState && typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
           sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
@@ -1419,7 +1424,7 @@ async function handleMessage(value: unknown): Promise<void> {
           editorCreationOptions,
         )
         bindEditorEvents(editor)
-        if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+        if (editorFocusMode) setEditorFocusMode(editor, true)
         updateEditorTypewriterMode(false)
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
@@ -1437,7 +1442,8 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       suppressUpdate = false
       updateCaretVisibility()
-      savedMarkdown = getActiveMarkdown()
+      savedMarkdown = typeof payload.savedMarkdown === 'string' ? payload.savedMarkdown
+        : payload.initialDirty === true ? null : getActiveMarkdown()
       send('documentLoaded', undefined, message.requestId)
       if (payload.initialDirty === true) {
         reportedContentDirty = true
@@ -1502,7 +1508,7 @@ async function handleMessage(value: unknown): Promise<void> {
           editorCreationOptions,
         )
         bindEditorEvents(editor)
-        if (editorFocusMode && !readOnly) setEditorFocusMode(editor, true)
+        if (editorFocusMode) setEditorFocusMode(editor, true)
         updateEditorTypewriterMode()
         updateEditorFocusLine()
         ensureBlockHandleOverlay()
@@ -1520,6 +1526,8 @@ async function handleMessage(value: unknown): Promise<void> {
     case 'requestSnapshot':
       send('snapshot', {
         markdown: getActiveMarkdown(),
+        savedMarkdown,
+        sourceMode,
         scrollTop: getEditorScrollTop(),
         readingAnchor: captureReadingAnchor(),
       }, message.requestId)
@@ -1601,7 +1609,7 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'setEditorFocusMode') {
           editorFocusMode = payload.text === '1'
-          if (!sourceMode && !readOnly) setEditorFocusMode(editor, editorFocusMode)
+          if (!sourceMode) setEditorFocusMode(editor, editorFocusMode)
           updateEditorFocusLine()
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
@@ -1631,7 +1639,7 @@ async function handleMessage(value: unknown): Promise<void> {
           break
         }
         if (payload.command === 'formatCodeBlock' && contextMenuSelection) {
-          editor.commands.setTextSelection(contextMenuSelection)
+          restoreContextSelection(contextMenuSelection)
         }
         if (payload.command === 'setStyle') {
           applyMarkleafStyle(typeof payload.text === 'string' ? payload.text : 'serif')
@@ -1728,6 +1736,21 @@ async function handleMessage(value: unknown): Promise<void> {
           send('selectionExport', getSelectionExport(), message.requestId)
           break
         }
+        if (payload.command === 'openLink') {
+          const href = payload.text
+          if (typeof href === 'string' && getEditorCommandPresentation(editor, { readOnly, sourceMode, documentType }).actions.openLink?.enabled) {
+            if (href.startsWith('#')) scrollToHeadingAnchor(editor, href)
+            else send('openLink', { url: href })
+          }
+          break
+        }
+        if (payload.command === 'exportMermaidImage') {
+          void handleMermaidImageExport(message, format => {
+            if (sourceMode || !editor) throw new Error('Select one rendered diagram')
+            return exportSelectedMermaidImage(editor, format)
+          }, postToHost)
+          break
+        }
         if (payload.command === 'formatPainter') {
           let success = false
           if (sourceMode) {
@@ -1747,9 +1770,7 @@ async function handleMessage(value: unknown): Promise<void> {
         if (payload.command === 'formatPainterArm') {
           let success = false
           if (!sourceMode) {
-            if (contextMenuSelection) {
-              editor.commands.setTextSelection(contextMenuSelection)
-            }
+            if (contextMenuSelection) restoreContextSelection(contextMenuSelection)
             success = interactions.arm()
           }
           contextMenuSelection = null
@@ -1832,7 +1853,7 @@ async function handleMessage(value: unknown): Promise<void> {
         const commandHtml = typeof payload.html === 'string' ? payload.html : undefined
         const contextSelectionForCommand = contextMenuSelection
         if (contextSelectionForCommand) {
-          editor.commands.setTextSelection(contextSelectionForCommand)
+          restoreContextSelection(contextSelectionForCommand)
           setEditorFormatPreview(editor, null)
         }
         if (!sourceMode
@@ -1988,6 +2009,9 @@ function setMarkleafLanguage(lang: string): void {
 }
 
 setMarkleafLanguage(markleafLanguage)
+const mermaidRendered = () => { if (documentLoaded) sendCommandState() }
+window.addEventListener('markleaf-mermaid-rendered', mermaidRendered)
+window.addEventListener('unload', () => window.removeEventListener('markleaf-mermaid-rendered', mermaidRendered), { once: true })
 send('ready')
 
 ;(window as any).__markleaf_tab__ = (shift = false) => {

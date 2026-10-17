@@ -396,6 +396,26 @@ describe('shared editing interactions', () => {
     expect(attrs).toMatchObject({ rotation: 90, widthPercent: 50, aspectRatio: 2, caption: '图片标题' })
   })
 
+  it('image replacement preserves caption alt width but resets old rotation and aspect', () => {
+    const { editor } = setup('')
+    editor.commands.setImage({ src: 'old.png', alt: 'description' })
+    editor.commands.setNodeSelection(0)
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(0, undefined, {
+      ...editor.state.doc.firstChild!.attrs, widthPercent: 75, caption: 'caption', rotation: 90, aspectRatio: 2, width: 400, height: 200,
+    }))
+    const before = editor.state.doc.firstChild!.attrs
+    for (let n = 0; n < 4; n++) expect(executeEditorCommand(editor, 'rotateImageClockwise')).toBe(true)
+    expect(editor.state.doc.firstChild?.attrs).toMatchObject({ ...before, width: null, height: null })
+    expect(executeEditorCommand(editor, 'changeImage', 'new.png')).toBe(true)
+    expect(editor.state.doc.firstChild?.attrs).toMatchObject({ src: 'new.png', alt: 'description', caption: 'caption', widthPercent: 75, rotation: 0, aspectRatio: null, height: null })
+    const image = editor.view.dom.querySelector('img')!
+    Object.defineProperty(image, 'naturalWidth', { configurable: true, value: 800 })
+    Object.defineProperty(image, 'naturalHeight', { configurable: true, value: 400 })
+    image.dispatchEvent(new Event('load'))
+    expect(editor.state.doc.firstChild?.attrs).toMatchObject({ widthPercent: 75, aspectRatio: 0.5, width: null, height: null })
+    expect(getMarkdown(editor)).toContain('widthPct=75;ratio=0.5000')
+  })
+
   it('finds text after inline atoms and across marks, then replaces literal text', () => {
     const { editor } = setup('before $x$ **tar**get after\n\ntarget')
     expect(findInEditor(editor, 'target', false, false)).toEqual({ current: 1, total: 2 })

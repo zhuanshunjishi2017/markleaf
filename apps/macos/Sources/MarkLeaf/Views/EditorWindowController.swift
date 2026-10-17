@@ -25,6 +25,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// 供跨窗口标签拖拽做命中测试（AppWindowManager）。
     private(set) var tabBarController: TabBarController?
     private var isAnimatingTabBar = false
+    private var isDocumentBatchInProgress = false
     private weak var rightColumnView: NSView?
     private var editorHostTopConstraint: NSLayoutConstraint?
     private var titleBarGlassSurface: GlassSurfaceView?
@@ -275,6 +276,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func reloadTabBar() { tabBarController?.reload() }
 
+    func detachDeletedWorkspaceDocuments(at url: URL, isDirectory: Bool, snapshots: [DocumentTabID: String] = [:]) {
+        guard let windowSession else { return }
+        let ids = WorkspaceDeletionPolicy.detach(store: windowSession.tabStore, deletedEntry: url,
+                                                isDirectory: isDirectory, recycled: true)
+        for id in ids {
+            guard let tab = windowSession.tabStore.tab(withID: id) else { continue }
+            if let snapshot = snapshots[id] { tab.snapshotFileName = snapshot }
+            tab.title = "\(L10n.t("未命名")) \(tab.untitledSequence ?? 1)"
+            let markdown = tab.snapshotFileName.flatMap { SessionSnapshotIO.read(fileName: $0) }
+            windowSession.session(for: id)?.detachDeletedBackingFile(preservedMarkdown: markdown)
+        }
+        reloadTabBar()
+    }
+
     @discardableResult
     func selectNextTab(reverse: Bool = false) -> Bool {
         guard let windowSession,
@@ -348,7 +363,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 isReadOnly: session.isReadOnly,
                 untitledSequence: tab.untitledSequence,
                 documentKind: session.isPlainText ? .plainText : .markdown,
-                selection: selection
+                selection: selection,
+                isReadOnlyLocked: session.isReadOnlyLocked
             ))
         }
     }
@@ -366,6 +382,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         )
         tab.isDirty = document.isDirty
         tab.isReadOnly = document.isReadOnly
+        tab.isReadOnlyLocked = document.isReadOnlyLocked ?? document.isReadOnly
         tab.visualSelectionFrom = document.selection?.visualFrom
         tab.visualSelectionTo = document.selection?.visualTo
         tab.sourceSelectionFrom = document.selection?.sourceFrom
@@ -377,6 +394,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             markdown: document.markdown,
             fileURL: document.fileURL,
             readOnly: document.isReadOnly,
+            readOnlyLocked: document.isReadOnlyLocked,
             encoding: document.encoding,
             documentKind: document.documentKind,
             initialDirty: document.isDirty,
@@ -499,22 +517,23 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func saveAllTabs() {
-        guard let windowSession else { return }
+        guard let windowSession, !isDocumentBatchInProgress else { return }
+        isDocumentBatchInProgress = true
         let targets = SaveAllPolicy.targets(tabs: windowSession.tabStore.tabs)
-        func saveNext(_ index: Int) {
-            guard index < targets.count else {
-                self.reloadTabBar()
-                return
+        SaveAllPolicy.run(targets, operation: { [weak self] id, done in
+            guard let self, let tab = windowSession.tabStore.tab(withID: id) else { done(false); return }
+            var session = windowSession.session(for: id)
+            if session == nil {
+                // Restored dirty tabs can be suspended. Materialize their editor
+                // buffer before Save All claims success.
+                rebuildSuspendedTab(tab)
+                session = windowSession.session(for: id)
             }
-            let id = targets[index]
-            guard let tab = windowSession.tabStore.tab(withID: id),
-                  let session = windowSession.session(for: id) else {
-                saveNext(index + 1)
-                return
-            }
+            guard let session else { done(false); return }
+            guard !session.isReadOnly else { done(true); return }
             tab.lastError = nil
             session.saveDocument { [weak self, weak tab] success in
-                guard let self else { return }
+                guard let self else { done(false); return }
                 if !success {
                     tab?.lastError = L10n.t("保存失败")
                 } else if let tab {
@@ -523,6 +542,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                         fileName: session.documentURL?.path,
                         isDirty: session.isDirty,
                         isReadOnly: session.isReadOnly,
+                        isReadOnlyLocked: session.isReadOnlyLocked,
                         hasPendingExternalChange: session.hasPendingExternalChange,
                         readingAnchor: session.readingAnchor,
                         revision: session.currentRevision,
@@ -536,29 +556,17 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                     )
                 }
                 self.reloadTabBar()
-                saveNext(index + 1)
+                done(success)
             }
-        }
-        saveNext(0)
+        }, completion: { [weak self] _ in
+            self?.isDocumentBatchInProgress = false
+            self?.reloadTabBar()
+        })
     }
 
     func restoreInitialTabIfNeeded() {
         guard let windowSession, let tab = windowSession.tabStore.activeTab ?? windowSession.tabStore.tabs.first else { return }
-        let session = ensureEditor(for: tab)
-        if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
-            session.loadDocument(markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) }, encoding: tab.encoding, initialDirty: tab.isDirty, scrollTop: tab.scrollTop ?? 0, visualSelectionFrom: tab.visualSelectionFrom, visualSelectionTo: tab.visualSelectionTo, sourceSelectionFrom: tab.sourceSelectionFrom, sourceSelectionTo: tab.sourceSelectionTo)
-        } else if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
-            let selection = PendingDocumentSelection(
-                visualFrom: tab.visualSelectionFrom,
-                visualTo: tab.visualSelectionTo,
-                sourceFrom: tab.sourceSelectionFrom,
-                sourceTo: tab.sourceSelectionTo
-            )
-            session.openInitialDocument(prepared: prepared, selection: selection)
-            session.pendingRestoreScrollTop = tab.scrollTop
-        } else {
-            session.newDocument()
-        }
+        rebuildSuspendedTab(tab)
         // 恢复首个标签同样走激活流程，绑定状态栏、侧栏和文档状态回调。
         activateTab(tab.tabID, animated: false)
     }
@@ -597,28 +605,45 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         openFileInTab(url)
     }
 
-    func openFileInTab(_ url: URL) {
+    func openFileInTab(_ url: URL, readOnly: Bool = false) {
         guard let windowSession else { return }
         let resolution = TabOpenResolution.resolve(
             store: windowSession.tabStore,
             url: url,
             untitledLabel: L10n.t("未命名")
         )
-        handleOpenResolution(resolution, url: url)
+        handleOpenResolution(resolution, url: url, readOnly: readOnly)
     }
 
     /// 使用窗口去重结果打开文件（避免二次去重造成已建标签不加载文档）。
-    func handleOpenResolution(_ resolution: TabOpenResolution.Result, url: URL) {
+    func handleOpenResolution(_ resolution: TabOpenResolution.Result, url: URL, readOnly: Bool = false) {
         guard let windowSession else { return }
         if case .activateExisting(let id) = resolution {
             activateTab(id, animated: true)
             tabBarController?.reload()
+            if readOnly, let target = windowSession.session(for: id), !target.isReadOnlyLocked,
+               let window {
+                let documentID = target.currentDocumentIdentifier
+                let alert = NSAlert()
+                alert.messageText = L10n.t("将已打开的文档转为只读？")
+                alert.informativeText = L10n.t("当前内容、选区和未保存的修改将保留。")
+                alert.addButton(withTitle: L10n.t("转为只读"))
+                alert.addButton(withTitle: L10n.t("取消"))
+                alert.beginSheetModal(for: window) { [weak windowSession, weak target] response in
+                    guard response == .alertFirstButtonReturn, let windowSession, let target,
+                          windowSession.session(for: id) === target,
+                          target.currentDocumentIdentifier == documentID else { return }
+                    target.enterExplicitReadOnlyMode()
+                    windowSession.tabStore.tab(withID: id)?.isReadOnly = true
+                }
+            }
             return
         }
 
-        let prepared: PreparedDocument
+        var prepared: PreparedDocument
         do {
             prepared = try PreparedDocument.read(from: url)
+            prepared.isReadOnly = prepared.isReadOnly || readOnly
         } catch {
             presentDocumentOpenError(error)
             return
@@ -626,7 +651,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         guard MultiTabModePolicy.allowsTabCreation(isEnabled: SettingsService.shared.settings.multiTabEnabled) else {
             if let activeSession = windowSession.activeTabSession {
-                activeSession.openDocumentBypassingRouter(at: url)
+                activeSession.openDocumentBypassingRouter(at: url, readOnly: readOnly)
             } else if case .created(let tab) = resolution {
                 windowSession.tabStore.append(tab)
                 _ = ensureEditor(for: tab, prepared: prepared)
@@ -762,7 +787,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func rebuildSuspendedTab(_ tab: DocumentTab) {
         let session = ensureEditor(for: tab)
         tab.isSuspended = false
-        if let path = tab.path, let prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
+        if let snapshot = tab.snapshotFileName, let markdown = SessionSnapshotIO.read(fileName: snapshot) {
+            session.openInitialDocument(
+                markdown: markdown, fileURL: tab.path.map { URL(fileURLWithPath: $0) },
+                readOnly: tab.isReadOnly, readOnlyLocked: tab.isReadOnlyLocked, encoding: tab.encoding,
+                documentKind: NewDocumentKind.from(fileExtension: tab.path.map { URL(fileURLWithPath: $0).pathExtension } ?? tab.detachedFileExtension),
+                initialDirty: tab.isDirty,
+                selection: PendingDocumentSelection(visualFrom: tab.visualSelectionFrom, visualTo: tab.visualSelectionTo,
+                                                   sourceFrom: tab.sourceSelectionFrom, sourceTo: tab.sourceSelectionTo),
+                newLine: tab.newLine
+            )
+            session.pendingRestoreScrollTop = tab.scrollTop
+        } else if let path = tab.path, var prepared = try? PreparedDocument.read(from: URL(fileURLWithPath: path)) {
+            prepared.isReadOnly = prepared.isReadOnly || tab.isReadOnly
+            prepared.isReadOnlyLocked = prepared.isReadOnlyLocked ?? tab.isReadOnlyLocked
             let selection = PendingDocumentSelection(
                 visualFrom: tab.visualSelectionFrom,
                 visualTo: tab.visualSelectionTo,
@@ -776,15 +814,24 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func closeTab(_ id: DocumentTabID, reason: TabCloseReason) {
-        guard let windowSession, windowSession.tabStore.tab(withID: id) != nil else { return }
-        let session = windowSession.session(for: id)
-        let closingSession = windowSession.session(for: id)
+    func closeTab(_ id: DocumentTabID, reason: TabCloseReason, completion: ((Bool) -> Void)? = nil) {
+        guard let windowSession, windowSession.tabStore.tab(withID: id) != nil else { completion?(true); return }
         let closingTab = windowSession.tabStore.tab(withID: id)
+        var session = windowSession.session(for: id)
+        if session == nil, let closingTab, closingTab.isDirty {
+            // A restored background tab may not have an editor session yet. Load
+            // its dirty buffer first so closing follows the normal disposition.
+            rebuildSuspendedTab(closingTab)
+            session = windowSession.session(for: id)
+        }
+        let closingSession = windowSession.session(for: id)
+        let documentID = closingSession?.currentDocumentIdentifier
+        var closedMarkdown: String?
         let finish: (DocumentDispositionResult) -> Void = { [weak self] result in
-            guard result == .proceed, let self, let windowSession = self.windowSession else { return }
+            guard result == .proceed, let self, let windowSession = self.windowSession else { completion?(false); return }
+            guard windowSession.tabStore.tab(withID: id) === closingTab else { completion?(true); return }
             if let closingTab, ClosedTabHistoryPolicy.shouldRecord(closeReason: reason) {
-                AppWindowManager.shared.registerClosedTab(ClosedTabRecord(
+                windowSession.closedTabHistory.push(ClosedTabRecord(
                     path: closingTab.path,
                     title: closingTab.title,
                     untitledSequence: closingTab.untitledSequence,
@@ -798,9 +845,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                     sourceSelectionTo: closingTab.sourceSelectionTo,
                     scrollTop: closingTab.scrollTop,
                     snapshotFileName: closingTab.snapshotFileName,
-                    documentKind: closingSession?.documentKind ?? NewDocumentKind.from(fileExtension: closingTab.path)
+                    documentKind: closingSession?.documentKind ?? NewDocumentKind.from(fileExtension: closingTab.path),
+                    isReadOnlyLocked: closingSession?.isReadOnlyLocked ?? closingTab.isReadOnlyLocked,
+                    markdown: closedMarkdown
                 ))
             }
+            closingSession?.cleanupForClose()
             let next = windowSession.tabStore.close(id)
             windowSession.detach(id)
             self.editorHostView?.detach(tabID: id)
@@ -813,10 +863,35 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             }
             AppWindowManager.shared.closeFindPanelIfBound(to: [closingSession])
             self.tabBarController?.reload()
+            NativeMenuBuilder.refreshIfNeeded()
+            completion?(true)
         }
         if let session {
+            guard !session.isDocumentDispositionInProgress else { completion?(false); return }
             // 关闭标签与关闭窗口都必须走显式保存确认；不能套用“切换文档”的自动保存规则。
-            _ = session.requestDisposition(for: .closeWindow, completion: finish)
+            _ = session.requestDisposition(for: .closeWindow) { result in
+                guard result == .proceed else { finish(result); return }
+                guard session.currentDocumentIdentifier == documentID,
+                      windowSession.session(for: id) === session else { finish(.cancel); return }
+                session.requestSnapshot { snapshot in
+                    guard case .success(let markdown) = snapshot,
+                          session.currentDocumentIdentifier == documentID,
+                          let tab = windowSession.tabStore.tab(withID: id) else { finish(.cancel); return }
+                    closedMarkdown = markdown
+                    TabStateSync.apply(
+                        tab: tab, fileName: session.documentURL?.path,
+                        isDirty: session.isDirty, isReadOnly: session.isReadOnly,
+                        isReadOnlyLocked: session.isReadOnlyLocked,
+                        scrollTop: session.scrollTop, readingAnchor: session.readingAnchor,
+                        revision: session.currentRevision, encoding: session.documentEncoding,
+                        newLine: session.documentNewLine,
+                        visualSelectionFrom: session.visualSelectionFrom, visualSelectionTo: session.visualSelectionTo,
+                        sourceSelectionFrom: session.sourceSelectionFrom, sourceSelectionTo: session.sourceSelectionTo,
+                        untitledLabel: L10n.t("未命名")
+                    )
+                    finish(.proceed)
+                }
+            }
         } else {
             finish(.proceed)
         }
@@ -825,12 +900,32 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private func handleTabContextAction(_ action: TabContextAction, for id: DocumentTabID) {
         guard let windowSession, let index = windowSession.tabStore.tabs.firstIndex(where: { $0.tabID == id }) else { return }
         switch action {
+        case .save:
+            saveTab(id, as: false)
+        case .saveAs:
+            saveTab(id, as: true)
         case .close:
             closeTab(id, reason: .closeTab)
         case .closeOthers:
             closeOtherTabs(keeping: id)
         case .closeToRight:
             closeTabsToRight(of: index)
+        case .revealInWorkspace:
+            revealTabInWorkspace(id)
+        case .copyPath:
+            copyTabPath(id)
+        case .revealInFinder:
+            revealTabInFinder(id)
+        }
+    }
+
+    private func saveTab(_ id: DocumentTabID, as saveAs: Bool) {
+        activateTab(id, animated: true)
+        guard let session = windowSession?.session(for: id) else { return }
+        if saveAs {
+            session.saveDocumentAs()
+        } else {
+            session.saveDocument()
         }
     }
 
@@ -846,38 +941,32 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func closeTabs(_ ids: [DocumentTabID]) {
-        guard let windowSession, !ids.isEmpty else { return }
-        let closedSessions = ids.map { windowSession.session(for: $0) }
-        let requests: [SequentialDocumentDispositionQueue.Request] = ids.compactMap { id in
-            guard let session = windowSession.session(for: id) else { return nil }
-            return { completion in
-                _ = session.requestDisposition(for: .closeWindow, completion: completion)
-            }
-        }
-        SequentialDocumentDispositionQueue.run(requests) { [weak self] result in
-            guard result == .proceed, let self, let windowSession = self.windowSession else { return }
-            for id in ids where windowSession.tabStore.tab(withID: id) != nil {
-                _ = windowSession.tabStore.close(id)
-                windowSession.detach(id)
-                self.editorHostView?.detach(tabID: id)
-            }
-            AppWindowManager.shared.closeFindPanelIfBound(to: closedSessions)
-            if let active = windowSession.tabStore.activeTabID {
-                self.activateTab(active, animated: true)
-            } else if WindowClosePolicy.keepsWindowAfterClosingAllTabs {
-                self.applyStatusBarContents()
-            }
-            self.tabBarController?.reload()
-        }
+        guard windowSession != nil, !ids.isEmpty, !isDocumentBatchInProgress else { return }
+        isDocumentBatchInProgress = true
+        SaveAllPolicy.run(ids, operation: { [weak self] id, done in
+            guard let self else { done(false); return }
+            self.closeTab(id, reason: .closeTab, completion: done)
+        }, completion: { [weak self] _ in
+            self?.isDocumentBatchInProgress = false
+            self?.reloadTabBar()
+        })
     }
 
     func restoreLastClosedTab() {
         guard let windowSession else { return }
-        guard let record = AppWindowManager.shared.takeLastClosedTab() else { return }
+        guard let record = windowSession.closedTabHistory.latest else { return }
+        if let path = record.path,
+           let existing = windowSession.tabStore.tab(withIdentity: FileIdentityPolicy.identity(forPath: path)) {
+            activateTab(existing.tabID, animated: true)
+            windowSession.closedTabHistory.consume(record)
+            return
+        }
         guard MultiTabModePolicy.allowsTabCreation(isEnabled: SettingsService.shared.settings.multiTabEnabled) else {
             windowSession.activeTabSession?.requestDisposition(for: .replaceDocument) { [weak self] result in
                 guard result == .proceed, let self else { return }
-                self.loadRestoredTab(record, in: windowSession)
+                if self.loadRestoredTab(record, in: windowSession) {
+                    windowSession.closedTabHistory.consume(record)
+                }
             }
             return
         }
@@ -891,6 +980,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         )
         tab.isDirty = record.isDirty
         tab.isReadOnly = record.isReadOnly
+        tab.isReadOnlyLocked = record.isReadOnlyLocked ?? record.isReadOnly
         tab.visualSelectionFrom = record.visualSelectionFrom
         tab.visualSelectionTo = record.visualSelectionTo
         tab.sourceSelectionFrom = record.sourceSelectionFrom
@@ -899,12 +989,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         tab.snapshotFileName = record.snapshotFileName
         windowSession.tabStore.append(tab)
         _ = ensureEditor(for: tab)
-        loadRestoredTab(record, in: windowSession, into: tab)
+        if loadRestoredTab(record, in: windowSession, into: tab) {
+            windowSession.closedTabHistory.consume(record)
+        }
         activateTab(tab.tabID, animated: true)
         tabBarController?.reload()
     }
 
-    private func loadRestoredTab(_ record: ClosedTabRecord, in windowSession: WindowSession, into tab: DocumentTab? = nil) {
+    @discardableResult
+    private func loadRestoredTab(_ record: ClosedTabRecord, in windowSession: WindowSession, into tab: DocumentTab? = nil) -> Bool {
         let selection = PendingDocumentSelection(
             visualFrom: record.visualSelectionFrom,
             visualTo: record.visualSelectionTo,
@@ -912,14 +1005,27 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             sourceTo: record.sourceSelectionTo
         )
         let target = tab.flatMap { windowSession.session(for: $0.tabID) } ?? windowSession.activeTabSession
-        guard let target else { return }
+        guard let target else { return false }
 
+        if let markdown = record.markdown {
+            target.loadDocument(
+                markdown: markdown, fileURL: record.path.map { URL(fileURLWithPath: $0) },
+                readOnly: record.isReadOnly, readOnlyLocked: record.isReadOnlyLocked,
+                encoding: record.encoding, documentKind: record.documentKind,
+                initialDirty: record.isDirty, scrollTop: record.scrollTop ?? 0,
+                visualSelectionFrom: record.visualSelectionFrom, visualSelectionTo: record.visualSelectionTo,
+                sourceSelectionFrom: record.sourceSelectionFrom, sourceSelectionTo: record.sourceSelectionTo,
+                newLine: record.newLine
+            )
+            return true
+        }
         if let snapshotFileName = record.snapshotFileName,
            let markdown = SessionSnapshotIO.read(fileName: snapshotFileName) {
             target.loadDocument(
                 markdown: markdown,
                 fileURL: record.path.map { URL(fileURLWithPath: $0) },
                 readOnly: record.isReadOnly,
+                readOnlyLocked: record.isReadOnlyLocked,
                 encoding: record.encoding,
                 documentKind: record.documentKind,
                 initialDirty: record.isDirty,
@@ -927,32 +1033,36 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 visualSelectionFrom: record.visualSelectionFrom,
                 visualSelectionTo: record.visualSelectionTo,
                 sourceSelectionFrom: record.sourceSelectionFrom,
-                sourceSelectionTo: record.sourceSelectionTo
+                sourceSelectionTo: record.sourceSelectionTo,
+                newLine: record.newLine
             )
-            return
+            return true
         }
 
         if let path = record.path {
             do {
                 let detected = try PreparedDocument.read(from: URL(fileURLWithPath: path))
-                let prepared = PreparedDocument(
+                var prepared = PreparedDocument(
                     url: detected.url,
                     markdown: detected.markdown,
                     encoding: record.encoding,
                     isReadOnly: record.isReadOnly
                 )
-        target.openInitialDocument(prepared: prepared, selection: selection)
-        target.pendingRestoreScrollTop = record.scrollTop
+                prepared.isReadOnlyLocked = record.isReadOnlyLocked
+                target.openInitialDocument(prepared: prepared, selection: selection)
+                target.pendingRestoreScrollTop = record.scrollTop
+                return true
             } catch {
                 target.presentError(L10n.f("无法打开文档：%@", error.localizedDescription))
+                return false
             }
-            return
         }
 
         target.loadDocument(
             markdown: "",
             fileURL: nil,
             readOnly: record.isReadOnly,
+            readOnlyLocked: record.isReadOnlyLocked,
             encoding: record.encoding,
             documentKind: record.documentKind,
             initialDirty: false,
@@ -960,8 +1070,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             visualSelectionFrom: record.visualSelectionFrom,
             visualSelectionTo: record.visualSelectionTo,
             sourceSelectionFrom: record.sourceSelectionFrom,
-            sourceSelectionTo: record.sourceSelectionTo
+            sourceSelectionTo: record.sourceSelectionTo,
+            newLine: record.newLine
         )
+        return true
     }
 
     /// 切换前处理旧标签；切换不弹保存确认，失败只在标签上留痕。
@@ -1021,6 +1133,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     private func configureTabSession(_ session: EditorSession, in windowSession: WindowSession) {
         session.openViaWindow = { [weak windowSession] url in windowSession?.requestOpenFile(url) }
+        session.openReadOnlyViaWindow = { [weak self] url in self?.openFileInTab(url, readOnly: true) }
         session.newTabRequest = { [weak self] kind in self?.newUntitledTab(kind: kind) }
         session.saveAllRequest = { [weak self] in self?.saveAllTabs() }
         session.onAcquiredFileURL = { [weak self, weak windowSession, weak session] url in
@@ -1609,6 +1722,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         activeSession.setDocumentNewLine(style)
     }
 
+    func focusDetachedOutline() {
+        detachedOutlineView?.focusOutline()
+    }
+
     /// F11 进入/退出专注模式；仅临时隐藏界面元素，不覆盖用户保存的视图偏好。
     func toggleFocusMode() {
         if isFocusMode {
@@ -2034,7 +2151,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         exitFocusMode()
-        session.cleanupForClose()
+        if let windowSession {
+            for tab in windowSession.tabStore.tabs { windowSession.session(for: tab.tabID)?.cleanupForClose() }
+            windowSession.workspace.closeForSessionTeardown()
+        } else {
+            session.cleanupForClose()
+            session.workspace.closeForSessionTeardown()
+        }
         onWindowClose?(self)
         if TerminationTransactionPolicy.windowCloseMayMutateSession(isTerminationCommitted: AppWindowManager.shared.isTerminationCommitted) {
             do { try SessionStore.shared.commit(manifest: AppWindowManager.shared.buildSessionManifest()) }

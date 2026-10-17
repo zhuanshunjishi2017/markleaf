@@ -18,5 +18,5 @@ if [ "$(grep -Fc 'GlassWindowAttachment.attach' "$PANEL")" -ne 1 ]; then
 fi
 require "$MANAGER" 'func closeFindPanelIfBound(to sessions: [EditorSession?])'
 require "$WINDOW" 'closeFindPanelIfBound(to: [closingSession])'
-require "$WINDOW" 'closeFindPanelIfBound(to: closedSessions)'
+require "$WINDOW" 'closeTab(id, reason: .closeTab, completion: done)'
 echo PASS

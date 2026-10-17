@@ -2,14 +2,17 @@ import { FOOTNOTE_DEFINITION_SENTINEL, protectFootnoteDefinitionsForVisualMarkdo
 import { resolveImageResource, getImageResourcePath as getMarkLeafImagePath } from './image-resources'
 import { resolveOutlineHeading, scrollToOutlineHeading } from './outline'
 import { resolveEditorActions, getEditorSemanticContext, type EditorActionContext } from './command-state'
+import { isHostCommandAllowed } from './host-command-policy'
+import { exportMermaidImage, type MermaidImageFormat, type MermaidImageExport } from './mermaid-image-export'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange } from '@tiptap/core'
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { closeHistory } from '@tiptap/pm/history'
 import { DOMSerializer, type Mark as ProseMirrorMark, type NodeType } from '@tiptap/pm/model'
-import { CellSelection, TableMap, tableEditingKey } from '@tiptap/pm/tables'
+import { CellSelection, TableMap, tableEditingKey, selectedRect } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { Table, TableRow, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
@@ -17,6 +20,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import Bold from '@tiptap/extension-bold'
+import Code from '@tiptap/extension-code'
 import Italic from '@tiptap/extension-italic'
 import { MarkdownUnderline } from './markdown-underline'
 import CodeBlock from '@tiptap/extension-code-block'
@@ -2210,7 +2214,55 @@ function getSelectedMathMode(editor: Editor): 'inline' | 'block' | null {
   return null
 }
 
+function getSelectionScope(editor: Editor): NonNullable<EditorCommandState['selectionScope']> {
+  const { selection } = editor.state
+  if (selection instanceof CellSelection) return 'cells'
+  if (selection instanceof NodeSelection) return 'singleObject'
+  if (selection.empty) return 'caret'
+  const boundary = ($pos: typeof selection.$from): number | null => {
+    for (let depth = $pos.depth; depth > 0; depth--) {
+      if (['table', 'codeBlock', 'frontMatter', 'mathBlock', 'mermaid'].includes($pos.node(depth).type.name)) return $pos.before(depth)
+    }
+    return null
+  }
+  const from = boundary(selection.$from)
+  const to = boundary(selection.$to)
+  if (from !== to) return 'mixed'
+  if (from !== null) return 'text'
+  let containsObject = false
+  editor.state.doc.nodesBetween(selection.from, selection.to, node => {
+    if (['table', 'codeBlock', 'frontMatter', 'mathBlock', 'mermaid'].includes(node.type.name)) containsObject = true
+  })
+  return containsObject ? 'mixed' : 'text'
+}
+
+function getTableOperationRect(editor: Editor): ReturnType<typeof selectedRect> | null {
+  if (getSelectionScope(editor) === 'mixed' || !editor.isActive('table')) return null
+  try {
+    const rect = selectedRect(editor.state)
+    return rect
+  } catch { return null }
+}
+
+function normalizeTableHeader(tr: Transaction): boolean {
+  const { $from } = tr.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const table = $from.node(depth)
+    if (table.type.name !== 'table') continue
+    const header = tr.doc.type.schema.nodes.tableHeader
+    if (!header || !table.firstChild) return true
+    const start = $from.start(depth)
+    table.firstChild.forEach((cell, offset) => {
+      if (cell.type !== header) tr.setNodeMarkup(start + 1 + offset, header, cell.attrs)
+    })
+    break
+  }
+  return true
+}
+
 function alignTableColumn(editor: Editor, alignment: 'left' | 'center' | 'right'): boolean {
+  const rect = getTableOperationRect(editor)
+  if (!rect) return false
   const { $from } = editor.state.selection
   let tableDepth = -1
   let cellDepth = -1
@@ -2235,11 +2287,11 @@ function alignTableColumn(editor: Editor, alignment: 'left' | 'center' | 'right'
   const cellIndex = map.map.indexOf(relativeCellPosition)
   if (cellIndex < 0) return false
 
-  const column = cellIndex % map.width
+  const columns = new Set(Array.from({ length: rect.right - rect.left }, (_, index) => rect.left + index))
   const transaction = editor.state.tr
   const updatedCellPositions = new Set<number>()
 
-  for (let row = 0; row < map.height; row += 1) {
+  for (let row = 0; row < map.height; row += 1) for (const column of columns) {
     const position = map.map[row * map.width + column]
     if (position === undefined || updatedCellPositions.has(position)) continue
     const absolutePosition = tablePosition + position
@@ -2424,6 +2476,25 @@ const MarkLeafImage = Image.extend({
         applyImageLayout(attrs)
       }
 
+      const updateNaturalAspectRatio = () => {
+        const naturalWidth = image.naturalWidth
+        const naturalHeight = image.naturalHeight
+        if (!Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight)
+          || naturalWidth <= 0 || naturalHeight <= 0) return
+        const position = getPos()
+        const attrs = currentNode.attrs as Record<string, unknown>
+        if (position === undefined || typeof attrs.widthPercent !== 'number') return
+        const aspectRatio = naturalHeight / naturalWidth
+        if (attrs.aspectRatio === aspectRatio && attrs.width == null && attrs.height == null) return
+        editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
+          ...attrs,
+          aspectRatio,
+          width: null,
+          height: null,
+        }))
+      }
+      image.addEventListener('load', updateNaturalAspectRatio)
+
       let currentNode = node
       const nodeView = new ResizableNodeView({
         element: frame,
@@ -2487,6 +2558,7 @@ const MarkLeafImage = Image.extend({
       const originalDestroy = nodeView.destroy?.bind(nodeView)
       nodeView.destroy = () => {
         observer?.disconnect()
+        image.removeEventListener('load', updateNaturalAspectRatio)
         originalDestroy?.()
       }
 
@@ -3350,7 +3422,7 @@ function createExpandedSourceEditor(
   code.textContent = initialSource
   pre.append(code)
   themeContext.append(pre)
-  if (kind === 'mathInline' || kind === 'mathBlock') {
+  if (editable && (kind === 'mathInline' || kind === 'mathBlock')) {
     themeContext.append(createFormulaSymbolToolbar(code, editor, position))
   }
   wrapper.append(themeContext)
@@ -4031,12 +4103,14 @@ const editorExtensions = [
     italic: false,
     underline: false,
     codeBlock: false,
+    code: false,
     listItem: false,
     link: false,
     paragraph: false,
     orderedList: false,
   }),
   MarkdownBold,
+  Code.extend({ keepOnSplit: false }),
   MarkdownItalic,
   MarkdownUnderline,
   MarkdownCodeBlock,
@@ -5431,6 +5505,7 @@ function findEditorMatches(editor: Editor, query: string, caseSensitive: boolean
 }
 
 export function getEditorCommandState(editor: Editor): EditorCommandState {
+  const tableRect = getTableOperationRect(editor)
   let headingLevel: number | null = null
   for (let level = 1; level <= 6; level += 1) {
     if (editor.isActive('heading', { level })) {
@@ -5487,6 +5562,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     codeBlockText: currentCodeBlock?.node.textContent ?? frontMatterText,
     mermaid: editor.isActive('mermaid'),
     mermaidSelected: selectedMermaid !== null,
+    mermaidRendered: selectedMermaid !== null && !!(editor.view.nodeDOM(selectedMermaid.from) as Element | null)?.querySelector('.markleaf-mermaid-view svg'),
     mermaidSource: selectedMermaid?.node.textContent ?? null,
     mermaidCount,
     bulletList: editor.isActive('bulletList'),
@@ -5495,6 +5571,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     inTable,
     tableAlign,
     imageSelected: getSelectedImage(editor) !== null,
+    imageSource: typeof getSelectedImage(editor)?.attrs.src === 'string' ? getSelectedImage(editor)!.attrs.src as string : null,
     mathInline: mathMode === 'inline',
     mathBlock: mathMode === 'block',
     mathLatex: selectedMath?.node.textContent ?? null,
@@ -5502,6 +5579,14 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     caption,
     footnoteDefinitionLabel: footnoteDefinition?.label ?? null,
     canStartFormatPainter: false,
+    paragraphOperationAvailable: getParagraphOperationRange(editor) !== null,
+    linkHref: getSingleLinkTarget(editor)?.href ?? null,
+    footnoteReferenceLabel: getSelectedFootnoteReference(editor)?.label ?? null,
+    selectionScope: getSelectionScope(editor),
+    canDeleteTableRow: !!tableRect && tableRect.bottom - tableRect.top < tableRect.map.height,
+    canDeleteTableColumn: !!tableRect && tableRect.right - tableRect.left < tableRect.map.width,
+    alertType: editor.isActive('alert') ? String(editor.getAttributes('alert').type) : null,
+    canSetAlert: canSetAlertType(editor),
     formatPainterArmed: false,
   }
 }
@@ -5677,8 +5762,16 @@ export function executeEditorCommand(
   coordinates?: { left: number; top: number },
   applyToCurrentTextBlockWhenEmpty = false,
 ): boolean {
+  if (!isHostCommandAllowed(command, { readOnly: !editor.isEditable, documentType: 'markdown' })) return false
   const expanded = executeExpandedSourceCommand(editor, command, text)
   if (expanded !== undefined) return expanded
+  if (['addRowBefore', 'addRowAfter', 'deleteRow', 'addColumnBefore', 'addColumnAfter', 'deleteColumn',
+    'alignTableLeft', 'alignTableCenter', 'alignTableRight', 'deleteTable', 'setTableCaption'].includes(command)) {
+    const rect = getTableOperationRect(editor)
+    if (!rect || !editor.isEditable) return false
+    if (command === 'deleteRow' && rect.bottom - rect.top >= rect.map.height) return false
+    if (command === 'deleteColumn' && rect.right - rect.left >= rect.map.width) return false
+  }
   const chain = editor.chain().focus()
   const commands: Record<string, () => boolean> = {
     undo: () => chain.undo().run(),
@@ -5693,7 +5786,7 @@ export function executeEditorCommand(
         return false
       }
 
-      if (editor.state.selection.empty) {
+      if (editor.state.selection.empty && !getSingleLinkTarget(editor)) {
         return chain.insertContent({
           type: 'text',
           text,
@@ -5702,6 +5795,12 @@ export function executeEditorCommand(
       }
 
       return chain.extendMarkRange('link').setLink({ href: text }).run()
+    },
+    removeLink: () => {
+      const target = getSingleLinkTarget(editor)
+      if (!target) return false
+      const { from, to } = editor.state.selection
+      return chain.setTextSelection({ from: target.from, to: target.to }).unsetLink().setTextSelection({ from, to }).run()
     },
     setParagraph: () => chain.setParagraph().run(),
     clearFormat: () => clearParagraphFormat(editor),
@@ -5718,6 +5817,7 @@ export function executeEditorCommand(
     insertAlertImportant: () => setAlertType(editor, 'IMPORTANT'),
     insertAlertWarning: () => setAlertType(editor, 'WARNING'),
     insertAlertCaution: () => setAlertType(editor, 'CAUTION'),
+    cancelAlert: () => cancelAlert(editor),
     setCodeHighlightVisible: () => {
       setCodeHighlightVisible(editor, text === '1')
       return true
@@ -5737,11 +5837,13 @@ export function executeEditorCommand(
     },
     normalizeInlineCode: () => normalizeCurrentInlineCode(editor),
     editMath: () => expandSelectedMath(editor),
+    viewMathSource: () => expandSelectedMath(editor),
     editMermaid: () => expandSelectedMermaid(editor),
+    viewMermaidSource: () => expandSelectedMermaid(editor),
     updateMermaid: () => renderSelectedMermaidCodeBlock(editor) || updateMermaid(editor, text),
     rerenderMermaid: () => rerenderSelectedMermaid(editor),
     rerenderAllMermaid: () => {
-      renderAllMermaidCodeBlocks(editor)
+      if (editor.isEditable) renderAllMermaidCodeBlocks(editor)
       rerenderMermaidElements(editor.view.dom)
       return true
     },
@@ -5749,6 +5851,13 @@ export function executeEditorCommand(
     insertFootnote: () => insertFootnote(editor, text),
     resetFootnoteLabel: () => resetFootnoteLabel(editor, text),
     goToFootnoteReference: () => goToFootnoteReference(editor, text),
+    goToFootnoteDefinition: () => scrollToFootnoteDefinition(editor, text ?? getSelectedFootnoteReference(editor)?.label ?? ''),
+    deleteFootnoteReference: () => {
+      const reference = getSelectedFootnoteReference(editor)
+      if (!reference) return false
+      editor.view.dispatch(editor.state.tr.delete(reference.from, reference.to).scrollIntoView())
+      return true
+    },
     clearFootnoteReferences: () => clearFootnoteReferences(editor),
     deleteFootnote: () => deleteFootnote(editor),
     updateMath: () => updateMath(editor, text),
@@ -5783,9 +5892,9 @@ export function executeEditorCommand(
       const size = parseTableSize(text)
       return chain.insertTable({ rows: size.rows, cols: size.cols, withHeaderRow: true }).run()
     },
-    addRowBefore: () => chain.addRowBefore().run(),
-    addRowAfter: () => chain.addRowAfter().run(),
-    deleteRow: () => chain.deleteRow().run(),
+    addRowBefore: () => chain.addRowBefore().command(({ tr }) => normalizeTableHeader(tr)).run(),
+    addRowAfter: () => chain.addRowAfter().command(({ tr }) => normalizeTableHeader(tr)).run(),
+    deleteRow: () => chain.deleteRow().command(({ tr }) => normalizeTableHeader(tr)).run(),
     addColumnBefore: () => chain.addColumnBefore().run(),
     addColumnAfter: () => chain.addColumnAfter().run(),
     deleteColumn: () => chain.deleteColumn().run(),
@@ -5924,12 +6033,18 @@ function toggleInlineMark(
     const hasMath = hasMathNodeInRange(editor, from, to)
     if (hasMath) {
       if (textRanges.length === 0) return false
-      const chain = editor.chain().focus()
+      const bold = editor.schema.marks.bold!
+      let allBold = true
+      for (const range of textRanges) editor.state.doc.nodesBetween(range.from, range.to, node => {
+        if (node.isText && !bold.isInSet(node.marks)) allBold = false
+      })
+      const transaction = editor.state.tr
       for (const range of textRanges) {
-        chain.setTextSelection(range).toggleBold()
+        if (allBold) transaction.removeMark(range.from, range.to, bold)
+        else transaction.addMark(range.from, range.to, bold.create())
       }
-      chain.setTextSelection(selectedRange)
-      return chain.run()
+      editor.view.dispatch(transaction)
+      return true
     }
   }
 
@@ -6027,16 +6142,7 @@ function promoteHeadingLevel(editor: Editor): boolean {
     }
   }
 
-  // 非标题块：先移出列表/引用，再提升为一级标题，避免破坏列表/引用结构
-  const inList = editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList')
-  if (inList) {
-    // liftListItem 把当前列表项提升出列表；失败则保持原样（安全返回）
-    return chain.liftListItem('listItem').toggleHeading({ level: 1 }).run()
-  }
-  if (editor.isActive('blockquote')) {
-    return chain.lift('blockquote').toggleHeading({ level: 1 }).run()
-  }
-  return chain.toggleHeading({ level: 1 }).run()
+  return false
 }
 
 function demoteHeadingLevel(editor: Editor): boolean {
@@ -6056,53 +6162,96 @@ function demoteHeadingLevel(editor: Editor): boolean {
   return false
 }
 
+function getParagraphOperationRange(editor: Editor): { from: number; to: number; kind: 'paragraph' | 'listItem' } | null {
+  const { selection } = editor.state
+  if (selection instanceof NodeSelection && selection.node.isTextblock) {
+    return { from: selection.from, to: selection.to, kind: 'paragraph' }
+  }
+  const { $from, $to } = selection
+  if (!$from.sameParent($to) || !$from.parent.isTextblock || $from.depth === 0) return null
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const type = $from.node(depth).type.name
+    if (['tableCell', 'tableHeader'].includes(type)) return null
+    if (['listItem', 'taskItem'].includes(type)) {
+      return { from: $from.before(depth), to: $from.after(depth), kind: 'listItem' }
+    }
+  }
+  return { from: $from.before(), to: $from.after(), kind: 'paragraph' }
+}
+
 function insertLineAroundBlock(editor: Editor, position: 'before' | 'after'): boolean {
-  const { from } = editor.state.selection
-  const $from = editor.state.doc.resolve(from)
-  if (!$from.parent.isTextblock) return false
-  const blockStart = $from.before($from.depth)
-  const blockNode = $from.node($from.depth)
-  const insertPos = position === 'before' ? blockStart : blockStart + blockNode.nodeSize
-  return editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).run()
+  const range = getParagraphOperationRange(editor)
+  if (!range) return false
+  const node = editor.state.doc.nodeAt(range.from)!
+  const blank = range.kind === 'listItem'
+    ? node.type.createAndFill(node.type.name === 'taskItem' ? { ...node.attrs, checked: false } : node.attrs)
+    : editor.state.schema.nodes.paragraph?.createAndFill()
+  if (!blank) return false
+  const pos = position === 'before' ? range.from : range.to
+  const tr = editor.state.tr.insert(pos, blank)
+  tr.setSelection(TextSelection.near(tr.doc.resolve(pos + (range.kind === 'listItem' ? 2 : 1))))
+  tr.setStoredMarks([])
+  editor.view.dispatch(tr.scrollIntoView())
+  return true
 }
 
 function duplicateCurrentParagraph(editor: Editor): boolean {
-  const { $from } = editor.state.selection
-  if (!$from.parent.isTextblock || $from.depth === 0) return false
-  let blockDepth = $from.depth
-  for (let depth = $from.depth - 1; depth > 0; depth -= 1) {
-    const type = $from.node(depth).type.name
-    if (type === 'listItem' || type === 'taskItem') {
-      blockDepth = depth
-      break
-    }
-  }
-  const blockStart = $from.before(blockDepth)
-  const blockNode = $from.node(blockDepth)
-  const insertPos = blockStart + blockNode.nodeSize
-  const transaction = editor.state.tr.insert(insertPos, blockNode.copy(blockNode.content))
+  const range = getParagraphOperationRange(editor)
+  if (!range) return false
+  const blockNode = editor.state.doc.nodeAt(range.from)!
+  const transaction = editor.state.tr.insert(range.to, blockNode.copy(blockNode.content))
   editor.view.dispatch(transaction.scrollIntoView())
   return true
 }
 
 function deleteCurrentParagraph(editor: Editor): boolean {
-  const { $from } = editor.state.selection
-  if (!$from.parent.isTextblock || $from.depth === 0) return false
-  const blockStart = $from.before($from.depth)
-  const blockNode = $from.node($from.depth)
-  const transaction = editor.state.tr.delete(blockStart, blockStart + blockNode.nodeSize)
+  const range = getParagraphOperationRange(editor)
+  if (!range) return false
+  const transaction = editor.state.tr.delete(range.from, range.to)
   editor.view.dispatch(transaction.scrollIntoView())
   return true
 }
 
+function canSetAlertType(editor: Editor): boolean {
+  const { selection } = editor.state
+  const alertAt = ($pos: typeof selection.$from): number | null => {
+    for (let depth = $pos.depth; depth > 0; depth--)
+      if ($pos.node(depth).type.name === 'alert') return $pos.before(depth)
+    return null
+  }
+  const from = alertAt(selection.$from), to = alertAt(selection.$to)
+  if (from !== to) return false
+  if (from !== null || selection.empty) return true
+  let crossesAlert = false
+  editor.state.doc.nodesBetween(selection.from, selection.to, node => {
+    if (node.type.name === 'alert') { crossesAlert = true; return false }
+    return true
+  })
+  return !crossesAlert
+}
+
 function setAlertType(editor: Editor, type: AlertType): boolean {
-  const { $from } = editor.state.selection
+  if (!canSetAlertType(editor)) return false
+  const { $from, $to } = editor.state.selection
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     if ($from.node(depth).type.name === 'alert') {
+      if ($to.depth < depth || $from.before(depth) !== $to.before(depth)) return false
       return editor.chain().focus().updateAttributes('alert', { type }).run()
     }
   }
   return editor.chain().focus().wrapIn('alert', { type }).run()
+}
+
+function cancelAlert(editor: Editor): boolean {
+  const { $from, $to } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name !== 'alert') continue
+    if ($to.depth < depth || $from.before(depth) !== $to.before(depth)) return false
+    editor.view.dispatch(editor.state.tr.replaceWith($from.before(depth), $from.after(depth), node.content).scrollIntoView())
+    return true
+  }
+  return false
 }
 
 function insertMath(editor: Editor, mode: 'inline' | 'block', text?: string): boolean {
@@ -6204,6 +6353,32 @@ function insertFootnote(editor: Editor, text?: string): boolean {
   ])
 }
 
+function footnoteDefinitions(editor: Editor): Array<{ pos: number; node: typeof editor.state.doc; label: string }> {
+  const definitions: Array<{ pos: number; node: typeof editor.state.doc; label: string }> = []
+  editor.state.doc.descendants((node, pos) => {
+    if (['codeBlock', 'frontMatter'].includes(node.type.name)) return false
+    if (node.type.name !== 'paragraph') return
+    const definition = parseFootnoteDefinitionText(node.textContent)
+    if (definition) definitions.push({ pos, node, label: definition.label })
+  })
+  return definitions
+}
+
+function getSelectedFootnoteReference(editor: Editor): { label: string; from: number; to: number } | null {
+  const selection = editor.state.selection
+  if (!(selection instanceof NodeSelection) || selection.node.type.name !== 'footnoteReference') return null
+  return { label: String(selection.node.attrs.label), from: selection.from, to: selection.to }
+}
+
+function getSingleLinkTarget(editor: Editor): { href: string; from: number; to: number } | null {
+  const { selection, schema } = editor.state
+  if (!schema.marks.link || selection instanceof NodeSelection || !selection.$from.sameParent(selection.$to)) return null
+  const range = getMarkRange(selection.$from, schema.marks.link)
+  if (!range || selection.from < range.from || selection.to > range.to) return null
+  const mark = editor.state.doc.nodeAt(range.from)?.marks.find(mark => mark.type.name === 'link')
+  return mark && typeof mark.attrs.href === 'string' ? { ...range, href: mark.attrs.href } : null
+}
+
 function resetFootnoteLabel(editor: Editor, text?: string): boolean {
   let oldLabel = ''
   let newLabel = ''
@@ -6214,45 +6389,27 @@ function resetFootnoteLabel(editor: Editor, text?: string): boolean {
   } catch {
     return false
   }
-  if (!oldLabel || !newLabel || oldLabel === newLabel) return false
-
-  const escaped = escapeRegExp(oldLabel)
-  const marker = new RegExp(`\\[\\^${escaped}\\](?=:)`, 'g')
-  const reference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
-  const transactions: Array<{ from: number; to: number; text: string }> = []
-
-  editor.state.doc.descendants((node, position) => {
-    if (node.type.name === 'footnoteReference') {
-      if (node.attrs.label === oldLabel) {
-        transactions.push({ from: position, to: position + node.nodeSize, text: '' })
-      }
-      return false
-    }
-    if (!node.isText || !node.text) return
-
-    for (const match of node.text.matchAll(marker)) {
-      transactions.push({
-        from: position + (match.index ?? 0),
-        to: position + (match.index ?? 0) + match[0].length,
-        text: `[^${newLabel}]`,
-      })
-    }
-    for (const match of node.text.matchAll(reference)) {
-      transactions.push({
-        from: position + (match.index ?? 0),
-        to: position + (match.index ?? 0) + match[0].length,
-        text: `[^${newLabel}]`,
-      })
-    }
+  if (!oldLabel || !newLabel || oldLabel === newLabel || /[\[\]\r\n]/.test(newLabel)) return false
+  const definitions = footnoteDefinitions(editor)
+  if (!definitions.some(definition => definition.label === oldLabel)
+    || definitions.some(definition => definition.label === newLabel)) return false
+  const references: number[] = []
+  let duplicate = false
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'footnoteReference') return
+    if (node.attrs.label === newLabel) duplicate = true
+    if (node.attrs.label === oldLabel) references.push(pos)
   })
-
-  let tr = editor.state.tr
-  for (const change of transactions.sort((a, b) => b.from - a.from)) {
-    if (change.text) {
-      tr = tr.insertText(change.text, change.from, change.to)
-    } else {
-      tr = tr.setNodeMarkup(change.from, undefined, { label: newLabel })
-    }
+  if (duplicate) return false
+  const tr = editor.state.tr
+  for (const pos of references) {
+    const node = tr.doc.nodeAt(pos)!
+    tr.setNodeMarkup(pos, undefined, { ...node.attrs, label: newLabel })
+  }
+  for (const definition of definitions.filter(definition => definition.label === oldLabel).sort((a, b) => b.pos - a.pos)) {
+    const match = /\[\^[^\]\n]+\]/.exec(definition.node.textContent)!
+    const from = definition.pos + 1 + match.index
+    tr.insertText(`[^${newLabel}]`, from, from + match[0].length)
   }
   if (!tr.docChanged) return false
   editor.view.dispatch(tr.scrollIntoView())
@@ -6321,10 +6478,9 @@ function getCurrentFootnoteDefinition(editor: Editor): { label: string; node: an
 }
 
 function findFirstFootnoteReferencePosition(editor: Editor, label: string): number | null {
-  const escaped = escapeRegExp(label)
-  const textualReference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
   let firstPosition: number | null = null
   editor.state.doc.descendants((node, position) => {
+    if (firstPosition !== null) return false
     if (node.type.name === 'footnoteReference') {
       if (node.attrs.label === label) {
         firstPosition = position
@@ -6333,12 +6489,7 @@ function findFirstFootnoteReferencePosition(editor: Editor, label: string): numb
       return true
     }
 
-    if (firstPosition !== null || !node.isText || !node.text) return firstPosition === null
-    for (const match of node.text.matchAll(textualReference)) {
-      firstPosition = position + (match.index ?? 0)
-      return false
-    }
-    return true
+    return firstPosition === null
   })
   return firstPosition
 }
@@ -6349,8 +6500,6 @@ function collectFootnoteReferenceRanges(
   definitionPos: number,
   definitionSize: number,
 ): Array<{ from: number; to: number }> {
-  const escaped = escapeRegExp(label)
-  const textualReference = new RegExp(`\\[\\^${escaped}\\](?!:)`, 'g')
   const definitionEnd = definitionPos + definitionSize
   const ranges: Array<{ from: number; to: number }> = []
 
@@ -6364,11 +6513,6 @@ function collectFootnoteReferenceRanges(
       return false
     }
 
-    if (!node.isText || !node.text) return true
-    for (const match of node.text.matchAll(textualReference)) {
-      const from = position + (match.index ?? 0)
-      ranges.push({ from, to: from + match[0].length })
-    }
     return true
   })
 
@@ -6401,6 +6545,7 @@ function isMermaidCodeBlock(node: { type: { name: string }; attrs?: Record<strin
 }
 
 function getCurrentCodeBlock(editor: Editor): CurrentCodeBlockNode | null {
+  if (getSelectionScope(editor) === 'mixed') return null
   const { $from } = editor.state.selection
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const node = $from.node(depth)
@@ -6877,6 +7022,14 @@ function updateMermaid(editor: Editor, text?: string): boolean {
   ).run()
 }
 
+export async function exportSelectedMermaidImage(editor: Editor, format: MermaidImageFormat): Promise<MermaidImageExport> {
+  const selected = getSelectedMermaid(editor)
+  if (!selected) throw new Error('Select one rendered diagram')
+  const dom = editor.view.nodeDOM(selected.from)
+  if (!(dom instanceof Element)) throw new Error('Diagram is unavailable')
+  return exportMermaidImage(dom, format)
+}
+
 function rerenderSelectedMermaid(editor: Editor): boolean {
   const selected = getSelectedMermaid(editor)
   if (!selected) return false
@@ -6934,6 +7087,7 @@ function changeMathNumber(editor: Editor, number?: string): boolean {
   const selected = getSelectedMath(editor)
   if (!selected || selected.node.type.name !== 'mathBlock') return false
   const value = (number ?? '').trim()
+  if (value && !/^[0-9]+(?:\.[0-9]+)*$/.test(value)) return false
   const source = selected.node.textContent
   const withoutTag = source.replace(/\\tag\{[^{}]*\}\s*$/, '').trimEnd()
   const latex = value ? `${withoutTag} \\tag{${value}}` : withoutTag
@@ -6971,7 +7125,7 @@ function convertMath(editor: Editor): boolean {
   const latex = targetType === 'mathInline'
     ? selected.node.textContent.replace(/\s*\\tag\{[^{}]*\}\s*$/u, '')
     : selected.node.textContent
-  return editor.chain().focus().insertContentAt(
+  return editor.chain().focus().command(({ tr }) => { closeHistory(tr); return true }).insertContentAt(
     { from: selected.from, to: selected.to },
     { type: targetType, content: [{ type: 'text', text: latex }] },
   ).run()
@@ -6983,6 +7137,7 @@ function deleteMath(editor: Editor): boolean {
 }
 
 function exitCodeBlock(editor: Editor): boolean {
+  if (getSelectionScope(editor) === 'mixed') return false
   if (editor.isActive('frontMatter')) {
     const frontMatter = editor.state.doc.firstChild
     if (frontMatter?.type.name !== 'frontMatter') return false
@@ -6995,35 +7150,19 @@ function exitCodeBlock(editor: Editor): boolean {
 
 function clearParagraphFormat(editor: Editor): boolean {
   const { state } = editor
-  const originalFrom = state.selection.from
-  const originalTo = state.selection.to
-  const wasEmpty = state.selection.empty
-  const $from = state.doc.resolve(state.selection.from)
-  const blockFrom = $from.start()
-  const blockTo = $from.end()
-
-  // 行内公式是内联节点而非标记，unsetAllMarks 无法清除，需先替换为纯文本。
+  const names = new Set(['bold', 'italic', 'underline', 'strike', 'highlight', 'code'])
   const tr = state.tr
-  state.doc.nodesBetween(blockFrom, blockTo, (node, pos) => {
-    if (node.type.name === 'mathInline') {
-      tr.replaceWith(pos, pos + node.nodeSize, state.schema.text(node.textContent))
+  if (state.selection.empty) {
+    const marks = state.storedMarks ?? state.selection.$from.marks()
+    tr.setStoredMarks(marks.filter(mark => !names.has(mark.type.name))).setMeta('addToHistory', false)
+  } else {
+    for (const name of names) {
+      const mark = state.schema.marks[name]
+      if (mark) tr.removeMark(state.selection.from, state.selection.to, mark)
     }
-  })
-  if (tr.docChanged) {
-    editor.view.dispatch(tr)
   }
-
-  // unsetAllMarks 在空选区下是 no-op，因此先选中整段，再清除块结构与所有标记。
-  const chain = editor.chain().focus()
-  const $current = editor.state.doc.resolve(editor.state.selection.from)
-  chain.setTextSelection({ from: $current.start(), to: $current.end() })
-  const result = chain.clearNodes().unsetAllMarks({ ignoreClearable: true }).run()
-  if (result) {
-    editor.commands.setTextSelection(wasEmpty
-      ? originalFrom
-      : { from: originalFrom, to: originalTo })
-  }
-  return result
+  editor.view.dispatch(tr)
+  return true
 }
 
 function rotateSelectedImageClockwise(editor: Editor): boolean {
@@ -7128,6 +7267,10 @@ function changeImageSource(editor: Editor, src?: string): boolean {
   editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from, undefined, {
     ...selectedImage.attrs,
     src,
+    rotation: 0,
+    aspectRatio: null,
+    width: null,
+    height: null,
   }))
   return true
 }
@@ -7173,6 +7316,7 @@ function changeTableCaption(editor: Editor, caption?: string): boolean {
 
 export function isAllowedLink(value: string): boolean {
   const trimmed = value.trim()
+  if (trimmed.startsWith('#') && trimmed.length > 1) return true
   if (isLocalFileLink(trimmed)) {
     return true
   }
