@@ -21,6 +21,16 @@ public sealed class StatusBarMenuModelTests
     }
 
     [TestMethod]
+    public void NewLineOptionsUseLfThenCrlf()
+    {
+        var newLine = StatusBarMenuModel.NewLine("\n", enabled: true);
+
+        CollectionAssert.AreEqual(
+            new[] { AppCommand.StatusNewLineLf, AppCommand.StatusNewLineCrlf },
+            Flatten(newLine.Secondary).Select(x => x.Command!.Value).ToArray());
+    }
+
+    [TestMethod]
     public void ZoomPresetsUseApprovedOptionsAndCurrentCheckState()
     {
         var options = new[] { 50, 75, 90, 100, 110, 125, 150, 175, 200 };

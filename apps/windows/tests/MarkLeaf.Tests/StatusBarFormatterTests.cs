@@ -35,7 +35,8 @@ public sealed class StatusBarFormatterTests
     {
         Assert.AreEqual("UTF-8", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf8));
         Assert.AreEqual("UTF-8 with BOM", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf8Bom));
-        Assert.AreEqual("UTF-16 with BOM", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf16Bom));
+        Assert.AreEqual("UTF-16 LE", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf16NoBom));
+        Assert.AreEqual("UTF-16 LE with BOM", StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.Utf16Bom));
         Assert.AreEqual("CRLF", StatusBarFormatter.FormatNewLine("\r\n"));
         Assert.AreEqual("LF", StatusBarFormatter.FormatNewLine("\n"));
     }

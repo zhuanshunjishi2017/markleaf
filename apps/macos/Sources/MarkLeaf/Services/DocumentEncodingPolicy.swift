@@ -16,6 +16,14 @@ enum DocumentEncodingPolicy: String, CaseIterable, Equatable {
 
     static var orderedRawValues: [String] { allCases.map(\.rawValue) }
 
+    var displayName: String {
+        switch self {
+        case .utf16NoBOM: return "UTF-16 LE"
+        case .utf16: return "UTF-16 LE with BOM"
+        default: return rawValue
+        }
+    }
+
     static func defaultEncoding(rawValue: String) -> Self {
         if rawValue.caseInsensitiveCompare("UTF-8 without BOM") == .orderedSame {
             return .utf8

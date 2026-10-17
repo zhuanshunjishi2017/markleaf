@@ -1753,7 +1753,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         let menu = NSMenu(title: L10n.t("编码"))
         for encoding in DocumentEncodingPolicy.allCases {
             let item = NSMenuItem(
-                title: encoding.rawValue,
+                title: encoding.displayName,
                 action: #selector(selectEncoding(_:)),
                 keyEquivalent: ""
             )

@@ -49,7 +49,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
     {
         var branch = CreateMenu(true);
         if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
-            AppendFootnoteCommands(branch);
+            AppendFootnoteCommands(branch, status);
         else if (status.InTable)
             AppendTableCommands(branch, includeClipboard: false);
         else
@@ -101,7 +101,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             }
             else if (!string.IsNullOrWhiteSpace(status.FootnoteDefinitionLabel))
             {
-                AppendFootnoteCommands(menu);
+                AppendFootnoteCommands(menu, status);
                 AppendSeparator(menu);
                 AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
@@ -152,11 +152,22 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 if (status.MathBlock) commands.Add(AppCommand.SetMathNumber);
                 commands.AddRange([AppCommand.ConvertMath, AppCommand.DeleteMath]);
                 }
+                if (status.ReadOnly)
+                {
+                    AppendSeparator(menu);
+                    AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+                    commands.Add(AppCommand.Copy);
+                }
             }
             else if (status.MermaidSelected)
             {
                 AppendCommand(menu, status.ReadOnly ? AppCommand.ViewMermaidSource : AppCommand.EditMermaid,
                     Loc.Get(status.ReadOnly ? "contextMenu.mermaid.viewSource" : "contextMenu.mermaid.edit"));
+                if (status.ReadOnly)
+                {
+                    AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
+                    commands.Add(AppCommand.Copy);
+                }
                 AppendCommand(menu, AppCommand.RerenderMermaid, Loc.Get("contextMenu.mermaid.rerender"));
                 AppendCommand(menu, AppCommand.SaveMermaidAs, Loc.Get("contextMenu.mermaid.saveAs"));
                 if (!status.ReadOnly)
@@ -379,12 +390,15 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
             AppCommand.Cut, AppCommand.Copy, AppCommand.Paste, AppCommand.SelectAll]);
     }
 
-    private void AppendFootnoteCommands(Branch menu)
+    private void AppendFootnoteCommands(Branch menu, EditorCommandStatus? status = null)
     {
         AppendCommand(menu, AppCommand.GoToFootnoteReference, Loc.Get("contextMenu.footnote.goToReference"));
-        AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
-        AppendCommand(menu, AppCommand.ClearFootnoteReferences, Loc.Get("contextMenu.footnote.clearReferences"));
-        AppendCommand(menu, AppCommand.DeleteFootnote, Loc.Get("contextMenu.footnote.delete"));
+        if (status is not { ReadOnly: true })
+        {
+            AppendCommand(menu, AppCommand.ResetFootnoteLabel, Loc.Get("contextMenu.footnote.resetLabel"));
+            AppendCommand(menu, AppCommand.ClearFootnoteReferences, Loc.Get("contextMenu.footnote.clearReferences"));
+            AppendCommand(menu, AppCommand.DeleteFootnote, Loc.Get("contextMenu.footnote.delete"));
+        }
     }
 
     private void AppendTableCommands(Branch menu, bool includeClipboard)
@@ -520,10 +534,10 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
     private Branch BuildResizeImageSubmenu()
     {
         var resize = CreateMenu(true);
-        AppendCommand(resize, AppCommand.ResizeImage100, Loc.Get("contextMenu.image.resizeFull"));
         AppendCommand(resize, AppCommand.ResizeImage50, Loc.Get("contextMenu.image.resize50"));
         AppendCommand(resize, AppCommand.ResizeImage75, Loc.Get("contextMenu.image.resize75"));
         AppendCommand(resize, AppCommand.ResizeImage90, Loc.Get("contextMenu.image.resize90"));
+        AppendCommand(resize, AppCommand.ResizeImage100, Loc.Get("contextMenu.image.resizeFull"));
         return resize;
     }
 

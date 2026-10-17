@@ -31,9 +31,9 @@ public sealed class DocumentEncodingPolicy
 
     public static DocumentEncodingPolicy Utf8Bom { get; } = new("utf-8-bom", "UTF-8 with BOM", 65001, hasBom: true);
 
-    public static DocumentEncodingPolicy Utf16NoBom { get; } = new("utf-16", "UTF-16", 1200);
+    public static DocumentEncodingPolicy Utf16NoBom { get; } = new("utf-16", "UTF-16 LE", 1200);
 
-    public static DocumentEncodingPolicy Utf16Bom { get; } = new("utf-16-bom", "UTF-16 with BOM", 1200, hasBom: true);
+    public static DocumentEncodingPolicy Utf16Bom { get; } = new("utf-16-bom", "UTF-16 LE with BOM", 1200, hasBom: true);
 
     public static DocumentEncodingPolicy Gb18030 { get; } = new("gb18030", "GB18030", 54936);
 

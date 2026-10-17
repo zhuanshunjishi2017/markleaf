@@ -13,8 +13,8 @@ internal static class StatusBarMenuModel
     public static EditorMenuModel NewLine(string current, bool enabled) => new(
         Array.Empty<EditorMenuEntry>(),
         [
-            Item(AppCommand.StatusNewLineCrlf, "CRLF", enabled, current == "\r\n"),
             Item(AppCommand.StatusNewLineLf, "LF", enabled, current == "\n"),
+            Item(AppCommand.StatusNewLineCrlf, "CRLF", enabled, current == "\r\n"),
         ]);
 
     public static EditorMenuModel Zoom(int current, IReadOnlyList<int> options)

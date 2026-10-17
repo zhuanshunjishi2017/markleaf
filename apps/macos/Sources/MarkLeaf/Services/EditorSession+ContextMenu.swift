@@ -98,7 +98,7 @@ extension EditorSession {
         addFormatCommand(lists, L10n.t("减少列表缩进"), "outdentListItem")
         menu.addItem(submenuItem(L10n.t("列表"), lists))
         menu.addItem(.separator())
-        addFormatCommand(menu, L10n.t("插入注释"), "insertFootnote")
+        addFormatCommand(menu, L10n.t("插入脚注"), "insertFootnote")
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("段前插入行"), "insertLineBefore")
         addFormatCommand(menu, L10n.t("段后插入行"), "insertLineAfter")
@@ -196,10 +196,10 @@ extension EditorSession {
             addFormatCommand(menu, L10n.t("编辑图片标题"), "editImageCaption")
             let resize = NSMenu(title: L10n.t("调整图片大小"))
             for (title, command) in [
-                (L10n.t("100%"), "resizeImage100"),
+                (L10n.t("50%"), "resizeImage50"),
                 (L10n.t("75%"), "resizeImage75"),
                 (L10n.t("90%"), "resizeImage90"),
-                (L10n.t("50%"), "resizeImage50"),
+                (L10n.t("100%"), "resizeImage100"),
             ] {
                 addFormatCommand(resize, title, command)
             }
@@ -211,6 +211,7 @@ extension EditorSession {
         } else if semanticContext == .math {
             if state.isReadOnly {
                 addFormatCommand(menu, L10n.t("查看公式源码"), "viewMathSource")
+                addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: editorCommandEnabled("copy"))
             } else {
             // 公式：编辑 / 行内块级互转 / 删除
             addFormatCommand(menu, L10n.t("编辑公式源码"), "editMath")
@@ -536,6 +537,9 @@ extension EditorSession {
 
     private func addMermaidCommands(to menu: NSMenu, state: EditorContextMenuState) {
         addFormatCommand(menu, L10n.t(state.isReadOnly ? "查看图表源码" : "编辑 Mermaid 源码"), state.isReadOnly ? "viewMermaidSource" : "editMermaid")
+        if state.isReadOnly {
+            addEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: editorCommandEnabled("copy"))
+        }
         addFormatCommand(menu, L10n.t("重新渲染 Mermaid 图表"), "rerenderMermaid")
         addFormatCommand(menu, L10n.t("将图表另存为图片"), "saveMermaidAs")
         if !state.isReadOnly {

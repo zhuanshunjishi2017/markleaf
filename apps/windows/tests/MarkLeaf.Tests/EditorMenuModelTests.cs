@@ -138,6 +138,50 @@ public sealed class EditorMenuModelTests
     }
 
     [TestMethod]
+    public void ReadOnlyMathAndMermaidKeepViewSourceAndCopy()
+    {
+        var math = Build(EditorCommandStatus.Empty with { ReadOnly = true, MathBlock = true });
+        var mathCommands = Flatten(math.Secondary).Select(x => x.Command).ToArray();
+        Assert.Contains((AppCommand?)AppCommand.ViewMathSource, mathCommands);
+        Assert.Contains((AppCommand?)AppCommand.Copy, mathCommands);
+
+        var mermaid = Build(EditorCommandStatus.Empty with { ReadOnly = true, MermaidSelected = true });
+        var mermaidCommands = Flatten(mermaid.Secondary).Select(x => x.Command).ToArray();
+        Assert.Contains((AppCommand?)AppCommand.ViewMermaidSource, mermaidCommands);
+        Assert.Contains((AppCommand?)AppCommand.Copy, mermaidCommands);
+        Assert.Contains((AppCommand?)AppCommand.RerenderMermaid, mermaidCommands);
+        Assert.Contains((AppCommand?)AppCommand.SaveMermaidAs, mermaidCommands);
+    }
+
+    [TestMethod]
+    public void ReadOnlyFootnoteDefinitionKeepsOnlyNavigation()
+    {
+        var model = Build(EditorCommandStatus.Empty with
+        {
+            ReadOnly = true,
+            FootnoteDefinitionLabel = "note",
+        });
+        var commands = Flatten(model.Secondary).Select(x => x.Command).ToArray();
+        Assert.Contains((AppCommand?)AppCommand.GoToFootnoteReference, commands);
+        Assert.DoesNotContain((AppCommand?)AppCommand.ResetFootnoteLabel, commands);
+        Assert.DoesNotContain((AppCommand?)AppCommand.ClearFootnoteReferences, commands);
+        Assert.DoesNotContain((AppCommand?)AppCommand.DeleteFootnote, commands);
+    }
+
+    [TestMethod]
+    public void ImageContextMenuUsesAscendingWidthOrder()
+    {
+        var model = Build(EditorCommandStatus.Empty with { ImageSelected = true });
+        var nested = model.Secondary.Single(entry => entry.Kind == EditorMenuEntryKind.Submenu
+            && entry.Children.Any(child => child.Command is AppCommand.ResizeImage50));
+
+        CollectionAssert.AreEqual(new[]
+        {
+            AppCommand.ResizeImage50, AppCommand.ResizeImage75, AppCommand.ResizeImage90, AppCommand.ResizeImage100,
+        }, nested.Children.Select(x => x.Command!.Value).ToArray());
+    }
+
+    [TestMethod]
     public void ContextOrderKeepsPlainPasteTopLevel()
     {
         var model = Build();

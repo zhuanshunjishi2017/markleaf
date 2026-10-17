@@ -52,8 +52,8 @@ extension EditorSession {
                         return
                     }
                     let alert = NSAlert()
-                    alert.messageText = L10n.t("注释编号重复")
-                    alert.informativeText = L10n.f("已存在编号为“%@”的注释。仍要继续插入重复的编号？", label)
+                    alert.messageText = L10n.t("脚注编号重复")
+                    alert.informativeText = L10n.f("已存在编号为“%@”的脚注。仍要继续插入重复的编号？", label)
                     alert.alertStyle = .warning
                     alert.addButton(withTitle: L10n.t("确定"))
                     alert.addButton(withTitle: L10n.t("取消"))
@@ -73,7 +73,7 @@ extension EditorSession {
     private func executeFootnoteInsert(label: String, note: String) {
         guard let payload = footnotePayload(["label": label, "note": note]) else { return }
         execute("insertFootnote", text: payload)
-        statusText = L10n.t("已插入注释")
+        statusText = L10n.t("已插入脚注")
     }
 
     // MARK: - 重设脚注编号（对应 Windows ResetFootnoteLabel）
@@ -82,8 +82,8 @@ extension EditorSession {
         guard let window = webView?.window,
               let oldLabel = footnoteDefinitionLabel, !oldLabel.isEmpty else { return }
         let alert = NSAlert()
-        alert.messageText = L10n.t("重设注释编号")
-        alert.informativeText = L10n.t("新的注释编号：")
+        alert.messageText = L10n.t("重设脚注编号")
+        alert.informativeText = L10n.t("新的脚注编号：")
         alert.alertStyle = .informational
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
@@ -91,7 +91,7 @@ extension EditorSession {
         field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
-        // 与其他输入弹窗一致：注释编号为空时禁用「确定」。
+        // 与其他输入弹窗一致：脚注编号为空时禁用「确定」。
         let okButton = alert.buttons.first
         okButton?.isEnabled = false
         var validationToken: NSObjectProtocol?
@@ -109,9 +109,9 @@ extension EditorSession {
             self.execute("resetFootnoteLabel", text: payload, completion: { [weak self] success in
                 guard let self else { return }
                 if success {
-                    self.statusText = L10n.t("已重设注释编号")
+                    self.statusText = L10n.t("已重设脚注编号")
                 } else {
-                    self.presentError(L10n.t("注释编号不能为空，且不能包含 ] 或换行符"))
+                    self.presentError(L10n.t("脚注编号不能为空，且不能包含 ] 或换行符"))
                 }
             })
         }
@@ -133,7 +133,7 @@ extension EditorSession {
     func deleteFootnoteDefinition() {
         guard EditorMenuPolicy.allows(.deleteFootnote, state: editorMenuState) else { return }
         execute("deleteFootnote")
-        statusText = L10n.t("已删除注释")
+        statusText = L10n.t("已删除脚注")
     }
 
     // MARK: - 对话框
@@ -144,8 +144,8 @@ extension EditorSession {
             return
         }
         let alert = NSAlert()
-        alert.messageText = L10n.t("插入注释")
-        alert.informativeText = L10n.t("输入注释编号和注释文本：")
+        alert.messageText = L10n.t("插入脚注")
+        alert.informativeText = L10n.t("输入脚注编号和脚注文本：")
         alert.alertStyle = .informational
         alert.addButton(withTitle: L10n.t("确定"))
         alert.addButton(withTitle: L10n.t("取消"))
@@ -164,11 +164,11 @@ extension EditorSession {
         noteView.isVerticallyResizable = true
 
         let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 128))
-        let labelCaption = NSTextField(labelWithString: L10n.t("注释编号"))
+        let labelCaption = NSTextField(labelWithString: L10n.t("脚注编号"))
         labelCaption.font = .systemFont(ofSize: 12)
         labelCaption.frame = NSRect(x: 0, y: 100, width: 70, height: 18)
         labelField.frame = NSRect(x: 76, y: 97, width: 304, height: labelField.frame.height)
-        let noteCaption = NSTextField(labelWithString: L10n.t("注释文本"))
+        let noteCaption = NSTextField(labelWithString: L10n.t("脚注文本"))
         noteCaption.font = .systemFont(ofSize: 12)
         noteCaption.frame = NSRect(x: 0, y: 66, width: 70, height: 18)
         let scroll = NSScrollView(frame: NSRect(x: 76, y: 8, width: 304, height: 84))
@@ -191,7 +191,7 @@ extension EditorSession {
         let labelDelegate = FootnoteLabelEditingController { field in
             NSSound.beep()
             field.textColor = .systemRed
-            field.toolTip = L10n.t("注释编号不能为空，且不能包含 ] 或换行符")
+            field.toolTip = L10n.t("脚注编号不能为空，且不能包含 ] 或换行符")
         }
         labelField.delegate = labelDelegate
         let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -244,7 +244,7 @@ extension EditorSession {
     func presentFootnoteDefinitionMissingAlert() {
         guard let window = webView?.window else { return }
         let alert = NSAlert()
-        alert.messageText = L10n.t("未找到该注释的定义！")
+        alert.messageText = L10n.t("未找到该脚注的定义！")
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("好"))
         alert.beginSheetModal(for: window)
@@ -268,7 +268,7 @@ extension EditorSession {
             case .success(let markdown):
                 completion(Self.footnoteLabelExists(in: markdown, label: label))
             case .failure:
-                self.statusText = L10n.t("无法检查注释编号是否重复")
+                self.statusText = L10n.t("无法检查脚注编号是否重复")
                 completion(false)
             }
         }
