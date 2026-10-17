@@ -12,13 +12,14 @@ internal sealed class OutlineTreeView : Control
         public EditorOutlineItem Item { get; } = item;
         public int Depth { get; } = depth;
         public bool Expanded { get; set; } = true;
+        public (int Level, string Text, int Ordinal) CollapseKey { get; set; }
         public List<OutlineNode> Children { get; } = [];
     }
 
     private readonly MarkLeafScrollbar _scrollBar = new() { Dock = DockStyle.Right };
     private readonly List<OutlineNode> _roots = [];
     private readonly List<(OutlineNode Node, Rectangle Bounds)> _visibleRows = [];
-    private readonly HashSet<int> _collapsedPositions = [];
+    private readonly HashSet<(int Level, string Text, int Ordinal)> _collapsedHeadings = [];
     private bool _usingFlatItems;
     private Font _primaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
     private Font _secondaryFont = new("Microsoft YaHei", 10F, FontStyle.Regular, GraphicsUnit.Point);
@@ -110,8 +111,9 @@ internal sealed class OutlineTreeView : Control
     {
         if (!_usingFlatItems)
         {
-            _collapsedPositions.Clear();
-            CollectCollapsedPositions(_roots);
+            _collapsedHeadings.Clear();
+            foreach (var node in FlattenNodes(_roots).Where(node => !node.Expanded))
+                _collapsedHeadings.Add(node.CollapseKey);
         }
         _roots.Clear();
         var parents = new Stack<OutlineNode>();
@@ -133,7 +135,8 @@ internal sealed class OutlineTreeView : Control
             }
             parents.Push(node);
         }
-        ApplyCollapsedPositions(_roots);
+        AssignCollapseKeys(_roots);
+        ApplyCollapsedHeadingState(_roots);
         _usingFlatItems = false;
 
         UpdateScrollBar();
@@ -192,6 +195,12 @@ internal sealed class OutlineTreeView : Control
         Invalidate();
         return true;
     }
+
+    public bool IsVisible(int position) =>
+        EnumerateVisibleNodes().Any(node => node.Item.Position == position);
+
+    public bool IsExpanded(int position) =>
+        FlattenNodes(_roots).FirstOrDefault(node => node.Item.Position == position)?.Expanded ?? false;
 
     public void ConfigureTypography(int dpi)
     {
@@ -492,25 +501,37 @@ internal sealed class OutlineTreeView : Control
     private void SetNodeExpanded(OutlineNode node, bool expanded)
     {
         node.Expanded = expanded;
-        if (!expanded) _collapsedPositions.Add(node.Item.Position);
-        else _collapsedPositions.Remove(node.Item.Position);
+        if (!expanded) _collapsedHeadings.Add(node.CollapseKey);
+        else _collapsedHeadings.Remove(node.CollapseKey);
     }
 
-    private void CollectCollapsedPositions(IEnumerable<OutlineNode> nodes)
+    private static IEnumerable<OutlineNode> FlattenNodes(IEnumerable<OutlineNode> nodes)
     {
         foreach (var node in nodes)
         {
-            if (!node.Expanded) _collapsedPositions.Add(node.Item.Position);
-            CollectCollapsedPositions(node.Children);
+            yield return node;
+            foreach (var child in FlattenNodes(node.Children)) yield return child;
         }
     }
 
-    private void ApplyCollapsedPositions(IEnumerable<OutlineNode> nodes)
+    private static void AssignCollapseKeys(IEnumerable<OutlineNode> roots)
+    {
+        var occurrences = new Dictionary<(int Level, string Text), int>();
+        foreach (var node in FlattenNodes(roots))
+        {
+            var baseKey = (node.Item.Level, node.Item.Text);
+            occurrences.TryGetValue(baseKey, out var ordinal);
+            node.CollapseKey = (baseKey.Level, baseKey.Text, ordinal);
+            occurrences[baseKey] = ordinal + 1;
+        }
+    }
+
+    private void ApplyCollapsedHeadingState(IEnumerable<OutlineNode> nodes)
     {
         foreach (var node in nodes)
         {
-            node.Expanded = !_collapsedPositions.Contains(node.Item.Position);
-            ApplyCollapsedPositions(node.Children);
+            node.Expanded = !_collapsedHeadings.Contains(node.CollapseKey);
+            ApplyCollapsedHeadingState(node.Children);
         }
     }
 

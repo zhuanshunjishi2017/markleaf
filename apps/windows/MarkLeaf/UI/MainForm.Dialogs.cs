@@ -168,12 +168,10 @@ internal sealed partial class MainForm
             return;
         }
 
-        var cacheDirectory = Path.Combine(_paths.DataDirectory, "Cache", "Samples");
-        var cachePath = Path.Combine(cacheDirectory, $"{Guid.NewGuid():N}-{fileName}");
+        string markdown;
         try
         {
-            Directory.CreateDirectory(cacheDirectory);
-            File.Copy(sourcePath, cachePath, overwrite: false);
+            markdown = File.ReadAllText(sourcePath);
         }
         catch
         {
@@ -181,10 +179,15 @@ internal sealed partial class MainForm
             return;
         }
 
-        await OpenDocumentPathAsync(cachePath);
+        // Help samples are practice documents. Keep them editable but untitled so
+        // opening another sample never overwrites a previous exercise.
+        var document = _documentFileService.CreateNew();
+        document.Markdown = markdown;
+        document.SavedMarkdown = markdown;
+        await AddAndActivateDocumentAsync(document);
     }
 
-    private async void ShowWelcome()
+    private async Task ShowWelcomeAsync()
     {
         var culture = _settings.General.UiLanguage;
         if (string.IsNullOrWhiteSpace(culture))
@@ -213,15 +216,21 @@ internal sealed partial class MainForm
         var cachePath = Path.Combine(_paths.DataDirectory, "Cache", "welcome.md");
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
             File.Copy(welcomePath, cachePath, overwrite: true);
+            var markdown = File.ReadAllText(cachePath);
+            var document = _documentFileService.CreateNew();
+            document.FilePath = cachePath;
+            document.Markdown = markdown;
+            document.SavedMarkdown = markdown;
+            document.IsReadOnly = true;
+            await AddAndActivateDocumentAsync(document);
         }
         catch
         {
             SetStatus(Loc.Get("welcome.openFailed"));
             return;
         }
-
-        await OpenDocumentPathAsync(cachePath);
     }
 
     private void OpenDocumentInNewWindow()

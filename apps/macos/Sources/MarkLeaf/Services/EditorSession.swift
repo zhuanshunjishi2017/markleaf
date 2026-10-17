@@ -2280,18 +2280,20 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         sidebarVisible = true
         sidebarTabIndex = 0
         SettingsService.shared.update({ $0.sidebarTab = "workspace"; $0.sidebarVisible = true }, broadcasting: false)
+        windowSession?.controller?.requestSidebarFocus(.workspace)
         onViewStateChanged?()
     }
 
     func showOutlineTab() {
         windowSession?.controller?.exitFocusMode()
         if outlineDetached {
-            windowSession?.controller?.focusDetachedOutline()
+            windowSession?.controller?.requestSidebarFocus(.detachedOutline)
             return
         }
         sidebarVisible = true
         sidebarTabIndex = 1
         SettingsService.shared.update({ $0.sidebarTab = "outline"; $0.sidebarVisible = true }, broadcasting: false)
+        windowSession?.controller?.requestSidebarFocus(.outline)
         onViewStateChanged?()
     }
 
@@ -2543,6 +2545,15 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             }
             return
         }
+        if let tab = owner?.tabStore.tab(withIdentity: identity),
+           let snapshotFileName = tab.snapshotFileName,
+           let markdown = SessionSnapshotIO.read(fileName: snapshotFileName) {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(markdown, forType: .string)
+            statusText = L10n.f("已复制内容 %@", entry.name)
+            return
+        }
         guard let text = try? PreparedDocument.read(from: URL(fileURLWithPath: entry.path)).markdown else {
             statusText = L10n.t("无法复制该文件内容")
             return
@@ -2742,16 +2753,16 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     func toggleEditorFocusMode() {
-        guard !isReadOnly, !isPlainText else { return }
+        guard !isPlainText else { return }
         isEditorFocusMode.toggle()
         windowSession?.updateViewState(from: self)
         execute("setEditorFocusMode", text: isEditorFocusMode ? "1" : "0")
-        statusText = L10n.t(isEditorFocusMode ? "专注模式已开启" : "专注模式已关闭")
+        statusText = L10n.t(isEditorFocusMode ? "段落专注模式已开启" : "段落专注模式已关闭")
         NativeMenuBuilder.refreshIfNeeded()
     }
 
     func toggleTypewriterMode() {
-        guard !isReadOnly, !isPlainText else { return }
+        guard !isPlainText else { return }
         isTypewriterMode.toggle()
         windowSession?.updateViewState(from: self)
         execute("setEditorTypewriterMode", text: isTypewriterMode ? "1" : "0")

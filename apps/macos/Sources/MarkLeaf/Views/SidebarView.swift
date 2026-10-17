@@ -361,6 +361,14 @@ final class SidebarView: NSView {
         workspaceTree.reloadData(activePath: session.documentURL?.path)
     }
 
+    func focusWorkspace() {
+        window?.makeFirstResponder(workspaceTree)
+    }
+
+    func focusMergedOutline() {
+        window?.makeFirstResponder(outlineTree)
+    }
+
     func updateEmptyStateVisibility(hasWorkspace: Bool) {
         let isWorkspaceTab = session.sidebarTabIndex == 0
         if !isWorkspaceTab {
@@ -1179,36 +1187,38 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
         let isRoot = session?.workspaceRoot == entry.path
         let pathTitle = entry.isDirectory ? L10n.t("复制文件夹路径") : L10n.t("复制文件路径")
+        if isRoot {
+            return backgroundMenu(in: URL(fileURLWithPath: entry.path, isDirectory: true))
+        }
 
         if entry.isDirectory {
-            menu.addItem(item(L10n.t("打开"), #selector(openFolderEntry(_:)), entry))
+            let expanded = isItemExpanded(entry)
+            menu.addItem(item(L10n.t(expanded ? "折叠" : "展开"), #selector(openFolderEntry(_:)), entry))
             menu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))
             menu.addItem(.separator())
-            if !isRoot {
-                menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
-                menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
-                menu.addItem(.separator())
-            }
             let targetDirectory = URL(fileURLWithPath: entry.path, isDirectory: true)
             menu.addItem(popupItem(L10n.t("新建文件"), newFileMenu(in: targetDirectory)))
             menu.addItem(item(L10n.t("新建文件夹"), #selector(newFolder(_:)), entry.path))
             menu.addItem(.separator())
             menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
             menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
+            menu.addItem(.separator())
+            menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
+            menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
             return menu
         }
 
         menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))
         menu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))
         menu.addItem(.separator())
-        menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
-        menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
-        menu.addItem(.separator())
         menu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))
-        let copyContent = item(L10n.t("复制内容到剪贴板"), #selector(copyContent(_:)), entry)
+        let copyContent = item(L10n.t("复制文件内容"), #selector(copyContent(_:)), entry)
         copyContent.isEnabled = hasCopyableContent(entry)
         menu.addItem(copyContent)
         menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))
+        menu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("分享"), #selector(shareEntry(_:)), entry))
         return menu
@@ -1223,6 +1233,9 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
         menu.addItem(item(L10n.t("树状视图"), #selector(switchTreeView(_:)), nil))
         menu.addItem(item(L10n.t("列表视图"), #selector(switchListView(_:)), nil))
         menu.addItem(popupItem(L10n.t("排序"), sortMenu()))
+        menu.addItem(.separator())
+        menu.addItem(item(L10n.t("复制工作区路径"), #selector(copyPath(_:)), WorkspaceEntry(name: "", path: directory.path, isDirectory: true)))
+        menu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), WorkspaceEntry(name: "", path: directory.path, isDirectory: true)))
         menu.addItem(.separator())
         menu.addItem(item(L10n.t("刷新工作区"), #selector(refreshWorkspace(_:)), nil))
         menu.addItem(item(L10n.t("关闭工作区"), #selector(closeWorkspace(_:)), nil))
@@ -1329,7 +1342,11 @@ class WorkspaceTreeView: NSOutlineView, NSOutlineViewDataSource, NSOutlineViewDe
 
     @objc private func openFolderEntry(_ sender: NSMenuItem) {
         if let entry = sender.representedObject as? WorkspaceEntry {
-            self.expandItem(entry)
+            if isItemExpanded(entry) {
+                collapseItem(entry)
+            } else {
+                expandItem(entry)
+            }
         }
     }
 

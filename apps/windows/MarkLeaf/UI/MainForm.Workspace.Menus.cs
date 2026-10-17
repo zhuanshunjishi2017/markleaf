@@ -66,12 +66,15 @@ internal sealed partial class MainForm
                 AppCommand.WorkspaceRename or AppCommand.WorkspaceTrash => new CommandState(canModify),
                 _ => new CommandState(true),
             },
-            command => _shortcutManager.GetShortcutText(command) ?? "");
+            command => _shortcutManager.GetShortcutText(command) ?? "",
+            entry.FullPath,
+            path => _workspaceTree.GetExpandedDirectories().Contains(path));
         var command = await _menuService.ShowHostPopupMenuAsync(this, screenPoint, DeviceDpi, _menuDarkMode, model);
         switch (command)
         {
             case AppCommand.WorkspaceOpen:
-                await OpenWorkspaceEntryAsync(entry);
+                if (entry.IsDirectory) _workspaceTree.Toggle(entry.FullPath);
+                else await OpenWorkspaceEntryAsync(entry);
                 break;
             case AppCommand.WorkspaceOpenInNewWindow:
                 StartNewWindow(entry.FullPath);

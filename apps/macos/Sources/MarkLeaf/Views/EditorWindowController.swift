@@ -39,6 +39,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarAnimationTimer: Timer?
     private var isAnimatingSidebar = false
     private var isAnimatingOutline = false
+    enum PendingSidebarFocus {
+        case workspace
+        case outline
+        case detachedOutline
+    }
+
+    private var pendingSidebarFocus: PendingSidebarFocus?
     private var workspaceDividerPosition: CGFloat = 240
     private var sidebarVisibleBeforeFocus = true
     private var outlineDetachedBeforeFocus = false
@@ -712,6 +719,44 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         tabBarController?.reload()
     }
 
+    /// Opens bundled practice content as a fresh, editable untitled document.
+    /// Unlike a cached file, a second invocation never overwrites the user's
+    /// previous exercise and never leaves a misleading cache path in the tab.
+    func openUntitledDocument(markdown: String, kind: NewDocumentKind = .markdown) {
+        guard let windowSession else { return }
+        let load: (EditorSession) -> Void = { session in
+            session.loadDocument(
+                markdown: markdown,
+                fileURL: nil,
+                encoding: SettingsService.shared.settings.defaultEncoding,
+                documentKind: kind
+            )
+        }
+        guard MultiTabModePolicy.allowsTabCreation(isEnabled: SettingsService.shared.settings.multiTabEnabled) else {
+            let target = activeSession
+            target.requestDisposition(for: .replaceDocument) { result in
+                guard result == .proceed else { return }
+                load(target)
+            }
+            return
+        }
+
+        let settings = SettingsService.shared.settings
+        let tab = DocumentTab(
+            path: nil,
+            title: "",
+            encoding: settings.defaultEncoding,
+            newLine: DocumentNewLinePolicy.style(from: settings.newLineStyle).rawValue
+        )
+        tab.untitledSequence = windowSession.tabStore.nextUntitledSequence()
+        tab.title = "\(L10n.t("未命名")) \(tab.untitledSequence ?? 1)"
+        windowSession.tabStore.append(tab)
+        let session = ensureEditor(for: tab)
+        load(session)
+        activateTab(tab.tabID, animated: true)
+        tabBarController?.reload()
+    }
+
     @discardableResult
     func openRecoverySnapshot(_ snapshot: RecoverySnapshot) -> Bool {
         guard let windowSession else { return false }
@@ -910,6 +955,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             closeOtherTabs(keeping: id)
         case .closeToRight:
             closeTabsToRight(of: index)
+        case .reopenClosedTab:
+            restoreLastClosedTab()
         case .revealInWorkspace:
             revealTabInWorkspace(id)
         case .copyPath:
@@ -920,12 +967,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func saveTab(_ id: DocumentTabID, as saveAs: Bool) {
+        let originalActiveID = windowSession?.tabStore.activeTabID
         activateTab(id, animated: true)
         guard let session = windowSession?.session(for: id) else { return }
+        let restoreOriginalTab: (Bool) -> Void = { [weak self] _ in
+            guard let self,
+                  let originalActiveID,
+                  self.windowSession?.tabStore.tab(withID: originalActiveID) != nil,
+                  self.windowSession?.tabStore.activeTabID != originalActiveID else { return }
+            self.activateTab(originalActiveID, animated: true)
+        }
         if saveAs {
-            session.saveDocumentAs()
+            session.saveDocumentAs(completion: restoreOriginalTab)
         } else {
-            session.saveDocument()
+            session.saveDocument(completion: restoreOriginalTab)
         }
     }
 
@@ -1726,6 +1781,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         detachedOutlineView?.focusOutline()
     }
 
+    func requestSidebarFocus(_ target: PendingSidebarFocus) {
+        pendingSidebarFocus = target
+    }
+
     /// F11 进入/退出专注模式；仅临时隐藏界面元素，不覆盖用户保存的视图偏好。
     func toggleFocusMode() {
         if isFocusMode {
@@ -1955,6 +2014,20 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             animateStatusBar(visible: true)
         } else {
             animateStatusBar(visible: false)
+        }
+
+        if let target = pendingSidebarFocus {
+            pendingSidebarFocus = nil
+            DispatchQueue.main.async { [weak self] in
+                switch target {
+                case .workspace:
+                    self?.sidebarView?.focusWorkspace()
+                case .outline:
+                    self?.sidebarView?.focusMergedOutline()
+                case .detachedOutline:
+                    self?.focusDetachedOutline()
+                }
+            }
         }
     }
 

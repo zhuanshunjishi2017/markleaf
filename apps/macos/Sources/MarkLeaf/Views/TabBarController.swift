@@ -7,6 +7,7 @@ enum TabContextAction {
     case close
     case closeOthers
     case closeToRight
+    case reopenClosedTab
     case revealInWorkspace
     case copyPath
     case revealInFinder
@@ -654,9 +655,17 @@ final class TabBarController: NSView {
 
     private func showContextMenu(for tabID: DocumentTabID, with event: NSEvent, in cell: NSView) {
         guard let index = tabStore.tabs.firstIndex(where: { $0.tabID == tabID }) else { return }
+        guard let tab = tabStore.tab(withID: tabID) else { return }
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(contextMenuItem(L10n.t("保存"), action: .save, tabID: tabID))
+        let save = contextMenuItem(L10n.t("保存"), action: .save, tabID: tabID)
+        save.isEnabled = SaveMenuPolicy.isSaveEnabled(
+            hasSession: true,
+            isDirty: tab.isDirty,
+            isReadOnly: tab.isReadOnly,
+            hasFileURL: tab.path != nil
+        )
+        menu.addItem(save)
         menu.addItem(contextMenuItem(L10n.t("另存为…"), action: .saveAs, tabID: tabID))
         menu.addItem(.separator())
         menu.addItem(contextMenuItem(L10n.t("关闭标签"), action: .close, tabID: tabID))
@@ -666,11 +675,28 @@ final class TabBarController: NSView {
         let closeToRight = contextMenuItem(L10n.t("关闭右侧标签"), action: .closeToRight, tabID: tabID)
         closeToRight.isEnabled = index < tabStore.tabs.count - 1
         menu.addItem(closeToRight)
+        let reopenClosedTab = contextMenuItem(L10n.t("重新打开关闭的标签"), action: .reopenClosedTab, tabID: tabID)
+        reopenClosedTab.isEnabled = windowController?.windowSession?.closedTabHistory.hasRecords == true
+        menu.addItem(reopenClosedTab)
         menu.addItem(.separator())
-        menu.addItem(contextMenuItem(L10n.t("在工作区中显示"), action: .revealInWorkspace, tabID: tabID))
-        menu.addItem(contextMenuItem(L10n.t("拷贝文件路径"), action: .copyPath, tabID: tabID))
-        menu.addItem(contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID))
+        let revealInWorkspace = contextMenuItem(L10n.t("在工作区中显示"), action: .revealInWorkspace, tabID: tabID)
+        revealInWorkspace.isEnabled = canRevealInWorkspace(tab)
+        menu.addItem(revealInWorkspace)
+        let copyPath = contextMenuItem(L10n.t("拷贝文件路径"), action: .copyPath, tabID: tabID)
+        copyPath.isEnabled = tab.path != nil
+        menu.addItem(copyPath)
+        let revealInFinder = contextMenuItem(L10n.t("在 Finder 中显示"), action: .revealInFinder, tabID: tabID)
+        revealInFinder.isEnabled = tab.path != nil
+        menu.addItem(revealInFinder)
         NSMenu.popUpContextMenu(menu, with: event, for: cell)
+    }
+
+    private func canRevealInWorkspace(_ tab: DocumentTab) -> Bool {
+        guard let path = tab.path,
+              let root = windowController?.session.workspaceRoot else { return false }
+        return URL(fileURLWithPath: path).standardizedFileURL.path.hasPrefix(
+            URL(fileURLWithPath: root).standardizedFileURL.path + "/"
+        )
     }
 
     private func contextMenuItem(_ title: String, action: TabContextAction, tabID: DocumentTabID) -> NSMenuItem {

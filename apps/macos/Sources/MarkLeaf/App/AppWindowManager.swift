@@ -782,21 +782,12 @@ final class AppWindowManager {
             activeSession?.statusText = L10n.t("未找到示例文档")
             return
         }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        let cacheDir = base.appendingPathComponent("MarkLeaf/SampleDocuments", isDirectory: true)
-        let target = sample.cachedURL(cacheDirectory: cacheDir)
         do {
-            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: target.path) {
-                try FileManager.default.removeItem(at: target)
-            }
-            try FileManager.default.copyItem(at: source, to: target)
-            let markdown = try String(contentsOf: target, encoding: .utf8)
-            let prepared = PreparedDocument(url: target, markdown: markdown, isReadOnly: false)
+            let markdown = try String(contentsOf: source, encoding: .utf8)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 guard let self else { return }
-                let controller = self.newWindow(preparedDocument: prepared)
+                let controller = self.activeWindowController ?? self.newWindow()
+                controller.openUntitledDocument(markdown: markdown)
                 controller.window?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             }

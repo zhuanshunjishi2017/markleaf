@@ -44,6 +44,89 @@ public sealed class EditorMenuModelTests
     }
 
     [TestMethod]
+    public void ReadOnlyTableKeepsOnlyClipboardCommands()
+    {
+        var model = Build(EditorCommandStatus.Empty with
+        {
+            ReadOnly = true,
+            InTable = true,
+            Actions = new Dictionary<string, CommandState>
+            {
+                ["copy"] = new(true),
+                ["copyAs"] = new(true),
+                ["copyHtml"] = new(true),
+            }
+        });
+        var commands = Commands(model);
+
+        foreach (var command in new[]
+        {
+            AppCommand.EditTableCaption, AppCommand.AddTableRowBefore, AppCommand.DeleteTableRow,
+            AppCommand.AddTableColumnBefore, AppCommand.DeleteTableColumn, AppCommand.AlignTableLeft,
+            AppCommand.DeleteTable
+        })
+            Assert.DoesNotContain(command, commands);
+        foreach (var command in new[]
+        {
+            AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
+            AppCommand.SelectAll
+        })
+            Assert.Contains(command, commands);
+    }
+
+    [TestMethod]
+    public void ReadOnlySourceUsesReadOnlyClipboardMenu()
+    {
+        var model = Build(EditorCommandStatus.Empty with
+        {
+            ReadOnly = true,
+            SourceMode = true,
+            Actions = new Dictionary<string, CommandState>
+            {
+                ["copy"] = new(true),
+                ["copyAs"] = new(true),
+                ["copyHtml"] = new(true),
+            }
+        });
+        var commands = Commands(model);
+
+        Assert.DoesNotContain(AppCommand.Undo, commands);
+        Assert.DoesNotContain(AppCommand.Redo, commands);
+        Assert.DoesNotContain(AppCommand.Cut, commands);
+        Assert.DoesNotContain(AppCommand.Paste, commands);
+        Assert.Contains(AppCommand.CopyMarkdown, commands);
+        Assert.Contains(AppCommand.CopyPlainText, commands);
+        Assert.Contains(AppCommand.CopyHtml, commands);
+        Assert.Contains(AppCommand.SelectAll, commands);
+    }
+
+    [TestMethod]
+    public void CopyAsSubMenuUsesPlainTextMarkdownHtmlOrder()
+    {
+        var model = Build();
+        var copyAs = model.Secondary.Single(x => x.Children.Any(child => child.Command == AppCommand.CopyPlainText));
+        CollectionAssert.AreEqual(new[]
+        {
+            AppCommand.CopyPlainText, AppCommand.CopyMarkdown, AppCommand.CopyHtml,
+        }, copyAs.Children.Select(x => x.Command!.Value).ToArray());
+    }
+
+    [TestMethod]
+    public void FrontMatterBlockMenuUsesDedicatedCommands()
+    {
+        var builder = new EditorMenuModelBuilder(_ => new CommandState(true), _ => "");
+        var model = builder.BuildBlock(EditorCommandStatus.Empty with { FrontMatter = true });
+        var commands = Commands(model);
+
+        Assert.Contains(AppCommand.CopyCodeBlock, commands);
+        Assert.Contains(AppCommand.ExitCode, commands);
+        Assert.Contains(AppCommand.SelectAll, commands);
+        Assert.DoesNotContain(AppCommand.SetParagraph, commands);
+        Assert.DoesNotContain(AppCommand.DeclareCodeLanguage, commands);
+        Assert.DoesNotContain(AppCommand.FormatCodeBlock, commands);
+    }
+
+    [TestMethod]
     public void ReadonlyObjectKeepsViewAndSaveActions()
     {
         var model = Build(EditorCommandStatus.Empty with { ReadOnly = true, ImageSelected = true });
@@ -147,4 +230,7 @@ public sealed class EditorMenuModelTests
 
     private static IEnumerable<EditorMenuEntry> Flatten(IEnumerable<EditorMenuEntry> entries) =>
         entries.SelectMany(x => new[] { x }.Concat(Flatten(x.Children)));
+
+    private static AppCommand[] Commands(EditorMenuModel model) =>
+        Flatten(model.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();
 }

@@ -10,6 +10,11 @@ namespace MarkLeaf.Native;
 
 internal sealed class NativeMenuService : IDisposable
 {
+    internal sealed record DocumentTabMenuEntry(
+        string Title,
+        string? FullPath = null,
+        bool IsDirty = false);
+
     private EditorMenuSession? _editorMenuSession;
     private CancellationTokenSource? _editorMenuCancellation;
     private long _editorMenuId;
@@ -26,7 +31,7 @@ internal sealed class NativeMenuService : IDisposable
     private readonly Func<bool> _showKeyboardShortcutsProvider;
     private readonly Func<bool> _showMnemonicsProvider;
     private readonly Func<string> _uiLanguageProvider;
-    private readonly Func<IReadOnlyList<string>> _openDocumentTabProvider;
+    private readonly Func<IReadOnlyList<DocumentTabMenuEntry>> _openDocumentTabProvider;
     private readonly Func<int> _activeDocumentTabProvider;
     private readonly Dictionary<uint, string> _styleCommandIds = new();
     private readonly Dictionary<uint, int> _zoomCommandIds = new();
@@ -59,6 +64,41 @@ internal sealed class NativeMenuService : IDisposable
         Func<bool> showMnemonicsProvider,
         Func<string> uiLanguageProvider,
         Func<IReadOnlyList<string>> openDocumentTabProvider,
+        Func<int> activeDocumentTabProvider,
+        Action<string>? diagnosticSink = null)
+        : this(
+            router,
+            shortcutManager,
+            recentWorkspaceProvider,
+            recentFileProvider,
+            currentStyleProvider,
+            currentZoomProvider,
+            currentColorThemeProvider,
+            followSystemProvider,
+            showKeyboardShortcutsProvider,
+            showMnemonicsProvider,
+            uiLanguageProvider,
+            () => openDocumentTabProvider()
+                .Select(title => new DocumentTabMenuEntry(title))
+                .ToArray(),
+            activeDocumentTabProvider,
+            diagnosticSink)
+    {
+    }
+
+    public NativeMenuService(
+        CommandRouter router,
+        ShortcutManager shortcutManager,
+        Func<IReadOnlyList<string>> recentWorkspaceProvider,
+        Func<IReadOnlyList<string>> recentFileProvider,
+        Func<string> currentStyleProvider,
+        Func<int> currentZoomProvider,
+        Func<string> currentColorThemeProvider,
+        Func<bool> followSystemProvider,
+        Func<bool> showKeyboardShortcutsProvider,
+        Func<bool> showMnemonicsProvider,
+        Func<string> uiLanguageProvider,
+        Func<IReadOnlyList<DocumentTabMenuEntry>> openDocumentTabProvider,
         Func<int> activeDocumentTabProvider,
         Action<string>? diagnosticSink = null)
     {
@@ -602,6 +642,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.SaveDocument, Loc.Get("menu.file.save"));
             AppendMainMenuCommand(menu, AppCommand.SaveAllDocuments, Loc.Get("menu.file.saveAll"));
             AppendMainMenuCommand(menu, AppCommand.SaveDocumentAs, Loc.Get("menu.file.saveAs"));
+            AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ExportDocument, Loc.Get("menu.file.export"));
             AppendMainMenuCommand(menu, AppCommand.ExportWithLastSettings, Loc.Get("menu.file.exportLast"));
             AppendMainMenuCommand(menu, AppCommand.Print, Loc.Get("menu.file.print"));
@@ -640,8 +681,8 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.Copy, Loc.Get("menu.edit.copy"));
 
             var copyPasteAs = CreateMenu(true);
-            AppendMainMenuCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
             AppendMainMenuCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("menu.edit.copyPlainText"));
+            AppendMainMenuCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("menu.edit.copyMarkdown"));
             AppendMainMenuCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("menu.edit.copyHtml"));
             AppendPopup(menu, Loc.Get("menu.edit.copyPasteAs"), copyPasteAs);
 
@@ -821,8 +862,8 @@ internal sealed class NativeMenuService : IDisposable
         var image = CreateMenu(true);
         AppendMainMenuCommand(image, AppCommand.ChangeImage, Loc.Get("contextMenu.image.change"));
         AppendMainMenuCommand(image, AppCommand.EditImageCaption, Loc.Get("contextMenu.image.caption"));
+            AppendPopup(image, Loc.Get("menu.format.resizeImage"), BuildResizeImageSubmenu());
         AppendMainMenuCommand(image, AppCommand.RotateImageClockwise, Loc.Get("menu.format.rotateImageClockwise"));
-        AppendPopup(image, Loc.Get("menu.format.resizeImage"), BuildResizeImageSubmenu());
         AppendMainMenuCommand(image, AppCommand.SaveImageAs, Loc.Get("menu.format.saveImageAs"));
         return image;
     }
@@ -1001,9 +1042,49 @@ internal sealed class NativeMenuService : IDisposable
         _documentTabCommandIds.Clear();
         var documents = _openDocumentTabProvider();
         var activeIndex = _activeDocumentTabProvider();
+
+        AppendMainMenuCommand(
+            _documentTabMenu,
+            AppCommand.SwitchToPreviousDocumentTab,
+            Loc.Get("menu.view.previousTab"),
+            _router.GetState(AppCommand.SwitchToPreviousDocumentTab).IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed);
+        AppendMainMenuCommand(
+            _documentTabMenu,
+            AppCommand.SwitchToNextDocumentTab,
+            Loc.Get("menu.view.nextTab"),
+            _router.GetState(AppCommand.SwitchToNextDocumentTab).IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed);
+        AppendMainMenuCommand(
+            _documentTabMenu,
+            AppCommand.CloseCurrentDocumentTab,
+            Loc.Get("menu.view.closeCurrentTab"),
+            _router.GetState(AppCommand.CloseCurrentDocumentTab).IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed);
+        AppendMainMenuCommand(
+            _documentTabMenu,
+            AppCommand.CloseOtherDocumentTabs,
+            Loc.Get("menu.view.closeOtherTabs"),
+            _router.GetState(AppCommand.CloseOtherDocumentTabs).IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed);
+        AppendMainMenuCommand(
+            _documentTabMenu,
+            AppCommand.ReopenClosedTab,
+            Loc.Get("menu.view.reopenClosedTab"));
+
+        if (documents.Count > 0)
+        {
+            AppendSeparator(_documentTabMenu);
+        }
+
         for (var index = 0; index < documents.Count; index++)
         {
-            var label = documents[index].Replace("&", "&&", StringComparison.Ordinal);
+            var label = DocumentTabMenuLabel(documents, index)
+                .Replace("&", "&&", StringComparison.Ordinal);
             var flags = NativeMethods.MfString
                 | (index == activeIndex ? NativeMethods.MfChecked : NativeMethods.MfUnchecked);
             if (index < 9)
@@ -1023,52 +1104,6 @@ internal sealed class NativeMenuService : IDisposable
             _documentTabCommandIds[commandId] = index;
             Append(_documentTabMenu, flags, commandId, label);
         }
-
-        if (documents.Count > 0)
-        {
-            AppendSeparator(_documentTabMenu);
-        }
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.SwitchToNextDocumentTab,
-            Loc.Get("menu.view.nextTab"),
-            _router.GetState(AppCommand.SwitchToNextDocumentTab).IsEnabled
-                ? NativeMethods.MfString
-                : NativeMethods.MfString | NativeMethods.MfGrayed);
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.SwitchToPreviousDocumentTab,
-            Loc.Get("menu.view.previousTab"),
-            _router.GetState(AppCommand.SwitchToPreviousDocumentTab).IsEnabled
-                ? NativeMethods.MfString
-                : NativeMethods.MfString | NativeMethods.MfGrayed);
-        AppendSeparator(_documentTabMenu);
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.CloseCurrentDocumentTab,
-            Loc.Get("menu.view.closeCurrentTab"),
-            _router.GetState(AppCommand.CloseCurrentDocumentTab).IsEnabled
-                ? NativeMethods.MfString
-                : NativeMethods.MfString | NativeMethods.MfGrayed);
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.ReopenClosedTab,
-            Loc.Get("menu.view.reopenClosedTab"));
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.CloseOtherDocumentTabs,
-            Loc.Get("menu.view.closeOtherTabs"),
-            _router.GetState(AppCommand.CloseOtherDocumentTabs).IsEnabled
-                ? NativeMethods.MfString
-                : NativeMethods.MfString | NativeMethods.MfGrayed);
-        AppendSeparator(_documentTabMenu);
-        AppendMainMenuCommand(
-            _documentTabMenu,
-            AppCommand.LocateCurrentDocumentInWorkspace,
-            Loc.Get("menu.view.locateDocument"),
-            _router.GetState(AppCommand.LocateCurrentDocumentInWorkspace).IsEnabled
-                ? NativeMethods.MfString
-                : NativeMethods.MfString | NativeMethods.MfGrayed);
     }
 
     private void AppendColorThemeItem(ColorTheme theme, string current, bool enabled)
@@ -1123,6 +1158,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendCommand(menu, AppCommand.ZoomReset, Loc.Get("menu.view.zoomReset"));
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ShowThemeSettings, Loc.Get("menu.view.theme"));
+            AppendMainMenuCommand(menu, AppCommand.FollowSystemColorMode, Loc.Get("menu.view.followSystem"));
             AppendSeparator(menu);
             AppendCommand(menu, AppCommand.RerenderAllMermaid, Loc.Get("menu.paragraph.rerenderAllMermaid"));
             AppendMainMenuCommand(menu, AppCommand.RestartEditor, Loc.Get("menu.view.restartEditor"));
@@ -1201,7 +1237,8 @@ internal sealed class NativeMenuService : IDisposable
             for (var index = 0; index < files.Length; index++)
             {
                 var command = RecentCommandCatalog.Files[index];
-                AppendCommand(_recentWorkspaceMenu, command, $"{index + 1}  {files[index]}");
+                AppendCommand(_recentWorkspaceMenu, command,
+                    $"{index + 1}  {RecentMenuLabel(files[index], files.Concat(folders))}");
             }
         }
 
@@ -1216,7 +1253,8 @@ internal sealed class NativeMenuService : IDisposable
             for (var index = 0; index < folders.Length; index++)
             {
                 var command = RecentCommandCatalog.Folders[index];
-                AppendCommand(_recentWorkspaceMenu, command, $"{index + 1}  {folders[index]}");
+                AppendCommand(_recentWorkspaceMenu, command,
+                    $"{index + 1}  {RecentMenuLabel(folders[index], files.Concat(folders))}");
             }
         }
     }
@@ -1224,6 +1262,34 @@ internal sealed class NativeMenuService : IDisposable
     private void AppendCommand(nint menu, AppCommand command, string text)
     {
         Append(menu, NativeMethods.MfString, (nuint)command, text);
+    }
+
+    internal static string RecentMenuLabel(string path, IEnumerable<string> siblingPaths)
+    {
+        var fileName = Path.GetFileName(path);
+        var duplicate = siblingPaths.Count(candidate =>
+            string.Equals(Path.GetFileName(candidate), fileName, StringComparison.OrdinalIgnoreCase)) > 1;
+        if (!duplicate) return fileName;
+        var parent = Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(path) ?? ""));
+        return string.IsNullOrEmpty(parent) ? fileName : $"{fileName} — {parent}";
+    }
+
+    internal static string DocumentTabMenuLabel(
+        IReadOnlyList<DocumentTabMenuEntry> entries,
+        int index)
+    {
+        var entry = entries[index];
+        var label = entry.IsDirty ? $"● {entry.Title}" : entry.Title;
+        var duplicateCount = entries.Count(candidate =>
+            string.Equals(candidate.Title, entry.Title, StringComparison.OrdinalIgnoreCase));
+        if (duplicateCount < 2 || string.IsNullOrWhiteSpace(entry.FullPath))
+        {
+            return label;
+        }
+
+        var parent = Path.GetFileName(
+            Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(entry.FullPath) ?? string.Empty));
+        return string.IsNullOrEmpty(parent) ? label : $"{label} — {parent}";
     }
 
     /// <summary>

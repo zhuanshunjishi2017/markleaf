@@ -41,6 +41,29 @@ public sealed class HostPopupMenuModelTests
     }
 
     [TestMethod]
+    public void WorkspaceDirectoryOffersDynamicExpandCollapse()
+    {
+        LocTestHelper.EnsureInitialized();
+        var expanded = false;
+        var model = HostPopupMenuModel.Workspace(
+            WorkspacePopupTargetKind.Directory,
+            _ => new CommandState(true),
+            _ => "",
+            @"C:\workspace\folder",
+            _ => expanded);
+
+        Assert.AreEqual("展开(E)", model.Secondary[0].Label);
+        expanded = true;
+        model = HostPopupMenuModel.Workspace(
+            WorkspacePopupTargetKind.Directory,
+            _ => new CommandState(true),
+            _ => "",
+            @"C:\workspace\folder",
+            _ => expanded);
+        Assert.AreEqual("折叠(C)", model.Secondary[0].Label);
+    }
+
+    [TestMethod]
     public void Workspace_TargetsExposeOnlyRelevantActionsAndState()
     {
         var file = Commands(HostPopupMenuModel.Workspace(WorkspacePopupTargetKind.File,

@@ -97,7 +97,7 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
         menu.addItem(commandItem(L10n.t("复制文件路径"), "copyActiveTabPath"))
-        menu.addItem(commandItem(L10n.t("复制内容到剪贴板"), "copyActiveFileContents"))
+        menu.addItem(commandItem(L10n.t("复制文件内容"), "copyActiveFileContents"))
         menu.addItem(commandItem(L10n.t("在 Finder 中显示"), "revealActiveTabInFinder"))
         menu.addItem(commandItem(L10n.t("重命名"), "renameActiveTab"))
         menu.addItem(commandItem(L10n.t("分享"), "shareActiveTab"))
@@ -118,8 +118,6 @@ final class NativeMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))
         menu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))
-        menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
-        menu.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))
         let copyAs = NSMenu(title: L10n.t("复制为"))
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
@@ -127,6 +125,8 @@ final class NativeMenuBuilder {
         let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true, validationCommand: "copyAs")
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
+        menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
+        menu.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("全选"), "selectAll", key: "a"))
         menu.addItem(.separator())
@@ -256,8 +256,9 @@ final class NativeMenuBuilder {
 
     private func imageEditingMenu() -> NSMenu {
         let menu = NSMenu()
-        for (title, command) in [("更换图片…", "changeImage"), ("编辑标题…", "editImageCaption"), ("顺时针旋转90°", "rotateImage"),
-                                  ("50%", "resizeImage50"), ("75%", "resizeImage75"), ("90%", "resizeImage90"), ("100%", "resizeImage100"), ("将图片另存为…", "saveImageAs")] {
+        for (title, command) in [("更换图片…", "changeImage"), ("编辑标题…", "editImageCaption"),
+                                  ("50%", "resizeImage50"), ("75%", "resizeImage75"), ("90%", "resizeImage90"), ("100%", "resizeImage100"),
+                                  ("顺时针旋转90°", "rotateImage"), ("将图片另存为…", "saveImageAs")] {
             menu.addItem(commandItem(L10n.t(title), command))
         }
         return menu
@@ -267,9 +268,8 @@ final class NativeMenuBuilder {
 
     private func viewMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))
         let sidebarSettings = NSMenu(title: L10n.t("侧栏设置"))
-        sidebarSettings.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))
-        sidebarSettings.addItem(.separator())
         sidebarSettings.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))
         sidebarSettings.addItem(commandItem(L10n.t("大纲"), "outlineTab"))
         sidebarSettings.addItem(commandItem(L10n.t("树结构"), "treeView"))
@@ -290,7 +290,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("只读模式"), "toggleReadOnlyMode"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("编辑器专注模式"), "toggleEditorFocusMode"))
+        menu.addItem(commandItem(L10n.t("段落专注模式"), "toggleEditorFocusMode"))
         menu.addItem(commandItem(L10n.t("打字机模式"), "toggleTypewriterMode"))
         menu.addItem(commandItem(
             L10n.t("最简模式"),
@@ -748,7 +748,12 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
 
             for tab in windowSession.tabStore.tabs {
                 let item = NSMenuItem(
-                    title: (tab.isDirty ? "● " : "") + tab.title,
+                title: Self.tabMenuItemTitle(
+                    title: tab.title,
+                    path: tab.path,
+                    isDirty: tab.isDirty,
+                    siblingPaths: windowSession.tabStore.tabs.map(\.path)
+                ),
                     action: #selector(MenuRouter.performCommand(_:)),
                     keyEquivalent: ""
                 )
@@ -759,6 +764,22 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 menu.addItem(item)
             }
         }
+
+    static func tabMenuItemTitle(
+        title: String,
+        path: String?,
+        isDirty: Bool,
+        siblingPaths: [String?]
+    ) -> String {
+        let baseTitle = isDirty ? "● " + title : title
+        let duplicateCount = siblingPaths.compactMap { $0 }.count { path in
+            (path as NSString).lastPathComponent == title
+        }
+        guard duplicateCount > 1, let path else { return baseTitle }
+        let parent = (path as NSString).deletingLastPathComponent
+        guard !parent.isEmpty, parent != "/" else { return baseTitle }
+        return baseTitle + " — " + (parent as NSString).lastPathComponent
+    }
     }
 
     /// 为仅用于展示子菜单的父级菜单项提供 target+action，使 AppKit 自动校验得以触发。
@@ -797,16 +818,23 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
         // 最近文件：无标签时由窗口层兜底打开；最近文件夹：跟随窗口级会话。
         let canOpenFile = manager.activeSession != nil || manager.activeWindowController != nil
         let canOpenFolder = (manager.activeSession ?? manager.activeViewStateSession) != nil
+        let recentFiles = settings.recordRecentFiles
+            ? Array(settings.recentFiles.prefix(10))
+            : []
+        let recentFolders = settings.recordRecentFolders
+            ? Array(settings.recentFolders.prefix(10))
+            : []
+        let allRecentPaths = recentFiles + recentFolders
 
         if settings.recordRecentFiles {
             let filesHeader = disabledItem(L10n.t("最近文件"))
             menu.addItem(filesHeader)
-            let files = settings.recentFiles.prefix(10)
+            let files = recentFiles
             if files.isEmpty {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in files.enumerated() {
-                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "file", path)
+                let item = recentItem("\(index + 1)  \(recentMenuTitle(path, allPaths: allRecentPaths))", "file", path)
                 item.isEnabled = canOpenFile
                 menu.addItem(item)
             }
@@ -815,12 +843,12 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
             if settings.recordRecentFiles { menu.addItem(.separator()) }
             let foldersHeader = disabledItem(L10n.t("最近文件夹"))
             menu.addItem(foldersHeader)
-            let folders = settings.recentFolders.prefix(10)
+            let folders = recentFolders
             if folders.isEmpty {
                 menu.addItem(disabledItem(L10n.t("(暂无)")))
             }
             for (index, path) in folders.enumerated() {
-                let item = recentItem("\(index + 1)  \((path as NSString).lastPathComponent)", "folder", path)
+                let item = recentItem("\(index + 1)  \(recentMenuTitle(path, allPaths: allRecentPaths))", "folder", path)
                 item.isEnabled = canOpenFolder
                 menu.addItem(item)
             }
@@ -836,6 +864,16 @@ final class RecentMenuDelegate: NSObject, NSMenuDelegate {
         item.representedObject = [kind, path]
         item.tag = 100
         return item
+    }
+
+    private func recentMenuTitle(_ path: String, allPaths: [String]) -> String {
+        let fileName = (path as NSString).lastPathComponent
+        let duplicate = allPaths.filter {
+            ($0 as NSString).lastPathComponent.caseInsensitiveCompare(fileName) == .orderedSame
+        }.count > 1
+        guard duplicate else { return fileName }
+        let parent = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+        return parent.isEmpty ? fileName : "\(fileName) — \(parent)"
     }
 
     private func disabledItem(_ title: String) -> NSMenuItem {

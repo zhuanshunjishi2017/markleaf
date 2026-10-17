@@ -114,6 +114,31 @@ public sealed class DocumentRestoreIntegrationTests
         });
     }
 
+    [STATestMethod]
+    public void WelcomeOpensAsReadOnly()
+    {
+        WithForm(form =>
+        {
+            ((Task)Method("ShowWelcomeAsync").Invoke(form, null)!).GetAwaiter().GetResult();
+            var document = (MarkdownDocument)Field("_document").GetValue(form)!;
+            Assert.IsTrue(document.IsReadOnly);
+        });
+    }
+
+    [STATestMethod]
+    public void BundledSampleOpensAsEditableUntitledCopy()
+    {
+        WithForm(form =>
+        {
+            ((Task)Method("OpenBundledSampleAsync").Invoke(form, ["alert-examples.md"])!).GetAwaiter().GetResult();
+            var document = (MarkdownDocument)Field("_document").GetValue(form)!;
+            Assert.IsNull(document.FilePath);
+            Assert.IsFalse(document.IsReadOnly || document.IsUserReadOnly);
+            Assert.IsFalse(document.IsDirty);
+            Assert.IsTrue(document.Markdown.Contains("提示框", StringComparison.Ordinal));
+        });
+    }
+
     private static FieldInfo Field(string name) => typeof(MainForm).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static MethodInfo Method(string name) => typeof(MainForm).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!;
 
@@ -133,5 +158,34 @@ public sealed class DocumentRestoreIntegrationTests
             test(form);
         }
         finally { Directory.Delete(directory, true); }
+    }
+
+    private static async Task WithFormAsync(Func<MainForm, Task> test)
+    {
+        LocTestHelper.EnsureInitialized();
+        var styles = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "Resources", "Styles");
+        StyleService.Initialize(styles);
+        ColorThemeService.Initialize(styles);
+        var directory = Path.Combine(Path.GetTempPath(), "markleaf-restore-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var paths = ApplicationPaths.Create(directory);
+            using var logger = new FileLogger(paths.LogDirectory);
+            using var form = new MainForm(LaunchOptions.Parse([]), paths, new AppSettings(), new JsonSettingsService(paths.SettingsFile, logger), logger);
+            await test(form);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    private static async Task WaitForDocumentAsync(MainForm form)
+    {
+        for (var attempt = 0; attempt < 40 && Field("_document").GetValue(form) is null; attempt++)
+        {
+            Application.DoEvents();
+            await Task.Delay(25);
+        }
+        Application.DoEvents();
+        await Task.Delay(25);
     }
 }

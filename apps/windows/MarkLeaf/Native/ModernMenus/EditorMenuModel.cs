@@ -87,7 +87,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
         var commands = new List<AppCommand>();
         try
         {
-            if (status.SourceMode)
+            if (status.SourceMode && !status.ReadOnly)
             {
                 AppendCommand(menu, AppCommand.Undo, Loc.Get("contextMenu.undo"));
                 AppendCommand(menu, AppCommand.Redo, Loc.Get("contextMenu.redo"));
@@ -107,8 +107,8 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
 
                 var copyPasteAs = CreateMenu(true);
-                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
                 AppendSeparator(copyPasteAs);
                 AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
@@ -123,7 +123,7 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                     AppCommand.Cut, AppCommand.Copy, AppCommand.CopyMarkdown, AppCommand.CopyPlainText, AppCommand.CopyHtml,
                     AppCommand.Paste, AppCommand.PastePlainText, AppCommand.SelectAll]);
             }
-            else if (status.InTable)
+            else if (status.InTable && !status.ReadOnly)
             {
                 AppendTableCommands(menu, includeClipboard: true);
                 commands.AddRange([
@@ -226,8 +226,8 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                 AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
 
                 var copyPasteAs = CreateMenu(true);
-                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+                AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
                 AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
                 AppendPopup(menu, Loc.Get("contextMenu.copyAs"), copyPasteAs);
 
@@ -422,18 +422,14 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
 
     private void AppendReadOnlyContextMenu(Branch menu)
     {
-        AppendCommand(menu, AppCommand.Cut, Loc.Get("contextMenu.cut"));
         AppendCommand(menu, AppCommand.Copy, Loc.Get("contextMenu.copy"));
 
         var copyPasteAs = CreateMenu(true);
-        AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
         AppendCommand(copyPasteAs, AppCommand.CopyPlainText, Loc.Get("contextMenu.copyPlainText"));
+        AppendCommand(copyPasteAs, AppCommand.CopyMarkdown, Loc.Get("contextMenu.copyMarkdown"));
         AppendCommand(copyPasteAs, AppCommand.CopyHtml, Loc.Get("contextMenu.copyHtml"));
-        AppendSeparator(copyPasteAs);
-        AppendCommand(copyPasteAs, AppCommand.PastePlainText, Loc.Get("contextMenu.pastePlainText"));
         AppendPopup(menu, Loc.Get("contextMenu.copyPasteAs"), copyPasteAs);
 
-        AppendCommand(menu, AppCommand.Paste, Loc.Get("contextMenu.paste"));
         AppendSeparator(menu);
         AppendCommand(menu, AppCommand.SelectAll, Loc.Get("contextMenu.selectAll"));
     }
@@ -451,6 +447,17 @@ internal sealed class EditorMenuModelBuilder(Func<AppCommand, CommandState> stat
                     status,
                     includeLanguage: true,
                     includeFormat: true);
+                return menu;
+            }
+
+            if (status is { FrontMatter: true })
+            {
+                AppendCodeContextMenu(
+                    menu,
+                    [],
+                    status,
+                    includeLanguage: false,
+                    includeFormat: false);
                 return menu;
             }
 

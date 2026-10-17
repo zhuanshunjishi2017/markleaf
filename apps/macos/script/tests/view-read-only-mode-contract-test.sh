@@ -11,16 +11,12 @@ fail() {
 }
 
 view_menu="$(sed -n '/private func viewMenu()/,/^    private func helpMenu()/p' "$MENU")"
-minimal_to_zoom="$(sed -n '/L10n.t("最简模式")/,/设置缩放/p' <<<"$view_menu")"
+document_mode="$(sed -n '/L10n.t("源码模式")/,/L10n.t("编辑器专注模式")/p' <<<"$view_menu")"
 
-grep -Fq 'L10n.t("只读模式")' <<<"$minimal_to_zoom" \
-    || fail "the read-only toggle must sit between Minimal Mode and zoom"
+grep -Fq 'L10n.t("只读模式")' <<<"$document_mode" \
+    || fail "the read-only toggle must sit in the document-mode group after source mode"
 
-read -r first_command second_command <<EOF
-$(sed -n '/L10n.t("只读模式")/,/设置缩放/p' <<<"$view_menu" | grep -o 'commandItem(\|toggleReadOnlyMode\|设置缩放' | head -4 | tr '\n' ' ')
-EOF
-
-grep -Fq '"toggleReadOnlyMode"' <<<"$minimal_to_zoom" \
+grep -Fq '"toggleReadOnlyMode"' <<<"$document_mode" \
     || fail "the read-only item must route to toggleReadOnlyMode"
 
 toggle_dispatch_block="$(sed -n '/case "toggleReadOnlyMode":/,/case "learnMarkdown":/p' "$MENU")"

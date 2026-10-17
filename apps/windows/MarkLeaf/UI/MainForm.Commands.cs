@@ -151,6 +151,7 @@ internal sealed partial class MainForm
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
             ShowCodeHighlight: _settings.Appearance.ShowCodeHighlight,
+            FollowSystemColorMode: _settings.Appearance.FollowSystemColorMode,
             ListViewActive: _workspaceListViewActive,
             IndependentOutlineSidebar: _outlineDetached,
             // 有效只读 = 文件级只读（权限/以只读打开）或用户手动开启的只读模式；
@@ -381,7 +382,7 @@ internal sealed partial class MainForm
                 ShowChangelog();
                 break;
             case AppCommand.ShowWelcome:
-                ShowWelcome();
+                _ = ShowWelcomeAsync();
                 break;
             case AppCommand.CheckForUpdates:
                 _ = CheckForUpdatesAsync();

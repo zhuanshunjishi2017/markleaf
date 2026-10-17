@@ -22,7 +22,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
             shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
-            () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var menu = (nint)typeof(NativeMenuService).GetMethod("BuildFileMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
         {
@@ -41,7 +41,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
             shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
-            () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var menu = (nint)typeof(NativeMenuService).GetMethod("BuildFileMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
         {
@@ -60,6 +60,52 @@ public sealed class MenuBarContractTests
     }
 
     [TestMethod]
+    public void RecentItemsWithDuplicateNamesShowParentDirectory()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts,
+            () => new[] { @"C:\notes\a\README.md", @"C:\notes\b\README.md" },
+            () => Array.Empty<string>(),
+            () => "serif", () => 100, () => "light", () => false, () => true, () => false, () => "zh-CN",
+            () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var root = (nint)typeof(NativeMenuService).GetMethod("BuildMainMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            typeof(NativeMenuService).GetMethod("RefreshRecentWorkspaces", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null);
+            var recent = (nint)typeof(NativeMenuService).GetField("_recentWorkspaceMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(service)!;
+            var labels = MenuLabels(recent).ToArray();
+            Assert.Contains("1  README.md — a", labels);
+            Assert.Contains("2  README.md — b", labels);
+            Assert.IsFalse(labels.Any(label => label.Contains(@"C:\notes\", StringComparison.Ordinal)));
+        }
+        finally { DestroyMenu(root); }
+    }
+
+    [TestMethod]
+    public void FormatImageSubmenuPutsResizeBeforeRotate()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var format = (nint)typeof(NativeMenuService).GetMethod("BuildFormatMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            var image = FindSubMenu(format, "图片");
+            Assert.AreNotEqual(nint.Zero, image);
+            Assert.AreEqual((uint)AppCommand.ChangeImage, GetMenuItemID(image, 0));
+            Assert.AreEqual((uint)AppCommand.EditImageCaption, GetMenuItemID(image, 1));
+            Assert.AreEqual(0xFFFFFFFFu, GetMenuItemID(image, 2));
+            Assert.AreEqual((uint)AppCommand.RotateImageClockwise, GetMenuItemID(image, 3));
+            Assert.AreEqual((uint)AppCommand.SaveImageAs, GetMenuItemID(image, 4));
+        }
+        finally { DestroyMenu(format); }
+    }
+
+    [TestMethod]
     public void RecentMenusExposeTenFilesAndTenFoldersWithoutCommandCollisions()
     {
         Loc.Initialize(LocalesDirectory, "zh-CN");
@@ -67,7 +113,7 @@ public sealed class MenuBarContractTests
         using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }), shortcuts,
             () => Enumerable.Range(0, 10).Select(i => $@"C:\folders\{i}").ToArray(),
             () => Enumerable.Range(0, 10).Select(i => $@"C:\files\{i}.md").ToArray(),
-            () => "serif", () => 100, () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => "serif", () => 100, () => "light", () => false, () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var root = (nint)typeof(NativeMenuService).GetMethod("BuildMainMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
         {
@@ -124,7 +170,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         var router = new CommandRouter(shortcuts, _ => new CommandState(true), _ => { });
         using var service = new NativeMenuService(router, shortcuts, () => [], () => [], () => "serif", () => 100,
-            () => "light", () => false, () => true, () => false, () => language, () => [], () => -1);
+            () => "light", () => false, () => true, () => false, () => language, () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var root = (nint)typeof(NativeMenuService).GetMethod("BuildMainMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
         {
@@ -155,7 +201,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         var router = new CommandRouter(shortcuts, _ => new CommandState(true), _ => { });
         using var service = new NativeMenuService(router, shortcuts, () => [], () => [], () => "serif", () => 100,
-            () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => "light", () => false, () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var root = (nint)typeof(NativeMenuService).GetMethod("BuildMainMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
         {
@@ -165,7 +211,7 @@ public sealed class MenuBarContractTests
                 return buffer.ToString().Replace("&", "");
             }).ToArray();
             Assert.HasCount(6, labels, string.Join(" | ", labels));
-            CollectionAssert.AreEqual(new[] { "文件", "编辑", "插入", "格式", "查看", "帮助" }, labels);
+            CollectionAssert.AreEqual(new[] { "文件", "编辑", "插入", "格式", "视图", "帮助" }, labels);
         }
         finally { DestroyMenu(root); }
     }
@@ -176,7 +222,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         var router = new CommandRouter(shortcuts, _ => new CommandState(true), _ => { });
         using var service = new NativeMenuService(router, shortcuts, () => [], () => [], () => "serif", () => 100,
-            () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => "light", () => false, () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
 
         var model = service.BuildBlockMenuModel(EditorCommandStatus.Empty with { InTable = true });
 
@@ -192,7 +238,7 @@ public sealed class MenuBarContractTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         var router = new CommandRouter(shortcuts, command => CommandStateResolver.Resolve(command, context), _ => { });
         using var service = new NativeMenuService(router, shortcuts, () => [], () => [], () => "serif", () => 100,
-            () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => "light", () => false, () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
         var view = (nint)typeof(NativeMenuService).GetMethod("BuildViewMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         var help = (nint)typeof(NativeMenuService).GetMethod("BuildHelpMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
         try
@@ -200,6 +246,13 @@ public sealed class MenuBarContractTests
             var tabs = GetSubMenu(view, 3);
             Assert.AreEqual(0u, GetMenuState(tabs, (uint)AppCommand.ReopenClosedTab, 0) & 0x3u);
             Assert.AreNotEqual(0u, GetMenuState(tabs, (uint)AppCommand.SwitchToPreviousDocumentTab, 0) & 0x3u);
+            Assert.AreEqual((uint)AppCommand.SwitchToPreviousDocumentTab, GetMenuItemID(tabs, 0));
+            Assert.AreEqual((uint)AppCommand.SwitchToNextDocumentTab, GetMenuItemID(tabs, 1));
+            Assert.AreEqual((uint)AppCommand.CloseCurrentDocumentTab, GetMenuItemID(tabs, 2));
+            Assert.AreEqual((uint)AppCommand.CloseOtherDocumentTabs, GetMenuItemID(tabs, 3));
+            Assert.AreEqual((uint)AppCommand.ReopenClosedTab, GetMenuItemID(tabs, 4));
+            Assert.AreEqual(0xFFFFFFFFu, GetMenuItemID(tabs, 5));
+            Assert.AreEqual(0xFFFFFFFFu, GetMenuItemID(tabs, 6));
             Assert.AreEqual(0u, GetMenuState(help, (uint)AppCommand.LearnMarkdown, 0) & 0x3u);
             Assert.AreEqual(0u, GetMenuState(help, (uint)AppCommand.OpenOnlineHelp, 0) & 0x3u);
             Assert.AreEqual(0u, GetMenuState(help, (uint)AppCommand.OpenSampleYamlBasic, 0) & 0x3u);
@@ -212,8 +265,56 @@ public sealed class MenuBarContractTests
         }
     }
 
+    [TestMethod]
+    public void DocumentTabsShowDirtyMarkerAndDisambiguatedDuplicateParents()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        var tabs = new NativeMenuService.DocumentTabMenuEntry[]
+        {
+            new("README.md", @"C:\notes\a\README.md", IsDirty: true),
+            new("README.md", @"C:\notes\b\README.md"),
+        };
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => tabs, () => 0);
+        var view = (nint)typeof(NativeMenuService).GetMethod("BuildViewMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            var tabMenu = GetSubMenu(view, 3);
+            var labels = MenuLabels(tabMenu).ToArray();
+            CollectionAssert.Contains(labels, "● README.md — a\tAlt+1");
+            CollectionAssert.Contains(labels, "README.md — b\tAlt+2");
+        }
+        finally { DestroyMenu(view); }
+    }
+
     private static IEnumerable<EditorMenuEntry> Flatten(IEnumerable<EditorMenuEntry> entries) =>
         entries.SelectMany(x => new[] { x }.Concat(Flatten(x.Children)));
+
+    private static nint FindSubMenu(nint menu, string title)
+    {
+        for (var index = 0; index < GetMenuItemCount(menu); index++)
+        {
+            var child = GetSubMenu(menu, index);
+            var buffer = new StringBuilder(256);
+            GetMenuString(menu, (uint)index, buffer, buffer.Capacity, 0x400);
+            if (buffer.ToString().Replace("&", "") == title) return child;
+            var nested = FindSubMenu(child, title);
+            if (nested != nint.Zero) return nested;
+        }
+        return nint.Zero;
+    }
+
+    private static IEnumerable<string> TopLevelMenuLabels(nint menu)
+    {
+        for (var index = 0; index < GetMenuItemCount(menu); index++)
+        {
+            var buffer = new StringBuilder(256);
+            GetMenuString(menu, (uint)index, buffer, buffer.Capacity, 0x400);
+            yield return buffer.ToString().Replace("&", "");
+        }
+    }
 
     [DllImport("user32.dll")] private static extern int GetMenuItemCount(nint menu);
     [DllImport("user32.dll")] private static extern uint GetMenuItemID(nint menu, int position);

@@ -243,7 +243,12 @@ internal sealed partial class MainForm : Form
             () => _settings.Appearance.ShowMenuKeyboardShortcuts,
             () => _settings.Appearance.ShowMenuMnemonics,
             () => _settings.General.UiLanguage,
-            () => _openDocuments.Select(document => document.DisplayName).ToArray(),
+            () => _openDocuments
+                .Select(document => new NativeMenuService.DocumentTabMenuEntry(
+                    document.DisplayName,
+                    document.FilePath,
+                    document.IsDirty))
+                .ToArray(),
             () => _activeDocumentIndex,
             line => _logger.Info(line));
         _shortcutManager.Changed += () =>

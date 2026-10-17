@@ -31,7 +31,9 @@ internal static class HostPopupMenuModel
     public static EditorMenuModel Workspace(
         WorkspacePopupTargetKind kind,
         Func<AppCommand, CommandState> state,
-        Func<AppCommand, string> shortcut)
+        Func<AppCommand, string> shortcut,
+        string? targetPath = null,
+        Func<string, bool>? directoryExpanded = null)
     {
         if (kind == WorkspacePopupTargetKind.File)
         {
@@ -56,7 +58,13 @@ internal static class HostPopupMenuModel
                     Command(AppCommand.WorkspaceNewTextFile, "workspaceMenu.newTextFile", state, shortcut),
                 ]);
             return Model([
-                Command(AppCommand.WorkspaceOpen, "workspaceEntry.open", state, shortcut),
+                Command(
+                    AppCommand.WorkspaceOpen,
+                    directoryExpanded?.Invoke(targetPath!) == true
+                        ? "workspaceMenu.collapseFolder"
+                        : "workspaceMenu.expandFolder",
+                    state,
+                    shortcut),
                 Command(AppCommand.WorkspaceOpenInNewWindow, "workspaceEntry.openInNewWindow", state, shortcut),
                 EditorMenuEntry.Separator,
                 create,

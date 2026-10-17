@@ -25,6 +25,12 @@ extension EditorSession {
             addFootnoteCommands(to: menu, state: state)
         case .table:
             addTableCommands(to: menu, state: state, includeClipboard: false)
+        case .frontMatter:
+            addCodeContextMenu(
+                menu,
+                state: state,
+                includeLanguage: false,
+                includeFormat: false)
         case .codeBlock:
             addCodeContextMenu(
                 menu,
@@ -63,7 +69,7 @@ extension EditorSession {
         menu.addItem(headingItem)
         menu.addItem(.separator())
         addFormatCommand(menu, L10n.t("引用"), "toggleBlockquote")
-        addFormatCommand(menu, L10n.t("段间公式"), "insertMathBlock")
+        addFormatCommand(menu, L10n.t("块级公式"), "insertMathBlock")
         addFormatCommand(menu, L10n.t("代码块"), "toggleCodeBlock")
         addFormatCommand(menu, L10n.t("水平线"), "insertHorizontalRule")
         let alerts = NSMenu(title: L10n.t("提示框"))
@@ -484,9 +490,9 @@ extension EditorSession {
     private func addFootnoteCommands(to menu: NSMenu, state: EditorContextMenuState) {
         let commands: [(String, String, EditorNativeCommand)] = [
             (L10n.t("转到引用"), "goToFootnoteReference", .goToFootnoteReference),
-            (L10n.t("重设注释编号"), "resetFootnoteLabel", .resetFootnoteNumber),
-            (L10n.t("清空引用"), "clearFootnoteReferences", .clearFootnoteReferences),
-            (L10n.t("删除注释"), "deleteFootnote", .deleteFootnote),
+            (L10n.t("更改脚注标识…"), "resetFootnoteLabel", .resetFootnoteNumber),
+            (L10n.t("删除全部引用"), "clearFootnoteReferences", .clearFootnoteReferences),
+            (L10n.t("删除脚注及全部引用"), "deleteFootnote", .deleteFootnote),
         ]
         for (title, command, nativeCommand) in commands where EditorMenuPolicy.allows(nativeCommand, state: state) {
             addFormatCommand(menu, title, command)
@@ -629,26 +635,25 @@ extension EditorSession {
             let copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")
             copyAs.isEnabled = canCopyAs || canPaste
             let copyAsMenu = NSMenu()
-            let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
-            markdown.isEnabled = canCopyAs
-            copyAsMenu.addItem(markdown)
             let plain = menuItem(L10n.t("纯文本"), #selector(copyPlain(_:)))
             plain.isEnabled = canCopyAs
             copyAsMenu.addItem(plain)
+            let markdown = menuItem(L10n.t("Markdown"), #selector(copyMarkdown(_:)))
+            markdown.isEnabled = canCopyAs
+            copyAsMenu.addItem(markdown)
             let html = menuItem(L10n.t("HTML"), #selector(handleCommand(_:)))
             html.representedObject = "copyHtml"
             html.isEnabled = editorCommandEnabled("copyHtml")
             copyAsMenu.addItem(html)
-            copyAsMenu.addItem(.separator())
-            let pastePlain = menuItem(L10n.t("粘贴为纯文本"), #selector(pastePlainTextFromClipboardAction(_:)))
-            pastePlain.representedObject = "pastePlainText"
-            pastePlain.isEnabled = canPaste
-            applyShortcut(to: pastePlain, command: "pastePlainText")
-            copyAsMenu.addItem(pastePlain)
             copyAs.submenu = copyAsMenu
             menu.addItem(copyAs)
         }
         addEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)
+        let pastePlain = menuItem(L10n.t("粘贴为纯文本"), #selector(pastePlainTextFromClipboardAction(_:)))
+        pastePlain.representedObject = "pastePlainText"
+        pastePlain.isEnabled = canPaste
+        applyShortcut(to: pastePlain, command: "pastePlainText")
+        menu.addItem(pastePlain)
         if includeSelectAll {
             menu.addItem(.separator())
             addFormatCommand(menu, L10n.t("全选"), "selectAll")

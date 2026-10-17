@@ -272,6 +272,13 @@ internal sealed class WorkspaceTreeView : Control
         Invalidate();
     }
 
+    public void Toggle(string path)
+    {
+        var node = FindNode(path);
+        if (node is null || !node.Entry.IsDirectory) return;
+        ToggleNode(node);
+    }
+
     public IReadOnlyList<string> GetExpandedDirectories()
     {
         return EnumerateAllNodes()

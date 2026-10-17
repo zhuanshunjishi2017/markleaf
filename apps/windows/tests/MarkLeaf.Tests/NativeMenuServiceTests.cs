@@ -23,7 +23,7 @@ public sealed class NativeMenuServiceTests
     private static NativeMenuService CreateService() =>
         new(new CommandRouter(new ShortcutManager(new ShortcutSettings()), _ => new CommandState(true), _ => { }),
             new ShortcutManager(new ShortcutSettings()), () => [], () => [], () => "serif", () => 100,
-            () => "light", () => false, () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => "light", () => false, () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
 
     private static AppCommand[] Commands(EditorMenuModel model) =>
         Flatten(model.Secondary).Where(x => x.Command.HasValue).Select(x => x.Command!.Value).ToArray();

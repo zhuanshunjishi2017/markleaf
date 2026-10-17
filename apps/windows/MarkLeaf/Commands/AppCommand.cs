@@ -262,6 +262,7 @@ public readonly record struct CommandContext(
     bool OutlineActive = false,
     bool StatusBarVisible = true,
     bool ShowCodeHighlight = false,
+    bool FollowSystemColorMode = false,
     bool ListViewActive = false,
     bool IndependentOutlineSidebar = false,
     bool EditorFullScreen = false,

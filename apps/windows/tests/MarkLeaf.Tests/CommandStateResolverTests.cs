@@ -11,8 +11,13 @@ public sealed class CommandStateResolverTests
         var empty = new CommandContext(DocumentAvailable: false, EditorReady: false);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.NewDocument, empty).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.Exit, empty).IsEnabled);
+        Assert.AreEqual(new CommandState(true, false), CommandStateResolver.Resolve(AppCommand.ShowCodeHighlight, empty));
+        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(
+            AppCommand.FollowSystemColorMode, empty with { FollowSystemColorMode = true }));
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.SaveDocument, empty).IsEnabled);
         var ready = empty with { DocumentAvailable = true, EditorReady = true, SidebarVisible = true };
+        Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(
+            AppCommand.ShowCodeHighlight, ready with { ShowCodeHighlight = true }));
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SaveDocument, ready).IsEnabled);
         Assert.AreEqual(new CommandState(true, true), CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready));
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready with { FocusMode = true }).IsEnabled);

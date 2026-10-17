@@ -33,8 +33,9 @@ public static class CommandStateResolver
                 or AppCommand.OpenOnlineHelp or AppCommand.OpenSampleAlert
                 or AppCommand.OpenSampleYamlBasic or AppCommand.OpenSampleYamlAdvanced
                 or AppCommand.RecoverUnsavedFiles
-                or AppCommand.FollowSystemColorMode => new(true),
-            AppCommand.ShowCodeHighlight => new(context.EditorReady, context.ShowCodeHighlight),
+                => new(true),
+            AppCommand.FollowSystemColorMode => new(true, context.FollowSystemColorMode),
+            AppCommand.ShowCodeHighlight => new(true, context.ShowCodeHighlight),
 
             AppCommand.ToggleSidebar => new(true, context.SidebarVisible),
             AppCommand.ToggleFocusMode => new(true, context.FocusMode),

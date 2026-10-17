@@ -64,6 +64,11 @@ done
 require_text "$mac_insert" 'tableSizePickerSubmenu'
 reject_text "$mac_insert" 'mermaidMenu()'
 
+mac_edit="$(method_body "$MAC_MENU" editMenu)"
+mac_edit_clipboard_sequence="$(printf '%s\n' "$mac_edit" | sed -n '/L10n.t("剪切")/,/L10n.t("粘贴为纯文本")/p' | grep 'menu.addItem(commandItem' | sed 's/^[[:space:]]*//')"
+expected_mac_edit_clipboard_sequence=$'menu.addItem(commandItem(L10n.t("剪切"), "cut", key: "x"))\nmenu.addItem(commandItem(L10n.t("拷贝"), "copy", key: "c"))\nmenu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))\nmenu.addItem(commandItem(L10n.t("粘贴为纯文本"), "pastePlainText", key: "V", mask: [.command, .shift]))'
+[[ "$mac_edit_clipboard_sequence" == "$expected_mac_edit_clipboard_sequence" ]] || fail "macOS edit clipboard order is incorrect"
+
 mac_format="$(method_body "$MAC_MENU" formatMenu)"
 require_text "$mac_format" 'paragraphStyleMenu()'
 require_text "$mac_format" '"toggleBlockquote"'
@@ -72,6 +77,11 @@ require_text "$mac_format" 'tableEditingMenu()'
 require_text "$mac_format" 'imageEditingMenu()'
 require_text "$mac_format" 'clearFormat'
 require_text "$mac_format" '"toggleCode"'
+
+mac_image="$(method_body "$MAC_MENU" imageEditingMenu)"
+mac_image_commands="$(printf '%s\n' "$mac_image" | grep -o '"changeImage"\|"editImageCaption"\|"resizeImage50"\|"resizeImage75"\|"resizeImage90"\|"resizeImage100"\|"rotateImage"\|"saveImageAs"' | tr '\n' ' ')"
+expected_mac_image_commands='"changeImage" "editImageCaption" "resizeImage50" "resizeImage75" "resizeImage90" "resizeImage100" "rotateImage" "saveImageAs"'
+[[ "$(sed 's/  */ /g; s/ *$//' <<<"$mac_image_commands")" == "$expected_mac_image_commands" ]] || fail "macOS image editing order is incorrect"
 mac_paragraph_actions="$(method_body "$MAC_MENU" paragraphActionsMenu)"
 for command in insertLineBefore insertLineAfter duplicateParagraph deleteParagraph; do
   require_text "$mac_paragraph_actions" "\"$command\""
@@ -92,18 +102,20 @@ for command in toggleBulletList toggleOrderedList toggleTaskList; do
 done
 
 mac_view="$(method_body "$MAC_MENU" viewMenu)"
-for text in 主题设置 设置缩放 显示代码高亮 重新渲染所有 Mermaid 图表 进入全屏幕; do
+for text in 'commandItem(L10n.t("显示侧栏"), "toggleSidebar")' 主题设置 设置缩放 显示代码高亮 重新渲染所有 Mermaid 图表 进入全屏幕; do
   require_text "$mac_view" "$text"
 done
+if [[ "${mac_view%%let sidebarSettings*}" != *'menu.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))'* ]]; then
+  fail "sidebar toggle must be a top-level layout item"
+fi
 for command in importTheme revealThemeFolder; do
   reject_text "$mac_view" "\"$command\""
 done
 mac_sidebar="$(printf '%s\n' "$mac_view" | sed -n '/let sidebarSettings = NSMenu/,/menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))/p')"
-require_text "$mac_sidebar" 'L10n.t("显示侧栏")'
 require_text "$mac_sidebar" 'L10n.t("在右侧显示大纲")'
 reject_text "$mac_sidebar" 'L10n.t("独立显示大纲")'
 mac_sidebar_seq="$(printf '%s\n' "$mac_sidebar" | grep -E 'commandItem|separator' | sed 's/^[[:space:]]*//')"
-expected_mac_sidebar_seq=$'sidebarSettings.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))\nsidebarSettings.addItem(.separator())\nsidebarSettings.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))\nsidebarSettings.addItem(commandItem(L10n.t("大纲"), "outlineTab"))\nsidebarSettings.addItem(commandItem(L10n.t("树结构"), "treeView"))\nsidebarSettings.addItem(commandItem(L10n.t("文档列表"), "listView"))\nsidebarSettings.addItem(.separator())\nsidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))'
+expected_mac_sidebar_seq=$'sidebarSettings.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))\nsidebarSettings.addItem(commandItem(L10n.t("大纲"), "outlineTab"))\nsidebarSettings.addItem(commandItem(L10n.t("树结构"), "treeView"))\nsidebarSettings.addItem(commandItem(L10n.t("文档列表"), "listView"))\nsidebarSettings.addItem(.separator())\nsidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))'
 [[ "$mac_sidebar_seq" == "$expected_mac_sidebar_seq" ]] || fail "macOS sidebar submenu order or grouping is incorrect"
 require_text "$(method_body "$MAC_MENU" validateMenuItem)" 'SidebarMenuPolicy.leftSidebarContentEnabled'
 
@@ -118,6 +130,37 @@ expected_mac_help_sequence=$'menu.addItem(commandItem(L10n.t("欢迎"), "openWel
 
 require_text "$(method_body "$MAC_MENU" editMenu)" 'commandItem(L10n.t("查找与替换"), "find", key: "f")'
 require_text "$(method_body "$MAC_MENU" fileMenu)" 'commandItem(L10n.t("新建窗口"), "newWindow", key: "N", mask: [.command, .shift])'
+
+MAC_TABS="$ROOT_DIR/macos/Sources/MarkLeaf/Views/TabBarController.swift"
+MAC_SIDEBAR="$ROOT_DIR/macos/Sources/MarkLeaf/Views/SidebarView.swift"
+MAC_MANAGER="$ROOT_DIR/macos/Sources/MarkLeaf/App/AppWindowManager.swift"
+
+context_clipboard="$(method_body "$MAC_CONTEXT" addClipboardCommands)"
+context_clipboard_sequence="$(printf '%s\n' "$context_clipboard" | grep -E 'addEnabledCommand|pastePlain|addFormatCommand' | sed 's/^[[:space:]]*//')"
+expected_context_clipboard_sequence=$'addEnabledCommand(menu, L10n.t("剪切"), "cut", enabled: canCut)\naddEnabledCommand(menu, L10n.t("拷贝"), "copy", enabled: canCopy)\nlet copyAs = NSMenuItem(title: L10n.t("复制为"), action: nil, keyEquivalent: "")\naddEnabledCommand(menu, L10n.t("粘贴"), "paste", enabled: canPaste)\nlet pastePlain = menuItem(L10n.t("粘贴为纯文本"), #selector(pastePlainTextFromClipboardAction(_:)))\ncopyAsMenu.addItem(pastePlain)'
+[[ "$context_clipboard_sequence" != *"copyAsMenu.addItem(pastePlain)"* ]] || fail "plain paste must be top-level, not nested in Copy As"
+require_text "$context_clipboard" 'menu.addItem(pastePlain)'
+
+block="$(method_body "$MAC_CONTEXT" showBlockMenu)"
+require_text "$block" 'case .frontMatter:'
+
+tab_menu="$(method_body "$MAC_TABS" showContextMenu)"
+require_text "$tab_menu" 'action: .reopenClosedTab'
+require_text "$tab_menu" 'let revealInWorkspace = contextMenuItem'
+require_text "$tab_menu" 'let copyPath = contextMenuItem'
+
+workspace_menu="$(method_body "$MAC_SIDEBAR" contextMenu)"
+require_text "$workspace_menu" 'if isRoot'
+require_text "$workspace_menu" 'return backgroundMenu'
+workspace_file_sequence="$(printf '%s\n' "$workspace_menu" | sed -n '/#selector(openEntry/,/#selector(shareEntry/p' | grep -E '#selector\((openEntry|openInNewWindowEntry|copyPath|copyContent|openLocation|renameEntry|deleteEntry|shareEntry)' | sed 's/^[[:space:]]*//')"
+expected_workspace_file_sequence=$'menu.addItem(item(L10n.t("打开"), #selector(openEntry(_:)), entry))\nmenu.addItem(item(L10n.t("在新窗口中打开"), #selector(openInNewWindowEntry(_:)), entry))\nmenu.addItem(item(pathTitle, #selector(copyPath(_:)), entry))\nlet copyContent = item(L10n.t("复制文件内容"), #selector(copyContent(_:)), entry)\nmenu.addItem(item(L10n.t("在 Finder 中显示"), #selector(openLocation(_:)), entry))\nmenu.addItem(item(L10n.t("重命名"), #selector(renameEntry(_:)), entry))\nmenu.addItem(item(L10n.t("删除"), #selector(deleteEntry(_:)), entry))\nmenu.addItem(item(L10n.t("分享"), #selector(shareEntry(_:)), entry))'
+[[ "$workspace_file_sequence" == "$expected_workspace_file_sequence" ]] || fail "macOS file workspace order is incorrect"
+
+background="$(method_body "$MAC_SIDEBAR" backgroundMenu)"
+require_text "$background" '复制工作区路径'
+require_text "$background" '在 Finder 中显示'
+require_text "$MAC_MANAGER" 'controller(containing: target)'
+reject_text "$(method_body "$MAC_MANAGER" openSample)" 'try FileManager.default.removeItem'
 require_text "$MAC_MENU" 'static let zoomOptions = EditorSession.zoomOptions'
 require_text "$MAC_SESSION" 'static let zoomOptions = [50, 75, 90, 100, 110, 125, 150, 175, 200]'
 require_text "$(sed -n '/headerOpenFolderButton.image = NSImage/,/headerOpenFolderButton.translatesAutoresizingMaskIntoConstraints/p' "$ROOT_DIR/macos/Sources/MarkLeaf/Views/SidebarView.swift")" 'plus'

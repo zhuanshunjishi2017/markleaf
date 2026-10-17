@@ -1232,9 +1232,11 @@ internal sealed partial class MainForm
 
     private async void ShowEncodingMenu()
     {
-        if (_document is null || _document.IsReadOnly || _document.IsUserReadOnly) return;
+        if (_document is null) return;
         var current = DocumentEncodingPolicy.FromId(_document.EncodingPolicyId);
-        var model = StatusBarMenuModel.Encoding(current.Id, enabled: true);
+        var model = StatusBarMenuModel.Encoding(
+            current.Id,
+            enabled: !_document.IsReadOnly && !_document.IsUserReadOnly);
         var command = await _menuService.ShowHostPopupMenuAsync(
             this, StatusBarPopupPoint(_encodingLabel), DeviceDpi, _menuDarkMode, model);
         var index = command is null ? -1 : (int)command.Value - (int)AppCommand.StatusEncodingUtf8;
@@ -1244,8 +1246,10 @@ internal sealed partial class MainForm
 
     private async void ShowNewLineMenu()
     {
-        if (_document is null || _document.IsReadOnly || _document.IsUserReadOnly) return;
-        var model = StatusBarMenuModel.NewLine(_document.NewLine, enabled: true);
+        if (_document is null) return;
+        var model = StatusBarMenuModel.NewLine(
+            _document.NewLine,
+            enabled: !_document.IsReadOnly && !_document.IsUserReadOnly);
         var command = await _menuService.ShowHostPopupMenuAsync(
             this, StatusBarPopupPoint(_newLineLabel), DeviceDpi, _menuDarkMode, model);
         var newLine = command switch

@@ -1142,7 +1142,15 @@ internal sealed partial class MainForm
                     ShowSidebarView(outline);
                     break;
                 case ViewNavigationStep.FocusTarget:
-                    var target = outline ? (Control)_outlineTree : _workspaceTree;
+                    var focusTarget = SidebarFocusTargetPolicy.Resolve(
+                        outline ? SidebarTarget.Outline : SidebarTarget.Workspace,
+                        _workspaceListViewActive);
+                    var target = focusTarget switch
+                    {
+                        SidebarFocusTarget.WorkspaceList => (Control)_workspaceDocumentList,
+                        SidebarFocusTarget.WorkspaceTree => _workspaceTree,
+                        _ => _outlineTree,
+                    };
                     if (target.Visible) target.Focus();
                     break;
             }

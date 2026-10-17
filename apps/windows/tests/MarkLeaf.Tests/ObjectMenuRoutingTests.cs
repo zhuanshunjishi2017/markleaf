@@ -84,6 +84,7 @@ public sealed class ObjectMenuRoutingTests
         var shortcuts = new ShortcutManager(new ShortcutSettings());
         return new(new CommandRouter(shortcuts, _ => new(true), _ => { }), shortcuts,
             () => [], () => [], () => "serif", () => 100, () => "light", () => false,
-            () => true, () => false, () => "zh-CN", () => [], () => -1);
+            () => true, () => false, () => "zh-CN",
+            () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
     }
 }
