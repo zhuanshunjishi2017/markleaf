@@ -580,10 +580,10 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return viewStateSession != nil
         case "treeView":
             menuItem.state = viewStateSession?.workspaceListMode == false ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+            return viewStateSession != nil
         case "listView":
             menuItem.state = viewStateSession?.workspaceListMode == true ? .on : .off
-            return SidebarMenuPolicy.leftSidebarContentEnabled(sidebarVisible: viewStateSession?.sidebarVisible ?? false)
+            return viewStateSession != nil
         case "toggleStatusBar":
             menuItem.state = viewStateSession?.statusBarVisible == true ? .on : .off
             return viewStateSession != nil
@@ -678,7 +678,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced":
             guard let sample = SampleDocumentResource(command: command) else { return }
             AppWindowManager.shared.openSample(sample)
-        case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "treeView", "listView", "toggleDetachedOutline":
+        case "treeView", "listView":
+            viewStateSession?.showWorkspaceView(listMode: command == "listView")
+        case "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab", "toggleDetachedOutline":
             viewStateSession?.performMenuCommand(command)
         case "tabNext":
             AppWindowManager.shared.activeWindowController?.selectNextTab()

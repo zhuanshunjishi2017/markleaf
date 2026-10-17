@@ -172,6 +172,43 @@ internal sealed partial class MainForm
         return state;
     }
 
+    private void SwitchWorkspaceView(bool treeViewDesired)
+    {
+        var plan = WorkspaceViewNavigationPolicy.Switch(
+            treeViewDesired,
+            _workspaceListViewActive,
+            _focusMode,
+            _sidebarSplit.Panel1Collapsed);
+
+        foreach (var step in plan.Navigation.Steps)
+        {
+            switch (step)
+            {
+                case ViewNavigationStep.ExitMinimalMode:
+                    ToggleFocusMode();
+                    break;
+                case ViewNavigationStep.ExpandSidebar:
+                    ExpandSidebar();
+                    break;
+                case ViewNavigationStep.ShowTarget:
+                    ShowSidebarView(outline: false);
+                    break;
+                case ViewNavigationStep.FocusTarget:
+                    var focusTarget = SidebarFocusTargetPolicy.Resolve(
+                        SidebarTarget.Workspace, _workspaceListViewActive);
+                    var target = focusTarget switch
+                    {
+                        SidebarFocusTarget.WorkspaceList => (Control)_workspaceDocumentList,
+                        _ => _workspaceTree,
+                    };
+                    if (target.Visible) target.Focus();
+                    break;
+            }
+        }
+
+        if (plan.SwitchPresentation) ToggleWorkspaceView();
+    }
+
     private static bool HasClipboardContent()
     {
         try
@@ -344,10 +381,10 @@ internal sealed partial class MainForm
                     DetachOutlineSidebar();
                 break;
             case AppCommand.ViewTree:
-                if (_workspaceListViewActive) ToggleWorkspaceView();
+                SwitchWorkspaceView(treeViewDesired: true);
                 break;
             case AppCommand.ViewList:
-                if (!_workspaceListViewActive) ToggleWorkspaceView();
+                SwitchWorkspaceView(treeViewDesired: false);
                 break;
             case AppCommand.ShowStatusBar:
                 if (_focusMode)

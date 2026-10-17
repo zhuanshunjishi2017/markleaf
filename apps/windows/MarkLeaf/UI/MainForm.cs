@@ -32,6 +32,7 @@ internal sealed partial class MainForm : Form
     private readonly ImageAssetService _imageAssetService;
     private readonly WorkspaceService _workspaceService = new();
     private WorkspaceMutationChannel? _workspaceMutationChannel;
+    private SettingsChangeChannel? _settingsChangeChannel;
     private bool _documentBatchInProgress;
     private readonly WorkspaceTreeView _workspaceTree;
     private readonly WorkspaceDocumentListView _workspaceDocumentList;
@@ -423,6 +424,12 @@ internal sealed partial class MainForm : Form
             try { BeginInvoke(() => ApplyPeerWorkspaceMutation(notice)); }
             catch (InvalidOperationException) { /* The window closed during dispatch. */ }
         });
+        _settingsChangeChannel ??= new SettingsChangeChannel(SettingsChangeChannel.CurrentIdentity, notice =>
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            try { BeginInvoke(() => ApplyPeerAppearanceSettings(notice)); }
+            catch (InvalidOperationException) { /* The window closed during dispatch. */ }
+        });
         ApplyMenuPresentation();
     }
 
@@ -516,6 +523,8 @@ internal sealed partial class MainForm : Form
         {
             _workspaceMutationChannel?.Dispose();
             _workspaceMutationChannel = null;
+        _settingsChangeChannel?.Dispose();
+        _settingsChangeChannel = null;
             StopWatchingDocument();
             StopWatchingWorkspace();
             _externalChangeTimer.Dispose();

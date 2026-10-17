@@ -3,6 +3,8 @@ using MarkLeaf.Editor;
 using MarkLeaf.Services;
 using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
+using MarkLeaf.Services.Styles;
+using MarkLeaf.App;
 
 namespace MarkLeaf.UI;
 
@@ -114,6 +116,7 @@ internal sealed partial class MainForm
         }
         _settings.Appearance.ZoomPercent = _zoomPercent;
         PersistSettings("Settings saved.", "Settings could not be saved.");
+        _ = SettingsChangeChannel.BroadcastAsync(AppearanceSettingsNotice.From(_settings));
     }
 
     private void PersistSettings(string successMessage, string errorMessage)
@@ -127,5 +130,21 @@ internal sealed partial class MainForm
         {
             _logger.Error(errorMessage, exception);
         }
+    }
+
+    private void ApplyPeerAppearanceSettings(AppearanceSettingsNotice notice)
+    {
+        if (IsDisposed || Disposing) return;
+        notice.ApplyTo(_settings);
+
+        ColorThemeService.DefaultLightThemeId = _settings.Appearance.DefaultLightThemeId;
+        ColorThemeService.DefaultDarkThemeId = _settings.Appearance.DefaultDarkThemeId;
+        SetMarkdownStyle(_settings.MarkdownStyle);
+        ApplyCodeHighlightVisibility();
+        if (_settings.Appearance.FollowSystemColorMode)
+            ApplyEffectiveColorTheme();
+        else
+            ApplyColorTheme(_settings.ColorTheme, persistManualChoice: false);
+        _menuService.RefreshStates();
     }
 }

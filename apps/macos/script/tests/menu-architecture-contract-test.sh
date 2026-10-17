@@ -117,7 +117,7 @@ reject_text "$mac_sidebar" 'L10n.t("独立显示大纲")'
 mac_sidebar_seq="$(printf '%s\n' "$mac_sidebar" | grep -E 'commandItem|separator' | sed 's/^[[:space:]]*//')"
 expected_mac_sidebar_seq=$'sidebarSettings.addItem(commandItem(L10n.t("工作区"), "workspaceTab"))\nsidebarSettings.addItem(commandItem(L10n.t("大纲"), "outlineTab"))\nsidebarSettings.addItem(commandItem(L10n.t("树结构"), "treeView"))\nsidebarSettings.addItem(commandItem(L10n.t("文档列表"), "listView"))\nsidebarSettings.addItem(.separator())\nsidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))'
 [[ "$mac_sidebar_seq" == "$expected_mac_sidebar_seq" ]] || fail "macOS sidebar submenu order or grouping is incorrect"
-require_text "$(method_body "$MAC_MENU" validateMenuItem)" 'SidebarMenuPolicy.leftSidebarContentEnabled'
+reject_text "$(method_body "$MAC_MENU" validateMenuItem)" 'SidebarMenuPolicy.leftSidebarContentEnabled'
 
 mac_help="$(method_body "$MAC_MENU" helpMenu)"
 reject_text "$mac_help" 'openHomepage'

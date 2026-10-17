@@ -9,6 +9,9 @@ internal sealed record ViewNavigationSnapshot(
     bool StatusBarVisible);
 
 internal sealed record ViewNavigationPlan(SidebarTarget Target, IReadOnlyList<ViewNavigationStep> Steps);
+internal sealed record WorkspaceViewPlan(
+    bool SwitchPresentation,
+    ViewNavigationPlan Navigation);
 
 internal static class ViewNavigationPolicy
 {
@@ -23,5 +26,22 @@ internal static class ViewNavigationPolicy
         steps.Add(ViewNavigationStep.ShowTarget);
         steps.Add(ViewNavigationStep.FocusTarget);
         return new(target, steps.AsReadOnly());
+    }
+
+}
+
+internal static class WorkspaceViewNavigationPolicy
+{
+    public static WorkspaceViewPlan Switch(
+        bool TreeViewDesired,
+        bool ListViewActive,
+        bool FocusMode,
+        bool SidebarCollapsed)
+    {
+        var desiredListView = !TreeViewDesired;
+        return new(
+            desiredListView != ListViewActive,
+            ViewNavigationPolicy.NavigateToSidebar(
+                SidebarTarget.Workspace, FocusMode, SidebarCollapsed));
     }
 }

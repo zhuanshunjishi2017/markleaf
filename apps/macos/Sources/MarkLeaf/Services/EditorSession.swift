@@ -2284,6 +2284,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         onViewStateChanged?()
     }
 
+    func showWorkspaceView(listMode: Bool) {
+        showWorkspaceTab()
+        setWorkspaceListMode(listMode)
+    }
+
     func showOutlineTab() {
         windowSession?.controller?.exitFocusMode()
         if outlineDetached {

@@ -57,4 +57,28 @@ public sealed class ViewNavigationPolicyTests
             ViewNavigationStep.FocusTarget,
         }, plan.Steps.ToArray());
     }
+
+    [TestMethod]
+    public void WorkspaceViewSwitchRevealsBeforeToggling()
+    {
+        var hiddenTree = WorkspaceViewNavigationPolicy.Switch(
+            TreeViewDesired: true, ListViewActive: true, FocusMode: true, SidebarCollapsed: true);
+        CollectionAssert.AreEqual(new[]
+        {
+            ViewNavigationStep.ExitMinimalMode,
+            ViewNavigationStep.ExpandSidebar,
+            ViewNavigationStep.ShowTarget,
+            ViewNavigationStep.FocusTarget,
+        }, hiddenTree.Navigation.Steps.ToArray());
+        Assert.IsTrue(hiddenTree.SwitchPresentation);
+
+        var visibleListNoop = WorkspaceViewNavigationPolicy.Switch(
+            TreeViewDesired: false, ListViewActive: true, FocusMode: false, SidebarCollapsed: false);
+        CollectionAssert.AreEqual(new[]
+        {
+            ViewNavigationStep.ShowTarget,
+            ViewNavigationStep.FocusTarget,
+        }, visibleListNoop.Navigation.Steps.ToArray());
+        Assert.IsFalse(visibleListNoop.SwitchPresentation);
+    }
 }
