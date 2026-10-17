@@ -68,13 +68,19 @@ public sealed class JsonSettingsService : ISettingsService
         using var saveLock = await AcquireSaveLockAsync(cancellationToken).ConfigureAwait(false);
 
         var baselineAtSaveStart = _loadBaseline;
-        var latest = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        var latest = await ReadSettingsForSaveAsync(cancellationToken).ConfigureAwait(false);
         var baseline = baselineAtSaveStart ?? latest;
         var merged = SettingsSaveScope.Window == scope
             ? MergeWindowScopedSave(latest, settings, baseline)
             : SettingsSaveScope.Shared == scope
-            ? MergeSharedScopedSave(latest, settings)
+            ? MergeSharedScopedSave(latest, settings, baseline)
+            : SettingsSaveScope.ClearRecentHistory == scope
+            ? MergeClearRecentHistory(latest)
             : MergeRecentItems(latest, settings, baseline);
+        if (SettingsSaveScope.Full == scope)
+        {
+            MergeSharedSections(latest, merged, baseline);
+        }
         _loadBaseline = CloneSettings(merged);
         settings = merged;
 
@@ -108,6 +114,7 @@ public sealed class JsonSettingsService : ISettingsService
     private AppSettings MergeWindowScopedSave(AppSettings latest, AppSettings incoming, AppSettings baseline)
     {
         var merged = CloneSettings(incoming);
+        merged.File = latest.File;
         merged.Editor = latest.Editor;
         merged.Appearance = latest.Appearance;
         merged.General = latest.General;
@@ -117,27 +124,88 @@ public sealed class JsonSettingsService : ISettingsService
         merged.CodeFormatter = latest.CodeFormatter;
         merged.MarkdownStyle = latest.MarkdownStyle;
         merged.ColorTheme = latest.ColorTheme;
-        var restoredWindow = baseline.MainWindow;
-        var restoredWorkspace = baseline.Workspace;
-        merged.MainWindow = restoredWindow;
-        merged.Workspace.LastFolder = restoredWorkspace.LastFolder;
-        merged.Workspace.LastFile = restoredWorkspace.LastFile;
-        merged.Workspace.LastFileReadOnly = restoredWorkspace.LastFileReadOnly;
-        merged.Workspace.OpenDocuments = restoredWorkspace.OpenDocuments;
-        merged.Workspace.ActiveDocumentIndex = restoredWorkspace.ActiveDocumentIndex;
-        return MergeRecentItems(latest, merged, baseline);
-    }
-
-    private AppSettings MergeSharedScopedSave(AppSettings latest, AppSettings incoming)
-    {
-        var merged = CloneSettings(incoming);
         merged.MainWindow = latest.MainWindow;
         merged.Workspace.LastFolder = latest.Workspace.LastFolder;
         merged.Workspace.LastFile = latest.Workspace.LastFile;
         merged.Workspace.LastFileReadOnly = latest.Workspace.LastFileReadOnly;
         merged.Workspace.OpenDocuments = latest.Workspace.OpenDocuments;
         merged.Workspace.ActiveDocumentIndex = latest.Workspace.ActiveDocumentIndex;
-        return MergeRecentItems(latest, merged, latest);
+        return MergeRecentItems(latest, merged, baseline);
+    }
+
+    private AppSettings MergeSharedScopedSave(AppSettings latest, AppSettings incoming, AppSettings baseline)
+    {
+        var merged = CloneSettings(incoming);
+        MergeSharedSections(latest, merged, baseline);
+        merged.MainWindow = latest.MainWindow;
+        merged.Workspace.LastFolder = latest.Workspace.LastFolder;
+        merged.Workspace.LastFile = latest.Workspace.LastFile;
+        merged.Workspace.LastFileReadOnly = latest.Workspace.LastFileReadOnly;
+        merged.Workspace.OpenDocuments = latest.Workspace.OpenDocuments;
+        merged.Workspace.ActiveDocumentIndex = latest.Workspace.ActiveDocumentIndex;
+        return MergeRecentItems(latest, merged, baseline);
+    }
+
+    private AppSettings MergeClearRecentHistory(AppSettings latest)
+    {
+        var merged = CloneSettings(latest);
+        merged.Workspace.RecentFiles.Clear();
+        merged.Workspace.RecentFolders.Clear();
+        return merged;
+    }
+
+    private void MergeSharedSections(AppSettings latest, AppSettings incoming, AppSettings baseline)
+    {
+        incoming.File = ChooseSharedSection(baseline.File, incoming.File, latest.File);
+        incoming.Editor = ChooseSharedSection(baseline.Editor, incoming.Editor, latest.Editor);
+        incoming.Appearance = ChooseSharedSection(baseline.Appearance, incoming.Appearance, latest.Appearance);
+        incoming.General = ChooseSharedSection(baseline.General, incoming.General, latest.General);
+        incoming.Image = ChooseSharedSection(baseline.Image, incoming.Image, latest.Image);
+        incoming.Export = ChooseSharedSection(baseline.Export, incoming.Export, latest.Export);
+        incoming.Shortcut = ChooseSharedSection(baseline.Shortcut, incoming.Shortcut, latest.Shortcut);
+        incoming.CodeFormatter = ChooseSharedSection(baseline.CodeFormatter, incoming.CodeFormatter, latest.CodeFormatter);
+        incoming.MarkdownStyle = ChooseSharedSection(baseline.MarkdownStyle, incoming.MarkdownStyle, latest.MarkdownStyle);
+        incoming.ColorTheme = ChooseSharedSection(baseline.ColorTheme, incoming.ColorTheme, latest.ColorTheme);
+    }
+
+    private static T ChooseSharedSection<T>(T baseline, T incoming, T latest) where T : class
+    {
+        var localChanged = !JsonEquals(baseline, incoming);
+        return localChanged ? incoming : latest;
+    }
+
+    private static bool JsonEquals<T>(T? left, T? right) where T : class
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null) return false;
+        return JsonSerializer.Serialize(left, SectionJsonOptions)
+            == JsonSerializer.Serialize(right, SectionJsonOptions);
+    }
+
+    private async Task<AppSettings> ReadSettingsForSaveAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(_settingsFile))
+        {
+            return new AppSettings();
+        }
+
+        await using var stream = new FileStream(
+            _settingsFile,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            4096,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var settings = await JsonSerializer
+            .DeserializeAsync<AppSettings>(stream, _jsonOptions, cancellationToken)
+            .ConfigureAwait(false);
+        return settings?.SchemaVersion switch
+        {
+            AppSettings.CurrentSchemaVersion => NormalizeCurrent(settings),
+            2 => MigrateVersion2(settings),
+            1 => MigrateVersion1(settings),
+            _ => new AppSettings(),
+        };
     }
 
     private async Task<FileStream> AcquireSaveLockAsync(CancellationToken cancellationToken)
@@ -211,6 +279,11 @@ public sealed class JsonSettingsService : ISettingsService
         stream.Position = 0;
         return JsonSerializer.Deserialize<AppSettings>(stream, options) ?? new AppSettings();
     }
+
+    private static readonly JsonSerializerOptions SectionJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     private static AppSettings MigrateVersion1(AppSettings settings)
     {

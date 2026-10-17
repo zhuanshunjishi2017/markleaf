@@ -8,8 +8,8 @@ using MarkLeaf.Editor;
 using MarkLeaf.Native;
 using MarkLeaf.Native.ModernMenus;
 using MarkLeaf.Services;
-using MarkLeaf.Services.Recovery;
 using MarkLeaf.Services.Settings;
+using MarkLeaf.Services.Recovery;
 using MarkLeaf.UI.Controls;
 using MarkLeaf.UI.Dialogs;
 
@@ -731,7 +731,7 @@ internal sealed partial class MainForm
         RecordRecentFile(path);
     }
 
-    private void ClearHistory()
+    private async Task ClearHistoryAsync()
     {
         // 清除历史是不可恢复的删除操作：先确认再执行（与 macOS 1.7.7 行为一致）。
         var choice = ShowMessage(
@@ -746,6 +746,7 @@ internal sealed partial class MainForm
             return;
         }
 
+        await _settingsService.SaveAsync(_settings, SettingsSaveScope.ClearRecentHistory);
         _settings.Workspace.RecentFiles.Clear();
         _settings.Workspace.RecentFolders.Clear();
         _menuService.RefreshStates();

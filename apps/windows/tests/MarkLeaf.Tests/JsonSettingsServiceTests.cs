@@ -160,9 +160,9 @@ public sealed class JsonSettingsServiceTests
             await service.SaveAsync(incoming, SettingsSaveScope.Window);
             var actual = await service.LoadAsync();
 
-            Assert.AreEqual(111, actual.MainWindow.Left);
-            Assert.AreEqual("C:\\work\\primary.md", actual.Workspace.OpenDocuments.Single().Path);
-            Assert.AreEqual(0, actual.Workspace.ActiveDocumentIndex);
+            Assert.AreEqual(222, actual.MainWindow.Left);
+            Assert.AreEqual("C:\\work\\peer.md", actual.Workspace.OpenDocuments.Single().Path);
+            Assert.AreEqual(20, actual.Editor.SourceFontSize);
             CollectionAssert.AreEqual(new[] { @"C:\work\B.md", @"C:\work\C.md" },
                 actual.Workspace.RecentFiles);
             Assert.AreEqual(20, actual.Editor.SourceFontSize);
@@ -200,6 +200,137 @@ public sealed class JsonSettingsServiceTests
             Assert.AreEqual(333, actual.MainWindow.Left);
             Assert.AreEqual("C:\\work\\primary.md", actual.Workspace.OpenDocuments.Single().Path);
             Assert.AreEqual(22, actual.Editor.SourceFontSize);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task SharedScopedSave_DoesNotDeletePeerRecentItems()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "workspace": { "recentFiles": ["C:\\work\\A.md"] }
+            }
+            """);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var baseline = await service.LoadAsync();
+            Assert.HasCount(1, baseline.Workspace.RecentFiles);
+
+            await File.WriteAllTextAsync(file, """
+                {
+                  "workspace": { "recentFiles": ["C:\\work\\A.md", "C:\\work\\C.md"] }
+                }
+                """);
+            var incoming = baseline;
+            await service.SaveAsync(incoming, SettingsSaveScope.Shared);
+
+            var actual = await service.LoadAsync();
+            CollectionAssert.AreEqual(new[] { @"C:\work\A.md", @"C:\work\C.md" },
+                actual.Workspace.RecentFiles);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task ClearRecentHistoryScope_RemovesPeerAdditionsAndPreservesLatestState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "mainWindow": { "left": 555 },
+              "workspace": { "recentFiles": ["C:\\work\\A.md"] },
+              "editor": { "sourceFontSize": 18 }
+            }
+            """);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            await service.LoadAsync();
+            await File.WriteAllTextAsync(file, """
+                {
+                  "mainWindow": { "left": 666 },
+                  "workspace": { "recentFiles": ["C:\\work\\A.md", "C:\\work\\C.md"] },
+                  "editor": { "sourceFontSize": 21 }
+                }
+                """);
+
+            await service.SaveAsync(new AppSettings(), SettingsSaveScope.ClearRecentHistory);
+            var actual = await service.LoadAsync();
+
+            Assert.IsEmpty(actual.Workspace.RecentFiles);
+            Assert.IsEmpty(actual.Workspace.RecentFolders);
+            Assert.AreEqual(666, actual.MainWindow.Left);
+            Assert.AreEqual(21, actual.Editor.SourceFontSize);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task Save_DoesNotOverwriteUnreadableSettingsWithDefaults()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        const string invalidJson = "{ not-json";
+        await File.WriteAllTextAsync(file, invalidJson);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var incoming = new AppSettings { Editor = new EditorSettings { SourceFontSize = 30 } };
+
+            await Assert.ThrowsExactlyAsync<System.Text.Json.JsonException>(() =>
+                service.SaveAsync(incoming, SettingsSaveScope.Window));
+            Assert.AreEqual(invalidJson, await File.ReadAllTextAsync(file));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task FullSave_MergesPeerSharedPreferencesWithoutRollback()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "editor": { "sourceFontSize": 14 },
+              "appearance": { "showCodeHighlight": true }
+            }
+            """);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var baseline = await service.LoadAsync();
+            Assert.AreEqual(14, baseline.Editor.SourceFontSize);
+
+            await File.WriteAllTextAsync(file, """
+                {
+                  "editor": { "sourceFontSize": 20 },
+                  "appearance": { "showCodeHighlight": true }
+                }
+                """);
+            var incoming = new AppSettings
+            {
+                Editor = baseline.Editor,
+                Appearance = new AppearanceSettings { ShowCodeHighlight = false },
+            };
+
+            await service.SaveAsync(incoming, SettingsSaveScope.Full);
+            var actual = await service.LoadAsync();
+
+            Assert.AreEqual(20, actual.Editor.SourceFontSize);
+            Assert.IsFalse(actual.Appearance.ShowCodeHighlight);
         }
         finally { Directory.Delete(root, true); }
     }

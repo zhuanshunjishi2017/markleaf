@@ -7,30 +7,34 @@ using MarkLeaf.Services.Settings;
 
 namespace MarkLeaf.App;
 
-internal sealed record AppearanceSettingsNotice(
-    string MarkdownStyle,
-    string ColorTheme,
-    bool FollowSystemColorMode,
-    bool ShowCodeHighlight,
-    string DefaultLightThemeId,
-    string DefaultDarkThemeId)
+internal sealed record SharedSettingsNotice(AppSettings Shared)
 {
-    public static AppearanceSettingsNotice From(AppSettings settings) => new(
-        settings.MarkdownStyle,
-        settings.ColorTheme,
-        settings.Appearance.FollowSystemColorMode,
-        settings.Appearance.ShowCodeHighlight,
-        settings.Appearance.DefaultLightThemeId,
-        settings.Appearance.DefaultDarkThemeId);
+    public static SharedSettingsNotice From(AppSettings settings) => new(CopySharedSource(settings));
 
-    public void ApplyTo(AppSettings settings)
+    public void ApplySharedTo(AppSettings settings)
     {
-        settings.MarkdownStyle = MarkdownStyle;
-        settings.ColorTheme = ColorTheme;
-        settings.Appearance.FollowSystemColorMode = FollowSystemColorMode;
-        settings.Appearance.ShowCodeHighlight = ShowCodeHighlight;
-        settings.Appearance.DefaultLightThemeId = DefaultLightThemeId;
-        settings.Appearance.DefaultDarkThemeId = DefaultDarkThemeId;
+        settings.File = Shared.File;
+        settings.Editor = Shared.Editor;
+        settings.Appearance = Shared.Appearance;
+        settings.General = Shared.General;
+        settings.Image = Shared.Image;
+        settings.Export = Shared.Export;
+        settings.Shortcut = Shared.Shortcut;
+        settings.CodeFormatter = Shared.CodeFormatter;
+        settings.MarkdownStyle = Shared.MarkdownStyle;
+        settings.ColorTheme = Shared.ColorTheme;
+    }
+
+    private static AppSettings CopySharedSource(AppSettings source)
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        using var stream = new MemoryStream();
+        JsonSerializer.Serialize(stream, source, options);
+        stream.Position = 0;
+        return JsonSerializer.Deserialize<AppSettings>(stream, options) ?? new AppSettings();
     }
 }
 
@@ -41,20 +45,20 @@ internal sealed class SettingsChangeChannel : IDisposable
 {
     private readonly CancellationTokenSource _stop = new();
     private readonly string _identity;
-    private readonly Action<AppearanceSettingsNotice> _receive;
+    private readonly Action<SharedSettingsNotice> _receive;
     private readonly Task _listener;
     private static readonly string Scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         (Environment.ProcessPath ?? "MarkLeaf") + ":" + Process.GetCurrentProcess().SessionId)))[..16];
     internal static string CurrentIdentity => Scope + "." + Environment.ProcessId;
 
-    internal SettingsChangeChannel(string identity, Action<AppearanceSettingsNotice> receive)
+    internal SettingsChangeChannel(string identity, Action<SharedSettingsNotice> receive)
     {
         _identity = identity;
         _receive = receive;
         _listener = ListenAsync();
     }
 
-    internal static async Task BroadcastAsync(AppearanceSettingsNotice notice)
+    internal static async Task BroadcastAsync(SharedSettingsNotice notice)
     {
         using var current = Process.GetCurrentProcess();
         var peers = Process.GetProcessesByName(current.ProcessName);
@@ -66,7 +70,7 @@ internal sealed class SettingsChangeChannel : IDisposable
         finally { foreach (var peer in peers) peer.Dispose(); }
     }
 
-    private static async Task SendAsync(string identity, AppearanceSettingsNotice notice)
+    private static async Task SendAsync(string identity, SharedSettingsNotice notice)
     {
         try
         {
@@ -94,7 +98,7 @@ internal sealed class SettingsChangeChannel : IDisposable
                 using var reader = new StreamReader(server, Encoding.UTF8);
                 var json = await reader.ReadLineAsync(_stop.Token);
                 if (json is null || json.Length > 65536) continue;
-                var notice = JsonSerializer.Deserialize<AppearanceSettingsNotice>(json);
+                var notice = JsonSerializer.Deserialize<SharedSettingsNotice>(json);
                 if (notice is not null) _receive(notice);
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }

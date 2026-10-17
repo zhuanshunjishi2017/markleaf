@@ -46,6 +46,7 @@ internal sealed partial class MainForm
 
     private void ResetAllSettingsToDefaults()
     {
+        SettingsReset.Apply(_settings, AppSettings.CreateDefaults());
         _settingsService.SaveAsync(
             _settings,
             IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full).GetAwaiter().GetResult();
@@ -124,7 +125,7 @@ internal sealed partial class MainForm
             "Settings saved.",
             "Settings could not be saved.",
             IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full);
-        _ = SettingsChangeChannel.BroadcastAsync(AppearanceSettingsNotice.From(_settings));
+        _ = SettingsChangeChannel.BroadcastAsync(SharedSettingsNotice.From(_settings));
     }
 
     private void PersistSettings(
@@ -143,10 +144,10 @@ internal sealed partial class MainForm
         }
     }
 
-    private void ApplyPeerAppearanceSettings(AppearanceSettingsNotice notice)
+    private void ApplyPeerAppearanceSettings(SharedSettingsNotice notice)
     {
         if (IsDisposed || Disposing) return;
-        notice.ApplyTo(_settings);
+        notice.ApplySharedTo(_settings);
 
         ColorThemeService.DefaultLightThemeId = _settings.Appearance.DefaultLightThemeId;
         ColorThemeService.DefaultDarkThemeId = _settings.Appearance.DefaultDarkThemeId;

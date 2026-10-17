@@ -5,6 +5,27 @@ public enum SettingsSaveScope
     Full,
     Shared,
     Window,
+    ClearRecentHistory,
+}
+
+public static class SettingsReset
+{
+    public static void Apply(AppSettings target, AppSettings defaults)
+    {
+        target.SchemaVersion = defaults.SchemaVersion;
+        target.MainWindow = defaults.MainWindow;
+        target.Workspace = defaults.Workspace;
+        target.File = defaults.File;
+        target.Editor = defaults.Editor;
+        target.Appearance = defaults.Appearance;
+        target.General = defaults.General;
+        target.Image = defaults.Image;
+        target.Export = defaults.Export;
+        target.Shortcut = defaults.Shortcut;
+        target.CodeFormatter = defaults.CodeFormatter;
+        target.MarkdownStyle = defaults.MarkdownStyle;
+        target.ColorTheme = defaults.ColorTheme;
+    }
 }
 
 public enum StartupAction

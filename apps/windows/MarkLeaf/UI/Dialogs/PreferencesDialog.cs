@@ -397,16 +397,7 @@ internal sealed class PreferencesDialog : Form
             }
 
             var defaults = AppSettings.CreateDefaults();
-            _settings.SchemaVersion = defaults.SchemaVersion;
-            _settings.MainWindow = defaults.MainWindow;
-            _settings.Workspace = defaults.Workspace;
-            _settings.File = defaults.File;
-            _settings.Editor = defaults.Editor;
-            _settings.Appearance = defaults.Appearance;
-            _settings.General = defaults.General;
-            _settings.Image = defaults.Image;
-            _settings.MarkdownStyle = defaults.MarkdownStyle;
-            _settings.ColorTheme = defaults.ColorTheme;
+            SettingsReset.Apply(_settings, defaults);
             LoadSettingsIntoControls();
         };
         _browseDirectoryButton.Click += (_, _) => BrowseDefaultDirectory();

@@ -34,7 +34,7 @@ internal sealed partial class MainForm
             OpenLogFolder,
             ClearLogs,
             OpenSettingsJson,
-            ClearHistory,
+            () => _ = ClearHistoryAsync(),
             () => _ = CheckForUpdatesAsync());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
         ApplyPreferencesChanges(previousAssociateMarkdown, previousAssociateText, previousLanguage);
