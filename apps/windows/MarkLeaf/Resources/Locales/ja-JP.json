@@ -16,6 +16,8 @@
   "menu.file.rename": "名前を変更…",
   "common.ok": "OK",
   "common.cancel": "キャンセル",
+  "document.convertToReadOnlyTitle": "読み取り専用に変更",
+  "document.convertToReadOnlyConfirm": "読み取り専用にする",
   "dialog.colorThemesLight": "ライト",
   "dialog.colorThemesDark": "ダーク",
   "dialog.colorThemesDefaultLight": "既定のライト",

@@ -43,6 +43,20 @@ internal sealed partial class MainForm
         }
     }
 
+    private enum DocumentDialogResult
+    {
+        Convert,
+        Cancel,
+    }
+
+    private DocumentDialogResult ConvertExistingDocumentToReadOnly()
+    {
+        using var dialog = new Dialogs.ConvertToReadOnlyDialog(Loc.Get("document.convertToReadOnly"));
+        return ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK
+            ? DocumentDialogResult.Convert
+            : DocumentDialogResult.Cancel;
+    }
+
     private async Task NewDocumentAsync(NewDocumentKind kind = NewDocumentKind.Markdown)
     {
         if (_documentOperationInProgress || _documentTabOperationInProgress)
@@ -119,8 +133,7 @@ internal sealed partial class MainForm
                 await SwitchDocumentTabAsync(_openDocuments.IndexOf(existing));
                 if (readOnly && !existing.IsReadOnly)
                 {
-                    if (ShowMessage(this, Loc.Get("document.convertToReadOnly"), "MarkLeaf",
-                            MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK
+                    if (ConvertExistingDocumentToReadOnly() == DocumentDialogResult.Convert
                         && _openDocuments.Contains(existing))
                     {
                         existing.IsReadOnly = true;

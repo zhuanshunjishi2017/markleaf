@@ -268,7 +268,13 @@ public sealed class DocumentFileService
             return Environment.NewLine;
         }
 
-        return crlf >= lf && crlf >= cr ? "\r\n" : lf >= cr ? "\n" : "\r";
+        var newlineKinds = (crlf > 0 ? 1 : 0) + (lf > 0 ? 1 : 0) + (cr > 0 ? 1 : 0);
+        if (newlineKinds > 1)
+        {
+            return "Mixed";
+        }
+
+        return crlf > 0 ? "\r\n" : lf > 0 ? "\n" : "\r";
     }
 
     internal static string NormalizeNewLines(string text, string newLine)

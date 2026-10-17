@@ -628,7 +628,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         if case .activateExisting(let id) = resolution {
             activateTab(id, animated: true)
             tabBarController?.reload()
-            if readOnly, let target = windowSession.session(for: id), !target.isReadOnlyLocked,
+            if readOnly, let target = windowSession.session(for: id),
+               !target.isReadOnly, !target.isReadOnlyLocked,
                let window {
                 let documentID = target.currentDocumentIdentifier
                 let alert = NSAlert()

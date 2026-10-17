@@ -256,7 +256,9 @@ internal sealed partial class MainForm
         _encodingLabel.Text = _document is null
             ? "UTF-8"
             : StatusBarFormatter.FormatEncoding(DocumentEncodingPolicy.FromId(_document.EncodingPolicyId));
-        _encodingLabel.Enabled = _document?.IsReadOnly != true;
+        var documentReadOnly = _document is { } statusDocument
+            && (statusDocument.IsReadOnly || statusDocument.IsUserReadOnly);
+        _encodingLabel.Enabled = !documentReadOnly;
         _newLineLabel.Text = _document is null
             ? StatusBarFormatter.FormatNewLine(Environment.NewLine)
             : StatusBarFormatter.FormatNewLine(_document.NewLine);
@@ -266,6 +268,7 @@ internal sealed partial class MainForm
         _modeButton.ToolTipText = _editorCommandStatus.SourceMode
             ? Loc.Get("statusBar.mode.exitSource")
             : Loc.Get("statusBar.mode.source");
+        _newLineLabel.Enabled = !documentReadOnly;
         _modeButton.Enabled = !IsPlainTextDocument;
     }
 

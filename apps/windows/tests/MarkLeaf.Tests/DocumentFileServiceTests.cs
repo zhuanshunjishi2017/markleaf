@@ -1,5 +1,6 @@
 using System.Text;
 using MarkLeaf.Documents;
+using MarkLeaf.UI;
 
 namespace MarkLeaf.Tests;
 
@@ -70,6 +71,19 @@ public sealed class DocumentFileServiceTests
         Assert.IsFalse(DocumentEncodingChangePolicy.SetNewLine(document, "mixed"));
         await _service.SaveAsync(document, document.Markdown, 1, path);
         Assert.AreEqual("one\r\ntwo", await File.ReadAllTextAsync(path));
+    }
+
+    [TestMethod]
+    public void MixedNewlineIsDetectedAndDisplayedWithoutLosingEitherSequence()
+    {
+        const string text = "first\nsecond\r\nthird";
+
+        Assert.AreEqual("Mixed", DocumentFileService.DetectNewLine(text));
+        Assert.AreEqual("Mixed", StatusBarFormatter.FormatNewLine("Mixed"));
+        Assert.AreEqual("first\r\nsecond\r\nthird",
+            DocumentFileService.NormalizeNewLines(text, "\r\n"));
+        Assert.AreEqual("first\nsecond\nthird",
+            DocumentFileService.NormalizeNewLines(text, "\n"));
     }
 
     [TestMethod]

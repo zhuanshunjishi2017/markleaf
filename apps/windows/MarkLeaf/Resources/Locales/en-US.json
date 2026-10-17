@@ -16,6 +16,8 @@
   "menu.file.rename": "Rename…",
   "common.ok": "OK",
   "common.cancel": "Cancel",
+  "document.convertToReadOnlyTitle": "Convert to Read-Only",
+  "document.convertToReadOnlyConfirm": "Convert to Read-Only",
   "dialog.colorThemesLight": "Light",
   "dialog.colorThemesDark": "Dark",
   "dialog.colorThemesDefaultLight": "Default light",

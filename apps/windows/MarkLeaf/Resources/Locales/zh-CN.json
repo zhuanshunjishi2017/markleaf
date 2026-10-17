@@ -16,6 +16,8 @@
   "menu.file.rename": "重命名…",
   "common.ok": "确定",
   "common.cancel": "取消",
+  "document.convertToReadOnlyTitle": "转为只读",
+  "document.convertToReadOnlyConfirm": "转为只读",
   "dialog.colorThemesLight": "浅色",
   "dialog.colorThemesDark": "深色",
   "dialog.colorThemesDefaultLight": "默认浅色",
