@@ -10,6 +10,10 @@ public enum SettingsSaveScope
 
 public static class SettingsReset
 {
+    /// <summary>
+    /// Resets only groups owned by PreferencesDialog. CodeFormatter is owned by
+    /// the external code formatter manager.
+    /// </summary>
     public static void Apply(AppSettings target, AppSettings defaults)
     {
         target.SchemaVersion = defaults.SchemaVersion;
@@ -22,9 +26,17 @@ public static class SettingsReset
         target.Image = defaults.Image;
         target.Export = defaults.Export;
         target.Shortcut = defaults.Shortcut;
-        target.CodeFormatter = defaults.CodeFormatter;
         target.MarkdownStyle = defaults.MarkdownStyle;
         target.ColorTheme = defaults.ColorTheme;
+    }
+}
+
+public static class CodeFormatterSettingsReset
+{
+    public static void Apply(CodeFormatterSettings target, CodeFormatterSettings defaults)
+    {
+        target.ToolPaths.Clear();
+        target.SqlDialect = defaults.SqlDialect;
     }
 }
 

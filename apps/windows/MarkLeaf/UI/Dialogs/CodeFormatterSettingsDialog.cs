@@ -22,6 +22,7 @@ internal sealed class CodeFormatterSettingsDialog : Form
     private readonly Button _clearButton = new();
     private readonly LinkLabel _websiteLink = new();
     private readonly Button _probeButton = new();
+    private readonly Button _restoreDefaultsButton = new();
     private readonly Label _statusLabel = new();
 
     public CodeFormatterSettingsDialog(CodeFormatterSettings settings, Action onChanged)
@@ -143,6 +144,26 @@ internal sealed class CodeFormatterSettingsDialog : Form
         _probeButton.Click += async (_, _) => await ProbeSelectedToolAsync();
         pathRow.Controls.Add(_probeButton, 4, 0);
 
+        _restoreDefaultsButton.Text = Loc.Get("codeFormatter.restoreDefaults");
+        _restoreDefaultsButton.AutoSize = true;
+        _restoreDefaultsButton.Anchor = AnchorStyles.Left;
+        _restoreDefaultsButton.Click += (_, _) =>
+        {
+            if (MessageBox.Show(
+                    this,
+                    Loc.Get("codeFormatter.restoreDefaultsConfirm"),
+                    Loc.Get("codeFormatter.restoreDefaultsTitle"),
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            RestoreDefaults();
+        };
+        pathRow.Controls.Add(_restoreDefaultsButton, 6, 0);
+
         _sqlDialectCombo.Anchor = AnchorStyles.Left;
         _sqlDialectCombo.Width = this.ScaleForDpi(128);
         _sqlDialectCombo.AccessibleName = Loc.Get("codeFormatter.sqlDialect");
@@ -174,6 +195,15 @@ internal sealed class CodeFormatterSettingsDialog : Form
         return _toolList.SelectedItems.Count == 0
             ? null
             : ExternalCodeFormatterCatalog.Tools.FirstOrDefault(tool => tool.Id == (string)_toolList.SelectedItems[0].Tag!);
+    }
+
+    internal void RestoreDefaults()
+    {
+        CodeFormatterSettingsReset.Apply(_settings, AppSettings.CreateDefaults().CodeFormatter);
+        _sqlDialectCombo.SelectedIndex = Math.Max(0, SqlDialects.IndexOf(_settings.SqlDialect));
+        RefreshToolList();
+        OnSelectedToolChanged();
+        _onChanged();
     }
 
     private void RefreshToolList()
