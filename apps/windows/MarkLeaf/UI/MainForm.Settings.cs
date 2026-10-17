@@ -46,7 +46,9 @@ internal sealed partial class MainForm
 
     private void ResetAllSettingsToDefaults()
     {
-        _settingsService.SaveAsync(_settings).GetAwaiter().GetResult();
+        _settingsService.SaveAsync(
+            _settings,
+            IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full).GetAwaiter().GetResult();
         SetStatus(Loc.Get("status.settingsReset"));
     }
 
@@ -103,7 +105,10 @@ internal sealed partial class MainForm
     private void SaveWindowState()
     {
         CollectWindowState();
-        PersistSettings("Window state saved.", "Window state could not be saved.");
+        PersistSettings(
+            "Window state saved.",
+            "Window state could not be saved.",
+            IsolatedWindow ? SettingsSaveScope.Window : SettingsSaveScope.Full);
     }
 
     private void SaveSettings()
@@ -115,15 +120,21 @@ internal sealed partial class MainForm
             _settings.ColorTheme = _colorTheme;
         }
         _settings.Appearance.ZoomPercent = _zoomPercent;
-        PersistSettings("Settings saved.", "Settings could not be saved.");
+        PersistSettings(
+            "Settings saved.",
+            "Settings could not be saved.",
+            IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full);
         _ = SettingsChangeChannel.BroadcastAsync(AppearanceSettingsNotice.From(_settings));
     }
 
-    private void PersistSettings(string successMessage, string errorMessage)
+    private void PersistSettings(
+        string successMessage,
+        string errorMessage,
+        SettingsSaveScope scope)
     {
         try
         {
-            _settingsService.SaveAsync(_settings).GetAwaiter().GetResult();
+            _settingsService.SaveAsync(_settings, scope).GetAwaiter().GetResult();
             _logger.Info(successMessage);
         }
         catch (Exception exception)
@@ -147,4 +158,8 @@ internal sealed partial class MainForm
             ApplyColorTheme(_settings.ColorTheme, persistManualChoice: false);
         _menuService.RefreshStates();
     }
+
+    private bool IsolatedWindow =>
+        _options.IsolatedFileWindow || _options.DocumentStatePath is not null || _options.IsExportCommand
+            ;
 }

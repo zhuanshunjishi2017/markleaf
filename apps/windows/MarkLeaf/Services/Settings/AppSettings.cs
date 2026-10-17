@@ -1,5 +1,12 @@
 namespace MarkLeaf.Services.Settings;
 
+public enum SettingsSaveScope
+{
+    Full,
+    Shared,
+    Window,
+}
+
 public enum StartupAction
 {
     NewDocument,

@@ -97,6 +97,147 @@ public sealed class JsonSettingsServiceTests
     }
 
     [TestMethod]
+    public async Task WindowScopedSave_PreservesPrimaryWindowAndMergesRecentItems()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "mainWindow": { "left": 111, "width": 900, "height": 700 },
+              "workspace": {
+                "openDocuments": [{ "path": "C:\\work\\primary.md" }],
+                "activeDocumentIndex": 0,
+                "recentFiles": ["C:\\work\\A.md"]
+              },
+              "editor": { "sourceFontSize": 18 }
+            }
+            """);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var baseline = await service.LoadAsync();
+            Assert.HasCount(1, baseline.Workspace.RecentFiles);
+
+            // A peer wrote C after this isolated window loaded its baseline. The
+            // local window omitted A while adding B, so A is a local deletion and
+            // C is a peer addition that must survive.
+            await File.WriteAllTextAsync(file, """
+                {
+                  "mainWindow": { "left": 222, "width": 1000, "height": 750 },
+                  "workspace": {
+                    "openDocuments": [{ "path": "C:\\work\\peer.md" }],
+                    "activeDocumentIndex": 0,
+                    "recentFiles": ["C:\\work\\A.md", "C:\\work\\C.md"]
+                  },
+                  "editor": { "sourceFontSize": 20 }
+                }
+                """);
+            var incoming = new AppSettings
+            {
+                MainWindow = new WindowSettings
+                {
+                    Left = 999,
+                    Width = baseline.MainWindow.Width,
+                    Height = baseline.MainWindow.Height,
+                    Dpi = baseline.MainWindow.Dpi,
+                    WorkspaceWidth = baseline.MainWindow.WorkspaceWidth,
+                    OutlineWidth = baseline.MainWindow.OutlineWidth,
+                },
+                Workspace = new WorkspaceSettings
+                {
+                    LastFolder = baseline.Workspace.LastFolder,
+                    LastFile = baseline.Workspace.LastFile,
+                    RecentFiles = ["C:\\work\\B.md"],
+                },
+                Editor = new EditorSettings
+                {
+                    SourceFontSize = 16,
+                },
+            };
+
+            await service.SaveAsync(incoming, SettingsSaveScope.Window);
+            var actual = await service.LoadAsync();
+
+            Assert.AreEqual(111, actual.MainWindow.Left);
+            Assert.AreEqual("C:\\work\\primary.md", actual.Workspace.OpenDocuments.Single().Path);
+            Assert.AreEqual(0, actual.Workspace.ActiveDocumentIndex);
+            CollectionAssert.AreEqual(new[] { @"C:\work\B.md", @"C:\work\C.md" },
+                actual.Workspace.RecentFiles);
+            Assert.AreEqual(20, actual.Editor.SourceFontSize);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task SharedScopedSave_PreservesPrimaryWindowAndAppliesSharedPreferences()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(file, """
+            {
+              "mainWindow": { "left": 333, "width": 950, "height": 725 },
+              "workspace": { "openDocuments": [{ "path": "C:\\work\\primary.md" }] },
+              "editor": { "sourceFontSize": 18 }
+            }
+            """);
+
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var incoming = new AppSettings
+            {
+                MainWindow = new WindowSettings { Left = 888, Width = 1200, Height = 800 },
+                Workspace = new WorkspaceSettings(),
+                Editor = new EditorSettings { SourceFontSize = 22 },
+            };
+
+            await service.SaveAsync(incoming, SettingsSaveScope.Shared);
+            var actual = await service.LoadAsync();
+
+            Assert.AreEqual(333, actual.MainWindow.Left);
+            Assert.AreEqual("C:\\work\\primary.md", actual.Workspace.OpenDocuments.Single().Path);
+            Assert.AreEqual(22, actual.Editor.SourceFontSize);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task ConcurrentWindowScopedSavesPreserveBothRecentAdditions()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            var first = new AppSettings();
+            first.Workspace.RecentFiles = ["C:\\work\\first.md"];
+            await service.SaveAsync(first);
+
+            var left = await service.LoadAsync();
+            var right = await service.LoadAsync();
+            var leftService = new JsonSettingsService(file, new TestLogger());
+            var rightService = new JsonSettingsService(file, new TestLogger());
+            leftService.LoadAsync().GetAwaiter().GetResult();
+            rightService.LoadAsync().GetAwaiter().GetResult();
+            left.Workspace.RecentFiles = ["C:\\work\\left-new.md"];
+            right.Workspace.RecentFiles = ["C:\\work\\right-new.md"];
+
+            await Task.WhenAll(
+                leftService.SaveAsync(left, SettingsSaveScope.Window),
+                rightService.SaveAsync(right, SettingsSaveScope.Window));
+
+            var actual = await service.LoadAsync();
+            Assert.Contains(@"C:\work\left-new.md", actual.Workspace.RecentFiles);
+            Assert.Contains(@"C:\work\right-new.md", actual.Workspace.RecentFiles);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
     public async Task Load_InvalidMarkdownSyntaxPreferences_UsesDefaults()
     {
         var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));

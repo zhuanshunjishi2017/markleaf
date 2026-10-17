@@ -7,6 +7,7 @@ public sealed class JsonSettingsService : ISettingsService
 {
     private readonly string _settingsFile;
     private readonly IAppLogger _logger;
+    private AppSettings? _loadBaseline;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -38,13 +39,15 @@ public sealed class JsonSettingsService : ISettingsService
             var settings = await JsonSerializer
                 .DeserializeAsync<AppSettings>(stream, _jsonOptions, cancellationToken)
                 .ConfigureAwait(false);
-            return settings?.SchemaVersion switch
+            var loaded = settings?.SchemaVersion switch
             {
                 AppSettings.CurrentSchemaVersion => NormalizeCurrent(settings),
                 2 => MigrateVersion2(settings),
                 1 => MigrateVersion1(settings),
                 _ => new AppSettings(),
             };
+            _loadBaseline = CloneSettings(loaded);
+            return loaded;
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -53,22 +56,38 @@ public sealed class JsonSettingsService : ISettingsService
         }
     }
 
-    public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(
+        AppSettings settings,
+        SettingsSaveScope scope = SettingsSaveScope.Full,
+        CancellationToken cancellationToken = default)
     {
         var directory = Path.GetDirectoryName(_settingsFile)
             ?? throw new InvalidOperationException("Settings path has no parent directory.");
         Directory.CreateDirectory(directory);
 
+        using var saveLock = await AcquireSaveLockAsync(cancellationToken).ConfigureAwait(false);
+
+        var baselineAtSaveStart = _loadBaseline;
+        var latest = await LoadAsync(cancellationToken).ConfigureAwait(false);
+        var baseline = baselineAtSaveStart ?? latest;
+        var merged = SettingsSaveScope.Window == scope
+            ? MergeWindowScopedSave(latest, settings, baseline)
+            : SettingsSaveScope.Shared == scope
+            ? MergeSharedScopedSave(latest, settings)
+            : MergeRecentItems(latest, settings, baseline);
+        _loadBaseline = CloneSettings(merged);
+        settings = merged;
+
         var temporaryFile = _settingsFile + $".{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
         try
         {
             await using var stream = new FileStream(
-            temporaryFile,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            4096,
-            FileOptions.Asynchronous | FileOptions.WriteThrough);
+                temporaryFile,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                FileOptions.Asynchronous | FileOptions.WriteThrough);
             await JsonSerializer
                 .SerializeAsync(stream, settings, _jsonOptions, cancellationToken)
                 .ConfigureAwait(false);
@@ -84,6 +103,113 @@ public sealed class JsonSettingsService : ISettingsService
                 File.Delete(temporaryFile);
             }
         }
+    }
+
+    private AppSettings MergeWindowScopedSave(AppSettings latest, AppSettings incoming, AppSettings baseline)
+    {
+        var merged = CloneSettings(incoming);
+        merged.Editor = latest.Editor;
+        merged.Appearance = latest.Appearance;
+        merged.General = latest.General;
+        merged.Image = latest.Image;
+        merged.Export = latest.Export;
+        merged.Shortcut = latest.Shortcut;
+        merged.CodeFormatter = latest.CodeFormatter;
+        merged.MarkdownStyle = latest.MarkdownStyle;
+        merged.ColorTheme = latest.ColorTheme;
+        var restoredWindow = baseline.MainWindow;
+        var restoredWorkspace = baseline.Workspace;
+        merged.MainWindow = restoredWindow;
+        merged.Workspace.LastFolder = restoredWorkspace.LastFolder;
+        merged.Workspace.LastFile = restoredWorkspace.LastFile;
+        merged.Workspace.LastFileReadOnly = restoredWorkspace.LastFileReadOnly;
+        merged.Workspace.OpenDocuments = restoredWorkspace.OpenDocuments;
+        merged.Workspace.ActiveDocumentIndex = restoredWorkspace.ActiveDocumentIndex;
+        return MergeRecentItems(latest, merged, baseline);
+    }
+
+    private AppSettings MergeSharedScopedSave(AppSettings latest, AppSettings incoming)
+    {
+        var merged = CloneSettings(incoming);
+        merged.MainWindow = latest.MainWindow;
+        merged.Workspace.LastFolder = latest.Workspace.LastFolder;
+        merged.Workspace.LastFile = latest.Workspace.LastFile;
+        merged.Workspace.LastFileReadOnly = latest.Workspace.LastFileReadOnly;
+        merged.Workspace.OpenDocuments = latest.Workspace.OpenDocuments;
+        merged.Workspace.ActiveDocumentIndex = latest.Workspace.ActiveDocumentIndex;
+        return MergeRecentItems(latest, merged, latest);
+    }
+
+    private async Task<FileStream> AcquireSaveLockAsync(CancellationToken cancellationToken)
+    {
+        var lockPath = _settingsFile + ".lock";
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            try
+            {
+                return File.Open(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        throw new TimeoutException("Timed out waiting for the settings save lock.");
+    }
+
+    private AppSettings MergeRecentItems(AppSettings latest, AppSettings incoming, AppSettings baseline)
+    {
+        var deletedFiles = DeletedPaths(baseline.Workspace.RecentFiles, incoming.Workspace.RecentFiles);
+        var deletedFolders = DeletedPaths(baseline.Workspace.RecentFolders, incoming.Workspace.RecentFolders);
+        var files = latest.Workspace.RecentFiles
+            .Where(path => !deletedFiles.Contains(NormalizePath(path)))
+            .Concat(incoming.Workspace.RecentFiles)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        files = incoming.Workspace.RecentFiles
+            .Concat(files)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var folders = latest.Workspace.RecentFolders
+            .Where(path => !deletedFolders.Contains(NormalizePath(path)))
+            .Concat(incoming.Workspace.RecentFolders)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        folders = incoming.Workspace.RecentFolders
+            .Concat(folders)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var merged = CloneSettings(incoming);
+        merged.Workspace.RecentFiles = files;
+        merged.Workspace.RecentFolders = folders;
+        return merged;
+    }
+
+    private static HashSet<string> DeletedPaths(IReadOnlyList<string> baseline, IReadOnlyList<string> incoming) =>
+        baseline
+            .Where(path => !incoming.Contains(path, StringComparer.OrdinalIgnoreCase))
+            .Select(NormalizePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static string NormalizePath(string path) =>
+        Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    private static AppSettings CloneSettings(AppSettings settings)
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        using var stream = new MemoryStream();
+        JsonSerializer.Serialize(stream, settings, options);
+        stream.Position = 0;
+        return JsonSerializer.Deserialize<AppSettings>(stream, options) ?? new AppSettings();
     }
 
     private static AppSettings MigrateVersion1(AppSettings settings)
