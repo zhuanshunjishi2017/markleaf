@@ -18,6 +18,11 @@ internal sealed partial class MainForm
 {
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        if (TryHandleNativeTextShortcut(keyData))
+        {
+            return true;
+        }
+
         var keyCode = keyData & Keys.KeyCode;
         if ((keyData & (Keys.Control | Keys.Alt | Keys.Shift)) == Keys.None
             && keyCode is Keys.Left or Keys.Right or Keys.Enter or Keys.Escape
@@ -72,6 +77,18 @@ internal sealed partial class MainForm
 
         return _commandRouter.TryExecuteShortcut(keyData)
             || base.ProcessCmdKey(ref message, keyData);
+    }
+
+    internal bool TryHandleNativeTextShortcut(Keys keyData, Control? focused = null)
+    {
+        var editor = NativeTextEditingPolicy.FindFocusedText(this, focused);
+        if (editor is null)
+        {
+            return false;
+        }
+
+        var command = NativeTextEditingPolicy.MapShortcut(keyData);
+        return command is not null && NativeTextEditingPolicy.Execute(editor, command.Value);
     }
 
     private CommandState GetCommandState(AppCommand command)

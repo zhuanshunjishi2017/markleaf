@@ -28,6 +28,7 @@ internal sealed partial class MainForm
         var follow = !_settings.Appearance.FollowSystemColorMode;
         _settings.Appearance.FollowSystemColorMode = follow;
         ApplyEffectiveColorTheme();
+        SaveSettings();
     }
 
     private void SetColorTheme(string themeId)
