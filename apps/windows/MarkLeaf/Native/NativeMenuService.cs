@@ -299,6 +299,125 @@ internal sealed class NativeMenuService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 用自绘菜单渲染一个顶级菜单（文件/编辑/…）。菜单内容仍取自现有构建器，
+    /// 返回选中的命令 ID；鼠标越过其它顶级标签时返回切换目标。
+    /// </summary>
+    internal async Task<(int? CommandId, int HoveredMenuIndex)> ShowSelfDrawnTopLevelMenuAsync(
+        Form owner, int menuIndex, Point screenPoint, int dpi, bool darkMode,
+        IReadOnlyList<Rectangle> menuButtonBounds)
+    {
+        try
+        {
+            CancelEditorContextMenu();
+            var id = ++_editorMenuId;
+            var model = BuildSelfDrawnTopLevelMenu(menuIndex);
+            if (model.Secondary.Count == 0) return (null, -1);
+
+            var chosen = new TaskCompletionSource<uint?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var hovered = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var session = new EditorMenuSession(id, _ => new CommandState(true), _ => Task.CompletedTask,
+                _ => { }, () => { });
+            using var menu = new EditorContextMenu(model, dpi, darkMode, _showKeyboardShortcutsProvider(), session,
+                rawCommandSelected: commandId => chosen.TrySetResult(commandId));
+            _editorContextMenu = menu;
+            menu.Closed += (_, _) =>
+            {
+                if (!owner.IsDisposed && owner.IsHandleCreated)
+                    owner.BeginInvoke(() => chosen.TrySetResult(null));
+                else
+                    chosen.TrySetResult(null);
+            };
+            using var hoverTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            hoverTimer.Tick += (_, _) =>
+            {
+                var cursor = Cursor.Position;
+                for (var index = 0; index < menuButtonBounds.Count; index++)
+                {
+                    if (index == menuIndex || !menuButtonBounds[index].Contains(cursor)) continue;
+                    hovered.TrySetResult(index);
+                    menu.Close();
+                    return;
+                }
+            };
+            hoverTimer.Start();
+            menu.Show(owner, owner.PointToClient(screenPoint));
+            var completed = await Task.WhenAny(chosen.Task, hovered.Task);
+            hoverTimer.Stop();
+            if (completed == hovered.Task)
+            {
+                if (menu.Visible) menu.Close();
+                await menu.Dismissed;
+                return (null, await hovered.Task);
+            }
+
+            var commandId = await chosen.Task;
+            if (menu.Visible) await menu.Dismissed;
+            return (commandId is null ? null : unchecked((int)commandId.Value), -1);
+        }
+        catch (Exception error)
+        {
+            Diagnose($"Self-drawn top-level menu failed: {error.Message}");
+            return (null, -1);
+        }
+    }
+
+    internal EditorMenuModel BuildSelfDrawnTopLevelMenu(int menuIndex)
+    {
+        var menu = menuIndex switch
+        {
+            0 => BuildFileMenu(),
+            1 => BuildEditMenu(),
+            2 => BuildInsertMenu(),
+            3 => BuildFormatMenu(),
+            4 => BuildViewMenu(),
+            5 => BuildHelpMenu(),
+            _ => 0,
+        };
+        if (menu == 0)
+        {
+            return new EditorMenuModel(Array.Empty<EditorMenuEntry>(), Array.Empty<EditorMenuEntry>());
+        }
+
+        try
+        {
+            ApplyCommandStates(menu);
+            RefreshRecentWorkspaces();
+            RefreshStyleMenu();
+            RefreshZoomMenu();
+            RefreshColorMenu();
+            RefreshDocumentTabMenu();
+            // 自绘模型读取的是 HMENU 的最终状态；子项全部不可用时，容器项也必须先置灰。
+            RefreshPopupAvailability(menu);
+            return MenuBarModelAdapter.Convert(menu);
+        }
+        finally
+        {
+            NativeMethods.DestroyMenu(menu);
+            _recentWorkspaceMenu = 0;
+            _styleMenu = 0;
+            _zoomMenu = 0;
+            _colorMenu = 0;
+            _documentTabMenu = 0;
+        }
+    }
+
+    private void ApplyCommandStates(nint menu)
+    {
+        foreach (var command in Enum.GetValues<AppCommand>())
+        {
+            var state = _router.GetState(command);
+            NativeMethods.EnableMenuItem(
+                menu,
+                (uint)command,
+                NativeMethods.MfByCommand | (state.IsEnabled ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
+            NativeMethods.CheckMenuItem(
+                menu,
+                (uint)command,
+                NativeMethods.MfByCommand | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
+        }
+    }
+
     private static IEnumerable<EditorMenuEntry> Flatten(IEnumerable<EditorMenuEntry> entries) =>
         entries.SelectMany(x => new[] { x }.Concat(Flatten(x.Children)));
 

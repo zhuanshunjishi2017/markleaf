@@ -630,7 +630,7 @@ internal sealed partial class MainForm
         HandlePopupMenuCommand(commandId);
     }
 
-    private void ShowTopLevelMainMenu(int menuIndex, Point screenLocation)
+    private async void ShowTopLevelMainMenu(int menuIndex, Point screenLocation)
     {
         var bounds = _documentTabBar.GetTopLevelMenuScreenBounds();
         var currentIndex = menuIndex;
@@ -639,12 +639,8 @@ internal sealed partial class MainForm
             while (currentIndex >= 0 && currentIndex < bounds.Count)
             {
                 _documentTabBar.SetOpenTopLevelMenuIndex(currentIndex);
-                var commandId = _menuService.ShowTopLevelMainMenu(
-                    Handle,
-                    screenLocation,
-                    currentIndex,
-                    bounds,
-                    out var nextMenuIndex);
+                var (commandId, nextMenuIndex) = await _menuService.ShowSelfDrawnTopLevelMenuAsync(
+                    this, currentIndex, screenLocation, DeviceDpi, _menuDarkMode, bounds);
                 if (commandId is not null)
                 {
                     HandlePopupMenuCommand(commandId);

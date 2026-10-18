@@ -12,6 +12,7 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     private readonly List<Font> _iconFonts = [];
     private readonly int _dpi;
     private readonly bool _animate;
+    private readonly Action<uint>? _rawCommandSelected;
     private readonly System.Windows.Forms.Timer _fadeTimer = new() { Interval = 15 };
     private TaskCompletionSource _dismissed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _fadeStarted;
@@ -25,10 +26,11 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     internal Task Dismissed => _dismissed.Task;
 
     internal EditorContextMenu(EditorMenuModel model, int dpi, bool dark, bool showShortcuts, EditorMenuSession session,
-        bool? animate = null)
+        bool? animate = null, Action<uint>? rawCommandSelected = null)
     {
         _dpi = dpi;
         _session = session;
+        _rawCommandSelected = rawCommandSelected;
         _animate = animate ?? (SystemInformation.IsMenuAnimationEnabled && SystemInformation.IsMenuFadeEnabled
             && !SystemInformation.HighContrast);
         _fadeTimer.Tick += (_, _) => AdvanceFade();
@@ -87,7 +89,12 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
             item.MouseEnter += (_, _) => _session.Preview(null);
             if (entry.Kind == EditorMenuEntryKind.Submenu)
             {
-                item.DropDown = new EditorContextMenu(new([], entry.Children), dpi, dark, showShortcuts, session, _animate);
+                item.DropDown = new EditorContextMenu(new([], entry.Children), dpi, dark, showShortcuts, session,
+                    _animate, rawCommandSelected);
+            }
+            else if (entry.RawCommandId is { } rawId)
+            {
+                item.Click += (_, _) => CommitRaw(rawId);
             }
             else if (entry.Command is { } command)
             {
@@ -193,6 +200,12 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     {
         RootMenu.Close(ToolStripDropDownCloseReason.ItemClicked);
     });
+
+    private void CommitRaw(uint commandId)
+    {
+        RootMenu.Close(ToolStripDropDownCloseReason.ItemClicked);
+        _rawCommandSelected?.Invoke(commandId);
+    }
 
     private EditorContextMenu RootMenu => OwnerItem?.Owner is EditorContextMenu parent ? parent.RootMenu : this;
 

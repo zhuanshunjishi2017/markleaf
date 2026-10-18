@@ -8,7 +8,7 @@ internal enum EditorMenuEntryKind { Command, Separator, Submenu }
 
 internal sealed record EditorMenuEntry(
     EditorMenuEntryKind Kind, AppCommand? Command, string Label, string Shortcut,
-    CommandState State, IReadOnlyList<EditorMenuEntry> Children)
+    CommandState State, IReadOnlyList<EditorMenuEntry> Children, uint? RawCommandId = null)
 {
     internal static EditorMenuEntry Separator { get; } = new(EditorMenuEntryKind.Separator, null, "", "", new(false), Array.Empty<EditorMenuEntry>());
 }

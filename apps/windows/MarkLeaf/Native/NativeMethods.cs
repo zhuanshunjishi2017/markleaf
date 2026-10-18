@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MarkLeaf.Native;
 
@@ -77,7 +78,13 @@ internal static class NativeMethods
     internal static extern nint GetSubMenu(nint menu, int position);
 
     [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint GetMenuItemID(nint menu, int position);
+
+    [DllImport("user32.dll", SetLastError = true)]
     internal static extern uint GetMenuState(nint menu, uint item, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMenuStringW")]
+    internal static extern int GetMenuString(nint menu, uint item, StringBuilder text, int max, uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

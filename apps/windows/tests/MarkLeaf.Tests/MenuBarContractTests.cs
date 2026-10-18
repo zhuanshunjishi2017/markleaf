@@ -170,6 +170,46 @@ public sealed class MenuBarContractTests
     }
 
     [TestMethod]
+    public void SelfDrawnMenuModelKeepsNativeContentAndCommandIds()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var file = service.BuildSelfDrawnTopLevelMenu(0);
+        var labels = file.Secondary.Select(entry => entry.Label).ToArray();
+        CollectionAssert.Contains(labels, "新建");
+        CollectionAssert.Contains(labels, "保存");
+        Assert.IsFalse(labels.Any(label => label.Contains('&')), "自绘菜单不应显示助记键标记");
+        Assert.IsTrue(file.Secondary.Any(entry => entry.Kind == EditorMenuEntryKind.Separator),
+            "文件菜单应保留分组分隔线");
+
+        var newDocument = file.Secondary.First(entry => entry.Label == "新建");
+        Assert.AreEqual(EditorMenuEntryKind.Submenu, newDocument.Kind);
+        CollectionAssert.Contains(newDocument.Children.Select(entry => entry.Label).ToArray(), "Markdown");
+
+        var save = file.Secondary.First(entry => entry.Label == "保存");
+        Assert.AreEqual((uint?)AppCommand.SaveDocument, save.RawCommandId,
+            "选中项必须携带原始命令 ID 才能走现有的命令分发");
+        Assert.AreEqual("Ctrl+S", save.Shortcut);
+    }
+
+    [TestMethod]
+    public void SelfDrawnMenuModelDisablesContainerWhenAllChildrenAreUnavailable()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new CommandState(false), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var file = service.BuildSelfDrawnTopLevelMenu(0);
+        var newDocument = file.Secondary.First(entry => entry.Label == "新建");
+        Assert.AreEqual(EditorMenuEntryKind.Submenu, newDocument.Kind);
+        Assert.IsFalse(newDocument.State.IsEnabled, "所有子命令禁用时，外层子菜单项也应置灰");
+    }
+
+    [TestMethod]
     public void MenuBarTitlesStayEnabledWhileNestedPopupsCollapse()
     {
         Loc.Initialize(LocalesDirectory, "zh-CN");
