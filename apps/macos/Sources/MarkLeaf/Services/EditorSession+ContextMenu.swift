@@ -312,8 +312,10 @@ extension EditorSession {
 
     @discardableResult
     private func importedImageMarkdownPath(for url: URL) -> String? {
-        let ext = url.pathExtension.lowercased()
-        guard ["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(ext) else { return nil }
+        guard ImageImportPolicy.supports(url) else {
+            statusText = L10n.t("不支持此图片格式")
+            return nil
+        }
         let settings = SettingsService.shared.settings
         let physicalPath: String
         if settings.fileImageHandling == "copyToAssets", let docDir = documentURL?.deletingLastPathComponent() {
@@ -333,7 +335,7 @@ extension EditorSession {
         guard let window = webView?.window else { return }
         let panel = NSOpenPanel()
         panel.title = L10n.t("更换图片")
-        panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, (UTType(filenameExtension: "webp") ?? .png)]
+        panel.allowedContentTypes = ImageImportPolicy.contentTypes
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self,

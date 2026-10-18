@@ -9,6 +9,26 @@ namespace MarkLeaf.Tests;
 public sealed class SharedSettingsNoticeTests
 {
     [TestMethod]
+    public void SharedAppearancePreservesTargetWindowZoom()
+    {
+        var source = new AppSettings();
+        source.Appearance.ZoomPercent = 150;
+        source.Appearance.ShowCodeHighlight = false;
+        var target = new AppSettings();
+        target.Appearance.ZoomPercent = 75;
+        var notice = SharedSettingsNotice.From(source);
+        notice.ApplyTo(target);
+        Assert.AreEqual(75, target.Appearance.ZoomPercent);
+        Assert.IsFalse(target.Appearance.ShowCodeHighlight);
+        Assert.DoesNotContain("ZoomPercent", JsonSerializer.Serialize(notice), StringComparison.OrdinalIgnoreCase);
+        var decoded = JsonSerializer.Deserialize<SharedSettingsNotice>(JsonSerializer.Serialize(notice))!;
+        target.Appearance.ZoomPercent = 90;
+        decoded.ApplyTo(target);
+        Assert.AreEqual(90, target.Appearance.ZoomPercent);
+        Assert.IsFalse(target.Appearance.ShowCodeHighlight);
+    }
+
+    [TestMethod]
     public void CapturesAndAppliesAllSharedGroups()
     {
         var source = new AppSettings();

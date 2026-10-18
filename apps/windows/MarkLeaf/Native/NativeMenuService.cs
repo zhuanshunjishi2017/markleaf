@@ -633,6 +633,7 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.OpenDocumentReadOnly, Loc.Get("menu.file.openReadOnly"));
             AppendMainMenuCommand(menu, AppCommand.OpenDocumentInNewWindow, Loc.Get("menu.file.openInNewWindow"));
             AppendMainMenuCommand(menu, AppCommand.OpenFolder, Loc.Get("menu.file.openFolder"));
+            AppendSeparator(menu);
 
             _recentWorkspaceMenu = CreateMenu(true);
             AppendDisabledText(_recentWorkspaceMenu, Loc.Get("menu.file.noRecentItems"));

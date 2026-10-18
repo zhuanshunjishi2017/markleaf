@@ -86,9 +86,8 @@ extension EditorSession {
         ) {
         case .finderFiles:
             // Finder 文件优先（对应 Windows Clipboard.ContainsFileDropList）→ 按「文件图片」设置导入。
-            let imageExtensions = Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"])
             var imported = 0
-            for url in urls where imageExtensions.contains(url.pathExtension.lowercased()) {
+            for url in urls where ImageImportPolicy.supports(url) {
                 insertImageFile(at: url)
                 imported += 1
             }

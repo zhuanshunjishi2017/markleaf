@@ -44,36 +44,18 @@ extension EditorSession {
     func insertFootnote() {
         guard webView?.window != nil else { return }
         presentFootnoteInputDialog { [weak self] label, note in
-            guard let self, let window = self.webView?.window, let label, let note else { return }
-            self.footnoteLabelExists(label) { exists in
-                DispatchQueue.main.async {
-                    guard exists else {
-                        self.executeFootnoteInsert(label: label, note: note)
-                        return
-                    }
-                    let alert = NSAlert()
-                    alert.messageText = L10n.t("脚注编号重复")
-                    alert.informativeText = L10n.f("已存在编号为“%@”的脚注。仍要继续插入重复的编号？", label)
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: L10n.t("确定"))
-                    alert.addButton(withTitle: L10n.t("取消"))
-                    alert.beginSheetModal(for: window) { response in
-                        if response == .alertFirstButtonReturn {
-                            self.executeFootnoteInsert(label: label, note: note)
-                        } else {
-                            // 与 Windows 一致：取消重复警告后重新打开输入框。
-                            self.insertFootnote()
-                        }
-                    }
-                }
-            }
+            guard let self, let label, let note else { return }
+            self.executeFootnoteInsert(label: label, note: note)
         }
     }
 
     private func executeFootnoteInsert(label: String, note: String) {
         guard let payload = footnotePayload(["label": label, "note": note]) else { return }
-        execute("insertFootnote", text: payload)
-        statusText = L10n.t("已插入脚注")
+        execute("insertFootnote", text: payload, completion: { [weak self] success in
+            guard let self else { return }
+            if success { self.statusText = L10n.t("已插入脚注") }
+            else { self.presentError(L10n.t("脚注编号已存在或无效，请使用其他编号。")) }
+        })
     }
 
     // MARK: - 重设脚注编号（对应 Windows ResetFootnoteLabel）
@@ -159,6 +141,7 @@ extension EditorSession {
         let noteView = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 70))
         noteView.isEditable = true
         noteView.isRichText = false
+        noteView.allowsUndo = true
         noteView.font = .systemFont(ofSize: 13)
         noteView.textContainerInset = NSSize(width: 2, height: 2)
         noteView.isVerticallyResizable = true
@@ -257,36 +240,6 @@ extension EditorSession {
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.t("好"))
         alert.beginSheetModal(for: window)
-    }
-
-    // MARK: - 重复编号检查（对应 Windows FootnoteLabelExistsAsync）
-
-    private func footnoteLabelExists(_ label: String, completion: @escaping (Bool) -> Void) {
-        requestSnapshot { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let markdown):
-                completion(Self.footnoteLabelExists(in: markdown, label: label))
-            case .failure:
-                self.statusText = L10n.t("无法检查脚注编号是否重复")
-                completion(false)
-            }
-        }
-    }
-
-    static func footnoteLabelExists(in markdown: String, label: String) -> Bool {
-        let pattern = "(?m)^ {0,3}\\[\\^([^\\]\\r\\n]+)\\]:"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
-        let range = NSRange(markdown.startIndex..., in: markdown)
-        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        for match in regex.matches(in: markdown, range: range) {
-            guard let valueRange = Range(match.range(at: 1), in: markdown) else { continue }
-            if String(markdown[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                .caseInsensitiveCompare(trimmed) == .orderedSame {
-                return true
-            }
-        }
-        return false
     }
 
     private func footnotePayload(_ dict: [String: String]) -> String? {

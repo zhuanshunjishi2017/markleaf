@@ -134,6 +134,24 @@ public sealed class AppSettings
 
     public string ColorTheme { get; set; } = "apple-blue";
 
+    // Refresh shared ownership after a successful merged save, retaining live
+    // manager references and the current window's view/restore state.
+    internal void ApplyPersistedSharedSettings(AppSettings saved)
+    {
+        var windowZoom = Appearance.ZoomPercent;
+        File = saved.File;
+        Editor = saved.Editor;
+        Appearance = saved.Appearance;
+        Appearance.ZoomPercent = windowZoom;
+        General = saved.General;
+        Image = saved.Image;
+        Export = saved.Export;
+        Shortcut.ApplyFrom(saved.Shortcut);
+        CodeFormatter.ApplyFrom(saved.CodeFormatter);
+        MarkdownStyle = saved.MarkdownStyle;
+        ColorTheme = saved.ColorTheme;
+    }
+
     public static AppSettings CreateDefaults()
     {
         return new AppSettings

@@ -2860,7 +2860,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         guard let window = webView?.window else { return }
         let panel = NSOpenPanel()
         panel.title = L10n.t("插入图片")
-        panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, (UTType(filenameExtension: "webp") ?? .png)]
+        panel.allowedContentTypes = ImageImportPolicy.contentTypes
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }

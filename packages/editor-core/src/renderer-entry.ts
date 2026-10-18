@@ -1,5 +1,6 @@
 import './styles.css'
 export * from './editor'
+export { resetInlineInput } from './inline-format-input'
 export * from './editor-state'
 export * from './command-state'
 export * from './document-mode'

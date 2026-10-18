@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using MarkLeaf.Services.Settings;
 
 namespace MarkLeaf.App;
@@ -11,6 +12,7 @@ internal sealed class SharedSettingsState
 {
     public FileSettings File { get; set; } = new();
     public EditorSettings Editor { get; set; } = new();
+    [JsonConverter(typeof(SharedAppearanceSettingsConverter))]
     public AppearanceSettings Appearance { get; set; } = new();
     public GeneralSettings General { get; set; } = new();
     public ImageSettings Image { get; set; } = new();
@@ -43,9 +45,11 @@ internal sealed record SharedSettingsNotice(SharedSettingsState Shared)
 
     public void ApplyTo(AppSettings settings)
     {
+        var windowZoom = settings.Appearance.ZoomPercent;
         settings.File = CloneSharedSection(Shared.File);
         settings.Editor = CloneSharedSection(Shared.Editor);
         settings.Appearance = CloneSharedSection(Shared.Appearance);
+        settings.Appearance.ZoomPercent = windowZoom;
         settings.General = CloneSharedSection(Shared.General);
         settings.Image = CloneSharedSection(Shared.Image);
         settings.Export = CloneSharedSection(Shared.Export);
@@ -66,6 +70,24 @@ internal sealed record SharedSettingsNotice(SharedSettingsState Shared)
         stream.Position = 0;
         return JsonSerializer.Deserialize<T>(stream, options)
             ?? throw new InvalidOperationException("Could not clone shared settings section.");
+    }
+}
+
+// The persisted last-used zoom is a startup default, never a live peer setting.
+internal sealed class SharedAppearanceSettingsConverter : JsonConverter<AppearanceSettings>
+{
+    public override AppearanceSettings? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        JsonSerializer.Deserialize<AppearanceSettings>(ref reader, options);
+
+    public override void Write(Utf8JsonWriter writer, AppearanceSettings value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        foreach (var property in JsonSerializer.SerializeToElement(value, options).EnumerateObject())
+        {
+            if (!property.Name.Equals(nameof(AppearanceSettings.ZoomPercent), StringComparison.OrdinalIgnoreCase))
+                property.WriteTo(writer);
+        }
+        writer.WriteEndObject();
     }
 }
 

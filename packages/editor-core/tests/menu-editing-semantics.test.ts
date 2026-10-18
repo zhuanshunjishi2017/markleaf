@@ -20,6 +20,47 @@ const formats = [
 ] as const
 
 describe('menu editing semantics', () => {
+  it('inserting a footnote undoes its reference and definition together', () => {
+    setup('first\n\nlast')
+    editor.commands.setTextSelection(3)
+    const before = editor.state.doc
+    const depth = undoDepth(editor.state)
+    expect(executeEditorCommand(editor, 'insertFootnote', JSON.stringify({ label: 'note', note: 'new note' }))).toBe(true)
+    expect(getMarkdown(editor)).toContain('[^note]: new note')
+    expect(undoDepth(editor.state)).toBe(depth + 1)
+    editor.commands.undo()
+    expect(editor.state.doc.eq(before)).toBe(true)
+  })
+
+  it('footnote insertion does not undo the text typed immediately before it', () => {
+    setup('first\n\nlast')
+    editor.commands.setTextSelection(3)
+    editor.view.dispatch(editor.state.tr.insertText('X'))
+    const before = editor.state.doc
+    executeEditorCommand(editor, 'insertFootnote', JSON.stringify({ label: 'note', note: 'new note' }))
+    editor.commands.undo()
+    expect(editor.state.doc.eq(before)).toBe(true)
+  })
+
+  it('footnote validation ignores definitions written inside code examples', () => {
+    setup('text\n\n```md\n[^a]: example\n```')
+    editor.commands.setTextSelection(2)
+    expect(executeEditorCommand(editor, 'insertFootnote', JSON.stringify({ label: 'a', note: 'real note' }))).toBe(true)
+    expect(getMarkdown(editor)).toContain('[^a]: real note')
+  })
+
+  it.each(['a', 'A', 'bad]label', 'bad[label', 'bad\nlabel', 'bad\rlabel', '   '])(
+    'rejects duplicate or invalid footnote label %j without editing', label => {
+      setup('text[^a]\n\n[^a]: original')
+      editor.commands.setTextSelection(2)
+      const before = editor.state.doc
+      const depth = undoDepth(editor.state)
+      expect(executeEditorCommand(editor, 'insertFootnote', JSON.stringify({ label, note: 'new note' }))).toBe(false)
+      expect(editor.state.doc.eq(before)).toBe(true)
+      expect(undoDepth(editor.state)).toBe(depth)
+    },
+  )
+
   it.each(formats)('empty %s only changes stored marks', (command, mark) => {
     setup()
     editor.commands.setTextSelection(5)

@@ -6,7 +6,7 @@ import { isHostCommandAllowed } from './host-command-policy'
 import { exportMermaidImage, type MermaidImageFormat, type MermaidImageExport } from './mermaid-image-export'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions } from '@tiptap/core'
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -23,6 +23,8 @@ import Bold from '@tiptap/extension-bold'
 import Code from '@tiptap/extension-code'
 import Italic from '@tiptap/extension-italic'
 import { MarkdownUnderline } from './markdown-underline'
+import { ContinuousInlineInput, continuousInlineMarkNames } from './inline-format-input'
+import { serializeWithLiteralMarkers } from './markdown-literal-markers'
 import CodeBlock from '@tiptap/extension-code-block'
 import { getListMarker, ListItem } from '@tiptap/extension-list'
 import { OrderedListMarkdown, TaskListMarkdown, tableMarkdownTokenizer } from './markdown-block-tokenizers'
@@ -411,13 +413,6 @@ const MarkdownShortcuts = Extension.create({
     return [new Plugin({
       props: {
         handleTextInput: (view, _from, to, text) => {
-          if (text === '*' || text === '_') {
-            const tr = convertClosedEmphasis(view.state, to, text)
-            if (tr) {
-              view.dispatch(tr)
-              return true
-            }
-          }
           if (text !== '=' && text !== '-') return false
           const level = text === '=' ? 1 : 2
           const tr = convertSetextHeading(view.state, to, text, level, text)
@@ -429,54 +424,7 @@ const MarkdownShortcuts = Extension.create({
     })]
   },
   addInputRules() {
-    const reverseMark = (
-      state: any,
-      range: { from: number; to: number },
-      markNames: Array<'bold' | 'italic' | 'strike' | 'highlight'>,
-      marker: string,
-    ) => {
-      const marks = markNames
-        .map(name => state.schema.marks[name])
-        .filter(Boolean)
-      if (marks.length !== markNames.length || !convertReverseInlineMark(state, range, marker, marks)) return null
-      return undefined
-    }
-
     return [
-      // 反向输入：先输入正文和结束标记，再在正文前补上开始标记。
-      // InputRule 默认只检查光标前方，因此这里显式向后寻找闭合标记。
-      new InputRule({
-        find: /(?<!\*)\*\*\*$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['bold', 'italic'], '***'),
-      }),
-      new InputRule({
-        find: /(?<!\*)\*\*$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['bold'], '**'),
-      }),
-      new InputRule({
-        find: /(?<!\*)\*$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['italic'], '*'),
-      }),
-      new InputRule({
-        find: /(?<!_)___$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['bold', 'italic'], '___'),
-      }),
-      new InputRule({
-        find: /(?<!_)__$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['bold'], '__'),
-      }),
-      new InputRule({
-        find: /(?<!_)_$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['italic'], '_'),
-      }),
-      new InputRule({
-        find: /(?<!~)~~$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['strike'], '~~'),
-      }),
-      new InputRule({
-        find: /(?<![=])==$/,
-        handler: ({ state, range }) => reverseMark(state, range, ['highlight'], '=='),
-      }),
       new InputRule({
         find: /^ {4}$/,
         handler: ({ state, range }) => {
@@ -561,111 +509,6 @@ const MarkdownListItem = ListItem.extend({
     }, context)
   },
 })
-
-function convertClosedEmphasis(
-  state: any,
-  insertionPosition: number,
-  markerCharacter: '*' | '_',
-): any | null {
-  const $from = state.doc.resolve(insertionPosition)
-  if (!$from.parent.isTextblock || !state.selection.empty) return null
-  const blockStart = $from.start()
-  const before = state.doc.textBetween(blockStart, insertionPosition, '\n', '\n') + markerCharacter
-  let marker = ''
-  let content = ''
-  let openingOffset = -1
-  for (const markerLength of [3, 2, 1]) {
-    const candidate = markerCharacter.repeat(markerLength)
-    if (!before.endsWith(candidate)) continue
-    const closingOffset = before.length - markerLength
-    const candidateOpening = before.lastIndexOf(candidate, closingOffset - 1)
-    if (candidateOpening < 0) continue
-    const candidateContent = before.slice(candidateOpening + markerLength, closingOffset)
-    if (!candidateContent || candidateContent.includes(markerCharacter) || candidateContent.includes('\n')) continue
-    const beforeOpening = candidateOpening > 0 ? before[candidateOpening - 1] ?? '' : ''
-    if (beforeOpening === markerCharacter) continue
-    if (markerCharacter === '_' && /[A-Za-z0-9_]/.test(beforeOpening)) continue
-    marker = candidate
-    content = candidateContent
-    openingOffset = candidateOpening
-    break
-  }
-  if (!marker || !content || openingOffset < 0) return null
-
-  const markNames: Array<'bold' | 'italic'> = marker.length === 3
-    ? ['bold', 'italic']
-    : marker.length === 2 ? ['bold'] : ['italic']
-  const marks = markNames.map(name => state.schema.marks[name]).filter(Boolean)
-  if (marks.length !== markNames.length) return null
-
-  const openingFrom = blockStart + openingOffset
-  const closingFrom = openingFrom + marker.length + content.length
-  const transaction = state.tr.insertText(markerCharacter, insertionPosition)
-  transaction.delete(closingFrom, closingFrom + marker.length)
-  transaction.delete(openingFrom, openingFrom + marker.length)
-  const contentTo = openingFrom + content.length
-  for (const mark of marks) {
-    transaction.addMark(openingFrom, contentTo, mark.create())
-    transaction.removeStoredMark(mark)
-  }
-  transaction.setSelection(TextSelection.create(transaction.doc, contentTo))
-  transaction.setStoredMarks([])
-  return transaction
-}
-
-function convertReverseInlineMark(
-  state: any,
-  range: { from: number; to: number },
-  marker: string,
-  marks: any[],
-): boolean {
-  const $from = state.doc.resolve(range.to)
-  const parent = $from.parent
-  if (!parent.isTextblock || $from.depth < 1) return false
-
-  const blockStart = $from.start()
-  const blockEnd = blockStart + parent.content.size
-  const afterOpening = state.doc.textBetween(range.to, blockEnd, '\n', '\n')
-  const closingOffset = findExactClosingMarker(afterOpening, marker)
-  if (closingOffset < 1) return false
-
-  const closeFrom = range.to + closingOffset
-  const content = afterOpening.slice(0, closingOffset)
-  if (!content.trim() || content.includes('\n')) return false
-
-  const tr = state.tr
-  const openingLengthInDocument = range.to - range.from
-  if (openingLengthInDocument < 0 || openingLengthInDocument >= marker.length) return false
-
-  // InputRule 在最后一个输入字符写入文档前运行。先补入尚未落盘的标记字符，
-  // 再删除两侧标记，避免事务映射把正文或光标移动到错误的位置。
-  const missingOpening = marker.slice(openingLengthInDocument)
-  if (missingOpening) tr.insertText(missingOpening, range.to)
-  const mappedCloseFrom = tr.mapping.map(closeFrom, 1)
-  tr.delete(mappedCloseFrom, mappedCloseFrom + marker.length)
-  tr.delete(range.from, range.from + marker.length)
-
-  const contentFrom = range.from
-  const contentTo = contentFrom + (closeFrom - range.to)
-  for (const mark of marks) {
-    addMarkToTextNodes(tr, contentFrom, contentTo, mark.create())
-    tr.removeStoredMark(mark)
-  }
-  tr.setSelection(TextSelection.create(tr.doc, contentTo))
-  return true
-}
-
-function findExactClosingMarker(text: string, marker: string): number {
-  const markerCharacter = marker[0]
-  let offset = text.indexOf(marker)
-  while (offset >= 0) {
-    const before = offset > 0 ? text[offset - 1] : ''
-    const after = text[offset + marker.length] ?? ''
-    if (before !== markerCharacter && after !== markerCharacter) return offset
-    offset = text.indexOf(marker, offset + 1)
-  }
-  return -1
-}
 
 function convertSetextHeading(
   state: any,
@@ -753,32 +596,6 @@ const MarkdownHighlight = Mark.create({
   },
 
   markdownTokenizer: highlightTokenizer,
-
-  addInputRules() {
-    return [
-      new InputRule({
-        find: /==([^=\n]+?)==$/,
-        handler: ({ state, range, match }) => {
-          if (range.to === range.from) return null
-          const highlight = state.schema.marks.highlight
-          const text = match[1]
-          if (!highlight || !text) return null
-          const markerLength = 2
-          const closingMarkerInDocument = Math.max(
-            0,
-            markerLength - (match[0].length - (range.to - range.from)),
-          )
-          const textEnd = range.to - closingMarkerInDocument
-          if (textEnd <= range.from + markerLength) return null
-          state.tr
-            .delete(textEnd, range.to)
-            .delete(range.from, range.from + markerLength)
-            .addMark(range.from, textEnd - markerLength, highlight.create())
-            .removeStoredMark(highlight)
-        },
-      }),
-    ]
-  },
 })
 
 const ALERT_TYPES = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'] as const
@@ -4093,6 +3910,7 @@ function getCodeHighlightRules(language: string): { pattern: RegExp; className: 
 const editorExtensions = [
   MarkdownFrontMatter,
   MarkdownShortcuts,
+  ContinuousInlineInput,
   MarkdownEmoji,
   CjkAutoSpacing,
   MarkdownHighlight,
@@ -4189,6 +4007,9 @@ export function createEditor(
   })
   const editor = new Editor({
     element,
+    enableInputRules: flattenExtensions(extensions)
+      .filter(extension => !continuousInlineMarkNames.has(extension.name))
+      .map(extension => extension.name),
     extensions: options.themedVisualSelection
       ? [...extensions, ThemedSelection]
       : extensions,
@@ -4526,7 +4347,7 @@ export function getMarkdown(editor: Editor): string {
   if (original && editor.state.doc.eq(original.doc)) {
     return original.markdown
   }
-  const markdown = editor.getMarkdown()
+  const markdown = serializeWithLiteralMarkers(editor)
   // Formula payloads are opaque: protect complete delimiters before any
   // compatibility pass (emphasis conversion, literal escaping, entity
   // decoding) so no setting can modify characters inside a formula.
@@ -4574,7 +4395,7 @@ function removeMarkdownLiteralEscapes(markdown: string): string {
   // `escapeMarkdownSyntax()` implementation. When the preference is off,
   // remove escapes for every character that Tiptap adds them to in ordinary
   // text: backslash, backtick, asterisk, underscore, square brackets and
-  // tilde. Syntax-owned regions were replaced with placeholders above and
+  // tilde, plus our custom highlight marker (=). Syntax-owned regions were replaced with placeholders above and
   // are restored unchanged afterwards.
   const unescaped = protectedMarkdown
     // Square brackets may acquire more than one slash while passing through
@@ -4587,6 +4408,7 @@ function removeMarkdownLiteralEscapes(markdown: string): string {
     .replace(/\\\*/g, '*')
     .replace(/\\_/g, '_')
     .replace(/\\~/g, '~')
+    .replace(/\\=/g, '=')
   return restoreProtectedMarkdownParts(
     unescaped,
     /\u0000markleaf-marker-protected-(\d+)\u0000/g,
@@ -6336,21 +6158,25 @@ function insertFootnote(editor: Editor, text?: string): boolean {
   } catch {
     return false
   }
-  if (!label || !note) return false
+  if (!label || !note || /[\[\]\r\n]/.test(label)) return false
+  const identity = label.toLowerCase()
+  if (footnoteDefinitions(editor).some(definition => definition.label.toLowerCase() === identity)) return false
+  let referenceExists = false
+  editor.state.doc.descendants(node => {
+    if (node.type.name === 'footnoteReference' && String(node.attrs.label).toLowerCase() === identity) referenceExists = true
+    return !referenceExists
+  })
+  if (referenceExists) return false
 
-  const insertReference = editor.chain().focus().insertContent({
+  return editor.chain().focus().command(({ tr }) => { closeHistory(tr); return true }).insertContent({
     type: 'footnoteReference',
     attrs: { label },
-  }).run()
-  if (!insertReference) return false
-
-  const docEnd = editor.state.doc.content.size
-  return editor.commands.insertContentAt(docEnd, [
+  }).command(({ tr, commands }) => commands.insertContentAt(tr.doc.content.size, [
     {
       type: 'paragraph',
       content: [{ type: 'text', text: `${FOOTNOTE_DEFINITION_SENTINEL}[^${label}]: ${note}` }],
     },
-  ])
+  ])).run()
 }
 
 function footnoteDefinitions(editor: Editor): Array<{ pos: number; node: typeof editor.state.doc; label: string }> {

@@ -139,15 +139,7 @@ public sealed class ShortcutManager
     /// </summary>
     public void ImportSettings(ShortcutSettings source)
     {
-        _model.Overrides.Clear();
-        _model.Cleared.Clear();
-
-        foreach (var (name, shortcut) in source.Overrides)
-        {
-            _model.Overrides[name] = shortcut;
-        }
-
-        _model.Cleared.AddRange(source.Cleared);
+        if (!ReferenceEquals(_model, source)) _model.ApplyFrom(source);
         Rebuild();
     }
 

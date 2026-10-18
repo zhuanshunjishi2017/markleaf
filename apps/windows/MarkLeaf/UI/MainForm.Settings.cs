@@ -121,16 +121,19 @@ internal sealed partial class MainForm
             _settings.ColorTheme = _colorTheme;
         }
         _settings.Appearance.ZoomPercent = _zoomPercent;
-        PersistSettings(
+        var previousGeneral = _settings.General;
+        if (!PersistSettings(
             "Settings saved.",
             "Settings could not be saved.",
-            IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full);
+            IsolatedWindow ? SettingsSaveScope.Shared : SettingsSaveScope.Full)) return;
+        var shared = SharedSettingsNotice.From(_settings);
+        ApplyPeerSharedSettings(shared, previousGeneral);
         _ = SettingsChangeChannel.BroadcastAsync(new SettingsPeerNotice(
-            SharedSettings: SharedSettingsNotice.From(_settings),
+            SharedSettings: shared,
             RecentHistory: null));
     }
 
-    private void PersistSettings(
+    private bool PersistSettings(
         string successMessage,
         string errorMessage,
         SettingsSaveScope scope)
@@ -139,10 +142,13 @@ internal sealed partial class MainForm
         {
             _settingsService.SaveAsync(_settings, scope).GetAwaiter().GetResult();
             _logger.Info(successMessage);
+            return true;
         }
         catch (Exception exception)
         {
             _logger.Error(errorMessage, exception);
+            SetStatus(Loc.Get("status.settingsSaveFailed"));
+            return false;
         }
     }
 
@@ -160,10 +166,10 @@ internal sealed partial class MainForm
         }
     }
 
-    private void ApplyPeerSharedSettings(SharedSettingsNotice shared)
+    private void ApplyPeerSharedSettings(SharedSettingsNotice shared, GeneralSettings? previousGeneral = null)
     {
-        var previousGeneral = _settings.General;
-        var previousLanguage = _settings.General.UiLanguage ?? "";
+        previousGeneral ??= _settings.General;
+        var previousLanguage = previousGeneral.UiLanguage ?? "";
 
         shared.ApplyTo(_settings);
 
@@ -199,7 +205,6 @@ internal sealed partial class MainForm
 
         SetMarkdownStyle(_settings.MarkdownStyle);
         ApplyEffectiveColorTheme();
-        SetZoomPercent(_settings.Appearance.ZoomPercent);
         TopMost = _settings.Appearance.TopMostWindow;
         _editorHost?.ApplyAutoHideScrollbar(_settings.Appearance.AutoHideScrollbars);
         ApplySidebarAutoHideScrollbar();

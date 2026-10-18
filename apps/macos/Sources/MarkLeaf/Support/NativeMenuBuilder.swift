@@ -277,6 +277,7 @@ final class NativeMenuBuilder {
         sidebarSettings.addItem(.separator())
         sidebarSettings.addItem(commandItem(L10n.t("在右侧显示大纲"), "toggleDetachedOutline"))
         menu.addItem(popup(L10n.t("侧栏设置"), sidebarSettings))
+        menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         let tabManagement = NSMenu(title: L10n.t("标签页管理"))
         tabManagement.addItem(commandItem(L10n.t("上一个标签"), "tabPrevious", key: "\t", mask: [.control, .shift]))
         tabManagement.addItem(commandItem(L10n.t("下一个标签"), "tabNext", key: "\t", mask: [.control]))
@@ -286,7 +287,6 @@ final class NativeMenuBuilder {
         tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
         menu.addItem(popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "tabManagementParent"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("显示状态栏"), "toggleStatusBar"))
         menu.addItem(commandItem(L10n.t("源码模式"), "sourceMode", key: "u", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("只读模式"), "toggleReadOnlyMode"))
         menu.addItem(.separator())
@@ -429,31 +429,13 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         "treeView", "listView", "toggleDetachedOutline",
     ]
 
-    /// 查找/替换、偏好设置等原生文本框正在编辑时，字段编辑器位于第一响应者位置。
-    /// WKWebView 编辑器不会使用 NSTextView，因此仍走 EditorSession 命令。
+    /// 原生字段编辑器和多行输入优先处理编辑命令；WebKit 内部响应者仍走编辑器桥接。
     private var nativeTextFieldEditor: NSTextView? {
-        guard let responder = NSApp.keyWindow?.firstResponder,
-              let editor = responder as? NSTextView else { return nil }
-        guard editor.delegate is NSTextField else { return nil }
-        return editor
+        NativeTextEditingPolicy.textEditor(for: NSApp.keyWindow?.firstResponder)
     }
 
     private func routeNativeTextCommand(_ command: String) -> Bool {
-        guard let editor = nativeTextFieldEditor,
-              NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) else {
-            return false
-        }
-        switch command {
-        case "undo": editor.undoManager?.undo()
-        case "redo": editor.undoManager?.redo()
-        case "cut": editor.cut(nil)
-        case "copy": editor.copy(nil)
-        case "paste": editor.paste(nil)
-        case "pastePlainText": editor.pasteAsPlainText(nil)
-        case "selectAll": editor.selectAll(nil)
-        default: return false
-        }
-        return true
+        NativeTextEditingPolicy.perform(command, responder: NSApp.keyWindow?.firstResponder)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {

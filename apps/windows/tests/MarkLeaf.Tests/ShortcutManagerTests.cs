@@ -6,6 +6,20 @@ namespace MarkLeaf.Tests;
 [TestClass]
 public sealed class ShortcutManagerTests
 {
+    [TestMethod]
+    public void ImportingItsLiveSettingsPreservesCustomAndClearedBindings()
+    {
+        var settings = new ShortcutSettings();
+        var manager = new ShortcutManager(settings);
+        manager.Set(AppCommand.Find, Keys.Control | Keys.Alt | Keys.G);
+        manager.Clear(AppCommand.Undo);
+        manager.ImportSettings(settings);
+        Assert.AreEqual("Ctrl+Alt+G", manager.GetShortcutText(AppCommand.Find));
+        Assert.IsFalse(manager.TryGetCommand(Keys.Control | Keys.Z, out _));
+        Assert.AreEqual("Ctrl+Alt+G", settings.Overrides[nameof(AppCommand.Find)]);
+        CollectionAssert.Contains(settings.Cleared, nameof(AppCommand.Undo));
+    }
+
     private static ShortcutManager Create() => new(new ShortcutSettings());
 
     [TestMethod]

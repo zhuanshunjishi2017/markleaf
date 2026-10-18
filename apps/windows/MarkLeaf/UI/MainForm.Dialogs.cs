@@ -1019,64 +1019,22 @@ internal sealed partial class MainForm
         using var dialog = new FootnoteInputDialog();
         while (ShowModal(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
-            if (await FootnoteLabelExistsAsync(dialog.FootnoteLabel))
-            {
-                var duplicateChoice = ShowMessage(
-                    this,
-                    Loc.Format("dialog.footnoteDuplicateMessage", dialog.FootnoteLabel),
-                    Loc.Get("dialog.footnoteDuplicateTitle"),
-                    MessageBoxButtons.OKCancel,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2);
-                if (duplicateChoice != DialogResult.OK)
-                {
-                    continue;
-                }
-            }
-
             var payload = JsonSerializer.Serialize(new
             {
                 label = dialog.FootnoteLabel,
                 note = dialog.FootnoteText,
             });
-            _editorHost.ExecuteCommand("insertFootnote", payload);
-            SetStatus(Loc.Get("status.footnoteInserted"));
-            return;
+            var result = await _editorHost.ExecuteCommandResultAsync("insertFootnote", payload);
+            if (result.Success)
+            {
+                SetStatus(Loc.Get("status.footnoteInserted"));
+                return;
+            }
+            ShowMessage(this, Loc.Get("dialog.footnoteInvalidLabel"), Loc.Get("dialog.footnoteDuplicateTitle"),
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         return;
-    }
-
-    private async Task<bool> FootnoteLabelExistsAsync(string label)
-    {
-        if (_editorHost is null || string.IsNullOrWhiteSpace(label))
-        {
-            return false;
-        }
-
-        try
-        {
-            var snapshot = await _editorHost.RequestSnapshotAsync(TimeSpan.FromSeconds(3));
-            return FootnoteLabelExists(snapshot.Markdown, label);
-        }
-        catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
-        {
-            _logger.Warning($"Footnote duplicate check skipped: {exception.Message}");
-            return false;
-        }
-    }
-
-    private static bool FootnoteLabelExists(string markdown, string label)
-    {
-        foreach (Match match in Regex.Matches(markdown, @"(?m)^ {0,3}\[\^([^\]\r\n]+)\]:"))
-        {
-            if (string.Equals(match.Groups[1].Value.Trim(), label.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private async Task ResetFootnoteLabel()

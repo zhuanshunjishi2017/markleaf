@@ -117,6 +117,34 @@ it('handles one browser Markdown paste exactly once', async () => {
   expect(harness.editorDom().querySelectorAll('h1')).toHaveLength(1)
 })
 
+it('does not resume a visual inline pairing after a source-mode round trip', async () => {
+  const harness = await createHarness()
+  const getEditor = () => (harness.editorDom() as HTMLElement & {
+    editor: import('@markleaf/editor-core').Editor
+  }).editor
+  const type = (text: string) => {
+    const editor = getEditor()
+    for (const character of text) {
+      const { from, to } = editor.state.selection
+      const handled = editor.view.someProp('handleTextInput', handler => handler(
+        editor.view, from, to, character, () => editor.state.tr.insertText(character, from, to),
+      ))
+      if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, to))
+    }
+  }
+  type('*正文')
+  harness.send('command', { command: 'toggleSourceMode' })
+  harness.send('command', { command: 'toggleSourceMode' })
+  getEditor().commands.setTextSelection(4)
+  type('*')
+  expect(harness.editorDom().textContent).toBe('*正文*')
+  expect(harness.editorDom().querySelector('em')).toBeNull()
+  const saved = harness.snapshot()
+  harness.send('loadDocument', { markdown: saved })
+  expect(harness.editorDom().textContent).toBe('*正文*')
+  expect(harness.editorDom().querySelector('em')).toBeNull()
+})
+
 it('keeps a rich browser link on the HTML paste path', async () => {
   const harness = await createHarness()
 

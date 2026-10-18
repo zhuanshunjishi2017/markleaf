@@ -46,6 +46,16 @@ function roundTrip(markdown: string): string {
   return getMarkdown(editor)
 }
 
+function typeVisualText(editor: ReturnType<typeof createEditor>, text: string): void {
+  for (const character of text) {
+    const { from, to } = editor.state.selection
+    const handled = editor.view.someProp('handleTextInput', handler => handler(
+      editor.view, from, to, character, () => editor.state.tr.insertText(character, from, to),
+    ))
+    if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, to))
+  }
+}
+
 describe('selection export', () => {
   it('exports formatted HTML, Markdown source, and plain text independently', () => {
     const element = document.createElement('div')
@@ -368,7 +378,8 @@ describe('visual Markdown shortcuts', () => {
       () => editor.state.tr.insertText(']'),
     ))
 
-    expect(handled).toBeFalsy()
+    if (!handled) editor.view.dispatch(editor.state.tr.insertText(']'))
+    expect(editor.state.doc.textContent).toBe('[^注释]')
     expect(editor.getHTML()).not.toContain('data-footnote-ref')
   })
 
@@ -409,7 +420,7 @@ describe('visual Markdown shortcuts', () => {
     editors.push(editor)
 
     editor.commands.setTextSelection(editor.state.doc.content.size)
-    editor.commands.insertContent('***粗斜体**')
+    typeVisualText(editor, '***粗斜体**')
     const handled = editor.view.someProp('handleTextInput', handler => handler(
       editor.view,
       editor.state.selection.from,
@@ -432,7 +443,7 @@ describe('visual Markdown shortcuts', () => {
     editors.push(editor)
 
     editor.commands.setTextSelection(editor.state.doc.content.size)
-    editor.commands.insertContent('**加粗*')
+    typeVisualText(editor, '**加粗*')
     const handled = editor.view.someProp('handleTextInput', handler => handler(editor.view, editor.state.selection.from, editor.state.selection.to, '*', () => editor.state.tr.insertText('*')))
 
     expect(handled).toBe(true)
@@ -451,7 +462,7 @@ describe('visual Markdown shortcuts', () => {
     editors.push(editor)
     setMarkdownEditingSettings({ emphasisMarker: 'underscore' })
     editor.commands.setTextSelection(editor.state.doc.content.size)
-    editor.commands.insertContent(initial)
+    typeVisualText(editor, initial)
 
     const handled = editor.view.someProp('handleTextInput', handler => handler(
       editor.view,
@@ -467,15 +478,15 @@ describe('visual Markdown shortcuts', () => {
   })
 
   it.each([
-    ['italic', '文字*', '*', '<em>文字</em>', '*文字*'],
-    ['bold', '文字**', '**', '<strong>文字</strong>', '**文字**'],
-    ['bold italic', '文字***', '***', '<strong><em>文字</em></strong>', '***文字***'],
-    ['underscore italic', '文字_', '_', '<em>文字</em>', '_文字_'],
-    ['underscore bold', '文字__', '__', '<strong>文字</strong>', '__文字__'],
-    ['underscore bold italic', '文字___', '___', '<strong><em>文字</em></strong>', '___文字___'],
-    ['strike', '文字~~', '~~', '<s>文字</s>', '~~文字~~'],
-    ['highlight', '文字==', '==', '<mark>文字</mark>', '==文字=='],
-  ])('recognizes a %s marker inserted after its closing marker', (_name, initial, opening, html, markdown) => {
+    ['italic', '文字*', '*'],
+    ['bold', '文字**', '**'],
+    ['bold italic', '文字***', '***'],
+    ['underscore italic', '文字_', '_'],
+    ['underscore bold', '文字__', '__'],
+    ['underscore bold italic', '文字___', '___'],
+    ['strike', '文字~~', '~~'],
+    ['highlight', '文字==', '=='],
+  ])('keeps a %s marker literal when inserted before existing closing text', (_name, initial, opening) => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, initial)
@@ -497,10 +508,11 @@ describe('visual Markdown shortcuts', () => {
       if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, from))
     }
 
-    expect(editor.getHTML()).toContain(html)
-    expect(getMarkdown(editor)).toBe(markdown)
+    expect(editor.state.doc.textContent).toBe(opening + initial)
+    expect(editor.getHTML()).not.toMatch(/<(em|strong|s|mark)[ >]/)
+    expect(roundTrip(getMarkdown(editor))).toBe(getMarkdown(editor))
     expect(editor.state.selection.empty).toBe(true)
-    expect(editor.state.selection.$from.parentOffset).toBe(2)
+    expect(editor.state.selection.$from.parentOffset).toBe(opening.length)
   })
 
   it('keeps intraword underscores as literal text', () => {

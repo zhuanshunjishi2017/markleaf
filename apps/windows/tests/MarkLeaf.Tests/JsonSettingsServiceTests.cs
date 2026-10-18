@@ -6,6 +6,90 @@ namespace MarkLeaf.Tests;
 public sealed class JsonSettingsServiceTests
 {
     [TestMethod]
+    [DataRow(SettingsSaveScope.Window)]
+    [DataRow(SettingsSaveScope.ClearRecentHistory)]
+    public async Task NonSharedSave_DoesNotMakeStaleSharedValuesLookLikeLocalEdits(SettingsSaveScope scope)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        try
+        {
+            await new JsonSettingsService(file, new TestLogger()).SaveAsync(new AppSettings());
+            var serviceA = new JsonSettingsService(file, new TestLogger());
+            var serviceB = new JsonSettingsService(file, new TestLogger());
+            var a = await serviceA.LoadAsync();
+            var b = await serviceB.LoadAsync();
+            a.Editor.SourceFontSize = 22;
+            await serviceA.SaveAsync(a, SettingsSaveScope.Shared);
+            await serviceB.SaveAsync(b, scope);
+            b.File.AutoSaveEnabled = true;
+            await serviceB.SaveAsync(b, SettingsSaveScope.Shared);
+            Assert.AreEqual(22, (await serviceB.LoadAsync()).Editor.SourceFontSize);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task FailedSave_DoesNotAdvanceTheMergeBaseline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        try
+        {
+            var service = new JsonSettingsService(file, new TestLogger());
+            await service.SaveAsync(new AppSettings());
+            var settings = await service.LoadAsync();
+            settings.Editor.SourceFontSize = 22;
+            File.Move(file, file + ".backup");
+            Directory.CreateDirectory(file);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveAsync(settings, SettingsSaveScope.Shared));
+            Directory.Delete(file);
+            File.Move(file + ".backup", file);
+            await service.SaveAsync(settings, SettingsSaveScope.Shared);
+            var saved = await service.LoadAsync();
+            Assert.AreEqual(22, saved.Editor.SourceFontSize);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
+    public async Task SharedSave_RefreshesBroadcastSourceWithCommittedPeerSettings()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "markleaf-tests", Guid.NewGuid().ToString("N"));
+        var file = Path.Combine(root, "settings.json");
+        try
+        {
+            await new JsonSettingsService(file, new TestLogger()).SaveAsync(new AppSettings());
+            var serviceA = new JsonSettingsService(file, new TestLogger());
+            var serviceB = new JsonSettingsService(file, new TestLogger());
+            var a = await serviceA.LoadAsync();
+            var b = await serviceB.LoadAsync();
+            var shortcuts = b.Shortcut;
+            var formatter = b.CodeFormatter;
+            var window = b.MainWindow;
+            var workspace = b.Workspace;
+            a.Editor.SourceFontSize = 22;
+            a.CodeFormatter.SqlDialect = "postgres";
+            a.Shortcut.Overrides["ToggleBold"] = "Ctrl+Alt+B";
+            await serviceA.SaveAsync(a, SettingsSaveScope.Shared);
+            b.File.AutoSaveEnabled = true;
+            b.Appearance.ZoomPercent = 75;
+            await serviceB.SaveAsync(b, SettingsSaveScope.Shared);
+            Assert.AreEqual(22, b.Editor.SourceFontSize);
+            Assert.AreEqual("postgres", b.CodeFormatter.SqlDialect);
+            Assert.AreEqual("Ctrl+Alt+B", b.Shortcut.Overrides["ToggleBold"]);
+            Assert.AreEqual(75, b.Appearance.ZoomPercent);
+            Assert.AreSame(shortcuts, b.Shortcut);
+            Assert.AreSame(formatter, b.CodeFormatter);
+            Assert.AreSame(window, b.MainWindow);
+            Assert.AreSame(workspace, b.Workspace);
+            MarkLeaf.App.SharedSettingsNotice.From(b).ApplyTo(a);
+            Assert.AreEqual(22, a.Editor.SourceFontSize);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [TestMethod]
     [DataRow("{}", false)]
     [DataRow("{\"editor\":{\"inlineCommonActions\":true}}", true)]
     [DataRow("{\"editor\":{\"inlineCommonActions\":false}}", false)]

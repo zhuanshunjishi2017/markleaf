@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import WebKit
 
 func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     guard condition() else {
@@ -28,5 +29,19 @@ expect(!NativeTextEditingPolicy.isEnabled(command: "paste", editable: false, has
        "paste should be disabled in a non-editable native field")
 expect(NativeTextEditingPolicy.isEnabled(command: "selectAll", editable: false, hasSelection: false, hasClipboard: false),
        "select all should be enabled in a read-only native field")
+
+let note = NSTextView(frame: .zero)
+note.string = "footnote body"
+note.setSelectedRange(NSRange(location: 0, length: 4))
+expect(NativeTextEditingPolicy.perform("selectAll", responder: note),
+       "a multiline native note must receive the editor menu command")
+expect(note.selectedRange.length == note.string.utf16.count,
+       "select all must select the note body instead of the background document")
+let web = WKWebView(frame: .zero)
+web.addSubview(note)
+expect(!NativeTextEditingPolicy.perform("selectAll", responder: note),
+       "a text view inside WebKit must remain under the editor bridge")
+expect(NativeTextEditingPolicy.textEditor(for: nil) == nil,
+       "a missing responder must not route to an arbitrary text view")
 
 print("PASS")

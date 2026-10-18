@@ -81,9 +81,6 @@ public sealed class JsonSettingsService : ISettingsService
         {
             MergeSharedSections(latest, merged, baseline);
         }
-        _loadBaseline = CloneSettings(merged);
-        settings = merged;
-
         var temporaryFile = _settingsFile + $".{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
         try
         {
@@ -95,12 +92,25 @@ public sealed class JsonSettingsService : ISettingsService
                 4096,
                 FileOptions.Asynchronous | FileOptions.WriteThrough);
             await JsonSerializer
-                .SerializeAsync(stream, settings, _jsonOptions, cancellationToken)
+                .SerializeAsync(stream, merged, _jsonOptions, cancellationToken)
                 .ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             stream.Flush(flushToDisk: true);
             stream.Close();
             File.Move(temporaryFile, _settingsFile, true);
+            var savedSharedSettings = scope is SettingsSaveScope.Full or SettingsSaveScope.Shared;
+            if (savedSharedSettings)
+            {
+                settings.ApplyPersistedSharedSettings(merged);
+            }
+            settings.Workspace.RecentFiles = merged.Workspace.RecentFiles;
+            settings.Workspace.RecentFolders = merged.Workspace.RecentFolders;
+            // Window/history writes do not acknowledge shared peer changes in
+            // this caller. Advancing those baselines would misclassify its old
+            // values as new edits on the next shared save.
+            _loadBaseline = CloneSettings(savedSharedSettings ? settings : baseline);
+            _loadBaseline.Workspace.RecentFiles = merged.Workspace.RecentFiles.ToList();
+            _loadBaseline.Workspace.RecentFolders = merged.Workspace.RecentFolders.ToList();
         }
         finally
         {

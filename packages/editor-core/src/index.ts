@@ -23,6 +23,7 @@
 
 // ---- 编辑器核心：文档渲染、编辑命令、查找替换、选区与剪贴板 ----
 export * from './editor'
+export { resetInlineInput } from './inline-format-input'
 export * from './editor-state'
 export * from './command-state'
 export * from './document-mode'

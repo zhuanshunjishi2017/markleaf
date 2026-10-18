@@ -11,6 +11,7 @@ import {
   resolveTypographyStyle,
   resolveMermaidTheme,
   createEditor,
+  resetInlineInput,
   clearFindHighlights,
   executeEditorCommand,
   setEditorFormatPreview,
@@ -775,6 +776,7 @@ function getActiveMarkdown(): string {
 function setSourceMode(enabled: boolean): void {
   if (documentType === 'plainText') return
   if (enabled === sourceMode) return
+  resetInlineInput(editor)
   interactions.cancel()
   updateFormatPainterCursor()
   if (enabled) {
