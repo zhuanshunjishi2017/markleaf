@@ -141,12 +141,21 @@ internal sealed class ColorThemeDialog : Form
         _tabs.SelectedIndex = targetPage;
         ShowPage(targetPage);
         var workingArea = Screen.FromControl(owner).WorkingArea;
-        var x = owner.Left + (owner.Width - Width) / 2;
-        var y = owner.Bottom - Height;
-        Location = new Point(
-            Math.Clamp(x, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - Width)),
-            Math.Clamp(y, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - Height)));
+        Location = ComputeDialogLocation(owner.Bounds, Size, workingArea);
         return ShowDialog(owner);
+    }
+
+    /// <summary>
+    /// 与其他设置对话框一致，在所属窗口内水平、垂直居中，并钳制到所在屏幕的工作区，
+    /// 避免窗口较高或靠近屏幕边缘时被推出可见区域。
+    /// </summary>
+    internal static Point ComputeDialogLocation(Rectangle ownerBounds, Size dialogSize, Rectangle workingArea)
+    {
+        var x = ownerBounds.Left + (ownerBounds.Width - dialogSize.Width) / 2;
+        var y = ownerBounds.Top + (ownerBounds.Height - dialogSize.Height) / 2;
+        return new Point(
+            Math.Clamp(x, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - dialogSize.Width)),
+            Math.Clamp(y, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - dialogSize.Height)));
     }
 
     private void ShowPage(int index)

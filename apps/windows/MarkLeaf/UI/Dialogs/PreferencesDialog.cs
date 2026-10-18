@@ -277,11 +277,11 @@ internal sealed class PreferencesDialog : Form
         _escapeMarkdownLiteralSymbolsCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.markdown.escapeMarkdownLiteralSymbols"), AutoSize = true, FlatStyle = FlatStyle.System };
         _unsafeEmphasisPromptRadio = new RadioButton
-        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.prompt"), AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.prompt"), AutoSize = true, FlatStyle = FlatStyle.Standard };
         _unsafeEmphasisLiteralRadio = new RadioButton
-        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.literal"), AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.literal"), AutoSize = true, FlatStyle = FlatStyle.Standard };
         _unsafeEmphasisAutoConvertRadio = new RadioButton
-        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.autoConvert"), AutoSize = true, FlatStyle = FlatStyle.System };
+        { Text = Loc.Get("prefs.editor.sourceUnsafeEmphasis.autoConvert"), AutoSize = true, FlatStyle = FlatStyle.Standard };
         _exitBlockOnEmptyEnterCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.exitBlockOnEmptyEnter"), AutoSize = true, FlatStyle = FlatStyle.System };
         _useShiftEnterHardBreakCheck = new CheckBox
@@ -626,6 +626,13 @@ internal sealed class PreferencesDialog : Form
         visual.Controls.Add(BuildVisualFeaturePanel(), 1, 2);
 
         var source = CreateSettingsPage();
+        // 仅源码模式页：右侧补一个分区标签列宽的留白，页面居中时选项网格本身
+        // 落在框的水平中心，分区标签自然悬在其左侧。
+        source.Padding = new Padding(
+            source.Padding.Left,
+            source.Padding.Top,
+            source.Padding.Right + this.ScaleForDpi(86),
+            source.Padding.Bottom);
         source.Controls.Add(NewLabel(Loc.Get("prefs.editor.displaySettings.label")), 0, 0);
         source.Controls.Add(BuildSourcePanel(), 1, 0);
         source.Controls.Add(Gap(), 0, 1);

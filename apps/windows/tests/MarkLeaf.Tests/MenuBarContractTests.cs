@@ -106,6 +106,113 @@ public sealed class MenuBarContractTests
     }
 
     [TestMethod]
+    public void InsertMenuMatchesMacGroupingAndWording()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => false, () => true, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var insert = (nint)typeof(NativeMenuService).GetMethod("BuildInsertMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            var labels = Enumerable.Range(0, GetMenuItemCount(insert)).Select(index =>
+            {
+                var buffer = new StringBuilder(256);
+                GetMenuString(insert, (uint)index, buffer, buffer.Capacity, 0x400);
+                return buffer.ToString();
+            }).ToArray();
+            CollectionAssert.AreEqual(new[]
+            {
+                "图片(&I)",
+                "插入表格(&I)",
+                "插入 Mermaid 图表(&M)",
+                "插入超链接(&K)...",
+                "插入脚注(&F)",
+                string.Empty,
+                "行内公式(&M)",
+                "块级公式(&M)",
+                "水平线(&R)",
+                string.Empty,
+                "YAML 前置元数据(&Y)",
+            }, labels);
+            Assert.AreEqual(0xFFFFFFFFu, GetMenuItemID(insert, 0), "首项应为图片子菜单");
+            Assert.AreEqual(0u, GetMenuItemID(insert, 5), "第一组与公式之间应有分隔线");
+            Assert.AreEqual(0u, GetMenuItemID(insert, 9), "公式与 YAML 元数据之间应有分隔线");
+        }
+        finally { DestroyMenu(insert); }
+    }
+
+    [TestMethod]
+    public void PopupContainerFollowsDescendantAvailability()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => false, () => true, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var file = (nint)typeof(NativeMenuService).GetMethod("BuildFileMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            Assert.AreEqual(0xFFFFFFFFu, GetMenuItemID(file, 0), "首项应为“新建”子菜单");
+            NativeMenuService.RefreshPopupAvailability(file);
+            Assert.AreEqual(0u, GetMenuState(file, 0, ByPosition) & 0x1u, "有可用命令时容器应保持可用");
+
+            DisableAllCommands(file);
+            NativeMenuService.RefreshPopupAvailability(file);
+            Assert.AreEqual(0x1u, GetMenuState(file, 0, ByPosition) & 0x1u, "所有命令禁用后容器应置灰");
+
+            EnableMenuItem(file, (uint)AppCommand.NewDocument, 0);
+            NativeMenuService.RefreshPopupAvailability(file);
+            Assert.AreEqual(0u, GetMenuState(file, 0, ByPosition) & 0x1u, "恢复任一命令后容器应重新可用");
+        }
+        finally { DestroyMenu(file); }
+    }
+
+    [TestMethod]
+    public void MenuBarTitlesStayEnabledWhileNestedPopupsCollapse()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => false, () => true, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var root = (nint)typeof(NativeMenuService).GetMethod("BuildMainMenu", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(service, null)!;
+        try
+        {
+            DisableAllCommands(root);
+            NativeMenuService.RefreshMenuBarPopupAvailability(root);
+            Assert.AreEqual(0u, GetMenuState(root, 0, ByPosition) & 0x1u, "菜单栏顶级项应始终可展开");
+            var file = GetSubMenu(root, 0);
+            Assert.AreEqual(0x1u, GetMenuState(file, 0, ByPosition) & 0x1u, "嵌套子菜单无可用命令时应置灰");
+        }
+        finally { DestroyMenu(root); }
+    }
+
+    private const uint ByPosition = 0x400;
+
+    private static void DisableAllCommands(nint menu)
+    {
+        for (var index = 0; index < GetMenuItemCount(menu); index++)
+        {
+            var child = GetSubMenu(menu, index);
+            if (child != 0)
+            {
+                DisableAllCommands(child);
+                continue;
+            }
+
+            var id = GetMenuItemID(menu, index);
+            if (id == 0 || id == uint.MaxValue)
+            {
+                continue;
+            }
+
+            EnableMenuItem(menu, id, 0 /* MF_BYCOMMAND */ | 0x1 /* MF_GRAYED */);
+        }
+    }
+
+    [TestMethod]
     public void RecentMenusExposeTenFilesAndTenFoldersWithoutCommandCollisions()
     {
         Loc.Initialize(LocalesDirectory, "zh-CN");
@@ -320,6 +427,7 @@ public sealed class MenuBarContractTests
     [DllImport("user32.dll")] private static extern uint GetMenuItemID(nint menu, int position);
     [DllImport("user32.dll")] private static extern nint GetSubMenu(nint menu, int position);
     [DllImport("user32.dll")] private static extern uint GetMenuState(nint menu, uint id, uint flags);
+    [DllImport("user32.dll")] private static extern uint EnableMenuItem(nint menu, uint item, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMenuStringW")]
     private static extern int GetMenuString(nint menu, uint item, StringBuilder text, int max, uint flags);
     [DllImport("user32.dll")] private static extern bool DestroyMenu(nint menu);

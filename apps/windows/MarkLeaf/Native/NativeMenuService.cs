@@ -172,6 +172,8 @@ internal sealed class NativeMenuService : IDisposable
         RefreshColorMenu();
         RefreshDocumentTabMenu();
 
+        RefreshMenuBarPopupAvailability(_menu);
+
         if (_window != 0)
         {
             NativeMethods.DrawMenuBar(_window);
@@ -429,6 +431,7 @@ internal sealed class NativeMenuService : IDisposable
             RefreshZoomMenu();
             RefreshColorMenu();
             RefreshDocumentTabMenu();
+            RefreshMenuBarPopupAvailability(menu);
 
             NativeMethods.SetForegroundWindow(window);
             var selected = NativeMethods.TrackPopupMenuEx(
@@ -493,6 +496,7 @@ internal sealed class NativeMenuService : IDisposable
             RefreshZoomMenu();
             RefreshColorMenu();
             RefreshDocumentTabMenu();
+            RefreshPopupAvailability(menu);
 
             NativeMethods.SetForegroundWindow(window);
             var hoveredMenuIndex = -1;
@@ -784,14 +788,28 @@ internal sealed class NativeMenuService : IDisposable
     private nint BuildInsertMenu()
     {
         var menu = CreateMenu(true);
-        AppendPopup(menu, Loc.Get("menu.format.image"), BuildInsertImageSubmenu());
-        foreach (var (command, key) in new[] {
-            (AppCommand.InsertTable, "menu.paragraph.insertTable"), (AppCommand.InsertMermaid, "menu.paragraph.insertMermaid"),
-            (AppCommand.InsertLink, "menu.format.insertLink"), (AppCommand.InsertFootnote, "menu.paragraph.insertFootnote"),
-            (AppCommand.InsertMathInline, "menu.format.insertMathInline"), (AppCommand.InsertMathBlock, "menu.paragraph.insertMathBlock"),
-            (AppCommand.InsertHorizontalRule, "menu.paragraph.horizontalRule"), (AppCommand.ShowFrontMatter, "menu.paragraph.frontMatter") })
-            AppendMainMenuCommand(menu, command, Loc.Get(key));
-        return menu;
+        try
+        {
+            // 与 macOS NativeMenuBuilder.insertMenu 保持同一分组：
+            // 图片 / 表格 / Mermaid / 链接 / 脚注 | 行内公式 / 块级公式 / 水平线 | YAML 元数据。
+            AppendPopup(menu, Loc.Get("menu.format.image"), BuildInsertImageSubmenu());
+            AppendMainMenuCommand(menu, AppCommand.InsertTable, Loc.Get("menu.paragraph.insertTable"));
+            AppendMainMenuCommand(menu, AppCommand.InsertMermaid, Loc.Get("menu.paragraph.insertMermaid"));
+            AppendMainMenuCommand(menu, AppCommand.InsertLink, Loc.Get("menu.format.insertLink"));
+            AppendMainMenuCommand(menu, AppCommand.InsertFootnote, Loc.Get("menu.paragraph.insertFootnote"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.InsertMathInline, Loc.Get("menu.format.insertMathInline"));
+            AppendMainMenuCommand(menu, AppCommand.InsertMathBlock, Loc.Get("menu.paragraph.insertMathBlock"));
+            AppendMainMenuCommand(menu, AppCommand.InsertHorizontalRule, Loc.Get("menu.paragraph.horizontalRule"));
+            AppendSeparator(menu);
+            AppendMainMenuCommand(menu, AppCommand.ShowFrontMatter, Loc.Get("menu.paragraph.frontMatter"));
+            return menu;
+        }
+        catch
+        {
+            NativeMethods.DestroyMenu(menu);
+            throw;
+        }
     }
 
     private nint BuildParagraphMenu()
@@ -1208,6 +1226,78 @@ internal sealed class NativeMenuService : IDisposable
     {
         var menu = popup ? NativeMethods.CreatePopupMenu() : NativeMethods.CreateMenu();
         return menu != 0 ? menu : throw new Win32Exception();
+    }
+
+    /// <summary>
+    /// 菜单栏的顶级项始终可展开（与 macOS 菜单栏一致），但其中嵌套的子菜单在没有可用命令时需要置灰。
+    /// </summary>
+    internal static void RefreshMenuBarPopupAvailability(nint menuBar)
+    {
+        var count = NativeMethods.GetMenuItemCount(menuBar);
+        for (var index = 0; index < count; index++)
+        {
+            var submenu = NativeMethods.GetSubMenu(menuBar, index);
+            if (submenu != 0)
+            {
+                RefreshPopupAvailability(submenu);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 按 AppKit 的自动启用规则同步子菜单容器：子菜单里没有任何可用命令时，容器项本身也置灰；
+    /// 只要存在一个可用命令，容器保持可展开。
+    /// </summary>
+    internal static void RefreshPopupAvailability(nint menu)
+    {
+        var count = NativeMethods.GetMenuItemCount(menu);
+        for (var index = 0; index < count; index++)
+        {
+            var submenu = NativeMethods.GetSubMenu(menu, index);
+            if (submenu == 0)
+            {
+                continue;
+            }
+
+            RefreshPopupAvailability(submenu);
+            NativeMethods.EnableMenuItem(
+                menu,
+                (uint)index,
+                NativeMethods.MfByPosition
+                    | (ContainsEnabledItem(submenu) ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
+        }
+    }
+
+    private static bool ContainsEnabledItem(nint menu)
+    {
+        var count = NativeMethods.GetMenuItemCount(menu);
+        for (var index = 0; index < count; index++)
+        {
+            var submenu = NativeMethods.GetSubMenu(menu, index);
+            if (submenu != 0)
+            {
+                if (ContainsEnabledItem(submenu))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            var state = NativeMethods.GetMenuState(menu, (uint)index, NativeMethods.MfByPosition);
+            if (state == uint.MaxValue)
+            {
+                continue;
+            }
+
+            const uint unavailable = NativeMethods.MfSeparator | NativeMethods.MfGrayed | NativeMethods.MfDisabled;
+            if ((state & unavailable) == 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void RefreshRecentWorkspaces()
