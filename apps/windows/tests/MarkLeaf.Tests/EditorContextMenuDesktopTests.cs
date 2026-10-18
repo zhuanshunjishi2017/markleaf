@@ -12,6 +12,40 @@ public sealed class EditorContextMenuDesktopTests
 {
     [STATestMethod]
     [TestCategory("InteractiveDesktop")]
+    public void CheckedMenuRowsPaintTheCustomCheckGlyph()
+    {
+        if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");
+        using var dpiScope = new DpiScope();
+        using var owner = new Form { Text = "MarkLeaf checked menu verification", Size = new Size(700, 500) };
+        owner.Show();
+        SetForegroundWindow(owner.Handle);
+        var session = new EditorMenuSession(1, _ => new CommandState(true),
+            _ => Task.CompletedTask, _ => { }, () => { });
+        var checkedRow = new EditorMenuEntry(
+            EditorMenuEntryKind.Command, AppCommand.ToggleEditorFocusMode, "Paragraph Focus Mode", "F8",
+            new(true, true), []);
+        using var menu = new EditorContextMenu(new([], [checkedRow]), owner.DeviceDpi, false, true, session);
+        menu.Show(owner, new Point(100, 100));
+        PumpUntil(() => menu.Visible && menu.Opacity == 1);
+
+        var row = menu.Items.OfType<ToolStripMenuItem>().Single();
+        GetWindowRect(menu.Handle, out var bounds);
+        using var bitmap = new Bitmap(menu.ClientSize.Width, menu.ClientSize.Height);
+        using (var graphics = Graphics.FromImage(bitmap))
+            graphics.CopyFromScreen(new Point(bounds.Left, bounds.Top), Point.Empty, bitmap.Size);
+        var background = menu.BackColor.ToArgb();
+        var y = Center(row.Bounds).Y;
+        var checkColumn = Enumerable.Range(2, Math.Max(1, Scale(menu, 24) - 3))
+            .Where(x => bitmap.GetPixel(x, y).ToArgb() != background)
+            .ToArray();
+
+        Assert.IsTrue(menu.ShowCheckMargin);
+        Assert.IsGreaterThan(0, checkColumn.Length,
+            $"The checked row must paint a glyph in its leading column. Row={row.Bounds}; Menu={menu.Bounds}.");
+    }
+
+    [STATestMethod]
+    [TestCategory("InteractiveDesktop")]
     [DataRow(false)]
     [DataRow(true)]
     public void PopupKeepsToolbarInsideWorkingAreaAndHoverRestoresOnClose(bool dark)
@@ -260,6 +294,9 @@ public sealed class EditorContextMenuDesktopTests
     }
 
     private static Point Center(Rectangle rectangle) => new(rectangle.Left + rectangle.Width / 2, rectangle.Top + rectangle.Height / 2);
+
+    private static int Scale(Control control, int value) =>
+        (int)Math.Round(value * control.DeviceDpi / 96.0);
 
     private static void AssertHoverInsets(EditorContextMenu menu, ToolStripMenuItem row)
     {

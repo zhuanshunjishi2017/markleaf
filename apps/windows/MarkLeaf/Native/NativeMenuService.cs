@@ -404,6 +404,8 @@ internal sealed class NativeMenuService : IDisposable
 
     private void ApplyCommandStates(nint menu)
     {
+        if (menu == 0) return;
+
         foreach (var command in Enum.GetValues<AppCommand>())
         {
             var state = _router.GetState(command);
@@ -415,6 +417,13 @@ internal sealed class NativeMenuService : IDisposable
                 menu,
                 (uint)command,
                 NativeMethods.MfByCommand | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
+        }
+
+        var count = NativeMethods.GetMenuItemCount(menu);
+        for (var index = 0; index < count; index++)
+        {
+            var submenu = NativeMethods.GetSubMenu(menu, index);
+            if (submenu != 0) ApplyCommandStates(submenu);
         }
     }
 
@@ -596,20 +605,7 @@ internal sealed class NativeMenuService : IDisposable
 
         try
         {
-            foreach (var command in Enum.GetValues<AppCommand>())
-            {
-                var state = _router.GetState(command);
-                NativeMethods.EnableMenuItem(
-                    menu,
-                    (uint)command,
-                    NativeMethods.MfByCommand
-                        | (state.IsEnabled ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
-                NativeMethods.CheckMenuItem(
-                    menu,
-                    (uint)command,
-                    NativeMethods.MfByCommand
-                        | (state.IsChecked ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
-            }
+            ApplyCommandStates(menu);
             RefreshRecentWorkspaces();
             RefreshStyleMenu();
             RefreshZoomMenu();

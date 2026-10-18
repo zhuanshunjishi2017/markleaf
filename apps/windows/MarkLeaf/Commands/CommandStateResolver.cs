@@ -15,7 +15,14 @@ public static class CommandStateResolver
             if (!context.DocumentAvailable || !context.EditorReady
                 || context.EditorActions is null || !context.EditorActions.TryGetValue(identifier, out var action))
                 return new(false);
-            return action;
+            // 段落专注/打字机模式不是文档格式，渲染器的 action 只给出可用性；
+            // 勾选状态由宿主窗口维护的模式直接提供（与 macOS 视图菜单一致）。
+            return command switch
+            {
+                AppCommand.ToggleEditorFocusMode => action with { IsChecked = context.EditorFocusMode },
+                AppCommand.ToggleEditorTypewriterMode => action with { IsChecked = context.EditorTypewriterMode },
+                _ => action,
+            };
         }
 
         return command switch

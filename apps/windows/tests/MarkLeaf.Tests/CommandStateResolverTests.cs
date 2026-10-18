@@ -54,4 +54,27 @@ public sealed class CommandStateResolverTests
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ToggleBold, context with { DocumentAvailable = false }).IsEnabled);
         Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ToggleBold, context with { EditorReady = false }).IsEnabled);
     }
+
+    [TestMethod]
+    public void Resolve_FocusAndTypewriterTogglesUseHostModeForCheckedState()
+    {
+        var context = new CommandContext(
+            DocumentAvailable: true,
+            EditorReady: true,
+            EditorActions: new Dictionary<string, CommandState>
+            {
+                ["setEditorFocusMode"] = new(true),
+                ["setEditorTypewriterMode"] = new(true),
+            },
+            EditorFocusMode: true,
+            EditorTypewriterMode: false);
+
+        Assert.AreEqual(new CommandState(true, true),
+            CommandStateResolver.Resolve(AppCommand.ToggleEditorFocusMode, context));
+        Assert.AreEqual(new CommandState(true, false),
+            CommandStateResolver.Resolve(AppCommand.ToggleEditorTypewriterMode, context));
+        Assert.AreEqual(new CommandState(true, false),
+            CommandStateResolver.Resolve(AppCommand.ToggleEditorFocusMode,
+                context with { EditorFocusMode = false }));
+    }
 }

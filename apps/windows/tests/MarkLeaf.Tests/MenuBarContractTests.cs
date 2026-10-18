@@ -210,6 +210,44 @@ public sealed class MenuBarContractTests
     }
 
     [TestMethod]
+    public void SelfDrawnViewMenuCarriesModeChecksFromRouter()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        var router = new CommandRouter(shortcuts, command => new CommandState(true,
+            command is AppCommand.ToggleEditorFocusMode
+                or AppCommand.ToggleEditorTypewriterMode
+                or AppCommand.ToggleEditorFullScreen), _ => { });
+        using var service = new NativeMenuService(router,
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+
+        var view = service.BuildSelfDrawnTopLevelMenu(4);
+        var modes = Flatten(view.Secondary)
+            .Where(entry => entry.Label is "段落专注模式" or "打字机模式" or "全屏幕模式")
+            .ToArray();
+
+        Assert.HasCount(3, modes);
+        Assert.IsTrue(modes.All(entry => entry.State.IsChecked),
+            "自绘视图菜单必须把宿主模式状态传到子菜单项。");
+    }
+
+    [TestMethod]
+    [DataRow("zh-CN", "全屏幕模式(&F)\tF11")]
+    [DataRow("zh-TW", "全螢幕模式(&F)\tF11")]
+    [DataRow("en-US", "&Full Screen Mode\tF11")]
+    [DataRow("ja-JP", "フルスクリーンモード(&F)\tF11")]
+    public void ViewMenuUsesFullScreenModeWording(string language, string expected)
+    {
+        Loc.Initialize(LocalesDirectory, language);
+        try
+        {
+            Assert.AreEqual(expected, Loc.Get("menu.view.editorFullScreen"));
+        }
+        finally { Loc.Initialize(LocalesDirectory, "zh-CN"); }
+    }
+
+    [TestMethod]
     public void MenuBarTitlesStayEnabledWhileNestedPopupsCollapse()
     {
         Loc.Initialize(LocalesDirectory, "zh-CN");

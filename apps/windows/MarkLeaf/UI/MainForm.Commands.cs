@@ -165,6 +165,8 @@ internal sealed partial class MainForm
             SidebarVisible: !_sidebarSplit.Panel1Collapsed,
             FocusMode: _focusMode,
             EditorFullScreen: _editorFullScreen,
+            EditorFocusMode: _editorFocusMode,
+            EditorTypewriterMode: _editorTypewriterMode,
             StatusBarVisible: _statusStrip?.Visible != false,
             OutlineActive: _sidebarActiveOutline,
             ShowCodeHighlight: _settings.Appearance.ShowCodeHighlight,

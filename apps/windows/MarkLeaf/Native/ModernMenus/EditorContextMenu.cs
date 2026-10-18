@@ -39,7 +39,7 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
         Font = _textFont;
         Renderer = _renderer;
         ShowImageMargin = false;
-        ShowCheckMargin = false;
+        ShowCheckMargin = true;
         ShowItemToolTips = true;
         BackColor = _renderer.Theme.Background;
         ForeColor = _renderer.Theme.Text;
