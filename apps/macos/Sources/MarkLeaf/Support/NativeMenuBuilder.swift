@@ -122,7 +122,7 @@ final class NativeMenuBuilder {
         copyAs.addItem(commandItem(L10n.t("纯文本"), "copyPlain"))
         copyAs.addItem(commandItem(L10n.t("Markdown"), "copyMarkdown"))
         copyAs.addItem(commandItem(L10n.t("HTML"), "copyHtml"))
-        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true, validationCommand: "copyAs")
+        let copyAsItem = popup(L10n.t("复制为"), copyAs, requiresDocument: true, validationCommand: "copyAsParent")
         copyAsItem.representedObject = "copyAs"
         menu.addItem(copyAsItem)
         menu.addItem(commandItem(L10n.t("粘贴"), "paste", key: "v"))
@@ -144,7 +144,7 @@ final class NativeMenuBuilder {
         let images = NSMenu(title: L10n.t("图片"))
         images.addItem(commandItem(L10n.t("插入本地图片…"), "insertImage"))
         images.addItem(commandItem(L10n.t("插入来自互联网的图片…"), "insertImageFromUrl"))
-        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true, validationCommand: "insertImage"))
+        menu.addItem(popup(L10n.t("图片"), images, requiresDocument: true, validationCommand: "insertImageParent"))
         menu.addItem(tableSizePickerSubmenu { size in
             AppWindowManager.shared.activeSession?.insertTable(rows: size.rows, columns: size.columns)
         })
@@ -187,7 +187,7 @@ final class NativeMenuBuilder {
         for level in 1...6 {
             headings.addItem(commandItem(L10n.f("%@级标题", Self.levelName(level)), "setHeading\(level)", key: "\(level)"))
         }
-        menu.addItem(popup(L10n.t("标题"), headings))
+        menu.addItem(popup(L10n.t("标题"), headings, requiresDocument: true, validationCommand: "headingParent"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("提升标题级别"), "promoteHeading", key: ".", mask: [.command, .option]))
         menu.addItem(commandItem(L10n.t("降低标题级别"), "demoteHeading", key: ",", mask: [.command, .option]))
@@ -226,15 +226,15 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("高亮"), "toggleHighlight"))
         menu.addItem(commandItem(L10n.t("行内代码"), "toggleCode", key: "`", mask: [.command, .option]))
         menu.addItem(.separator())
-        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true, validationCommand: "setParagraph"))
-        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true, validationCommand: "toggleBulletList"))
+        menu.addItem(popup(L10n.t("段落样式"), paragraphStyleMenu(), requiresDocument: true, validationCommand: "paragraphStyleParent"))
+        menu.addItem(popup(L10n.t("列表"), listsMenu(), requiresDocument: true, validationCommand: "listParent"))
         menu.addItem(commandItem(L10n.t("引用"), "toggleBlockquote"))
         menu.addItem(commandItem(L10n.t("代码块"), "toggleCodeBlock"))
-        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true, validationCommand: "insertAlertNote"))
+        menu.addItem(popup(L10n.t("提示框"), alertsMenu(), requiresDocument: true, validationCommand: "alertParent"))
         menu.addItem(.separator())
-        menu.addItem(popup(L10n.t("段落操作"), paragraphActionsMenu(), requiresDocument: true, validationCommand: "insertLineBefore"))
-        menu.addItem(popup(L10n.t("表格"), tableEditingMenu(), requiresDocument: true, validationCommand: "addRowAfter"))
-        menu.addItem(popup(L10n.t("图片"), imageEditingMenu(), requiresDocument: true, validationCommand: "saveImageAs"))
+        menu.addItem(popup(L10n.t("段落操作"), paragraphActionsMenu(), requiresDocument: true, validationCommand: "paragraphActionsParent"))
+        menu.addItem(popup(L10n.t("表格"), tableEditingMenu(), requiresDocument: true, validationCommand: "tableParent"))
+        menu.addItem(popup(L10n.t("图片"), imageEditingMenu(), requiresDocument: true, validationCommand: "imageParent"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("格式刷"), "formatPainter", key: "c", mask: [.command, .shift]))
         menu.addItem(commandItem(L10n.t("应用格式刷"), "formatPainterApply", key: "v", mask: [.command, .control]))
@@ -298,7 +298,7 @@ final class NativeMenuBuilder {
             key: "f",
             mask: [.command, .shift]
         ))
-        menu.addItem(commandItem(L10n.t("进入全屏幕"), "toggleFullScreen", key: "f", mask: [.control, .command]))
+        menu.addItem(commandItem(L10n.t("全屏幕模式"), "toggleFullScreen", key: "f", mask: [.control, .command]))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("显示代码高亮"), "toggleCodeHighlight"))
         menu.addItem(.separator())
@@ -313,7 +313,8 @@ final class NativeMenuBuilder {
             item.state = percent == session?.zoomPercent ? .on : .off
             zoomMenu.addItem(item)
         }
-        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true, validationCommand: "zoomIn"))
+        zoomMenu.delegate = MenuRouter.ZoomMenuDelegate.shared
+        menu.addItem(popup(L10n.t("设置缩放"), zoomMenu, requiresDocument: true, validationCommand: "zoomParent"))
         menu.addItem(commandItem(L10n.t("放大"), "zoomIn", key: "="))
         menu.addItem(commandItem(L10n.t("缩小"), "zoomOut", key: "-"))
         menu.addItem(commandItem(L10n.t("重置为100%"), "resetZoom", key: "0"))
@@ -412,6 +413,38 @@ final class NativeMenuBuilder {
 final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     static let shared = MenuRouter()
 
+    /// 子菜单父项的勾选/可用性规则。
+    /// 父项本身不是命令：勾选由分组内的命令聚合（例如“段落样式”在正文或任一标题下都显示勾选），
+    /// 可用性沿用组内代表命令，避免父项借用某一个子命令的 checked 状态。
+    private struct SubmenuParent {
+        let checkedCommands: [String]
+        let enablementCommand: String?
+
+        func isChecked(in session: EditorSession?) -> Bool {
+            guard !checkedCommands.isEmpty else { return false }
+            return checkedCommands.contains { session?.editorAction($0)?.checked == true }
+        }
+    }
+
+    private static let submenuParents: [String: SubmenuParent] = [
+        "paragraphStyleParent": SubmenuParent(
+            checkedCommands: ["setParagraph"] + (1...6).map { "setHeading\($0)" },
+            enablementCommand: "setParagraph"),
+        "headingParent": SubmenuParent(
+            checkedCommands: (1...6).map { "setHeading\($0)" },
+            enablementCommand: "setHeading1"),
+        "listParent": SubmenuParent(
+            checkedCommands: ["toggleBulletList", "toggleOrderedList", "toggleTaskList"],
+            enablementCommand: "toggleBulletList"),
+        "alertParent": SubmenuParent(checkedCommands: [], enablementCommand: "insertAlertNote"),
+        "paragraphActionsParent": SubmenuParent(checkedCommands: [], enablementCommand: "insertLineBefore"),
+        "tableParent": SubmenuParent(checkedCommands: [], enablementCommand: "addRowAfter"),
+        "imageParent": SubmenuParent(checkedCommands: [], enablementCommand: "saveImageAs"),
+        "insertImageParent": SubmenuParent(checkedCommands: [], enablementCommand: "insertImage"),
+        "copyAsParent": SubmenuParent(checkedCommands: [], enablementCommand: "copyPlain"),
+        "zoomParent": SubmenuParent(checkedCommands: [], enablementCommand: "zoomIn"),
+    ]
+
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
     private var viewStateSession: EditorSession? { AppWindowManager.shared.activeViewStateSession }
 
@@ -454,7 +487,14 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         if menuItem.action == #selector(setZoom(_:)) || menuItem.action == #selector(chooseStyle(_:)) {
             return session != nil
         }
-        guard let command = menuItem.representedObject as? String else { return true }
+        guard var command = menuItem.representedObject as? String else { return true }
+        let submenuParent = Self.submenuParents[command]
+        if let submenuParent {
+            menuItem.state = submenuParent.isChecked(in: session) ? .on : .off
+            if let enablementCommand = submenuParent.enablementCommand {
+                command = enablementCommand
+            }
+        }
         // 原生文本框（查找面板/偏好设置输入框等）编辑命令优先路由，不受空标签置灰影响。
         if let editor = nativeTextFieldEditor,
            NativeTextEditingPolicy.shouldRoute(command: command, toNativeTextFieldEditor: true) {
@@ -487,7 +527,17 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "toggleFocusMode":
             menuItem.state = AppWindowManager.shared.activeWindowController?.isFocusMode == true ? .on : .off
             return AppWindowManager.shared.activeWindowController != nil
+        case "toggleEditorFocusMode":
+            guard let session else { return false }
+            menuItem.state = session.isEditorFocusMode ? .on : .off
+            return true
+        case "toggleTypewriterMode":
+            guard let session else { return false }
+            menuItem.state = session.isTypewriterMode ? .on : .off
+            return true
         case "toggleFullScreen":
+            menuItem.state = AppWindowManager.shared.activeWindowController?.window?.styleMask.contains(.fullScreen) == true
+                ? .on : .off
             return AppWindowManager.shared.activeWindowController != nil
         case "toggleReadOnlyMode":
             guard let session else { return false }
@@ -529,7 +579,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         }
         let s = session
         if let action = s?.editorAction(command) {
-            menuItem.state = action.checked ? .on : .off
+            if submenuParent == nil {
+                menuItem.state = action.checked ? .on : .off
+            }
             return s?.editorCommandEnabled(command) == true
         }
         switch command {
@@ -574,6 +626,8 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return true
         case "toggleCodeHighlight":
             menuItem.state = SettingsService.shared.settings.showCodeHighlight ? .on : .off
+        case "zoomIn", "zoomOut", "resetZoom":
+            return session != nil
         default: break
         }
         return s?.editorActions.isEmpty != true
@@ -764,6 +818,19 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         guard !parent.isEmpty, parent != "/" else { return baseTitle }
         return baseTitle + " — " + (parent as NSString).lastPathComponent
     }
+    }
+
+    /// “设置缩放”子菜单每次打开时按当前缩放刷新勾选，避免沿用构建菜单时的旧状态。
+    final class ZoomMenuDelegate: NSObject, NSMenuDelegate {
+        static let shared = ZoomMenuDelegate()
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            guard let session = AppWindowManager.shared.activeSession else { return }
+            for item in menu.items {
+                guard let percent = item.representedObject as? Int else { continue }
+                item.state = percent == session.zoomPercent ? .on : .off
+            }
+        }
     }
 
     /// 为仅用于展示子菜单的父级菜单项提供 target+action，使 AppKit 自动校验得以触发。

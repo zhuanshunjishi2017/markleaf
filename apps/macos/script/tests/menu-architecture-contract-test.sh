@@ -102,7 +102,7 @@ for command in toggleBulletList toggleOrderedList toggleTaskList; do
 done
 
 mac_view="$(method_body "$MAC_MENU" viewMenu)"
-for text in 'commandItem(L10n.t("显示侧栏"), "toggleSidebar")' 主题设置 设置缩放 显示代码高亮 重新渲染所有 Mermaid 图表 进入全屏幕; do
+for text in 'commandItem(L10n.t("显示侧栏"), "toggleSidebar")' 主题设置 设置缩放 显示代码高亮 重新渲染所有 Mermaid 图表 全屏幕模式; do
   require_text "$mac_view" "$text"
 done
 if [[ "${mac_view%%let sidebarSettings*}" != *'menu.addItem(commandItem(L10n.t("显示侧栏"), "toggleSidebar"))'* ]]; then
@@ -325,5 +325,15 @@ require_text "$MAC_MENU" 'identifier.hasPrefix("activateTab:")'
 require_text "$MAC_MENU" 'hasContent: windowSession.activeTabSession?.hasContent ?? false'
 require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/SidebarView.swift" 'copyContent.isEnabled = hasCopyableContent(entry)'
 require_text "$ROOT_DIR/macos/Sources/MarkLeaf/Views/SidebarView.swift" 'menu.autoenablesItems = false'
+
+# 勾选状态统一在菜单打开时解析：视图开关必须有显式 state，
+# 子菜单父项用分组聚合，不能借用某一个子命令的 checked 状态。
+require_text "$MAC_MENU" 'menuItem.state = session.isEditorFocusMode ? .on : .off'
+require_text "$MAC_MENU" 'menuItem.state = session.isTypewriterMode ? .on : .off'
+require_text "$MAC_MENU" 'styleMask.contains(.fullScreen)'
+require_text "$MAC_MENU" '"paragraphStyleParent"'
+require_text "$MAC_MENU" '"headingParent"'
+require_text "$MAC_MENU" '"listParent"'
+require_text "$MAC_MENU" 'ZoomMenuDelegate'
 
 echo "PASS"
