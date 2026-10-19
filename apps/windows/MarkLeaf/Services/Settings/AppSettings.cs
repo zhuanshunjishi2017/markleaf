@@ -130,6 +130,9 @@ public sealed class AppSettings
 
     public CodeFormatterSettings CodeFormatter { get; set; } = new();
 
+    /// <summary>已自动展示过「更新内容」的应用版本；每个版本只在首次启动时展示一次。</summary>
+    public string? LastChangelogShownVersion { get; set; }
+
     public string MarkdownStyle { get; set; } = "serif";
 
     public string ColorTheme { get; set; } = "apple-blue";
@@ -148,6 +151,7 @@ public sealed class AppSettings
         Export = saved.Export;
         Shortcut.ApplyFrom(saved.Shortcut);
         CodeFormatter.ApplyFrom(saved.CodeFormatter);
+        LastChangelogShownVersion = saved.LastChangelogShownVersion;
         MarkdownStyle = saved.MarkdownStyle;
         ColorTheme = saved.ColorTheme;
     }

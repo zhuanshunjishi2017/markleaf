@@ -92,6 +92,7 @@ struct AppSettings: Codable {
         displayLanguage = try container.decodeIfPresent(String.self, forKey: .displayLanguage) ?? Self.detectSystemLanguage()
         autoCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoCheckForUpdates) ?? true
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+        lastChangelogShownVersion = try container.decodeIfPresent(String.self, forKey: .lastChangelogShownVersion)
         markdownStyle = try container.decodeIfPresent(String.self, forKey: .markdownStyle) ?? "serif"
         let decodedTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "apple-blue"
         colorTheme = ThemeIDNormalizer.normalize(decodedTheme)
@@ -188,6 +189,8 @@ struct AppSettings: Codable {
     // 更新（对齐 Windows：启动时静默检查；被跳过的版本不再自动提醒）
     var autoCheckForUpdates = true
     var skippedUpdateVersion: String?
+    /// 已自动展示过「更新内容」的应用版本；用于保证每个版本只在首次启动时展示一次。
+    var lastChangelogShownVersion: String?
 
     /// 首次运行未设置语言时跟随系统语言。
     static func detectSystemLanguage(preferred: [String] = Locale.preferredLanguages) -> String {
@@ -335,6 +338,7 @@ final class SettingsService {
     static let shared = SettingsService()
 
     private(set) var settings: AppSettings = AppSettings()
+    private(set) var loadedFromExistingSettingsFile = false
     private let applicationSupportRoot: URL
 
     convenience init() {
@@ -360,6 +364,7 @@ final class SettingsService {
 
     func load() {
         let fileExists = FileManager.default.fileExists(atPath: settingsURL.path)
+        loadedFromExistingSettingsFile = fileExists
         guard fileExists,
               let data = try? Data(contentsOf: settingsURL) else {
             AppLog.warning("设置加载失败: 文件不存在或不可读 (\(settingsURL.path), exists=\(fileExists))")

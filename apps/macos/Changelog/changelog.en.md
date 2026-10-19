@@ -1,13 +1,45 @@
 # MarkLeaf Changelog
 
-## 1.7.8 — 2026-10-11
+## 1.7.8 — 2026-10-19
+
+### New
+
+- Added a quick-actions bar at the top of the editor context menu for bold, italic, underline, strikethrough, text style, font size, format painter, and clear formatting.
+- Added an “Inline common actions” preference that restores the actions as context-menu items and hides the quick-actions bar.
+- After updating, the changelog document now opens automatically on the first launch; it opens only once per version.
+- Mermaid diagrams can now be saved directly as PNG or SVG images.
+- Remote images can be saved locally while preserving the original content and file extension whenever possible.
+
+### Changed
+
+- Unified command meaning, grouping, wording, disabled states, and check states across menu-bar, editor, image, link, footnote, formula, Mermaid, tab, workspace, outline, and status-bar menus.
+- Reworked menu opening, closing, submenu switching, and quick-action previewing; opening or canceling a menu no longer changes the selection, document, or undo history.
+- Read-only documents can be saved as new copies but cannot overwrite their read-only source files; object menus keep navigation, copy, and view commands.
+- “Save All” now includes modified untitled documents in the current window. Canceling or a failure stops the remaining saves without rolling back completed ones.
+- Workspace rename, delete, open, close, and reveal logic is safer. Deletion only moves items to Trash, and affected open content remains as a modified copy that can be saved elsewhere.
+- Moved the SQL dialect setting into the code formatter window.
+- The export window now uses a more compact default size.
+- Improved long-document initialization and scrolling layout performance by avoiding whole-document style invalidation while scrolling large documents.
+- Separated Mermaid dependency-loading and rendering budgets, so a dependency timeout no longer marks every diagram as failed; explicit retry is supported.
+- Sidebar scrollbars now auto-hide, with thumb width and fade timing matching the editor.
+- Inline formatting markers are now converted only within a continuous input run.
 
 ### Fixed
 
-- Fixed the sidebar scrollbars not auto-hiding.
-- Fixed inaccurate heading or paragraph positioning for outline jumps in source mode.
 - Fixed flickering highlights, the highlight collapsing to a single cell on release, and typing failing to replace the selection when dragging from outside a table into it.
 - Fixed the highlight retreating to a horizontal rule when a drag crosses it.
+- Fixed inaccurate heading or paragraph positioning for outline jumps in source mode.
+- Fixed stale chapter-positioning tasks continuing to run after a document or view changed, causing abnormal jumps.
+- Fixed format painter failing to apply inline marks across table cells.
+- Fixed missing clipboard commands in the table context menu.
+- Fixed selection highlights flickering, lingering, or unexpectedly collapsing while opening or closing a context menu.
+- Fixed format previews rendering text as white on light backgrounds.
+- Fixed missing menu-bar check states, including view modes, paragraph styles, formatting toggles, and the no-tab state.
+- Fixed window-local state overwriting shared preferences when multiple windows saved settings concurrently.
+- Fixed related settings groups being unexpectedly retained or overwritten while clearing history, resetting preferences, or updating formatter settings.
+- Fixed delayed theme-state synchronization after the system appearance changed.
+- Fixed export-preview flashing when changing header settings.
+- Fixed print/export host lifecycle issues that could leave processes behind or destabilize previews.
 
 ## 1.7.7 — 2026-10-8
 

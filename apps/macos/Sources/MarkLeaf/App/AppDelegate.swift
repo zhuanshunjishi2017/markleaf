@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
             self.checkPendingRecoveries()
+            self.presentChangelogAfterUpdateIfNeeded()
         }
 
         // 启动时静默检查更新（对齐 Windows）：延迟到首屏就绪之后，无更新或
@@ -846,6 +847,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// 只在升级后的首次启动展示「更新内容」；全新安装不打扰。
+    private func presentChangelogAfterUpdateIfNeeded() {
+        guard let currentVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String,
+        !currentVersion.isEmpty else { return }
+
+        let shouldOpen = ChangelogLaunchPolicy.shouldOpen(
+            currentVersion: currentVersion,
+            lastShownVersion: SettingsService.shared.settings.lastChangelogShownVersion,
+            settingsFileExisted: SettingsService.shared.loadedFromExistingSettingsFile
+        )
+        SettingsService.shared.update { settings in
+            settings.lastChangelogShownVersion = currentVersion
+        }
+        guard shouldOpen else { return }
+        AppWindowManager.shared.openChangelog()
     }
 
     // MARK: - 自动化：⌘/Ctrl+滚轮缩放

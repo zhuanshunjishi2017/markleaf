@@ -174,6 +174,7 @@ public sealed class JsonSettingsService : ISettingsService
         incoming.Export = ChooseSharedSection(baseline.Export, incoming.Export, latest.Export);
         incoming.Shortcut = ChooseSharedSection(baseline.Shortcut, incoming.Shortcut, latest.Shortcut);
         incoming.CodeFormatter = ChooseSharedSection(baseline.CodeFormatter, incoming.CodeFormatter, latest.CodeFormatter);
+        incoming.LastChangelogShownVersion = incoming.LastChangelogShownVersion ?? latest.LastChangelogShownVersion;
         incoming.MarkdownStyle = ChooseSharedSection(baseline.MarkdownStyle, incoming.MarkdownStyle, latest.MarkdownStyle);
         incoming.ColorTheme = ChooseSharedSection(baseline.ColorTheme, incoming.ColorTheme, latest.ColorTheme);
     }

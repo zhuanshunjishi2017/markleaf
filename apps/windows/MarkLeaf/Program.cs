@@ -105,6 +105,7 @@ internal static class Program
             // sequence (which is especially noticeable on a cold disk/cache).
             var stylesTask = Task.Run(() => StyleService.Initialize(stylesDir));
             var colorThemesTask = Task.Run(() => ColorThemeService.Initialize(stylesDir));
+            var settingsFileExisted = File.Exists(paths.SettingsFile);
             var settingsTask = settingsService.LoadAsync();
             Task.WhenAll(stylesTask, colorThemesTask, settingsTask).GetAwaiter().GetResult();
 
@@ -125,7 +126,7 @@ internal static class Program
             // are already in memory. InitializeAsync consumes this same task.
             _ = EditorHostController.PrewarmEnvironmentAsync(paths.WebView2UserDataDirectory);
 
-            using var form = new MainForm(options, paths, settings, settingsService, logger);
+            using var form = new MainForm(options, paths, settings, settingsService, logger, settingsFileExisted);
             using var fileOpenRouter = FileOpenRouter.TryStartPrimary(
                 path =>
                 {

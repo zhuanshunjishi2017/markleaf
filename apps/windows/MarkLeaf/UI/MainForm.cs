@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using MarkLeaf.App;
 using MarkLeaf.Commands;
@@ -23,6 +24,7 @@ internal sealed partial class MainForm : Form
     private readonly ApplicationPaths _paths;
     private readonly AppSettings _settings;
     private readonly ISettingsService _settingsService;
+    private readonly bool _startupSettingsFileExisted;
     private readonly IAppLogger _logger;
     private readonly CommandRouter _commandRouter;
     private readonly ShortcutManager _shortcutManager;
@@ -181,7 +183,8 @@ internal sealed partial class MainForm : Form
         ApplicationPaths paths,
         AppSettings settings,
         ISettingsService settingsService,
-        IAppLogger logger)
+        IAppLogger logger,
+        bool startupSettingsFileExisted = false)
     {
         // The constructor creates a fairly large control tree.  Defer layout
         // passes until all controls and event handlers are attached so the first
@@ -190,6 +193,7 @@ internal sealed partial class MainForm : Form
         _options = options;
         _paths = paths;
         _settings = settings;
+        _startupSettingsFileExisted = startupSettingsFileExisted;
         _markdownStyle = StyleService.TryGetStyle(settings.MarkdownStyle) is not null
             ? settings.MarkdownStyle
             : StyleService.DefaultStyleId;
@@ -585,6 +589,13 @@ internal sealed partial class MainForm : Form
         await Task.WhenAll(startupTasks);
         _logger.Info($"Startup: editor and initial content ready after {startupTimer.ElapsedMilliseconds} ms.");
 
+        if (!_options.IsExportCommand
+            && !_options.IsolatedFileWindow
+            && _options.DocumentStatePath is null)
+        {
+            PresentChangelogAfterUpdateIfNeeded();
+        }
+
         if (!_options.IsExportCommand && _settings.General.AutoCheckForUpdates)
         {
             _ = CheckForUpdatesAsync(silent: true);
@@ -611,6 +622,25 @@ internal sealed partial class MainForm : Form
                 Close();
             };
             timer.Start();
+        }
+    }
+
+    private void PresentChangelogAfterUpdateIfNeeded()
+    {
+        var currentVersion = typeof(MainForm).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        if (string.IsNullOrWhiteSpace(currentVersion)) return;
+
+        var shouldOpen = ChangelogLaunchPolicy.ShouldOpen(
+            currentVersion,
+            _settings.LastChangelogShownVersion,
+            _startupSettingsFileExisted);
+        _settings.LastChangelogShownVersion = currentVersion;
+        SaveSettings();
+        if (shouldOpen)
+        {
+            _ = ShowChangelogAsync();
         }
     }
 

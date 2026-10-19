@@ -134,6 +134,11 @@ internal sealed partial class MainForm
 
     private async void ShowChangelog()
     {
+        await ShowChangelogAsync();
+    }
+
+    private async Task ShowChangelogAsync()
+    {
         var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.md");
         if (!File.Exists(changelogPath))
         {
