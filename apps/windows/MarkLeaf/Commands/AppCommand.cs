@@ -275,4 +275,6 @@ public readonly record struct CommandContext(
     bool SavableDocumentsAvailable = false,
     string? SelectionScope = null,
     bool EditorFocusMode = false,
-    bool EditorTypewriterMode = false);
+    bool EditorTypewriterMode = false,
+    bool WorkspaceAvailable = false,
+    bool DocumentHasContent = false);

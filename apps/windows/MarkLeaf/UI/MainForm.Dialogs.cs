@@ -286,7 +286,7 @@ internal sealed partial class MainForm
         using var dialog = new ExportDialog(
             docName, defaultName, _markdownStyle, StyleService.GetAllStyles(),
             _paths.WebView2UserDataDirectory, GeneratePreviewPdfAsync, GeneratePreviewHtmlAsync,
-            mode, _settings.Export);
+            mode, _settings.Export, lastSettingsOptionsProvider: () => BuildLastExportOptions(""));
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK)
         {
             return;

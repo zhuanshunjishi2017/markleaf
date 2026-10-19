@@ -43,6 +43,17 @@ s.execute("goToFootnoteReference", text: "n")
 if !web.scripts.contains(where: { $0.contains("goToFootnoteReference") }) {
     failures.append("readonly footnote navigation must reach the Web bridge")
 }
+let previousMultiTab = SettingsService.shared.settings.multiTabEnabled
+for enabled in [false, true] {
+    SettingsService.shared.update { $0.multiTabEnabled = enabled }
+    let item = NSMenuItem(title: "", action: nil, keyEquivalent: "w")
+    item.representedObject = "closeCurrentTab"
+    _ = MenuRouter.shared.validateMenuItem(item)
+    if item.title != L10n.t(enabled ? "关闭当前标签页" : "关闭当前文件") {
+        failures.append("close action title must follow the multi-tab setting")
+    }
+}
+SettingsService.shared.update { $0.multiTabEnabled = previousMultiTab }
 for failure in failures { fputs("FAIL: \(failure)\n", stderr) }
 if !failures.isEmpty { exit(1) }
 print("PASS: native object actions are reachable and readonly navigation crosses the host bridge")

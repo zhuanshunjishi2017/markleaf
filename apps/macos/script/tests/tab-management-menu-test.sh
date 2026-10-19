@@ -11,7 +11,7 @@ require_text() {
 
 require_text "$MENU" 'NSMenu(title: L10n.t("标签页管理"))'
 require_text "$MENU" 'L10n.t("下一个标签"), "tabNext"'
-require_text "$MENU" 'L10n.t("关闭当前标签"), "closeCurrentTab"'
+require_text "$MENU" 'L10n.t("关闭当前标签页"), "closeCurrentTab"'
 require_text "$MENU" 'L10n.t("关闭其他标签"), "closeOtherTabs"'
 require_text "$MENU" 'L10n.t("在工作区定位"), "revealActiveTabInWorkspace"'
 require_text "$MENU" 'case "tabNext":'

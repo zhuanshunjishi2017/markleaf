@@ -134,8 +134,11 @@ internal sealed class ExportDialog : Form
     private readonly Button _cancelButton = new()
     { Text = Loc.Get("common.cancel"), FlatStyle = FlatStyle.System };
 
-    private readonly Button _previewButton = new()
-    { Text = Loc.Get("export.preview"), FlatStyle = FlatStyle.System };
+    private readonly Button _lastSettingsButton = new()
+    { Text = Loc.Get("export.lastSettings"), AutoSize = true, FlatStyle = FlatStyle.System };
+
+    private readonly Func<ExportOptions> _lastSettingsOptionsProvider;
+    private ExportOptions? _confirmedOptions;
 
     private readonly string _defaultFileName;
 
@@ -145,20 +148,25 @@ internal sealed class ExportDialog : Form
 
     private readonly string _webView2UserDataDirectory;
 
-    private readonly WebView2 _previewView = new()
-    { Dock = DockStyle.Fill, BackColor = Color.White };
+    private WebView2 _previewView = new()
+    { Dock = DockStyle.Fill, DefaultBackgroundColor = DialogColors.Primary };
+    private WebView2 _pendingPreviewView = new()
+    { Dock = DockStyle.Fill, DefaultBackgroundColor = DialogColors.Primary };
+    private readonly CancellationTokenSource _previewLifetime = new();
+    private string? _activePreviewFilePath;
+    private string? _pendingPreviewFilePath;
 
     private readonly Label _loadingLabel = new()
     {
         Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleCenter,
         Text = Loc.Get("export.previewLoading"),
-        BackColor = Color.White,
+        BackColor = DialogColors.Primary,
         ForeColor = SystemColors.GrayText,
     };
 
     private readonly System.Windows.Forms.Timer _previewSettingsTimer = new()
-    { Interval = 3000 };
+    { Interval = 600 };
 
     private ExportOptions? _lastPreviewOptions;
 
@@ -167,6 +175,7 @@ internal sealed class ExportDialog : Form
     private string? _previewDir;
 
     private bool _previewInitialized;
+    private bool _hasPreviewDisplayed;
 
     private string? _outputPath;
 
@@ -210,7 +219,8 @@ internal sealed class ExportDialog : Form
         Func<ExportOptions, Task<byte[]>> generatePdfAsync,
         Func<ExportOptions, Task<string>> generateHtmlAsync,
         ExportDialogMode initialMode = ExportDialogMode.Pdf,
-        ExportSettings? savedSettings = null)
+        ExportSettings? savedSettings = null,
+        Func<ExportOptions>? lastSettingsOptionsProvider = null)
     {
         _styles = styles;
         _defaultFileName = defaultFileName;
@@ -267,10 +277,12 @@ internal sealed class ExportDialog : Form
             ExportDialogMode.Image => 2,
             _ => 0,
         };
+        var initialOptions = BuildOptions();
+        _lastSettingsOptionsProvider = lastSettingsOptionsProvider ?? (() => initialOptions);
 
         _exportButton.Click += OnExportClick;
         _cancelButton.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        _previewButton.Click += OnPreviewClick;
+        _lastSettingsButton.Click += (_, _) => ConfirmExport(_lastSettingsOptionsProvider());
         _previewSettingsTimer.Tick += OnPreviewSettingsTimerTick;
 
         var buttons = new FlowLayoutPanel
@@ -285,7 +297,9 @@ internal sealed class ExportDialog : Form
         };
         buttons.Controls.Add(_cancelButton);
         buttons.Controls.Add(_exportButton);
-        buttons.Controls.Add(_previewButton);
+        buttons.Controls.Add(_lastSettingsButton);
+        buttons.WrapContents = true;
+        buttons.MaximumSize = new Size(this.ScaleForDpi(274), 0);
 
         var layout = new TableLayoutPanel
         {
@@ -324,10 +338,12 @@ internal sealed class ExportDialog : Form
             Padding = Padding.Empty,
             BackColor = DialogColors.Primary,
         };
-        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(300)));
+        mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, this.ScaleForDpi(320)));
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var previewPanel = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        var previewPanel = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = DialogColors.Primary };
+        previewPanel.Controls.Add(_pendingPreviewView);
         previewPanel.Controls.Add(_previewView);
+        _previewView.BringToFront();
         previewPanel.Controls.Add(_loadingLabel);
         _loadingLabel.BringToFront();
 
@@ -339,32 +355,40 @@ internal sealed class ExportDialog : Form
         AcceptButton = _exportButton;
         CancelButton = _cancelButton;
 
-        Shown += (_, _) =>
-        {
-            _tabBar.ApplyThemeColors(ColorThemeService.GetActiveColors());
-            if (ColorThemeService.IsActiveThemeDark())
-            {
-                DarkModeService.ApplyDialogDarkMode(this, SystemColors.Control, SystemColors.ControlText);
-                DarkModeService.SetWindowDarkTitleBar(this);
-                ForceComboDark(_pageSize);
-                ForceComboDark(_marginPreset);
-                ForceComboDark(_pdfHeaderPreset);
-                ForceComboDark(_pdfFooterPreset);
-                ForceComboDark(_pdfStyle);
-                ForceComboDark(_pdfColorScheme);
-                ForceComboDark(_htmlStyle);
-                ForceComboDark(_htmlColorScheme);
-                ForceComboDark(_imageStyle);
-                ForceComboDark(_imageColorScheme);
-                ForceComboDark(_imageScale);
-            }
-        };
+        ApplyTheme();
         Shown += async (_, _) =>
         {
             await InitializePreviewAsync();
+            if (IsDisposed) return;
             await RefreshPreviewAsync();
+            if (IsDisposed) return;
             _previewSettingsTimer.Start();
         };
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        // Apply native chrome before the first visible frame, rather than in Shown.
+        DarkModeService.SetWindowDarkTitleBar(this);
+    }
+
+    private void ApplyTheme()
+    {
+        var colors = ColorThemeService.GetActiveColors();
+        var foreground = colors.GetValueOrDefault("text-primary", SystemColors.ControlText);
+        DarkModeService.ApplyDialogDarkMode(this, DialogColors.Primary, foreground);
+        // Inactive pages are not children of the form until selected.
+        foreach (var page in _tabContents)
+            DarkModeService.ApplyDialogDarkMode(page, DialogColors.Primary, foreground);
+        foreach (var radio in new[] { _portrait, _landscape, _imageFormatPng, _imageFormatJpeg })
+        {
+            radio.FlatStyle = FlatStyle.Standard;
+            radio.UseVisualStyleBackColor = false;
+        }
+        _previewView.DefaultBackgroundColor = DialogColors.Primary;
+        _pendingPreviewView.DefaultBackgroundColor = DialogColors.Primary;
+        _tabBar.ApplyThemeColors(colors);
     }
 
     private static Color GetLeftPanelBorderColor()
@@ -526,15 +550,7 @@ internal sealed class ExportDialog : Form
         _contentPanel.Controls.Add(_tabContents[index]);
     }
 
-    private static void ForceComboDark(ComboBox combo)
-    {
-        if (!combo.IsHandleCreated) return;
-        typeof(Control).GetMethod("RecreateHandle",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?.Invoke(combo, null);
-    }
-
-    public ExportOptions? Options => _outputPath is null ? null : BuildOptions();
+    public ExportOptions? Options => _confirmedOptions;
 
     public string? ExportedPath => _exportedPath;
 
@@ -585,9 +601,14 @@ internal sealed class ExportDialog : Form
 
     private void OnExportClick(object? sender, EventArgs eventArgs)
     {
-        var isPdf = _tabBar.SelectedIndex == 0;
-        var isImage = _tabBar.SelectedIndex == 2;
-        var imageExtension = _imageFormatJpeg.Checked ? "jpg" : "png";
+        ConfirmExport(BuildOptions());
+    }
+
+    private void ConfirmExport(ExportOptions options)
+    {
+        var isPdf = options.Format == "pdf";
+        var isImage = options.Format == "image";
+        var imageExtension = options.ImageFormat;
         var extension = isPdf ? "pdf" : isImage ? imageExtension : "html";
         var filter = isPdf
             ? $"{Loc.Get("export.pdf")}|*.pdf"
@@ -609,8 +630,12 @@ internal sealed class ExportDialog : Form
         }
 
         _outputPath = dialog.FileName;
+        _confirmedOptions = options with { OutputPath = _outputPath };
 
-        var previewPath = isPdf && _previewDir is not null ? Path.Combine(_previewDir, "preview.pdf") : null;
+        // A changed setting may still be awaiting automatic preview generation.
+        // Only reuse a PDF when it matches the confirmed settings exactly.
+        var previewPath = isPdf && !_previewRefreshInProgress && _lastPreviewOptions == options
+            ? _activePreviewFilePath : null;
         if (previewPath is not null && File.Exists(previewPath))
         {
             try
@@ -631,7 +656,6 @@ internal sealed class ExportDialog : Form
     private async Task InitializePreviewAsync()
     {
         if (_previewInitialized) return;
-        _previewInitialized = true;
 
         _previewDir = Path.Combine(Path.GetTempPath(), $"markleaf-preview-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_previewDir);
@@ -640,22 +664,27 @@ internal sealed class ExportDialog : Form
         {
             var environment = await CoreWebView2Environment.CreateAsync(
                 userDataFolder: _webView2UserDataDirectory);
-            await _previewView.EnsureCoreWebView2Async(environment);
-            _previewView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _previewView.CoreWebView2.NavigationStarting += (_, _) => _loadingLabel.Visible = true;
-            _previewView.CoreWebView2.NavigationCompleted += (_, _) => _loadingLabel.Visible = false;
-            _previewView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "preview.local", _previewDir, CoreWebView2HostResourceAccessKind.DenyCors);
+            foreach (var view in new[] { _previewView, _pendingPreviewView })
+            {
+                var controllerOptions = environment.CreateCoreWebView2ControllerOptions();
+                // PDF viewer chrome follows the application, not the exported
+                // page's color scheme or the OS. Keep it off the editor profile.
+                controllerOptions.ProfileName = "ExportPreview";
+                controllerOptions.DefaultBackgroundColor = DialogColors.Primary;
+                await view.EnsureCoreWebView2Async(environment, controllerOptions);
+                if (IsDisposed) return;
+                view.CoreWebView2.Profile.PreferredColorScheme = ColorThemeService.IsActiveThemeDark()
+                    ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
+                view.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                view.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "preview.local", _previewDir, CoreWebView2HostResourceAccessKind.DenyCors);
+            }
+            _previewInitialized = true;
         }
         catch
         {
             // Preview initialization failures should not block export.
         }
-    }
-
-    private async void OnPreviewClick(object? sender, EventArgs e)
-    {
-        await RefreshPreviewAsync();
     }
 
     private async void OnPreviewSettingsTimerTick(object? sender, EventArgs e)
@@ -716,7 +745,10 @@ internal sealed class ExportDialog : Form
             || _pdfStyle.DroppedDown
             || _pdfColorScheme.DroppedDown
             || _htmlStyle.DroppedDown
-            || _htmlColorScheme.DroppedDown;
+            || _htmlColorScheme.DroppedDown
+            || _imageStyle.DroppedDown
+            || _imageColorScheme.DroppedDown
+            || _imageScale.DroppedDown;
     }
 
     private static void TrackCommittedSelection(ComboBox combo)
@@ -761,7 +793,7 @@ internal sealed class ExportDialog : Form
 
     private async Task RefreshPreviewAsync(ExportOptions options)
     {
-        if (!_previewInitialized || _previewView.CoreWebView2 is null || _previewDir is null)
+        if (_previewRefreshInProgress || IsDisposed || !_previewInitialized || _previewView.CoreWebView2 is null || _previewDir is null)
         {
             return;
         }
@@ -769,41 +801,111 @@ internal sealed class ExportDialog : Form
         _previewRefreshInProgress = true;
         try
         {
-            _previewButton.Enabled = false;
-            if (_tabBar.SelectedIndex == 0)
+            if (options.Format == "pdf")
             {
                 var pdfBytes = await _generatePdfAsync(options);
-                if (pdfBytes.Length == 0) return;
+                if (IsDisposed || _previewDir is null || pdfBytes.Length == 0) return;
 
-                var pdfPath = Path.Combine(_previewDir, "preview.pdf");
+                // Never rewrite a PDF still being read by the visible viewer.
+                var fileName = $"preview-{Guid.NewGuid():N}.pdf";
+                var pdfPath = Path.Combine(_previewDir, fileName);
                 await File.WriteAllBytesAsync(pdfPath, pdfBytes);
-                _previewView.CoreWebView2.Navigate(
-                    $"https://preview.local/preview.pdf?t={Guid.NewGuid():N}#toolbar=0&navpanes=0");
-                _lastPreviewOptions = options;
+                await PresentPreviewAsync($"https://preview.local/{fileName}#toolbar=0&navpanes=0", options, pdfPath);
                 return;
             }
 
             var html = await _generateHtmlAsync(options);
-            if (string.IsNullOrEmpty(html)) return;
+            if (IsDisposed || _previewDir is null || string.IsNullOrEmpty(html)) return;
 
             html = html.Replace(
                 "</style>",
                 "html, body { scrollbar-width: none !important; -ms-overflow-style: none !important; } html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }\n</style>",
                 StringComparison.Ordinal);
 
-            var htmlPath = Path.Combine(_previewDir, "preview.html");
+            var htmlFileName = $"preview-{Guid.NewGuid():N}.html";
+            var htmlPath = Path.Combine(_previewDir, htmlFileName);
             await File.WriteAllTextAsync(htmlPath, html, System.Text.Encoding.UTF8);
-            _previewView.CoreWebView2.Navigate($"https://preview.local/preview.html?t={Guid.NewGuid():N}");
-            _lastPreviewOptions = options;
+            await PresentPreviewAsync($"https://preview.local/{htmlFileName}", options, htmlPath);
         }
         catch
         {
-            // Preview generation failures should not block export.
+            // Keep the last successfully painted preview on failure.
+            if (!IsDisposed && !_hasPreviewDisplayed)
+                _loadingLabel.Text = Loc.Get("export.previewFailed");
         }
         finally
         {
-            _previewButton.Enabled = true;
             _previewRefreshInProgress = false;
+        }
+    }
+
+    private async Task PresentPreviewAsync(string uri, ExportOptions options, string filePath)
+    {
+        var view = _pendingPreviewView;
+        var core = view.CoreWebView2;
+        var token = _previewLifetime.Token;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ulong? navigationId = null;
+        void Starting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (e.Uri == uri) navigationId = e.NavigationId;
+        }
+        void Completed(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (e.NavigationId != navigationId) return;
+            if (e.IsSuccess) completed.TrySetResult();
+            else completed.TrySetException(new IOException($"Preview navigation failed: {e.WebErrorStatus}"));
+        }
+        core.NavigationStarting += Starting;
+        core.NavigationCompleted += Completed;
+        try
+        {
+            core.Navigate(uri);
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+            // NavigationCompleted precedes the PDF plug-in's first painted page.
+            // Capture actual compositor frames while this view remains behind the
+            // previous preview; expose it only after page content is present.
+            // White is a valid page for light export themes (including an
+            // empty document). Dark exports must first paint their dark page.
+            var theme = ColorThemeService.TryGetTheme(options.ColorScheme);
+            var allowBlankPage = theme?.IsDark != true;
+            Color? pageBackground = theme?.Colors.TryGetValue("bg-primary", out var background) == true
+                ? background : null;
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            var paintedFrames = 0;
+            while (DateTime.UtcNow < deadline)
+            {
+                token.ThrowIfCancellationRequested();
+                using var stream = new MemoryStream();
+                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+                stream.Position = 0;
+                using var frame = new Bitmap(stream);
+                paintedFrames = ExportPreviewFramePolicy.IsPainted(frame, allowBlankPage, pageBackground) ? paintedFrames + 1 : 0;
+                if (paintedFrames >= 2) break;
+                await Task.Delay(50, token);
+            }
+            if (paintedFrames < 2) throw new TimeoutException("Preview did not paint a page");
+            token.ThrowIfCancellationRequested();
+            view.BringToFront();
+            (_previewView, _pendingPreviewView) = (view, _previewView);
+            _hasPreviewDisplayed = true;
+            _loadingLabel.Visible = false;
+            _lastPreviewOptions = options;
+            var retiredFile = _pendingPreviewFilePath;
+            _pendingPreviewFilePath = _activePreviewFilePath;
+            _activePreviewFilePath = filePath;
+            if (retiredFile is not null)
+            {
+                try { File.Delete(retiredFile); } catch (IOException) { }
+            }
+        }
+        finally
+        {
+            if (!view.IsDisposed)
+            {
+                core.NavigationStarting -= Starting;
+                core.NavigationCompleted -= Completed;
+            }
         }
     }
 
@@ -811,6 +913,7 @@ internal sealed class ExportDialog : Form
     {
         _previewSettingsTimer.Stop();
         _previewSettingsTimer.Dispose();
+        _previewLifetime.Cancel();
         base.OnFormClosed(e);
         if (_previewDir is not null)
         {
@@ -1186,8 +1289,7 @@ internal sealed class ExportDialog : Form
         _exportButton.Height = btnH;
         _cancelButton.Width = btnW;
         _cancelButton.Height = btnH;
-        _previewButton.Width = this.ScaleForDpi(108);
-        _previewButton.Height = btnH;
+        _lastSettingsButton.MinimumSize = new Size(this.ScaleForDpi(108), btnH);
     }
 
     private void ApplyMargins(int presetIndex)

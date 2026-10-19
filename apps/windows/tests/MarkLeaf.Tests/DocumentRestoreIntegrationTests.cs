@@ -4,7 +4,9 @@ using MarkLeaf.App;
 using MarkLeaf.Commands;
 using MarkLeaf.Documents;
 using MarkLeaf.Editor;
+using MarkLeaf.Native;
 using MarkLeaf.Native.ModernMenus;
+using System.Runtime.InteropServices;
 using MarkLeaf.Services.Logging;
 using MarkLeaf.Services.Settings;
 using MarkLeaf.Services.Styles;
@@ -17,6 +19,18 @@ namespace MarkLeaf.Tests;
 [TestClass]
 public sealed class DocumentRestoreIntegrationTests
 {
+    [STATestMethod]
+    public void NewDocumentsKeepTheExistingTabs()
+    {
+        WithForm(form =>
+        {
+            for (var i = 0; i < 3; i++)
+                ((Task)Method("NewDocumentAsync").Invoke(form, [NewDocumentKind.Markdown])!).GetAwaiter().GetResult();
+            var documents = (List<MarkdownDocument>)Field("_openDocuments").GetValue(form)!;
+            Assert.HasCount(3, documents);
+            Assert.AreSame(documents[2], Field("_document").GetValue(form));
+        });
+    }
     [STATestMethod]
     public void ReopeningSendsSelectionsAndViewportToTheEditor()
     {
@@ -89,6 +103,72 @@ public sealed class DocumentRestoreIntegrationTests
     }
 
     [STATestMethod]
+    public void ClosedHistoryControlsTheEmptyWindowReopenCommand()
+    {
+        WithForm(form =>
+        {
+            var getState = typeof(MainForm).GetMethod("GetCommandState", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            Assert.IsFalse(((CommandState)getState.Invoke(form, [AppCommand.ReopenClosedTab])!).IsEnabled);
+
+            var history = (List<MarkdownDocument>)Field("_closedTabHistory").GetValue(form)!;
+            history.Add(new MarkdownDocument { Markdown = "closed buffer" });
+            Assert.IsTrue(((CommandState)getState.Invoke(form, [AppCommand.ReopenClosedTab])!).IsEnabled);
+        });
+    }
+
+    [STATestMethod]
+    public void ClosingTheLastTabKeepsTabManagementAvailableInTheMainMenu()
+    {
+        WithForm(form =>
+        {
+            var document = new MarkdownDocument { Markdown = "closing buffer" };
+            var documents = (List<MarkdownDocument>)Field("_openDocuments").GetValue(form)!;
+            documents.Add(document);
+            Field("_document").SetValue(form, document);
+            Field("_activeDocumentIndex").SetValue(form, 0);
+
+            ((Task)Method("CloseDocumentTabAsync").Invoke(form, [0])!).GetAwaiter().GetResult();
+
+            var getState = typeof(MainForm).GetMethod("GetCommandState", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            Assert.IsTrue(((CommandState)getState.Invoke(form, [AppCommand.ReopenClosedTab])!).IsEnabled);
+
+            var menuService = (NativeMenuService)Field("_menuService").GetValue(form)!;
+            var view = menuService.BuildSelfDrawnTopLevelMenu(4);
+            var management = view.Secondary.Single(entry => entry.Label == "标签页管理");
+            var reopen = management.Children.Single(entry => entry.Label == "重新打开关闭的标签");
+            Assert.IsTrue(management.State.IsEnabled);
+            Assert.IsTrue(reopen.State.IsEnabled);
+        });
+    }
+
+    [STATestMethod]
+    public void ClosingTheLastTabRefreshesTheAttachedSystemMenu()
+    {
+        WithForm(form =>
+        {
+            _ = form.Handle;
+            _settingsAccessor(form).Appearance.MenuBarStyle = MenuBarStyle.System;
+            Method("ApplyMenuPresentation").Invoke(form, null);
+
+            var document = new MarkdownDocument { Markdown = "closing buffer" };
+            var documents = (List<MarkdownDocument>)Field("_openDocuments").GetValue(form)!;
+            documents.Add(document);
+            Field("_document").SetValue(form, document);
+            Field("_activeDocumentIndex").SetValue(form, 0);
+            ((Task)Method("CloseDocumentTabAsync").Invoke(form, [0])!).GetAwaiter().GetResult();
+
+            var menuService = (NativeMenuService)Field("_menuService").GetValue(form)!;
+            var root = (nint)typeof(NativeMenuService)
+                .GetField("_menu", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(menuService)!;
+            var view = GetSubMenu(root, 4);
+            var tabs = GetSubMenu(view, 3);
+            Assert.AreEqual(0u, GetMenuState(view, 3, 0x400) & 0x3u,
+                "The attached tab-management parent must be refreshed after the last tab closes.");
+            Assert.AreEqual(0u, GetMenuState(tabs, (uint)AppCommand.ReopenClosedTab, 0) & 0x3u);
+        });
+    }
+
+    [STATestMethod]
     public void ReopeningPreservesTheClosedDocumentDiskBaseline()
     {
         WithForm(form =>
@@ -141,6 +221,10 @@ public sealed class DocumentRestoreIntegrationTests
 
     private static FieldInfo Field(string name) => typeof(MainForm).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static MethodInfo Method(string name) => typeof(MainForm).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static AppSettings _settingsAccessor(MainForm form) => (AppSettings)Field("_settings").GetValue(form)!;
+
+    [DllImport("user32.dll")] private static extern nint GetSubMenu(nint menu, int position);
+    [DllImport("user32.dll")] private static extern uint GetMenuState(nint menu, uint id, uint flags);
 
     private static void WithForm(Action<MainForm> test)
     {
@@ -155,7 +239,8 @@ public sealed class DocumentRestoreIntegrationTests
             var paths = ApplicationPaths.Create(directory);
             using var logger = new FileLogger(paths.LogDirectory);
             using var form = new MainForm(LaunchOptions.Parse([]), paths, new AppSettings(), new JsonSettingsService(paths.SettingsFile, logger), logger);
-            test(form);
+            try { test(form); }
+            finally { Method("StopWatchingDocument").Invoke(form, null); }
         }
         finally { Directory.Delete(directory, true); }
     }

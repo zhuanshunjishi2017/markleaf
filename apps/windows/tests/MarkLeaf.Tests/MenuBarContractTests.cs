@@ -16,6 +16,46 @@ namespace MarkLeaf.Tests;
 public sealed class MenuBarContractTests
 {
     [TestMethod]
+    public void CloseActionConsistentlyNamesTheCurrentTab()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        using var service = new NativeMenuService(new CommandRouter(shortcuts, _ => new(true), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        var close = service.BuildSelfDrawnTopLevelMenu(0).Secondary.Single(item =>
+            item.RawCommandId == (uint)AppCommand.CloseCurrentDocumentTab);
+        Assert.AreEqual("关闭当前标签页", close.Label);
+        var tabMenu = service.BuildSelfDrawnTopLevelMenu(4).Secondary
+            .Single(item => item.Label == "标签页管理");
+        Assert.AreEqual("关闭当前标签页", tabMenu.Children.Single(item =>
+            item.RawCommandId == (uint)AppCommand.CloseCurrentDocumentTab).Label);
+    }
+
+    [TestMethod]
+    public void FormatGroupsReflectTheCheckedDescendantAndClearWhenItChanges()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        AppCommand? checkedCommand = AppCommand.SetHeading2;
+        using var service = new NativeMenuService(new CommandRouter(shortcuts,
+            command => new(true, command == checkedCommand), _ => { }),
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+        foreach (var current in new AppCommand?[] { AppCommand.SetHeading2, AppCommand.SetParagraph, AppCommand.ToggleBulletList, null })
+        {
+            checkedCommand = current;
+            var entries = service.BuildSelfDrawnTopLevelMenu(3).Secondary;
+            var paragraph = entries.Single(item => item.Label == "段落样式");
+            var heading = paragraph.Children.Single(item => item.Label == "标题");
+            var list = entries.Single(item => item.Label == "列表");
+            Assert.AreEqual(current is AppCommand.SetHeading2 or AppCommand.SetParagraph, paragraph.State.IsChecked);
+            Assert.AreEqual(current == AppCommand.SetHeading2, heading.State.IsChecked);
+            Assert.AreEqual(current == AppCommand.ToggleBulletList, list.State.IsChecked);
+        }
+    }
+
+    [TestMethod]
     public void FileMenuExposesCurrentFileOperations()
     {
         Loc.Initialize(LocalesDirectory, "zh-CN");
@@ -51,7 +91,7 @@ public sealed class MenuBarContractTests
                 .Select(id => (AppCommand)id)
                 .ToArray();
             Assert.HasCount(1, commands.Where(x => x == AppCommand.ExportDocument).ToArray());
-            Assert.HasCount(1, commands.Where(x => x == AppCommand.ExportWithLastSettings).ToArray());
+            Assert.DoesNotContain(AppCommand.ExportWithLastSettings, commands);
             Assert.DoesNotContain(AppCommand.ExportPdf, commands);
             Assert.DoesNotContain(AppCommand.ExportHtml, commands);
             Assert.DoesNotContain(AppCommand.ExportImage, commands);
@@ -448,6 +488,58 @@ public sealed class MenuBarContractTests
             DestroyMenu(view);
             DestroyMenu(help);
         }
+    }
+
+    [TestMethod]
+    public void SelfDrawnEmptyWindowMenusUseHostAvailabilityFacts()
+    {
+        Loc.Initialize(LocalesDirectory, "zh-CN");
+        var shortcuts = new ShortcutManager(new ShortcutSettings());
+        var context = new CommandContext(DocumentAvailable: false, EditorReady: false);
+        var router = new CommandRouter(shortcuts,
+            command => CommandStateResolver.Resolve(command, context), _ => { });
+        using var service = new NativeMenuService(router,
+            shortcuts, () => [], () => [], () => "serif", () => 100, () => "light", () => false,
+            () => true, () => false, () => "zh-CN", () => Array.Empty<NativeMenuService.DocumentTabMenuEntry>(), () => -1);
+
+        var file = service.BuildSelfDrawnTopLevelMenu(0);
+        var view = service.BuildSelfDrawnTopLevelMenu(4);
+        var edit = service.BuildSelfDrawnTopLevelMenu(1);
+        var insert = service.BuildSelfDrawnTopLevelMenu(2);
+        var format = service.BuildSelfDrawnTopLevelMenu(3);
+        var help = service.BuildSelfDrawnTopLevelMenu(5);
+        bool IsEnabled(EditorMenuModel model, string label) =>
+            Flatten(model.Secondary).First(entry => entry.Label == label).State.IsEnabled;
+
+        Assert.IsTrue(IsEnabled(file, "文本文件"));
+        Assert.IsTrue(IsEnabled(file, "最近项目"));
+        Assert.IsFalse(Flatten(file.Secondary).First(entry => entry.Label == "(暂无最近项目)").State.IsEnabled);
+        Assert.IsFalse(IsEnabled(file, "关闭文件夹"));
+        Assert.IsFalse(IsEnabled(file, "保存"));
+        Assert.IsFalse(IsEnabled(edit, "撤销"));
+        Assert.IsFalse(IsEnabled(insert, "插入超链接..."));
+        Assert.IsFalse(IsEnabled(format, "加粗"));
+        Assert.IsFalse(IsEnabled(view, "标签页管理"));
+        Assert.IsFalse(IsEnabled(view, "设置缩放"));
+        Assert.IsFalse(Flatten(view.Secondary).First(entry => entry.Label == "100%").State.IsEnabled);
+        Assert.IsFalse(IsEnabled(view, "源码模式"));
+        Assert.IsFalse(IsEnabled(view, "段落专注模式"));
+        Assert.IsFalse(IsEnabled(view, "重新渲染所有 Mermaid 图表"));
+        Assert.IsTrue(IsEnabled(view, "显示侧栏"));
+        Assert.IsTrue(IsEnabled(view, "显示状态栏"));
+        Assert.IsTrue(IsEnabled(view, "最简模式"));
+        Assert.IsTrue(IsEnabled(view, "显示代码高亮"));
+        Assert.IsTrue(IsEnabled(help, "欢迎"));
+        Assert.IsTrue(IsEnabled(help, "示例文档"));
+        Assert.IsTrue(IsEnabled(help, "学习 Markdown..."));
+        Assert.IsTrue(IsEnabled(help, "代码格式化器"));
+
+        context = context with { WorkspaceAvailable = true, ClosedTabsAvailable = true };
+        file = service.BuildSelfDrawnTopLevelMenu(0);
+        view = service.BuildSelfDrawnTopLevelMenu(4);
+        Assert.IsTrue(IsEnabled(file, "关闭文件夹"));
+        Assert.IsTrue(IsEnabled(view, "标签页管理"));
+        Assert.IsTrue(IsEnabled(view, "重新打开关闭的标签"));
     }
 
     [TestMethod]

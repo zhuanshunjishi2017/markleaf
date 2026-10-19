@@ -92,7 +92,6 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("另存为…"), "saveAs", key: "S"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("导出…"), "export", key: "e", mask: [.command, .shift]))
-        menu.addItem(commandItem(L10n.t("按上次设置导出"), "exportWithLastSettings"))
         menu.addItem(commandItem(L10n.t("打印…"), "print", key: "p"))
         menu.addItem(.separator())
         menu.addItem(commandItem(L10n.t("在工作区定位"), "revealActiveTabInWorkspace"))
@@ -102,7 +101,7 @@ final class NativeMenuBuilder {
         menu.addItem(commandItem(L10n.t("重命名"), "renameActiveTab"))
         menu.addItem(commandItem(L10n.t("分享"), "shareActiveTab"))
         menu.addItem(.separator())
-        menu.addItem(commandItem(L10n.t("关闭当前文件"), "closeCurrentTab", key: "w"))
+        menu.addItem(commandItem(L10n.t("关闭当前标签页"), "closeCurrentTab", key: "w"))
         menu.addItem(commandItem(L10n.t("关闭文件夹"), "closeFolder"))
         return menu
     }
@@ -281,7 +280,7 @@ final class NativeMenuBuilder {
         let tabManagement = NSMenu(title: L10n.t("标签页管理"))
         tabManagement.addItem(commandItem(L10n.t("上一个标签"), "tabPrevious", key: "\t", mask: [.control, .shift]))
         tabManagement.addItem(commandItem(L10n.t("下一个标签"), "tabNext", key: "\t", mask: [.control]))
-        tabManagement.addItem(commandItem(L10n.t("关闭当前标签"), "closeCurrentTab"))
+        tabManagement.addItem(commandItem(L10n.t("关闭当前标签页"), "closeCurrentTab"))
         tabManagement.addItem(commandItem(L10n.t("关闭其他标签"), "closeOtherTabs"))
         tabManagement.addItem(commandItem(L10n.t("重新打开关闭的标签"), "restoreClosedTab"))
         tabManagement.delegate = MenuRouter.TabManagementMenuDelegate.shared
@@ -448,20 +447,6 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
     private var session: EditorSession? { AppWindowManager.shared.activeSession }
     private var viewStateSession: EditorSession? { AppWindowManager.shared.activeViewStateSession }
 
-    /// 无需打开文档即可使用的命令；其余命令在关闭所有标签页后一律置灰。
-    /// （新建/打开/打开文件夹在空标签窗口上由窗口级路由兜底，保持可用。）
-    private static let documentIndependentCommands: Set<String> = [
-        "new", "newPlainText", "newWindow", "open", "openInNewWindow", "openFolder", "openReadOnly", "toggleFullScreen",
-        "restoreClosedTab",
-        "recoverUnsavedFiles", "showPreferences", "showAbout",
-        "openWelcome", "openChangelog", "showShortcuts", "installOptionalFonts", "codeFormatterManager", "checkForUpdates", "openHelp",
-        "learnMarkdown",
-        "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced",
-        "toggleFollowSystemTheme", "toggleCodeHighlight",
-        "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
-        "treeView", "listView", "toggleDetachedOutline",
-    ]
-
     /// 原生字段编辑器和多行输入优先处理编辑命令；WebKit 内部响应者仍走编辑器桥接。
     private var nativeTextFieldEditor: NSTextView? {
         NativeTextEditingPolicy.textEditor(for: NSApp.keyWindow?.firstResponder)
@@ -488,6 +473,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             return session != nil
         }
         guard var command = menuItem.representedObject as? String else { return true }
+        if command == "closeCurrentTab" {
+            menuItem.title = L10n.t(SettingsService.shared.settings.multiTabEnabled ? "关闭当前标签页" : "关闭当前文件")
+        }
         let submenuParent = Self.submenuParents[command]
         if let submenuParent {
             menuItem.state = submenuParent.isChecked(in: session) ? .on : .off
@@ -510,9 +498,22 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
             let tabID = DocumentTabID(String(command.dropFirst("activateTab:".count)))
             return AppWindowManager.shared.activeWindowController?.windowSession?.tabStore.tab(withID: tabID) != nil
         }
-        if AppWindowManager.shared.activeSession == nil,
-           !Self.documentIndependentCommands.contains(command) {
-            return false
+        let isEmptyWindow: Bool?
+        if AppWindowManager.shared.activeSession == nil {
+            let hasWorkspace = (session ?? viewStateSession)?.workspaceRoot != nil
+            let hasClosedTabs = AppWindowManager.shared.activeWindowSession?.closedTabHistory.hasRecords == true
+            isEmptyWindow = MenuCommandAvailabilityPolicy.isEmptyWindowCommandEnabled(
+                command: command,
+                hasWindow: AppWindowManager.shared.activeWindowController != nil,
+                hasWorkspace: hasWorkspace,
+                hasClosedTabs: hasClosedTabs
+            )
+            if isEmptyWindow == false {
+                menuItem.state = .off
+                return false
+            }
+        } else {
+            isEmptyWindow = nil
         }
         switch command {
         case "new", "newPlainText", "open":
@@ -629,6 +630,9 @@ final class MenuRouter: NSObject, NSMenuItemValidation, NSMenuDelegate {
         case "zoomIn", "zoomOut", "resetZoom":
             return session != nil
         default: break
+        }
+        if let isEmptyWindow {
+            return isEmptyWindow
         }
         return s?.editorActions.isEmpty != true
     }

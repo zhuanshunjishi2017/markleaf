@@ -173,6 +173,7 @@ internal sealed class NativeMenuService : IDisposable
         RefreshDocumentTabMenu();
 
         RefreshMenuBarPopupAvailability(_menu);
+        EnableRecentItemsPopup(_menu);
 
         if (_window != 0)
         {
@@ -388,7 +389,9 @@ internal sealed class NativeMenuService : IDisposable
             RefreshColorMenu();
             RefreshDocumentTabMenu();
             // 自绘模型读取的是 HMENU 的最终状态；子项全部不可用时，容器项也必须先置灰。
+            // “最近项目”是全局入口，空态仍需展开显示“无最近项目”。
             RefreshPopupAvailability(menu);
+            EnableRecentItemsPopup(menu);
             return MenuBarModelAdapter.Convert(menu);
         }
         finally
@@ -612,6 +615,7 @@ internal sealed class NativeMenuService : IDisposable
             RefreshColorMenu();
             RefreshDocumentTabMenu();
             RefreshPopupAvailability(menu);
+            EnableRecentItemsPopup(menu);
 
             NativeMethods.SetForegroundWindow(window);
             var hoveredMenuIndex = -1;
@@ -764,7 +768,6 @@ internal sealed class NativeMenuService : IDisposable
             AppendMainMenuCommand(menu, AppCommand.SaveDocumentAs, Loc.Get("menu.file.saveAs"));
             AppendSeparator(menu);
             AppendMainMenuCommand(menu, AppCommand.ExportDocument, Loc.Get("menu.file.export"));
-            AppendMainMenuCommand(menu, AppCommand.ExportWithLastSettings, Loc.Get("menu.file.exportLast"));
             AppendMainMenuCommand(menu, AppCommand.Print, Loc.Get("menu.file.print"));
 
             AppendSeparator(menu);
@@ -968,7 +971,10 @@ internal sealed class NativeMenuService : IDisposable
         AppendPopup(menu, Loc.Get("menu.paragraph.label"), BuildParagraphMenu());
         var lists = CreateMenu(true);
         foreach (var (command, key) in new[] { (AppCommand.ToggleBulletList, "menu.paragraph.bulletList"), (AppCommand.ToggleOrderedList, "menu.paragraph.orderedList"), (AppCommand.ToggleTaskList, "menu.paragraph.taskList"), (AppCommand.IncreaseListIndent, "menu.paragraph.increaseIndent"), (AppCommand.DecreaseListIndent, "menu.paragraph.decreaseIndent") })
+        {
+            if (command == AppCommand.IncreaseListIndent) AppendSeparator(lists);
             AppendMainMenuCommand(lists, command, Loc.Get(key));
+        }
         AppendPopup(menu, Loc.Get("menu.paragraph.list"), lists);
         AppendMainMenuCommand(menu, AppCommand.ToggleQuote, Loc.Get("menu.paragraph.quote"));
         AppendMainMenuCommand(menu, AppCommand.ToggleCodeBlock, Loc.Get("menu.paragraph.codeBlock"));
@@ -976,7 +982,10 @@ internal sealed class NativeMenuService : IDisposable
         AppendSeparator(menu);
         var paragraphs = CreateMenu(true);
         foreach (var (command, key) in new[] { (AppCommand.InsertLineBefore, "menu.paragraph.insertLineBefore"), (AppCommand.InsertLineAfter, "menu.paragraph.insertLineAfter"), (AppCommand.DuplicateParagraph, "menu.paragraph.duplicateParagraph"), (AppCommand.DeleteParagraph, "menu.paragraph.deleteParagraph") })
+        {
+            if (command == AppCommand.DuplicateParagraph) AppendSeparator(paragraphs);
             AppendMainMenuCommand(paragraphs, command, Loc.Get(key));
+        }
         AppendPopup(menu, Loc.Get("menu.format.paragraphOperations"), paragraphs);
         var table = CreateMenu(true);
         AppendTableCommands(table, includeClipboard: false);
@@ -1039,6 +1048,7 @@ internal sealed class NativeMenuService : IDisposable
 
         _zoomCommandIds.Clear();
         var current = _currentZoomProvider();
+        var canZoom = _router.GetState(AppCommand.ZoomIn).IsEnabled;
         foreach (var percent in AppearanceSettings.ZoomPercentOptions)
         {
             if ((uint)(CommandCatalog.ZoomCommandBase + _zoomCommandIds.Count) > CommandCatalog.ZoomCommandMax)
@@ -1050,7 +1060,9 @@ internal sealed class NativeMenuService : IDisposable
             _zoomCommandIds[commandId] = percent;
             Append(
                 _zoomMenu,
-                NativeMethods.MfString | (percent == current ? NativeMethods.MfChecked : NativeMethods.MfUnchecked),
+                NativeMethods.MfString
+                    | (canZoom ? NativeMethods.MfEnabled : NativeMethods.MfGrayed)
+                    | (percent == current ? NativeMethods.MfChecked : NativeMethods.MfUnchecked),
                 commandId,
                 $"{percent}%");
         }
@@ -1194,7 +1206,7 @@ internal sealed class NativeMenuService : IDisposable
         AppendMainMenuCommand(
             _documentTabMenu,
             AppCommand.CloseCurrentDocumentTab,
-            Loc.Get("menu.view.closeCurrentTab"),
+            Loc.Get("documentTabMenu.close"),
             _router.GetState(AppCommand.CloseCurrentDocumentTab).IsEnabled
                 ? NativeMethods.MfString
                 : NativeMethods.MfString | NativeMethods.MfGrayed);
@@ -1208,7 +1220,10 @@ internal sealed class NativeMenuService : IDisposable
         AppendMainMenuCommand(
             _documentTabMenu,
             AppCommand.ReopenClosedTab,
-            Loc.Get("menu.view.reopenClosedTab"));
+            Loc.Get("menu.view.reopenClosedTab"),
+            _router.GetState(AppCommand.ReopenClosedTab).IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed);
 
         if (documents.Count > 0)
         {
@@ -1380,6 +1395,51 @@ internal sealed class NativeMenuService : IDisposable
                 (uint)index,
                 NativeMethods.MfByPosition
                     | (ContainsEnabledItem(submenu) ? NativeMethods.MfEnabled : NativeMethods.MfGrayed));
+            // Like AppKit, paragraph/heading/list containers reflect their
+            // active descendant rather than borrowing one representative item.
+            var firstCommand = (AppCommand)NativeMethods.GetMenuItemID(submenu, 0);
+            if (firstCommand is AppCommand.SetParagraph or AppCommand.SetHeading1 or AppCommand.ToggleBulletList)
+            {
+                NativeMethods.CheckMenuItem(menu, (uint)index, NativeMethods.MfByPosition
+                    | (ContainsCheckedItem(submenu) ? NativeMethods.MfChecked : NativeMethods.MfUnchecked));
+            }
+        }
+    }
+
+    private static bool ContainsCheckedItem(nint menu)
+    {
+        for (var index = 0; index < NativeMethods.GetMenuItemCount(menu); index++)
+        {
+            var state = NativeMethods.GetMenuState(menu, (uint)index, NativeMethods.MfByPosition);
+            if (state != uint.MaxValue && (state & NativeMethods.MfChecked) != 0) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// macOS 的“最近项目”父菜单没有命令动作，即使全部子项为空态也会展开。
+    /// Win32 聚合规则会把全禁用子菜单的父项置灰；这里保留该全局入口的可展开性。
+    /// </summary>
+    private void EnableRecentItemsPopup(nint menu)
+    {
+        if (menu == 0 || _recentWorkspaceMenu == 0) return;
+
+        var count = NativeMethods.GetMenuItemCount(menu);
+        for (var index = 0; index < count; index++)
+        {
+            var submenu = NativeMethods.GetSubMenu(menu, index);
+            if (submenu == 0) continue;
+            if (submenu == _recentWorkspaceMenu)
+            {
+                NativeMethods.EnableMenuItem(
+                    menu,
+                    (uint)index,
+                    NativeMethods.MfByPosition | NativeMethods.MfEnabled);
+            }
+            else
+            {
+                EnableRecentItemsPopup(submenu);
+            }
         }
     }
 

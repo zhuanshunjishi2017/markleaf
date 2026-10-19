@@ -30,7 +30,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
     private let lastSettingsButton = NSButton(title: "", target: nil, action: nil)
     private let keepTablesCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keepHeadingsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-    private let pdfPreviewView = PDFView()
+    private var pdfPreviewView = PDFView()
     private let htmlPreviewView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
     private let pageCountLabel = NSTextField(labelWithString: "")
     private let imageMaxHeightField = NSTextField(string: "12000")
@@ -117,7 +117,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
     private func buildContent() {
         guard let window else { return }
 
-        htmlPreviewView.underPageBackgroundColor = .white
+        htmlPreviewView.underPageBackgroundColor = .windowBackgroundColor
         htmlPreviewView.setValue(false, forKey: "drawsBackground")
         pdfPreviewView.translatesAutoresizingMaskIntoConstraints = false
         pdfPreviewView.autoScales = true
@@ -901,7 +901,7 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
                 guard let self, generation == self.previewGeneration else { return }
                 if case .success(true) = result {
                     if let document = PDFDocument(url: url) {
-                        self.pdfPreviewView.document = document
+                        self.replacePDFPreview(with: document)
                         self.pdfPreviewView.isHidden = false
                         self.htmlPreviewView.isHidden = true
                         self.pageCountLabel.stringValue = L10n.f("共 %d 页", document.pageCount)
@@ -910,6 +910,36 @@ final class ExportWindowController: NSWindowController, NSWindowDelegate, NSText
                 }
             }
         }
+    }
+
+    /// PDFKit clears its tiles when `document` changes. Prepare the next view
+    /// underneath the current preview so that this clearing is never visible.
+    private func replacePDFPreview(with document: PDFDocument) {
+        let previous = pdfPreviewView
+        guard let container = previous.superview else { return }
+        let destination = previous.currentDestination
+        let pageIndex = destination?.page.flatMap { previous.document?.index(for: $0) } ?? 0
+        let next = PDFView(frame: previous.frame)
+        next.translatesAutoresizingMaskIntoConstraints = false
+        next.autoScales = true
+        next.backgroundColor = .windowBackgroundColor
+        next.wantsLayer = true
+        container.addSubview(next, positioned: .below, relativeTo: previous)
+        NSLayoutConstraint.activate([
+            next.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            next.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            next.topAnchor.constraint(equalTo: pageCountLabel.bottomAnchor, constant: 4),
+            next.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        next.document = document
+        container.layoutSubtreeIfNeeded()
+        next.layoutDocumentView()
+        if let destination, let page = document.page(at: min(pageIndex, document.pageCount - 1)) {
+            next.go(to: PDFDestination(page: page, at: destination.point))
+        }
+        next.displayIfNeeded()
+        pdfPreviewView = next
+        previous.removeFromSuperview()
     }
 
     private func cleanupOldPreviews(except current: URL) {

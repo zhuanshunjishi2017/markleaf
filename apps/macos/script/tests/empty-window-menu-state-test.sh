@@ -10,14 +10,16 @@ require() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
 reject() { grep -Fq "$2" "$1" && fail "$1 unexpectedly contains: $2" || true; }
 
 require "$POLICY" 'enum MenuCommandAvailabilityPolicy'
-WHITELIST="$(sed -n '/private static let documentIndependentCommands/,/^    ]$/p' "$MENU")"
-for command in tabNext closeCurrentTab closeOtherTabs revealActiveTabInWorkspace copyActiveTabPath revealActiveTabInFinder; do
-  if grep -Fq "\"$command\"" <<<"$WHITELIST"; then
-    fail "$command must not be unconditionally document-independent"
-  fi
-done
+require "$POLICY" 'isEmptyWindowCommandEnabled('
 require "$MENU" 'MenuCommandAvailabilityPolicy.isTabCommandEnabled'
-require "$MENU" 'popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "closeCurrentTab")'
+require "$MENU" 'MenuCommandAvailabilityPolicy.isEmptyWindowCommandEnabled('
+mac_validate="$(sed -n '/func validateMenuItem/,/^    }$/p' "$MENU")"
+require "$MENU" 'let isEmptyWindow: Bool?'
+require "$MENU" 'menuItem.state = .off'
+require "$MENU" 'return isEmptyWindow'
+reject "$MENU" 'return MenuCommandAvailabilityPolicy.isEmptyWindowCommandEnabled('
+require "$MENU" 'popup(L10n.t("标签页管理"), tabManagement, requiresDocument: true, validationCommand: "tabManagementParent")'
+reject "$MENU" 'private static let documentIndependentCommands'
 require "$MANAGER" 'func openDocumentInNewWindow()'
 require "$MANAGER" 'activeWindowController?.window'
 reject "$MANAGER" 'guard let session = activeSession, let window = session.webView?.window else { return }'

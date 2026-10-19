@@ -18,7 +18,10 @@ elif (root / '.build/out/Intermediates.noindex/MarkLeaf.build/Debug/MarkLeaf-p.b
     # Xcode 27's SwiftPM backend emits per-source objects and the swiftmodule
     # beside them under Intermediates.noindex instead of using LinkFileList.
     object_dir = root / '.build/out/Intermediates.noindex/MarkLeaf.build/Debug/MarkLeaf-p.build/Objects-normal/arm64'
-    objects = [str(p) for p in object_dir.glob('*.o') if p.name != 'main.o']
+    # File Provider may leave numbered copies from older builds beside the
+    # canonical objects. Only link objects for the current source filenames.
+    names = {p.stem + '.o' for p in (root / 'Sources/MarkLeaf').rglob('*.swift')}
+    objects = [str(p) for p in object_dir.glob('*.o') if p.name in names and p.name != 'main.o']
     module = object_dir
 else:
     module = next((root / '.build').glob('*/debug/Modules'))

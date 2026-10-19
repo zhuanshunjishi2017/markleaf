@@ -11,6 +11,40 @@ struct MenuCommandAvailabilityState {
 
 /// Keeps menu-bar tab actions aligned with the guards that actually execute them.
 enum MenuCommandAvailabilityPolicy {
+    private static let emptyWindowAppCommands: Set<String> = [
+        "recoverUnsavedFiles", "showPreferences", "showAbout",
+        "openWelcome", "openChangelog", "showShortcuts", "installOptionalFonts",
+        "codeFormatterManager", "checkForUpdates", "openHelp", "learnMarkdown",
+        "openSampleAlert", "openSampleYamlBasic", "openSampleYamlAdvanced",
+        "toggleFollowSystemTheme", "toggleCodeHighlight", "showThemeSettings",
+    ]
+
+    private static let emptyWindowWindowCommands: Set<String> = [
+        "new", "newPlainText", "newWindow", "open", "openReadOnly", "openInNewWindow",
+        "openFolder", "toggleFocusMode", "toggleFullScreen",
+        "toggleSidebar", "toggleStatusBar", "workspaceTab", "outlineTab",
+        "treeView", "listView", "toggleDetachedOutline",
+    ]
+
+    /// The empty-tab availability matrix. This policy is intentionally evaluated
+    /// before submenu-parent commands are rewritten to a representative child.
+    static func isEmptyWindowCommandEnabled(
+        command: String,
+        hasWindow: Bool,
+        hasWorkspace: Bool,
+        hasClosedTabs: Bool
+    ) -> Bool {
+        switch command {
+        case "closeFolder":
+            return hasWorkspace
+        case "restoreClosedTab", "tabManagementParent":
+            return hasClosedTabs
+        default:
+            if emptyWindowAppCommands.contains(command) { return true }
+            return hasWindow && emptyWindowWindowCommands.contains(command)
+        }
+    }
+
     static func isTabCommandEnabled(
         command: String,
         state: MenuCommandAvailabilityState

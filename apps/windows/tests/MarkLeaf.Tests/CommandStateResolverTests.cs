@@ -6,6 +6,22 @@ namespace MarkLeaf.Tests;
 public sealed class CommandStateResolverTests
 {
     [TestMethod]
+    public void CopyFileContentsDependsOnContentRatherThanWhetherTheDocumentIsSaved()
+    {
+        var untitled = new CommandContext(DocumentAvailable: true, EditorReady: true,
+            DocumentHasPath: false, DocumentHasContent: true);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyCurrentFileContents, untitled).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.CopyCurrentFileContents,
+            untitled with { DocumentHasPath = true, ReadOnlyMode = true }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.CopyCurrentFileContents,
+            untitled with { DocumentHasContent = false }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.CopyCurrentFileContents,
+            untitled with { DocumentAvailable = false }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.CopyCurrentFileContents,
+            untitled with { EditorReady = false }).IsEnabled);
+    }
+
+    [TestMethod]
     public void Resolve_HostCommandsUseWindowAndDocumentFacts()
     {
         var empty = new CommandContext(DocumentAvailable: false, EditorReady: false);
@@ -23,6 +39,54 @@ public sealed class CommandStateResolverTests
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.ToggleSidebar, ready with { FocusMode = true }).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SwitchToOutline, ready with { IndependentOutlineSidebar = true }).IsEnabled);
         Assert.IsTrue(CommandStateResolver.Resolve(AppCommand.SwitchToWorkspace, ready with { SidebarVisible = false, FocusMode = true }).IsEnabled);
+    }
+
+    [TestMethod]
+    public void Resolve_EmptyWindowUsesTheSharedAvailabilityMatrix()
+    {
+        var empty = new CommandContext(DocumentAvailable: false, EditorReady: false);
+        foreach (var command in new[]
+        {
+            AppCommand.NewDocument,
+            AppCommand.NewPlainText,
+            AppCommand.OpenDocument,
+            AppCommand.OpenDocumentReadOnly,
+            AppCommand.OpenDocumentInNewWindow,
+            AppCommand.OpenFolder,
+            AppCommand.ShowThemeSettings,
+            AppCommand.ToggleFocusMode,
+            AppCommand.ToggleEditorFullScreen,
+            AppCommand.ToggleSidebar,
+            AppCommand.ShowStatusBar,
+        })
+        {
+            Assert.IsTrue(CommandStateResolver.Resolve(command, empty).IsEnabled, $"{command} must stay enabled without tabs.");
+        }
+
+        foreach (var command in new[]
+        {
+            AppCommand.SaveDocument,
+            AppCommand.SaveAllDocuments,
+            AppCommand.ExportDocument,
+            AppCommand.Print,
+            AppCommand.ToggleBold,
+            AppCommand.ToggleReadOnlyMode,
+            AppCommand.ToggleEditorFocusMode,
+            AppCommand.ZoomIn,
+            AppCommand.RestartEditor,
+            AppCommand.CloseCurrentDocumentTab,
+            AppCommand.CopyCurrentFilePath,
+        })
+        {
+            Assert.IsFalse(CommandStateResolver.Resolve(command, empty).IsEnabled, $"{command} must be disabled without tabs.");
+        }
+
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.CloseFolder, empty).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(
+            AppCommand.CloseFolder, empty with { WorkspaceAvailable = true }).IsEnabled);
+        Assert.IsFalse(CommandStateResolver.Resolve(AppCommand.ReopenClosedTab, empty).IsEnabled);
+        Assert.IsTrue(CommandStateResolver.Resolve(
+            AppCommand.ReopenClosedTab, empty with { ClosedTabsAvailable = true }).IsEnabled);
     }
 
     [TestMethod]

@@ -65,6 +65,8 @@ public static class CommandStateResolver
                 context.DocumentAvailable, context.EditorReady)),
             AppCommand.SaveAllDocuments => new(context.EditorReady && context.SavableDocumentsAvailable),
             AppCommand.ReopenClosedTab => new(context.ClosedTabsAvailable),
+            AppCommand.CopyCurrentFileContents => new(
+                context.DocumentAvailable && context.EditorReady && context.DocumentHasContent),
             AppCommand.ToggleReadOnlyMode => new(
                 context.DocumentAvailable && context.EditorReady && context.ReadOnlyCanBeToggled,
                 context.ReadOnlyMode),
@@ -84,7 +86,9 @@ public static class CommandStateResolver
                 or AppCommand.LocateCurrentDocumentInWorkspace
                 => new(context.DocumentAvailable),
 
-            AppCommand.NewDocument or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(true),
+            AppCommand.NewDocument or AppCommand.NewPlainText
+                or AppCommand.OpenDocument or AppCommand.OpenDocumentReadOnly => new(true),
+            AppCommand.CloseFolder => new(context.WorkspaceAvailable),
             _ => new(context.EditorReady),
         };
     }

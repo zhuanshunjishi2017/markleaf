@@ -109,18 +109,10 @@ internal sealed partial class MainForm
             return new CommandState(fileIndex < GetRecentFiles().Count);
         }
 
-        if (command == AppCommand.CopyCurrentFileContents) return new(_document is not null);
         if (command is AppCommand.CopyCurrentFilePath or AppCommand.ShowCurrentFileInFolder)
             return new(_document?.FilePath is not null);
         if (command == AppCommand.RenameCurrentDocument)
             return new(_document is { FilePath: not null, IsReadOnly: false });
-        if (command == AppCommand.NewPlainText) return new(true);
-
-        if (command == AppCommand.CloseFolder)
-        {
-            return new CommandState(_workspaceRoot is not null);
-        }
-
         if (command is >= AppCommand.SwitchDocumentTab1 and <= AppCommand.SwitchDocumentTab9)
         {
             var index = (int)command - (int)AppCommand.SwitchDocumentTab1;
@@ -183,7 +175,9 @@ internal sealed partial class MainForm
             SelectionScope: _editorCommandStatus.SelectionScope,
             DocumentDirty: _document?.IsDirty == true,
             DocumentHasPath: _document?.FilePath is not null,
-            SavableDocumentsAvailable: DocumentMenuPolicy.SaveAllTargets(_openDocuments).Count > 0);
+            SavableDocumentsAvailable: DocumentMenuPolicy.SaveAllTargets(_openDocuments).Count > 0,
+            WorkspaceAvailable: _workspaceRoot is not null,
+            DocumentHasContent: _editorStatus.CharacterCount > 0);
         var state = CommandStateResolver.Resolve(command, context);
         if (command is AppCommand.Paste or AppCommand.PastePlainText)
             return state with { IsEnabled = state.IsEnabled && HasClipboardContent() };
