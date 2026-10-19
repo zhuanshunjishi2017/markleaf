@@ -730,6 +730,15 @@ final class AppWindowManager {
                     NSApp.activate(ignoringOtherApps: true)
                     return
                 }
+                if ChangelogOpenPolicy.destination(
+                    multiTabEnabled: SettingsService.shared.settings.multiTabEnabled
+                ) == .currentTab {
+                    let controller = self.activeWindowController ?? self.newWindow()
+                    controller.openFileInTab(target, readOnly: true)
+                    controller.window?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                    return
+                }
                 let controller = self.newWindow(preparedDocument: prepared)
                 controller.window?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)

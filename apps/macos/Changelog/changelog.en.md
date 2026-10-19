@@ -1,5 +1,11 @@
 # MarkLeaf Changelog
 
+## 1.7.9 — 2026-10-19
+
+### Changed
+
+- “Changelog” now opens in the current window when multi-tab mode is enabled. When multi-tab mode is disabled, it continues to open in a separate window.
+
 ## 1.7.8 — 2026-10-19
 
 ### New
