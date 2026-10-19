@@ -71,11 +71,14 @@ internal sealed class OptionalFontsDialog : Form
         _grid.Columns.Add("theme", Loc.Get("dialog.optionalFontsTheme"));
         _grid.Columns.Add("font", Loc.Get("dialog.optionalFontsName"));
         _grid.Columns.Add("installed", Loc.Get("dialog.optionalFontsInstalled"));
-        _grid.Columns["theme"]!.FillWeight = 33F;
-        _grid.Columns["font"]!.FillWeight = 100F;
-        _grid.Columns["installed"]!.FillWeight = 167F;
+        _grid.Columns["theme"]!.FillWeight = 20F;
+        _grid.Columns["font"]!.FillWeight = 55F;
+        _grid.Columns["installed"]!.FillWeight = 25F;
+        _grid.Columns["theme"]!.MinimumWidth = this.ScaleForDpi(70);
+        _grid.Columns["font"]!.MinimumWidth = this.ScaleForDpi(240);
+        _grid.Columns["installed"]!.MinimumWidth = this.ScaleForDpi(100);
+        _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _grid.EnableDoubleBuffering();
-        ReloadRows();
 
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = SystemColors.GrayText;
@@ -96,6 +99,44 @@ internal sealed class OptionalFontsDialog : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, this.ScaleForDpi(42)));
         layout.Controls.Add(_grid, 0, 0); layout.Controls.Add(_status, 0, 1); layout.Controls.Add(buttons, 0, 2);
         Controls.Add(layout);
+        ApplyTheme();
+        ReloadRows();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        DarkModeService.SetWindowDarkTitleBar(this);
+    }
+
+    private void ApplyTheme()
+    {
+        var colors = ColorThemeService.GetActiveColors();
+        var background = DialogColors.Primary;
+        var foreground = colors.GetValueOrDefault("text-primary", SystemColors.ControlText);
+        var header = DialogColors.Secondary;
+        var selection = colors.GetValueOrDefault("theme-light", SystemColors.Highlight);
+        var selectedText = colors.GetValueOrDefault("text-selected", SystemColors.HighlightText);
+        DarkModeService.ApplyDialogDarkMode(this, background, foreground);
+        _status.ForeColor = colors.GetValueOrDefault("text-secondary", foreground);
+        // DataGridView headers otherwise retain a light native theme even when
+        // its rows are dark. Supply both normal and selected palettes up front.
+        _grid.EnableHeadersVisualStyles = false;
+        _grid.BackgroundColor = background;
+        _grid.BorderStyle = BorderStyle.None;
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+        _grid.GridColor = colors.GetValueOrDefault("bg-selected", SystemColors.ControlDark);
+        _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+        _grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = header, ForeColor = foreground,
+            SelectionBackColor = header, SelectionForeColor = foreground,
+        };
+        _grid.DefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = header, ForeColor = foreground,
+            SelectionBackColor = selection, SelectionForeColor = selectedText,
+        };
     }
 
     private void ReloadRows()
@@ -110,6 +151,8 @@ internal sealed class OptionalFontsDialog : Form
                     ? Loc.Get("dialog.optionalFontsNo")
                     : Loc.Format("dialog.optionalFontsInstalledAt", path));
                 _grid.Rows[index].Tag = pack;
+                foreach (DataGridViewCell cell in _grid.Rows[index].Cells)
+                    cell.ToolTipText = cell.Value?.ToString() ?? "";
             }
         }
         UpdateInstallButtonState();

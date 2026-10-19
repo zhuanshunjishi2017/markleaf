@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using MarkLeaf.Native;
 using MarkLeaf.Services;
 
 namespace MarkLeaf.UI.Controls;
@@ -388,7 +389,8 @@ internal sealed class PreferenceOptionsContainer : Control
         _contentHost.BackColor = _background;
         _pageLayout.BackColor = _background;
         foreach (var page in _pages)
-            page.BackColor = _background;
+            DarkModeService.ApplyDialogDarkMode(page, _background,
+                colors.GetValueOrDefault("text-primary", SystemColors.ControlText));
         _tab?.ApplyThemeColors(colors);
         Invalidate();
     }

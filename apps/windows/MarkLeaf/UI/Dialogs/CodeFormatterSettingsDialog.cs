@@ -1,6 +1,8 @@
+using MarkLeaf.Native;
 using MarkLeaf.Services;
 using MarkLeaf.Services.CodeFormatting;
 using MarkLeaf.Services.Settings;
+using MarkLeaf.Services.Styles;
 using MarkLeaf.UI.Controls;
 using System.Diagnostics;
 
@@ -187,7 +189,29 @@ internal sealed class CodeFormatterSettingsDialog : Form
 
         Controls.Add(layout);
 
+        ApplyTheme();
         RefreshToolList();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        DarkModeService.SetWindowDarkTitleBar(this);
+    }
+
+    private void ApplyTheme()
+    {
+        var colors = ColorThemeService.GetActiveColors();
+        var foreground = colors.GetValueOrDefault("text-primary", SystemColors.ControlText);
+        DarkModeService.ApplyDialogDarkMode(this, DialogColors.Secondary, foreground);
+        _toolList.BackColor = DialogColors.Primary;
+        _toolList.ForeColor = foreground;
+        _toolList.BorderStyle = BorderStyle.None;
+        _statusLabel.ForeColor = colors.GetValueOrDefault("text-secondary", foreground);
+        _websiteLink.LinkColor = colors.GetValueOrDefault("theme-dark", SystemColors.HotTrack);
+        _websiteLink.ActiveLinkColor = foreground;
+        _websiteLink.VisitedLinkColor = _websiteLink.LinkColor;
+        _websiteLink.DisabledLinkColor = _statusLabel.ForeColor;
     }
 
     private static readonly List<string> SqlDialects =

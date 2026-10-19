@@ -100,7 +100,15 @@ internal static class DarkModeService
             if (c is ComboBox)
                 return; // 由 Application.SetColorMode 统一控制，显式 BackColor 会破坏下拉渲染
 
-            if (c is TextBox or NumericUpDown)
+            if (c is TextBox textBox)
+            {
+                textBox.BackColor = bg;
+                textBox.ForeColor = fg;
+                TextBoxThemeFrame.Apply(textBox);
+                return;
+            }
+
+            if (c is NumericUpDown)
             {
                 c.BackColor = bg;
                 c.ForeColor = fg;

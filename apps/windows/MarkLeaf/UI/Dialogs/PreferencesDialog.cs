@@ -443,26 +443,34 @@ internal sealed class PreferencesDialog : Form
         AcceptButton = _okButton;
         CancelButton = _cancelButton;
 
-        Shown += (_, _) =>
-        {
-            _tabBar.ApplyThemeColors(ColorThemeService.GetActiveColors());
-            ApplySegmentedTabColors();
-            if (ColorThemeService.IsActiveThemeDark())
-            {
-                DarkModeService.ApplyDialogDarkMode(this, SystemColors.Control, SystemColors.ControlText);
-                DarkModeService.SetWindowDarkTitleBar(this);
-                // .NET SetColorMode 对首个可见 TabPage 的控件覆盖不完整，再次强制设色。
-                ForceComboDark(_startupAction);
-                ForceComboDark(_defaultEncodingCombo);
-                ForceComboDark(_newLineStyleCombo);
-            }
-            ApplyOkButtonThemeColors();
-        };
+        // Initialize attached and detached pages before any window is shown.
+        // Shown is too late: native controls can already expose a light frame.
+        var colors = ColorThemeService.GetActiveColors();
+        var foreground = colors.GetValueOrDefault("text-primary", SystemColors.ControlText);
+        DarkModeService.ApplyDialogDarkMode(this, DialogColors.Primary, foreground);
+        foreach (var page in _tabContents)
+            DarkModeService.ApplyDialogDarkMode(page, DialogColors.Primary, foreground);
+        _tabBar.ApplyThemeColors(colors);
+        ApplySegmentedTabColors();
+        ApplyOkButtonThemeColors();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        DarkModeService.SetWindowDarkTitleBar(this);
     }
 
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        if (ColorThemeService.IsActiveThemeDark())
+        {
+            // Recreate initial combo handles before the first visible frame.
+            ForceComboDark(_startupAction);
+            ForceComboDark(_defaultEncodingCombo);
+            ForceComboDark(_newLineStyleCombo);
+        }
         // Apply after WinForms DPI scaling. A larger default must still leave
         // the title bar and fixed action footer reachable on smaller monitors.
         var area = Screen.FromControl(Owner ?? this).WorkingArea;
