@@ -35,25 +35,19 @@ internal sealed class GitHubUpdateService
             ? assetsElement.EnumerateArray().ToArray()
             : [];
         var architecture = GetArchitectureLabel();
-        var installer = assets.FirstOrDefault(asset =>
+        var selfContained = IsSelfContainedDeployment();
+        if (!TrySelectInstaller(
+            assets,
+            architecture,
+            preferSelfContained: selfContained,
+            out var installerName,
+            out var installerUri))
         {
-            var name = asset.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
-            return name is not null
-                && name.EndsWith($"-{architecture}.exe", StringComparison.OrdinalIgnoreCase)
-                && !name.Contains("with-runtime", StringComparison.OrdinalIgnoreCase)
-                && asset.TryGetProperty("browser_download_url", out var urlElement)
-                && Uri.TryCreate(urlElement.GetString(), UriKind.Absolute, out _);
-        });
-        if (installer.ValueKind == JsonValueKind.Undefined)
-        {
-            throw new InvalidOperationException($"No Windows installer was found for {architecture}.");
+            throw new InvalidOperationException(
+                $"No compatible Windows installer was found for {architecture} " +
+                $"({(selfContained ? "with .NET runtime" : "framework-dependent")}).");
         }
 
-        var installerName = installer.GetProperty("name").GetString()
-            ?? throw new InvalidOperationException("The update installer has no file name.");
-        var installerUrl = installer.GetProperty("browser_download_url").GetString()
-            ?? throw new InvalidOperationException("The update installer has no download URL.");
-        var installerUri = new Uri(installerUrl);
         var buildNumber = assets
             .Select(asset => asset.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null)
             .OfType<string>()
@@ -91,6 +85,48 @@ internal sealed class GitHubUpdateService
         version = parsed;
         return true;
     }
+
+    internal static bool TrySelectInstaller(
+        JsonElement[] assets,
+        string architecture,
+        bool preferSelfContained,
+        out string installerName,
+        out Uri installerUri)
+    {
+        installerName = "";
+        installerUri = new Uri("about:blank");
+        var suffix = preferSelfContained
+            ? $"-{architecture}-with-runtime.exe"
+            : $"-{architecture}.exe";
+
+        foreach (var asset in assets)
+        {
+            var name = asset.TryGetProperty("name", out var nameElement)
+                ? nameElement.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(name)
+                || !name.StartsWith("MarkLeaf-", StringComparison.OrdinalIgnoreCase)
+                || !name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var url = asset.TryGetProperty("browser_download_url", out var urlElement)
+                ? urlElement.GetString()
+                : null;
+            if (Uri.TryCreate(url, UriKind.Absolute, out var parsed))
+            {
+                installerName = name;
+                installerUri = parsed;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSelfContainedDeployment()
+        => File.Exists(Path.Combine(AppContext.BaseDirectory, "hostfxr.dll"));
 
     private static string GetArchitectureLabel() => RuntimeInformation.ProcessArchitecture switch
     {

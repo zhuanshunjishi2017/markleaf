@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Content Include="..\..\..\..\tests\fixtures\workspace-text.json" Link="workspace-text.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\setup\markleaf.iss" Link="Setup\markleaf.iss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">

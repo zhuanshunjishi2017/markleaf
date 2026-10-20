@@ -99,6 +99,11 @@ Root: HKCU; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; V
 Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_md
 Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: string; ValueName: "MarkLeaf.MarkdownDoc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate_txt
 
+#if SelfContained == "1"
+[UninstallDelete]
+Type: files; Name: "{app}\MarkLeaf.self-contained"
+#endif
+
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayName}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
@@ -107,8 +112,45 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayNam
 ; argument here: older versions do not implement it and would block setup.
 
 [Code]
+#if SelfContained == "0"
+function RejectSlimOverSelfContained(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\MarkLeaf.self-contained'))
+    or FileExists(ExpandConstant('{app}\hostfxr.dll'));
+end;
+#endif
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+
+  // Both installers intentionally share an application directory. A slim
+  // upgrade over a self-contained install would leave hostfxr.dll behind but
+  // replace runtimeconfig.json with a shared-framework version, producing an
+  // incomplete local .NET root that cannot start.
+#if SelfContained == "0"
+  if RejectSlimOverSelfContained() then
+  begin
+    SuppressibleMsgBox(
+      'This computer has MarkLeaf with the bundled .NET runtime. Install the matching with-runtime package; the slim package cannot upgrade it safely.',
+      mbError,
+      MB_OK,
+      IDOK);
+    Result := False;
+  end;
+#endif
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssPostInstall then
+  begin
+#if SelfContained == "1"
+    SaveStringToFile(ExpandConstant('{app}\MarkLeaf.self-contained'), '1', False);
+#endif
+    Exit;
+  end;
+
   if CurStep <> ssInstall then
     Exit;
 
