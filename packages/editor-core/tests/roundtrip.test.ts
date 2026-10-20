@@ -20,6 +20,7 @@ import {
   setImageResourceResolver,
   setMarkdownEditingSettings,
 } from '../src/index'
+import { preloadMathRenderer } from '../src/katex-runtime'
 
 const editors: ReturnType<typeof createEditor>[] = []
 
@@ -307,20 +308,21 @@ describe('visual Markdown shortcuts', () => {
     expect(findFootnoteDefinitionBody(editor, '1')).toBe('加粗、斜体和代码')
   })
 
-  it('renders inline math in footnote definitions and previews its source as plain text', () => {
+  it('renders inline math in footnote definitions and previews its source as plain text', async () => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '[^1]: 公式 $x^2 + y^2$')
     editors.push(editor)
 
     const math = element.querySelector('.markleaf-math-inline')
+    await preloadMathRenderer()
     expect(math).not.toBeNull()
     expect(math?.querySelector('.katex')).not.toBeNull()
     expect(getMarkdown(editor)).toBe('[^1]: 公式 $x^2 + y^2$')
     expect(findFootnoteDefinitionBody(editor, '1')).toBe('公式 x^2 + y^2')
   })
 
-  it('turns a closed inline formula typed in a footnote definition into rendered math', () => {
+  it('turns a closed inline formula typed in a footnote definition into rendered math', async () => {
     const element = document.createElement('div')
     document.body.append(element)
     const editor = createEditor(element, '[^1]: 公式 ')
@@ -336,6 +338,7 @@ describe('visual Markdown shortcuts', () => {
       () => editor.state.tr.insertText('$'),
     ))
 
+    await preloadMathRenderer()
     expect(handled).toBe(true)
     expect(element.querySelector('.markleaf-math-inline .katex')).not.toBeNull()
     expect(getMarkdown(editor)).toBe('[^1]: 公式 $x^2$')

@@ -149,6 +149,37 @@ public sealed class EditorContextMenuDesktopTests
 
     [STATestMethod]
     [TestCategory("InteractiveDesktop")]
+    public void MouseClickCommitsQuickActionOnce()
+    {
+        if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");
+        using var dpiScope = new DpiScope();
+        using var owner = new Form { Text = "MarkLeaf quick-action mouse verification", Size = new Size(700, 600), StartPosition = FormStartPosition.CenterScreen };
+        owner.Show();
+        SetForegroundWindow(owner.Handle);
+        var commands = new List<AppCommand>();
+        var session = new EditorMenuSession(1, _ => new CommandState(true),
+            command => { commands.Add(command); return Task.CompletedTask; }, _ => { }, () => { });
+        var model = new EditorMenuModelBuilder(_ => new CommandState(true), _ => "").Build(EditorCommandStatus.Empty);
+        using var menu = new EditorContextMenu(model, owner.DeviceDpi, false, true, session, animate: true);
+        menu.Closed += (_, _) => session.Closed(callback => owner.BeginInvoke(callback));
+        Cursor.Position = owner.PointToScreen(new Point(20, 20));
+        menu.Show(owner, new Point(100, 100));
+        PumpUntil(() => menu.Visible && menu.Opacity == 1);
+        var toolbar = (ToolStrip)menu.Items.OfType<ToolStripControlHost>().Single().Control;
+        var button = toolbar.Items.OfType<ToolStripButton>().First(item => item.Enabled);
+        Cursor.Position = toolbar.PointToScreen(Center(button.Bounds));
+        PumpUntil(() => button.Selected);
+        mouse_event(0x0002, 0, 0, 0, 0);
+        mouse_event(0x0004, 0, 0, 0, 0);
+        PumpUntil(() => session.Completion.IsCompleted);
+        PumpUntil(() => menu.Dismissed.IsCompleted);
+        Assert.HasCount(1, commands);
+        Assert.AreEqual(button.Name, commands[0].ToString());
+        Assert.IsFalse(menu.Visible);
+    }
+
+    [STATestMethod]
+    [TestCategory("InteractiveDesktop")]
     public void FadePreservesCloseAndCommandLifetime()
     {
         if (!Environment.UserInteractive) Assert.Inconclusive("Requires the interactive Windows desktop.");

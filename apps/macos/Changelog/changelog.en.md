@@ -1,10 +1,11 @@
 # MarkLeaf Changelog
 
-## 1.7.9 — 2026-10-19
+## 1.7.9 — 2026-10-20
 
 ### Changed
 
 - “Changelog” now opens in the current window when multi-tab mode is enabled. When multi-tab mode is disabled, it continues to open in a separate window.
+- Math rendering assets now load on demand, reducing the script and stylesheet work required during editor startup.
 
 ## 1.7.8 — 2026-10-19
 

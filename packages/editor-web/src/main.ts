@@ -77,6 +77,7 @@ import {
   type HostMessage,
 } from './protocol'
 
+
 const editorElement = document.querySelector<HTMLElement>('#editor')
 
 if (!editorElement) {
@@ -304,6 +305,7 @@ type VisualVariablePayload = {
 declare global {
   interface Window {
     __markleafApplyVisualVariables?: (payload: VisualVariablePayload) => void
+    __markleafClearStartupBackground?: () => void
   }
 }
 
@@ -1363,6 +1365,7 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
       syncThemeModeClass()
+      window.__markleafClearStartupBackground?.()
       send('stylesApplied')
       break
     }

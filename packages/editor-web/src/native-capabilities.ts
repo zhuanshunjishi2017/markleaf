@@ -13,17 +13,24 @@ export function resolveNativeCapabilities(hostPlatform?: 'macOS' | 'Windows'): H
   }
 }
 
+function assetOrigin(): string {
+  return window.chrome?.webview?.hostPlatform === 'Windows'
+    ? 'https://assets.example'
+    : 'https://assets.local'
+}
+
 export const nativeImageResources: ImageResourceResolver = {
   resolve(path) {
     if (/^(https?:|data:|blob:)/i.test(path)) return path
     let decoded = path
     try { decoded = decodeURIComponent(path) } catch { /* A literal percent is part of the path. */ }
-    return `https://assets.local/image?path=${encodeURIComponent(decoded)}`
+    return `${assetOrigin()}/image?path=${encodeURIComponent(decoded)}`
   },
   originalPath(value) {
     let url: URL
     try { url = new URL(value) } catch { return null }
-    return url.origin === 'https://assets.local' && url.pathname === '/image'
+    return (url.origin === 'https://assets.local' || url.origin === 'https://assets.example')
+      && url.pathname === '/image'
       ? url.searchParams.get('path') : null
   },
 }

@@ -1,7 +1,6 @@
 import { mathInlineTokenizer, mathBlockTokenizer, normalizeMathSource } from './document/markdown-syntax'
 import { InputRule, Node } from '@tiptap/core'
-import 'katex/dist/katex.min.css'
-import katex from 'katex'
+import { renderMathElement } from './katex-runtime'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
 
@@ -23,21 +22,7 @@ function renderMathNode(element: HTMLElement, latex: string, displayMode: boolea
     return
   }
   element.classList.remove('markleaf-math-placeholder')
-  renderKatex(element, latex, displayMode)
-}
-
-function renderKatex(element: HTMLElement, latex: string, displayMode: boolean): void {
-  try {
-    katex.render(latex, element, {
-      displayMode,
-      throwOnError: true,
-      strict: false,
-      trust: false,
-    })
-  } catch {
-    // 解析失败时回退为原始 LaTeX 文本，避免内容不可见。
-    element.textContent = latex
-  }
+  renderMathElement(element, latex, displayMode)
 }
 
 /// 同一帧内请求拟合的块统一处理：逐块拟合时每个块都要「读宽度 → 写测量样式 →
@@ -305,31 +290,3 @@ export const MathBlock = Node.create({
     }
   },
 })
-
-function decodeHtmlEntities(text: string): string {
-  const textarea = document.createElement('textarea')
-  textarea.innerHTML = text
-  return textarea.value
-}
-
-/// 将 `editor.getHTML()` 输出中的数学标记替换为 KaTeX 渲染结果。
-/// 导出 HTML 由独立 WebView2 加载，无法复用编辑器的 KaTeX 运行时，因此需预渲染。
-export function renderMathInHtml(html: string, throwOnError = false): string {
-  return html
-    .replace(/<span data-math-inline="1">([\s\S]*?)<\/span>/g, (_, latex: string) => {
-      const source = decodeHtmlEntities(latex)
-      return source
-        ? `<span class="markleaf-math markleaf-math-inline">${katex.renderToString(source, { throwOnError })}</span>`
-        : '<span class="markleaf-math markleaf-math-inline markleaf-math-placeholder">...</span>'
-    })
-    .replace(/<div data-math-block="1"([^>]*)>([\s\S]*?)<\/div>/g, (_, attrs: string, latex: string) => {
-      const numberMatch = /data-math-number="([^"]*)"/.exec(attrs)
-      const body = decodeHtmlEntities(latex)
-      if (!body) return '<div class="markleaf-math-block markleaf-math-placeholder">...</div>'
-      const number = numberMatch?.[1]
-      const full = /\\tag\{[^{}]*\}\s*$/.test(body)
-        ? body
-        : number ? `${body} \\tag{${decodeHtmlEntities(number)}}` : body
-      return katex.renderToString(full, { displayMode: true, throwOnError })
-    })
-}

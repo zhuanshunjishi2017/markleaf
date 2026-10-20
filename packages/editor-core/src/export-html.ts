@@ -4,7 +4,7 @@ import { resolveMermaidTheme } from './typography'
 // Document serialization and typography shared by native hosts and VS Code.
 import { renderEscapedCaptionHtml } from './editor'
 import { applyExportPagination, exportPaginationCss, type ExportPaginationOptions } from './export-pagination'
-import { renderMathInHtml } from './math'
+import { renderMathInHtml } from './export-math'
 import { katexCss } from './export-katex-css'
 import { renderMermaidInHtml, type MermaidThemeName } from './mermaid'
 

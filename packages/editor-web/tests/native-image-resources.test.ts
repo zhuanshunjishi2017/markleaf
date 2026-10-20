@@ -7,6 +7,7 @@ afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy()
   setImageResourceResolver()
   document.body.replaceChildren()
+  delete (window as any).chrome
 })
 
 function create(markdown: string) {
@@ -19,17 +20,19 @@ function create(markdown: string) {
 }
 
 it('loads a Windows image through the native asset host without changing its Markdown path', () => {
+  ;(window as any).chrome = { webview: { hostPlatform: 'Windows' } }
   const { editor, mount } = create('![diagram](C:/Pictures/my%20image.png)')
   const image = mount.querySelector('img')!
-  expect(image.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fmy%20image.png')
+  expect(image.getAttribute('src')).toBe('https://assets.example/image?path=C%3A%2FPictures%2Fmy%20image.png')
   expect(image.getAttribute('data-markleaf-path')).toBe('C:/Pictures/my%20image.png')
   expect(getMarkdown(editor)).toContain('![diagram](C:/Pictures/my%20image.png)')
   expect(nativeImageResources.originalPath!(image.getAttribute('src')!)).toBe('C:/Pictures/my image.png')
 })
 
 it('resolves a native image insertion while preserving the original host command path', () => {
+  ;(window as any).chrome = { webview: { hostPlatform: 'Windows' } }
   const { editor, mount } = create('')
   expect(executeEditorCommand(editor, 'insertImage', 'C:/Pictures/image.png\npasted image')).toBe(true)
-  expect(mount.querySelector('img')?.getAttribute('src')).toBe('https://assets.local/image?path=C%3A%2FPictures%2Fimage.png')
+  expect(mount.querySelector('img')?.getAttribute('src')).toBe('https://assets.example/image?path=C%3A%2FPictures%2Fimage.png')
   expect(getMarkdown(editor)).toContain('![pasted image](C:/Pictures/image.png)')
 })

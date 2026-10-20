@@ -15,6 +15,9 @@ namespace MarkLeaf.Editor;
 
 internal sealed class EditorHostController : IDisposable
 {
+    internal const string EditorHostName = "editor.example";
+    internal const string AssetHostName = "assets.example";
+
     private static readonly object EnvironmentLock = new();
     private static readonly Dictionary<string, Task<CoreWebView2Environment>> EnvironmentTasks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -209,6 +212,7 @@ internal sealed class EditorHostController : IDisposable
                 if (themeColors.TryGetValue("bg-primary", out var bgColor))
                 {
                     controllerOptions.DefaultBackgroundColor = bgColor;
+                    _webView.DefaultBackgroundColor = bgColor;
                     _loadingView.SetThemeBackground(bgColor);
                 }
                 await _webView.EnsureCoreWebView2Async(environment, controllerOptions).WaitAsync(_initializationCancellation.Token);
@@ -222,7 +226,7 @@ internal sealed class EditorHostController : IDisposable
                 _initializationCancellation.Cancel();
             }
             await _webView.CoreWebView2!.AddScriptToExecuteOnDocumentCreatedAsync(
-                "window.chrome.webview.hostPlatform = 'Windows';");
+                CreateDocumentCreatedScript(_webView.DefaultBackgroundColor));
             ConfigureCoreWebView2();
 
             _session.TransitionTo(EditorLifecycleState.LoadingPage);
@@ -1284,11 +1288,11 @@ internal sealed class EditorHostController : IDisposable
         core.Settings.IsWebMessageEnabled = true;
         _webView.AllowExternalDrop = true;
         core.SetVirtualHostNameToFolderMapping(
-            "editor.local",
+            EditorHostName,
             _editorWebPath,
             CoreWebView2HostResourceAccessKind.DenyCors);
         core.AddWebResourceRequestedFilter(
-            "https://assets.local/*",
+            $"https://{AssetHostName}/*",
             CoreWebView2WebResourceContext.Image,
             CoreWebView2WebResourceRequestSourceKinds.Document);
         _webView.ZoomFactor = 1;
@@ -1315,7 +1319,24 @@ internal sealed class EditorHostController : IDisposable
         var version = File.Exists(indexPath)
             ? File.GetLastWriteTimeUtc(indexPath).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)
             : DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return new Uri($"https://editor.local/index.html?v={version}");
+        return new Uri($"https://{EditorHostName}/index.html?v={version}");
+    }
+
+    internal static string CreateDocumentCreatedScript(Color? startupBackground)
+    {
+        const string backgroundScript = """
+            (() => {
+              const style = document.createElement('style');
+              style.id = 'markleaf-startup-background';
+              style.textContent = 'html,body,#app{background:__BACKGROUND__ !important}';
+              (document.head ?? document.documentElement).append(style);
+              window.__markleafClearStartupBackground = () => style.remove();
+            })();
+            """;
+        return "window.chrome.webview.hostPlatform = 'Windows';"
+            + (startupBackground is null
+                ? ""
+                : backgroundScript.Replace("__BACKGROUND__", ColorTranslator.ToHtml(startupBackground.Value)));
     }
 
     private void DetachCoreEvents()
@@ -1402,7 +1423,7 @@ internal sealed class EditorHostController : IDisposable
         if (!IsAllowedEditorUri(eventArgs.Uri))
         {
             eventArgs.Cancel = true;
-            _logger.Warning("Blocked WebView2 navigation outside editor.local.");
+            _logger.Warning($"Blocked WebView2 navigation outside {EditorHostName}.");
             return;
         }
 
@@ -1441,8 +1462,8 @@ internal sealed class EditorHostController : IDisposable
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
-        if (!string.Equals(eventArgs.Source, "https://editor.local/", StringComparison.OrdinalIgnoreCase)
-            && !eventArgs.Source.StartsWith("https://editor.local/", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(eventArgs.Source, $"https://{EditorHostName}/", StringComparison.OrdinalIgnoreCase)
+            && !eventArgs.Source.StartsWith($"https://{EditorHostName}/", StringComparison.OrdinalIgnoreCase))
         {
             _logger.Warning("Rejected WebView2 message from an unexpected origin.");
             return;
@@ -1878,7 +1899,7 @@ internal sealed class EditorHostController : IDisposable
     {
         return Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
             && parsed.Scheme == Uri.UriSchemeHttps
-            && string.Equals(parsed.Host, "editor.local", StringComparison.OrdinalIgnoreCase);
+            && string.Equals(parsed.Host, EditorHostName, StringComparison.OrdinalIgnoreCase);
     }
 }
 

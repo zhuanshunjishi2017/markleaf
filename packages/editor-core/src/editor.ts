@@ -40,8 +40,8 @@ import {
   supportsExternalFormatterSelectionLineRanges,
   type CodeFormatSelectionRange,
 } from './code-formatter'
-import katex from 'katex'
 import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMarkdownCodeFence } from './mermaid'
+import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
 
@@ -2845,14 +2845,6 @@ type FormulaSymbol = {
 }
 type FormulaSymbolGroup = { label: keyof SharedEditorStrings; symbols: FormulaSymbol[] }
 
-function renderFormulaSymbolPreview(latex: string): string {
-  return katex.renderToString(latex, {
-    throwOnError: false,
-    displayMode: false,
-    output: 'html',
-  })
-}
-
 const formulaSymbolGroups: FormulaSymbolGroup[] = [
   {
     label: 'formulaGroupGreek',
@@ -3103,6 +3095,7 @@ function createFormulaSymbolToolbar(
   toolbar.append(label)
   const panels: HTMLElement[] = []
   const buttons: HTMLButtonElement[] = []
+  const mathPreviews: Array<{ button: HTMLButtonElement; latex: string }> = []
 
   const insertSymbol = (symbol: FormulaSymbol) => {
     if (!editor.isEditable) return
@@ -3179,7 +3172,8 @@ function createFormulaSymbolToolbar(
       if (symbol.plainPreview) {
         symbolButton.textContent = symbol.preview
       } else {
-        symbolButton.innerHTML = renderFormulaSymbolPreview(symbol.previewLatex ?? symbol.latex)
+        symbolButton.textContent = symbol.preview
+        mathPreviews.push({ button: symbolButton, latex: symbol.previewLatex ?? symbol.latex })
       }
       symbolButton.title = symbol.latex
       symbolButton.setAttribute('aria-label', `${symbol.preview} ${symbol.latex}`)
@@ -3208,6 +3202,13 @@ function createFormulaSymbolToolbar(
     panels.push(panel)
     buttons.push(button)
   }
+
+  void preloadMathRenderer().then(() => {
+    for (const { button, latex } of mathPreviews) {
+      if (!button.isConnected) continue
+      button.innerHTML = renderMathToString(latex) ?? button.textContent ?? ''
+    }
+  })
 
   toolbar.append(groups)
   return toolbar

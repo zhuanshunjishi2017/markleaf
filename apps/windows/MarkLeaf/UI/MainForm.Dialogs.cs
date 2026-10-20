@@ -384,7 +384,7 @@ internal sealed partial class MainForm
             }
 
             // Export HTML is rendered in a separate WebView/file context where
-            // the in-app assets.local virtual host does not exist. Resolve
+            // the in-app assets.example virtual host does not exist. Resolve
             // relative image references against the source document and embed
             // local files as data URIs so both HTML and PDF exports retain them.
             html = EmbedExportImages(html, _document?.FilePath);
@@ -1113,7 +1113,7 @@ internal sealed partial class MainForm
             {
                 var source = WebUtility.HtmlDecode(match.Groups["src"].Value);
                 if (Uri.TryCreate(source, UriKind.Absolute, out var virtualUri)
-                    && string.Equals(virtualUri.Host, "assets.local", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(virtualUri.Host, EditorHostController.AssetHostName, StringComparison.OrdinalIgnoreCase)
                     && virtualUri.AbsolutePath.Equals("/image", StringComparison.OrdinalIgnoreCase))
                 {
                     var query = virtualUri.Query;

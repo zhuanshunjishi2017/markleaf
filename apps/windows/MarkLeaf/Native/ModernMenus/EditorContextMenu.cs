@@ -246,6 +246,10 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        // A ToolStripControlHost can require the hosted ToolStrip to become
+        // foreground before native mouse messages reach its buttons. Without
+        // this, the first click only activates the popup and seems dead.
+        if (Handle != 0) SetForegroundWindow(Handle);
         if (!_animate) return;
         _fadeFrom = Opacity;
         _fadeStarted = Environment.TickCount64;
@@ -379,6 +383,9 @@ internal sealed class EditorContextMenu : ToolStripDropDownMenu
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint window, int attribute, ref int value, int size);
+
+    [DllImport("user32.dll")]
+    private static extern nint SetForegroundWindow(nint window);
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
