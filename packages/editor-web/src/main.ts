@@ -329,6 +329,7 @@ type VisualVariablePayload = {
   sourceFontFamily: string
   cjkLanguage: string
   visualCjkAutoSpacing: boolean
+  visualAdaptiveJustification?: boolean
   ignoreMaxWidth: boolean
   usePointerAnchor?: boolean
   anchorX?: number | null
@@ -452,6 +453,13 @@ window.__markleafApplyVisualVariables = (payload) => {
     document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing)
     document.documentElement.classList.toggle('markleaf-ignore-max-width', payload.ignoreMaxWidth === true)
   }, anchorReader)
+  // Hosts own the persisted preference. Older payloads retain the current
+  // choice, and repeated zoom updates must not reset the coordinator.
+  if (typeof payload.visualAdaptiveJustification === 'boolean'
+    && payload.visualAdaptiveJustification !== typographyProjectionPreferred) {
+    typographyProjectionPreferred = payload.visualAdaptiveJustification
+    updateTypographyProjection()
+  }
   // Zoom changes glyph metrics without changing the editor mount's box width.
   // Invalidate the projection explicitly so nowrap line decorations are rebuilt
   // against the new font size before they can overflow the viewport.

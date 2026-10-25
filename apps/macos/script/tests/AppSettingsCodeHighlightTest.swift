@@ -122,4 +122,20 @@ expect(savedJSON["defaultDarkThemeID"] as? String == "colors-memo", "settings sa
 let savedExport = savedJSON["exportSettings"] as? [String: Any]
 expect(savedExport?["colorTheme"] as? String == "colors-memo", "settings save should canonicalize a legacy export theme")
 
+
+
+// Visual typography is default-on for both new and upgraded settings.
+func adaptiveValue(_ settings: AppSettings) throws -> Bool? {
+    let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as! [String: Any]
+    return json["visualAdaptiveJustification"] as? Bool
+}
+let adaptiveDefault = try adaptiveValue(AppSettings())
+expect(adaptiveDefault == true, "adaptive justification must default on")
+let adaptiveLegacy = try adaptiveValue(legacy)
+expect(adaptiveLegacy == true, "legacy settings must enable adaptive justification")
+let adaptiveOff = try decoder.decode(AppSettings.self, from: Data(#"{"visualAdaptiveJustification":false,"visualFontSize":19}"#.utf8))
+let adaptiveDisabled = try adaptiveValue(adaptiveOff)
+expect(adaptiveDisabled == false, "explicit false must survive persistence")
+expect(adaptiveOff.visualFontSize == 19, "adaptive setting must preserve unrelated preferences")
+
 print("PASS")

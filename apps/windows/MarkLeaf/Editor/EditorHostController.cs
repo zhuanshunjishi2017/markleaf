@@ -376,7 +376,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false, bool visualAdaptiveJustification = true)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -394,6 +394,7 @@ internal sealed class EditorHostController : IDisposable
             sourceFontFamily = fontFamilyValue,
             cjkLanguage = cjkLang,
             visualCjkAutoSpacing,
+            visualAdaptiveJustification,
             ignoreMaxWidth,
             usePointerAnchor = false,
             anchorX = (double?)null,

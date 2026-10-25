@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "Max &width",
   "prefs.editor.visualIgnoreMaxWidth": "Ignore maximum width",
   "prefs.editor.visualCjkAutoSpacing": "Automatically space CJK text and &Latin characters/numbers",
+  "prefs.editor.visualAdaptiveJustification": "Adaptive Justification",
   "prefs.editor.autoConvertUnsafeEmphasis": "Automatically convert asterisk markup",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "While typing source",
   "prefs.editor.autoConvertUnsafeEmphasis.normalize": "Automatically convert asterisk markup during normalization",

@@ -9,6 +9,9 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         target: nil,
         action: nil
     )
+    private let adaptiveJustificationCheck = NSButton(
+        checkboxWithTitle: L10n.t("自适应两端对齐"), target: nil, action: nil
+    )
     private var monitors: [BoundedTextFieldMonitor] = []
     private var editingOriginals: [NSTextField: String] = [:]
     private var keyMonitor: Any?
@@ -17,18 +20,21 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
     private(set) var fontSize: Int
     private(set) var maxContentWidth: Int
     private(set) var visualCjkAutoSpacing: Bool
+    private(set) var visualAdaptiveJustification: Bool
     private(set) var accepted = false
 
     init(
         lineHeight: Double,
         fontSize: Int,
         maxContentWidth: Int,
-        visualCjkAutoSpacing: Bool
+        visualCjkAutoSpacing: Bool,
+        visualAdaptiveJustification: Bool
     ) {
         self.lineHeight = lineHeight
         self.fontSize = fontSize
         self.maxContentWidth = maxContentWidth
         self.visualCjkAutoSpacing = visualCjkAutoSpacing
+        self.visualAdaptiveJustification = visualAdaptiveJustification
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 220),
             styleMask: [.titled, .closable],
@@ -44,6 +50,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         fontSizeField.stringValue = "\(fontSize)"
         maxWidthField.stringValue = "\(maxContentWidth)"
         autoSpacingCheck.state = visualCjkAutoSpacing ? .on : .off
+        adaptiveJustificationCheck.state = visualAdaptiveJustification ? .on : .off
         for field in [lineHeightField, fontSizeField, maxWidthField] {
             field.bezelStyle = .roundedBezel
             field.alignment = .center
@@ -106,11 +113,17 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         autoSpacingRow.translatesAutoresizingMaskIntoConstraints = false
         autoSpacingRow.widthAnchor.constraint(equalToConstant: groupWidth).isActive = true
 
+        let adaptiveJustificationRow = NSStackView(views: [adaptiveJustificationCheck])
+        adaptiveJustificationRow.orientation = .horizontal
+        adaptiveJustificationRow.translatesAutoresizingMaskIntoConstraints = false
+        adaptiveJustificationRow.widthAnchor.constraint(equalToConstant: groupWidth).isActive = true
+
         let form = NSStackView(views: [
             lineHeightRow,
             fontSizeRow,
             maxWidthRow,
             autoSpacingRow,
+            adaptiveJustificationRow,
         ])
         form.orientation = .vertical
         form.alignment = .leading
@@ -244,6 +257,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         self.fontSize = fontSize
         self.maxContentWidth = maxContentWidth
         self.visualCjkAutoSpacing = autoSpacingCheck.state == .on
+        self.visualAdaptiveJustification = adaptiveJustificationCheck.state == .on
         accepted = true
         NSApp.stopModal()
     }

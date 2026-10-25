@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "最大宽度(&W)",
   "prefs.editor.visualIgnoreMaxWidth": "无视最大宽度限制",
   "prefs.editor.visualCjkAutoSpacing": "自动调整中文与西文、数字间距(&A)",
+  "prefs.editor.visualAdaptiveJustification": "自适应两端对齐",
   "prefs.editor.autoConvertUnsafeEmphasis": "自动转换星号标记",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "键入源码时",
   "prefs.editor.autoConvertUnsafeEmphasis.normalize": "自动转换不被解释的星号标记",

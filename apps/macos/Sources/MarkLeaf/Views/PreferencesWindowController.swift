@@ -834,7 +834,8 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             lineHeight: settings.visualLineHeight,
             fontSize: settings.visualFontSize,
             maxContentWidth: settings.visualMaxContentWidth,
-            visualCjkAutoSpacing: settings.visualCjkAutoSpacing
+            visualCjkAutoSpacing: settings.visualCjkAutoSpacing,
+            visualAdaptiveJustification: settings.visualAdaptiveJustification
         )
         guard dialog.runModal() else { return }
         SettingsService.shared.update { settings in
@@ -842,6 +843,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             settings.visualFontSize = dialog.fontSize
             settings.visualMaxContentWidth = dialog.maxContentWidth
             settings.visualCjkAutoSpacing = dialog.visualCjkAutoSpacing
+            settings.visualAdaptiveJustification = dialog.visualAdaptiveJustification
         }
         AppWindowManager.shared.applyPreferencesToAll()
     }

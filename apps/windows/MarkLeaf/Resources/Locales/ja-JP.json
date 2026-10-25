@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "最大幅(&W)",
   "prefs.editor.visualIgnoreMaxWidth": "最大幅の制限を無視",
   "prefs.editor.visualCjkAutoSpacing": "CJK文字と欧文・数字の間隔を自動調整(&A)",
+  "prefs.editor.visualAdaptiveJustification": "適応的な両端揃え",
   "prefs.editor.autoConvertUnsafeEmphasis": "アスタリスク記法を自動変換",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "ソース入力時",
   "prefs.editor.autoConvertUnsafeEmphasis.normalize": "正規化時にアスタリスク記法を自動変換",

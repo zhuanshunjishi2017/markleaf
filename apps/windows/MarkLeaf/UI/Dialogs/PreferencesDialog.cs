@@ -59,6 +59,7 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
     private readonly CheckBox _visualCjkAutoSpacingCheck;
+    private readonly CheckBox _visualAdaptiveJustificationCheck;
     private readonly CheckBox _visualIgnoreMaxWidthCheck;
     private readonly CheckBox _autoConvertUnsafeEmphasisOnNormalizeCheck;
     private readonly CheckBox _escapeLiteralSymbolsCheck;
@@ -268,6 +269,8 @@ internal sealed class PreferencesDialog : Form
         { Minimum = 600, Maximum = 1200, Increment = 20 };
         _visualCjkAutoSpacingCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _visualAdaptiveJustificationCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.visualAdaptiveJustification"), AutoSize = true, FlatStyle = FlatStyle.System };
         _visualIgnoreMaxWidthCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualIgnoreMaxWidth"), AutoSize = true, FlatStyle = FlatStyle.System };
         _autoConvertUnsafeEmphasisOnNormalizeCheck = new CheckBox
@@ -724,10 +727,13 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(_visualCjkAutoSpacingCheck, 0, 8);
         panel.SetColumnSpan(_visualCjkAutoSpacingCheck, 2);
         panel.Controls.Add(Gap(), 0, 9);
-        panel.Controls.Add(_visualIgnoreMaxWidthCheck, 0, 10);
-        panel.SetColumnSpan(_visualIgnoreMaxWidthCheck, 2);
+        panel.Controls.Add(_visualAdaptiveJustificationCheck, 0, 10);
+        panel.SetColumnSpan(_visualAdaptiveJustificationCheck, 2);
         panel.Controls.Add(Gap(), 0, 11);
-        panel.Controls.Add(_showCodeHighlightCheck, 0, 12);
+        panel.Controls.Add(_visualIgnoreMaxWidthCheck, 0, 12);
+        panel.SetColumnSpan(_visualIgnoreMaxWidthCheck, 2);
+        panel.Controls.Add(Gap(), 0, 13);
+        panel.Controls.Add(_showCodeHighlightCheck, 0, 14);
         panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
         return panel;
@@ -1308,6 +1314,7 @@ internal sealed class PreferencesDialog : Form
         _westernFontTextBox.Text = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
+        _visualAdaptiveJustificationCheck.Checked = editor.VisualAdaptiveJustification;
         _visualIgnoreMaxWidthCheck.Checked = editor.VisualIgnoreMaxContentWidth;
         _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked = editor.AutoConvertUnsafeEmphasis;
         _escapeLiteralSymbolsCheck.Checked = editor.EscapeLiteralSymbols;
@@ -1466,6 +1473,7 @@ internal sealed class PreferencesDialog : Form
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
+        editor.VisualAdaptiveJustification = _visualAdaptiveJustificationCheck.Checked;
         editor.VisualIgnoreMaxContentWidth = _visualIgnoreMaxWidthCheck.Checked;
         editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked;
         editor.EscapeLiteralSymbols = _escapeLiteralSymbolsCheck.Checked;
