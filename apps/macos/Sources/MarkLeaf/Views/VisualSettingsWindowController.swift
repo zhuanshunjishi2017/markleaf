@@ -115,6 +115,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
 
         let adaptiveJustificationRow = NSStackView(views: [adaptiveJustificationCheck])
         adaptiveJustificationRow.orientation = .horizontal
+        adaptiveJustificationRow.alignment = .centerX
         adaptiveJustificationRow.translatesAutoresizingMaskIntoConstraints = false
         adaptiveJustificationRow.widthAnchor.constraint(equalToConstant: groupWidth).isActive = true
 
@@ -122,8 +123,8 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
             lineHeightRow,
             fontSizeRow,
             maxWidthRow,
-            autoSpacingRow,
             adaptiveJustificationRow,
+            autoSpacingRow,
         ])
         form.orientation = .vertical
         form.alignment = .leading
