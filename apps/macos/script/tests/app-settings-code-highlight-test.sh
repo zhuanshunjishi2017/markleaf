@@ -12,6 +12,7 @@ swiftc -sdk "$SDK_PATH" -module-cache-path "$BUILD_DIR/module-cache" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/ThemeIDNormalizer.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/PDFHeaderFooterPolicy.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/PersistedExportSettings.swift" \
+  "$ROOT_DIR/Sources/MarkLeaf/Services/SQLFormatterDialect.swift" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/AppSettings.swift" \
   "$BUILD_DIR/main.swift" \
   -o "$BUILD_DIR/code-highlight-settings-test"
