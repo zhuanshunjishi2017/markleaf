@@ -39,7 +39,7 @@ async function loadLink(hostPlatform?: 'macOS'): Promise<{
   messages: EditorMessage[]
 }> {
   document.body.innerHTML = shell
-  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
+  Object.defineProperty(document, 'fonts', { configurable: true, value: Object.assign(new EventTarget(), { ready: Promise.resolve(), status: 'loaded' }) })
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addEventListener() {},

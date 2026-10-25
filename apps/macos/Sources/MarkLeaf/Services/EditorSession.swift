@@ -609,6 +609,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             pendingExport = false
             handleExportedContent(html)
 
+        case "typographyTrace", "typographyProjectionChanged":
+            if ProcessInfo.processInfo.environment["MARKLEAF_TYPOGRAPHY_TRACE"] == "1",
+               let payload, let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+               let detail = String(data: data, encoding: .utf8) {
+                AppLog.info("TypographyTrace \(type): \(detail)")
+            }
+
         case "error":
             let detail = payload?["message"] as? String ?? L10n.t("未知错误")
             AppLog.warning("编辑器前端错误: \(detail)")

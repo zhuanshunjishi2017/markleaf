@@ -17,6 +17,20 @@ export { selectEditorContextAt } from './document-pointer'
 export * from './outline'
 export * from './reading-behavior'
 export * from './typography'
+// Typography projection is part of the renderer contract consumed by the
+// native EditorWeb entrypoint. Keep these modules in the packaged renderer
+// bundle as well as the source-only public index; otherwise the webview's
+// static import fails before it can send the initial `ready` message.
+export * from './typography/projection'
+export * from './typography/projection-snapshot'
+export { planMeasuredParagraph, buildGapSlots, candidateGapSlots } from '@markleaf/typography'
+export { createMeasuredPlanningTask, createLayoutWork, typographyWorkLimits, prepareGapSlots } from '@markleaf/typography'
+export type { LayoutWork, LayoutCheckpoint, LayoutBudgetReason, MeasuredPlanningTask, DiagnosticReason } from '@markleaf/typography'
+export { getSupportedTypographyEdges } from './typography/projection-dom'
+export type { MeasuredPlan, MeasuredLine, LineMeasurement, LineRequest, GapSlot, GapAllocation, ParagraphSnapshot } from '@markleaf/typography'
+export * from './typography/projection-command'
+export * from './typography/projection-measure'
+export * from './typography/projection-correction'
 export * from './image-resources'
 export * from './dom-selection-sync'
 export * from './native-selection'

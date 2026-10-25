@@ -1,0 +1,8 @@
+{
+  "paragraphs": [
+    "这是一段用于检查中文与英文混排时的全局断行效果。MarkLeaf 正在尝试处理整段最优断行，而不是只把字符填满一行。观察这里的中英边界、标点、数字与英文单词能否保持自然间距。The quick brown fox jumps over the lazy dog.",
+    "中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文。",
+    "Typography projection preserves kerning in AV and ffi, along with session_guard.py and 12345.67. 中文 English 中文 English。",
+    "标点：（中文）、「引号」、《书名》……下一句——再检查。连续  空格和不换行 空格保持源文本。"
+  ]
+}

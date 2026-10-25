@@ -16,7 +16,7 @@ async function createHarness(hostPlatform?: 'macOS' | 'Windows', markdown = 'sou
   send: (message: unknown) => void
   messages: unknown[]
 }> {
-  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
+  Object.defineProperty(document, 'fonts', { configurable: true, value: Object.assign(new EventTarget(), { ready: Promise.resolve(), status: 'loaded' }) })
   document.body.innerHTML = '<div id="app"><div id="editor"></div><div id="source-editor" hidden></div><button id="source-toggle" hidden></button></div>'
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
 

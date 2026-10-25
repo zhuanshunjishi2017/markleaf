@@ -7,4 +7,4 @@ cp "$ROOT_DIR/script/tests/EditorWebRuntimeTest.swift" "$BUILD_DIR/main.swift"
 swiftc -module-cache-path "$BUILD_DIR/module-cache" \
   "$ROOT_DIR/Sources/MarkLeaf/Services/EditorSchemeHandler.swift" \
   "$BUILD_DIR/main.swift" -o "$BUILD_DIR/test"
-"$BUILD_DIR/test" "${1:-$ROOT_DIR/Resources/EditorWeb}"
+"$BUILD_DIR/test" "${1:-$ROOT_DIR/Resources/EditorWeb}" "${@:2}"

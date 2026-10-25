@@ -1190,6 +1190,23 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
 
 /* Typography Phase 1A: explicit LayoutPlan projection. Disabled by default;
    class is added only through the explicit setTypographyProjection command. */
+.markleaf-typography-v2 {
+  white-space: pre;
+  text-align: left;
+  text-autospace: no-autospace;
+}
+.markleaf-typography-v2 .markleaf-cjk-autospace-widget { display: none !important; }
+.markleaf-typography-quality-fallback {
+  text-align: left;
+  text-align-last: auto;
+  text-autospace: no-autospace;
+}
+/* A fallback gap stays on the preceding token, so wrapping cannot carry it
+   into the next line. Whole Latin tokens retain their kerning and ligatures. */
+.markleaf-cjk-autospace #editor .markleaf-cjk-autospace-trailing-space {
+  padding-inline-end: 0.125em;
+}
+
 .markleaf-typography-native {
   text-align: justify !important;
   text-align-last: auto !important;

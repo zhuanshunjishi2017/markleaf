@@ -5,6 +5,9 @@ import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { LayoutPlan, ScriptClass, TextMetrics } from '@markleaf/typography'
 import { layoutParagraph, splitGraphemes } from '@markleaf/typography'
+import type { MeasuredPlan } from '@markleaf/typography'
+import type { SnapshotResult } from './projection-snapshot'
+import { projectedPlanDecorations } from './projection-plans'
 
 export type TypographyProjectionStatus =
   | 'disabled'
@@ -18,6 +21,13 @@ export type TypographyProjectionDiagnostics = {
   plannedParagraphs: number
   fallbackParagraphs: number
   lineBreaks: number
+  reasons?: Record<string, number>
+  measuredLines?: number
+  elapsedMs?: number
+  work?: { activeMs: number; waitingMs: number; edgeChecks: number; uniqueMeasurements: number; cacheHits: number
+    maxSliceMs: number; maxOperationMs: number; revisions: number; budgetReasons: Record<string, number> }
+  paragraphs?: readonly { id: string; status: 'planned' | 'fallback'; reason?: string
+    work: { activeMs: number; edgeChecks: number; uniqueMeasurements: number } }[]
 }
 
 export type TypographyMeasurement = (
@@ -47,6 +57,8 @@ type ProjectionMeta = {
 }
 
 type ProjectionState = {
+  revision: number
+  snapshots?: readonly SnapshotResult[]
   enabled: boolean
   options?: TypographyProjectionOptions
   diagnostics: TypographyProjectionDiagnostics
@@ -57,6 +69,7 @@ type ProjectionState = {
 export const typographyProjectionKey = new PluginKey<ProjectionState>('markleaf-typography-projection')
 
 const disabledState = (): ProjectionState => ({
+  revision: 0,
   enabled: false,
   diagnostics: {
     status: 'disabled',
@@ -77,16 +90,23 @@ export const TypographyProjection = Extension.create({
       state: {
         init: disabledState,
         apply: (transaction, previous) => {
+          const revision = previous.revision + (transaction.docChanged ? 1 : 0)
+          const managed = transaction.getMeta('typography-managed') as { enabled: boolean; snapshots: readonly SnapshotResult[]; plans: readonly MeasuredPlan[] } | undefined
+          if (managed) return managed.enabled
+            ? { enabled: true, revision, snapshots: managed.snapshots, ...projectedPlanDecorations(transaction.doc, managed.snapshots, managed.plans) }
+            : { ...disabledState(), revision }
+          if (previous.snapshots) return { ...previous, revision, decorations: previous.decorations.map(transaction.mapping, transaction.doc) }
           const meta = transaction.getMeta(typographyProjectionKey) as ProjectionMeta | undefined
           if (meta) {
-            return projectionStateFor(transaction.doc, meta.enabled, meta.options)
+            return { ...projectionStateFor(transaction.doc, meta.enabled, meta.options), revision }
           }
-          if (!previous.enabled || !previous.options) return previous
+          if (!previous.enabled || !previous.options) return { ...previous, revision }
           if (transaction.docChanged) {
-            return projectionStateFor(transaction.doc, true, previous.options)
+            return { ...projectionStateFor(transaction.doc, true, previous.options), revision }
           }
           return {
             ...previous,
+            revision,
             decorations: previous.decorations.map(transaction.mapping, transaction.doc),
           }
         },
@@ -339,6 +359,7 @@ function projectionStateFor(
     : fallback === 0 ? 'planned' : 'partial'
 
   return {
+    revision: 0,
     enabled: true,
     options,
     diagnostics: {
@@ -356,6 +377,15 @@ function projectionStateFor(
 export function typographyPlannedParagraphRanges(state: unknown): Array<{ from: number; to: number }> {
   const projectionState = typographyProjectionKey.getState(state as never)
   return projectionState?.enabled ? projectionState.plannedRanges : []
+}
+
+/** Segment-local ranges whose default-aligned paragraph retained native wrapping. */
+export function typographyFallbackParagraphRanges(state: unknown): Array<{ from: number; to: number }> {
+  const projection = typographyProjectionKey.getState(state as never)
+  if (!projection?.enabled || !projection.snapshots) return []
+  return projection.snapshots.flatMap(entry => entry.eligible && entry.snapshot.revision === projection.revision && entry.snapshot.alignment === 'default'
+    && !projection.plannedRanges.some(r => r.from === entry.snapshot.segmentFrom && r.to === entry.snapshot.segmentTo)
+    ? [{ from: entry.snapshot.segmentFrom, to: entry.snapshot.segmentTo }] : [])
 }
 
 export function shouldApplyTypographyProjection(input: {
@@ -379,4 +409,26 @@ export function setTypographyProjectionEnabled(
   editor.view.dispatch(editor.state.tr
     .setMeta(typographyProjectionKey, { enabled, options })
     .setMeta('addToHistory', false))
+}
+
+export function getTypographyProjectionRevision(editor: Editor): number {
+  return typographyProjectionKey.getState(editor.state)?.revision ?? 0
+}
+
+export function registerTypographySnapshots(editor: Editor, enabled: boolean, snapshots: readonly SnapshotResult[], plans: readonly MeasuredPlan[] = []): boolean {
+  const revision = getTypographyProjectionRevision(editor)
+  if (plans.some(p => !enabled || !p.verified || p.revision !== revision
+    || !snapshots.some(e => e.eligible && e.snapshot.revision === revision && e.snapshot.id === p.snapshotId && e.snapshot.environmentKey === p.environmentKey))) return false
+  // Register the environment and its plan in one transaction. Clearing the
+  // displayed plan before asynchronous measurement exposes native wrapping.
+  editor.view.dispatch(editor.state.tr.setMeta('typography-managed', { enabled, snapshots, plans }).setMeta('addToHistory', false))
+  return true
+}
+
+export function applyTypographyPlan(editor: Editor, plans: readonly MeasuredPlan[], revision: number): boolean {
+  const state = typographyProjectionKey.getState(editor.state)
+  if (!state?.enabled || state.revision !== revision || !state.snapshots || plans.some(p => !p.verified || p.revision !== revision
+    || !state.snapshots!.some(e => e.eligible && e.snapshot.id === p.snapshotId && e.snapshot.environmentKey === p.environmentKey))) return false
+  editor.view.dispatch(editor.state.tr.setMeta('typography-managed', { enabled: true, snapshots: state.snapshots, plans }).setMeta('addToHistory', false))
+  return true
 }

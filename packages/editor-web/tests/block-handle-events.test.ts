@@ -34,7 +34,7 @@ afterEach(() => {
 
 it('immediately removes the rendered block handle when visibility is disabled', async () => {
   // jsdom has no CSS Font Loading API; native view restoration waits for it.
-  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
+  Object.defineProperty(document, 'fonts', { configurable: true, value: Object.assign(new EventTarget(), { ready: Promise.resolve(), status: 'loaded' }) })
   document.body.innerHTML = shell
   vi.stubGlobal('matchMedia', () => ({
     matches: false,

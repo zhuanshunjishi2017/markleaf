@@ -58,7 +58,7 @@ async function createHarness(markdown: string): Promise<{
   send: (message: HostMessage) => void
 }> {
   // jsdom has no CSS Font Loading API; native view restoration waits for it.
-  Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } })
+  Object.defineProperty(document, 'fonts', { configurable: true, value: Object.assign(new EventTarget(), { ready: Promise.resolve(), status: 'loaded' }) })
   document.body.innerHTML = shell
   vi.stubGlobal('matchMedia', () => ({
     matches: false,

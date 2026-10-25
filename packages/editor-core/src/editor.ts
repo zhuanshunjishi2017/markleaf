@@ -44,7 +44,7 @@ import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMar
 import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
-import { TypographyProjection, typographyPlannedParagraphRanges } from './typography/projection'
+import { TypographyProjection, typographyPlannedParagraphRanges, typographyFallbackParagraphRanges } from './typography/projection'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -158,8 +158,9 @@ function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
 
 function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
   const decorations: Decoration[] = []
-  const plannedRanges = typographyPlannedParagraphRanges(state)
-  const isPlannedParagraph = (position: number) => plannedRanges.some(
+  const fallbackRanges = typographyFallbackParagraphRanges(state)
+  const managedRanges = [...typographyPlannedParagraphRanges(state), ...fallbackRanges]
+  const hasManagedSpacing = (position: number) => managedRanges.some(
     range => position >= range.from && position <= range.to,
   )
   const isCjk = (character: string): boolean => /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
@@ -173,7 +174,7 @@ function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
       for (let index = 1; index < text.length; index += 1) {
         const previous = text[index - 1]!
         const current = text[index]!
-        if (isPlannedParagraph(position + index)
+        if (hasManagedSpacing(position + index)
           || !((isCjk(previous) && isLatinOrNumber(current))
           || (isLatinOrNumber(previous) && isCjk(current)))) continue
         // A zero-width widget inserts a real node into the text flow. WebKit
@@ -196,6 +197,23 @@ function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
   }
 
   visit(state.doc, 0, false, true)
+  for (const range of fallbackRanges) {
+    const text = state.doc.textBetween(range.from, range.to, '', '') as string
+    // Own a boundary gap on the preceding CJK character or complete Latin
+    // token. It cannot indent the next line, and a Latin word remains one
+    // shaping run. Native text-autospace cannot reliably cross inline spans
+    // in WKWebView, including otherwise unstyled decoration spans.
+    const boundaries = /\p{Script=Han}\p{M}*(?=[\p{Script=Latin}\p{N}])|[\p{Script=Latin}\p{M}\p{N}]+(?:['’_.:/-][\p{Script=Latin}\p{M}\p{N}]+)*(?=\p{Script=Han})/gu
+    for (const match of text.matchAll(boundaries)) {
+      const to = range.from + match.index + match[0].length
+      const preceding = state.doc.resolve(to).nodeBefore
+      // A decoration crossing marks renders as multiple spans. Own only the
+      // final existing text run, so its padding is applied exactly once.
+      const from = Math.max(range.from + match.index, to - (preceding?.isText ? preceding.nodeSize : match[0].length))
+      decorations.push(Decoration.inline(from, to,
+        { class: 'markleaf-cjk-autospace-trailing-space' }))
+    }
+  }
   return DecorationSet.create(state.doc, decorations)
 }
 

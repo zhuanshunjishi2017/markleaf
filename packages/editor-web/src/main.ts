@@ -1,6 +1,7 @@
 import '@markleaf/editor-core/styles.css'
 import { resolveNativeCapabilities, nativeImageResources } from './native-capabilities'
 import { handleMermaidImageExport } from './media-export-host'
+import { createTypographyCoordinator, type TypographyCoordinator } from './typography-coordinator'
 import {
   Selection,
   createEditorInteractions,
@@ -21,14 +22,10 @@ import {
   findFootnoteDefinitionBody,
   getEditorCommandPresentation,
   getEditorStatus,
-  createDomTypographyMeasurement,
-  calculateTypographySpacingCorrection,
-  getTypographyProjectionDiagnostics,
+  createTypographyMeasurementService,
   parseTypographyProjectionCommand,
-  shouldApplyTypographyProjection,
   selectEditorContextAt,
   setEditorFocusMode,
-  setTypographyProjectionEnabled,
   getMarkdown,
   setAutoConvertUnsafeEmphasis,
   setMarkdownEditingSettings,
@@ -128,13 +125,6 @@ let editorFocusMode = false
 let editorTypewriterMode = false
 let autoConvertUnsafeEmphasis = true
 let typographyProjectionPreferred = false
-let typographyProjectionWidth = -1
-let typographyProjectionAppliedEditor: object | null = null
-let typographyProjectionAppliedEnabled = false
-let typographyResizeTimer = 0
-let typographyCorrectionGeneration = 0
-let typographyCorrectionStyleElement: HTMLStyleElement | null = null
-const typographySpacingCorrections = new Map<string, { property: string; spacing: number }>()
 
 setImageResourceResolver(nativeImageResources)
 setExternalCodeFormatter({
@@ -217,202 +207,35 @@ document.addEventListener('mousedown', (event) => {
 let lastVisualSelection = captureVisualSelection(editor)
 const readingBehavior = createReadingBehavior(() => editor)
 const scrollEditorCursorToCenter = readingBehavior.cursorMoved
-const typographyMeasurement = createDomTypographyMeasurement(
-  () => document.querySelector<HTMLElement>('.markleaf-document') ?? editorMount,
-)
+let typographyController: TypographyCoordinator | null = null
+let typographyControllerEditor: typeof editor | null = null
 
 function typographyProjectionAllowed(): boolean {
   return !sourceMode && documentType === 'markdown'
 }
 
-function typographyContentWidth(content: HTMLElement): number {
-  const style = window.getComputedStyle(content)
-  const horizontalPadding = Number.parseFloat(style.paddingLeft)
-    + Number.parseFloat(style.paddingRight)
-  const width = content.clientWidth - (Number.isFinite(horizontalPadding) ? horizontalPadding : 0)
-  return width > 0 ? width : 0
-}
-
-function typographyContentLeft(content: HTMLElement): number {
-  const rect = content.getBoundingClientRect()
-  const style = window.getComputedStyle(content)
-  return rect.left
-    + (Number.parseFloat(style.borderLeftWidth) || 0)
-    + (Number.parseFloat(style.paddingLeft) || 0)
-}
-
 function updateTypographyProjection(): void {
-  const enabled = typographyProjectionPreferred && typographyProjectionAllowed()
-  const content = document.querySelector<HTMLElement>('.markleaf-document') ?? editorMount
-  const availableWidth = typographyContentWidth(content) || typographyContentWidth(editorMount)
-  if (!shouldApplyTypographyProjection({
-    previousEditor: typographyProjectionAppliedEditor,
-    nextEditor: editor,
-    previousEnabled: typographyProjectionAppliedEnabled,
-    nextEnabled: enabled,
-    previousWidth: typographyProjectionWidth,
-    nextWidth: availableWidth,
-  })) {
-    // Document replacement can rebuild projected decorations while reusing
-    // the same editor and width. The post-layout correction still has to run
-    // against the newly rendered line boxes.
-    if (enabled) {
-      convergeTypographyProjectionLines()
-      scheduleTypographyProjectionCorrection()
-    }
-    return
-  }
-  typographySpacingCorrections.clear()
-  typographyProjectionWidth = availableWidth
-  typographyProjectionAppliedEditor = editor
-  typographyProjectionAppliedEnabled = enabled
-  setTypographyProjectionEnabled(editor, enabled, {
-    availableWidth: typographyContentWidth(content) || typographyContentWidth(editorMount),
-    measure: typographyMeasurement,
-  })
-  convergeTypographyProjectionLines()
-  scheduleTypographyProjectionCorrection()
-  send('typographyProjectionChanged', getTypographyProjectionDiagnostics(editor))
-}
-
-function correctTypographyProjectionLines(): void {
-  const content = document.querySelector<HTMLElement>('.markleaf-document')
-  if (!content || typographyContentWidth(content) <= 0) return
-  const contentRect = content.getBoundingClientRect()
-  const targetWidth = typographyContentWidth(content)
-  const targetRight = typographyContentLeft(content) + targetWidth
-  const correctionRules: string[] = []
-  const activeLineIds = new Set<string>()
-
-  for (const line of content.querySelectorAll<HTMLElement>(
-    '[data-markleaf-typography-line="true"]:not(.markleaf-typography-line-tail)',
-  )) {
-    const rect = line.getBoundingClientRect()
-    const overhang = rect.right - targetRight
-    const lineId = line.dataset.markleafTypographyLineId
-    if (lineId) activeLineIds.add(lineId)
-    if (Math.abs(overhang) <= 0.2) continue
-
-    const characterSpacing = Number.parseFloat(
-      line.style.getPropertyValue('--ml-typography-character-spacing'),
-    )
-    const wordSpacing = Number.parseFloat(
-      line.style.getPropertyValue('--ml-typography-word-spacing'),
-    )
-    const hasCharacterSpacing = Number.isFinite(characterSpacing) && characterSpacing !== 0
-    const hasWordSpacing = Number.isFinite(wordSpacing) && wordSpacing !== 0
-    const datasetMode = line.dataset.markleafTypographyAdjustmentMode
-    const mode: 'character' | 'word' = datasetMode === 'word' || datasetMode === 'character'
-      ? datasetMode
-      : hasCharacterSpacing
-        ? 'character'
-        : hasWordSpacing
-          ? 'word'
-          : line.textContent?.includes(' ') ? 'word' : 'character'
-    const text = line.textContent ?? ''
-    const plannedGapCount = Number.parseInt(
-      line.dataset.markleafTypographyGapCount ?? '',
-      10,
-    )
-    const gapCount = Number.isFinite(plannedGapCount) && plannedGapCount > 0
-      ? plannedGapCount
-      : mode === 'character'
-        ? Math.max(1, Array.from(text).length - 1)
-        : Math.max(1, text.match(/ +/g)?.length ?? 1)
-    const currentSpacing = mode === 'character'
-      ? Number.parseFloat(window.getComputedStyle(line).letterSpacing) || 0
-      : Number.parseFloat(window.getComputedStyle(line).wordSpacing) || 0
-    const correction = calculateTypographySpacingCorrection({
-      mode,
-      currentSpacing,
-      currentWidth: rect.width,
-      targetWidth,
-      gapCount,
+  if (!typographyController || typographyControllerEditor !== editor) {
+    typographyController?.dispose()
+    typographyControllerEditor = editor
+    typographyController = createTypographyCoordinator({
+      editor,
+      measurement: createTypographyMeasurementService(document),
+      clock: () => performance.now(),
+      requestFrame: callback => window.requestAnimationFrame(callback),
+      cancelFrame: id => window.cancelAnimationFrame(id),
+      onDiagnostics: diagnostics => send('typographyProjectionChanged', diagnostics),
+      onTrace: window.__markleafTypographyTrace === true ? trace => send('typographyTrace', trace) : undefined,
     })
-    if (!correction) continue
-    if (!lineId) continue
-    const property = mode === 'character' ? 'letter-spacing' : 'word-spacing'
-    typographySpacingCorrections.set(lineId, { property, spacing: correction.spacing })
   }
-
-  for (const lineId of [...typographySpacingCorrections.keys()]) {
-    if (!activeLineIds.has(lineId)) typographySpacingCorrections.delete(lineId)
-  }
-  for (const [lineId, correction] of typographySpacingCorrections) {
-    correctionRules.push(
-      `.markleaf-typography-line-words[data-markleaf-typography-line-id="${CSS.escape(lineId)}"] {`
-      + ` ${correction.property}: ${correction.spacing}px !important; }`,
-    )
-  }
-
-  if (!typographyCorrectionStyleElement) {
-    typographyCorrectionStyleElement = document.createElement('style')
-    typographyCorrectionStyleElement.id = 'markleaf-typography-line-corrections'
-    document.head.append(typographyCorrectionStyleElement)
-  }
-  typographyCorrectionStyleElement.textContent = correctionRules.join('\n')
-}
-
-function scheduleTypographyProjectionCorrection(): void {
-  const generation = ++typographyCorrectionGeneration
-  const run = () => {
-    if (generation === typographyCorrectionGeneration) convergeTypographyProjectionLines()
-  }
-  window.requestAnimationFrame(() => {
-    run()
-    window.requestAnimationFrame(run)
-  })
-  if (document.fonts) void document.fonts.ready.then(() => window.requestAnimationFrame(run))
-}
-
-function convergeTypographyProjectionLines(): void {
-  // Changing the correction stylesheet can expose another line whose planned
-  // width differs from WebKit shaping. Converge before the browser paints.
-  for (let pass = 0; pass < 4; pass += 1) {
-    const before = typographyCorrectionStyleElement?.textContent ?? ''
-    correctTypographyProjectionLines()
-    if ((typographyCorrectionStyleElement?.textContent ?? '') === before) break
-  }
+  typographyController.setEnabled(typographyProjectionPreferred && typographyProjectionAllowed())
+  typographyController.invalidate('mode')
 }
 
 function scheduleTypographyProjectionUpdate(): void {
-  if (typographyResizeTimer) return
-  const firstFrame = window.requestAnimationFrame(() => {
-    typographyResizeTimer = window.requestAnimationFrame(() => {
-      typographyResizeTimer = 0
-      updateTypographyProjection()
-    })
-  })
-  typographyResizeTimer = firstFrame
+  typographyController?.invalidate('style')
 }
-
-const typographyResizeObserver = new ResizeObserver(() => {
-  scheduleTypographyProjectionUpdate()
-})
-typographyResizeObserver.observe(editorMount)
-window.addEventListener('resize', scheduleTypographyProjectionUpdate)
-const typographyProjectionMutationObserver = new MutationObserver((mutations) => {
-  const touchesProjectedLines = mutations.some(mutation => {
-    if (mutation.type !== 'childList') return false
-    return [...mutation.addedNodes, ...mutation.removedNodes].some(node => {
-      if (node.nodeType !== Node.ELEMENT_NODE) return false
-      const element = node as Element
-      return element.matches('[data-markleaf-typography-line-id], .markleaf-typography-planned')
-        || element.querySelector('[data-markleaf-typography-line-id], .markleaf-typography-planned') !== null
-    })
-  })
-  if (touchesProjectedLines) {
-    // Projected decorations can enter the DOM between animation frames. Run
-    // the correction synchronously so WebKit never paints an uncorrected line,
-    // then keep the regular frame/font checks for later layout changes.
-    correctTypographyProjectionLines()
-    scheduleTypographyProjectionCorrection()
-  }
-})
-// Observe the body because document replacement can install a new document
-// element after this module initializes. Child-list changes tell us when a
-// fresh set of projected line decorations has entered the DOM.
-typographyProjectionMutationObserver.observe(document.body, { childList: true, subtree: true })
+window.addEventListener('beforeunload', () => typographyController?.dispose())
 function updateEditorTypewriterMode(scrollToCursor = true): void {
   readingBehavior.setTypewriter(editorTypewriterMode && !sourceMode, scrollToCursor)
 }
@@ -632,7 +455,6 @@ window.__markleafApplyVisualVariables = (payload) => {
   // Zoom changes glyph metrics without changing the editor mount's box width.
   // Invalidate the projection explicitly so nowrap line decorations are rebuilt
   // against the new font size before they can overflow the viewport.
-  typographyProjectionWidth = -1
   scheduleTypographyProjectionUpdate()
 }
 
@@ -892,7 +714,7 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     // projection refresh. Re-run the post-layout pass once this view update
     // has actually painted.
     if (typographyProjectionPreferred && typographyProjectionAllowed()) {
-      scheduleTypographyProjectionCorrection()
+      typographyController?.invalidate('document')
     }
     if (suppressUpdate || compositionActive) {
       if (compositionActive) {

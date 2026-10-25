@@ -43,6 +43,7 @@ export type EditorMessage = {
     | 'zoomWheel'
     | 'unsafeEmphasisRequested'
     | 'typographyProjectionChanged'
+    | 'typographyTrace'
     | 'footnoteDefinitionMissing'
     | 'footnoteReferenceMissing'
     | 'codeFormatRequested'
@@ -56,6 +57,8 @@ export type EditorMessage = {
 
 declare global {
   interface Window {
+    /** Opt-in developer diagnostics, set before editor initialization. */
+    __markleafTypographyTrace?: boolean
     chrome?: {
       webview?: {
         hostPlatform?: 'macOS' | 'Windows'
