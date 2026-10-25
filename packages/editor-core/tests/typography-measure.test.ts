@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createEditor } from '../src/index'
+import { extractProjectionSnapshots } from '../src/typography/projection-snapshot'
 import { createTypographyMeasurementService } from '../src/typography/projection-measure'
-import { buildTypographyInlineDom } from '../src/typography/projection-dom'
+import { buildTypographyInlineDom, typographyInlinePieces } from '../src/typography/projection-dom'
 import { candidateGapSlots, type ParagraphSnapshot } from '@markleaf/typography'
 
 export const sample: ParagraphSnapshot = {
@@ -21,6 +23,32 @@ describe('batch typography measurement', () => {
     expect(reads).toHaveBeenCalledTimes(1)
     expect(batches).toEqual([{ requested: 2, cacheHits: 1, domMeasured: 1 }, { requested: 1, cacheHits: 1, domMeasured: 0 }])
     service.dispose()
+  })
+  it('reusesNaturalMeasurementsAfterResizingButInvalidatesChangedShaping', () => {
+    let reads = 0
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.parentElement?.hasAttribute('data-typography-measure')) reads++
+      return { width: 80 } as DOMRect
+    })
+    const mount = document.createElement('div'); document.body.append(mount)
+    const editor = createEditor(mount, '中 English', false), service = createTypographyMeasurementService(document)
+    try {
+      const p = editor.view.dom.querySelector('p')!
+      p.style.fontSize = '16px'
+      let width = 100
+      p.getBoundingClientRect = () => ({ width } as DOMRect)
+      const measure = (epoch = 0) => {
+        const entry = extractProjectionSnapshots(editor.view, 0, epoch)[0]!
+        if (!entry.eligible) throw Error('missing snapshot')
+        const s = entry.snapshot
+        service.measureBatch(s, [{ from: 0, to: s.text.length, contentTo: s.text.length, key: 'whole' }], candidateGapSlots(s, new Map([[1, 4]])))
+      }
+      measure(); expect(reads).toBe(1)
+      width = 90; measure(); expect(reads).toBe(1)
+      p.style.fontSize = '20px'; measure(); expect(reads).toBe(2)
+      measure(1); expect(reads).toBe(3)
+      editor.commands.setContent('中 Another'); measure(1); expect(reads).toBe(4)
+    } finally { service.dispose(); editor.destroy() }
   })
   it('neverSharesShapeWidthsAcrossDifferentBoundarySpacing', () => {
     const reads = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
@@ -46,20 +74,29 @@ describe('batch typography measurement', () => {
     expect(parent.innerHTML).toBe(expected.innerHTML)
     expect(parent.textContent).toBe('中')
     const whole = buildTypographyInlineDom(document, s, { from: 0, to: text.length, contentTo: text.length, key: 'whole' }, slots, [])
-    const owned = [...whole.childNodes].find(n => n.textContent === '中') as HTMLElement
+    const owned = [...whole.querySelectorAll('span')].find(n => n.textContent === '中') as HTMLElement
     expect(owned.style.getPropertyValue('padding-inline-start')).toBe('2px')
     expect(owned.style.getPropertyValue('padding-inline-end')).toBe('2px')
   })
 
-  it('reusesRunStyleTemplatesWithoutChangingPerBoundarySpacing', () => {
+  it('visitsBoundaryOwnersLinearlyWhenBuildingALongCjkLine', () => {
+    const text = '中'.repeat(129), s = { ...sample, text, runs: [{ ...sample.runs[0]!, to: text.length }] }
+    let ownerReads = 0
+    const slots = candidateGapSlots(s, new Map()).map(slot => ({ ...slot, get owner() { ownerReads++; return slot.owner } }))
+    const pieces = typographyInlinePieces(s, { from: 0, to: text.length, contentTo: text.length, key: 'long' }, slots, [])
+    expect(pieces).toHaveLength(129)
+    expect(pieces[0]!.ids).toEqual([])
+    expect(pieces.at(-1)!.ids).toEqual(['cjk:128'])
+    expect(ownerReads).toBeLessThan(128 * 12)
+  })
+  it('sharesInheritedRunStylesWithoutChangingPerBoundarySpacing', () => {
     const css = { 'font-size': '16px', 'font-kerning': 'normal', 'font-feature-settings': 'normal' }
     const s = { ...sample, text: '中文中文', runs: [{ from: 0, to: 4, styleKey: 's', css }] }
-    const creates = vi.spyOn(document, 'createElement')
     const slots = [1, 2, 3].map(at => ({ id: `cjk:${at}`, at, kind: 'cjk' as const, owner: { from: at, to: at + 1 }, edge: 'start' as const, natural: 0, min: 0, max: 1.28, weight: 1, leftStyleKey: 's', rightStyleKey: 's' }))
     const dom = buildTypographyInlineDom(document, s, { from: 0, to: 4, contentTo: 4, key: 'one' }, slots, [])
     expect(dom.textContent).toBe('中文中文')
-    expect([...dom.childNodes].map(n => (n as HTMLElement).style.fontSize)).toEqual(['16px', '16px', '16px', '16px'])
-    expect(creates.mock.calls.filter(args => args[0] === 'span')).toHaveLength(1)
+    expect([...dom.querySelectorAll('span')].filter(el => el.style.fontSize).map(el => el.style.fontSize)).toEqual(['16px'])
+    expect([...dom.querySelectorAll('span')].filter(el => el.style.getPropertyValue('padding-inline-start') === '0px')).toHaveLength(3)
   })
   it('reportsCacheHitsAndDoesNotReuseAnotherEnvironment', () => {
     let reads = 0

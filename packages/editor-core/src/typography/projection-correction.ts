@@ -6,7 +6,7 @@ import type { ProjectionSnapshot } from './projection-snapshot'
 export function correctTypographyLine(line: MeasuredLine, measuredWidth: number):
   { status: 'accepted' } | { status: 'corrected'; gaps: MeasuredLine['gaps'] } | { status: 'replan' } {
   if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return { status: 'replan' }
-  if (line.breakReason === 'paragraph-end') return measuredWidth <= line.targetWidth + .5 ? { status: 'accepted' } : { status: 'replan' }
+  if (line.breakReason === 'paragraph-end' || line.breakReason === 'spacing-limit') return measuredWidth <= line.targetWidth + .5 ? { status: 'accepted' } : { status: 'replan' }
   const delta = line.targetWidth - measuredWidth
   if (Math.abs(delta) <= .5) return { status: 'accepted' }
   if (Math.abs(delta) > 1) return { status: 'replan' }

@@ -13,6 +13,12 @@ describe('bounded final correction', () => {
     expect(correctTypographyLine(line, 98.99)).toEqual({ status: 'replan' })
     expect(correctTypographyLine({ ...line, slots: [{ ...line.slots[0]!, max: 1.2 }] }, 99.25)).toEqual({ status: 'replan' })
   })
+  it('doesNotStretchALineKeptNaturalForReadability', () => {
+    const natural = { ...line, breakReason: 'spacing-limit' as MeasuredLine['breakReason'],
+      gaps: [{ slotId: 'a', width: 0, adjustment: 0 }] }
+    expect(correctTypographyLine(natural, 60)).toEqual({ status: 'accepted' })
+    expect(correctTypographyLine(natural, 100.6)).toEqual({ status: 'replan' })
+  })
   it('neverSpendsCapacityTwiceOrStretchesLastLine', () => {
     expect(correctTypographyLine({ ...line, gaps: [{ slotId: 'a', width: 1.75, adjustment: 1.75 }] }, 99.25)).toEqual({ status: 'replan' })
     expect(correctTypographyLine({ ...line, breakReason: 'paragraph-end' }, 50)).toEqual({ status: 'accepted' })

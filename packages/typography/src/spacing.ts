@@ -3,9 +3,9 @@ import { graphemeOffsets } from './opportunities'
 
 /** Conservative experimental rule set; changing it invalidates measured plans. */
 export const typographySpacingRules = Object.freeze({
-  version: 3,
-  wordSpace: Object.freeze({ minRatio: .8, maxRatio: 1.4, weight: 1 }),
-  cjk: Object.freeze({ naturalEm: 0, minEm: 0, maxEm: .08, weight: 1 }),
+  version: 7,
+  wordSpace: Object.freeze({ minRatio: .8, preferredMaxRatio: 1.4, maxReadableEm: 1, weight: 1 }),
+  cjk: Object.freeze({ naturalEm: 0, minEm: 0, preferredMaxEm: .08, maxEm: .16, weight: 1 }),
   mixed: Object.freeze({ naturalEm: .125, minEm: .08, preferredMaxEm: .2, maxEm: .6, weight: .5 }),
 })
 
@@ -21,7 +21,10 @@ export function* prepareGapSlots(snapshot: ParagraphSnapshot, spaceWidths: Reado
     if (text === ' ' && snapshot.text[from - 1] !== ' ' && snapshot.text[to] !== ' ') {
       const w = spaceWidths.get(from)
       const rule = typographySpacingRules.wordSpace
-      if (w !== undefined && w > 0 && Number.isFinite(w)) result.push({ id: `word-space:${from}`, at: from, kind: 'word-space', owner: { from, to }, edge: 'space', natural: w, min: rule.minRatio * w, max: rule.maxRatio * w, weight: rule.weight, leftStyleKey: leftRun?.styleKey ?? '', rightStyleKey: rightRun?.styleKey ?? '' })
+      // Ordinary word spaces are elastic glue. The available measure is a
+      // finite physical ceiling; a fixed stretch ratio must not reject a whole
+      // English paragraph. Preferred spacing and cost keep loose lines rare.
+      if (w !== undefined && w > 0 && Number.isFinite(w)) result.push({ id: `word-space:${from}`, at: from, kind: 'word-space', owner: { from, to }, edge: 'space', natural: w, min: rule.minRatio * w, preferredMax: rule.preferredMaxRatio * w, max: Math.max(rule.preferredMaxRatio * w, snapshot.width), weight: rule.weight, leftStyleKey: leftRun?.styleKey ?? '', rightStyleKey: rightRun?.styleKey ?? '' })
     }
     if (i === 0) continue
     const before = snapshot.text.slice(offsets[i - 1]!, from)
@@ -34,7 +37,7 @@ export function* prepareGapSlots(snapshot: ParagraphSnapshot, spaceWidths: Reado
     result.push({ id: `${kind}:${from}`, at: from, kind, owner, edge: han(text) ? 'start' : 'end',
       natural: suppressAutoGap ? 0 : rule.naturalEm * size, min: suppressAutoGap ? 0 : rule.minEm * size,
       max: rule.maxEm * size, weight: rule.weight,
-      ...(kind === 'mixed' ? { preferredMax: typographySpacingRules.mixed.preferredMaxEm * size } : {}),
+      preferredMax: rule.preferredMaxEm * size,
       leftStyleKey: leftRun?.styleKey ?? '', rightStyleKey: rightRun?.styleKey ?? '' })
   }
   return result
@@ -52,12 +55,12 @@ export function buildGapSlots(snapshot: ParagraphSnapshot, supportedEdges: Reado
 }
 
 /** Bounded weighted allocation for one tier. Zero-capacity resources never donate space. */
-function distribute(slots: readonly GapSlot[], capacities: readonly number[], required: number) {
+function distribute(slots: readonly GapSlot[], capacities: readonly number[], required: number, scales = capacities) {
   const amounts = slots.map(() => 0)
   let active = capacities.map((c, i) => c > 0 ? i : -1).filter(i => i >= 0)
   let remaining = required
   while (active.length && remaining > 1e-10) {
-    const weights = active.map(i => slots[i]!.weight * capacities[i]! ** 2)
+    const weights = active.map(i => slots[i]!.weight * scales[i]! ** 2)
     const sum = weights.reduce((a, b) => a + b, 0)
     const saturated = active.filter((i, n) => remaining * weights[n]! / sum >= capacities[i]!)
     if (!saturated.length) {
@@ -67,12 +70,12 @@ function distribute(slots: readonly GapSlot[], capacities: readonly number[], re
     for (const i of saturated) { amounts[i] = capacities[i]!; remaining -= capacities[i]! }
     active = active.filter(i => !saturated.includes(i))
   }
-  const cost = amounts.reduce((n, a, i) => n + (capacities[i]! > 0 ? a ** 2 / (slots[i]!.weight * capacities[i]! ** 2) : 0), 0)
+  const cost = amounts.reduce((n, a, i) => n + (scales[i]! > 0 ? a ** 2 / (slots[i]!.weight * scales[i]! ** 2) : 0), 0)
   return { amounts, cost }
 }
 
-/** Use normal spacing first; bounded mixed-script overflow keeps otherwise
- * unfillable lines aligned, at a higher paragraph-planning cost. */
+/** Use preferred spacing first, then elastic spaces / bounded CJK and mixed gaps.
+ * Charge word-space looseness relative to its natural width, not the measure. */
 export function allocateGaps(slots: readonly GapSlot[], delta: number): AllocationResult {
   if (!Number.isFinite(delta) || new Set(slots.map(s => s.id)).size !== slots.length || slots.some(s =>
     ![s.natural, s.min, s.max, s.weight].every(Number.isFinite) || s.min < 0 || s.min > s.natural || s.natural > s.max || s.weight <= 0
@@ -85,8 +88,12 @@ export function allocateGaps(slots: readonly GapSlot[], delta: number): Allocati
   const preferred = slots.map((s, i) => sign > 0 ? (s.preferredMax ?? s.max) - s.natural : capacities[i]!)
   const normalTotal = preferred.reduce((a, b) => a + b, 0)
   const normal = distribute(slots, preferred, Math.min(Math.abs(delta), normalTotal))
+  const extraCapacities = capacities.map((c, i) => c - preferred[i]!)
+  const extraScales = slots.map((s, i) => s.kind === 'word-space' && s.natural > 0 ? s.natural : extraCapacities[i]!)
+  // Allocation and cost must use the same scale. The physical space ceiling
+  // is not a flexibility weight: it would starve dozens of CJK/mixed gaps.
   const extra = Math.abs(delta) > normalTotal + 1e-9
-    ? distribute(slots, capacities.map((c, i) => c - preferred[i]!), Math.abs(delta) - normalTotal) : undefined
+    ? distribute(slots, extraCapacities, Math.abs(delta) - normalTotal, extraScales) : undefined
   const gaps = slots.map((s, i) => {
     const width = Math.max(s.min, Math.min(s.max, s.natural + sign * (normal.amounts[i]! + (extra?.amounts[i] ?? 0))))
     return { slotId: s.id, width, adjustment: width - s.natural }

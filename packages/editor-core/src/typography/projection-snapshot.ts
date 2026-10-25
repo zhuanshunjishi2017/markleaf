@@ -61,7 +61,7 @@ export function extractProjectionSnapshots(view: EditorView, revision: number, f
       const id = `${pos}:${segmentFrom}`
       const environmentKey = JSON.stringify([text, runs, width, language, fontEpoch, typographySpacingRules.version, view.dom.ownerDocument.defaultView!.devicePixelRatio, cjkAutoSpacing])
       const snapshot: ProjectionSnapshot = Object.freeze({
-        id, revision, environmentKey, text, width, language, direction: 'ltr', cjkAutoSpacing,
+        id, revision, environmentKey, measurementEnvironmentKey: JSON.stringify([language, fontEpoch, view.dom.ownerDocument.defaultView!.devicePixelRatio]), text, width, language, direction: 'ltr', cjkAutoSpacing,
         alignment: explicitAlign === 'justify' ? 'justify' : 'default',
         graphemeOffsets: Object.freeze([...graphemeOffsets(text)]), runs: Object.freeze(runs),
         nodeFrom: pos, nodeTo: pos + node.nodeSize, segmentFrom, segmentTo,

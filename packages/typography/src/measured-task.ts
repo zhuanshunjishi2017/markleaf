@@ -3,7 +3,7 @@ import type { PlanningResult } from './measured-plan'
 import { typographyLineKey } from './measured-plan'
 import { typographyWorkLimits, type LayoutCheckpoint } from './layout-work'
 import { prepareBreakOpportunities, graphemeOffsets, type BreakOpportunity } from './opportunities'
-import { allocateGaps } from './spacing'
+import { allocateGaps, typographySpacingRules } from './spacing'
 
 export type MeasuredPlanningInput = {
   snapshot: ParagraphSnapshot; slots: readonly GapSlot[]; measurements: ReadonlyMap<string, LineMeasurement>
@@ -167,9 +167,20 @@ export function createMeasuredPlanningTask(input: MeasuredPlanningInput): Measur
         if ((final || input.mode === 'natural') && delta < -.5) { dispute(); continue }
         const allocation = allocateGaps(selected, final || input.mode === 'natural' || Math.abs(delta) <= .5 ? 0 : delta)
         if (!allocation.feasible) { missedCapacity = true; dispute(); continue }
+        // Keep the stretch cost in path selection so a naturally fuller legal
+        // line still wins. An excessively loose selected line alone gets its
+        // natural gaps; neighbors retain their justified allocations.
+        const spacingLimited = !final && input.mode === 'justified' && delta > .5 && allocation.gaps.some((gap, i) => {
+          const slot = selected[i]!
+          if (slot.kind !== 'word-space') return false
+          const run = s.runs.find(r => r.from <= slot.owner.from && r.to > slot.owner.from)
+          const size = parseFloat(run?.css['font-size'] ?? '') || 16
+          return gap.width > Math.max(slot.natural, typographySpacingRules.wordSpace.maxReadableEm * size)
+        })
+        const gaps = spacingLimited ? selected.map(slot => ({ slotId: slot.id, width: slot.natural, adjustment: 0 })) : allocation.gaps
         const cost = final ? 0 : 10000 + (input.mode === 'natural' ? 10000 * (delta / s.width) ** 2 : 100 * allocation.cost) + end.preferenceCost
         if (!best || previous.cost + cost < best.cost) best = { cost: previous.cost + cost, previous,
-          line: { ...request, naturalWidth, targetWidth: s.width, slots: selected, gaps: allocation.gaps, cost, breakReason: final ? 'paragraph-end' : 'optimal' } }
+          line: { ...request, naturalWidth, targetWidth: s.width, slots: selected, gaps, cost, breakReason: final ? 'paragraph-end' : spacingLimited ? 'spacing-limit' : 'optimal' } }
       }
       if (best) paths.set(end.at, best)
     }

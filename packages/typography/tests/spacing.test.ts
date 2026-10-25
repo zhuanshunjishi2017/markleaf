@@ -25,6 +25,17 @@ describe('bounded spacing allocation', () => {
     expect(allocateGaps([mixed, ordinary], 12)).toEqual({ feasible: false, reason: 'capacity-exceeded' })
     expect(allocateGaps([mixed, ordinary], -2)).toEqual(allocateGaps([{ ...mixed, max: 3.2, preferredMax: undefined }, ordinary], -2))
   })
+  it('sharesMixedOverflowByItsLoosenessCostInsteadOfPhysicalSpaceCeiling', () => {
+    const mixed: GapSlot = { ...slot('mixed', 2, 1.28, 9.6), kind: 'mixed', preferredMax: 3.2, weight: .5 }
+    const word = { ...slot('space', 4, 3.2, 100), preferredMax: 5.6 }
+    const narrow = allocateGaps([word, mixed], 10)
+    const wide = allocateGaps([{ ...word, max: 900 }, mixed], 10)
+    expect(narrow).toEqual(wide)
+    if (!narrow.feasible) throw Error('mixed expansion is feasible')
+    expect(narrow.gaps[0]!.width).toBeCloseTo(8.7578947368, 6)
+    expect(narrow.gaps[1]!.width).toBeCloseTo(7.2421052632, 6)
+    expect(narrow.residual).toBeCloseTo(0, 8)
+  })
   it('rejectsInvalidPreferredBounds', () => {
     for (const preferredMax of [Number.NaN, Infinity, 9, 15]) {
       expect(allocateGaps([{ ...slot('bad'), preferredMax }], 1)).toEqual({ feasible: false, reason: 'invalid-input' })

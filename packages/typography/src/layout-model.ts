@@ -3,6 +3,8 @@ export type SourceRange = Readonly<{ from: number; to: number }>
 export type StyleRun = SourceRange & Readonly<{ styleKey: string; css: Readonly<Record<string, string>> }>
 export type ParagraphSnapshot = Readonly<{
   id: string; revision: number; environmentKey: string; text: string; width: number
+  /** Width-independent shaping context. Opaque external snapshots may omit it. */
+  measurementEnvironmentKey?: string
   graphemeOffsets: readonly number[]; runs: readonly StyleRun[]
   language: string; direction: 'ltr'; alignment: 'default' | 'justify'
   /** False removes automatic base gaps; justification may still use boundaries. */
@@ -26,7 +28,7 @@ export type LineRequest = SourceRange & Readonly<{ contentTo: number; key: strin
 export type LineMeasurement = Readonly<{ key: string; naturalWidth: number }>
 export type MeasuredLine = LineRequest & Readonly<{
   targetWidth: number; naturalWidth: number; gaps: readonly GapAllocation[]
-  slots: readonly GapSlot[]; cost: number; breakReason: 'optimal' | 'forced' | 'paragraph-end'
+  slots: readonly GapSlot[]; cost: number; breakReason: 'optimal' | 'forced' | 'paragraph-end' | 'spacing-limit'
 }>
 export type MeasuredPlan = Readonly<{
   snapshotId: string; revision: number; environmentKey: string

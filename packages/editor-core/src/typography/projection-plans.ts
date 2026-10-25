@@ -38,6 +38,7 @@ export function projectedPlanDecorations(doc: PMNode, snapshots: readonly Snapsh
           if (piece.from === piece.to) continue
           decorations.push(Decoration.inline(base + piece.from, base + piece.to, {
             'data-markleaf-typography-line-id': `${s.id}:${line.key}`,
+            'data-markleaf-typography-line-alignment': line.breakReason === 'spacing-limit' || line.breakReason === 'paragraph-end' ? 'natural' : 'justified',
             ...(piece.ids.length ? { 'data-markleaf-typography-slots': piece.ids.join(',') } : {}),
             ...(piece.spacing['word-spacing'] ? { 'data-markleaf-typography-natural-space': piece.css['word-spacing'] ?? '' } : {}),
             style: Object.entries(piece.spacing).map(([k, v]) => `${k}:${v}`).join(';'),

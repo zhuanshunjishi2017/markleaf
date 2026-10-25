@@ -349,6 +349,24 @@ describe('typography coordinator', () => {
       expect(s.editor.view.dom.querySelector('.markleaf-typography-v2')).not.toBeNull()
     }
   })
+  it('restoresAVerifiedPlanWhenReturningToAPreviousWidthAndStillRechecksItsDom', () => {
+    let reads = 0
+    const s = setup((_view, line) => { reads++; return line.targetWidth })
+    s.coordinator.setEnabled(true); s.flush()
+    const p = s.editor.view.dom.querySelector('p')!
+    p.getBoundingClientRect = () => ({ width: 64 } as DOMRect)
+    s.coordinator.invalidate('width'); s.flush()
+    const probes = s.batches.length, checks = reads
+    p.getBoundingClientRect = () => ({ width: 32 } as DOMRect)
+    s.coordinator.invalidate('width'); s.flush()
+    expect(s.batches).toHaveLength(probes)
+    expect(reads).toBeGreaterThan(checks)
+    expect(s.editor.view.dom.querySelectorAll('.markleaf-typography-break')).toHaveLength(1)
+    expect(s.reports.at(-1)?.plannedParagraphs).toBe(1)
+    s.editor.commands.insertContent('新')
+    s.flush()
+    expect(s.batches.length).toBeGreaterThan(probes)
+  })
   it('doesNotReuseTheCompletedCacheAfterAnInterruptedReplacementWasPublished', () => {
     const s = setup()
     s.coordinator.setEnabled(true); s.flush()

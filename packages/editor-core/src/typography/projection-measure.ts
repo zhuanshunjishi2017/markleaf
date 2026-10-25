@@ -24,7 +24,13 @@ export function createTypographyMeasurementService(doc: Document): MeasurementSe
       if (disposed) throw new Error('Typography measurement disposed')
       if (!lines.length) { service.onBatch?.({ requested: 0, cacheHits: 0, domMeasured: 0 }); return [] }
       try {
-      const domainKey = `${snapshot.environmentKey}:${JSON.stringify(slots)}`
+      // Natural advances do not depend on the line measure or allocation
+      // capacities. Keep actual text/styles/gap geometry and font epoch in the
+      // key, so a resize can reuse shaping without reusing stale line plans.
+      const domainKey = snapshot.measurementEnvironmentKey === undefined
+        ? `${snapshot.environmentKey}:${JSON.stringify(slots)}`
+        : JSON.stringify([snapshot.measurementEnvironmentKey, snapshot.text, snapshot.runs,
+          slots.map(s => [s.id, s.owner.from, s.owner.to, s.edge, s.natural])])
       let domain = cache.get(domainKey)
       if (!domain) { domain = { ranges: new Map(), shapes: new Map() }; cache.set(domainKey, domain) }
       const pending = new Map<string, HTMLElement>(), requests = new Map<string, string>()

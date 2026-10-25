@@ -35,6 +35,26 @@ export function createTypographyCoordinator(options: {
   const root = editor.view.dom, doc = root.ownerDocument, win = doc.defaultView!, fonts = doc.fonts
   let enabled = false, composing = false, disposed = false, epoch = 0, frame = 0, generation = 0
   let quietUntil = 0, nativePhase = false, previous: Entries | undefined, cycle: Cycle | undefined
+  // Only fully DOM-verified plans enter this bounded, per-document LRU.
+  // A cache hit still goes through publication and next-frame DOM checks.
+  const verified = new Map<string, MeasuredPlan>()
+  let verifiedLines = 0
+  const planKey = (s: ProjectionSnapshot) => JSON.stringify([s.id, s.revision, s.environmentKey])
+  function forgetPlan(key: string) {
+    const old = verified.get(key)
+    if (old) { verifiedLines -= old.lines.length; verified.delete(key) }
+  }
+  function rememberPlan(snapshot: ProjectionSnapshot, plan: MeasuredPlan) {
+    const key = planKey(snapshot)
+    forgetPlan(key)
+    verified.set(key, plan); verifiedLines += plan.lines.length
+    while (verified.size > 64 || verifiedLines > 256) forgetPlan(verified.keys().next().value!)
+  }
+  function cachedPlan(snapshot: ProjectionSnapshot) {
+    const key = planKey(snapshot), plan = verified.get(key)
+    if (plan) { verified.delete(key); verified.set(key, plan) }
+    return plan
+  }
   let traceCount = 0
   const trace = (event: string, detail: Record<string, unknown> = {}) => {
     // Logging is not a layout input: never force geometry/style reads here.
@@ -75,6 +95,7 @@ export function createTypographyCoordinator(options: {
     const baseline = cycle?.entries ?? previous
     if (reason === 'style' && baseline && fonts?.status !== 'loading'
       && sameEntries(baseline, extractProjectionSnapshots(editor.view, getTypographyProjectionRevision(editor), epoch))) return
+    if (reason === 'document' || reason === 'font') { verified.clear(); verifiedLines = 0 }
     trace('invalidate', { reason }); generation++
     cancelCycle()
     if (reason === 'font') epoch++
@@ -89,6 +110,7 @@ export function createTypographyCoordinator(options: {
     return c.items.flatMap(i => i.plan && !failedParents.has(i.snapshot.nodeFrom) ? [i.plan] : [])
   }
   function fail(c: Cycle, item: Item, reason: string) {
+    forgetPlan(planKey(item.snapshot))
     item.plan = undefined; item.reason = reason
     c.reasons[reason] = (c.reasons[reason] ?? 0) + 1
     const budget = item.job.work.exhausted()
@@ -98,6 +120,7 @@ export function createTypographyCoordinator(options: {
     if (!current(c)) { invalidate('style'); return }
     const stats = c.items.map(i => i.job.work.stats())
     const adopted = new Set(plans(c).map(p => p.snapshotId))
+    for (const item of c.items) if (item.plan && adopted.has(item.snapshot.id)) rememberPlan(item.snapshot, item.plan)
     previous = c.entries
     trace('finish', { plans: plans(c).length, reasons: c.reasons })
     recordFrame(c)
@@ -176,8 +199,8 @@ export function createTypographyCoordinator(options: {
       // Job construction is lazy with respect to preparation and measurement.
       for (const e of entries) {
         if (!e.eligible) { c.reasons[e.reason] = (c.reasons[e.reason] ?? 0) + 1; continue }
-        const work = createLayoutWork(clock)
-        c.items.push({ snapshot: e.snapshot, done: false, job: createTypographyJob({ snapshot: e.snapshot, measurement, work,
+        const work = createLayoutWork(clock), plan = cachedPlan(e.snapshot)
+        c.items.push({ snapshot: e.snapshot, done: !!plan, plan, job: createTypographyJob({ snapshot: e.snapshot, measurement, work,
           onPlanning: options.onTrace ? value => trace('planning', { id: e.snapshot.id, ...value }) : undefined }) })
       }
     }
@@ -265,6 +288,7 @@ export function createTypographyCoordinator(options: {
       fonts?.removeEventListener('loading', onFont); fonts?.removeEventListener('loadingdone', onFont); fonts?.removeEventListener('loadingerror', onFont)
       root.removeEventListener('compositionstart', onStart); root.removeEventListener('compositionend', onEnd); win.removeEventListener('resize', onResize)
       if (measurement.onBatch === onBatch) measurement.onBatch = originalBatch
+      verified.clear(); verifiedLines = 0
       measurement.dispose()
     },
   }
