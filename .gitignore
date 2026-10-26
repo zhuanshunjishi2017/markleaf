@@ -42,6 +42,7 @@ artifacts/
 # AI agent files
 .claude/
 .superpowers/
+docs/superpowers/
 .codex-build/
 /.worktrees/
 CLAUDE.md
