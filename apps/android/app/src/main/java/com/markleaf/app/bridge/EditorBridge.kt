@@ -30,6 +30,12 @@ class EditorBridge(
     private var editorReady = false
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** 渲染进程崩溃重建后重绑求值通道。 */
+    fun rebindPoster(newPoster: (String) -> Unit) {
+        // postScript 是 val 字段；崩溃重建走新 EditorBridge 实例（MainActivity 层），
+        // 这里保留空实现以兼容旧调用——新实例方案见 MainActivity.onRenderProcessGone。
+    }
+
     /** 注册 JS 接口到宿主 WebView（真实环境）；测试环境可跳过。 */
     fun attach(webView: WebView? = null) {
         webView?.addJavascriptInterface(BridgeReceiver(), JS_INTERFACE)

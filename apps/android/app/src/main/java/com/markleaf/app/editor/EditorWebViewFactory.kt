@@ -15,7 +15,12 @@ import com.markleaf.app.documents.AssetResolver
  */
 object EditorWebViewFactory {
 
-    fun create(context: Context, assetResolver: AssetResolver? = null, documentDir: () -> String = { "" }): WebView {
+    fun create(
+        context: Context,
+        assetResolver: AssetResolver? = null,
+        documentDir: () -> String = { "" },
+        onRenderProcessGone: (WebView) -> Boolean = { false },
+    ): WebView {
         val webView = WebView(context)
         webView.settings.apply {
             javaScriptEnabled = true
@@ -51,6 +56,9 @@ object EditorWebViewFactory {
                 }
                 return WebResourceResponse(mime, null, bytes.inputStream())
             }
+
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean =
+                onRenderProcessGone(view)
 
             private fun notFound() = WebResourceResponse("text/plain", null, 404, "Not Found", null, byteArrayOf().inputStream())
         }

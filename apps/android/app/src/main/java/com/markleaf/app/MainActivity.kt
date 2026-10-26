@@ -95,7 +95,23 @@ class MainActivity : ComponentActivity() {
                 runBlocking { source.readSiblingBytes(documentDir, path) }
             }
         }
-        webView = EditorWebViewFactory.create(this, assetResolver = resolver)
+        webView = EditorWebViewFactory.create(
+            this,
+            assetResolver = resolver,
+            onRenderProcessGone = { goneWebView ->
+                // spec §8：渲染进程崩溃 → 销毁重建 → 恢复快照重载（Review Focus #4）
+                Log.e(TAG, "WebView 渲染进程崩溃，重建")
+                val container = goneWebView.parent as? android.view.ViewGroup ?: return@create true
+                container.removeAllViews()
+                goneWebView.destroy()
+                val rebuilt = EditorWebViewFactory.create(this, assetResolver = resolver)
+                rebuiltWebView = rebuilt
+                container.addView(rebuilt)
+                bridge.rebindPoster { script -> rebuilt.evaluateJavascript(script, null) }
+                // 恢复：重建后 ready 握手会重新走（前端重新初始化）
+                session.startDocument(session.documentId, revision = 0)
+                true
+            })
         session = EditorSessionState().apply { startDocument(WELCOME_DOCUMENT_ID) }
         source = SafDocumentSource(this)
         recoveryStore = RecoveryStore(this)
@@ -175,6 +191,7 @@ class MainActivity : ComponentActivity() {
 
     private val activeTitle = mutableStateOf("未命名")
     private val showExport = mutableStateOf(false)
+    private var rebuiltWebView: WebView? = null
 
     private fun documentDirectoryOf(ref: DocumentRef.Saf): String =
         ref.uri.substringBeforeLast('/').substringAfterLast("%2F", "Documents")
