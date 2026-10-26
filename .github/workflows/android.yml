@@ -10,6 +10,8 @@ on:
   pull_request:
     paths:
       - 'apps/android/**'
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -49,3 +51,10 @@ jobs:
         with:
           name: markleaf-debug-apk
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Attach APK to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: ${{ github.event.release.tag_name }}
