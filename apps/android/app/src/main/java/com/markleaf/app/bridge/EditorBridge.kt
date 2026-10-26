@@ -21,6 +21,11 @@ class EditorBridge(
     private val session: EditorSessionState,
     private val onEditorMessage: (EditorMessage) -> Unit = {},
 ) {
+    /**
+     * 可后置设置的统一分发器：Activity 先建 WebView/桥再装配 UI 时使用。
+     * 设置后覆盖构造传入的 onEditorMessage（两者并存时 dispatcher 优先）。
+     */
+    var onEditorMessageDispatcher: ((EditorMessage) -> Unit)? = null
     private val pendingOutbound = ArrayDeque<HostMessage>()
     private var editorReady = false
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -72,7 +77,7 @@ class EditorBridge(
         if (message is EditorMessage.Ready) {
             editorReady = true
         }
-        val deliver: (EditorMessage) -> Unit = { onEditorMessage(it) }
+        val deliver = onEditorMessageDispatcher ?: onEditorMessage
         deliver(message)
         if (message is EditorMessage.Ready) {
             while (pendingOutbound.isNotEmpty()) {

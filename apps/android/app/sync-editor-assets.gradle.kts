@@ -19,6 +19,8 @@ val syncEditorAssets by tasks.registering(Sync::class) {
         check(index.exists()) {
             "editor-web dist 不存在：请先在仓库根目录执行 pnpm build:editor-web（预期 $index）"
         }
+        // Sync 的对账在任务执行时进行；历史残留（如旧构建的 " 2" 副本）在此一并清掉。
+        editorAssetsDir.get().asFile.deleteRecursively()
     }
 
     from(editorDistDir) {
