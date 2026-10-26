@@ -919,23 +919,31 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 guard result == .proceed else { finish(result); return }
                 guard session.currentDocumentIdentifier == documentID,
                       windowSession.session(for: id) === session else { finish(.cancel); return }
-                session.requestSnapshot { snapshot in
-                    guard case .success(let markdown) = snapshot,
-                          session.currentDocumentIdentifier == documentID,
-                          let tab = windowSession.tabStore.tab(withID: id) else { finish(.cancel); return }
-                    closedMarkdown = markdown
-                    TabStateSync.apply(
-                        tab: tab, fileName: session.documentURL?.path,
-                        isDirty: session.isDirty, isReadOnly: session.isReadOnly,
-                        isReadOnlyLocked: session.isReadOnlyLocked,
-                        scrollTop: session.scrollTop, readingAnchor: session.readingAnchor,
-                        revision: session.currentRevision, encoding: session.documentEncoding,
-                        newLine: session.documentNewLine,
-                        visualSelectionFrom: session.visualSelectionFrom, visualSelectionTo: session.visualSelectionTo,
-                        sourceSelectionFrom: session.sourceSelectionFrom, sourceSelectionTo: session.sourceSelectionTo,
-                        untitledLabel: L10n.t("未命名")
-                    )
+                if let fallback = TabCloseSnapshotPolicy.fallbackMarkdown(
+                    isReady: session.isReady,
+                    pendingMarkdown: session.pendingBufferMarkdown
+                ) {
+                    closedMarkdown = fallback
                     finish(.proceed)
+                } else {
+                    session.requestSnapshot { snapshot in
+                        guard case .success(let markdown) = snapshot,
+                              session.currentDocumentIdentifier == documentID,
+                              let tab = windowSession.tabStore.tab(withID: id) else { finish(.cancel); return }
+                        closedMarkdown = markdown
+                        TabStateSync.apply(
+                            tab: tab, fileName: session.documentURL?.path,
+                            isDirty: session.isDirty, isReadOnly: session.isReadOnly,
+                            isReadOnlyLocked: session.isReadOnlyLocked,
+                            scrollTop: session.scrollTop, readingAnchor: session.readingAnchor,
+                            revision: session.currentRevision, encoding: session.documentEncoding,
+                            newLine: session.documentNewLine,
+                            visualSelectionFrom: session.visualSelectionFrom, visualSelectionTo: session.visualSelectionTo,
+                            sourceSelectionFrom: session.sourceSelectionFrom, sourceSelectionTo: session.sourceSelectionTo,
+                            untitledLabel: L10n.t("未命名")
+                        )
+                        finish(.proceed)
+                    }
                 }
             }
         } else {
