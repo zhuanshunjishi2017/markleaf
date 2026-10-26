@@ -1,0 +1,138 @@
+package com.markleaf.app.documents
+
+import com.markleaf.app.bridge.EditorMessage
+import com.markleaf.app.bridge.EditorSessionState
+import com.markleaf.app.bridge.HostMessage
+import java.util.UUID
+
+/**
+ * 文档打开/保存/恢复的编排（spec §4.3/§7）。
+ * IO 全部经 DocumentSource（内部 Dispatchers.IO）；本类方法为 suspend，
+ * 由 Activity/ViewModel 在协程中调用。
+ *
+ * @param post 宿主→编辑器消息出口（EditorBridge.post）
+ */
+class DocumentController(
+    private val source: DocumentSource,
+    private val post: (HostMessage) -> Unit,
+    private val session: EditorSessionState,
+) {
+    /** 当前文档引用与打开时的外部基线（冲突检测）。 */
+    private var currentRef: DocumentRef.Saf? = null
+    private var baselineBytes: ByteArray? = null
+    private var currentEncoding: EncodingInfo? = null
+    private var currentDocumentId: String = ""
+
+    sealed interface OpenResult {
+        data class Loaded(val documentId: String, val encoding: EncodingInfo, val name: String) : OpenResult
+        data object PermissionLost : OpenResult
+        data class Failed(val message: String) : OpenResult
+    }
+
+    sealed interface SaveResult {
+        data object Saved : SaveResult
+        data object NotDirty : SaveResult
+        data object Conflict : SaveResult
+        data object PermissionLost : SaveResult
+        data class Failed(val message: String) : SaveResult
+    }
+
+    val activeRef: DocumentRef.Saf?
+        get() = currentRef
+
+    val activeEncoding: EncodingInfo?
+        get() = currentEncoding
+
+    /**
+     * 打开文档：读字节 → 探测编码 → 解码 → 新 documentId → loadDocument。
+     * 会话状态切换到新 id（revision 从 0 重新计——Windows 端 stale bug 的修正路径）。
+     */
+    suspend fun open(ref: DocumentRef.Saf): OpenResult = try {
+        val documentBytes = source.read(ref)
+        val markdown = DocumentCodings.decode(documentBytes.bytes, documentBytes.encoding)
+        val documentId = "doc-" + UUID.randomUUID().toString().take(8)
+        session.startDocument(documentId, revision = 0)
+        post(
+            HostMessage.LoadDocument(
+                documentId = documentId,
+                revision = 0,
+                payload = HostMessage.LoadDocument.LoadDocumentPayload(
+                    markdown = markdown,
+                    readOnly = false,
+                    documentPath = ref.uri,
+                ),
+            ),
+        )
+        currentRef = ref
+        baselineBytes = documentBytes.bytes
+        currentEncoding = documentBytes.encoding
+        currentDocumentId = documentId
+        OpenResult.Loaded(documentId, documentBytes.encoding, ref.uri.substringAfterLast('/'))
+    } catch (exception: SecurityException) {
+        OpenResult.PermissionLost
+    } catch (exception: Exception) {
+        OpenResult.Failed(exception.message ?: exception.javaClass.simpleName)
+    }
+
+    /**
+     * 保存：dirty 时 requestSnapshot→snapshot→编码写回→markSaved。
+     * externalChanged（保存前宿主重读文件比对哈希的结论）为真时返回 Conflict，
+     * 由调用方弹冲突对话框（覆盖/另存）。
+     */
+    suspend fun save(
+        snapshotProvider: suspend () -> EditorMessage.Snapshot.SnapshotPayload,
+        dirty: Boolean,
+        externalChanged: Boolean = false,
+    ): SaveResult {
+        if (!dirty) {
+            return SaveResult.NotDirty
+        }
+        val ref = currentRef ?: return SaveResult.Failed("无活动文档")
+        if (externalChanged) {
+            return SaveResult.Conflict
+        }
+        return try {
+            val payload = snapshotProvider()
+            val encodingName = currentEncoding?.name ?: "UTF-8"
+            source.write(ref, DocumentCodings.encode(payload.markdown, encodingName))
+            baselineBytes = DocumentCodings.encode(payload.markdown, encodingName)
+            post(HostMessage.MarkSaved(documentId = currentDocumentId, revision = session.confirmedRevision))
+            SaveResult.Saved
+        } catch (exception: SecurityException) {
+            SaveResult.PermissionLost
+        } catch (exception: Exception) {
+            SaveResult.Failed(exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    /**
+     * 保存前冲突检测：读当前文件与打开时基线比对（内容级，非 mtime）。
+     * 读失败（如权限撤销）不阻塞保存——交给写路径的错误处理。
+     */
+    suspend fun detectExternalChange(): Boolean {
+        val ref = currentRef ?: return false
+        val baseline = baselineBytes ?: return false
+        return try {
+            val current = source.read(ref).bytes
+            !current.contentEquals(baseline)
+        } catch (exception: SecurityException) {
+            false
+        }
+    }
+
+    /** 标签关闭/应用切后台时写恢复快照（markdown 由调用方从最新 snapshot 取）。 */
+    fun writeRecovery(store: RecoveryStore, markdown: String, dirty: Boolean) {
+        val ref = currentRef ?: return
+        if (!dirty) {
+            store.discard(currentDocumentId)
+            return
+        }
+        store.writePending(currentDocumentId, ref, markdown)
+    }
+
+    fun discardRecovery(store: RecoveryStore) {
+        if (currentDocumentId.isNotEmpty()) {
+            store.discard(currentDocumentId)
+        }
+    }
+}
