@@ -39,6 +39,11 @@ import com.markleaf.app.documents.RecoveryStore
 import com.markleaf.app.documents.SafDocumentSource
 import com.markleaf.app.documents.isMarkdownName
 import com.markleaf.app.editor.EditorWebViewFactory
+import com.markleaf.app.export.ExportController
+import com.markleaf.app.export.ExportDialog
+import com.markleaf.app.export.ExportFormat
+import com.markleaf.app.export.ExportOptions
+import com.markleaf.app.export.PdfExporter
 import com.markleaf.app.ui.OutlineItem
 import com.markleaf.app.ui.WorkspaceSidebar
 import kotlinx.coroutines.launch
@@ -136,10 +141,28 @@ class MainActivity : ComponentActivity() {
                                 onOpenFolder = { openTreeLauncher.launch(null) },
                                 onOpenFile = { openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) },
                                 onSave = { scope.launch { saveActiveDocument() } },
+                                onExport = { showExport.value = true },
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 dirty = dirty.value)
                             EditorContainer(webView)
                             StatusBarPlaceholder(editorStatusLine.value)
+                            if (showExport.value) {
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showExport.value = false },
+                                    confirmButton = {},
+                                    title = {},
+                                    text = {
+                                        ExportDialog(
+                                            defaultName = activeTitle.value,
+                                            onDismiss = { showExport.value = false },
+                                            onExport = { name, options ->
+                                                showExport.value = false
+                                                performExport(name, options)
+                                            },
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -151,6 +174,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val activeTitle = mutableStateOf("未命名")
+    private val showExport = mutableStateOf(false)
 
     private fun documentDirectoryOf(ref: DocumentRef.Saf): String =
         ref.uri.substringBeforeLast('/').substringAfterLast("%2F", "Documents")
@@ -185,6 +209,58 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 导出目标：HTML→SAF 创建 .html；PDF→PrintManager（系统 UI 自带目标选择）。 */
+    private val createHtmlLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/html"),
+    ) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                val html = exportHtmlBlocking()
+                contentResolver.openOutputStream(uri)?.use { it.write(html.toByteArray(Charsets.UTF_8)) }
+                editorStatusLine.value = "HTML 已导出"
+            }
+        }
+    }
+
+    private fun performExport(name: String, options: ExportOptions) {
+        when (options.format) {
+            ExportFormat.PDF -> {
+                // 打印友好：命令让前端注入浅色样式（复用桌面 injectPageMargins 思路的 CSS 钩子）
+                if (options.printFriendly) {
+                    bridge.post(printFriendlyCommand(true))
+                }
+                PdfExporter.printToPdf(this, webView, name, options.landscape)
+            }
+            ExportFormat.HTML -> createHtmlLauncher.launch("$name.html")
+        }
+    }
+
+    private fun printFriendlyCommand(enable: Boolean): HostMessage.Command = HostMessage.Command(
+        documentId = session.documentId,
+        revision = session.confirmedRevision,
+        payload = HostMessage.Command.CommandPayload(
+            command = if (enable) "setPrintFriendly" else "unsetPrintFriendly",
+        ),
+    )
+
+    /** HTML 导出：requestSnapshot→exportContent 回环（挂起等待 exportContent 消息）。 */
+    @Volatile
+    private var pendingExportHtml: kotlinx.coroutines.CompletableDeferred<String>? = null
+
+    private suspend fun exportHtmlBlocking(): String {
+        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+        pendingExportHtml = deferred
+        bridge.post(
+            HostMessage.Command(
+                documentId = session.documentId,
+                revision = session.confirmedRevision,
+                requestId = session.registerRequest("exportContent"),
+                payload = HostMessage.Command.CommandPayload(command = "exportDocument"),
+            ),
+        )
+        return deferred.await()
     }
 
     private suspend fun saveActiveDocument() {
@@ -231,6 +307,12 @@ class MainActivity : ComponentActivity() {
                 Log.i(TAG, "editor ready; sending styles + welcome document")
                 bridge.post(HostMessage.ApplyStyles(documentId = WELCOME_DOCUMENT_ID, revision = 0))
                 bridge.post(welcomeDocumentMessage())
+            }
+            is EditorMessage.ExportContent -> {
+                val html = (message.payload as? kotlinx.serialization.json.JsonObject)
+                    ?.get("html")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: ""
+                pendingExportHtml?.complete(html)
+                pendingExportHtml = null
             }
             is EditorMessage.Snapshot -> {
                 lastKnownMarkdown = message.payload.markdown
@@ -297,6 +379,7 @@ private fun TabStrip(
     onOpenFolder: () -> Unit,
     onOpenFile: () -> Unit,
     onSave: () -> Unit,
+    onExport: () -> Unit,
     onOpenDrawer: () -> Unit,
     dirty: Boolean,
 ) {
@@ -316,6 +399,7 @@ private fun TabStrip(
         )
         TextButton(onClick = onOpenFile) { Text("打开") }
         TextButton(onClick = onSave) { Text("保存") }
+        TextButton(onClick = onExport) { Text("导出") }
         TextButton(onClick = onOpenFolder) { Text("📁") }
     }
 }
