@@ -580,3 +580,17 @@ body.markleaf-auto-hide-scrollbar.markleaf-scrolling::-webkit-scrollbar-thumb,
 html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrollbar-thumb {
   background: var(--scrollbar-active);
 }
+
+/* Manual widths preserve logical cells while each row owns its boundaries. */
+.markleaf-document .markleaf-table-wrapper { max-width: 100%; overflow-x: auto; }
+.markleaf-document table.markleaf-table-manual tr { position: relative; }
+.markleaf-document table.markleaf-table-manual th,
+.markleaf-document table.markleaf-table-manual td { min-width: 0; box-sizing: border-box; }
+.markleaf-document .markleaf-table-resize-guide { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--highlight, #2684ff); pointer-events: none; z-index: 2; }
+.markleaf-document.markleaf-table-resizing, .markleaf-document.markleaf-table-resizing * { cursor: col-resize !important; user-select: none !important; }
+.markleaf-document .markleaf-table-wrapper > .markleaf-figcaption[hidden] { display: none; }
+.markleaf-export-pdf .markleaf-document table.markleaf-table-manual { min-width: 0 !important; max-width: 100% !important; }
+
+.markleaf-document table.markleaf-table-manual tr > :not(:last-child) { border-right-width: 0; }
+.markleaf-document table.markleaf-table-manual tr:not(:last-child) > th,
+.markleaf-document table.markleaf-table-manual tr:not(:last-child) > td { border-bottom-width: 0; }

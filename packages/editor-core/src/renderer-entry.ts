@@ -17,6 +17,7 @@ export { selectEditorContextAt } from './document-pointer'
 export * from './outline'
 export * from './reading-behavior'
 export * from './typography'
+export { setTableLayoutEnabled, clearAllTableLayouts } from './table-layout-extension'
 // Typography projection is part of the renderer contract consumed by the
 // native EditorWeb entrypoint. Keep these modules in the packaged renderer
 // bundle as well as the source-only public index; otherwise the webview's

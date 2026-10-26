@@ -829,13 +829,16 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
     }
 
     @objc private func openVisualSettings() {
+        let target = AppWindowManager.shared.activeSession
+        let targetID = target?.currentDocumentIdentifier
         let settings = SettingsService.shared.settings
         let dialog = VisualSettingsWindowController(
             lineHeight: settings.visualLineHeight,
             fontSize: settings.visualFontSize,
             maxContentWidth: settings.visualMaxContentWidth,
             visualCjkAutoSpacing: settings.visualCjkAutoSpacing,
-            visualAdaptiveJustification: settings.visualAdaptiveJustification
+            visualAdaptiveJustification: settings.visualAdaptiveJustification,
+            allowTableColumnResize: settings.allowTableColumnResize
         )
         guard dialog.runModal() else { return }
         SettingsService.shared.update { settings in
@@ -843,9 +846,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate, N
             settings.visualFontSize = dialog.fontSize
             settings.visualMaxContentWidth = dialog.maxContentWidth
             settings.visualCjkAutoSpacing = dialog.visualCjkAutoSpacing
+            settings.allowTableColumnResize = dialog.allowTableColumnResize
             settings.visualAdaptiveJustification = dialog.visualAdaptiveJustification
         }
         AppWindowManager.shared.applyPreferencesToAll()
+        if settings.allowTableColumnResize && !dialog.allowTableColumnResize, let targetID {
+            target?.clearTableLayouts(forDocumentID: targetID)
+        }
     }
 
     @objc private func openMarkdownBehaviorSettings() {

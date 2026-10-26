@@ -1,7 +1,9 @@
+import { tableMarkdownTokenizer } from './markdown-block-tokenizers'
 import {
   defaultKeymap,
   history,
   historyKeymap,
+  isolateHistory,
   indentLess,
   indentMore,
   indentWithTab,
@@ -10,7 +12,7 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands'
-import { markdown } from '@codemirror/lang-markdown'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, indentUnit, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import { Compartment, EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
@@ -487,6 +489,30 @@ export class SourceEditor {
     this.view.dispatch({
       effects: StateEffect.reconfigure.of(this.buildExtensions(indentWidth)),
     })
+  }
+
+  clearTableLayouts(): boolean {
+    if (this.readOnly) return false
+    const text = this.getText()
+    const changes: { from: number; to: number; insert: string }[] = []
+    // The Markdown syntax tree excludes fenced/indented code examples. Only
+    // a standalone metadata comment immediately associated with a table is owned.
+    markdownLanguage.parser.parse(text).iterate({ enter: node => {
+      if (node.name !== 'CommentBlock') return
+      const block = text.slice(node.from, node.to)
+      const pattern = /<!-- markleaf:table-layout [^\r\n]*? -->/g
+      for (const match of block.matchAll(pattern)) {
+        const from = node.from + match.index!, to = from + match[0].length
+        const lineStart = text.lastIndexOf('\n', from - 1) + 1
+        if (!/^[ \t>]*(?:[-+*] |\d+[.)] )?$/.test(text.slice(lineStart, from))) continue
+        const following = text.slice(to).replace(/^[ \t]*\r?\n(?:[ \t>]*\r?\n)?/, '').replace(/^[ \t]*(?:>[ \t]*)+/gm, '')
+        if ((tableMarkdownTokenizer.start as (src: string) => number)(following) === 0) changes.push({ from, to, insert: '' })
+      }
+      return false
+    } })
+    if (!changes.length) return false
+    this.view.dispatch({ changes, annotations: isolateHistory.of('full') })
+    return true
   }
 
   getText(): string {

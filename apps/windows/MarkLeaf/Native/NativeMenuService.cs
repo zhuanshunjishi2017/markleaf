@@ -884,6 +884,13 @@ internal sealed class NativeMenuService : IDisposable
         AppendCommand(menu, AppCommand.DeleteTableColumn, Loc.Get("menu.paragraph.deleteColumn"));
         AppendSeparator(menu);
 
+        var widths = CreateMenu(true);
+        AppendCommand(widths, AppCommand.FitTableContents, Loc.Get("contextMenu.table.fitContents"));
+        AppendCommand(widths, AppCommand.DistributeTableColumns, Loc.Get("contextMenu.table.distributeColumns"));
+        AppendCommand(widths, AppCommand.ResetTableWidths, Loc.Get("contextMenu.table.resetWidths"));
+        AppendPopup(menu, Loc.Get("contextMenu.table.widths"), widths);
+        AppendSeparator(menu);
+
         var align = CreateMenu(true);
         AppendCommand(align, AppCommand.AlignTableLeft, Loc.Get("menu.paragraph.alignLeft"));
         AppendCommand(align, AppCommand.AlignTableCenter, Loc.Get("menu.paragraph.alignCenter"));

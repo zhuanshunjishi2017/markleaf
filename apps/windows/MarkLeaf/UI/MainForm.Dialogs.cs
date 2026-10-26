@@ -20,6 +20,8 @@ internal sealed partial class MainForm
 {
     private void ShowPreferences()
     {
+        var tableLayoutDocumentId = _document?.Id;
+        var previousAllowTableColumnResize = _settings.Editor.AllowTableColumnResize;
         var previousAssociateMarkdown = _settings.General.AssociateMarkdownFiles;
         var previousAssociateText = _settings.General.AssociateTextFiles;
         var previousLanguage = _settings.General.UiLanguage ?? "";
@@ -38,6 +40,8 @@ internal sealed partial class MainForm
             () => _ = CheckForUpdatesAsync());
         if (ShowModal(() => dialog.ShowDialog(this)) != DialogResult.OK) return;
         ApplyPreferencesChanges(previousAssociateMarkdown, previousAssociateText, previousLanguage);
+        if (previousAllowTableColumnResize && !_settings.Editor.AllowTableColumnResize && tableLayoutDocumentId is { } targetId)
+            _editorHost?.ClearTableLayouts(targetId);
     }
 
     private void ApplyPreferencesChanges(
@@ -59,7 +63,7 @@ internal sealed partial class MainForm
         _recoveryTimer.Start();
 
         var editor = _settings.Editor;
-            _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing, editor.VisualIgnoreMaxContentWidth, editor.VisualAdaptiveJustification);
+            _editorHost?.ApplyCssVariables(editor.VisualLineHeight, editor.VisualFontSize, editor.VisualMaxContentWidth, editor.SourceFontSize, editor.SourceFontFamily, editor.SourceCjkFontFamily, editor.CjkLanguageTag.ToBcp47(), editor.VisualCjkAutoSpacing, editor.VisualIgnoreMaxContentWidth, editor.VisualAdaptiveJustification, editor.AllowTableColumnResize);
         _editorHost?.ApplySourceSettings(editor.SourceIndentWidth);
         _editorHost?.ApplyAutoConvertUnsafeEmphasis(editor.AutoConvertUnsafeEmphasis);
         _editorHost?.ApplyMarkdownEditingSettings(editor);

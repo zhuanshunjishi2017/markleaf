@@ -116,6 +116,7 @@ struct AppSettings: Codable {
         sourceCjkFontFamily = try container.decodeIfPresent(String.self, forKey: .sourceCjkFontFamily) ?? Self.defaultSourceCjkFontFamily
         cjkLanguageTag = try container.decodeIfPresent(CJKLanguageTag.self, forKey: .cjkLanguageTag) ?? .simplifiedChinese
         visualCjkAutoSpacing = try container.decodeIfPresent(Bool.self, forKey: .visualCjkAutoSpacing) ?? true
+        allowTableColumnResize = try container.decodeIfPresent(Bool.self, forKey: .allowTableColumnResize) ?? true
         visualAdaptiveJustification = try container.decodeIfPresent(Bool.self, forKey: .visualAdaptiveJustification) ?? true
         sourceIndentWidth = try container.decodeIfPresent(Int.self, forKey: .sourceIndentWidth) ?? 2
         exitBlockOnEmptyEnter = try container.decodeIfPresent(Bool.self, forKey: .exitBlockOnEmptyEnter) ?? false
@@ -230,6 +231,7 @@ struct AppSettings: Codable {
     var sourceCjkFontFamily = AppSettings.defaultSourceCjkFontFamily
     var cjkLanguageTag = CJKLanguageTag.simplifiedChinese
     var visualCjkAutoSpacing = true
+    var allowTableColumnResize = true
     var visualAdaptiveJustification = true
     var sourceIndentWidth = 2
     // Markdown 编辑行为（与 Windows 1.7.2 EditorSettings 对齐）。

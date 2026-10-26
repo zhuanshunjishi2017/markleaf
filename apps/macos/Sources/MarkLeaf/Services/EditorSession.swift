@@ -166,6 +166,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         "insertTable", "insertLineBefore", "insertLineAfter",
         "addRowBefore", "addRowAfter", "deleteRow",
         "addColumnBefore", "addColumnAfter", "deleteColumn", "deleteTable",
+        "fitTableContents", "distributeTableColumns", "resetTableWidths",
         "alignTableLeft", "alignTableCenter", "alignTableRight",
         "rotateImage", "resizeImage", "resizeImage100", "resizeImage75", "resizeImage90", "resizeImage50",
         "changeImage", "clearFormat",
@@ -281,6 +282,8 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         reloadStyleCatalog()
     }
 
+    private var loadedTableLayoutDocumentID: String?
+    private var pendingTableLayoutCleanupDocumentID: String?
     private var documentId = UUID().uuidString.lowercased()
     private var startupRecoveryNotice: (documentID: String, text: String)?
     private var revision: Int64 = 0
@@ -479,6 +482,11 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             // one-frame window where WebKit can present an unprepared surface.
 
         case "documentLoaded":
+            loadedTableLayoutDocumentID = documentId
+            if let cleanupID = pendingTableLayoutCleanupDocumentID {
+                pendingTableLayoutCleanupDocumentID = nil
+                clearTableLayouts(forDocumentID: cleanupID)
+            }
             AppLog.info("文档加载完成")
             statusText = L10n.t("已加载")
             applyPostLoadSettings()
@@ -1490,6 +1498,18 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         execute("insertTable", text: Self.tableCommandText(rows: rows, columns: columns))
     }
 
+    /// Only an explicit preference transition may request cleanup, never a
+    /// normal preference broadcast. Bind deferred delivery to this document.
+    func clearTableLayouts(forDocumentID expected: String) {
+        guard documentId == expected, !isReadOnly else { return }
+        guard loadedTableLayoutDocumentID == expected else {
+            pendingTableLayoutCleanupDocumentID = expected
+            return
+        }
+        pendingTableLayoutCleanupDocumentID = nil
+        execute("clearAllTableLayouts", text: expected)
+    }
+
     func execute(_ command: String, text: String? = nil, html: String? = nil,
                  requestId: String? = nil, onFailure: (() -> Void)? = nil,
                  completion: ((Bool) -> Void)? = nil) {
@@ -1852,12 +1872,14 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         (() => {
           const payload = {
             lineHeight: '\(lineHeight)',
+            visualScale: \(factor),
             fontSize: '\(fontSize)px',
             maxWidth: '\(maxWidth)px',
             sourceFontSize: '\(sourceFontSize)px',
             sourceFontFamily: '\(sourceFontFamily)',
             cjkLanguage: '\(cjkLanguage)',
             visualCjkAutoSpacing: \(settings.visualCjkAutoSpacing ? "true" : "false"),
+            allowTableColumnResize: \(settings.allowTableColumnResize ? "true" : "false"),
             visualAdaptiveJustification: \(settings.visualAdaptiveJustification ? "true" : "false"),
             ignoreMaxWidth: \(ignoreMaxWidth ? "true" : "false"),
             usePointerAnchor: \(usePointerAnchor ? "true" : "false"),

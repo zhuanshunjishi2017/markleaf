@@ -1,7 +1,8 @@
 extension EditorSession {
     func editorAction(_ command: String) -> EditorActionState? {
         let scoped = ["addRowBefore", "addRowAfter", "deleteRow", "addColumnBefore", "addColumnAfter", "deleteColumn",
-                      "alignTableLeft", "alignTableCenter", "alignTableRight", "deleteTable", "setTableCaption", "editTableCaption",
+                      "fitTableContents", "distributeTableColumns", "resetTableWidths",
+        "alignTableLeft", "alignTableCenter", "alignTableRight", "deleteTable", "setTableCaption", "editTableCaption",
                       "setCodeBlockLanguage", "declareCodeLanguage", "formatCodeBlock", "exitCode"]
         if scoped.contains(command), selectionScope == nil || selectionScope == "mixed" {
             return EditorActionState(enabled: false, checked: false)

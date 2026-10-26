@@ -86,3 +86,5 @@ export * from './shared-editor-strings'
 // 渲染栈的版本由内核唯一持有，宿主一律经此取用。
 export { NodeSelection, Selection, TextSelection, type EditorState } from '@tiptap/pm/state'
 export type { Editor } from '@tiptap/core'
+
+export { setTableLayoutEnabled, clearAllTableLayouts } from './table-layout-extension'

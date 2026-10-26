@@ -1110,6 +1110,7 @@ extension EditorSession {
         case "addColumnBefore": execute("addColumnBefore")
         case "addColumnAfter": execute("addColumnAfter")
         case "deleteColumn": execute("deleteColumn")
+        case "fitTableContents", "distributeTableColumns", "resetTableWidths": execute(command)
         case "alignTableLeft": execute("alignTableLeft")
         case "alignTableCenter": execute("alignTableCenter")
         case "alignTableRight": execute("alignTableRight")

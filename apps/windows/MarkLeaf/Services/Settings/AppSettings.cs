@@ -365,6 +365,7 @@ public sealed class EditorSettings
     public CjkLanguageTag CjkLanguageTag { get; set; } = CjkLanguageTag.SimplifiedChinese;
 
     public bool VisualCjkAutoSpacing { get; set; } = true;
+    public bool AllowTableColumnResize { get; set; } = true;
     public bool VisualAdaptiveJustification { get; set; } = true;
 
     public bool ExitBlockOnEmptyEnter { get; set; }

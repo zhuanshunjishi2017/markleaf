@@ -376,7 +376,7 @@ internal sealed class EditorHostController : IDisposable
         }
     }
 
-    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false, bool visualAdaptiveJustification = true)
+    public void ApplyCssVariables(float lineHeight, int fontSize, int maxWidth, int sourceFontSize, string sourceFontFamily = "", string sourceCjkFontFamily = "", string cjkLang = "", bool visualCjkAutoSpacing = true, bool ignoreMaxWidth = false, bool visualAdaptiveJustification = true, bool allowTableColumnResize = true)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(sourceFontFamily))
@@ -395,6 +395,7 @@ internal sealed class EditorHostController : IDisposable
             cjkLanguage = cjkLang,
             visualCjkAutoSpacing,
             visualAdaptiveJustification,
+            allowTableColumnResize,
             ignoreMaxWidth,
             usePointerAnchor = false,
             anchorX = (double?)null,
@@ -648,6 +649,16 @@ internal sealed class EditorHostController : IDisposable
         EnqueueOrRun(() =>
         {
             if (scope is null || scope.IsCurrent) Post("command", new { command, text, html, menuSessionId });
+        });
+    }
+
+    public void ClearTableLayouts(Guid targetDocumentId)
+    {
+        EnqueueOrRun(() =>
+        {
+            // A queued preference action must never target a later tab/document.
+            if (_lastDocumentId == targetDocumentId && _session.DocumentId == targetDocumentId && !_lastDocumentReadOnly)
+                Post("command", new { command = "clearAllTableLayouts", text = targetDocumentId.ToString() });
         });
     }
 

@@ -4,6 +4,7 @@
 
 ### New
 
+- Added “Adjust Table Column Widths” with manual column resizing, content-based fitting, and even column distribution.
 - Added “Adaptive Justification”, enabled by default, to optimize line breaks and spacing based on paragraph content and available width.
 
 ### Changed

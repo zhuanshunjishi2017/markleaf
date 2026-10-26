@@ -12,6 +12,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
     private let adaptiveJustificationCheck = NSButton(
         checkboxWithTitle: L10n.t("自适应两端对齐"), target: nil, action: nil
     )
+    private let tableColumnResizeCheck = NSButton(checkboxWithTitle: L10n.t("允许调整表格列宽"), target: nil, action: nil)
     private var monitors: [BoundedTextFieldMonitor] = []
     private var editingOriginals: [NSTextField: String] = [:]
     private var keyMonitor: Any?
@@ -20,6 +21,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
     private(set) var fontSize: Int
     private(set) var maxContentWidth: Int
     private(set) var visualCjkAutoSpacing: Bool
+    private(set) var allowTableColumnResize: Bool
     private(set) var visualAdaptiveJustification: Bool
     private(set) var accepted = false
 
@@ -28,12 +30,14 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         fontSize: Int,
         maxContentWidth: Int,
         visualCjkAutoSpacing: Bool,
-        visualAdaptiveJustification: Bool
+        visualAdaptiveJustification: Bool,
+        allowTableColumnResize: Bool = true
     ) {
         self.lineHeight = lineHeight
         self.fontSize = fontSize
         self.maxContentWidth = maxContentWidth
         self.visualCjkAutoSpacing = visualCjkAutoSpacing
+        self.allowTableColumnResize = allowTableColumnResize
         self.visualAdaptiveJustification = visualAdaptiveJustification
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 220),
@@ -50,6 +54,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         fontSizeField.stringValue = "\(fontSize)"
         maxWidthField.stringValue = "\(maxContentWidth)"
         autoSpacingCheck.state = visualCjkAutoSpacing ? .on : .off
+        tableColumnResizeCheck.state = allowTableColumnResize ? .on : .off
         adaptiveJustificationCheck.state = visualAdaptiveJustification ? .on : .off
         for field in [lineHeightField, fontSizeField, maxWidthField] {
             field.bezelStyle = .roundedBezel
@@ -119,11 +124,18 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         adaptiveJustificationRow.translatesAutoresizingMaskIntoConstraints = false
         adaptiveJustificationRow.widthAnchor.constraint(equalToConstant: groupWidth).isActive = true
 
+        let tableColumnResizeRow = NSStackView(views: [tableColumnResizeCheck])
+        tableColumnResizeRow.orientation = .horizontal
+        tableColumnResizeRow.alignment = .centerX
+        tableColumnResizeRow.translatesAutoresizingMaskIntoConstraints = false
+        tableColumnResizeRow.widthAnchor.constraint(equalToConstant: groupWidth).isActive = true
+
         let form = NSStackView(views: [
             lineHeightRow,
             fontSizeRow,
             maxWidthRow,
             adaptiveJustificationRow,
+            tableColumnResizeRow,
             autoSpacingRow,
         ])
         form.orientation = .vertical
@@ -257,6 +269,7 @@ final class VisualSettingsWindowController: NSWindowController, NSTextFieldDeleg
         self.lineHeight = lineHeight
         self.fontSize = fontSize
         self.maxContentWidth = maxContentWidth
+        self.allowTableColumnResize = tableColumnResizeCheck.state == .on
         self.visualCjkAutoSpacing = autoSpacingCheck.state == .on
         self.visualAdaptiveJustification = adaptiveJustificationCheck.state == .on
         accepted = true

@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "最大寬度(&W)",
   "prefs.editor.visualIgnoreMaxWidth": "忽略最大寬度限制",
   "prefs.editor.visualCjkAutoSpacing": "自動調整中文與西文、數字間距(&A)",
+  "prefs.editor.allowTableColumnResize": "允許調整表格欄寬",
   "prefs.editor.visualAdaptiveJustification": "自適應左右對齊",
   "prefs.editor.autoConvertUnsafeEmphasis": "自動轉換星號標記",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "輸入原始碼時",
@@ -1065,5 +1066,9 @@
   "update.installNow": "立即下載更新",
   "update.skipVersion": "跳過此版本",
   "update.remindLater": "稍後提醒",
-  "update.skippedStatus": "已跳過版本 {0}"
+  "update.skippedStatus": "已跳過版本 {0}",
+  "contextMenu.table.fitContents": "根據內容調整欄寬",
+  "contextMenu.table.distributeColumns": "平均分配欄寬",
+  "contextMenu.table.resetWidths": "恢復自動欄寬",
+  "contextMenu.table.widths": "調整欄寬"
 }

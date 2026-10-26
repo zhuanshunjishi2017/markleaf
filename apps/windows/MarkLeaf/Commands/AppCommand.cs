@@ -250,6 +250,9 @@ public enum AppCommand
     OpenRecentWorkspace10,
     OpenRecentFile9,
     OpenRecentFile10,
+    FitTableContents = 0x13C0,
+    DistributeTableColumns,
+    ResetTableWidths,
 }
 
 public readonly record struct CommandState(bool IsEnabled, bool IsChecked = false);

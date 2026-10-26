@@ -1,3 +1,4 @@
+import { applyTableLayoutDOM } from './table-layout-extension'
 import { assignHeadingAnchors } from './outline'
 import { getImageResourcePath } from './image-resources'
 import { resolveMermaidTheme } from './typography'
@@ -21,8 +22,10 @@ function renderEditorHtmlForExport(
   preserveEmptyParagraphs = false,
   pagination: ExportPaginationOptions,
   visualCjkAutoSpacing = true,
+  allowTableColumnResize = true,
 ): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html')
+  applyTableLayoutDOM(parsed.body, true, allowTableColumnResize)
   assignHeadingAnchors(parsed.body)
   for (const image of parsed.body.querySelectorAll('img')) {
     const path = getImageResourcePath(image)
@@ -161,6 +164,7 @@ export type ExportHtmlInput = {
   fontSize?: number
   lineHeight?: number
   maxWidth?: number
+  allowTableColumnResize?: boolean
   visualCjkAutoSpacing?: boolean
   colorSchemeCss?: string
   baseCss: string
@@ -176,7 +180,7 @@ export type ExportHtmlInput = {
 
 export async function generateExportHtml({
   rawBodyHtml, resolved, format, mermaidTheme, strictRendering = false, header = '', footer = '', fontSize = 16,
-  lineHeight = 1.6, maxWidth = 820, visualCjkAutoSpacing = true,
+  lineHeight = 1.6, maxWidth = 820, visualCjkAutoSpacing = true, allowTableColumnResize = true,
   colorSchemeCss = '', baseCss, title = '', language = 'zh-CN',
   imageCaptureMode = 'scroll', fontFamily,
   keepTablesTogether = false, keepHeadingsWithNextBlock = false, editorLoc,
@@ -189,6 +193,7 @@ export async function generateExportHtml({
     isPdf,
     { keepTablesTogether, keepHeadingsWithNextBlock },
     visualCjkAutoSpacing,
+    allowTableColumnResize,
   ), mermaidTheme ?? resolveMermaidTheme(resolved.css))
   const rootClass = [
     resolved.rootClass,

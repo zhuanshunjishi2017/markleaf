@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 
 l10n = Path(sys.argv[1]).read_text()
-for key in ("可视化设置", "可视化设置…", "自适应两端对齐"):
+for key in ("可视化设置", "可视化设置…", "自适应两端对齐", "允许调整表格列宽"):
     count = l10n.count(f'"{key}":')
     assert count == 3, f"{key}: expected 3 translations, found {count}"
 

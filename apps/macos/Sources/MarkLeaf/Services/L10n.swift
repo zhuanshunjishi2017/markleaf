@@ -67,6 +67,11 @@ enum L10n {
     // MARK: - 日本語
 
     private static let japaneseTable: [String: String] = [
+        "根据内容调整列宽": "内容に合わせて列幅を調整",
+        "平均分配列宽": "列幅を均等にする",
+        "恢复自动列宽": "自動列幅に戻す",
+        "调整列宽": "列幅の調整",
+
         "查看公式源码": "数式のソースを表示",
         "查看图表源码": "図表のソースを表示",
         "打开链接": "リンクを開く",
@@ -545,6 +550,7 @@ enum L10n {
         "SQL 方言": "SQL方言",
         "可视化设置": "表示設定",
         "自适应两端对齐": "適応的な両端揃え",
+        "允许调整表格列宽": "表の列幅の変更を許可",
         "可视化设置…": "表示設定…",
         "请填写有效的可视化设置": "表示設定に有効な値を入力してください",
         "可选择本机已安装的格式化器；未指定路径时，MarkLeaf 会在 PATH 中自动查找。": "インストール済みフォーマッタを選択できます。パスを指定しない場合は PATH から自動検出します。",
@@ -969,6 +975,11 @@ enum L10n {
     // MARK: - 繁体中文
 
     private static let zhHantTable: [String: String] = [
+        "根据内容调整列宽": "根據內容調整欄寬",
+        "平均分配列宽": "平均分配欄寬",
+        "恢复自动列宽": "恢復自動欄寬",
+        "调整列宽": "調整欄寬",
+
         "查看公式源码": "檢視公式原始碼",
         "查看图表源码": "檢視圖表原始碼",
         "打开链接": "開啟連結",
@@ -1448,6 +1459,7 @@ enum L10n {
         "SQL 方言": "SQL 方言",
         "可视化设置": "視覺化設定",
         "自适应两端对齐": "自適應左右對齊",
+        "允许调整表格列宽": "允許調整表格欄寬",
         "可视化设置…": "視覺化設定…",
         "请填写有效的可视化设置": "請填寫有效的視覺化設定",
         "可选择本机已安装的格式化器；未指定路径时，MarkLeaf 会在 PATH 中自动查找。": "可選擇本機已安裝的格式化工具；未指定路徑時，MarkLeaf 會在 PATH 中自動尋找。",
@@ -1883,6 +1895,11 @@ enum L10n {
     // MARK: - English
 
     private static let englishTable: [String: String] = [
+        "根据内容调整列宽": "AutoFit to Contents",
+        "平均分配列宽": "Distribute Columns Evenly",
+        "恢复自动列宽": "Reset to Automatic Widths",
+        "调整列宽": "Adjust Column Widths",
+
         "查看公式源码": "View Math Source",
         "查看图表源码": "View Diagram Source",
         "打开链接": "Open Link",
@@ -2356,6 +2373,7 @@ enum L10n {
         "SQL 方言": "SQL Dialect",
         "可视化设置": "Visual Settings",
         "自适应两端对齐": "Adaptive Justification",
+        "允许调整表格列宽": "Allow Table Column Resizing",
         "可视化设置…": "Visual Settings…",
         "请填写有效的可视化设置": "Please enter valid visual settings",
         "可选择本机已安装的格式化器；未指定路径时，MarkLeaf 会在 PATH 中自动查找。": "Choose formatters installed on this Mac. When no path is set, MarkLeaf searches PATH automatically.",

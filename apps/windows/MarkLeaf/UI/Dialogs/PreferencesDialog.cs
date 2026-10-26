@@ -59,6 +59,7 @@ internal sealed class PreferencesDialog : Form
     private readonly NumericUpDown _visualFontSize;
     private readonly NumericUpDown _visualMaxWidth;
     private readonly CheckBox _visualCjkAutoSpacingCheck;
+    private readonly CheckBox _allowTableColumnResizeCheck;
     private readonly CheckBox _visualAdaptiveJustificationCheck;
     private readonly CheckBox _visualIgnoreMaxWidthCheck;
     private readonly CheckBox _autoConvertUnsafeEmphasisOnNormalizeCheck;
@@ -269,6 +270,8 @@ internal sealed class PreferencesDialog : Form
         { Minimum = 600, Maximum = 1200, Increment = 20 };
         _visualCjkAutoSpacingCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualCjkAutoSpacing"), AutoSize = true, FlatStyle = FlatStyle.System };
+        _allowTableColumnResizeCheck = new CheckBox
+        { Text = Loc.Get("prefs.editor.allowTableColumnResize"), AutoSize = true, FlatStyle = FlatStyle.System };
         _visualAdaptiveJustificationCheck = new CheckBox
         { Text = Loc.Get("prefs.editor.visualAdaptiveJustification"), AutoSize = true, FlatStyle = FlatStyle.System };
         _visualIgnoreMaxWidthCheck = new CheckBox
@@ -733,6 +736,9 @@ internal sealed class PreferencesDialog : Form
         panel.Controls.Add(_visualIgnoreMaxWidthCheck, 0, 12);
         panel.SetColumnSpan(_visualIgnoreMaxWidthCheck, 2);
         panel.Controls.Add(Gap(), 0, 13);
+        panel.Controls.Add(Gap(), 0, 15);
+        panel.Controls.Add(_allowTableColumnResizeCheck, 0, 16);
+        panel.SetColumnSpan(_allowTableColumnResizeCheck, 2);
         panel.Controls.Add(_showCodeHighlightCheck, 0, 14);
         panel.SetColumnSpan(_showCodeHighlightCheck, 2);
 
@@ -1314,6 +1320,7 @@ internal sealed class PreferencesDialog : Form
         _westernFontTextBox.Text = editor.SourceFontFamily;
         _cjkLanguageTagCombo.SelectedIndex = (int)editor.CjkLanguageTag;
         _visualCjkAutoSpacingCheck.Checked = editor.VisualCjkAutoSpacing;
+        _allowTableColumnResizeCheck.Checked = editor.AllowTableColumnResize;
         _visualAdaptiveJustificationCheck.Checked = editor.VisualAdaptiveJustification;
         _visualIgnoreMaxWidthCheck.Checked = editor.VisualIgnoreMaxContentWidth;
         _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked = editor.AutoConvertUnsafeEmphasis;
@@ -1473,6 +1480,7 @@ internal sealed class PreferencesDialog : Form
         if (_cjkLanguageTagCombo.SelectedIndex >= 0)
             editor.CjkLanguageTag = (CjkLanguageTag)_cjkLanguageTagCombo.SelectedIndex;
         editor.VisualCjkAutoSpacing = _visualCjkAutoSpacingCheck.Checked;
+        editor.AllowTableColumnResize = _allowTableColumnResizeCheck.Checked;
         editor.VisualAdaptiveJustification = _visualAdaptiveJustificationCheck.Checked;
         editor.VisualIgnoreMaxContentWidth = _visualIgnoreMaxWidthCheck.Checked;
         editor.AutoConvertUnsafeEmphasis = _autoConvertUnsafeEmphasisOnNormalizeCheck.Checked;

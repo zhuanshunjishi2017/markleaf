@@ -70,6 +70,10 @@ it('keeps the persisted adaptive justification choice across legacy visual updat
     anchorY: null,
   }
   const apply = window.__markleafApplyVisualVariables!
+  apply({ ...payload, visualScale: 1.25 })
+  expect(document.documentElement.style.getPropertyValue('--ml-table-scale')).toBe('1.25')
+  apply(payload)
+  expect(document.documentElement.style.getPropertyValue('--ml-table-scale')).toBe('1')
   // jsdom cannot complete verified measurements, but the coordinator still
   // marks enabled fallback paragraphs. That is enough to test the preference
   // switch without pretending this is a visual-layout assertion.

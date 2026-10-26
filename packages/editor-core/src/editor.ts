@@ -15,7 +15,7 @@ import { DOMSerializer, type Mark as ProseMirrorMark, type NodeType } from '@tip
 import { CellSelection, TableMap, tableEditingKey, selectedRect } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
-import { Table, TableRow, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
+import { Table, TableHeader, TableCell, renderTableToMarkdown } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
@@ -27,7 +27,7 @@ import { ContinuousInlineInput, continuousInlineMarkNames } from './inline-forma
 import { serializeWithLiteralMarkers } from './markdown-literal-markers'
 import CodeBlock from '@tiptap/extension-code-block'
 import { getListMarker, ListItem } from '@tiptap/extension-list'
-import { OrderedListMarkdown, TaskListMarkdown, tableMarkdownTokenizer } from './markdown-block-tokenizers'
+import { OrderedListMarkdown, TaskListMarkdown } from './markdown-block-tokenizers'
 import { markdown as codeMirrorMarkdown } from '@codemirror/lang-markdown'
 import { syntaxTree } from '@codemirror/language'
 import { EditorState as CodeMirrorEditorState } from '@codemirror/state'
@@ -45,6 +45,9 @@ import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
 import { TypographyProjection, typographyPlannedParagraphRanges, typographyFallbackParagraphRanges } from './typography/projection'
+
+import { parseTableLayout, TABLE_LAYOUT_ATTRIBUTE } from './table-layout'
+import { LayoutTableRow, TableLayoutInteraction, tableShape, tableLayoutAttributes, layoutTableTokenizer, parseLayoutTable, tableLayoutMarkdownPrefix, createTableLayoutView, tableLayoutCommand, setTableLayoutEnabled, isTableLayoutEnabled, selectedTable, isResizableTable, applyTableLayoutDOM } from './table-layout-extension'
 
 const imageMetadataPrefix = 'markleaf:'
 const imageMetadataSeparator = ' || '
@@ -2410,9 +2413,12 @@ const MarkLeafImage = Image.extend({
 
 const MarkLeafTable = Table.extend({
   name: 'table',
+  addNodeView() { return ({ node, view, getPos }) => createTableLayoutView(node, view, getPos) },
+  parseMarkdown: parseLayoutTable,
   addAttributes() {
     return {
       ...this.parent?.(),
+      ...tableLayoutAttributes,
       caption: {
         default: null,
         parseHTML: (element: HTMLElement) => element.getAttribute('data-markleaf-caption'),
@@ -2423,6 +2429,10 @@ const MarkLeafTable = Table.extend({
     }
   },
   renderHTML(props: any) {
+    if (!parseTableLayout(props.node?.attrs?.tableLayout, tableShape(props.node))) {
+      props = { ...props, HTMLAttributes: { ...props.HTMLAttributes } }
+      delete props.HTMLAttributes[TABLE_LAYOUT_ATTRIBUTE]
+    }
     const table = (this as any).parent?.(props)
     const caption = typeof props.node?.attrs?.caption === 'string' && props.node.attrs.caption.length > 0 ? props.node.attrs.caption : null
     if (!caption) return table
@@ -2431,9 +2441,10 @@ const MarkLeafTable = Table.extend({
   renderMarkdown(node: any, helpers: any) {
     const markdown = renderTableToMarkdown(node, helpers)
     const caption = typeof node.attrs?.caption === 'string' && node.attrs.caption.length > 0 ? node.attrs.caption : null
-    return caption ? `> tablecaption: ${caption}\n\n${markdown}` : markdown
+    const withLayout = tableLayoutMarkdownPrefix(node) + markdown
+    return caption ? `> tablecaption: ${caption}\n\n${withLayout}` : withLayout
   },
-  markdownTokenizer: tableMarkdownTokenizer,
+  markdownTokenizer: layoutTableTokenizer,
 })
 
 // 加载文档后，把「> tablecaption: …」引用块合并为紧跟其后的表格的 caption 属性。
@@ -3970,9 +3981,10 @@ const editorExtensions = [
   MarkLeafTable.configure({
     resizable: false,
   }),
+  TableLayoutInteraction,
   TableCellSelectionLock,
   FootnoteReference,
-  TableRow,
+  LayoutTableRow,
   TableHeader,
   TableCell,
   FootnoteDefinitionDecorations,
@@ -4003,6 +4015,7 @@ const editorExtensions = [
 ]
 
 export type EditorCreationOptions = {
+  allowTableColumnResize?: boolean
   themedVisualSelection?: boolean
   codeHighlightVisible?: boolean
   handlePaste?: (event: ClipboardEvent) => boolean
@@ -4082,6 +4095,7 @@ export function createEditor(
       transformPastedHTML: sanitizePastedHtml,
     },
   })
+  if (options.allowTableColumnResize === false) setTableLayoutEnabled(editor, false)
   normalizeTableCaptions(editor)
   if (options.sourceContextMenu) sourceContextMenus.set(editor, options.sourceContextMenu)
   if (hasListFormattingThatNeedsPreservation(content)) {
@@ -5224,9 +5238,14 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
   if (selection instanceof CellSelection) {
     const cellSlice = selection.content()
     const container = document.createElement('div')
-    const table = document.createElement('table')
-    table.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(cellSlice.content))
-    container.append(table)
+    container.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(cellSlice.content))
+    let table = container.querySelector('table')
+    if (!table) {
+      table = document.createElement('table')
+      table.append(...Array.from(container.childNodes))
+      container.append(table)
+    }
+    applyTableLayoutDOM(container, true, isTableLayoutEnabled(editor.view))
 
     const temporary = document.createElement('div')
     temporary.append(table.cloneNode(true))
@@ -5240,7 +5259,7 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
         .join('\t')
     )).join('\n')
 
-    return { text, markdown, html: table.outerHTML }
+    return { text, markdown, html: container.innerHTML }
   }
   const slice = editor.state.doc.slice(selection.from, selection.to)
   const container = document.createElement('div')
@@ -5417,6 +5436,7 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
     orderedList: editor.isActive('orderedList'),
     taskList: editor.isActive('taskList'),
     inTable,
+    canResizeTable: isTableLayoutEnabled(editor.view) && !!selectedTable(editor.state) && isResizableTable(selectedTable(editor.state)!.node),
     tableAlign,
     imageSelected: getSelectedImage(editor) !== null,
     imageSource: typeof getSelectedImage(editor)?.attrs.src === 'string' ? getSelectedImage(editor)!.attrs.src as string : null,
@@ -5740,6 +5760,9 @@ export function executeEditorCommand(
       const size = parseTableSize(text)
       return chain.insertTable({ rows: size.rows, cols: size.cols, withHeaderRow: true }).run()
     },
+    fitTableContents: () => tableLayoutCommand(editor, 'fitTableContents'),
+    distributeTableColumns: () => tableLayoutCommand(editor, 'distributeTableColumns'),
+    resetTableWidths: () => tableLayoutCommand(editor, 'resetTableWidths'),
     addRowBefore: () => chain.addRowBefore().command(({ tr }) => normalizeTableHeader(tr)).run(),
     addRowAfter: () => chain.addRowAfter().command(({ tr }) => normalizeTableHeader(tr)).run(),
     deleteRow: () => chain.deleteRow().command(({ tr }) => normalizeTableHeader(tr)).run(),

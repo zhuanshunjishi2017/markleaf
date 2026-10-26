@@ -10,6 +10,7 @@ export type EditorCommandState = {
   selectionScope?: 'caret' | 'text' | 'cells' | 'singleObject' | 'mixed'
   linkHref?: string | null
   footnoteReferenceLabel?: string | null
+  canResizeTable?: boolean
   canDeleteTableRow?: boolean
   canDeleteTableColumn?: boolean
   paragraph: boolean

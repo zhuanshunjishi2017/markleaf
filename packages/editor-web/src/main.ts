@@ -1,5 +1,6 @@
 import '@markleaf/editor-core/styles.css'
 import { resolveNativeCapabilities, nativeImageResources } from './native-capabilities'
+import { setTableLayoutEnabled, clearAllTableLayouts } from '@markleaf/editor-core'
 import { handleMermaidImageExport } from './media-export-host'
 import { createTypographyCoordinator, type TypographyCoordinator } from './typography-coordinator'
 import {
@@ -145,7 +146,9 @@ setExternalCodeFormatter({
   }),
 })
 
+let tableColumnResizePreferred = true
 const editorCreationOptions = {
+  allowTableColumnResize: true,
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
   handlePaste: handleVisualEditorPaste,
   sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
@@ -329,7 +332,9 @@ type VisualVariablePayload = {
   sourceFontFamily: string
   cjkLanguage: string
   visualCjkAutoSpacing: boolean
+  allowTableColumnResize?: boolean
   visualAdaptiveJustification?: boolean
+  visualScale?: number
   ignoreMaxWidth: boolean
   usePointerAnchor?: boolean
   anchorX?: number | null
@@ -443,6 +448,8 @@ window.__markleafApplyVisualVariables = (payload) => {
     ? pointerViewportAnchor(explicitPoint)
     : currentCaretViewportAnchor
   preserveViewportDuringLayoutChange(() => {
+    const tableScale = typeof payload.visualScale === 'number' && Number.isFinite(payload.visualScale) && payload.visualScale > 0 ? payload.visualScale : 1
+    document.documentElement.style.setProperty('--ml-table-scale', String(tableScale))
     document.documentElement.style.setProperty('--ml-line-height', payload.lineHeight)
     document.documentElement.style.setProperty('--ml-font-size', payload.fontSize)
     document.documentElement.style.setProperty('--ml-max-width', payload.maxWidth)
@@ -453,6 +460,12 @@ window.__markleafApplyVisualVariables = (payload) => {
     document.documentElement.classList.toggle('markleaf-cjk-autospace', payload.visualCjkAutoSpacing)
     document.documentElement.classList.toggle('markleaf-ignore-max-width', payload.ignoreMaxWidth === true)
   }, anchorReader)
+  if (typeof payload.allowTableColumnResize === 'boolean' && payload.allowTableColumnResize !== tableColumnResizePreferred) {
+    tableColumnResizePreferred = payload.allowTableColumnResize
+    editorCreationOptions.allowTableColumnResize = tableColumnResizePreferred
+    setTableLayoutEnabled(editor, tableColumnResizePreferred)
+    sendEditorState()
+  }
   // Hosts own the persisted preference. Older payloads retain the current
   // choice, and repeated zoom updates must not reset the coordinator.
   if (typeof payload.visualAdaptiveJustification === 'boolean'
@@ -1661,6 +1674,12 @@ async function handleMessage(value: unknown): Promise<void> {
           if (message.requestId) send('commandResult', { success: false }, message.requestId)
           break
         }
+        if (payload.command === 'clearAllTableLayouts') {
+          const targeted = documentLoaded && payload.text === documentId && !readOnly && documentType === 'markdown'
+          const success = targeted && (sourceMode && sourceEditor ? sourceEditor.clearTableLayouts() : clearAllTableLayouts(editor))
+          if (message.requestId) send('commandResult', { success }, message.requestId)
+          break
+        }
         if (payload.command === 'toggleSourceMode') {
           setSourceMode(!sourceMode)
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
@@ -1892,6 +1911,7 @@ async function handleMessage(value: unknown): Promise<void> {
             const resolved = resolveStyle(style)
             const html = await generateExportHtml({
               rawBodyHtml,
+              allowTableColumnResize: tableColumnResizePreferred,
               resolved,
               format,
               mermaidTheme: resolveMermaidTheme(resolved.css),

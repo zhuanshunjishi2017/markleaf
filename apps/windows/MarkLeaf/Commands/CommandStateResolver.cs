@@ -10,6 +10,7 @@ public static class CommandStateResolver
         {
             if ((context.SelectionScope is null or "mixed") && identifier is
                 "addRowBefore" or "addRowAfter" or "deleteRow" or "addColumnBefore" or "addColumnAfter" or "deleteColumn"
+                or "fitTableContents" or "distributeTableColumns" or "resetTableWidths"
                 or "alignTableLeft" or "alignTableCenter" or "alignTableRight" or "deleteTable" or "setTableCaption"
                 or "setCodeBlockLanguage" or "formatCodeBlock" or "exitCode") return new(false);
             if (!context.DocumentAvailable || !context.EditorReady

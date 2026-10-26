@@ -33,7 +33,7 @@ if let shim = ProcessInfo.processInfo.environment["MARKLEAF_RUNTIME_SHIM"] {
 if ProcessInfo.processInfo.environment["MARKLEAF_RUNTIME_RESUMABLE_TRACE"] == "1" {
     configuration.userContentController.addUserScript(WKUserScript(source: "window.__markleafTypographyTrace=true", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 }
-if CommandLine.arguments.count > 2, CommandLine.arguments[2] == "typography" {
+if CommandLine.arguments.count > 2, ["typography", "table-width"].contains(CommandLine.arguments[2]) {
     // Standalone test binaries have no app bundle and WebKit can keep their
     // document hidden. A native timer pumps frames so hidden-page JS timer
     // throttling cannot stall verification. DOM geometry remains real WebKit.
@@ -52,7 +52,7 @@ window.addEventListener('securitypolicyviolation', e => window.__runtimeErrors.p
 let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 650), configuration: configuration)
 var typographyWindow: NSWindow?
 var typographyFrameTimer: Timer?
-if CommandLine.arguments.count > 2, CommandLine.arguments[2] == "typography" {
+if CommandLine.arguments.count > 2, ["typography", "table-width"].contains(CommandLine.arguments[2]) {
     // A detached WKWebView can suspend requestAnimationFrame indefinitely.
     typographyWindow = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 1100, height: 800), styleMask: [.titled, .closable], backing: .buffered, defer: false)
     typographyWindow?.contentView = webView
@@ -421,4 +421,141 @@ if CommandLine.arguments.count > 2, CommandLine.arguments[2] == "typography" {
     expect(waitUntil { (evaluate("document.querySelectorAll('.markleaf-typography-v2').length") as? Int) == 0 }, "disabling projection must remove geometry")
     expect((evaluate("window.__runtimeErrors.length") as? Int) == 0, "typography must not cause unhandled runtime errors")
     print(resizeOnly ? "PASS: real WKWebView live-resize regression" : "PASS: real WKWebView typography residuals, default-off, toggle and source preservation: 36 cases (320/600/900 CSS px, 16/20/24 px text, system-ui/serif, light/dark)")
+}
+
+
+if CommandLine.arguments.count > 2, CommandLine.arguments[2] == "table-width" {
+    let baseCss = try! String(contentsOf: root.deletingLastPathComponent().appendingPathComponent("Styles/base.css"), encoding: .utf8)
+    _ = evaluate("{const style=document.createElement('style');style.textContent=\(String(data: try! JSONSerialization.data(withJSONObject: baseCss, options: [.fragmentsAllowed]), encoding: .utf8)!);document.head.append(style);void 0}")
+    let tableMarkdown = "<!-- markleaf:table-layout {\"version\":1,\"shape\":[2,2,2],\"width\":400,\"columns\":[180,220],\"rows\":{\"2\":[210,190]}} -->\n| A | B |\n| --- | --- |\n| first | second |\n| third | fourth |"
+    send("loadDocument", payload: ["markdown": tableMarkdown, "readOnly": false])
+    expect(waitUntil { (evaluate("document.querySelectorAll('table.markleaf-table-manual').length") as? Int) == 1 }, "manual table must render")
+    _ = evaluate("""
+    window.__tableWidths=()=>[...document.querySelector('table.markleaf-table-manual').rows].map(r=>[...r.cells].map(c=>c.getBoundingClientRect().width));
+    window.__tableLayout=()=>JSON.parse(document.querySelector('table.markleaf-table-manual').dataset.markleafTableLayout);
+    window.__tableDrag=(row,dx,cancel=false)=>{
+      const c=document.querySelector('table.markleaf-table-manual').rows[row].cells[0],r=c.getBoundingClientRect();
+      c.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,button:0,pointerId:7,clientX:r.right,clientY:r.top+5}));
+      if(cancel)document.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Escape'}));
+      document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,button:0,pointerId:7,clientX:r.right+dx,clientY:r.top+5}));
+    };void 0;
+    """)
+    print("Table initial geometry: \(evaluate("JSON.stringify(window.__tableWidths())") ?? "unavailable")")
+    let alignment = evaluate("Math.abs(window.__tableWidths()[0][0]-180)<1 && Math.abs(window.__tableWidths()[2][0]-210)<1") as? Bool
+    expect(alignment == true, "WebKit must honor independent row widths")
+    _ = evaluate("window.__tableDrag(1,20)")
+    expect(waitUntil { (evaluate("window.__tableLayout().columns[0]") as? Double ?? 0) > 199 }, "whole-column drag must commit")
+    expect((evaluate("Math.abs(window.__tableLayout().rows['2'][0]-230)<1") as? Bool) == true, "whole drag moves existing local boundaries")
+    send("command", payload: ["command": "undo"])
+    expect(waitUntil { (evaluate("window.__tableLayout().columns[0]") as? Int) == 180 }, "one undo restores drag")
+    _ = evaluate("""
+    window.__outerStart=()=>{const c=document.querySelector('table.markleaf-table-manual').rows[1].cells[1],r=c.getBoundingClientRect();window.__outerX=r.right;c.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,button:0,pointerId:7,clientX:r.right,clientY:r.top+5}));};
+    window.__outerMove=dx=>document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,cancelable:true,pointerId:7,clientX:window.__outerX+dx}));
+    window.__outerEnd=dx=>document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,button:0,pointerId:7,clientX:window.__outerX+dx}));
+    window.__outerStart();window.__outerMove(20);void 0
+    """)
+    expect(waitUntil { (evaluate("window.__tableLayout().width") as? Int) == 420 }, "outer edge must preview the total width")
+    _ = evaluate("window.__outerMove(30);void 0")
+    expect(waitUntil { (evaluate("window.__tableLayout().width") as? Int) == 430 }, "outer preview must use the initial coordinate scale")
+    _ = evaluate("window.__outerEnd(30);void 0")
+    expect((evaluate("window.__tableLayout().columns[0]===180 && window.__tableLayout().rows['2'][1]===220") as? Bool) == true, "outer resize preserves earlier columns and updates local final columns")
+    send("command", payload: ["command": "undo"])
+    expect(waitUntil { (evaluate("window.__tableLayout().width") as? Int) == 400 }, "outer edge must undo as one gesture")
+    _ = evaluate("{const c=document.querySelector('table.markleaf-table-manual').rows[0].cells[0],range=document.createRange();range.selectNodeContents(c);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);document.dispatchEvent(new Event('selectionchange'));void 0}")
+    _ = evaluate("window.__tableDrag(0,25)")
+    expect(waitUntil { (evaluate("window.__tableLayout().rows['0']?.[0]") as? Double ?? 0) > 204 }, "selected-cell drag changes only its row")
+    expect((evaluate("window.__tableLayout().columns[0]") as? Int) == 180, "selected-cell resize keeps default column widths")
+    _ = evaluate("window.__tableDrag(0,20,true)")
+    expect((evaluate("window.__tableLayout().rows['0'][0]") as? Double ?? 0) < 206, "Escape cancels resize")
+    send("command", payload: ["command": "fitTableContents"])
+    expect(waitUntil { (evaluate("Object.keys(window.__tableLayout().rows).length") as? Int) == 0 }, "content fit clears local overrides")
+    send("command", payload: ["command": "distributeTableColumns"])
+    expect((evaluate("Math.abs(window.__tableWidths()[0][0]-window.__tableWidths()[0][1])<1") as? Bool) == true, "distributed columns have equal rendered width")
+    recorder.messages.removeAll { $0["type"] as? String == "snapshot" }
+    send("requestSnapshot")
+    expect(waitUntil { recorder.received("snapshot") }, "layout snapshot must arrive")
+    let saved = recorder.messages.last { $0["type"] as? String == "snapshot" }?["payload"] as? [String: Any]
+    let markdown = saved?["markdown"] as? String ?? ""
+    expect(markdown.contains("markleaf:table-layout"), "layout must persist to Markdown")
+    send("loadDocument", payload: ["markdown": markdown, "readOnly": false])
+    expect(waitUntil { (evaluate("document.querySelectorAll('table.markleaf-table-manual').length") as? Int) == 1 }, "saved table must reopen with layout")
+    _ = evaluate("document.querySelector('#editor .ProseMirror').style.width='90px'")
+    expect((evaluate("document.querySelector('.markleaf-table-wrapper').scrollWidth >= document.querySelector('.markleaf-table-wrapper').clientWidth") as? Bool) == true, "narrow table remains contained")
+    send("loadDocument", payload: ["markdown": tableMarkdown, "readOnly": false])
+    expect(waitUntil { (evaluate("window.__tableLayout().columns[0]") as? Int) == 180 }, "restore wide table for scale verification")
+    for scale in [0.8, 1.25, 2.0] {
+        _ = evaluate("document.querySelector('#editor .ProseMirror').style.width='600px';document.querySelector('#editor .ProseMirror').style.zoom='\(scale)';void 0")
+        let before = evaluate("window.__tableLayout().columns[0]") as? Double ?? 0
+        _ = evaluate("window.__tableDrag(1,\(10 * scale));void 0")
+        print("Scale \(scale), before \(before), after \(evaluate("JSON.stringify(window.__tableLayout())") ?? "nil"), geometry \(evaluate("JSON.stringify(window.__tableWidths())") ?? "nil")")
+        expect((evaluate("Math.abs(window.__tableLayout().columns[0]-\(before + 10))<1") as? Bool) == true, "scaled pointer coordinates must preserve logical widths")
+    }
+    _ = evaluate("document.querySelector('#editor .ProseMirror').style.zoom='1';void 0")
+    for scale in [0.8, 1.25, 2.0] {
+        _ = evaluate("document.querySelector('#editor .ProseMirror').style.width='1000px';window.__markleafApplyVisualVariables({visualScale:\(scale),fontSize:'\(16 * scale)px',maxWidth:'\(820 * scale)px',lineHeight:'1.6',sourceFontSize:'14px',sourceFontFamily:'monospace',cjkLanguage:'zh-Hans',visualCjkAutoSpacing:false,ignoreMaxWidth:true});void 0")
+        expect((evaluate("Math.abs(document.querySelector('table').getBoundingClientRect().width/window.__tableLayout().width-\(scale))<.02") as? Bool) == true, "native font-based zoom must scale manual table width")
+        let before = evaluate("window.__tableLayout().columns[0]") as? Double ?? 0
+        _ = evaluate("window.__tableDrag(1,\(10 * scale));void 0")
+        expect((evaluate("Math.abs(window.__tableLayout().columns[0]-\(before + 10))<1") as? Bool) == true, "native zoom drag must store logical widths")
+    }
+    _ = evaluate("document.documentElement.style.setProperty('--ml-table-scale','1');void 0")
+
+    send("loadDocument", payload: ["markdown": tableMarkdown, "readOnly": false])
+    _ = evaluate("document.querySelector('#editor .ProseMirror').style.width='300px';window.__outerStart();window.__outerEnd(-30);void 0")
+    expect((evaluate("Math.abs(window.__tableLayout().width-270)<1 && Math.abs(document.querySelector('table').getBoundingClientRect().width-270)<1") as? Bool) == true, "compressed tables must shrink from their actual visible width")
+    send("loadDocument", payload: ["markdown": tableMarkdown.replacingOccurrences(of: "[180,220]", with: "[40,360]"), "readOnly": false])
+    _ = evaluate("document.querySelector('#editor .ProseMirror').style.width='200px';void 0")
+    expect((evaluate("Math.min(...window.__tableWidths().flat())>=39.5 && document.querySelector('.markleaf-table-wrapper').scrollWidth>document.querySelector('.markleaf-table-wrapper').clientWidth") as? Bool) == true, "asymmetric cells must remain at least 40px and scroll in narrow view")
+    send("command", payload: ["command": "resetTableWidths"])
+    expect(waitUntil { (evaluate("document.querySelectorAll('table.markleaf-table-manual').length") as? Int) == 0 }, "reset restores automatic table")
+    expect((evaluate("window.__runtimeErrors.length") as? Int) == 0, "table resizing must not produce frontend errors")
+    let fitMarkdown = "<!-- markleaf:table-layout {\"version\":1,\"shape\":[3,3,3],\"width\":600,\"columns\":[200,200,200],\"rows\":{\"2\":[210,190,200]}} -->\n| A | B | C |\n| --- | --- | --- |\n| A deliberately long phrase requiring more width | x | third |\n| q | notice | third |"
+    send("loadDocument", payload: ["markdown": fitMarkdown, "readOnly": false])
+    _ = evaluate("document.querySelector('.ProseMirror').style.width='1000px';void 0")
+    _ = evaluate("""
+    window.__doubleBoundary=(row,collapse=false)=>{
+      const c=document.querySelector('table').rows[row].cells[0],r=c.getBoundingClientRect();
+      for(let count=1;count<=2;count++){
+        c.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,button:0,pointerId:9,clientX:r.right,clientY:r.top+5}));
+        c.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,detail:count,clientX:r.right,clientY:r.top+5}));
+        document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,button:0,pointerId:9,clientX:r.right+(count===1?1:0),clientY:r.top+5}));
+        c.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,button:0,detail:count,clientX:r.right,clientY:r.top+5}));
+        c.dispatchEvent(new MouseEvent('click',{bubbles:true,button:0,detail:count,clientX:r.right,clientY:r.top+5}));
+        if(count===1&&collapse){window.getSelection().collapse(c,0);document.querySelector('.ProseMirror').editor.commands.setTextSelection(3);}
+      }
+      document.querySelector('.ProseMirror').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,button:0,detail:2,clientX:r.right,clientY:r.top+5}));
+    };window.__doubleBoundary(1);void 0
+    """)
+    expect((evaluate("window.__tableLayout().columns[0]>201 && window.__tableLayout().columns[2]===200 && window.__tableLayout().width===600") as? Bool) == true, "double-click must fit only the adjacent columns to their content")
+    send("command", payload: ["command": "undo"])
+    expect(waitUntil { (evaluate("window.__tableLayout().columns[0]") as? Int) == 200 }, "double-click must undo in one step despite click jitter")
+    _ = evaluate("{const c=document.querySelector('table').rows[2].cells[0],range=document.createRange();range.selectNodeContents(c);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));window.__doubleBoundary(2,true);void 0}")
+    expect((evaluate("window.__tableLayout().columns[0]===200 && window.__tableLayout().rows['2'][0]<209 && window.__tableLayout().rows['2'][2]===200") as? Bool) == true, "selected row fitting must preserve the first click intent and use its own content")
+    send("command", payload: ["command": "undo"])
+    expect((evaluate("window.__tableLayout().rows['2'][0]===210") as? Bool) == true, "local double-click fitting must undo in one step")
+    let offsetMarkdown = "<!-- markleaf:table-layout {\"version\":1,\"shape\":[3,3,3,3],\"width\":680,\"columns\":[160,320,200],\"rows\":{\"2\":[80,400,200]}} -->\n| 阶段 | 任务 | 验收 |\n| --- | --- | --- |\n| 需求确认 | 明确整列与局部单元格的拖动规则 | 已确认 |\n| 设计审查 | 这一行的边界与其他行错开 | 观察独立边界 |\n| 实现验证 | **完整选中此格全部内容**，然后拖动右侧竖线 | 检查其他行 |"
+    send("loadDocument", payload: ["markdown": offsetMarkdown, "readOnly": false])
+    _ = evaluate("document.querySelector('.ProseMirror').style.width='650px';window.__markleafApplyVisualVariables({visualScale:1.5,fontSize:'24px',maxWidth:'1230px',lineHeight:'1.6',sourceFontSize:'14px',sourceFontFamily:'monospace',cjkLanguage:'zh-Hans',visualCjkAutoSpacing:false,ignoreMaxWidth:true});window.getSelection().removeAllRanges();document.querySelector('.ProseMirror').editor.commands.setTextSelection(3);window.__doubleBoundary(1);void 0")
+    expect((evaluate("(()=>{const t=document.querySelector('table'),l=window.__tableLayout();return !l.rows['2'] && t.offsetWidth<=651 && t.rows[2].cells[0].offsetWidth>60 && l.columns[2]===200 && l.width===680})()") as? Bool) == true, "auto-fit must not collapse an offset row or inflate the table at 150% zoom")
+    send("command", payload: ["command": "undo"])
+    expect((evaluate("window.__tableLayout().rows['2'][0]===80") as? Bool) == true, "offset row auto-fit must undo in one step")
+    _ = evaluate("window.__markleafApplyVisualVariables({visualScale:1,fontSize:'16px',maxWidth:'820px',lineHeight:'1.6',sourceFontSize:'14px',sourceFontFamily:'monospace',cjkLanguage:'zh-Hans',visualCjkAutoSpacing:false,ignoreMaxWidth:true});void 0")
+    print("PASS: real WebKit adjacent-column double-click fitting, local selection, jitter and undo")
+    send("loadDocument", payload: ["markdown": tableMarkdown, "readOnly": false])
+    _ = evaluate("""
+    window.__exportHtml=null;import('./kernel/export-html.js').then(m=>m.generateExportHtml({rawBodyHtml:document.querySelector('table').outerHTML,resolved:{rootClass:'markleaf-document',css:''},format:'pdf',baseCss:document.querySelector('style').textContent,editorLoc:{}})).then(html=>window.__exportHtml=html);void 0
+    """)
+    expect(waitUntil { (evaluate("typeof window.__exportHtml==='string'") as? Bool) == true }, "export HTML must be generated")
+    typographyWindow?.setContentSize(NSSize(width: 260, height: 700))
+    _ = evaluate("const exported=window.__exportHtml;document.open();document.write(exported);document.close();void 0")
+    expect((evaluate("(()=>{const t=document.querySelector('table'),r=t.getBoundingClientRect(),body=document.querySelector('.markleaf-document').getBoundingClientRect();return r.right<=body.right+1 && t.style.minWidth==='0px' && Math.abs(t.rows[0].cells[0].getBoundingClientRect().width/r.width-.45)<.02 && Math.abs(t.rows[2].cells[0].getBoundingClientRect().width/r.width-.525)<.02})()") as? Bool) == true, "PDF layout must fit a narrow page and preserve row proportions")
+    var pdfFinished = false
+    var pdfBytes = 0
+    webView.createPDF(configuration: WKPDFConfiguration()) { result in
+        if case .success(let data) = result { pdfBytes = data.count }
+        pdfFinished = true
+    }
+    expect(waitUntil { pdfFinished }, "PDF generation must finish")
+    expect(pdfBytes > 500, "manual-width table must produce a real PDF")
+    print("PASS: real WKWebView table width rendering, whole/local drag, cancellation, undo, content fit and save/reopen")
 }

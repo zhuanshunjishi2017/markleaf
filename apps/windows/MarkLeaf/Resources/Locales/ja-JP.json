@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "最大幅(&W)",
   "prefs.editor.visualIgnoreMaxWidth": "最大幅の制限を無視",
   "prefs.editor.visualCjkAutoSpacing": "CJK文字と欧文・数字の間隔を自動調整(&A)",
+  "prefs.editor.allowTableColumnResize": "表の列幅の変更を許可",
   "prefs.editor.visualAdaptiveJustification": "適応的な両端揃え",
   "prefs.editor.autoConvertUnsafeEmphasis": "アスタリスク記法を自動変換",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "ソース入力時",
@@ -1065,5 +1066,9 @@
   "update.installNow": "更新をダウンロード",
   "update.skipVersion": "このバージョンをスキップ",
   "update.remindLater": "後で通知",
-  "update.skippedStatus": "バージョン {0} をスキップしました"
+  "update.skippedStatus": "バージョン {0} をスキップしました",
+  "contextMenu.table.fitContents": "内容に合わせて列幅を調整",
+  "contextMenu.table.distributeColumns": "列幅を均等にする",
+  "contextMenu.table.resetWidths": "自動列幅に戻す",
+  "contextMenu.table.widths": "列幅の調整"
 }

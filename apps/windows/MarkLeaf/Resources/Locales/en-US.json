@@ -845,6 +845,7 @@
   "prefs.editor.visualMaxWidth": "Max &width",
   "prefs.editor.visualIgnoreMaxWidth": "Ignore maximum width",
   "prefs.editor.visualCjkAutoSpacing": "Automatically space CJK text and &Latin characters/numbers",
+  "prefs.editor.allowTableColumnResize": "Allow Table Column Resizing",
   "prefs.editor.visualAdaptiveJustification": "Adaptive Justification",
   "prefs.editor.autoConvertUnsafeEmphasis": "Automatically convert asterisk markup",
   "prefs.editor.autoConvertUnsafeEmphasis.source": "While typing source",
@@ -1065,5 +1066,9 @@
   "update.installNow": "Download Update",
   "update.skipVersion": "Skip This Version",
   "update.remindLater": "Remind Me Later",
-  "update.skippedStatus": "Skipped version {0}"
+  "update.skippedStatus": "Skipped version {0}",
+  "contextMenu.table.fitContents": "AutoFit to Contents",
+  "contextMenu.table.distributeColumns": "Distribute Columns Evenly",
+  "contextMenu.table.resetWidths": "Reset to Automatic Widths",
+  "contextMenu.table.widths": "Adjust Column Widths"
 }

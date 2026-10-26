@@ -137,5 +137,10 @@ let adaptiveOff = try decoder.decode(AppSettings.self, from: Data(#"{"visualAdap
 let adaptiveDisabled = try adaptiveValue(adaptiveOff)
 expect(adaptiveDisabled == false, "explicit false must survive persistence")
 expect(adaptiveOff.visualFontSize == 19, "adaptive setting must preserve unrelated preferences")
+expect(legacy.allowTableColumnResize, "legacy settings should allow table resizing by default")
+var tableSettings = legacy
+tableSettings.allowTableColumnResize = false
+let tableRoundTrip = try decoder.decode(AppSettings.self, from: JSONEncoder().encode(tableSettings))
+expect(!tableRoundTrip.allowTableColumnResize, "disabled table resizing must survive persistence")
 
 print("PASS")

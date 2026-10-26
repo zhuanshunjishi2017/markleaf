@@ -69,6 +69,7 @@ export function resolveEditorActions(state: Partial<EditorCommandState>, context
   add('formatPainterApply', editing && !!state.formatPainterArmed)
   const table = editing && !!state.inTable && state.selectionScope != null && state.selectionScope !== 'mixed'
   add('addRowBefore addRowAfter addColumnBefore addColumnAfter setTableCaption deleteTable', table)
+  add('fitTableContents distributeTableColumns resetTableWidths', table && state.canResizeTable === true)
   add('deleteRow', table && state.canDeleteTableRow === true)
   add('deleteColumn', table && state.canDeleteTableColumn === true)
   for (const [command, align] of Object.entries({ alignTableLeft: 'left', alignTableCenter: 'center', alignTableRight: 'right' })) add(command, table, state.tableAlign === align)
