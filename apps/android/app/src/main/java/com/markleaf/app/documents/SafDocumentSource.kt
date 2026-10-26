@@ -94,6 +94,34 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
         DocumentRef.Saf(created.toString())
     }
 
+    /**
+     * 读取文档目录下的资源文件（图片等），供 assets.local 拦截器调用。
+     * @param documentDir 文档目录的 SAF document uri 字符串
+     * @param relativePath 相对授权根的 POSIX 路径（已由 AssetResolver 归一化）
+     */
+    suspend fun readSiblingBytes(documentDir: String, relativePath: String): ByteArray? =
+        withContext(Dispatchers.IO) {
+            val dirUri = Uri.parse(documentDir)
+            val documentId = runCatching { DocumentsContract.getDocumentId(dirUri) }.getOrNull()
+                ?: return@withContext null
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(dirUri, documentId)
+            val projection = arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            )
+            // 目标文件名 = 相对路径末段（AssetResolver 已保证路径在授权根内）
+            val targetName = relativePath.substringAfterLast('/')
+            contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(1) ?: continue
+                    if (!name.equals(targetName, ignoreCase = true)) continue
+                    val childUri = DocumentsContract.buildDocumentUriUsingTree(dirUri, cursor.getString(0))
+                    return@withContext contentResolver.openInputStream(childUri)?.use { it.readBytes() }
+                }
+            }
+            null
+        }
+
     companion object {
         /** 持久化授权：打开文件夹后调用，重启后仍可访问（spec §4.3 前提）。 */
         fun takePersistablePermission(context: Context, treeUri: Uri) {

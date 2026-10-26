@@ -1,41 +1,99 @@
 package com.markleaf.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.lifecycleScope
 import com.markleaf.app.bridge.EditorBridge
 import com.markleaf.app.bridge.EditorMessage
 import com.markleaf.app.bridge.EditorSessionState
 import com.markleaf.app.bridge.HostMessage
+import com.markleaf.app.documents.AssetResolver
+import com.markleaf.app.documents.DocumentController
+import com.markleaf.app.documents.DocumentEntry
+import com.markleaf.app.documents.DocumentRef
+import com.markleaf.app.documents.RecoveryStore
+import com.markleaf.app.documents.SafDocumentSource
+import com.markleaf.app.documents.isMarkdownName
 import com.markleaf.app.editor.EditorWebViewFactory
+import com.markleaf.app.ui.OutlineItem
+import com.markleaf.app.ui.WorkspaceSidebar
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var webView: WebView
     private lateinit var bridge: EditorBridge
     private lateinit var session: EditorSessionState
+    private lateinit var source: SafDocumentSource
+    private lateinit var recoveryStore: RecoveryStore
+
+    private var controller: DocumentController? = null
     private val documentLoaded = mutableStateOf(false)
     private val editorStatusLine = mutableStateOf("")
+    private val dirty = mutableStateOf(false)
+    private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
+    private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
+    private var workspaceRoot: DocumentRef.Saf? = null
+
+    private val openTreeLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            com.markleaf.app.documents.SafDocumentSource.takePersistablePermission(this, uri)
+            workspaceRoot = DocumentRef.Saf(uri.toString())
+            refreshWorkspace()
+        }
+    }
+
+    private val openFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            openDocument(DocumentRef.Saf(uri.toString()))
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val webView = EditorWebViewFactory.create(this)
+        val resolver = AssetResolver { path: String ->
+            // 文档图片：相对当前文档目录解析（runBlocking OK——拦截器运行在 WebView 线程池）
+            val active = controller?.activeRef
+            if (active == null) null
+            else {
+                val documentDir = documentDirectoryOf(active)
+                runBlocking { source.readSiblingBytes(documentDir, path) }
+            }
+        }
+        webView = EditorWebViewFactory.create(this, assetResolver = resolver)
         session = EditorSessionState().apply { startDocument(WELCOME_DOCUMENT_ID) }
+        source = SafDocumentSource(this)
+        recoveryStore = RecoveryStore(this)
         bridge = EditorBridge(
             postScript = { script -> webView.evaluateJavascript(script, null) },
             session = session,
@@ -44,11 +102,45 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        TabStripPlaceholder(active = "未命名", documentLoaded = documentLoaded.value)
-                        EditorContainer(webView)
-                        StatusBarPlaceholder(editorStatusLine.value)
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val scope = rememberCoroutineScope()
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    drawerContent = {
+                        WorkspaceSidebar(
+                            entries = sidebarEntries.value,
+                            outline = outline.value,
+                            onOpenDocument = { entry ->
+                                scope.launch { drawerState.close() }
+                                (entry.ref as? DocumentRef.Saf)?.let(::openDocument)
+                            },
+                            onOutlineClick = { item ->
+                                scope.launch { drawerState.close() }
+                                bridge.post(
+                                    HostMessage.Command(
+                                        documentId = session.documentId,
+                                        revision = session.confirmedRevision,
+                                        payload = HostMessage.Command.CommandPayload(
+                                            command = "scrollToPosition",
+                                            text = item.position.toString(),
+                                        ),
+                                    ),
+                                )
+                            },
+                        )
+                    },
+                ) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            TabStrip(active = activeTitle.value, documentLoaded = documentLoaded.value,
+                                onOpenFolder = { openTreeLauncher.launch(null) },
+                                onOpenFile = { openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) },
+                                onSave = { scope.launch { saveActiveDocument() } },
+                                onOpenDrawer = { scope.launch { drawerState.open() } },
+                                dirty = dirty.value)
+                            EditorContainer(webView)
+                            StatusBarPlaceholder(editorStatusLine.value)
+                        }
                     }
                 }
             }
@@ -58,6 +150,81 @@ class MainActivity : ComponentActivity() {
         webView.loadUrl(EDITOR_URL)
     }
 
+    private val activeTitle = mutableStateOf("未命名")
+
+    private fun documentDirectoryOf(ref: DocumentRef.Saf): String =
+        ref.uri.substringBeforeLast('/').substringAfterLast("%2F", "Documents")
+
+    private fun refreshWorkspace() {
+        val root = workspaceRoot ?: return
+        lifecycleScope.launch {
+            runCatching { source.listChildren(root) }
+                .onSuccess { entries ->
+                    sidebarEntries.value = entries.filter { it.isFolder || isMarkdownName(it.name) }
+                }
+                .onFailure { Log.w(TAG, "列目录失败: ${it.message}") }
+        }
+    }
+
+    private fun openDocument(ref: DocumentRef.Saf) {
+        val active = controller ?: DocumentController(source, bridge::post, session).also {
+            controller = it
+        }
+        lifecycleScope.launch {
+            when (val result = active.open(ref)) {
+                is DocumentController.OpenResult.Loaded -> {
+                    activeTitle.value = result.name
+                    dirty.value = false
+                    Log.i(TAG, "打开 ${result.name} 编码=${result.encoding.name}")
+                }
+                is DocumentController.OpenResult.PermissionLost -> {
+                    editorStatusLine.value = "文档权限失效，请重新打开"
+                }
+                is DocumentController.OpenResult.Failed -> {
+                    editorStatusLine.value = "打开失败: ${result.message}"
+                }
+            }
+        }
+    }
+
+    private suspend fun saveActiveDocument() {
+        val active = controller ?: return
+        val externalChanged = active.detectExternalChange()
+        when (val result = active.save(
+            snapshotProvider = { requestSnapshotBlocking() },
+            dirty = dirty.value,
+            externalChanged = externalChanged,
+        )) {
+            DocumentController.SaveResult.Saved -> {
+                dirty.value = false
+                active.discardRecovery(recoveryStore)
+                editorStatusLine.value = "已保存"
+            }
+            DocumentController.SaveResult.Conflict -> editorStatusLine.value = "文件已被外部修改，请另存或覆盖"
+            DocumentController.SaveResult.PermissionLost -> editorStatusLine.value = "保存失败：权限失效"
+            DocumentController.SaveResult.NotDirty -> Unit
+            is DocumentController.SaveResult.Failed -> editorStatusLine.value = "保存失败: ${result.message}"
+        }
+    }
+
+    /** 同步取快照（save 流程在协程内，WebView 求值经 postMessage 回环——M2 简化为取 lastKnownMarkdown）。 */
+    private var lastKnownMarkdown: String = ""
+    private suspend fun requestSnapshotBlocking(): EditorMessage.Snapshot.SnapshotPayload {
+        // 快照回环：requestSnapshot → snapshot。等待回包的挂起实现放 M3
+        // （需要 requestId 与 CompletableDeferred 映射，见 spec §3.2）。
+        // M2 先用编辑器 selectionChanged/dirtyChanged 携带不了的最近快照——
+        // 这里直接触发请求并挂起等待 onEditorMessage 中的 snapshot。
+        val deferred = kotlinx.coroutines.CompletableDeferred<EditorMessage.Snapshot.SnapshotPayload>()
+        pendingSnapshot = deferred
+        bridge.post(
+            HostMessage.RequestSnapshot(documentId = session.documentId, revision = session.confirmedRevision),
+        )
+        return deferred.await()
+    }
+
+    @Volatile
+    private var pendingSnapshot: kotlinx.coroutines.CompletableDeferred<EditorMessage.Snapshot.SnapshotPayload>? = null
+
     private fun handleEditorMessage(message: EditorMessage) {
         when (message) {
             is EditorMessage.Ready -> {
@@ -65,10 +232,18 @@ class MainActivity : ComponentActivity() {
                 bridge.post(HostMessage.ApplyStyles(documentId = WELCOME_DOCUMENT_ID, revision = 0))
                 bridge.post(welcomeDocumentMessage())
             }
-            is EditorMessage.StylesApplied -> Log.i(TAG, "styles applied")
+            is EditorMessage.Snapshot -> {
+                lastKnownMarkdown = message.payload.markdown
+                pendingSnapshot?.complete(message.payload)
+                pendingSnapshot = null
+            }
+            is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
             is EditorMessage.DocumentLoaded -> {
                 Log.i(TAG, "document loaded at revision ${message.revision}")
                 documentLoaded.value = true
+            }
+            is EditorMessage.OutlineChanged -> {
+                outline.value = parseOutline(message.payload)
             }
             is EditorMessage.EditorStatusChanged -> {
                 editorStatusLine.value = message.payload.toString().take(120)
@@ -86,6 +261,28 @@ class MainActivity : ComponentActivity() {
         ),
     )
 
+    /** outlineChanged 载荷 → OutlineItem（容错解析，字段缺失跳过）。 */
+    private fun parseOutline(payload: kotlinx.serialization.json.JsonElement?): List<OutlineItem> {
+        val items = mutableListOf<OutlineItem>()
+        val array = (payload as? kotlinx.serialization.json.JsonArray) ?: return items
+        for (element in array) {
+            val obj = element as? kotlinx.serialization.json.JsonObject ?: continue
+            val text = obj["text"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: continue
+            val position = (obj["position"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
+            val level = (obj["level"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 1
+            items += OutlineItem(position = position, level = level, text = text)
+        }
+        return items
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // spec §4.3：切后台写恢复快照
+        if (dirty.value && lastKnownMarkdown.isNotEmpty()) {
+            controller?.writeRecovery(recoveryStore, lastKnownMarkdown, dirty = true)
+        }
+    }
+
     companion object {
         private const val TAG = "MainActivity"
         private const val WELCOME_DOCUMENT_ID = "welcome"
@@ -94,15 +291,33 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun TabStripPlaceholder(active: String, documentLoaded: Boolean) {
-    val marker = if (documentLoaded) "●" else ""
-    Text(
-        text = "$marker $active",
+private fun TabStrip(
+    active: String,
+    documentLoaded: Boolean,
+    onOpenFolder: () -> Unit,
+    onOpenFile: () -> Unit,
+    onSave: () -> Unit,
+    onOpenDrawer: () -> Unit,
+    dirty: Boolean,
+) {
+    val marker = if (dirty) "●" else ""
+    androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        style = MaterialTheme.typography.titleMedium,
-    )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        TextButton(onClick = onOpenDrawer) { Text("☰") }
+        Text(
+            text = "$marker $active",
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 12.dp),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        TextButton(onClick = onOpenFile) { Text("打开") }
+        TextButton(onClick = onSave) { Text("保存") }
+        TextButton(onClick = onOpenFolder) { Text("📁") }
+    }
 }
 
 @Composable
@@ -159,7 +374,7 @@ fun main() {
 
 - [x] WebView 骨架
 - [x] 协议桥
-- [ ] 编辑闭环（进行中）
+- [x] 编辑闭环（进行中）
 
 ## Mermaid
 
