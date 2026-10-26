@@ -140,6 +140,8 @@ export class SourceEditor {
     onUnsafeEmphasis?: (request: UnsafeEmphasisRequest) => void,
     detectUnsafeEmphasis = true,
     onSelectionChanged?: (from: number, to: number) => void,
+    /** Android 触屏：关拼写检查/自动更正，保 contenteditable 输入（软键盘 IME 兼容）。 */
+    private readonly touchInput = false,
   ) {
     this.onChange = onChange
     this.documentStatistics = getSourceDocumentStatistics(content)
@@ -158,7 +160,17 @@ export class SourceEditor {
 
   private buildExtensions(indentWidth: number) {
     const width = Math.max(1, Math.min(8, Math.round(indentWidth) || 2))
+    const touchExtensions = this.touchInput
+      ? [
+          EditorView.contentAttributes.of({
+            autocorrect: 'off',
+            autocapitalize: 'off',
+            spellcheck: 'false',
+          }),
+        ]
+      : []
     return [
+      ...touchExtensions,
       this.readOnlyCompartment.of(EditorState.readOnly.of(this.readOnly)),
       lineNumbers(),
       themedSourceSelection,

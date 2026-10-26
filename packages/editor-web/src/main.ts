@@ -92,6 +92,7 @@ const sourceMount = document.querySelector<HTMLElement>('#source-editor')!
 const sourceToggle = document.querySelector<HTMLButtonElement>('#source-toggle')!
 
 const hostCapabilities = resolveNativeCapabilities(window.chrome?.webview?.hostPlatform)
+const isAndroidHost = window.chrome?.webview?.hostPlatform === 'Android'
 const usesNativeFormatMenu = ['macOS', 'Windows'].includes(window.chrome?.webview?.hostPlatform ?? '')
 document.documentElement.classList.toggle('markleaf-host-macos', window.chrome?.webview?.hostPlatform === 'macOS')
 document.documentElement.classList.toggle(
@@ -848,7 +849,7 @@ function setSourceMode(enabled: boolean): void {
   if (enabled) {
     visualSelectionBeforeSourceMode = captureVisualSelection(editor)
     const jumpTarget = getSourceModeJumpTarget(editor)
-    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown', sendSourceSelection)
+    sourceEditor = new SourceEditor(sourceMount, getMarkdown(editor), markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType === 'markdown', sendSourceSelection, isAndroidHost)
     attachSourceScrollbarOverlay()
     editorMount.hidden = true
     sourceMount.hidden = false
@@ -1471,7 +1472,7 @@ async function handleMessage(value: unknown): Promise<void> {
         sourceMode = true
         sourceMount.hidden = false
         editorMount.hidden = true
-        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType !== 'plainText', sendSourceSelection)
+        sourceEditor = new SourceEditor(sourceMount, payload.markdown, markSourceChanged, sourceIndentWidth, readOnly, requestUnsafeEmphasisResolution, documentType !== 'plainText', sendSourceSelection, isAndroidHost)
         attachSourceScrollbarOverlay()
         if (restoreViewState && typeof payload.sourceSelection?.from === 'number' && typeof payload.sourceSelection?.to === 'number') {
           sourceEditor.setSelection(payload.sourceSelection.from, payload.sourceSelection.to)
