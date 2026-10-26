@@ -2,10 +2,19 @@
 
 ## 1.7.9 — 2026-10-20
 
+### New
+
+- Added “Adaptive Justification”, enabled by default, to optimize line breaks and spacing based on paragraph content and available width.
+
 ### Changed
 
 - “Changelog” now opens in the current window when multi-tab mode is enabled. When multi-tab mode is disabled, it continues to open in a separate window.
 - Math rendering assets now load on demand, reducing the script and stylesheet work required during editor startup.
+
+### Fixed
+
+- Fixed some paragraphs continuously jumping and reflowing after scrolling, resizing the window, or changing the zoom level.
+- Fixed adaptive layout no longer being applied to some English paragraphs, continuous mixed Chinese and English text, and paragraphs containing soft line breaks after editing or pasting.
 
 ## 1.7.8 — 2026-10-19
 
