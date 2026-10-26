@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+apply(from = "sync-editor-assets.gradle.kts")
+
 android {
     namespace = "com.markleaf.app"
     compileSdk = 36
@@ -32,6 +34,11 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    sourceSets {
+        // editor-web dist 经 sync-editor-assets 同步到 generated/editorAssets
+        getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/editorAssets"))
+        // editorAssets 目录下已含 editor/ 命名空间（loadUrl: file:///android_asset/editor/index.html）
     }
     testOptions {
         unitTests {
