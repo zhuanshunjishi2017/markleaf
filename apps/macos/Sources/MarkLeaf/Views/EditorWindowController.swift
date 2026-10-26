@@ -1690,7 +1690,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func toggleSidebarFromStatusBar() {
-        activeSession.toggleSidebar()
+        // Sidebar visibility belongs to the window, just like the View menu.
+        // A document tab's visibility is not the state applyViewState renders.
+        session.toggleSidebar()
     }
 
     @objc private func showStatistics() {
