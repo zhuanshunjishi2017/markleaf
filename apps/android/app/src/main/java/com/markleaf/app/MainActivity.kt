@@ -192,6 +192,7 @@ class MainActivity : ComponentActivity() {
     private val activeTitle = mutableStateOf("未命名")
     private val showExport = mutableStateOf(false)
     private var rebuiltWebView: WebView? = null
+    private var welcomeDocumentId: String = WELCOME_DOCUMENT_ID
 
     private fun documentDirectoryOf(ref: DocumentRef.Saf): String =
         ref.uri.substringBeforeLast('/').substringAfterLast("%2F", "Documents")
@@ -321,8 +322,13 @@ class MainActivity : ComponentActivity() {
     private fun handleEditorMessage(message: EditorMessage) {
         when (message) {
             is EditorMessage.Ready -> {
-                Log.i(TAG, "editor ready; sending styles + welcome document")
-                bridge.post(HostMessage.ApplyStyles(documentId = WELCOME_DOCUMENT_ID, revision = 0))
+                // 前端 ready 携带自生成的占位 documentId；宿主必须跟随该 id
+                // 开启会话（对齐 Windows：loadDocument 用前端 documentId）。
+                val frontendId = message.documentId
+                session.startDocument(frontendId, revision = 0)
+                welcomeDocumentId = frontendId
+                Log.i(TAG, "editor ready; adopting documentId=$frontendId")
+                bridge.post(HostMessage.ApplyStyles(documentId = frontendId, revision = 0))
                 bridge.post(welcomeDocumentMessage())
             }
             is EditorMessage.ExportContent -> {
@@ -352,7 +358,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun welcomeDocumentMessage(): HostMessage.LoadDocument = HostMessage.LoadDocument(
-        documentId = WELCOME_DOCUMENT_ID,
+        documentId = welcomeDocumentId,
         revision = 0,
         payload = HostMessage.LoadDocument.LoadDocumentPayload(
             markdown = WELCOME_MARKDOWN,
@@ -385,7 +391,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val WELCOME_DOCUMENT_ID = "welcome"
-        private const val EDITOR_URL = "file:///android_asset/editor/index.html"
+        private const val EDITOR_URL = com.markleaf.app.editor.EditorWebViewFactory.EDITOR_URL
     }
 }
 

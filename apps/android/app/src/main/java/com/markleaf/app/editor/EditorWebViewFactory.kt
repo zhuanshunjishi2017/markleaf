@@ -10,10 +10,19 @@ import com.markleaf.app.documents.AssetResolver
 
 /**
  * 编辑器 WebView 工厂：统一安全与渲染配置（spec §3.1/§7）。
- * WebView 只从 APK assets 加载编辑器页面，文件系统/内容提供器访问一律关闭；
- * 图片等文档资源经 shouldInterceptRequest 的 assets.local 拦截器供给。
+ *
+ * 页面与资源全部经 `https://assets.local/` 拦截器从 APK assets 供给：
+ * - ES module 脚本（type=module crossorigin）在 file:// 页面会被 CORS 拦截
+ *   （origin null），必须挂到 https 自定义源下（对齐 Windows 的 editor.local）
+ * - `/editor/...` → APK assets（编辑器页面与内核分包）
+ * - `/image?path=...` → 文档图片（AssetResolver 经 SAF 解析）
  */
 object EditorWebViewFactory {
+
+    private fun plainNotFound() = WebResourceResponse("text/plain", null, 404, "Not Found", null, byteArrayOf().inputStream())
+
+    const val EDITOR_ORIGIN = "https://assets.local"
+    const val EDITOR_URL = "$EDITOR_ORIGIN/editor/index.html"
 
     fun create(
         context: Context,
@@ -33,28 +42,29 @@ object EditorWebViewFactory {
             textZoom = 100
         }
         webView.webViewClient = object : WebViewClient() {
-            // assets.local 拦截器：文档图片从这里供给（桌面端 AssetSchemeHandler 同构）。
-            // resolver 为空或路径越界时返回 null → 走正常网络栈 → 404。
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest,
             ): WebResourceResponse? {
-                val resolver = assetResolver ?: return null
                 val url = request.url
-                if (url.host != "assets.local" || url.path != "/image") {
+                if (url.host != "assets.local") {
                     return null
                 }
-                val path = url.getQueryParameter("path") ?: return null
-                val bytes = resolver.resolve(path, documentDir()) ?: return notFound()
-                val mime = when {
-                    path.endsWith(".png", ignoreCase = true) -> "image/png"
-                    path.endsWith(".jpg", true) || path.endsWith(".jpeg", true) -> "image/jpeg"
-                    path.endsWith(".gif", true) -> "image/gif"
-                    path.endsWith(".webp", true) -> "image/webp"
-                    path.endsWith(".svg", true) -> "image/svg+xml"
-                    else -> "application/octet-stream"
+                return when {
+                    // 编辑器自身资产：APK assets 静态供流
+                    url.path?.startsWith("/editor/") == true -> serveEditorAsset(context, url.path!!)
+                    // 文档图片：SAF 解析（resolver 为空或越界时 404）
+                    url.path == "/image" -> {
+                        val resolver = assetResolver
+                        val path = url.getQueryParameter("path")
+                        if (resolver == null || path == null) {
+                            plainNotFound()
+                        } else {
+                            serveImage(resolver.resolve(path, documentDir()), path)
+                        }
+                    }
+                    else -> null
                 }
-                return WebResourceResponse(mime, null, bytes.inputStream())
             }
 
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean =
@@ -63,5 +73,37 @@ object EditorWebViewFactory {
             private fun notFound() = WebResourceResponse("text/plain", null, 404, "Not Found", null, byteArrayOf().inputStream())
         }
         return webView
+    }
+
+    /** APK assets → 响应。MIME 按扩展名；未命中 404。 */
+    private fun serveEditorAsset(context: Context, path: String): WebResourceResponse? {
+        val relative = path.removePrefix("/editor/")
+        val mime = when {
+            relative.endsWith(".html", true) -> "text/html"
+            relative.endsWith(".js", true) -> "text/javascript"
+            relative.endsWith(".css", true) -> "text/css"
+            relative.endsWith(".json", true) -> "application/json"
+            relative.endsWith(".svg", true) -> "image/svg+xml"
+            relative.endsWith(".woff2", true) -> "font/woff2"
+            relative.endsWith(".png", true) -> "image/png"
+            else -> "application/octet-stream"
+        }
+        val stream = context.assets.open("editor/$relative")
+        return WebResourceResponse(mime, null, stream)
+    }
+
+    private fun serveImage(bytes: ByteArray?, path: String): WebResourceResponse {
+        if (bytes == null) {
+            return plainNotFound()
+        }
+        val mime = when {
+            path.endsWith(".png", ignoreCase = true) -> "image/png"
+            path.endsWith(".jpg", true) || path.endsWith(".jpeg", true) -> "image/jpeg"
+            path.endsWith(".gif", true) -> "image/gif"
+            path.endsWith(".webp", true) -> "image/webp"
+            path.endsWith(".svg", true) -> "image/svg+xml"
+            else -> "application/octet-stream"
+        }
+        return WebResourceResponse(mime, null, bytes.inputStream())
     }
 }

@@ -26,8 +26,13 @@ class EditorSessionState {
     /**
      * 编辑器消息准入判定：文档归属 + revision 不回退。
      * 拒绝时调用方应记日志（不静默丢弃）。
+     * 例外：ready 豁免——前端 ready 携带自生成占位 documentId（此时双方
+     * 尚未约定会话 id），宿主靠它开启会话（对齐 C# allowReadyWithoutDocument）。
      */
     fun accept(message: EditorMessage): Boolean {
+        if (message is EditorMessage.Ready) {
+            return true
+        }
         if (message.documentId != documentId) {
             return false
         }

@@ -25,6 +25,14 @@ class EditorSessionStateTest {
     }
 
     @Test
+    fun `ready is exempt from document match - frontend owns placeholder id`() {
+        val s = state()
+        assertTrue(s.accept(editorReady("frontend-placeholder")))
+        // ready 本身不推进 revision/documentId；宿主在收到后 startDocument(frontendId)
+        assertEquals(0L, s.confirmedRevision)
+    }
+
+    @Test
     fun `rejects stale revision`() {
         val s = state()
         assertTrue(s.accept(editorMessage("doc-1", revision = 7)))
@@ -81,6 +89,9 @@ class EditorSessionStateTest {
         val s = state()
         assertFalse(s.completeRequest("missing", "snapshot"))
     }
+
+    private fun editorReady(documentId: String): EditorMessage.Ready =
+        EditorMessage.Ready(documentId = documentId, revision = 0)
 
     private fun editorMessage(documentId: String, revision: Long): EditorMessage.DirtyChanged =
         EditorMessage.DirtyChanged(
