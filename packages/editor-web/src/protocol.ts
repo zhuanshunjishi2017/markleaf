@@ -61,7 +61,7 @@ declare global {
     __markleafTypographyTrace?: boolean
     chrome?: {
       webview?: {
-        hostPlatform?: 'macOS' | 'Windows'
+        hostPlatform?: 'macOS' | 'Windows' | 'Android'
         postMessage(message: EditorMessage): void
         postMessageWithAdditionalObjects?(message: EditorMessage, additionalObjects: object[]): void
         addEventListener(

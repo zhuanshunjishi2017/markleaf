@@ -2,6 +2,10 @@
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
   --bg-primary: #FFFFFF;
   --text-primary: #24292f;
+  /* 单位 vh 的可替换锚点：桌面/正常 WebView 下 1vh 即视口单位；
+     Android 宿主（部分 Chromium WebView vh 解析为 0）由 main.ts 以真实
+     像素覆盖该变量，见 main.ts 的 --ml-vh shim。所有 vh 用量须经它换算。 */
+  --ml-vh: 1vh;
 }
 
 * {
@@ -572,7 +576,7 @@ body.markleaf-theme-dark {
 
 #source-editor {
   position: relative;
-  height: 100vh;
+  height: calc(var(--ml-vh) * 100);
 }
 
 /* 源码模式字号/字体由宿主 ApplyCssVariables 通过 --ml-source-font-size /
@@ -646,7 +650,7 @@ body.markleaf-theme-dark {
 #editor .ProseMirror::after {
   content: '';
   display: block;
-  height: 50vh;
+  height: calc(var(--ml-vh) * 50);
   min-height: 0;
   pointer-events: none;
 }
@@ -654,7 +658,7 @@ body.markleaf-theme-dark {
 /* 文档排版由 Resources/Styles/base.css 提供；此处仅保留编辑器特有的最小高度。 */
 .markleaf-document {
   position: relative;
-  min-height: calc(100vh - 140px);
+  min-height: calc(var(--ml-vh) * 100 - 140px);
 }
 
 .ml-block-handle {
@@ -1021,7 +1025,7 @@ html.markleaf-auto-hide-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
   overflow: auto;
   box-shadow:
     0 3px 4px rgba(0, 0, 0, 0.08);
-  max-height: min(45vh, 360px);
+  max-height: min(calc(var(--ml-vh) * 45), 360px);
 }
 
 body.markleaf-theme-dark .editor-tooltip.markleaf-expanded-source .markleaf-expanded-source-code {
@@ -1310,4 +1314,40 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
     font-family: inherit;
     padding: 0 10px;
   }
+}
+
+
+/* 触屏（Android WebView）：公式浮层适配。
+   - 源码输入区允许换行并随内容增高（pre-wrap 下长公式自动折行撑高，
+     min-height 保证短公式也有足够的可视高度，不再单行折叠）；
+   - 键入辅助工具条按钮换行，不再溢出到容器右缘之外。
+   桌面（pointer: fine）不受影响。 */
+@media (pointer: coarse) {
+  .markleaf-expanded-source-editor {
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 6em;
+  }
+  .markleaf-expanded-source-code {
+    white-space: pre-wrap;
+    overflow-y: auto;
+  }
+  .markleaf-formula-symbol-toolbar {
+    max-width: 100%;
+  }
+  .markleaf-formula-symbol-groups {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+.katex-mathml {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  border: 0 !important;
 }

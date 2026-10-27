@@ -96,6 +96,19 @@ const isAndroidHost = window.chrome?.webview?.hostPlatform === 'Android'
 const usesNativeFormatMenu = ['macOS', 'Windows'].includes(window.chrome?.webview?.hostPlatform ?? '')
 document.documentElement.classList.toggle('markleaf-host-macos', window.chrome?.webview?.hostPlatform === 'macOS')
 document.documentElement.classList.toggle('markleaf-host-android', window.chrome?.webview?.hostPlatform === 'Android')
+// 部分 Android Chromium WebView 的 vh 视口单位解析为 0（innerHeight 正常），
+// 导致 100vh 布局与浮层 max-height 全部塌陷。用真实像素覆盖 --ml-vh
+// （styles.css 所有视口单位用量均经该变量换算），随窗口尺寸变化维护。
+if (isAndroidHost) {
+  const applyViewportUnitShim = () => {
+    const viewportHeight = window.innerHeight
+    if (viewportHeight > 0) {
+      document.documentElement.style.setProperty('--ml-vh', `${viewportHeight / 100}px`)
+    }
+  }
+  applyViewportUnitShim()
+  window.addEventListener('resize', applyViewportUnitShim)
+}
 document.documentElement.classList.toggle(
   'markleaf-themed-visual-selection',
   hostCapabilities.usesThemedVisualSelection,

@@ -110,3 +110,9 @@ release/
 
 # Ad-hoc self-contained publish output
 publish-1.7.7/
+
+# video2code 契约与计划产物（不入版本管理，按用户约定）
+.v2c/
+**/.v2c/
+out/
+docs/superpowers/
