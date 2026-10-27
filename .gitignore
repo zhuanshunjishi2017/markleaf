@@ -39,6 +39,9 @@ artifacts/
 .pnpm-store/
 .build/
 
+# video2code 契约产物：plan/verify/report 入库，cmp 大文件证据不入库
+out/cmp/
+
 # AI agent files
 .claude/
 .superpowers/

@@ -1,0 +1,20 @@
+{"id": "S1", "result": "pass", "evidence": "out/cmp/s1-app-debug.apk", "measured": "gradlew assembleDebug 退出码 0；APK 约 16MB（含 editor assets）"}
+{"id": "S2", "result": "pass", "evidence": "out/cmp/s1-app-debug.apk", "measured": "unzip 校验 APK assets/editor/ 20 文件；asset-manifest.json 18 条 SHA-256；native-shim.js hostPlatform='Android'"}
+{"id": "S3", "result": "pass", "evidence": "out/cmp/s5-welcome-render.png", "measured": "模拟器冷启动 logcat：editor ready; adopting documentId=…（页面改经 https://assets.local 拦截，CORS 白屏已修）"}
+{"id": "S4", "result": "pass", "evidence": "out/cmp/s5-welcome-render.png", "measured": "logcat：styles applied → document loaded at revision 0 依序到达；诊断脚本确认 style 元素注入"}
+{"id": "S5", "result": "pass", "evidence": "out/cmp/s5-welcome-render.png", "measured": "模拟器截图：欢迎文档标题/表格/公式/代码块/任务列表全部渲染"}
+{"id": "S6", "result": "defer", "evidence": "SAF 打开代码完成（DocumentControllerTest 7/7 含载荷断言）；模拟器端到端人工验收待用户"}
+{"id": "S7", "result": "defer", "evidence": "保存回写代码完成（snapshot→encode→write→markSaved，原编码保持测试通过）；端到端待用户"}
+{"id": "S8", "result": "defer", "evidence": "外部修改冲突检测代码完成（基线字节比对，测试通过）；端到端待用户"}
+{"id": "S9", "result": "defer", "evidence": "onPause 恢复快照代码完成（RecoveryStoreTest 3/3）；端到端待用户"}
+{"id": "S10", "result": "defer", "evidence": "assets.local 图片拦截器代码完成（AssetResolverTest 7/7 含目录逃逸拒绝）；实机图片加载待用户"}
+{"id": "S11", "result": "defer", "evidence": "工作区侧栏/大纲 Compose 代码完成；实机交互待用户"}
+{"id": "S12", "result": "pass", "evidence": "out/cmp/s12-tabstate-results.xml", "measured": "TabStateTest 5/5：上限 6 淘汰最旧/activate 置顶/关最后拒绝/trimToActive"}
+{"id": "S13", "result": "defer", "evidence": "contextMenuRequested → Compose 菜单接线待完成（ContextMenuContent 组件已就绪）"}
+{"id": "S14", "result": "defer", "evidence": "深色模式 applyStyles 重发接线待完成"}
+{"id": "S15", "result": "defer", "evidence": "HTML 导出（CreateDocument launcher + exportHtmlBlocking 回环）代码完成；端到端待用户"}
+{"id": "S16", "result": "defer", "evidence": "PDF 导出（PrintManager + createPrintDocumentAdapter）代码完成；端到端待用户"}
+{"id": "S17", "result": "pass", "evidence": "out/cmp/s17-export-results.xml", "measured": "ExportControllerTest 7/7：文件名清洗对齐 Windows 规则、选项默认值、job 名"}
+{"id": "S18", "result": "defer", "evidence": "onRenderProcessGone → 销毁重建 + 会话重置代码完成；崩溃场景实测待模拟器注入"}
+{"id": "S19", "result": "defer", "evidence": "源码模式 touchInput 适配代码完成（autocorrect/autocapitalize/spellcheck off）；IME 人工验收待用户"}
+{"id": "S20", "result": "defer", "evidence": "2MB 文档打开计时未实测（需模拟器性能验证）"}
