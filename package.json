@@ -11,7 +11,7 @@
     "test:editor-core": "corepack pnpm --dir packages/editor-core test",
     "test:typography": "corepack pnpm --dir packages/typography test",
     "typecheck:typography": "corepack pnpm --dir packages/typography typecheck",
-    "build:editor-web": "corepack pnpm --dir packages/editor-core build:renderer && corepack pnpm --dir packages/editor-web build",
+    "build:editor-web": "rm -rf packages/editor-web/dist && corepack pnpm --dir packages/editor-core build:renderer && corepack pnpm --dir packages/editor-web build",
     "test:editor-web": "corepack pnpm --dir packages/editor-web test",
     "build:vscode": "corepack pnpm build:kernel && corepack pnpm --dir apps/vscode/webview build && corepack pnpm --dir apps/vscode build",
     "test:vscode": "corepack pnpm --dir apps/vscode/webview test",

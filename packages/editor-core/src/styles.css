@@ -27,6 +27,16 @@ body,
   caret-color: transparent;
 }
 
+/* Android WebView 给 contenteditable 焦点画 accent 色 outline、点击画
+   tap highlight；编辑器的焦点指示由光标与选区承担，一律关闭。 */
+#editor .ProseMirror:focus,
+#editor .ProseMirror:focus-visible {
+  outline: none;
+}
+#editor {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* 专注模式：仅保留光标所在块/源码行的正常透明度。 */
 #editor.markleaf-editor-focus-mode .ProseMirror > .markleaf-focus-dim,
 #source-editor.markleaf-editor-focus-mode .cm-line.markleaf-focus-dim {
