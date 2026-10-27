@@ -4047,6 +4047,9 @@ export function createEditor(
   // Apply the host's initial preference before creating the document view.
   // Enabling it afterwards rebuilds decorations across the whole document.
   codeHighlightVisible = options.codeHighlightVisible ?? codeHighlightVisible
+  // 触屏焦点守卫（Android）：任务勾选/代码控件等组件点击不弹软键盘。
+  const isAndroidHost = document.documentElement.classList.contains('markleaf-host-android')
+  let focusSuppressDeadline = 0
   const extensions = editorExtensions.map(extension => {
     if (extension.name === 'starterKit') {
       return extension.configure({
@@ -4089,6 +4092,68 @@ export function createEditor(
           view.dispatch(view.state.tr
             .setMeta(tableEditingKey, -1)
             .setMeta('addToHistory', false))
+          return false
+        },
+        pointerdown: (_view, event) => {
+          // 触屏软键盘守卫：整篇文档共用一个 contenteditable 根，点任何非编辑
+          // 组件（任务勾选、代码块控件、mermaid 重绘）Chromium 都会把焦点落回
+          // 根并请求弹出软键盘。取消这些组件的 pointerdown 默认行为（不阻断
+          // 随后的 click，命令照常执行）。
+          const target = event.target
+          const element = target instanceof Element ? target : null
+          if (!element) return false
+          if (
+            element.closest('li[data-checked] > label') ||
+            element.closest('.markleaf-code-block-controls') ||
+            element.closest('.markleaf-mermaid-render-button')
+          ) {
+            focusSuppressDeadline = Date.now() + 500
+            event.preventDefault()
+          }
+          return false
+        },
+        pointerup: (view, event) => {
+          // 任务勾选：pointerdown 已被取消（防焦点/键盘）。Chromium 会连带
+          // 抑制 click，但 pointerup 不受影响，这里接管切换。
+          const target = event.target
+          if (!(target instanceof Element)) return false
+          const wrapper = target.closest('li[data-checked] > label')
+          if (!wrapper || !editor.isEditable) return false
+          event.preventDefault()
+          const item = wrapper.closest('li[data-checked]')
+          if (!item || !view.dom.contains(item)) return true
+          const $pos = view.state.doc.resolve(view.posAtDOM(item, 0))
+          for (let depth = $pos.depth; depth > 0; depth -= 1) {
+            const node = $pos.node(depth)
+            if (node.type.name !== 'taskItem') continue
+            view.dispatch(view.state.tr.setNodeMarkup($pos.before(depth), undefined, {
+              ...node.attrs,
+              checked: !node.attrs.checked,
+            }))
+            break
+          }
+          return true
+        },
+        click: (_view, event) => {
+          // 真实点击：勾选已在 pointerup 完成，这里仅取消原生 checkbox 的
+          // click 激活（其 change 链会显式 focus 弹键盘，并把状态改回去）。
+          // 合成事件（测试/无障碍）放行，走原生 change 链。
+          const target = event.target
+          if (
+            target instanceof Element && target.closest('li[data-checked] > label')
+            && editor.isEditable && event.isTrusted
+          ) {
+            event.preventDefault()
+            return true
+          }
+          return false
+        },
+        focus: (_view, event) => {
+          // 任务勾选的 toggle 链会显式 chain().focus()，pointerdown 拦不住；
+          // 守卫窗口内的焦点直接放弃，对齐桌面“点勾选不弹键盘”的直觉。
+          if (isAndroidHost && Date.now() < focusSuppressDeadline) {
+            (event.target as HTMLElement | null)?.blur?.()
+          }
           return false
         },
         dragstart: (_view, event) => {

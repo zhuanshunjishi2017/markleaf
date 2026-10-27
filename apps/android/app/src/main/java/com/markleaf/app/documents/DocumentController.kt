@@ -43,6 +43,38 @@ class DocumentController(
     val activeEncoding: EncodingInfo?
         get() = currentEncoding
 
+    /** 状态栏显示名：UTF-8 BOM 变体单独标注。 */
+    val activeEncodingName: String
+        get() = currentEncoding?.let { if (it.hasBom && it.name == "UTF-8") "UTF-8 BOM" else it.name } ?: "UTF-8"
+
+    /** 切换保存写回编码（编码对话框选定后调用）。 */
+    fun setEncoding(info: EncodingInfo) {
+        currentEncoding = info
+    }
+
+    private var currentNewline: String = "LF"
+
+    val activeNewline: String
+        get() = currentNewline
+
+    /** 切换保存写回换行符（LF / CRLF）。 */
+    fun setNewline(style: String) {
+        currentNewline = style
+    }
+
+    private fun applyNewline(markdown: String): String = when (currentNewline) {
+        "CRLF" -> markdown.replace("\r\n", "\n").replace("\n", "\r\n")
+        "LF" -> markdown.replace("\r\n", "\n")
+        else -> markdown
+    }
+
+    private fun bomFor(name: String): ByteArray = when (name) {
+        "UTF-8" -> byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        "UTF-16LE" -> byteArrayOf(0xFF.toByte(), 0xFE.toByte())
+        "UTF-16BE" -> byteArrayOf(0xFE.toByte(), 0xFF.toByte())
+        else -> ByteArray(0)
+    }
+
     /**
      * 打开文档：读字节 → 探测编码 → 解码 → 新 documentId → loadDocument。
      * 会话状态切换到新 id（revision 从 0 重新计——Windows 端 stale bug 的修正路径）。
@@ -66,6 +98,7 @@ class DocumentController(
         currentRef = ref
         baselineBytes = documentBytes.bytes
         currentEncoding = documentBytes.encoding
+        currentNewline = if (markdown.contains("\r\n")) "CRLF" else "LF"
         currentDocumentId = documentId
         OpenResult.Loaded(documentId, documentBytes.encoding, ref.uri.substringAfterLast('/'))
     } catch (exception: SecurityException) {
@@ -93,9 +126,12 @@ class DocumentController(
         }
         return try {
             val payload = snapshotProvider()
-            val encodingName = currentEncoding?.name ?: "UTF-8"
-            source.write(ref, DocumentCodings.encode(payload.markdown, encodingName))
-            baselineBytes = DocumentCodings.encode(payload.markdown, encodingName)
+            val encoding = currentEncoding ?: EncodingInfo("UTF-8", hasBom = false)
+            val normalized = applyNewline(payload.markdown)
+            val encoded = DocumentCodings.encode(normalized, encoding.name)
+            val bytes = if (encoding.hasBom) bomFor(encoding.name) + encoded else encoded
+            source.write(ref, bytes)
+            baselineBytes = bytes
             post(HostMessage.MarkSaved(documentId = currentDocumentId, revision = session.confirmedRevision))
             SaveResult.Saved
         } catch (exception: SecurityException) {

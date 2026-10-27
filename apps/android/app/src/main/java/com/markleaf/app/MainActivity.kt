@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.markleaf.app
 
 import android.os.Bundle
@@ -7,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
@@ -67,15 +71,23 @@ class MainActivity : ComponentActivity() {
 
     private val documentLoaded = mutableStateOf(false)
     private val dirty = mutableStateOf(false)
-    private val editorStatusLine = mutableStateOf("")
     private val editorStatus = mutableStateOf<kotlinx.serialization.json.JsonObject?>(null)
     private val showStatisticsDialog = mutableStateOf(false)
+    private val editorSourceMode = mutableStateOf(false)
+    private val zoomPercent = mutableStateOf(100)
+    private val documentEncoding = mutableStateOf("UTF-8")
+    private val documentNewline = mutableStateOf("LF")
+    private val showEncodingDialog = mutableStateOf(false)
+    private val showNewlineDialog = mutableStateOf(false)
+    private val showZoomDialog = mutableStateOf(false)
+    private var pinchAccumulator = 100.0
+    private var lastPinchApplyAt = 0L
     private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
     private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
     private val activeTitle = mutableStateOf("未命名")
     private val showExport = mutableStateOf(false)
     private val showLanguageDialog = mutableStateOf<Pair<Long, String>?>(null)
-    private var languageInput: String = ""
+    private val languageInput = mutableStateOf("")
     private val showContextMenu = mutableStateOf(false)
     private val contextMenuX = mutableStateOf(0f)
     private val contextMenuY = mutableStateOf(0f)
@@ -114,7 +126,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 contentResolver.openOutputStream(uri)?.use { output ->
                     output.write(html.toByteArray(Charsets.UTF_8))
                 }
-                editorStatusLine.value = "HTML 已导出"
+                showToast("HTML 已导出")
             }
         }
     }
@@ -191,16 +203,66 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onExport = { showExport.value = true },
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                             )
-                            EditorContainer(webView)
+                            EditorContainer(
+                                webView = webView,
+                                onPinch = ::onPinchZoom,
+                            )
                             StatusBarPlaceholder(
-                                transient = editorStatusLine.value,
                                 status = editorStatus.value,
+                                encoding = documentEncoding.value,
+                                newline = documentNewline.value,
+                                zoom = zoomPercent.value,
+                                sourceMode = editorSourceMode.value,
                                 onShowStatistics = { showStatisticsDialog.value = true },
+                                onEncoding = { showEncodingDialog.value = true },
+                                onNewline = { showNewlineDialog.value = true },
+                                onZoom = { showZoomDialog.value = true },
+                                onToggleMode = {
+                                    bridge.post(command("toggleSourceMode", ""))
+                                    editorSourceMode.value = !editorSourceMode.value
+                                },
                             )
                             if (showStatisticsDialog.value) {
                                 DocumentStatisticsDialog(
                                     status = editorStatus.value,
+                                    encoding = documentEncoding.value,
+                                    newline = documentNewline.value,
                                     onDismiss = { showStatisticsDialog.value = false },
+                                )
+                            }
+                            if (showEncodingDialog.value) {
+                                EncodingDialog(
+                                    current = documentEncoding.value,
+                                    onSelect = { info ->
+                                        controller?.setEncoding(info)
+                                        documentEncoding.value = info.let {
+                                            if (it.hasBom && it.name == "UTF-8") "UTF-8 BOM" else it.name
+                                        }
+                                        showToast("保存时将使用 ${documentEncoding.value} 编码")
+                                        showEncodingDialog.value = false
+                                    },
+                                    onDismiss = { showEncodingDialog.value = false },
+                                )
+                            }
+                            if (showNewlineDialog.value) {
+                                NewlineDialog(
+                                    current = documentNewline.value,
+                                    onSelect = { style ->
+                                        controller?.setNewline(style)
+                                        documentNewline.value = style
+                                        showNewlineDialog.value = false
+                                    },
+                                    onDismiss = { showNewlineDialog.value = false },
+                                )
+                            }
+                            if (showZoomDialog.value) {
+                                ZoomDialog(
+                                    current = zoomPercent.value,
+                                    onSelect = { percent ->
+                                        applyZoom(percent)
+                                        showZoomDialog.value = false
+                                    },
+                                    onDismiss = { showZoomDialog.value = false },
                                 )
                             }
                             if (showExport.value) {
@@ -225,16 +287,37 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     onDismissRequest = { showLanguageDialog.value = null },
                                     title = { Text("声明代码语言") },
                                     text = {
-                                        androidx.compose.material3.OutlinedTextField(
-                                            value = languageInput,
-                                            onValueChange = { languageInput = it },
-                                            label = { Text("语言（kotlin / python / …）") },
-                                            singleLine = true,
-                                        )
+                                        // 预设列表与 macOS CodeBlockLanguageCatalog 对齐；
+                                        // 输入框保持可编辑（列表只是便利项，非白名单）。
+                                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                                        Column {
+                                            androidx.compose.material3.OutlinedTextField(
+                                                value = languageInput.value,
+                                                onValueChange = { languageInput.value = it },
+                                                label = { Text("语言") },
+                                                singleLine = true,
+                                            )
+                                            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                                            androidx.compose.foundation.layout.FlowRow(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 10.dp),
+                                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+                                            ) {
+                                                COMMON_CODE_LANGUAGES.forEach { language ->
+                                                    androidx.compose.material3.FilterChip(
+                                                        selected = languageInput.value == language,
+                                                        onClick = { languageInput.value = language },
+                                                        label = { Text(language) },
+                                                    )
+                                                }
+                                            }
+                                        }
                                     },
                                     confirmButton = {
                                         TextButton(onClick = {
-                                            bridge.post(command("setCodeBlockLanguageAt", """{"position":POSITION,"language":"LANG"}""".replace("POSITION", position.toString()).replace("LANG", languageInput)))
+                                            bridge.post(command("setCodeBlockLanguageAt", """{"position":POSITION,"language":"LANG"}""".replace("POSITION", position.toString()).replace("LANG", languageInput.value)))
                                             showLanguageDialog.value = null
                                         }) { Text("确定") }
                                     },
@@ -299,10 +382,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     Log.i(TAG, "打开 ${result.name} 编码=${result.encoding.name}")
                 }
                 DocumentController.OpenResult.PermissionLost -> {
-                    editorStatusLine.value = "文档权限失效，请重新打开"
+                    showToast("文档权限失效，请重新打开")
                 }
                 is DocumentController.OpenResult.Failed -> {
-                    editorStatusLine.value = "打开失败: ${result.message}"
+                    showToast("打开失败: ${result.message}")
                 }
             }
         }
@@ -319,12 +402,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             DocumentController.SaveResult.Saved -> {
                 dirty.value = false
                 active.discardRecovery(recoveryStore)
-                editorStatusLine.value = "已保存"
+                showToast("已保存")
             }
-            DocumentController.SaveResult.Conflict -> editorStatusLine.value = "文件已被外部修改，请另存或覆盖"
-            DocumentController.SaveResult.PermissionLost -> editorStatusLine.value = "保存失败：权限失效"
+            DocumentController.SaveResult.Conflict -> showToast("文件已被外部修改，请另存或覆盖")
+            DocumentController.SaveResult.PermissionLost -> showToast("保存失败：权限失效")
             DocumentController.SaveResult.NotDirty -> Unit
-            is DocumentController.SaveResult.Failed -> editorStatusLine.value = "保存失败: ${result.message}"
+            is DocumentController.SaveResult.Failed -> showToast("保存失败: ${result.message}")
         }
     }
 
@@ -414,19 +497,23 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 pendingExportHtml = null
             }
             is EditorMessage.CopyCodeBlockRequested -> {
+                dismissKeyboard()
                 val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                     as android.content.ClipboardManager
                 clipboard.setPrimaryClip(
                     android.content.ClipData.newPlainText("code", message.payload.text),
                 )
-                editorStatusLine.value = "代码已复制"
+                showToast("代码已复制")
             }
             is EditorMessage.CodeBlockLanguageRequested -> {
+                // 点击语言标签会顺带聚焦 WebView 编辑区弹出键盘，盖住对话框，先收起
+                dismissKeyboard()
                 showLanguageDialog.value = Pair(message.payload.position, message.payload.language)
             }
             is EditorMessage.CodeFormatRequested -> {
                 // Android 第一版无外部代码格式化器：明示不可用（不静默吞）。
-                editorStatusLine.value = "未配置代码格式化器"
+                dismissKeyboard()
+                showToast("未配置代码格式化器")
             }
             is EditorMessage.RequestSave -> lifecycleScope.launch { saveActiveDocument() }
             is EditorMessage.OpenLink -> {
@@ -437,13 +524,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         startActivity(
                             android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)),
                         )
-                    }.onFailure { editorStatusLine.value = "无法打开链接" }
+                    }.onFailure { showToast("无法打开链接") }
                 }
             }
             is EditorMessage.CommandStateChanged -> {
                 editorActions.value = message.payload.actions.mapValues { (_, state) ->
                     Pair(state.enabled, state.checked)
                 }
+                editorSourceMode.value = message.payload.sourceMode
             }
             is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
@@ -451,6 +539,60 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 editorStatus.value = message.payload as? kotlinx.serialization.json.JsonObject
             else -> Unit
         }
+    }
+
+    /** 应用缩放：宿主持有 zoom 偏好，组装 payload 调前端 __markleafApplyVisualVariables
+     *  （字段集合与 macOS applyVisualVariables 相同；Android 无排版设置 UI，
+     *  基准值取排版默认：fontSize 16 / lineHeight 1.75 / maxWidth 740 / sourceFontSize 14）。 */
+    private fun applyZoom(percent: Int) {
+        val clamped = percent.coerceIn(50, 200)
+        zoomPercent.value = clamped
+        val factor = clamped / 100.0
+        val payload = "{" +
+            "\"lineHeight\":'1.75'," +
+            "\"visualScale\":${"%.4f".format(factor)}," +
+            "\"fontSize\":'${"%.2f".format(16 * factor)}px'," +
+            "\"maxWidth\":'${"%.2f".format(740 * factor)}px'," +
+            "\"sourceFontSize\":'${"%.2f".format(14 * factor)}px'," +
+            "\"sourceFontFamily\":'monospace'," +
+            "\"cjkLanguage\":'zh'," +
+            "\"visualCjkAutoSpacing\":true," +
+            "\"allowTableColumnResize\":true," +
+            "\"visualAdaptiveJustification\":false," +
+            "\"ignoreMaxWidth\":false," +
+            "\"usePointerAnchor\":false," +
+            "\"anchorX\":null,\"anchorY\":null}"
+        webView.evaluateJavascript(
+            "typeof window.__markleafApplyVisualVariables === 'function' && window.__markleafApplyVisualVariables($payload);",
+            null,
+        )
+    }
+
+    /** 双指捏合：factor 为本次增量；finished 表示手势结束（补齐被限流的末次应用）。 */
+    private fun onPinchZoom(factor: Float, finished: Boolean) {
+        pinchAccumulator = (pinchAccumulator * factor).coerceIn(50.0, 200.0)
+        val now = System.currentTimeMillis()
+        val target = pinchAccumulator.roundToInt()
+        if (finished || (target != zoomPercent.value && now - lastPinchApplyAt > 120)) {
+            applyZoom(target)
+            pinchAccumulator = target.toDouble()
+            lastPinchApplyAt = now
+        }
+    }
+
+    /** 瞬态提示（Toast）：状态栏字段位不被临时消息挤占。 */
+    private fun showToast(message: String) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    /** 收起软键盘（WebView 点击代码块控件会顺带聚焦编辑区把键盘带出来）。
+     *  Chromium 与宿主收起指令存在同帧竞态（show 请求晚于 hide），延迟落刀并
+     *  清除 WebView 焦点避免其再次请求 IME。 */    private fun dismissKeyboard() {
+        window.decorView.postDelayed({
+            webView?.clearFocus()
+            WindowCompat.getInsetsController(window, window.decorView)
+                .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }, 250)
     }
 
     /** outlineChanged 载荷 → OutlineItem（容错解析，字段缺失跳过）。 */
@@ -539,9 +681,33 @@ private fun TabStrip(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.ColumnScope.EditorContainer(webView: WebView) {
+private fun androidx.compose.foundation.layout.ColumnScope.EditorContainer(
+    webView: WebView,
+    onPinch: (Float, Boolean) -> Unit,
+) {
     AndroidView(
-        factory = { webView },
+        factory = {
+            // 双指捏合缩放：OnTouchListener 位于 View 分发链最前，能看到原始多点
+            // 事件；返回 false 不消费，WebView 的滚动/点击照常。
+            val detector = android.view.ScaleGestureDetector(
+                webView.context,
+                object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                        onPinch(detector.scaleFactor, false)
+                        return true
+                    }
+
+                    override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
+                        onPinch(1f, true)
+                    }
+                },
+            )
+            webView.setOnTouchListener { _, event ->
+                detector.onTouchEvent(event)
+                false
+            }
+            webView
+        },
         modifier = Modifier
             .fillMaxWidth()
             .weight(1f),
@@ -550,9 +716,16 @@ private fun androidx.compose.foundation.layout.ColumnScope.EditorContainer(webVi
 
 @Composable
 private fun StatusBarPlaceholder(
-    transient: String,
     status: kotlinx.serialization.json.JsonObject?,
+    encoding: String,
+    newline: String,
+    zoom: Int,
+    sourceMode: Boolean,
     onShowStatistics: () -> Unit,
+    onEncoding: () -> Unit,
+    onNewline: () -> Unit,
+    onZoom: () -> Unit,
+    onToggleMode: () -> Unit,
 ) {
     fun field(name: String): String =
         (status?.get(name) as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
@@ -560,28 +733,58 @@ private fun StatusBarPlaceholder(
     val column = field("column")
     val characterCount = field("characterCount")
     val blockType = blockTypeDisplayName(field("blockType"))
-    // 左侧：优先显示宿主瞬态消息（已保存/已导出/错误），无消息时显示行·列·块类型
-    val leading = transient.ifEmpty {
-        listOfNotNull(
-            if (line.isNotEmpty()) "行 $line 列 $column" else null,
-            blockType.ifEmpty { null },
-        ).joinToString(" · ")
-    }
+    val leading = listOfNotNull(
+        if (line.isNotEmpty()) "行 $line 列 $column" else null,
+        blockType.ifEmpty { null },
+    ).joinToString(" · ")
+    // 单行状态栏（对齐桌面字段集）：位置·块类型 | 编码 | 换行 | 缩放% | 模式 …… 字符。
+    // 瞬态消息（已保存/已复制/错误）改用 Toast，不挤占字段位。
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .height(28.dp)
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .height(26.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
         Text(
             text = leading,
+            // 占满剩余空间：字段组从屏幕右缘开始排
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        val itemStyle = MaterialTheme.typography.labelSmall
+        val itemColor = MaterialTheme.colorScheme.onSurfaceVariant
+        Text(
+            text = encoding,
+            modifier = Modifier
+                .clickable(onClick = onEncoding)
+                .padding(start = 10.dp),
+            style = itemStyle, color = itemColor,
+        )
+        Text(
+            text = newline,
+            modifier = Modifier
+                .clickable(onClick = onNewline)
+                .padding(start = 10.dp),
+            style = itemStyle, color = itemColor,
+        )
+        Text(
+            text = if (sourceMode) "源码" else "可视化",
+            modifier = Modifier
+                .clickable(onClick = onToggleMode)
+                .padding(start = 10.dp),
+            style = itemStyle, color = itemColor,
+        )
+        Text(
+            text = "$zoom%",
+            modifier = Modifier
+                .clickable(onClick = onZoom)
+                .padding(start = 10.dp),
+            style = itemStyle, color = itemColor,
         )
         if (characterCount.isNotEmpty()) {
             // 对齐桌面：字数按钮点击弹出文档统计面板
@@ -590,7 +793,7 @@ private fun StatusBarPlaceholder(
                 modifier = Modifier
                     .clickable(onClick = onShowStatistics)
                     .padding(start = 10.dp),
-                style = MaterialTheme.typography.labelSmall,
+                style = itemStyle,
             )
         }
     }
@@ -616,10 +819,123 @@ private fun blockTypeDisplayName(blockType: String): String = when (blockType) {
     else -> blockType
 }
 
+/** 保存写回编码选项（对齐桌面 DocumentEncodingPolicy）。 */
+private val ENCODING_OPTIONS = listOf(
+    "UTF-8" to com.markleaf.app.documents.EncodingInfo("UTF-8", hasBom = false),
+    "UTF-8 BOM" to com.markleaf.app.documents.EncodingInfo("UTF-8", hasBom = true),
+    "UTF-16LE" to com.markleaf.app.documents.EncodingInfo("UTF-16LE", hasBom = true),
+    "UTF-16BE" to com.markleaf.app.documents.EncodingInfo("UTF-16BE", hasBom = true),
+    "GBK" to com.markleaf.app.documents.EncodingInfo("GBK", hasBom = false),
+)
+
+@Composable
+private fun EncodingDialog(
+    current: String,
+    onSelect: (com.markleaf.app.documents.EncodingInfo) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text("保存编码") },
+        text = {
+            Column {
+                ENCODING_OPTIONS.forEach { (label, info) ->
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(info)
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = current == label,
+                            onClick = { onSelect(info) },
+                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun NewlineDialog(
+    current: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text("换行符") },
+        text = {
+            Column {
+                listOf("LF" to "LF（Unix/macOS）", "CRLF" to "CRLF（Windows）").forEach { (value, label) ->
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(value) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = current == value,
+                            onClick = { onSelect(value) },
+                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ZoomDialog(
+    current: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text("缩放") },
+        text = {
+            Column {
+                Text(
+                    text = "也可在编辑区双指捏合连续缩放",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    listOf(50, 75, 90, 100, 110, 125, 150, 175, 200).forEach { percent ->
+                        androidx.compose.material3.FilterChip(
+                            selected = current == percent,
+                            onClick = { onSelect(percent) },
+                            label = { Text("$percent%") },
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
 /** 文档统计面板：字段与行序对齐桌面 DocumentStatisticsWindowController。 */
 @Composable
 private fun DocumentStatisticsDialog(
     status: kotlinx.serialization.json.JsonObject?,
+    encoding: String,
+    newline: String,
     onDismiss: () -> Unit,
 ) {
     fun field(name: String): String =
@@ -637,6 +953,8 @@ private fun DocumentStatisticsDialog(
         "行" to field("line"),
         "列" to field("column"),
         "块类型" to blockTypeDisplayName(field("blockType")),
+        "编码" to encoding,
+        "换行符" to newline,
     )
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -668,6 +986,16 @@ private fun DocumentStatisticsDialog(
         },
     )
 }
+
+/** 代码块语言预设：与 macOS CodeBlockLanguageCatalog.commonLanguages 对齐。
+ *  输入框仍可自由填写，列表只是便利项而非白名单。 */
+private val COMMON_CODE_LANGUAGES = listOf(
+    "swift", "c", "cpp", "objective-c", "java", "kotlin", "python",
+    "javascript", "typescript", "jsx", "tsx", "html", "css", "json",
+    "yaml", "xml", "shell", "powershell", "sql", "markdown", "verilog",
+    "latex", "go", "rust", "php", "ruby", "r", "toml", "ini", "diff",
+    "mermaid",
+)
 
 /** 内置欢迎文档：覆盖表格/公式/mermaid/代码块/任务列表的渲染验收面。 */
 private val WELCOME_MARKDOWN = """
