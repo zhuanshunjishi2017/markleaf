@@ -370,10 +370,16 @@ sealed interface EditorMessage {
     data class CodeBlockLanguageRequested(
         override val documentId: String,
         override val revision: Long,
-        val payload: JsonElement? = null,
+        val payload: CodeBlockLanguagePayload = CodeBlockLanguagePayload(),
         override val requestId: String? = null,
     ) : EditorMessage {
         override val type: String get() = "codeBlockLanguageRequested"
+
+        @Serializable
+        data class CodeBlockLanguagePayload(
+            val position: Long = -1,
+            val language: String = "",
+        )
     }
 
     @Serializable
@@ -381,10 +387,13 @@ sealed interface EditorMessage {
     data class CopyCodeBlockRequested(
         override val documentId: String,
         override val revision: Long,
-        val payload: JsonElement? = null,
+        val payload: CopyCodeBlockPayload = CopyCodeBlockPayload(),
         override val requestId: String? = null,
     ) : EditorMessage {
         override val type: String get() = "copyCodeBlockRequested"
+
+        @Serializable
+        data class CopyCodeBlockPayload(val text: String = "")
     }
 
     @Serializable

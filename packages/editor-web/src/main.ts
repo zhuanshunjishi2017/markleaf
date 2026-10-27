@@ -95,6 +95,7 @@ const hostCapabilities = resolveNativeCapabilities(window.chrome?.webview?.hostP
 const isAndroidHost = window.chrome?.webview?.hostPlatform === 'Android'
 const usesNativeFormatMenu = ['macOS', 'Windows'].includes(window.chrome?.webview?.hostPlatform ?? '')
 document.documentElement.classList.toggle('markleaf-host-macos', window.chrome?.webview?.hostPlatform === 'macOS')
+document.documentElement.classList.toggle('markleaf-host-android', window.chrome?.webview?.hostPlatform === 'Android')
 document.documentElement.classList.toggle(
   'markleaf-themed-visual-selection',
   hostCapabilities.usesThemedVisualSelection,

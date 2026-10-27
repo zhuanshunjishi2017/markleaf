@@ -2782,7 +2782,11 @@ function createCodeBlockControls(
   const copy = document.createElement('button')
   copy.type = 'button'
   copy.className = 'markleaf-code-block-copy'
-  copy.textContent = document.documentElement.classList.contains('markleaf-host-macos') ? '⧉' : '\uE8C8'
+  copy.textContent = document.documentElement.classList.contains('markleaf-host-macos')
+    ? '⧉'
+    : document.documentElement.classList.contains('markleaf-host-android')
+      ? '⧉'
+      : '\uE8C8'
   copy.tabIndex = -1
   copy.setAttribute('aria-label', editorSharedStrings.copyCodeBlock)
 

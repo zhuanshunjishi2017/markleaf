@@ -1285,3 +1285,25 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
   pointer-events: none;
   white-space: pre;
 }
+
+
+/* 触屏（Android WebView）：代码块控件按钮加大可点击面积，
+   图标字体回退到系统符号字体（Segoe Fluent Icons 仅 Windows 提供）。 */
+@media (pointer: coarse) {
+  .markleaf-document pre:focus-within .markleaf-code-block-copy,
+  .markleaf-document pre:hover .markleaf-code-block-copy {
+    display: block;
+  }
+  .markleaf-code-block-copy,
+  .markleaf-code-block-language {
+    min-width: 32px;
+    height: 32px;
+    font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", "Noto Sans Symbols 2",
+      "Noto Sans Symbols", -apple-system, "SF Pro", sans-serif;
+    font-size: 15px;
+  }
+  .markleaf-code-block-language {
+    font-family: inherit;
+    padding: 0 10px;
+  }
+}

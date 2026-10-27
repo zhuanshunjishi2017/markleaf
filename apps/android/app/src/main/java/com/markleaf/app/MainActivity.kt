@@ -66,6 +66,12 @@ class MainActivity : ComponentActivity() {
     private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
     private val activeTitle = mutableStateOf("未命名")
     private val showExport = mutableStateOf(false)
+    private val showLanguageDialog = mutableStateOf<Pair<Long, String>?>(null)
+    private var languageInput: String = ""
+    private val showContextMenu = mutableStateOf(false)
+    private val contextMenuX = mutableStateOf(0f)
+    private val contextMenuY = mutableStateOf(0f)
+    private val editorActions = mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap())
     private var welcomeDocumentId = WELCOME_DOCUMENT_ID
     private var lastKnownMarkdown = ""
     private var pendingSnapshot: kotlinx.coroutines.CompletableDeferred<EditorMessage.Snapshot.SnapshotPayload>? = null
@@ -77,7 +83,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-com.markleaf.app.documents.SafDocumentSource.takePersistablePermission(this, uri)
+SafDocumentSource.takePersistablePermission(this, uri)
             workspaceRoot = DocumentRef.Saf(uri.toString())
             refreshWorkspace()
         }
@@ -181,6 +187,29 @@ com.markleaf.app.documents.SafDocumentSource.takePersistablePermission(this, uri
                                                 performExport(name, options)
                                             },
                                         )
+                                    },
+                                )
+                            }
+                            showLanguageDialog.value?.let { (position, current) ->
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showLanguageDialog.value = null },
+                                    title = { Text("声明代码语言") },
+                                    text = {
+                                        androidx.compose.material3.OutlinedTextField(
+                                            value = languageInput,
+                                            onValueChange = { languageInput = it },
+                                            label = { Text("语言（kotlin / python / …）") },
+                                            singleLine = true,
+                                        )
+                                    },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            bridge.post(command("setCodeBlockLanguageAt", """{"position":POSITION,"language":"LANG"}""".replace("POSITION", position.toString()).replace("LANG", languageInput)))
+                                            showLanguageDialog.value = null
+                                        }) { Text("确定") }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showLanguageDialog.value = null }) { Text("取消") }
                                     },
                                 )
                             }
@@ -353,6 +382,38 @@ com.markleaf.app.documents.SafDocumentSource.takePersistablePermission(this, uri
                     ?.get("html")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: ""
                 pendingExportHtml?.complete(html)
                 pendingExportHtml = null
+            }
+            is EditorMessage.CopyCodeBlockRequested -> {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText("code", message.payload.text),
+                )
+                editorStatusLine.value = "代码已复制"
+            }
+            is EditorMessage.CodeBlockLanguageRequested -> {
+                showLanguageDialog.value = Pair(message.payload.position, message.payload.language)
+            }
+            is EditorMessage.CodeFormatRequested -> {
+                // Android 第一版无外部代码格式化器：明示不可用（不静默吞）。
+                editorStatusLine.value = "未配置代码格式化器"
+            }
+            is EditorMessage.RequestSave -> lifecycleScope.launch { saveActiveDocument() }
+            is EditorMessage.OpenLink -> {
+                val url = (message.payload as? kotlinx.serialization.json.JsonObject)
+                    ?.get("url")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+                if (!url.isNullOrEmpty()) {
+                    runCatching {
+                        startActivity(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)),
+                        )
+                    }.onFailure { editorStatusLine.value = "无法打开链接" }
+                }
+            }
+            is EditorMessage.CommandStateChanged -> {
+                editorActions.value = message.payload.actions.mapValues { (_, state) ->
+                    Pair(state.enabled, state.checked)
+                }
             }
             is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
