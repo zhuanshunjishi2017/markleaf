@@ -5,12 +5,17 @@ import android.util.Log
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.markleaf.app.bridge.EditorBridge
 import com.markleaf.app.bridge.EditorMessage
@@ -62,6 +68,8 @@ class MainActivity : ComponentActivity() {
     private val documentLoaded = mutableStateOf(false)
     private val dirty = mutableStateOf(false)
     private val editorStatusLine = mutableStateOf("")
+    private val editorStatus = mutableStateOf<kotlinx.serialization.json.JsonObject?>(null)
+    private val showStatisticsDialog = mutableStateOf(false)
     private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
     private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
     private val activeTitle = mutableStateOf("未命名")
@@ -114,6 +122,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // targetSdk 35+ 强制 edge-to-edge：内容绘制到系统栏下。浅色主题要求
+        // 状态栏用深色图标；顶栏/底栏经 statusBarsPadding/navigationBarsPadding
+        // 让出系统栏区域，Surface 背景延伸到栏下保持同色。
+        enableEdgeToEdge()
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
+
         resolver = AssetResolver { path: String ->
             val active = controller?.activeRef
             if (active == null) {
@@ -160,7 +175,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
                             )
                         },
                     ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // 键盘展开时整体收起到底栏上方：状态栏与编辑区可见
+                                .imePadding(),
+                        ) {
                             TabStrip(
                                 active = activeTitle.value,
                                 dirty = dirty.value,
@@ -172,7 +192,17 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                             )
                             EditorContainer(webView)
-                            StatusBarPlaceholder(editorStatusLine.value)
+                            StatusBarPlaceholder(
+                                transient = editorStatusLine.value,
+                                status = editorStatus.value,
+                                onShowStatistics = { showStatisticsDialog.value = true },
+                            )
+                            if (showStatisticsDialog.value) {
+                                DocumentStatisticsDialog(
+                                    status = editorStatus.value,
+                                    onDismiss = { showStatisticsDialog.value = false },
+                                )
+                            }
                             if (showExport.value) {
                                 androidx.compose.material3.AlertDialog(
                                     onDismissRequest = { showExport.value = false },
@@ -417,25 +447,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
             }
             is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
-            is EditorMessage.EditorStatusChanged -> editorStatusLine.value = formatStatus(message.payload)
+            is EditorMessage.EditorStatusChanged ->
+                editorStatus.value = message.payload as? kotlinx.serialization.json.JsonObject
             else -> Unit
         }
-    }
-
-    /** editorStatusChanged payload → 状态栏文本（不裸 dump JSON）。 */
-    private fun formatStatus(payload: kotlinx.serialization.json.JsonElement?): String {
-        val obj = payload as? kotlinx.serialization.json.JsonObject ?: return ""
-        fun field(name: String): String? =
-            (obj[name] as? kotlinx.serialization.json.JsonPrimitive)?.content
-        val parts = mutableListOf<String>()
-        (obj["characterCount"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-            ?.let { parts.add("字数 $it") }
-        val line = field("line")
-        val column = field("column")
-        if (line != null && column != null) {
-            parts.add("第 $line 行, 第 $column 列")
-        }
-        return parts.joinToString(" · ")
     }
 
     /** outlineChanged 载荷 → OutlineItem（容错解析，字段缺失跳过）。 */
@@ -505,6 +520,7 @@ private fun TabStrip(
     androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         TextButton(onClick = onOpenDrawer) { Text("☰") }
@@ -533,14 +549,123 @@ private fun androidx.compose.foundation.layout.ColumnScope.EditorContainer(webVi
 }
 
 @Composable
-private fun StatusBarPlaceholder(statusLine: String) {
-    Text(
-        text = statusLine.ifEmpty { "MarkLeaf" },
+private fun StatusBarPlaceholder(
+    transient: String,
+    status: kotlinx.serialization.json.JsonObject?,
+    onShowStatistics: () -> Unit,
+) {
+    fun field(name: String): String =
+        (status?.get(name) as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+    val line = field("line")
+    val column = field("column")
+    val characterCount = field("characterCount")
+    val blockType = blockTypeDisplayName(field("blockType"))
+    // 左侧：优先显示宿主瞬态消息（已保存/已导出/错误），无消息时显示行·列·块类型
+    val leading = transient.ifEmpty {
+        listOfNotNull(
+            if (line.isNotEmpty()) "行 $line 列 $column" else null,
+            blockType.ifEmpty { null },
+        ).joinToString(" · ")
+    }
+    androidx.compose.foundation.layout.Row(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .height(28.dp)
             .padding(horizontal = 12.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.labelSmall,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Text(
+            text = leading,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        if (characterCount.isNotEmpty()) {
+            // 对齐桌面：字数按钮点击弹出文档统计面板
+            Text(
+                text = "$characterCount 字符",
+                modifier = Modifier
+                    .clickable(onClick = onShowStatistics)
+                    .padding(start = 10.dp),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+/** 块类型内部名 → 桌面同款显示名（对齐 macOS EditorSession.blockTypeDisplayName）。 */
+private fun blockTypeDisplayName(blockType: String): String = when (blockType) {
+    "paragraph" -> "正文"
+    "heading1" -> "标题 1"
+    "heading2" -> "标题 2"
+    "heading3" -> "标题 3"
+    "heading4" -> "标题 4"
+    "heading5" -> "标题 5"
+    "heading6" -> "标题 6"
+    "blockquote" -> "引用"
+    "codeBlock" -> "代码块"
+    "bulletList" -> "无序列表"
+    "orderedList" -> "有序列表"
+    "taskList" -> "任务列表"
+    "table" -> "表格"
+    "image" -> "图片"
+    "footnoteDefinition" -> "脚注"
+    else -> blockType
+}
+
+/** 文档统计面板：字段与行序对齐桌面 DocumentStatisticsWindowController。 */
+@Composable
+private fun DocumentStatisticsDialog(
+    status: kotlinx.serialization.json.JsonObject?,
+    onDismiss: () -> Unit,
+) {
+    fun field(name: String): String =
+        (status?.get(name) as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "—"
+    val rows: List<Pair<String, String>> = listOf(
+        "字符数" to field("characterCount"),
+        "已选字符数" to field("selectedCharacterCount"),
+        "总字符数" to field("totalCharacterCount"),
+        "非空白字符数" to field("nonWhitespaceCharacterCount"),
+        "CJK 字符数" to field("cjkCharacterCount"),
+        "西文单词数" to field("westernWordCount"),
+        "公式数" to field("formulaCount"),
+        "代码行数" to field("codeLineCount"),
+        "段落数" to field("paragraphCount"),
+        "行" to field("line"),
+        "列" to field("column"),
+        "块类型" to blockTypeDisplayName(field("blockType")),
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        },
+        title = { Text("文档统计") },
+        text = {
+            Column {
+                rows.forEach { (label, value) ->
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = value,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+        },
     )
 }
 
