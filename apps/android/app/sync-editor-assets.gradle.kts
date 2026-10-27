@@ -25,6 +25,7 @@ val syncEditorAssets by tasks.registering(Sync::class) {
 
     from(editorDistDir) {
         exclude("native-shim.js")
+        exclude("**/* 2.*", "** 2")
     }
     into(editorAssetsDir)
 }

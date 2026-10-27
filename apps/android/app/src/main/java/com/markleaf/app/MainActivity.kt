@@ -351,7 +351,24 @@ class MainActivity : ComponentActivity() {
                 outline.value = parseOutline(message.payload)
             }
             is EditorMessage.EditorStatusChanged -> {
-                editorStatusLine.value = message.payload.toString().take(120)
+                // payload 形如 {"characterCount":227,...}；解析并格式化成人类可读状态。
+                val formatted = (message.payload as? kotlinx.serialization.json.JsonObject)?.let { obj ->
+                    val characterCount = obj["characterCount"]?.toString() ?: "?"
+                    val line = obj["line"]?.toString()
+                    val column = obj["column"]?.toString()
+                    buildString {
+                        append("字数 ")
+                        append(characterCount)
+                        if (line != null && column != null) {
+                            append(" · 第 ")
+                            append(line)
+                            append(" 行, 第 ")
+                            append(column)
+                            append(" 列")
+                        }
+                    }
+                }
+                editorStatusLine.value = formatted ?: message.payload.toString().take(120)
             }
             else -> Unit
         }
