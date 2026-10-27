@@ -150,6 +150,7 @@ setExternalCodeFormatter({
 let tableColumnResizePreferred = true
 const editorCreationOptions = {
   allowTableColumnResize: true,
+  spellCheck: !isAndroidHost,
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
   handlePaste: handleVisualEditorPaste,
   sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {

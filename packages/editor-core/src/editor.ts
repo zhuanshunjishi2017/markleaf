@@ -4022,6 +4022,8 @@ export type EditorCreationOptions = {
   // Text-document hosts own undo/redo; native hosts retain Tiptap history.
   externalHistory?: boolean
   sourceContextMenu?: (point: { clientX: number; clientY: number }) => void
+  /** 可视化模式拼写检查（默认开启；Android WebView 红线干扰编辑，宿主可关）。 */
+  spellCheck?: boolean
 }
 
 const sourceContextMenus = new WeakMap<Editor, NonNullable<EditorCreationOptions['sourceContextMenu']>>()
@@ -4059,7 +4061,7 @@ export function createEditor(
     editorProps: {
       attributes: {
         class: 'markleaf-document',
-        spellcheck: 'true',
+        spellcheck: options.spellCheck === false ? 'false' : 'true',
       },
       handleDOMEvents: {
         mousedown: (view, event) => {

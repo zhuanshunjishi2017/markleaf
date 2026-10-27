@@ -416,7 +416,8 @@ body.markleaf-theme-dark {
   cursor: pointer;
 }
 
-.markleaf-document pre:has(.markleaf-mermaid-render-button) {
+.markleaf-document pre:has(.markleaf-mermaid-render-button),
+.markleaf-document pre:has(.markleaf-code-block-controls) {
   position: relative;
 }
 
