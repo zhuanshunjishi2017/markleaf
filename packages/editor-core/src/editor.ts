@@ -2782,11 +2782,17 @@ function createCodeBlockControls(
   const copy = document.createElement('button')
   copy.type = 'button'
   copy.className = 'markleaf-code-block-copy'
-  copy.textContent = document.documentElement.classList.contains('markleaf-host-macos')
-    ? '⧉'
-    : document.documentElement.classList.contains('markleaf-host-android')
-      ? '⧉'
-      : '\uE8C8'
+  // 复制图标：macOS/Android 用内联 SVG（跨平台，无字体依赖），Windows 保留 Segoe 图标。
+  if (document.documentElement.classList.contains('markleaf-host-macos')
+    || document.documentElement.classList.contains('markleaf-host-android')) {
+    copy.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+      '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>' +
+      '<path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4V9A1.5 1.5 0 0 0 4 10.5" stroke="currentColor" stroke-width="1.5"/>' +
+      '</svg>'
+  } else {
+    copy.textContent = '\uE8C8'
+  }
   copy.tabIndex = -1
   copy.setAttribute('aria-label', editorSharedStrings.copyCodeBlock)
 

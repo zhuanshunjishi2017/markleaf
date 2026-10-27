@@ -433,6 +433,10 @@ body.markleaf-theme-dark {
   user-select: none;
 }
 
+.markleaf-code-block-copy svg {
+  display: block;
+}
+
 .markleaf-code-block-copy,
 .markleaf-code-block-language {
   margin: 0;
