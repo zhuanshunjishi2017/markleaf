@@ -6,6 +6,8 @@ import java.security.MessageDigest
 val editorDistDir = layout.projectDirectory
     .dir("../../../packages/editor-web/dist")
 val editorAssetsDir = layout.buildDirectory.dir("generated/editorAssets/editor")
+val stylesDir = layout.projectDirectory
+    .dir("../../../packages/styles")
 
 // 配置期解析出的 File，供执行期使用（兼容配置缓存，不捕获脚本对象）。
 val assetsDirProvider = editorAssetsDir.map { it.asFile }
@@ -28,6 +30,13 @@ val syncEditorAssets by tasks.registering(Sync::class) {
         exclude("**/* 2.*", "** 2")
     }
     into(editorAssetsDir)
+
+    // 文档主题样式：base.css（排版基础）+ 默认浅色主题 + serif 排版样式。
+    // 宿主 applyStyles 载荷需要它们定义 --theme-*/--ml-* 变量。
+    from(stylesDir) {
+        include("base.css", "colors-default-light.css", "serif.css")
+        into("styles")
+    }
 }
 
 val writeAssetManifest by tasks.registering {

@@ -94,6 +94,7 @@ class EditorBridge(
 
     private fun postToEditor(message: HostMessage) {
         val json = encodeHostMessage(message)
+        Log.d(TAG, "post type=${message.type} len=${json.length} head=${json.take(160)}")
         val script = "window.postMessage(JSON.parse('${escapeJsSingleQuoted(json)}'), '*')"
         postScript(script)
     }
