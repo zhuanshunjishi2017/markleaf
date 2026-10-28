@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
@@ -50,6 +52,7 @@ import com.markleaf.app.documents.AssetResolver
 import com.markleaf.app.documents.DocumentController
 import com.markleaf.app.documents.DocumentEntry
 import com.markleaf.app.documents.DocumentRef
+import com.markleaf.app.documents.EncodingInfo
 import com.markleaf.app.documents.RecoveryStore
 import com.markleaf.app.documents.SafDocumentSource
 import com.markleaf.app.documents.isMarkdownName
@@ -61,6 +64,9 @@ import com.markleaf.app.export.ExportDialog
 import com.markleaf.app.export.ExportOptions
 import com.markleaf.app.export.PdfExporter
 import com.markleaf.app.ui.OutlineItem
+import com.markleaf.app.ui.TopMenuBar
+import com.markleaf.app.ui.TopMenuEntry
+import com.markleaf.app.ui.TopMenuSection
 import com.markleaf.app.ui.WorkspaceSidebar
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -80,12 +86,23 @@ class MainActivity : ComponentActivity() {
     private val editorStatus = mutableStateOf<kotlinx.serialization.json.JsonObject?>(null)
     private val showStatisticsDialog = mutableStateOf(false)
     private val editorSourceMode = mutableStateOf(false)
+    // 切模式瞬间前端会连发多条 commandStateChanged（先旧后新），逐条应用会让
+    // 状态栏文字来回闪；防抖合并只应用停顿后的最后一条
+    private val sourceModeDisplayHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingSourceMode = false
+    private val commitSourceModeRunnable = Runnable {
+        editorSourceMode.value = pendingSourceMode
+    }
     private val zoomPercent = mutableStateOf(100)
     private val documentEncoding = mutableStateOf("UTF-8")
     private val documentNewline = mutableStateOf("LF")
     private val showEncodingDialog = mutableStateOf(false)
     private val showNewlineDialog = mutableStateOf(false)
     private val showZoomDialog = mutableStateOf(false)
+    private val showPreferences = mutableStateOf(false)
+    private val showAbout = mutableStateOf(false)
+    private lateinit var prefsStore: android.content.SharedPreferences
+    private val editorPrefs = mutableStateOf(com.markleaf.app.ui.EditorPrefs())
     private val selectionToolbarRect = mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
     private val selectionToolbarVisible = mutableStateOf(false)
     private val editorSemanticContext = mutableStateOf<String?>(null)
@@ -102,6 +119,7 @@ class MainActivity : ComponentActivity() {
     private var pendingSelectionExportRequestId: String? = null
     private var pinchAccumulator = 100.0
     private var lastPinchApplyAt = 0L
+    private var lastAppliedStyleId = "serif"
     private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
     private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
     private val activeTitle = mutableStateOf("未命名")
@@ -176,6 +194,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
         session = EditorSessionState().apply { startDocument(WELCOME_DOCUMENT_ID) }
         source = SafDocumentSource(this)
         recoveryStore = RecoveryStore(this)
+        prefsStore = getSharedPreferences("markleaf-settings", MODE_PRIVATE)
+        editorPrefs.value = com.markleaf.app.ui.EditorPrefs.load(prefsStore)
+        zoomPercent.value = editorPrefs.value.zoom
         bridge = EditorBridge(
             postScript = { script -> webView.evaluateJavascript(script, null) },
             session = session,
@@ -190,22 +211,32 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     val scope = rememberCoroutineScope()
                     ModalNavigationDrawer(
                         drawerState = drawerState,
-                        // 长按选字/拖拽常从屏幕左缘起步，抽屉手势会误触发；
+                        // 打开时允许手势：点击遮罩/右滑即可关闭；
+                        // 关闭时禁手势：长按选字/拖拽常从屏幕左缘起步，抽屉会误触发。
                         // 抽屉仅经 ☰ 打开
-                        gesturesEnabled = false,
+                        gesturesEnabled = drawerState.targetValue == DrawerValue.Open,
                         drawerContent = {
-                            WorkspaceSidebar(
-                                entries = sidebarEntries.value,
-                                outline = outline.value,
-                                onOpenDocument = { entry ->
-                                    scope.launch { drawerState.close() }
-                                    (entry.ref as? DocumentRef.Saf)?.let(::openDocument)
-                                },
-                                onOutlineClick = { item ->
-                                    scope.launch { drawerState.close() }
-                                    bridge.post(command("scrollToPosition", item.position.toString()))
-                                },
-                            )
+                            androidx.compose.material3.ModalDrawerSheet(
+                                modifier = Modifier.width(
+                                    minOf(
+                                        300.dp,
+                                        (LocalConfiguration.current.screenWidthDp.dp * 0.78f),
+                                    )
+                                ),
+                            ) {
+                                WorkspaceSidebar(
+                                    entries = sidebarEntries.value,
+                                    outline = outline.value,
+                                    onOpenDocument = { entry ->
+                                        scope.launch { drawerState.close() }
+                                        (entry.ref as? DocumentRef.Saf)?.let(::openDocument)
+                                    },
+                                    onOutlineClick = { item ->
+                                        scope.launch { drawerState.close() }
+                                        bridge.post(command("scrollToPosition", item.position.toString()))
+                                    },
+                                )
+                            }
                         },
                     ) {
                         Column(
@@ -214,15 +245,16 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 // 键盘展开时整体收起到底栏上方：状态栏与编辑区可见
                                 .imePadding(),
                         ) {
-                            TabStrip(
+                            TopMenuBar(
                                 active = activeTitle.value,
                                 dirty = dirty.value,
-                                documentLoaded = documentLoaded.value,
-                                onOpenFolder = { openTreeLauncher.launch(null) },
-                                onOpenFile = { openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) },
-                                onSave = { lifecycleScope.launch { saveActiveDocument() } },
-                                onExport = { showExport.value = true },
+                                undoEnabled = editorActions.value["undo"]?.first == true,
+                                redoEnabled = editorActions.value["redo"]?.first == true,
+                                sections = topMenuSections(),
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
+                                onUndo = { postCommand("undo") },
+                                onRedo = { postCommand("redo") },
+                                onSave = { lifecycleScope.launch { saveActiveDocument() } },
                             )
                             EditorContainer(
                                 webView = webView,
@@ -241,6 +273,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onToggleMode = {
                                     bridge.post(command("toggleSourceMode", ""))
                                     editorSourceMode.value = !editorSourceMode.value
+                                    pendingSourceMode = editorSourceMode.value
+                                    sourceModeDisplayHandler.removeCallbacks(commitSourceModeRunnable)
+                                    sourceModeDisplayHandler.postDelayed(commitSourceModeRunnable, 150)
                                 },
                             )
                             if (showStatisticsDialog.value) {
@@ -256,9 +291,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     current = documentEncoding.value,
                                     onSelect = { info ->
                                         controller?.setEncoding(info)
-                                        documentEncoding.value = info.let {
-                                            if (it.hasBom && it.name == "UTF-8") "UTF-8 BOM" else it.name
-                                        }
+                                        documentEncoding.value = encodingDisplayName(info)
                                         showToast("保存时将使用 ${documentEncoding.value} 编码")
                                         showEncodingDialog.value = false
                                     },
@@ -357,7 +390,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 semanticContext = editorSemanticContext.value,
                 requestSelection = { requestSelectionText() },
                 actions = editorActions.value,
-                onCommand = { cmd -> bridge.post(command(cmd, "")) },
+                onCommand = { cmd, text -> bridge.post(command(cmd, text)) },
                 onLanguagePicker = { showToolbarLanguageDialog.value = true },
             )
             if (showToolbarLanguageDialog.value) {
@@ -382,6 +415,36 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         TextButton(onClick = { showToolbarLanguageDialog.value = false }) { Text("取消") }
                     },
                 )
+            }
+            // 首选项层：右滑入场的推页动画；系统返回先关首选项而不是退出应用
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showPreferences.value,
+                enter = androidx.compose.animation.slideInHorizontally(
+                    animationSpec = androidx.compose.animation.core.tween(220),
+                    initialOffsetX = { it },
+                ) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)),
+                exit = androidx.compose.animation.slideOutHorizontally(
+                    animationSpec = androidx.compose.animation.core.tween(200),
+                    targetOffsetX = { it },
+                ) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
+            ) {
+                com.markleaf.app.ui.PreferencesScreen(
+                    prefs = editorPrefs.value,
+                    styleIds = StyleAssets.TYPOGRAPHY_STYLES,
+                    themeIds = StyleAssets.COLOR_THEMES,
+                    onChange = ::updatePrefs,
+                    onDismiss = { showPreferences.value = false },
+                )
+            }
+            if (showAbout.value) {
+                val version = runCatching {
+                    packageManager.getPackageInfo(packageName, 0).versionName
+                }.getOrNull() ?: ""
+                com.markleaf.app.ui.AboutDialog(version = version, onDismiss = { showAbout.value = false })
+            }
+            // 系统返回手势：有覆盖层时先关覆盖层（首选项/关于），不要退出应用
+            androidx.activity.compose.BackHandler(enabled = showPreferences.value) {
+                showPreferences.value = false
             }
             }
         }
@@ -426,6 +489,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
     private fun openDocument(ref: DocumentRef.Saf) {
         val active = controller ?: DocumentController(source, bridge::post, session).also {
+            // 新控制器落首选项的默认编码/换行；打开已有文件时会被探测值覆盖
+            encodingInfoFromPref(editorPrefs.value.defaultEncoding)?.let(it::setEncoding)
+            it.setNewline(editorPrefs.value.defaultNewline)
             controller = it
         }
         lifecycleScope.launch {
@@ -433,6 +499,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 is DocumentController.OpenResult.Loaded -> {
                     activeTitle.value = result.name
                     dirty.value = false
+                    documentEncoding.value = encodingDisplayName(result.encoding)
+                    documentNewline.value = active.activeNewline
                     Log.i(TAG, "打开 ${result.name} 编码=${result.encoding.name}")
                 }
                 DocumentController.OpenResult.PermissionLost -> {
@@ -519,20 +587,26 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 Log.i(TAG, "editor ready; adopting documentId=$frontendId")
                 // 主题样式：baseCss 按序拼接 base → 颜色主题 → serif，保证
                 // --ml-*/--bg-* 变量与排版规则完整且覆盖顺序正确。
+                lastAppliedStyleId = editorPrefs.value.styleId
                 bridge.post(
                     HostMessage.ApplyStyles(
                         documentId = frontendId,
                         revision = 0,
                         payload = HostMessage.ApplyStyles.ApplyStylesPayload(
                             baseCss = StyleAssets.readBaseCss(this) + "\n" +
-                                StyleAssets.readColorThemeCss(this) + "\n" +
-                                StyleAssets.readTypographyCss(this),
+                                StyleAssets.readColorThemeCss(this, editorPrefs.value.colorTheme) + "\n" +
+                                StyleAssets.readTypographyCss(this, editorPrefs.value.styleId),
                             styles = styleCatalogJson(),
-                            activeStyle = StyleAssets.DEFAULT_TYPOGRAPHY_ID,
+                            activeStyle = editorPrefs.value.styleId,
                         ),
                     ),
                 )
                 bridge.post(welcomeDocumentMessage())
+                // 持久化外观（字号/行高/宽度/缩放）在首帧后应用
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    { applyAppearance() },
+                    400,
+                )
             }
             is EditorMessage.StylesApplied -> Log.i(TAG, "styles applied")
             is EditorMessage.DocumentLoaded -> {
@@ -596,7 +670,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 editorActions.value = message.payload.actions.mapValues { (_, state) ->
                     Pair(state.enabled, state.checked)
                 }
-                editorSourceMode.value = message.payload.sourceMode
+                pendingSourceMode = message.payload.sourceMode
+                sourceModeDisplayHandler.removeCallbacks(commitSourceModeRunnable)
+                sourceModeDisplayHandler.postDelayed(commitSourceModeRunnable, 120)
                 editorSemanticContext.value = message.payload.semanticContext
             }
             is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
@@ -637,30 +713,67 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
-    /** 应用缩放：宿主持有 zoom 偏好，组装 payload 调前端 __markleafApplyVisualVariables
-     *  （字段集合与 macOS applyVisualVariables 相同；Android 无排版设置 UI，
-     *  基准值取排版默认：fontSize 16 / lineHeight 1.75 / maxWidth 740 / sourceFontSize 14）。 */
-    private fun applyZoom(percent: Int) {
-        val clamped = percent.coerceIn(50, 200)
-        zoomPercent.value = clamped
-        val factor = clamped / 100.0
+    /** 应用外观：缩放 + 首选项排版字段一次下发（__markleafApplyVisualVariables，
+     *  字段集合与 macOS applyVisualVariables 相同）。缩放因子作用于
+     *  fontSize/maxWidth/sourceFontSize；lineHeight 为倍数不参与缩放。 */
+    private fun applyAppearance() {
+        val prefs = editorPrefs.value
+        val percent = zoomPercent.value
+        val factor = percent / 100.0
+        val maxWidthPx = if (prefs.ignoreMaxWidth) "null" else "'${"%.2f".format(prefs.maxWidth * factor)}px'"
         val payload = "{" +
-            "\"lineHeight\":'1.75'," +
+            "\"lineHeight\":'${"%.2f".format(prefs.lineHeight)}'," +
             "\"visualScale\":${"%.4f".format(factor)}," +
-            "\"fontSize\":'${"%.2f".format(16 * factor)}px'," +
-            "\"maxWidth\":'${"%.2f".format(740 * factor)}px'," +
-            "\"sourceFontSize\":'${"%.2f".format(14 * factor)}px'," +
+            "\"fontSize\":'${"%.2f".format(prefs.fontSize * factor)}px'," +
+            "\"maxWidth\":$maxWidthPx," +
+            "\"sourceFontSize\":'${"%.2f".format(prefs.sourceFontSize * factor)}px'," +
             "\"sourceFontFamily\":'monospace'," +
             "\"cjkLanguage\":'zh'," +
-            "\"visualCjkAutoSpacing\":true," +
-            "\"allowTableColumnResize\":true," +
-            "\"visualAdaptiveJustification\":false," +
-            "\"ignoreMaxWidth\":false," +
+            "\"visualCjkAutoSpacing\":${prefs.cjkSpacing}," +
+            "\"allowTableColumnResize\":${prefs.tableColumnResize}," +
+            "\"visualAdaptiveJustification\":${prefs.adaptiveJustification}," +
+            "\"ignoreMaxWidth\":${prefs.ignoreMaxWidth}," +
             "\"usePointerAnchor\":false," +
             "\"anchorX\":null,\"anchorY\":null}"
         webView.evaluateJavascript(
             "typeof window.__markleafApplyVisualVariables === 'function' && window.__markleafApplyVisualVariables($payload);",
             null,
+        )
+    }
+
+    /** 应用缩放：捏合/菜单共用；仅更新缩放值并下发外观。 */
+    private fun applyZoom(percent: Int) {
+        zoomPercent.value = percent.coerceIn(50, 200)
+        applyAppearance()
+    }
+
+    /** 首选项变更：保存 + 立即应用（缩放字段同步 zoomPercent；主题/样式变更重发样式载荷）。 */
+    private fun updatePrefs(newPrefs: com.markleaf.app.ui.EditorPrefs) {
+        val old = editorPrefs.value
+        editorPrefs.value = newPrefs
+        newPrefs.save(prefsStore)
+        zoomPercent.value = newPrefs.zoom
+        if (newPrefs.styleId != old.styleId || newPrefs.colorTheme != old.colorTheme) {
+            lastAppliedStyleId = newPrefs.styleId
+            applyStyles()
+        }
+        applyAppearance()
+    }
+
+    /** 下发主题样式载荷（base + 当前颜色主题 + 排版样式目录）。 */
+    private fun applyStyles() {
+        bridge.post(
+            HostMessage.ApplyStyles(
+                documentId = session.documentId,
+                revision = session.confirmedRevision,
+                payload = HostMessage.ApplyStyles.ApplyStylesPayload(
+                    baseCss = StyleAssets.readBaseCss(this) + "\n" +
+                        StyleAssets.readColorThemeCss(this, editorPrefs.value.colorTheme) + "\n" +
+                        StyleAssets.readTypographyCss(this, editorPrefs.value.styleId),
+                    styles = styleCatalogJson(),
+                    activeStyle = editorPrefs.value.styleId,
+                ),
+            ),
         )
     }
 
@@ -719,7 +832,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
     /** outlineChanged 载荷 → OutlineItem（容错解析，字段缺失跳过）。 */
     private fun parseOutline(payload: kotlinx.serialization.json.JsonElement?): List<OutlineItem> {
         val items = mutableListOf<OutlineItem>()
-        val array = (payload as? kotlinx.serialization.json.JsonArray) ?: return items
+        val array = (payload as? kotlinx.serialization.json.JsonObject)
+            ?.get("headings") as? kotlinx.serialization.json.JsonArray ?: return items
         for (element in array) {
             val obj = element as? kotlinx.serialization.json.JsonObject ?: continue
             val text = obj["text"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: continue
@@ -730,20 +844,20 @@ SafDocumentSource.takePersistablePermission(this, uri)
         return items
     }
 
-    /** 排版样式目录载荷：serif（依赖 base）。默认主题走 colorThemeCss。 */
-    private fun styleCatalogJson(): kotlinx.serialization.json.JsonElement {
-        val typographyCss = assets.open(StyleAssets.TYPOGRAPHY_CSS).use { it.readBytes().decodeToString() }
-        return kotlinx.serialization.json.buildJsonArray {
-            add(
-                kotlinx.serialization.json.buildJsonObject {
-                    put("id", kotlinx.serialization.json.JsonPrimitive(StyleAssets.DEFAULT_TYPOGRAPHY_ID))
-                    put("displayName", kotlinx.serialization.json.JsonPrimitive(StyleAssets.DEFAULT_TYPOGRAPHY_ID))
-                    put("css", kotlinx.serialization.json.JsonPrimitive(typographyCss))
-                    put("dependsOn", kotlinx.serialization.json.JsonPrimitive("base"))
-                },
-            )
+    /** 排版样式目录载荷（衬线/无衬线/极简/笔记本/杂志；依赖 base）。 */
+    private fun styleCatalogJson(): kotlinx.serialization.json.JsonElement =
+        kotlinx.serialization.json.buildJsonArray {
+            StyleAssets.TYPOGRAPHY_STYLES.forEach { (id, display) ->
+                add(
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("id", kotlinx.serialization.json.JsonPrimitive(id))
+                        put("displayName", kotlinx.serialization.json.JsonPrimitive(display))
+                        put("css", kotlinx.serialization.json.JsonPrimitive(StyleAssets.readTypographyCss(this@MainActivity, id)))
+                        put("dependsOn", kotlinx.serialization.json.JsonPrimitive("base"))
+                    },
+                )
+            }
         }
-    }
 
     private fun welcomeDocumentMessage(): HostMessage.LoadDocument = HostMessage.LoadDocument(
         documentId = welcomeDocumentId,
@@ -753,6 +867,110 @@ SafDocumentSource.takePersistablePermission(this, uri)
             readOnly = false,
         ),
     )
+
+    /** 顶栏菜单内容（条目与桌面 NativeMenuBuilder 同名命令对齐）。
+     *  可用性共用 editorActions；粘贴走 pasteClipboard（读 Android 剪贴板）。 */
+    private fun postCommand(name: String) {
+        bridge.post(command(name, ""))
+    }
+
+    private fun topMenuSections(): List<TopMenuSection> {
+        fun en(cmd: String) = editorActions.value[cmd]?.first == true
+        fun entry(title: String, cmd: String, separator: Boolean = false) =
+            TopMenuEntry(title, en(cmd), separator) { postCommand(cmd) }
+        fun host(title: String, separator: Boolean = false, action: () -> Unit) =
+            TopMenuEntry(title, true, separator, action)
+        return listOf(
+            TopMenuSection("文件", listOf(
+                host("打开文件夹…") { openTreeLauncher.launch(null) },
+                host("打开文件…") { openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) },
+                host("保存", separator = true) { lifecycleScope.launch { saveActiveDocument() } },
+                host("导出…") { showExport.value = true },
+            )),
+            TopMenuSection("编辑", listOf(
+                entry("撤销", "undo"),
+                entry("重做", "redo"),
+                entry("剪切", "cut", separator = true),
+                entry("拷贝", "copy"),
+                TopMenuEntry("粘贴", true, false) {
+                    clipboard()?.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
+                        ?.takeIf { it.isNotEmpty() }?.let { postCommand("pasteClipboard") }
+                },
+                entry("全选", "selectAll", separator = true),
+            )),
+            TopMenuSection("插入", listOf(
+                entry("行内公式", "insertMathInline"),
+                entry("块级公式", "insertMathBlock"),
+                entry("Mermaid 图表", "insertMermaid"),
+                entry("水平线", "insertHorizontalRule"),
+                entry("插入脚注", "insertFootnote"),
+                entry("YAML 前置元数据", "showFrontMatter", separator = true),
+            )),
+            TopMenuSection("格式", listOf(
+                entry("粗体", "toggleBold"),
+                entry("斜体", "toggleItalic"),
+                entry("下划线", "toggleUnderline"),
+                entry("删除线", "toggleStrike"),
+                entry("高亮", "toggleHighlight"),
+                entry("行内代码", "toggleCode"),
+                entry("正文", "setParagraph", separator = true),
+                entry("一级标题", "setHeading1"),
+                entry("二级标题", "setHeading2"),
+                entry("三级标题", "setHeading3"),
+                entry("四级标题", "setHeading4"),
+                entry("五级标题", "setHeading5"),
+                entry("六级标题", "setHeading6"),
+                entry("无序列表", "toggleBulletList", separator = true),
+                entry("有序列表", "toggleOrderedList"),
+                entry("任务列表", "toggleTaskList"),
+                entry("引用", "toggleBlockquote", separator = true),
+                entry("代码块", "toggleCodeBlock"),
+                entry("提示框：备注", "insertAlertNote", separator = true),
+                entry("提示框：提示", "insertAlertTip"),
+                entry("提示框：重要", "insertAlertImportant"),
+                entry("提示框：警告", "insertAlertWarning"),
+                entry("提示框：注意", "insertAlertCaution"),
+                entry("清除格式", "clearFormat", separator = true),
+            )),
+            TopMenuSection("视图", listOf(
+                host("源码模式") { postCommand("toggleSourceMode") },
+                host("放大", separator = true) { applyZoom(zoomPercent.value + 10) },
+                host("缩小") { applyZoom(zoomPercent.value - 10) },
+                host("重置 100%") { applyZoom(100) },
+            )),
+            TopMenuSection("更多", listOf(
+                host("首选项…") { showPreferences.value = true },
+                host("关于 MarkLeaf", separator = true) { showAbout.value = true },
+            )),
+        )
+    }
+
+    private fun clipboard(): android.content.ClipboardManager? =
+        getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+
+    /** 首选项编码名 → EncodingInfo（与桌面 DocumentEncodingPolicy 同名同序；
+     *  桌面 UTF-16 系列均为 LE，"UTF-16 with BOM" = LE 正文 + BOM 头）。 */
+    private fun encodingInfoFromPref(name: String): EncodingInfo? = when (name) {
+        "UTF-8" -> EncodingInfo("UTF-8", hasBom = false)
+        "UTF-8 with BOM" -> EncodingInfo("UTF-8", hasBom = true)
+        "UTF-16" -> EncodingInfo("UTF-16LE", hasBom = false)
+        "UTF-16 with BOM" -> EncodingInfo("UTF-16LE", hasBom = true)
+        "GB18030" -> EncodingInfo("GB18030", hasBom = false)
+        "GBK" -> EncodingInfo("GBK", hasBom = false)
+        "GB2312" -> EncodingInfo("GB2312", hasBom = false)
+        "Big5" -> EncodingInfo("Big5", hasBom = false)
+        "Shift_JIS" -> EncodingInfo("Shift_JIS", hasBom = false)
+        "US-ASCII" -> EncodingInfo("US-ASCII", hasBom = false)
+        else -> null
+    }
+
+    /** EncodingInfo → 桌面同款显示名（状态栏/对话框选项匹配用）。 */
+    private fun encodingDisplayName(info: EncodingInfo): String = when {
+        info.name == "UTF-8" && info.hasBom -> "UTF-8 with BOM"
+        info.name == "UTF-16LE" && info.hasBom -> "UTF-16 with BOM"
+        info.name == "UTF-16LE" -> "UTF-16"
+        else -> info.name
+    }
 
     override fun onPause() {
         super.onPause()
@@ -788,7 +1006,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
         semanticContext: String?,
         requestSelection: suspend () -> String,
         actions: Map<String, Pair<Boolean, Boolean>>,
-        onCommand: (String) -> Unit,
+        onCommand: (String, String) -> Unit,
         onLanguagePicker: () -> Unit,
     ) {
         if (rect == null || !visible) return
@@ -806,38 +1024,85 @@ SafDocumentSource.takePersistablePermission(this, uri)
         // 基础命令（对齐桌面文本选择组）
         val base = listOf(
             SelectionToolbarItem("剪切", actions["cut"]?.first == true, action = asyncCopyThen {
-                onCommand("cut")
+                onCommand("cut", "")
             }),
             SelectionToolbarItem("拷贝", actions["copy"]?.first == true, action = asyncCopyThen {}),
             SelectionToolbarItem("粘贴", actions["paste"]?.first == true, action = {
                 clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
-                    ?.takeIf { it.isNotEmpty() }?.let { onCommand("pasteClipboard") }
+                    ?.takeIf { it.isNotEmpty() }?.let { onCommand("pasteClipboard", "") }
             }),
-            SelectionToolbarItem("全选", true, action = { onCommand("selectAll") }),
+            SelectionToolbarItem("全选", true, action = { onCommand("selectAll", "") }),
         )
-        // 上下文定制（对齐桌面 per-context 菜单组）
-        fun item(title: String, command: String, separator: Boolean = false): SelectionToolbarItem =
-            SelectionToolbarItem(title, actions[command]?.first == true, { onCommand(command) }, separator)
+        // 上下文定制（对齐桌面 EditorSession+ContextMenu 各语义上下文命令组；
+        // 桌面依赖原生面板的条目——更换/另存图片、将图表另存为、表格/图片标题、
+        // 更改脚注标识——Android 尚无对应 UI，暂不列出）
+        fun item(title: String, command: String, text: String = "", separator: Boolean = false): SelectionToolbarItem =
+            SelectionToolbarItem(title, actions[command]?.first == true, { onCommand(command, text) }, separator)
         val contextItems = when (semanticContext) {
+            // 桌面 math：编辑公式源码 / 公式编号…（块级）/ 转为行内·块级 ─ 删除
             "math" -> listOf(
-                item("编辑公式", "viewMathSource"),
+                item("编辑公式源码", "editMath"),
+                item("公式编号…", "setMathNumber"),
+                item("转为行内/块级", "convertMath"),
                 item("删除公式", "deleteMath", separator = true),
             )
-            "codeBlock" -> listOf(
-                item("声明语言", "setCodeBlockLanguage"),
-                item("代码格式", "formatCodeBlock", separator = true),
+            // 桌面 mermaid：编辑源码 / 重新渲染 ─ 删除
+            "mermaid" -> listOf(
+                item("编辑 Mermaid 源码", "editMermaid"),
+                item("重新渲染图表", "rerenderMermaid"),
+                item("删除图表", "deleteMermaid", separator = true),
             )
+            // 桌面 codeBlock：声明语言 / 格式化 / 复制整段 ─ 转为正文
+            "codeBlock" -> listOf(
+                SelectionToolbarItem("声明代码语言…", true, onLanguagePicker),
+                item("格式化代码块", "formatCodeBlock"),
+                item("复制整段代码", "copyCodeBlock"),
+                item("转为正文", "exitCode", separator = true),
+            )
+            // 桌面 table：行组 / 列组 / 列宽组 / 对齐组 ─ 删除表格
             "table" -> listOf(
                 item("上方插行", "addRowBefore"),
                 item("下方插行", "addRowAfter"),
+                item("删除当前行", "deleteRow"),
                 item("左插列", "addColumnBefore"),
                 item("右插列", "addColumnAfter"),
+                item("删除当前列", "deleteColumn"),
+                item("内容列宽", "fitTableContents"),
+                item("平均列宽", "distributeTableColumns"),
+                item("恢复自动列宽", "resetTableWidths"),
+                item("左对齐", "alignTableLeft"),
+                item("居中对齐", "alignTableCenter"),
+                item("右对齐", "alignTableRight"),
                 item("删除表格", "deleteTable", separator = true),
             )
+            // 桌面 image：缩放（子菜单拍平为百分比）/ 旋转
+            "image" -> listOf(
+                item("50%", "resizeImage", "50"),
+                item("75%", "resizeImage", "75"),
+                item("90%", "resizeImage", "90"),
+                item("100%", "resizeImage", "100"),
+                item("顺时针旋转", "rotateImageClockwise"),
+            )
+            // 桌面 footnoteDefinition：转到引用 / 删除全部引用 / 删除脚注及全部引用
+            "footnoteDefinition" -> listOf(
+                item("转到引用", "goToFootnoteReference"),
+                item("删除全部引用", "clearFootnoteReferences"),
+                item("删除脚注及全部引用", "deleteFootnote"),
+            )
+            // 桌面 frontMatter：复制元数据 ─ 移到元数据之后
+            "frontMatter" -> listOf(
+                item("复制元数据", "copyCodeBlock"),
+                item("移到元数据之后", "exitCode"),
+            )
+            // 桌面普通文本：NativeFormatTextMenu（格式刷组 + 格式组 + 清除格式）
             else -> listOf(
-                item("加粗", "toggleBold"),
+                item("格式刷", "formatPainter"),
+                item("应用格式刷", "formatPainterApply"),
+                item("粗体", "toggleBold"),
                 item("斜体", "toggleItalic"),
+                item("下划线", "toggleUnderline"),
                 item("删除线", "toggleStrike"),
+                item("高亮", "toggleHighlight"),
                 item("行内代码", "toggleCode"),
                 item("清除格式", "clearFormat", separator = true),
             )
@@ -883,19 +1148,16 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
                         items.forEach { item ->
-                            androidx.compose.material3.TextButton(
-                                enabled = item.enabled,
-                                onClick = item.action,
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                            ) {
-                                Text(
-                                    item.title,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    color = if (item.enabled) MaterialTheme.colorScheme.onSurface
-                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                )
-                            }
+                            Text(
+                                item.title,
+                                modifier = Modifier
+                                    .clickable(enabled = item.enabled, onClick = item.action)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                color = if (item.enabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            )
                         }
                     }
                 }
@@ -906,39 +1168,6 @@ SafDocumentSource.takePersistablePermission(this, uri)
     companion object {
         private const val TAG = "MainActivity"
         private const val WELCOME_DOCUMENT_ID = "welcome"
-    }
-}
-
-@Composable
-private fun TabStrip(
-    active: String,
-    dirty: Boolean,
-    documentLoaded: Boolean,
-    onOpenFolder: () -> Unit,
-    onOpenFile: () -> Unit,
-    onSave: () -> Unit,
-    onExport: () -> Unit,
-    onOpenDrawer: () -> Unit,
-) {
-    val marker = if (dirty) "●" else ""
-    androidx.compose.foundation.layout.Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        TextButton(onClick = onOpenDrawer) { Text("☰") }
-        Text(
-            text = "$marker $active",
-            modifier = Modifier
-                .weight(1f)
-                .padding(vertical = 12.dp),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        TextButton(onClick = onOpenFile) { Text("打开") }
-        TextButton(onClick = onSave) { Text("保存") }
-        TextButton(onClick = onExport) { Text("导出") }
-        TextButton(onClick = onOpenFolder) { Text("📁") }
     }
 }
 
@@ -1023,29 +1252,29 @@ private fun StatusBarPlaceholder(
         Text(
             text = encoding,
             modifier = Modifier
-                .clickable(onClick = onEncoding)
-                .padding(start = 10.dp),
+                .padding(start = 10.dp)
+                .clickable(onClick = onEncoding),
             style = itemStyle, color = itemColor,
         )
         Text(
             text = newline,
             modifier = Modifier
-                .clickable(onClick = onNewline)
-                .padding(start = 10.dp),
+                .padding(start = 10.dp)
+                .clickable(onClick = onNewline),
             style = itemStyle, color = itemColor,
         )
         Text(
             text = if (sourceMode) "源码" else "可视化",
             modifier = Modifier
-                .clickable(onClick = onToggleMode)
-                .padding(start = 10.dp),
+                .padding(start = 10.dp)
+                .clickable(onClick = onToggleMode),
             style = itemStyle, color = itemColor,
         )
         Text(
             text = "$zoom%",
             modifier = Modifier
-                .clickable(onClick = onZoom)
-                .padding(start = 10.dp),
+                .padding(start = 10.dp)
+                .clickable(onClick = onZoom),
             style = itemStyle, color = itemColor,
         )
         if (characterCount.isNotEmpty()) {
@@ -1053,9 +1282,10 @@ private fun StatusBarPlaceholder(
             Text(
                 text = "$characterCount 字符",
                 modifier = Modifier
-                    .clickable(onClick = onShowStatistics)
-                    .padding(start = 10.dp),
+                    .padding(start = 10.dp)
+                    .clickable(onClick = onShowStatistics),
                 style = itemStyle,
+                color = itemColor,
             )
         }
     }
@@ -1081,13 +1311,19 @@ private fun blockTypeDisplayName(blockType: String): String = when (blockType) {
     else -> blockType
 }
 
-/** 保存写回编码选项（对齐桌面 DocumentEncodingPolicy）。 */
+/** 保存写回编码选项（与桌面 DocumentEncodingPolicy 同名同序同语义：
+ *  "UTF-16" 系列均为 LE；BOM 变体仅多文件头）。 */
 private val ENCODING_OPTIONS = listOf(
     "UTF-8" to com.markleaf.app.documents.EncodingInfo("UTF-8", hasBom = false),
-    "UTF-8 BOM" to com.markleaf.app.documents.EncodingInfo("UTF-8", hasBom = true),
-    "UTF-16LE" to com.markleaf.app.documents.EncodingInfo("UTF-16LE", hasBom = true),
-    "UTF-16BE" to com.markleaf.app.documents.EncodingInfo("UTF-16BE", hasBom = true),
+    "UTF-8 with BOM" to com.markleaf.app.documents.EncodingInfo("UTF-8", hasBom = true),
+    "UTF-16" to com.markleaf.app.documents.EncodingInfo("UTF-16LE", hasBom = false),
+    "UTF-16 with BOM" to com.markleaf.app.documents.EncodingInfo("UTF-16LE", hasBom = true),
+    "GB18030" to com.markleaf.app.documents.EncodingInfo("GB18030", hasBom = false),
     "GBK" to com.markleaf.app.documents.EncodingInfo("GBK", hasBom = false),
+    "GB2312" to com.markleaf.app.documents.EncodingInfo("GB2312", hasBom = false),
+    "Big5" to com.markleaf.app.documents.EncodingInfo("Big5", hasBom = false),
+    "Shift_JIS" to com.markleaf.app.documents.EncodingInfo("Shift_JIS", hasBom = false),
+    "US-ASCII" to com.markleaf.app.documents.EncodingInfo("US-ASCII", hasBom = false),
 )
 
 @Composable
@@ -1168,12 +1404,6 @@ private fun ZoomDialog(
         title = { Text("缩放") },
         text = {
             Column {
-                Text(
-                    text = "也可在编辑区双指捏合连续缩放",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.foundation.layout.FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

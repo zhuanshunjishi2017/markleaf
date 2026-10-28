@@ -65,3 +65,20 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
+
+// iCloud「桌面与文稿」同步会在 build/ 中制造 "xxx 2.xml" 式冲突副本，
+// Android 资源任务对文件名做校验会直接失败；资源任务执行前先清掉这类副本。
+val stripSyncDuplicates = tasks.register("stripSyncDuplicates") {
+    doLast {
+        val root = layout.buildDirectory.get().asFile
+        root.walkTopDown()
+            .filter { it.isFile && it.name.matches(Regex(".* \\d+(\\.[^.]+)?")) }
+            .forEach { file ->
+                file.delete()
+                logger.lifecycle("已删除同步冲突副本: ${file.relativeTo(root)}")
+            }
+    }
+}
+tasks.matching { it.name.startsWith("parse") && it.name.contains("Resources") }.configureEach {
+    dependsOn(stripSyncDuplicates)
+}
