@@ -158,3 +158,10 @@ fn restored_session() -> Option<SessionManifest> {
 fn persist_settings(settings: &AppSettings) {
     let _ = save_settings(&settings_path(), settings);
 }
+
+/// 默认快捷键表 + 设置中的自定义映射(供窗口注册加速键)。
+pub fn shortcuts(settings: &AppSettings) -> crate::ui::shortcuts::ShortcutTable {
+    let mut table = crate::ui::shortcuts::default_table();
+    table.apply_custom(&settings.shortcuts);
+    table
+}

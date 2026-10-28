@@ -135,7 +135,6 @@ impl AppWindow {
         let tab_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         tab_box.append(&tab_bar);
         tab_box.append(&tab_view);
-        // libadwaita 0.9:NavigationSplitView(OverlaySplitView 在该线不可用)。
         let split = adw::OverlaySplitView::builder()
             .sidebar(&sidebar.root)
             .content(&tab_box)
@@ -265,7 +264,8 @@ impl AppWindow {
             webview.connect_message(move |message| this.handle_editor_message(&state, message));
         }
 
-        // 握手:ready 前缓存由 EditorBridge 承担;此处直接时序驱动(M1 冒烟同款)。
+        // 握手:直接时序驱动(M1 冒烟同款)。注意:M2 EditorBridge 的 ready 缓存与
+        // session 门控尚未接入壳层(见台账 M3 审计 Important #1,M4 接线)。
         // applyStyles 载荷对齐 macOS applyStylesPayload 形态(baseCss 等),
         // M3 先发最小载荷,主题 CSS 注入在 M4 打磨时补全。
         self.send_after_ready(&state);
@@ -456,9 +456,7 @@ impl AppWindow {
         if !document.dirty {
             return;
         }
-        let (_config, state_dir) = crate::app::storage_dirs();
-        // 内容:发起快照请求,回包在 handle_snapshot 检测恢复意图;
-        // 简化路径:标记 pending_recovery,快照回包时写入。
+        // 内容:发起快照请求,回包在 handle_snapshot 的 recovery 分支落盘。
         drop(document);
         state
             .webview
@@ -467,7 +465,6 @@ impl AppWindow {
                 0,
                 "recovery",
             ));
-        let _ = state_dir;
     }
 
     fn handle_snapshot(self: &Rc<Self>, state: &Rc<TabState>, message: &EditorMessage) {
@@ -849,7 +846,7 @@ impl AppWindow {
         self.window.add_action(&close_action);
 
         // 加速键:注册在 app 层(win. 前缀)。
-        let table = crate::ui::shortcuts::default_table();
+        let table = crate::app::shortcuts(&self.settings.borrow());
         for command in ["open", "save", "saveAs", "find", "sourceMode"] {
             if let Some(accel_string) = table.accel_for(command) {
                 app.set_accels_for_action(&format!("win.{command}"), &[accel_string.as_str()]);
