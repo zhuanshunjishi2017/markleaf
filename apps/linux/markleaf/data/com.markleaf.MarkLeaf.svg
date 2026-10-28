@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- MarkLeaf 应用图标:叶片上的 M 笔画(与 Android 端 launch icon 同源简化) -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#2e7d54"/>
+  <path d="M28 96V44c0-8 10-10 14-3l22 34 22-34c4-7 14-5 14 3v52" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M96 44c10-10 22-12 22-12s-4 12-12 20" fill="#a5d6a7"/>
+</svg>

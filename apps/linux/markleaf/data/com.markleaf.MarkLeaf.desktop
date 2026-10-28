@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MarkLeaf
+GenericName=Markdown Editor
+Comment=轻量化 Markdown 可视化编辑器
+Exec=markleaf %F
+Icon=com.markleaf.MarkLeaf
+Terminal=false
+Categories=Office;TextEditor;Utility;
+MimeType=text/markdown;text/x-markdown;text/plain;
+Keywords=markdown;editor;writing;

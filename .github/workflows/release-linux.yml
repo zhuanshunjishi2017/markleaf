@@ -1,0 +1,75 @@
+name: release-linux
+
+on:
+  push:
+    tags:
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev \
+            build-essential pkg-config xvfb flatpak-builder \
+            linuxdeploy appstream
+
+      - name: Build editor web bundle
+        run: |
+          corepack pnpm --dir packages/editor-core install --frozen-lockfile
+          corepack pnpm --dir packages/editor-web install --frozen-lockfile
+          corepack pnpm --dir packages/editor-core build:renderer
+          corepack pnpm --dir packages/editor-web build
+
+      - name: Assemble editor resources
+        run: MARKLEAF_USE_BUILT_EDITOR_WEB=1 apps/linux/script/prepare_resources.sh
+
+      - name: Release build
+        working-directory: apps/linux
+        run: cargo build --release --bin markleaf
+
+      - name: Smoke (release binary)
+        working-directory: apps/linux
+        env:
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
+        run: timeout 60 xvfb-run -a -s "-screen 0 1024x768x24" ./target/release/markleaf --version
+
+      - name: Prepare AppDir
+        run: bash apps/linux/script/appimage/build.sh artifacts/linux
+
+      - name: Build AppImage
+        run: |
+          cd artifacts/linux
+          linuxdeploy --appdir AppDir --output appimage
+          mv MarkLeaf-*.AppImage ../ || true
+
+      - name: Flatpak build
+        run: |
+          flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --force-clean --repo=artifacts/flatpak-repo build/flatpak apps/linux/script/flatpak/com.markleaf.MarkLeaf.yml
+          flatpak build-bundle artifacts/flatpak-repo artifacts/com.markleaf.MarkLeaf.flatpak com.markleaf.MarkLeaf
+
+      - name: Attach artifacts to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/MarkLeaf-*.AppImage
+            artifacts/com.markleaf.MarkLeaf.flatpak

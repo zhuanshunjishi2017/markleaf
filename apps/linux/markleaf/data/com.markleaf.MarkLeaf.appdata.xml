@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.markleaf.MarkLeaf</id>
+  <name>MarkLeaf</name>
+  <summary>轻量化 Markdown 可视化编辑器(Linux 版)</summary>
+  <developer_name>MarkLeaf Contributors</developer_name>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>MarkLeaf 是追求简洁界面与排版的 Markdown 可视化编辑器。Linux 版为 GTK4 + WebKitGTK 原生壳,与其他平台共享同一编辑内核:完整 CommonMark/GFM、LaTeX 公式、Mermaid 图表、多排版样式与配色主题、工作区、多标签页、源码模式与导出。</p>
+    <p>已知限制:PDF 导出暂不支持页眉页脚/页码/大纲书签(打印对话框内可选"另存为 PDF");应用以 --filesystem=home 沙箱权限支持"打开文件夹作为工作区"。</p>
+  </description>
+  <launchable type="desktop-id">com.markleaf.MarkLeaf.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.2.2" date="2026-10-28">
+      <description><p>首个 Linux 版本(与桌面端共享内核,M1-M5 里程碑)。</p></description>
+    </release>
+  </releases>
+</component>
