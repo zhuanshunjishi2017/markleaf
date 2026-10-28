@@ -324,6 +324,8 @@ sealed interface EditorMessage {
             val sourceMode: Boolean = false,
             val readOnly: Boolean = false,
             val actions: Map<String, ActionState> = emptyMap(),
+            val semanticContext: String? = null,
+            val hasSelection: Boolean = false,
         )
 
         @Serializable
@@ -348,6 +350,7 @@ sealed interface EditorMessage {
             val canStartFormatPainter: Boolean = false,
             val formatPainterArmed: Boolean = false,
             val readOnly: Boolean = false,
+            val trigger: String = "",
             val sourceMode: Boolean = false,
             val expandedSource: Boolean = false,
             val outsideDocument: Boolean = false,

@@ -718,12 +718,41 @@ function sendCommandState(): void {
   send('commandStateChanged', { ...state, sourceMode, readOnly })
 }
 
+function selectionRectForToolbar(
+  ed: { state: { selection: { empty: boolean; from: number; to: number; head: number } }; view: { coordsAtPos(pos: number): { left: number; right: number; top: number; bottom: number } } },
+): { x: number; y: number; w: number; h: number } | null {
+  // 可视化模式的选区矩形（WebView 视口 CSS 坐标）：Android 宿主用它定位自绘
+  // 选择工具条，随拖动手柄实时跟随。空选区返回 null（工具条隐藏）。
+  if (sourceMode) return null
+  const selection = ed.state.selection
+  try {
+    if (selection.empty) {
+      // 空选区（caret）：双击菜单需要光标位置兜底（iOS caret 菜单对等）
+      const caret = ed.view.coordsAtPos(selection.head)
+      return { x: caret.left, y: caret.top, w: 0, h: caret.bottom - caret.top }
+    }
+    const start = ed.view.coordsAtPos(selection.from)
+    const end = ed.view.coordsAtPos(selection.to)
+    const x = Math.min(start.left, end.left)
+    const y = Math.min(start.top, end.top)
+    const right = Math.max(start.right, end.right)
+    const bottom = Math.max(start.bottom, end.bottom)
+    return { x, y, w: Math.max(4, right - x), h: Math.max(8, bottom - y) }
+  } catch {
+    return null
+  }
+}
+
 function sendEditorStatus(): void {
   if (sourceEditor) {
     send('editorStatusChanged', sourceEditor.getStatus())
     return
   }
-  send('editorStatusChanged', getEditorStatus(editor))
+  send('editorStatusChanged', {
+    ...getEditorStatus(editor),
+    selectionRect: selectionRectForToolbar(editor),
+    selectionFromGesture: lastSelectionGesture === 'longpress' || lastSelectionGesture === 'doubletap',
+  })
 }
 
 function sendEditorState(): void {
@@ -1287,8 +1316,52 @@ function endContextMenuSession(restoreSelection = true): void {
   activeMenuSessionId = null
 }
 
-editorMount.addEventListener('contextmenu', (event) => {
+// 最近一次选择手势来源：工具条只在长按/双击产生的选择上显示，
+// 单点（公式/表格节点选中、caret 放置）不弹。
+let lastSelectionGesture: 'none' | 'tap' | 'longpress' | 'doubletap' = 'none'
+
+editorMount.addEventListener('pointerdown', () => {
+  lastSelectionGesture = 'tap'
+})
+
+// Android 触屏：双击 = 选词 + 上下文菜单（对齐 iOS 双击选词与 iPad 指针菜单的
+// 复合语义）。preventDefault 抑制 Chromium 原生选词，改用编辑器主题化选区。
+editorMount.addEventListener('dblclick', (event) => {
+  if (!isAndroidHost) {
+    return
+  }
+  lastSelectionGesture = 'doubletap'
   event.preventDefault()
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (!resolved) {
+    return
+  }
+  selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+  editor.commands.focus()
+  contextMenuSelection = editor.state.selection.toJSON()
+  contextMenuCommandCommitted = false
+  editor.view.dom.dataset.markleafPreserveSelection = '1'
+  sendEditorState()
+  send('contextMenuRequested', {
+    menuSessionId: beginContextMenuSession(),
+    clientX: event.clientX,
+    clientY: event.clientY,
+    menuHeight: 0,
+    canStartFormatPainter: interactions.state().canStartFormatPainter,
+    formatPainterArmed: !sourceMode && interactions.state().formatPainterArmed,
+    readOnly,
+  })
+})
+
+editorMount.addEventListener('contextmenu', (event) => {
+  // Android 触屏：保留 Chromium 原生行为——长按/双击选择文字时由系统弹出
+  // 原生选择工具条（ActionMode）。preventDefault 会抑制该工具条，故提前返回，
+  // 也不做选区准备流（长按=纯选择，对齐 iOS 文本交互惯例）。长按手势来源
+  // 在此记录，供工具条可见性判断。
+  if (isAndroidHost) {
+    lastSelectionGesture = 'longpress'
+    return
+  }
   const documentBounds = editor.view.dom.getBoundingClientRect()
   const outsideDocument = event.clientX < documentBounds.left
     || event.clientX > documentBounds.right
@@ -1347,7 +1420,11 @@ editorMount.addEventListener('contextmenu', (event) => {
   })
 })
 
+
 sourceMount.addEventListener('contextmenu', (event) => {
+  if (isAndroidHost) {
+    return
+  }
   event.preventDefault()
   sourceEditor?.focus()
   sendEditorState()

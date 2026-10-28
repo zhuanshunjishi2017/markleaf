@@ -9,13 +9,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.clickable
@@ -31,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
@@ -80,6 +86,20 @@ class MainActivity : ComponentActivity() {
     private val showEncodingDialog = mutableStateOf(false)
     private val showNewlineDialog = mutableStateOf(false)
     private val showZoomDialog = mutableStateOf(false)
+    private val selectionToolbarRect = mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+    private val selectionToolbarVisible = mutableStateOf(false)
+    private val editorSemanticContext = mutableStateOf<String?>(null)
+    private val showToolbarLanguageDialog = mutableStateOf(false)
+    private var toolbarLanguageInput = ""
+    private val toolbarHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val showSelectionToolbarRunnable = Runnable {
+        if (selectionToolbarRect.value != null) {
+            dismissKeyboard()
+            selectionToolbarVisible.value = true
+        }
+    }
+    private var pendingSelectionExport: kotlinx.coroutines.CompletableDeferred<String>? = null
+    private var pendingSelectionExportRequestId: String? = null
     private var pinchAccumulator = 100.0
     private var lastPinchApplyAt = 0L
     private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
@@ -88,9 +108,6 @@ class MainActivity : ComponentActivity() {
     private val showExport = mutableStateOf(false)
     private val showLanguageDialog = mutableStateOf<Pair<Long, String>?>(null)
     private val languageInput = mutableStateOf("")
-    private val showContextMenu = mutableStateOf(false)
-    private val contextMenuX = mutableStateOf(0f)
-    private val contextMenuY = mutableStateOf(0f)
     private val editorActions = mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap())
     private var welcomeDocumentId = WELCOME_DOCUMENT_ID
     private var lastKnownMarkdown = ""
@@ -168,10 +185,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
                     ModalNavigationDrawer(
                         drawerState = drawerState,
+                        // 长按选字/拖拽常从屏幕左缘起步，抽屉手势会误触发；
+                        // 抽屉仅经 ☰ 打开
+                        gesturesEnabled = false,
                         drawerContent = {
                             WorkspaceSidebar(
                                 entries = sidebarEntries.value,
@@ -329,6 +350,39 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         }
                     }
                 }
+            }
+            SelectionToolbar(
+                rect = selectionToolbarRect.value,
+                visible = selectionToolbarVisible.value,
+                semanticContext = editorSemanticContext.value,
+                requestSelection = { requestSelectionText() },
+                actions = editorActions.value,
+                onCommand = { cmd -> bridge.post(command(cmd, "")) },
+                onLanguagePicker = { showToolbarLanguageDialog.value = true },
+            )
+            if (showToolbarLanguageDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showToolbarLanguageDialog.value = false },
+                    title = { Text("声明代码语言") },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = toolbarLanguageInput,
+                            onValueChange = { toolbarLanguageInput = it },
+                            label = { Text("语言") },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            bridge.post(command("setCodeBlockLanguage", toolbarLanguageInput))
+                            showToolbarLanguageDialog.value = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showToolbarLanguageDialog.value = false }) { Text("取消") }
+                    },
+                )
+            }
             }
         }
 
@@ -527,16 +581,58 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     }.onFailure { showToast("无法打开链接") }
                 }
             }
+            is EditorMessage.SelectionExport -> {
+                // 原生工具条 剪切/拷贝 的取文本回包（requestId 关联）
+                if (message.requestId != null && message.requestId == pendingSelectionExportRequestId) {
+                    pendingSelectionExport?.complete(
+                        (message.payload as? kotlinx.serialization.json.JsonObject)
+                            ?.get("text")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: "",
+                    )
+                    pendingSelectionExport = null
+                    pendingSelectionExportRequestId = null
+                }
+            }
             is EditorMessage.CommandStateChanged -> {
                 editorActions.value = message.payload.actions.mapValues { (_, state) ->
                     Pair(state.enabled, state.checked)
                 }
                 editorSourceMode.value = message.payload.sourceMode
+                editorSemanticContext.value = message.payload.semanticContext
             }
             is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
-            is EditorMessage.EditorStatusChanged ->
-                editorStatus.value = message.payload as? kotlinx.serialization.json.JsonObject
+            is EditorMessage.EditorStatusChanged -> {
+                val payload = message.payload as? kotlinx.serialization.json.JsonObject
+                editorStatus.value = payload
+                // 选区矩形（CSS 视口坐标）→ 设备坐标：WebView 原点 + css × dpr
+                val origin = IntArray(2).also { webView.getLocationOnScreen(it) }
+                val dpr = resources.displayMetrics.density
+                val rect = (payload?.get("selectionRect") as? kotlinx.serialization.json.JsonObject)?.let { obj ->
+                    fun f(name: String): Float? =
+                        (obj[name] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toFloatOrNull()
+                    val x = f("x") ?: return@let null
+                    val y = f("y") ?: return@let null
+                    val w = f("w") ?: return@let null
+                    val h = f("h") ?: return@let null
+                    androidx.compose.ui.geometry.Rect(
+                        origin[0] + x * dpr,
+                        origin[1] + y * dpr,
+                        origin[0] + (x + w) * dpr,
+                        origin[1] + (y + h) * dpr,
+                    )
+                }
+                // 仅长按/双击手势产生的选择显示工具条（单点节点选中/caret 不弹）
+                val fromGesture = (payload?.get("selectionFromGesture") as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.content == "true"
+                selectionToolbarRect.value = if (fromGesture) rect else null
+                selectionToolbarVisible.value = false
+                toolbarHandler.removeCallbacks(showSelectionToolbarRunnable)
+                if (fromGesture && rect != null) {
+                    // 拖动选区期间不显示，选区稳定 350ms（≈松手）后弹出；
+                    // 弹出时收键盘（双击 focus 会带出 IME）
+                    toolbarHandler.postDelayed(showSelectionToolbarRunnable, 350)
+                }
+            }
             else -> Unit
         }
     }
@@ -580,6 +676,26 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
+    /** 取当前选区纯文本（请求-回包模式，对齐 pendingSnapshot）。 */
+    private suspend fun requestSelectionText(): String {
+        val requestId = java.util.UUID.randomUUID().toString()
+        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+        pendingSelectionExport = deferred
+        pendingSelectionExportRequestId = requestId
+        bridge.post(
+            HostMessage.Command(
+                documentId = session.documentId,
+                revision = session.confirmedRevision,
+                payload = HostMessage.Command.CommandPayload(command = "exportSelection"),
+                requestId = requestId,
+            ),
+        )
+        return runCatching { deferred.await() }.getOrDefault("")
+    }
+
+    private fun clipboardManager(): android.content.ClipboardManager =
+        getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+
     /** 瞬态提示（Toast）：状态栏字段位不被临时消息挤占。 */
     private fun showToast(message: String) {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
@@ -587,12 +703,17 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
     /** 收起软键盘（WebView 点击代码块控件会顺带聚焦编辑区把键盘带出来）。
      *  Chromium 与宿主收起指令存在同帧竞态（show 请求晚于 hide），延迟落刀并
-     *  清除 WebView 焦点避免其再次请求 IME。 */    private fun dismissKeyboard() {
-        window.decorView.postDelayed({
-            webView?.clearFocus()
-            WindowCompat.getInsetsController(window, window.decorView)
-                .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
-        }, 250)
+     *  Chromium 的 IME show 请求可能晚到，单次 hide 会被覆盖——按
+     *  250/600/1000ms 多次补刀（不清焦点：长按选择依赖焦点存活）。
+     *  hide 对已收起的 IME 是无害空操作。 */
+    private fun dismissKeyboard() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        val ime = androidx.core.view.WindowInsetsCompat.Type.ime()
+        listOf(250L, 600L, 1000L).forEach { delay ->
+            window.decorView.postDelayed({
+                controller.hide(ime)
+            }, delay)
+        }
     }
 
     /** outlineChanged 载荷 → OutlineItem（容错解析，字段缺失跳过）。 */
@@ -638,6 +759,143 @@ SafDocumentSource.takePersistablePermission(this, uri)
         // spec §4.3：切后台写恢复快照
         if (dirty.value && lastKnownMarkdown.isNotEmpty()) {
             controller?.writeRecovery(recoveryStore, lastKnownMarkdown, dirty = true)
+        }
+    }
+
+    /** 压制原生文本选择工具条：浮动 ActionMode 一启动就结束。选区与拖动
+     *  手柄由 Chromium 绘制不受影响，工具条由自绘浮层替代。 */
+    override fun onActionModeStarted(mode: android.view.ActionMode) {
+        if (mode.type == android.view.ActionMode.TYPE_FLOATING) {
+            mode.finish()
+            return
+        }
+        super.onActionModeStarted(mode)
+    }
+
+    /** 自绘选择工具条：位置 = 前端选区矩形（设备坐标），随拖动手柄实时
+     *  跟随；条目按语义上下文组装（系统命令 + 编辑器格式命令）。 */
+    private data class SelectionToolbarItem(
+        val title: String,
+        val enabled: Boolean,
+        val action: () -> Unit,
+        val separatorBefore: Boolean = false,
+    )
+
+    @Composable
+    private fun SelectionToolbar(
+        rect: androidx.compose.ui.geometry.Rect?,
+        visible: Boolean,
+        semanticContext: String?,
+        requestSelection: suspend () -> String,
+        actions: Map<String, Pair<Boolean, Boolean>>,
+        onCommand: (String) -> Unit,
+        onLanguagePicker: () -> Unit,
+    ) {
+        if (rect == null || !visible) return
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        fun asyncCopyThen(action: () -> Unit): () -> Unit = {
+            lifecycleScope.launch {
+                val text = requestSelection()
+                if (text.isNotEmpty()) {
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("markdown", text))
+                    action()
+                }
+            }
+        }
+        // 基础命令（对齐桌面文本选择组）
+        val base = listOf(
+            SelectionToolbarItem("剪切", actions["cut"]?.first == true, action = asyncCopyThen {
+                onCommand("cut")
+            }),
+            SelectionToolbarItem("拷贝", actions["copy"]?.first == true, action = asyncCopyThen {}),
+            SelectionToolbarItem("粘贴", actions["paste"]?.first == true, action = {
+                clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                    ?.takeIf { it.isNotEmpty() }?.let { onCommand("pasteClipboard") }
+            }),
+            SelectionToolbarItem("全选", true, action = { onCommand("selectAll") }),
+        )
+        // 上下文定制（对齐桌面 per-context 菜单组）
+        fun item(title: String, command: String, separator: Boolean = false): SelectionToolbarItem =
+            SelectionToolbarItem(title, actions[command]?.first == true, { onCommand(command) }, separator)
+        val contextItems = when (semanticContext) {
+            "codeBlock" -> listOf(
+                item("声明语言", "setCodeBlockLanguage"),
+                item("代码格式", "formatCodeBlock", separator = true),
+            )
+            "table" -> listOf(
+                item("上方插行", "addRowBefore"),
+                item("下方插行", "addRowAfter"),
+                item("左插列", "addColumnBefore"),
+                item("右插列", "addColumnAfter"),
+                item("删除表格", "deleteTable", separator = true),
+            )
+            else -> listOf(
+                item("加粗", "toggleBold"),
+                item("斜体", "toggleItalic"),
+                item("删除线", "toggleStrike"),
+                item("行内代码", "toggleCode"),
+                item("清除格式", "clearFormat", separator = true),
+            )
+        }
+        val items = base + contextItems
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        fun px(dpValue: Int): Int = with(density) { dpValue.dp.roundToPx() }
+        val marginPx = px(12)
+        // 工具条固定横贯屏宽（两侧 12dp 边距），条目超出由内部横向滚动承载；
+        // 垂直位置 = 选区上方 56dp
+        val offsetYpx = (rect.top.roundToInt() - px(56)).coerceAtLeast(marginPx)
+        val offsetYdp = with(density) { offsetYpx.toDp() }
+        val horizontalMarginDp = with(density) { marginPx.toDp() }
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .offset(y = offsetYdp)
+                .fillMaxWidth()
+                .padding(horizontal = horizontalMarginDp)
+        ) {
+            // visibleState 首组 false→true：每次弹出都播放入场动画
+            val appearState = androidx.compose.runtime.remember {
+                androidx.compose.animation.core.MutableTransitionState(false)
+            }.apply { targetState = true }
+            androidx.compose.animation.AnimatedVisibility(
+                visibleState = appearState,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(140)) +
+                    androidx.compose.animation.scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = androidx.compose.animation.core.tween(180),
+                    ),
+            ) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
+                    shadowElevation = 6.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        items.forEach { item ->
+                            androidx.compose.material3.TextButton(
+                                enabled = item.enabled,
+                                onClick = item.action,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            ) {
+                                Text(
+                                    item.title,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    color = if (item.enabled) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

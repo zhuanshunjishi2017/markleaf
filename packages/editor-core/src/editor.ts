@@ -5536,26 +5536,44 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   }
 }
 
+// 文档级统计只随文档内容变化（WeakMap 以不可变 doc 对象为键，事务后自动
+// 失效并被 GC）；选区变化（拖拽/移动光标，每帧多次）只计算增量字段，
+// 避免大文档在拖拽选区时全量遍历造成卡顿。
+const documentStatsCache = new WeakMap<object, {
+  documentText: string
+  characterCount: number
+  stats: ReturnType<typeof getDocumentStatistics>
+}>()
+
 export function getEditorStatus(editor: Editor): EditorStatus {
   const selection = editor.state.selection
-  const documentText = textBetweenWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
+  const cached = documentStatsCache.get(editor.state.doc)
+  const documentText = cached?.documentText
+    ?? textWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
   const selectedText = selection.empty
     ? ''
-    : textBetweenWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
-  const textBeforeCursor = textBetweenWithoutFrontMatter(editor.state.doc, 0, selection.from)
+    : textWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
+  const textBeforeCursor = textWithoutFrontMatter(editor.state.doc, 0, selection.from)
   const lines = textBeforeCursor.split('\n')
 
+  const characterCount = cached?.characterCount ?? countVisibleCharacters(documentText)
+  let docStats = cached?.stats
+  if (!docStats) {
+    docStats = getDocumentStatistics(editor, documentText)
+    documentStatsCache.set(editor.state.doc, { documentText, characterCount, stats: docStats })
+  }
+
   return {
-    characterCount: countVisibleCharacters(documentText),
+    characterCount,
     selectedCharacterCount: countVisibleCharacters(selectedText),
-    ...getDocumentStatistics(editor, documentText),
+    ...docStats,
     blockType: getCurrentBlockType(editor),
     line: lines.length,
     column: Array.from(lines.at(-1) ?? '').length + 1,
   }
 }
 
-function textBetweenWithoutFrontMatter(doc: any, from: number, to: number): string {
+function textWithoutFrontMatter(doc: any, from: number, to: number): string {
   const parts: string[] = []
   doc.forEach((node: any, offset: number) => {
     if (node.type.name === 'frontMatter') return
@@ -5749,6 +5767,8 @@ export function executeEditorCommand(
     },
     setParagraph: () => chain.setParagraph().run(),
     clearFormat: () => clearParagraphFormat(editor),
+    // Android 宿主工具条：拷贝已由宿主经 exportSelection 写入系统剪贴板，这里只删选区
+    cut: () => { editor.commands.deleteSelection(); return true },
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     duplicateParagraph: () => duplicateCurrentParagraph(editor),
