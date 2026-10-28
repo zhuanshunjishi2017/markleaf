@@ -17,6 +17,10 @@ export function selectEditorContextAt(editor: Editor, point: { left: number; top
 export function bindDocumentPointerInteractions(
   editorMount: HTMLElement, getEditor: () => Editor, changed: () => void,
 ): () => void {
+  // Android 触屏：单击原子节点直接切换编辑浮层（桌面为两击语义，
+  // 触屏两击会被原生手势/文字选择打断，这里单击即编辑）
+  const isAndroidHost = typeof window !== 'undefined'
+    && window.chrome?.webview?.hostPlatform === 'Android'
   const events = new AbortController()
   const { signal } = events
   const active = () => !editorMount.hidden && !getEditor().isDestroyed
@@ -218,7 +222,8 @@ export function bindDocumentPointerInteractions(
       && pending.wasSelected
 
     event.preventDefault()
-    if (!wasSelected) {
+    // Android 触屏：跳过两击门控，单击直接切换编辑浮层
+    if (!wasSelected && !isAndroidHost) {
       editor.commands.setNodeSelection(position)
       changed()
       return

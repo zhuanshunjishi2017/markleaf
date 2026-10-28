@@ -819,6 +819,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
         fun item(title: String, command: String, separator: Boolean = false): SelectionToolbarItem =
             SelectionToolbarItem(title, actions[command]?.first == true, { onCommand(command) }, separator)
         val contextItems = when (semanticContext) {
+            "math" -> listOf(
+                item("编辑公式", "viewMathSource"),
+                item("删除公式", "deleteMath", separator = true),
+            )
             "codeBlock" -> listOf(
                 item("声明语言", "setCodeBlockLanguage"),
                 item("代码格式", "formatCodeBlock", separator = true),
