@@ -13,19 +13,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** 顶栏菜单条目：action 为空仅作展示分隔用。 */
+/** 顶栏菜单条目：action 为空仅作展示分隔用。checked 非空时渲染勾选框
+ *  （格式开关类命令与视图模式类命令），null 表示无状态语义。 */
 data class TopMenuEntry(
     val title: String,
     val enabled: Boolean = true,
     val separatorBefore: Boolean = false,
+    val checked: Boolean? = null,
     val action: () -> Unit = {},
 )
 
@@ -45,7 +47,8 @@ fun TopMenuBar(
     onRedo: () -> Unit,
     onSave: () -> Unit,
 ) {
-    val expandedFlags = remember { mutableStateMapOf<String, Boolean>() }
+    // 菜单单开互斥：同一时刻至多一个下拉展开
+    var expandedSection by remember { mutableStateOf<String?>(null) }
     Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
@@ -77,14 +80,15 @@ fun TopMenuBar(
                     Text(
                         text = section.title,
                         modifier = Modifier
-                            .clickable { expandedFlags[section.title] = true }
+                            .clickable { expandedSection = section.title }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (expandedSection == section.title) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     DropdownMenu(
-                        expanded = expandedFlags[section.title] == true,
-                        onDismissRequest = { expandedFlags[section.title] = false },
+                        expanded = expandedSection == section.title,
+                        onDismissRequest = { expandedSection = null },
                     ) {
                         section.entries.forEach { entry ->
                             if (entry.separatorBefore) {
@@ -98,9 +102,17 @@ fun TopMenuBar(
                                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                     )
                                 },
+                                leadingIcon = entry.checked?.let { checked ->
+                                    {
+                                        androidx.compose.material3.Checkbox(
+                                            checked = checked,
+                                            onCheckedChange = null,
+                                        )
+                                    }
+                                },
                                 enabled = entry.enabled,
                                 onClick = {
-                                    expandedFlags[section.title] = false
+                                    expandedSection = null
                                     entry.action()
                                 },
                             )

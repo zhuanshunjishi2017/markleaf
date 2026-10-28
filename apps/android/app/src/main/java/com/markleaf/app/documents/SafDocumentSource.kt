@@ -59,7 +59,7 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
         } ?: throw SecurityException("无法写入 SAF 文档：$uri")
     }
 
-    override suspend fun rename(ref: DocumentRef, name: String): DocumentRef = withContext(Dispatchers.IO) {
+    override suspend fun rename(ref: DocumentRef, name: String): DocumentRef.Saf = withContext(Dispatchers.IO) {
         val uri = ref.requireSaf().parsedUri
         val renamed = DocumentsContract.renameDocument(contentResolver, uri, name)
         DocumentRef.Saf(renamed.toString())

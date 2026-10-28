@@ -54,7 +54,7 @@ interface DocumentSource {
     suspend fun listChildren(folder: DocumentRef): List<DocumentEntry>
     suspend fun read(ref: DocumentRef): DocumentBytes
     suspend fun write(ref: DocumentRef, bytes: ByteArray)
-    suspend fun rename(ref: DocumentRef, name: String): DocumentRef
+    suspend fun rename(ref: DocumentRef, name: String): DocumentRef.Saf
     suspend fun delete(ref: DocumentRef)
     suspend fun createDocument(folder: DocumentRef, name: String): DocumentRef
     suspend fun createFolder(folder: DocumentRef, name: String): DocumentRef

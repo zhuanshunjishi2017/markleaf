@@ -1,6 +1,9 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.markleaf.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +33,9 @@ fun WorkspaceSidebar(
     outline: List<OutlineItem>,
     onOpenDocument: (DocumentEntry) -> Unit,
     onOutlineClick: (OutlineItem) -> Unit,
+    onCreateDocument: () -> Unit,
+    onRefresh: () -> Unit,
+    onEntryLongPress: (DocumentEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -38,12 +44,31 @@ fun WorkspaceSidebar(
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "工作区",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "工作区",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "＋",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .clickable(onClick = onCreateDocument)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            Text(
+                text = "↻",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .clickable(onClick = onRefresh)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
         if (entries.isEmpty()) {
             Text(
                 text = "暂未打开文件夹",
@@ -55,11 +80,14 @@ fun WorkspaceSidebar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        if (!entry.isFolder) {
-                            onOpenDocument(entry)
-                        }
-                    }
+                    .combinedClickable(
+                        onClick = {
+                            if (!entry.isFolder) {
+                                onOpenDocument(entry)
+                            }
+                        },
+                        onLongClick = { onEntryLongPress(entry) },
+                    )
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             ) {
                 Text(

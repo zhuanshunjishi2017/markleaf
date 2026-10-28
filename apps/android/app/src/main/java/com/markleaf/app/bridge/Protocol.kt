@@ -630,7 +630,9 @@ fun encodeEditorMessage(message: EditorMessage): String {
 }
 
 fun encodeHostMessage(message: HostMessage): String {
-    val json = hostJson.encodeToString(message)
+    // 必须带 encodeDefaults：markdown="" 等默认值字段不序列化会被前端
+    // 以 "loadDocument requires a markdown string" 拒收（新建文档场景）。
+    val json = editorJson.encodeToString(message)
     return injectProtocolVersion(json)
 }
 

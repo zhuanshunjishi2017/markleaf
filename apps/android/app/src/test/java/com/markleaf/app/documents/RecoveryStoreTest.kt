@@ -24,9 +24,9 @@ class RecoveryStoreTest {
         assertEquals(listOf("doc-1"), store.pendingIds())
         val entry = store.consume("doc-1")!!
         assertEquals("doc-1", entry.documentId)
-        assertEquals(ref, entry.ref)
+        assertEquals(ref, entry.ref as DocumentRef)
         assertEquals("# 草稿\n\n未保存内容", entry.markdown)
-        assertEquals(ref, documentRefFromStableString(documentRefToStableString(entry.ref)))
+        assertEquals(ref, documentRefFromStableString(documentRefToStableString(entry.ref as DocumentRef)))
     }
 
     @Test

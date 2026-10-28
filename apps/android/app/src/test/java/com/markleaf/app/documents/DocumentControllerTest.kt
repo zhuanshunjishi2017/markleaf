@@ -31,7 +31,7 @@ class DocumentControllerTest {
             files[key] = Pair(bytes, ++writeSerial)
         }
 
-        override suspend fun rename(ref: DocumentRef, name: String): DocumentRef = ref
+        override suspend fun rename(ref: DocumentRef, name: String): DocumentRef.Saf = ref as DocumentRef.Saf
 
         override suspend fun delete(ref: DocumentRef) {
             files.remove((ref as DocumentRef.Saf).uri)

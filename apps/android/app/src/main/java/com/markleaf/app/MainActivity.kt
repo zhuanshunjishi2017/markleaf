@@ -50,6 +50,7 @@ import com.markleaf.app.bridge.EditorMessage
 import com.markleaf.app.bridge.EditorSessionState
 import com.markleaf.app.bridge.HostMessage
 import com.markleaf.app.documents.AssetResolver
+import com.markleaf.app.documents.DocumentCodings
 import com.markleaf.app.documents.DocumentController
 import com.markleaf.app.documents.DocumentEntry
 import com.markleaf.app.documents.DocumentRef
@@ -106,6 +107,41 @@ class MainActivity : ComponentActivity() {
     private val recoveryEntry = mutableStateOf<RecoveryStore.Entry?>(null)
     private var pendingRecoveryMarkdown: String? = null
     private var pendingRecoveryId: String? = null
+    private val showCloseConfirm = mutableStateOf(false)
+    private val showLinkDialog = mutableStateOf(false)
+    private var linkInput = ""
+    private val renameEntryDialog = mutableStateOf<DocumentEntry?>(null)
+    private var renameEntryInput = ""
+    private val deleteDocConfirm = mutableStateOf(false)
+    private val renameDocDialog = mutableStateOf(false)
+    private var renameDocInput = ""
+    private val openImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { sourceUri ->
+        sourceUri ?: return@registerForActivityResult
+        lifecycleScope.launch { insertImageFromSaf(sourceUri) }
+    }
+    private val androidReadOnly = mutableStateOf(false)
+    private var pendingReadOnlyOpen = false
+    private val saveAsLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            runCatching {
+                val markdown = requestSnapshotBlocking().markdown
+                val ref = DocumentRef.Saf(uri.toString())
+                source.write(ref, DocumentCodings.encode(markdown, "UTF-8"))
+                controller?.adoptRef(ref)
+                ref
+            }.onSuccess { savedRef ->
+                activeTitle.value = Uri.parse(savedRef.uri).lastPathSegment?.substringAfterLast("%2F") ?: "未命名"
+                dirty.value = false
+                showToast("已另存为 ${activeTitle.value}")
+                rememberRecentFile(savedRef.uri, activeTitle.value)
+            }.onFailure { showToast("另存为失败：${it.message}") }
+        }
+    }
     private lateinit var prefsStore: android.content.SharedPreferences
     private val editorPrefs = mutableStateOf(com.markleaf.app.ui.EditorPrefs())
     private val selectionToolbarRect = mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
@@ -245,6 +281,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                         scope.launch { drawerState.close() }
                                         bridge.post(command("scrollToPosition", item.position.toString()))
                                     },
+                                    onCreateDocument = {
+                                        scope.launch { drawerState.close() }
+                                        newDocument("markdown")
+                                    },
+                                    onRefresh = { refreshWorkspace() },
+                                    onEntryLongPress = { entry ->
+                                        renameEntryInput = entry.name
+                                        renameEntryDialog.value = entry
+                                    },
                                 )
                             }
                         },
@@ -260,7 +305,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 dirty = dirty.value,
                                 undoEnabled = editorActions.value["undo"]?.first == true,
                                 redoEnabled = editorActions.value["redo"]?.first == true,
-                                sections = topMenuSections(),
+                                sections = topMenuSections(
+                                    onToggleSidebar = {
+                                        scope.launch {
+                                            if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                                        }
+                                    },
+                                ),
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 onUndo = { postCommand("undo") },
                                 onRedo = { postCommand("redo") },
@@ -455,6 +506,149 @@ SafDocumentSource.takePersistablePermission(this, uri)
             // 系统返回手势：有覆盖层时先关覆盖层（首选项/关于），不要退出应用
             androidx.activity.compose.BackHandler(enabled = showPreferences.value) {
                 showPreferences.value = false
+            }
+            // 关闭当前文档：脏状态先给保存/丢弃选择
+            if (showCloseConfirm.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showCloseConfirm.value = false },
+                    title = { Text("关闭前保存修改？") },
+                    text = { Text("当前文档有未保存的修改。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showCloseConfirm.value = false
+                            lifecycleScope.launch {
+                                saveActiveDocument()
+                                closeDocument()
+                            }
+                        }) { Text("保存并关闭") }
+                    },
+                    dismissButton = {
+                        androidx.compose.foundation.layout.Row {
+                            TextButton(onClick = {
+                                showCloseConfirm.value = false
+                                closeDocument()
+                            }) { Text("不保存") }
+                            TextButton(onClick = { showCloseConfirm.value = false }) { Text("取消") }
+                        }
+                    },
+                )
+            }
+            // 插入超链接：URL 输入（作用于当前选区）
+            if (showLinkDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showLinkDialog.value = false },
+                    title = { Text("插入超链接") },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = linkInput,
+                            onValueChange = { linkInput = it },
+                            label = { Text("链接地址") },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (linkInput.isNotBlank()) postCommand("setLink", linkInput.trim())
+                            showLinkDialog.value = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showLinkDialog.value = false }) { Text("取消") }
+                    },
+                )
+            }
+            // 重命名当前文档（SAF rename）
+            if (renameDocDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { renameDocDialog.value = false },
+                    title = { Text("重命名") },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = renameDocInput,
+                            onValueChange = { renameDocInput = it },
+                            label = { Text("新名称") },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val ref = controller?.activeRef
+                            val name = renameDocInput.trim()
+                            if (ref != null && name.isNotEmpty()) {
+                                renameDocDialog.value = false
+                                lifecycleScope.launch {
+                                    runCatching { source.rename(ref, name) }
+                                        .onSuccess { renamed ->
+                                            controller?.adoptRef(renamed)
+                                            activeTitle.value = name
+                                            showToast("已重命名")
+                                        }
+                                        .onFailure { showToast("重命名失败：${it.message}") }
+                                }
+                            }
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameDocDialog.value = false }) { Text("取消") }
+                    },
+                )
+            }
+            // 删除当前文档确认
+            if (deleteDocConfirm.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { deleteDocConfirm.value = false },
+                    title = { Text("删除当前文档？") },
+                    text = { Text("将从存储中删除该文件，此操作不可撤销。") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            deleteDocConfirm.value = false
+                            val ref = controller?.activeRef
+                            if (ref != null) {
+                                lifecycleScope.launch {
+                                    runCatching { source.delete(ref) }
+                                        .onSuccess {
+                                            showToast("已删除")
+                                            closeDocument()
+                                        }
+                                        .onFailure { showToast("删除失败：${it.message}") }
+                                }
+                            }
+                        }) { Text("删除") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deleteDocConfirm.value = false }) { Text("取消") }
+                    },
+                )
+            }
+            // 侧栏条目重命名（长按）
+            renameEntryDialog.value?.let { entry ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { renameEntryDialog.value = null },
+                    title = { Text("重命名「${entry.name}」") },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = renameEntryInput,
+                            onValueChange = { renameEntryInput = it },
+                            label = { Text("新名称") },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val target = renameEntryDialog.value
+                            val name = renameEntryInput.trim()
+                            if (target != null && name.isNotEmpty() && name != entry.name) {
+                                renameEntryDialog.value = null
+                                renameSidebarEntry(target, name)
+                            } else {
+                                renameEntryDialog.value = null
+                            }
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameEntryDialog.value = null }) { Text("取消") }
+                    },
+                )
             }
             // 启动恢复：最近一份未保存快照（其余在消化后继续弹出）
             recoveryEntry.value?.let { entry ->
@@ -983,26 +1177,94 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.post(command(name, ""))
     }
 
-    private fun topMenuSections(): List<TopMenuSection> {
+    private fun postCommand(name: String, text: String) {
+        bridge.post(command(name, text))
+    }
+
+    private fun topMenuSections(
+        onToggleSidebar: () -> Unit,
+    ): List<TopMenuSection> {
         fun en(cmd: String) = editorActions.value[cmd]?.first == true
-        fun entry(title: String, cmd: String, separator: Boolean = false) =
-            TopMenuEntry(title, en(cmd), separator) { postCommand(cmd) }
-        fun host(title: String, separator: Boolean = false, action: () -> Unit) =
-            TopMenuEntry(title, true, separator, action)
+        fun ck(cmd: String): Boolean? = editorActions.value[cmd]?.second
+        fun entry(
+            title: String,
+            cmd: String,
+            separator: Boolean = false,
+            text: String? = null,
+            action: (() -> Unit)? = null,
+        ) = TopMenuEntry(title, en(cmd), separator, ck(cmd)) {
+            if (action != null) action() else postCommand(cmd, text ?: "")
+        }
+        fun host(
+            title: String,
+            enabled: Boolean = true,
+            separator: Boolean = false,
+            checked: Boolean? = null,
+            action: () -> Unit = {},
+        ) = TopMenuEntry(title, enabled, separator, checked, action)
+        val hasDoc = documentLoaded.value
+        val hasFile = controller?.activeRef != null
+        val recent = recentFiles()
         return listOf(
-            TopMenuSection("文件", listOf(
-                host("打开文件夹…") { openTreeLauncher.launch(null) },
-                host("打开文件…") { openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) },
-                host("保存", separator = true) { lifecycleScope.launch { saveActiveDocument() } },
-                host("导出…") { showExport.value = true },
-            )),
+            TopMenuSection("文件", buildList {
+                add(host("新建 Markdown") { newDocument("markdown") })
+                add(host("新建纯文本") { newDocument("plainText") })
+                add(host("打开文件夹…", separator = true) { openTreeLauncher.launch(null) })
+                add(host("打开文件…") { pendingReadOnlyOpen = false; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
+                add(host("以只读方式打开…") { pendingReadOnlyOpen = true; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
+                if (recent.isNotEmpty()) {
+                    add(host("最近文件", separator = true, enabled = false))
+                    recent.forEach { recentEntry ->
+                        add(host(recentEntry.second, enabled = true) { openDocument(DocumentRef.Saf(recentEntry.first)) })
+                    }
+                }
+                add(host("恢复未保存的文件…", separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
+                    maybeShowRecoveryDialog()
+                    if (recoveryEntry.value == null) showToast("没有待恢复的内容")
+                })
+                add(host("保存", separator = true, enabled = hasDoc) { lifecycleScope.launch { saveActiveDocument() } })
+                add(host("另存为…", enabled = hasDoc) { saveAsLauncher.launch("未命名.md") })
+                add(host("导出…", enabled = hasDoc) { showExport.value = true })
+                add(host("关闭当前文档", enabled = hasDoc, separator = true) {
+                    if (dirty.value) showCloseConfirm.value = true else closeDocument()
+                })
+                add(host("关闭工作区", enabled = workspaceRoot != null) { closeWorkspace() })
+                add(host("重命名…", enabled = hasFile, separator = true) {
+                    renameDocInput = activeTitle.value
+                    renameDocDialog.value = true
+                })
+                add(host("删除", enabled = hasFile) { deleteDocConfirm.value = true })
+                add(host("复制文件路径", enabled = hasFile, separator = true) {
+                    controller?.activeRef?.let {
+                        clipboardManager().setPrimaryClip(android.content.ClipData.newPlainText("path", it.uri))
+                        showToast("已复制文件 URI")
+                    }
+                })
+                add(host("复制文件内容", enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        clipboardManager().setPrimaryClip(
+                            android.content.ClipData.newPlainText("markdown", requestSnapshotBlocking().markdown),
+                        )
+                        showToast("已复制文件内容")
+                    }
+                })
+                add(host("分享文件", enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, requestSnapshotBlocking().markdown)
+                        }
+                        startActivity(android.content.Intent.createChooser(share, "分享文件"))
+                    }
+                })
+            }),
             TopMenuSection("编辑", listOf(
                 entry("撤销", "undo"),
                 entry("重做", "redo"),
                 entry("剪切", "cut", separator = true),
                 entry("拷贝", "copy"),
                 TopMenuEntry("粘贴", true, false) {
-                    clipboard()?.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
+                    clipboardManager().primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
                         ?.takeIf { it.isNotEmpty() }?.let { postCommand("pasteClipboard") }
                 },
                 entry("全选", "selectAll", separator = true),
@@ -1013,39 +1275,86 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 entry("Mermaid 图表", "insertMermaid"),
                 entry("水平线", "insertHorizontalRule"),
                 entry("插入脚注", "insertFootnote"),
+                entry("插入图片…", "insertImage", action = { openImageLauncher.launch("image/*") }),
+                entry("插入超链接…", "setLink", separator = true, action = {
+                    linkInput = "https://"
+                    showLinkDialog.value = true
+                }),
+                entry("移除链接", "removeLink"),
                 entry("YAML 前置元数据", "showFrontMatter", separator = true),
             )),
-            TopMenuSection("格式", listOf(
-                entry("粗体", "toggleBold"),
-                entry("斜体", "toggleItalic"),
-                entry("下划线", "toggleUnderline"),
-                entry("删除线", "toggleStrike"),
-                entry("高亮", "toggleHighlight"),
-                entry("行内代码", "toggleCode"),
-                entry("正文", "setParagraph", separator = true),
-                entry("一级标题", "setHeading1"),
-                entry("二级标题", "setHeading2"),
-                entry("三级标题", "setHeading3"),
-                entry("四级标题", "setHeading4"),
-                entry("五级标题", "setHeading5"),
-                entry("六级标题", "setHeading6"),
-                entry("无序列表", "toggleBulletList", separator = true),
-                entry("有序列表", "toggleOrderedList"),
-                entry("任务列表", "toggleTaskList"),
-                entry("引用", "toggleBlockquote", separator = true),
-                entry("代码块", "toggleCodeBlock"),
-                entry("提示框：备注", "insertAlertNote", separator = true),
-                entry("提示框：提示", "insertAlertTip"),
-                entry("提示框：重要", "insertAlertImportant"),
-                entry("提示框：警告", "insertAlertWarning"),
-                entry("提示框：注意", "insertAlertCaution"),
-                entry("清除格式", "clearFormat", separator = true),
+            TopMenuSection("格式", buildList {
+                add(entry("粗体", "toggleBold"))
+                add(entry("斜体", "toggleItalic"))
+                add(entry("下划线", "toggleUnderline"))
+                add(entry("删除线", "toggleStrike"))
+                add(entry("高亮", "toggleHighlight"))
+                add(entry("行内代码", "toggleCode"))
+                add(entry("正文", "setParagraph", separator = true))
+                add(entry("一级标题", "setHeading1"))
+                add(entry("二级标题", "setHeading2"))
+                add(entry("三级标题", "setHeading3"))
+                add(entry("四级标题", "setHeading4"))
+                add(entry("五级标题", "setHeading5"))
+                add(entry("六级标题", "setHeading6"))
+                add(entry("无序列表", "toggleBulletList", separator = true))
+                add(entry("有序列表", "toggleOrderedList"))
+                add(entry("任务列表", "toggleTaskList"))
+                add(entry("增加列表缩进", "indentListItem"))
+                add(entry("减少列表缩进", "outdentListItem"))
+                add(entry("引用", "toggleBlockquote", separator = true))
+                add(entry("代码块", "toggleCodeBlock"))
+                add(entry("声明代码语言…", "setCodeBlockLanguage", action = { showToolbarLanguageDialog.value = true }))
+                add(entry("格式化代码块", "formatCodeBlock"))
+                add(entry("提示框：备注", "insertAlertNote", separator = true))
+                add(entry("提示框：提示", "insertAlertTip"))
+                add(entry("提示框：重要", "insertAlertImportant"))
+                add(entry("提示框：警告", "insertAlertWarning"))
+                add(entry("提示框：注意", "insertAlertCaution"))
+                add(entry("顺时针旋转图片", "rotateImageClockwise", separator = true))
+                add(entry("图片 50%", "resizeImage", text = "50"))
+                add(entry("图片 75%", "resizeImage", text = "75"))
+                add(entry("图片 90%", "resizeImage", text = "90"))
+                add(entry("图片 100%", "resizeImage", text = "100"))
+                add(entry("格式刷", "formatPainter", separator = true))
+                add(entry("应用格式刷", "formatPainterApply"))
+                add(entry("清除格式", "clearFormat", separator = true))
+            }),
+            TopMenuSection("表格", listOf(
+                entry("编辑表格标题", "setTableCaption"),
+                entry("上方插行", "addRowBefore", separator = true),
+                entry("下方插行", "addRowAfter"),
+                entry("删除当前行", "deleteRow"),
+                entry("左插列", "addColumnBefore", separator = true),
+                entry("右插列", "addColumnAfter"),
+                entry("删除当前列", "deleteColumn"),
+                entry("内容列宽", "fitTableContents", separator = true),
+                entry("平均列宽", "distributeTableColumns"),
+                entry("恢复自动列宽", "resetTableWidths"),
+                entry("左对齐", "alignTableLeft", separator = true),
+                entry("居中对齐", "alignTableCenter"),
+                entry("右对齐", "alignTableRight"),
+                entry("删除表格", "deleteTable", separator = true),
+            )),
+            TopMenuSection("段落", listOf(
+                entry("段前插入行", "insertLineBefore"),
+                entry("段后插入行", "insertLineAfter"),
+                entry("重复该段", "duplicateParagraph", separator = true),
+                entry("删除该段", "deleteParagraph"),
             )),
             TopMenuSection("视图", listOf(
-                host("源码模式") { postCommand("toggleSourceMode") },
-                host("放大", separator = true) { applyZoom(zoomPercent.value + 10) },
-                host("缩小") { applyZoom(zoomPercent.value - 10) },
-                host("重置 100%") { applyZoom(100) },
+                host("显示/隐藏侧栏", enabled = true) { onToggleSidebar() },
+                host("源码模式", enabled = hasDoc, checked = editorSourceMode.value, separator = true) {
+                    postCommand("toggleSourceMode")
+                },
+                host("只读模式", enabled = hasDoc, checked = androidReadOnly.value, separator = true) {
+                    toggleReadOnly()
+                },
+                host("段落专注模式", enabled = hasDoc, separator = true) { postCommand("setEditorFocusMode") },
+                host("打字机模式", enabled = hasDoc) { postCommand("setEditorTypewriterMode") },
+                host("放大", enabled = hasDoc, separator = true) { applyZoom(zoomPercent.value + 10) },
+                host("缩小", enabled = hasDoc) { applyZoom(zoomPercent.value - 10) },
+                host("重置 100%", enabled = hasDoc) { applyZoom(100) },
             )),
             TopMenuSection("更多", listOf(
                 host("首选项…") { showPreferences.value = true },
@@ -1054,8 +1363,141 @@ SafDocumentSource.takePersistablePermission(this, uri)
         )
     }
 
-    private fun clipboard(): android.content.ClipboardManager? =
-        getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+    /** 只读模式切换：前端 setReadOnly 命令（text=1/0），状态用于菜单勾选。 */
+    private fun toggleReadOnly() {
+        val next = !androidReadOnly.value
+        androidReadOnly.value = next
+        bridge.post(command("setReadOnly", if (next) "1" else "0"))
+        showToast(if (next) "已进入只读模式" else "已退出只读模式")
+    }
+
+    /** 新建文档：清生命周期状态并下发空内容（纯文本另发文档类型）。 */
+    private fun newDocument(documentType: String) {
+        val active = controller ?: DocumentController(source, bridge::post, session).also {
+            encodingInfoFromPref(editorPrefs.value.defaultEncoding)?.let { info -> it.setEncoding(info) }
+            it.setNewline(editorPrefs.value.defaultNewline)
+            controller = it
+        }
+        active.startNewDocument()
+        androidReadOnly.value = false
+        if (documentType == "plainText") {
+            bridge.post(
+                HostMessage.SetDocumentType(documentId = session.documentId, revision = 0),
+            )
+        }
+        bridge.post(
+            HostMessage.LoadDocument(
+                documentId = session.documentId,
+                revision = 0,
+                payload = HostMessage.LoadDocument.LoadDocumentPayload(
+                    markdown = "",
+                    documentType = documentType,
+                ),
+            ),
+        )
+        activeTitle.value = "未命名"
+        dirty.value = false
+        showToast(if (documentType == "plainText") "已新建纯文本" else "已新建 Markdown 文档")
+    }
+
+    /** 关闭当前文档：丢弃前写恢复快照（重开应用可找回），回到欢迎文档。 */
+    private fun closeDocument() {
+        lifecycleScope.launch {
+            if (dirty.value && lastKnownMarkdown.isNotEmpty()) {
+                runCatching {
+                    val markdown = requestSnapshotBlocking().markdown
+                    lastKnownMarkdown = markdown
+                    val active = controller
+                    if (active != null) {
+                        active.writeRecovery(recoveryStore, markdown, dirty = true)
+                    } else {
+                        recoveryStore.writePending(session.documentId, null, markdown)
+                    }
+                }
+            }
+            controller?.startNewDocument()
+            androidReadOnly.value = false
+            bridge.post(welcomeDocumentMessage())
+            activeTitle.value = "未命名"
+            dirty.value = false
+            documentEncoding.value = "UTF-8"
+            documentNewline.value = "LF"
+            showToast("已关闭当前文档")
+        }
+    }
+
+    private fun closeWorkspace() {
+        workspaceRoot = null
+        sidebarEntries.value = emptyList()
+        showToast("已关闭工作区")
+    }
+
+    /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 5 条，新开顶置）。 */
+    private fun rememberRecentFile(uri: String, name: String) {
+        val current = recentFiles().filter { it.first != uri }.toMutableList()
+        current.add(0, uri to name)
+        val trimmed = current.take(5)
+        prefsStore.edit().putString("recentFiles", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
+    }
+
+    private fun recentFiles(): List<Pair<String, String>> =
+        prefsStore.getString("recentFiles", null)
+            ?.lineSequence()
+            ?.mapNotNull { line ->
+                val split = line.indexOf('|')
+                if (split <= 0) null else line.substring(0, split) to line.substring(split + 1)
+            }
+            ?.toList()
+            ?: emptyList()
+
+    /** 工作区侧栏长按：重命名当前条目名（SAF rename）。 */
+    private fun renameSidebarEntry(entry: DocumentEntry, newName: String) {
+        lifecycleScope.launch {
+            runCatching { source.rename(entry.ref, newName) }
+                .onSuccess { renamed ->
+                    refreshWorkspace()
+                    if (controller?.activeRef == entry.ref) {
+                        controller?.adoptRef(renamed)
+                        activeTitle.value = newName
+                    }
+                    showToast("已重命名")
+                }
+                .onFailure { showToast("重命名失败：${it.message}") }
+        }
+    }
+
+    /** 工作区侧栏长按：删除文件/文件夹。 */
+    private fun deleteSidebarEntry(entry: DocumentEntry) {
+        lifecycleScope.launch {
+            runCatching { source.delete(entry.ref) }
+                .onSuccess {
+                    refreshWorkspace()
+                    showToast("已删除")
+                }
+                .onFailure { showToast("删除失败：${it.message}") }
+        }
+    }
+
+    /** SAF 图片 → 复制进文档目录 → 以相对路径插入（insertImage 命令）。 */
+    private suspend fun insertImageFromSaf(sourceUri: Uri) {
+        runCatching {
+            val docDir = activeDocumentDirectory()
+            val name = "image-" + System.currentTimeMillis() + ".png"
+            val bytes = contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
+                ?: throw IllegalStateException("无法读取所选图片")
+            val ref = source.createDocument(DocumentRef.Saf(docDir), name)
+            source.write(ref, bytes)
+            "assets/$name"
+        }.onSuccess { relativePath ->
+            postCommandWithText("insertImage", relativePath)
+        }.onFailure {
+            showToast("插入图片失败：${it.message}")
+        }
+    }
+
+    private fun postCommandWithText(name: String, text: String) {
+        bridge.post(command(name, text))
+    }
 
     /** 首选项编码名 → EncodingInfo（与桌面 DocumentEncodingPolicy 同名同序；
      *  桌面 UTF-16 系列均为 LE，"UTF-16 with BOM" = LE 正文 + BOM 头）。 */

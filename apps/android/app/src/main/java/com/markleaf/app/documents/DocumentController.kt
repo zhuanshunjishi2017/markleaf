@@ -79,7 +79,13 @@ class DocumentController(
      * 打开文档：读字节 → 探测编码 → 解码 → 新 documentId → loadDocument。
      * 会话状态切换到新 id（revision 从 0 重新计——Windows 端 stale bug 的修正路径）。
      */
-    suspend fun open(ref: DocumentRef.Saf): OpenResult = try {
+    private var currentReadOnly = false
+
+    /** 当前文档是否只读（只读打开菜单的勾选与置灰依据）。 */
+    val activeReadOnly: Boolean
+        get() = currentReadOnly
+
+    suspend fun open(ref: DocumentRef.Saf, readOnly: Boolean = false): OpenResult = try {
         val documentBytes = source.read(ref)
         val markdown = DocumentCodings.decode(documentBytes.bytes, documentBytes.encoding)
         val documentId = "doc-" + UUID.randomUUID().toString().take(8)
@@ -90,7 +96,7 @@ class DocumentController(
                 revision = 0,
                 payload = HostMessage.LoadDocument.LoadDocumentPayload(
                     markdown = markdown,
-                    readOnly = false,
+                    readOnly = readOnly,
                     documentPath = ref.uri,
                 ),
             ),
@@ -98,6 +104,7 @@ class DocumentController(
         currentRef = ref
         baselineBytes = documentBytes.bytes
         currentEncoding = documentBytes.encoding
+        currentReadOnly = readOnly
         currentNewline = if (markdown.contains("\r\n")) "CRLF" else "LF"
         currentDocumentId = documentId
         OpenResult.Loaded(documentId, documentBytes.encoding, ref.uri.substringAfterLast('/'))
@@ -105,6 +112,20 @@ class DocumentController(
         OpenResult.PermissionLost
     } catch (exception: Exception) {
         OpenResult.Failed(exception.message ?: exception.javaClass.simpleName)
+    }
+
+    /** 新建文档：清引用与探测状态，会话沿用当前 documentId，内容由宿主下发。 */
+    fun startNewDocument() {
+        currentRef = null
+        baselineBytes = null
+        currentEncoding = null
+        currentReadOnly = false
+    }
+
+    /** 另存为/重命名后收养新引用（基线清空：下次保存全量写入新文件）。 */
+    fun adoptRef(ref: DocumentRef.Saf) {
+        currentRef = ref
+        baselineBytes = null
     }
 
     /**
