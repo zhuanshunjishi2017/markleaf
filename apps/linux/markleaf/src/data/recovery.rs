@@ -51,7 +51,8 @@ pub fn list_recovery(dir: &Path) -> Vec<RecoveryEntry> {
     let Ok(read) = fs::read_dir(dir) else {
         return entries;
     };
-    for item in read.flatten() {
+    let items: Vec<_> = read.flatten().collect();
+    for item in &items {
         let path = item.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
@@ -65,6 +66,47 @@ pub fn list_recovery(dir: &Path) -> Vec<RecoveryEntry> {
             }
         }
     }
+    // 旧格式迁移(只读):`<document_id>.md` + `<document_id>.meta`
+    // (meta 为 JSON:{path?, revision?, savedAt?})。新格式优先,同 id 不重复。
+    let mut legacy = Vec::new();
+    for item in &items {
+        let path = item.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !(name.ends_with(".md") && fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false)) {
+            continue;
+        }
+        let Some(document_id) = name.strip_suffix(".md") else {
+            continue;
+        };
+        if document_id.starts_with('.') {
+            continue;
+        }
+        if entries.iter().any(|entry| entry.document_id == document_id) {
+            continue;
+        }
+        let meta_path = dir.join(format!("{document_id}.meta"));
+        let markdown = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+        let meta: serde_json::Value = fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        legacy.push(RecoveryEntry {
+            document_id: document_id.to_string(),
+            path: meta.get("path").and_then(|v| v.as_str()).map(str::to_string),
+            markdown,
+            revision: meta
+                .get("revision")
+                .map(|v| v.to_string().trim_matches('"').to_string())
+                .unwrap_or_else(|| "0".into()),
+            saved_at: meta.get("savedAt").and_then(|v| v.as_i64()).unwrap_or(0),
+        });
+    }
+    entries.extend(legacy);
     entries.sort_by(|a, b| a.document_id.cmp(&b.document_id));
     entries
 }

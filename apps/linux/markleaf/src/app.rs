@@ -3,9 +3,9 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use adw::prelude::*;
 use gtk::gio;
 use gtk::glib;
-use gtk::prelude::*;
 
 use crate::data::session::{load as load_session, save as save_session, SessionManifest};
 use crate::data::settings::{load_settings, save_settings, AppSettings};
@@ -47,6 +47,8 @@ pub fn run() -> glib::ExitCode {
         return glib::ExitCode::SUCCESS;
     }
 
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).try_init();
+
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
@@ -79,11 +81,18 @@ pub fn run() -> glib::ExitCode {
             let restored = restored_session();
             match restored {
                 Some(manifest) if !manifest.windows.is_empty() => {
-                    for window_session in manifest.windows {
-                        let window = AppWindow::new(app, &context, settings.clone(), windows_activate.clone());
+                    for window_session in &manifest.windows {
+                        let window = AppWindow::new(
+                            app,
+                            &context.clone(),
+                            settings.clone(),
+                            windows_activate.clone(),
+                        );
                         for tab_path in &window_session.tabs {
-                            window.open_document_in_tab(&PathBuf::from(tab_path));
+                            let window_for_tab = window.clone();
+                            window_for_tab.open_document_in_tab(&PathBuf::from(tab_path));
                         }
+                        window.select_tab(window_session.active_tab);
                         window.present();
                         windows_activate.borrow_mut().push(window);
                     }
@@ -91,7 +100,8 @@ pub fn run() -> glib::ExitCode {
                 _ => {
                     let window = AppWindow::new(app, &context, settings.clone(), windows_activate.clone());
                     window.present();
-                    windows_activate.borrow_mut().push(window);
+                    windows_activate.borrow_mut().push(window.clone());
+                    prompt_recovered_documents(&window);
                 }
             }
         });
@@ -151,11 +161,63 @@ pub fn run() -> glib::ExitCode {
     app.run()
 }
 
+fn recovered_dir() -> PathBuf {
+    storage_dirs().1.join("recovery")
+}
+
 fn restored_session() -> Option<SessionManifest> {
     load_session(&session_path())
 }
 
-fn persist_settings(settings: &AppSettings) {
+/// 启动恢复:发现 .recovery.json → 每条弹恢复/丢弃对话框。
+/// 恢复 = 打开原文件并以恢复内容载入(脏);丢弃 = 删除快照。
+fn prompt_recovered_documents(window: &Rc<AppWindow>) {
+    let entries = crate::data::recovery::list_recovery(&recovered_dir());
+    for entry in entries {
+        let path = entry.path.clone().map(PathBuf::from);
+        let window = window.clone();
+        let entry_id = entry.document_id.clone();
+        let entry_id_discard = entry_id.clone();
+        let dialog = adw::MessageDialog::builder()
+            .heading("发现未保存的恢复内容")
+            .body(format!(
+                "{}\n修订 {} · {}",
+                entry.path.as_deref().unwrap_or("(未命名)"),
+                entry.revision,
+                glib::DateTime::from_unix_local(entry.saved_at)
+                    .map(|d| d.format("%F %T").map(|s| s.to_string()).unwrap_or_default())
+                    .unwrap_or_default()
+            ))
+            .transient_for(window.gtk_window())
+            .modal(true)
+            .build();
+        dialog.add_response("discard", "丢弃");
+        dialog.add_response("restore", "恢复");
+        dialog.set_response_appearance("restore", adw::ResponseAppearance::Suggested);
+        dialog.connect_response(Some("restore"), move |dialog, _response| {
+            let markdown = entry_markdown_of(&entry_id, &recovered_dir());
+            if let Some(path) = &path {
+                window.open_document_recovered(path, markdown);
+            }
+            dialog.close();
+        });
+        dialog.connect_response(Some("discard"), move |dialog, _response| {
+            crate::data::recovery::discard_recovery(&recovered_dir(), &entry_id_discard);
+            dialog.close();
+        });
+        dialog.present();
+    }
+}
+
+fn entry_markdown_of(document_id: &str, dir: &std::path::Path) -> String {
+    crate::data::recovery::list_recovery(dir)
+        .into_iter()
+        .find(|candidate| candidate.document_id == document_id)
+        .map(|found| found.markdown)
+        .unwrap_or_default()
+}
+
+pub fn persist_settings(settings: &AppSettings) {
     let _ = save_settings(&settings_path(), settings);
 }
 

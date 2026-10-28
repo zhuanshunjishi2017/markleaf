@@ -3,6 +3,31 @@
 // v1 覆盖壳层 UI 字符串;内核/前端文案由内核自身 L10n 承担(localizeFindBar)。
 pub const SUPPORTED_LANGUAGES: &[&str] = &["zh-Hans", "zh-Hant", "en-US", "ja-JP"];
 
+/// 解析界面语言:设置显式值优先,否则按 glib locale 名映射;兜底 zh-Hans。
+pub fn resolve_language(display_language: &str) -> String {
+    if SUPPORTED_LANGUAGES.contains(&display_language) {
+        return display_language.to_string();
+    }
+    for name in gtk::glib::language_names() {
+        let lowered = name.to_string().to_ascii_lowercase();
+        let mapped = if lowered.starts_with("zh_tw") || lowered.starts_with("zh-hant") {
+            Some("zh-Hant")
+        } else if lowered.starts_with("zh") {
+            Some("zh-Hans")
+        } else if lowered.starts_with("ja") {
+            Some("ja-JP")
+        } else if lowered.starts_with("en") {
+            Some("en-US")
+        } else {
+            None
+        };
+        if let Some(lang) = mapped {
+            return lang.to_string();
+        }
+    }
+    "zh-Hans".to_string()
+}
+
 /// 翻译;未知语言返回 None,已知语言缺键回退原文(macOS tables[lang]?[text] ?? text)。
 pub fn tr(language: &str, key: &str) -> Option<String> {
     match language {
@@ -127,6 +152,18 @@ const JA_JP: Table = &[
     ("新建窗口", "新規ウインドウ"),
     ("行数", "行数"),
     ("字符数", "文字数"),
+    ("备注", "ノート"),
+    ("提示", "ヒント"),
+    ("重要", "重要"),
+    ("警告", "警告"),
+    ("注意", "注意"),
+    ("升为标题", "見出しへ昇格"),
+    ("降为标题", "見出しへ降格"),
+    ("区分大小写", "大文字小文字を区別"),
+    ("全部替换", "すべて置換"),
+    ("关闭", "閉じる"),
+    ("下一个", "次へ"),
+    ("上一个", "前へ"),
 ];
 
 const TABLES: &[(&str, Table)] = &[

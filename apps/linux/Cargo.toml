@@ -14,7 +14,7 @@ license = "MIT"
 # v4_14:webkit6 0.6 的生成代码引用 v4_10 gate 的 gtk::Accessible 等类型,
 # 需消费方启用;Ubuntu 24.04 系统库为 GTK 4.14,feature 门与运行时一致。
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
-adw = { package = "libadwaita", version = "0.9", features = ["v1_4"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_2", "v1_3", "v1_4"] }
 webkit = { package = "webkit6", version = "0.6" }
 gdk = { package = "gdk4", version = "0.11" }
 graphene = { package = "graphene-rs", version = "0.22" }

@@ -38,6 +38,8 @@ struct TabState {
     document: RefCell<TabDocument>,
     /// dirty 后恢复快照防抖(glib 定时源 id;标签关闭时移除)。
     recovery_source: RefCell<Option<glib::SourceId>>,
+    /// 该标签的 WebView 缩放(zoomWheel 驱动)。
+    zoom: std::cell::Cell<f64>,
 }
 
 struct TabDocument {
@@ -49,6 +51,8 @@ struct TabDocument {
     dirty: bool,
     /// 等待 snapshot 回包的保存会话(有 requestId 的保存)。
     pending_save: bool,
+    /// 恢复载入的内容(stylesApplied 后作为 loadDocument 正文,置脏)。
+    recovered_markdown: Option<String>,
 }
 
 impl Default for TabDocument {
@@ -64,6 +68,7 @@ impl Default for TabDocument {
             document_id: String::new(),
             dirty: false,
             pending_save: false,
+            recovered_markdown: None,
         }
     }
 }
@@ -79,10 +84,20 @@ pub struct AppWindow {
     settings: Rc<RefCell<AppSettings>>,
     /// 上下文菜单浮层(每次请求重建内容后弹出)。
     context_popover: PopoverMenu,
-    /// 活动标签坐标换算用的当前缩放(经 zoomWheel 消息维护)。
-    zoom_levels: RefCell<std::collections::HashMap<usize, f64>>,
+
     sidebar: Rc<super::sidebar::Sidebar>,
     split: adw::OverlaySplitView,
+    /// 界面语言(设置显式值或 glib locale 解析)。
+    lang: String,
+    /// 工作区根(供 watcher 重扫)。
+    workspace_root: RefCell<Option<PathBuf>>,
+    /// 工作区监视器(保持存活维持 inotify 订阅)。
+    watcher: RefCell<Option<crate::workspace::watcher::WorkspaceWatcher>>,
+    /// 监视器回调(notify 线程)置位,主循环 500ms 轮询消费——Rc 非 Send 的桥接。
+    needs_rescan: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    find_bar: gtk::SearchBar,
+    find_entry: gtk::SearchEntry,
+    windows: Rc<RefCell<Vec<Rc<AppWindow>>>>,
 }
 
 /// 恢复快照防抖间隔(对齐 settings.snapshot_interval_seconds 的下限用法:脏即定时落)。
@@ -110,9 +125,25 @@ impl AppWindow {
             .ellipsize(pango::EllipsizeMode::End)
             .build();
 
+        // 查找面板:宿主侧输入,向内核发 findText/findNext/findPrev/findClose。
+        let find_search_bar = gtk::SearchBar::builder().show_close_button(true).build();
+        let find_entry = gtk::SearchEntry::new();
+        let find_next = gtk::Button::from_icon_name("go-down-symbolic");
+        let find_prev = gtk::Button::from_icon_name("go-up-symbolic");
+        let find_close = gtk::Button::from_icon_name("window-close-symbolic");
+        let find_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        find_box.append(&find_entry);
+        find_box.append(&find_prev);
+        find_box.append(&find_next);
+        find_box.append(&find_close);
+        find_search_bar.set_child(Some(&find_box));
+
         // 上下文菜单浮层(挂在窗口上,弹出于编辑坐标)。
         let context_popover = PopoverMenu::builder().has_arrow(false).build();
         context_popover.set_parent(&window);
+
+        // 界面语言:设置显式值或 glib locale 解析(菜单/工具提示/状态文案用)。
+        let lang = crate::l10n::resolve_language(&settings.borrow().display_language);
 
         // HeaderBar:打开/保存/菜单/源码切换/缩放。
         let header = gtk::HeaderBar::new();
@@ -122,10 +153,13 @@ impl AppWindow {
         source_button.set_icon_name("view-reveal-symbolic");
         let menu_button = gtk::MenuButton::new();
         menu_button.set_icon_name("open-menu-symbolic");
-        menu_button.set_menu_model(Some(&menus::main_menu_model()));
-        open_button.set_tooltip_text(Some("打开"));
-        save_button.set_tooltip_text(Some("保存"));
-        source_button.set_tooltip_text(Some("源码模式"));
+        menu_button.set_menu_model(Some(&menus::main_menu_model(&lang)));
+        let tr_open = crate::l10n::tr(&lang, "打开").unwrap_or_default();
+        let tr_save = crate::l10n::tr(&lang, "保存").unwrap_or_default();
+        let tr_source = crate::l10n::tr(&lang, "源码模式").unwrap_or_default();
+        open_button.set_tooltip_text(Some(&tr_open));
+        save_button.set_tooltip_text(Some(&tr_save));
+        source_button.set_tooltip_text(Some(&tr_source));
         header.pack_start(&open_button);
         header.pack_start(&save_button);
         header.pack_start(&source_button);
@@ -145,6 +179,7 @@ impl AppWindow {
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&header);
+        content.append(&find_search_bar);
         content.append(&split);
         let scrolled_status = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         scrolled_status.append(&status_label);
@@ -163,15 +198,27 @@ impl AppWindow {
             status_text: RefCell::new(status_label),
             settings,
             context_popover,
-            zoom_levels: RefCell::new(Default::default()),
             sidebar,
             split: split.clone(),
+            lang,
+            workspace_root: RefCell::new(None),
+            watcher: RefCell::new(None),
+            needs_rescan: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            find_bar: find_search_bar.clone(),
+            find_entry: find_entry.clone(),
+            windows: windows.clone(),
         });
 
         {
             let this_for_open = this.clone();
-            sidebar_for_handler.set_open_handler(move |path| this_for_open.open_document_in_tab(path));
+            let windows_for_open = windows.clone();
+            sidebar_for_handler.set_open_handler(move |path| {
+                let window_for_open = this_for_open.clone();
+                windows_for_open.borrow_mut().push(window_for_open.clone());
+                this_for_open.open_document_in_tab(path);
+            });
         }
+        this.wire_find_bar(&find_entry, &find_next, &find_prev, &find_close);
         this.install_actions(app, windows);
         this.wire_tab_view();
         this.apply_shortcuts(app);
@@ -192,6 +239,18 @@ impl AppWindow {
 
     pub fn can_accept_tabs(self: &Rc<Self>) -> bool {
         true
+    }
+
+    /// 会话恢复:选中指定序号的标签。
+    pub fn select_tab(self: &Rc<Self>, index: usize) {
+        let view = self.tabs.borrow();
+        let page = view.nth_page(index as i32);
+        view.set_selected_page(&page);
+    }
+
+    /// 根窗口(对话框 transient 用)。
+    pub fn gtk_window(&self) -> &adw::ApplicationWindow {
+        &self.window
     }
 
     pub fn tab_paths(self: &Rc<Self>) -> Vec<String> {
@@ -216,16 +275,54 @@ impl AppWindow {
     }
 
     pub fn open_document_in_tab(self: &Rc<Self>, path: &Path) {
-        let Ok(snapshot) = read_document(path) else {
-            eprintln!("[window] 无法读取 {}", path.display());
-            return;
-        };
+        let path = path.to_path_buf();
+        // 文件读取与编码探测移出主线程(审计 Important #3);结果回主循环建标签。
+        let this = self.clone();
+        let path_for_task = path.to_path_buf();
+        let path_for_msg = path.to_path_buf();
+        glib::spawn_future_local(async move {
+            // JoinHandle::Output = Result<T, Panic>;双层解包(任务 panic 视为读失败)。
+            match gio::spawn_blocking(move || read_document(&path_for_task)).await {
+                Ok(Ok(snapshot)) => this.create_tab_with_snapshot(path.clone(), snapshot, None),
+                Ok(Err(err)) => {
+                    log::warn!("[window] 无法读取 {}: {err}", path_for_msg.display());
+                    this.set_status(&format!("无法读取 {}: {err}", path_for_msg.display()));
+                }
+                Err(_) => {
+                    log::warn!("[window] 读取任务 panic:{}", path_for_msg.display());
+                    this.set_status(&format!("无法读取 {}", path_for_msg.display()));
+                }
+            }
+        });
+    }
+
+    /// 以恢复内容打开:文件存在则以恢复 markdown 载入并置脏(保留快照至下次保存)。
+    pub fn open_document_recovered(self: &Rc<Self>, path: &Path, markdown: String) {
+        let path = path.to_path_buf();
+        let path_for_task = path.clone();
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let recovered = markdown.clone();
+            let snapshot =
+                match gio::spawn_blocking(move || read_document(&path_for_task)).await {
+                    Ok(Ok(snapshot)) => snapshot,
+                    _ => DocumentSnapshot::default(),
+                };
+            this.create_tab_with_snapshot(path, snapshot, Some(recovered));
+        });
+    }
+
+    fn create_tab_with_snapshot(
+        self: &Rc<Self>,
+        path: PathBuf,
+        snapshot: DocumentSnapshot,
+        recovered_markdown: Option<String>,
+    ) {
         let detection = detect(&snapshot.bytes);
         let decision = EncodingDecision::from_detection(&detection);
         let newline = detect_newline(&detection.decoded);
         let document_id = glib::uuid_string_random().to_string();
 
-        // 标签页:WebView 常驻;标签标题为文件名。
         let webview = EditorWebView::new(&self.context);
         let page = {
             let view = self.tabs.borrow();
@@ -245,33 +342,39 @@ impl AppWindow {
             webview: webview.clone(),
             session,
             document: RefCell::new(TabDocument {
-                path: Some(path.to_path_buf()),
+                path: Some(path.clone()),
                 disk: snapshot,
                 encoding: decision,
                 newline,
                 document_id: document_id.clone(),
-                dirty: false,
+                dirty: recovered_markdown.is_some(),
                 pending_save: false,
+                recovered_markdown: recovered_markdown.clone(),
             }),
             recovery_source: RefCell::new(None),
+            zoom: std::cell::Cell::new(1.0),
         });
         self.tab_states.borrow_mut().push(state.clone());
 
-        // 桥接线:该标签的编辑器消息 → 窗口分发。
         {
             let this = self.clone();
             let state = state.clone();
             webview.connect_message(move |message| this.handle_editor_message(&state, message));
         }
 
-        // 握手:直接时序驱动(M1 冒烟同款)。注意:M2 EditorBridge 的 ready 缓存与
-        // session 门控尚未接入壳层(见台账 M3 审计 Important #1,M4 接线)。
-        // applyStyles 载荷对齐 macOS applyStylesPayload 形态(baseCss 等),
-        // M3 先发最小载荷,主题 CSS 注入在 M4 打磨时补全。
         self.send_after_ready(&state);
 
         webview.load_editor_page();
-        self.set_status(&format!("已打开 {}", path.display()));
+        if recovered_markdown.is_none() {
+            self.set_status(&format!("已打开 {}", path.display()));
+        } else {
+            // 恢复载入:载入恢复内容并置脏(载入 payload 在 stylesApplied 回调读取)。
+            state
+                .document
+                .borrow_mut()
+                .recovered_markdown = recovered_markdown;
+        }
+        self.update_tab_title(&state);
     }
 
     // ---- 内部 ----
@@ -313,12 +416,16 @@ impl AppWindow {
             *flag = false;
             drop(flag);
             let document = state_for_styles.document.borrow();
-            let detection = detect(&document.disk.bytes);
+            let markdown = document
+                .recovered_markdown
+                .clone()
+                .unwrap_or_else(|| detect(&document.disk.bytes).decoded);
+            let initial_dirty = document.recovered_markdown.is_some();
             let payload = serde_json::json!({
-                "markdown": detection.decoded,
+                "markdown": markdown,
                 "documentType": "markdown",
                 "readOnly": false,
-                "initialDirty": false,
+                "initialDirty": initial_dirty,
                 "scrollTop": 0,
                 "restoreViewState": true,
             });
@@ -327,9 +434,65 @@ impl AppWindow {
             webview.post_to_editor(&load);
         });
         let _ = pending_styles;
+        // localizeFindBar:载荷键对齐 Windows EditorHostController.SendFindBarLocalization。
+        {
+            let webview = state.webview.clone();
+            let lang = self.lang.clone();
+            let pending_loc: Rc<RefCell<bool>> = Rc::new(RefCell::new(true));
+            let pending_loc_cb = pending_loc.clone();
+            state.webview.connect_on_message_type(EditorMessageType::Ready, move || {
+                let mut flag = pending_loc_cb.borrow_mut();
+                if !*flag {
+                    return;
+                }
+                *flag = false;
+                drop(flag);
+                let key = |k: &str| crate::l10n::tr(&lang, k).unwrap_or_else(|| k.to_string());
+                let localize = HostMessage {
+                    protocol_version: 1,
+                    message_type: crate::bridge::messages::HostMessageType::LocalizeFindBar,
+                    document_id: String::new(),
+                    revision: 0,
+                    request_id: None,
+                    payload: Some(serde_json::json!({
+                        "alertNote": key("备注"),
+                        "alertTip": key("提示"),
+                        "alertImportant": key("重要"),
+                        "alertWarning": key("警告"),
+                        "alertCaution": key("注意"),
+                        "formatPromoteHeading": key("升为标题"),
+                        "formatDemoteHeading": key("降为标题"),
+                    })),
+                };
+                webview.post_to_editor(&localize);
+            });
+        }
     }
 
     fn handle_editor_message(self: &Rc<Self>, state: &Rc<TabState>, message: EditorMessage) {
+        // M2 会话纪律接入运行时:ready 直通(握手前 documentId 尚未绑定),
+        // 其余消息过门控;拒绝时 log::warn 不静默(Plan Global Constraint)。
+        if message.message_type != EditorMessageType::Ready {
+            let decision = state.session.borrow().accept(&message);
+            match decision {
+                crate::bridge::session_state::AcceptDecision::Accept => {
+                    state.session.borrow_mut().confirm(&message);
+                }
+                other => {
+                    log::warn!(
+                        "[bridge] 拒绝消息 type={} doc={} rev={}: {other:?}",
+                        message.message_type_name(),
+                        message.document_id,
+                        message.revision
+                    );
+                    return;
+                }
+            }
+        }
+        self.dispatch_editor_message(state, message);
+    }
+
+    fn dispatch_editor_message(self: &Rc<Self>, state: &Rc<TabState>, message: EditorMessage) {
         match message.message_type {
             EditorMessageType::Ready => { /* ready 握手由 send_after_ready 的类型化回调处理 */ }
             EditorMessageType::StylesApplied => {
@@ -338,7 +501,6 @@ impl AppWindow {
             EditorMessageType::DocumentLoaded => {
                 let document_id = message.document_id.clone();
                 if document_id == state.document.borrow().document_id {
-                    state.session.borrow_mut().confirm(&message);
                     self.set_status(&format!(
                         "已加载 {}",
                         state
@@ -488,7 +650,11 @@ impl AppWindow {
         drop(document);
 
         if request_id == "recovery" {
-            // 恢复快照:原子写 .recovery.json。
+            // 恢复快照:原子写 .recovery.json;竞态复查——回包落地前若已保存
+            // (dirty=false),不得为已保存文档复活恢复文件(M3 审计 Minor)。
+            if !state.document.borrow().dirty {
+                return;
+            }
             let (_config, state_dir) = crate::app::storage_dirs();
             let entry = RecoveryEntry {
                 document_id,
@@ -502,6 +668,10 @@ impl AppWindow {
         }
 
         if !pending_save {
+            return;
+        }
+        if message.document_id != document_id {
+            log::warn!("[save] 快照文档 id 不匹配:{}", message.document_id);
             return;
         }
         // 保存会话:按原编码与换行回写。
@@ -587,16 +757,11 @@ impl AppWindow {
             message.payload.as_ref().and_then(|p| p.get("clientX")).and_then(|v| v.as_f64()).unwrap_or(0.0),
             message.payload.as_ref().and_then(|p| p.get("clientY")).and_then(|v| v.as_f64()).unwrap_or(0.0),
         );
-        let menu = menus::context_menu_model();
+        let menu = menus::context_menu_model(&self.lang.clone());
         self.context_popover.set_menu_model(Some(&menu));
 
         // WebView 坐标 → 窗口坐标(考虑缩放)。
-        let zoom = self
-            .zoom_levels
-            .borrow()
-            .get(&self.tab_index(state))
-            .copied()
-            .unwrap_or(1.0);
+        let zoom = state.zoom.get();
         // 4.12+ 用 compute_point;坐标含缩放换算。
         let origin_point = graphene::Point::new((x * zoom) as f32, (y * zoom) as f32);
         let (origin_x, origin_y) = state
@@ -610,20 +775,11 @@ impl AppWindow {
         self.context_popover.popup();
     }
 
-    fn tab_index(self: &Rc<Self>, state: &Rc<TabState>) -> usize {
-        self.tab_states
-            .borrow()
-            .iter()
-            .position(|candidate| Rc::ptr_eq(candidate, state))
-            .unwrap_or(0)
-    }
-
     fn adjust_zoom(self: &Rc<Self>, state: &Rc<TabState>, delta_y: f64) {
-        let index = self.tab_index(state);
-        let current = self.zoom_levels.borrow().get(&index).copied().unwrap_or(1.0);
+        let current = state.zoom.get();
         let next = if delta_y < 0.0 { current * 1.1 } else { current / 1.1 };
         let clamped = next.clamp(0.3, 3.0);
-        self.zoom_levels.borrow_mut().insert(index, clamped);
+        state.zoom.set(clamped);
         state.webview.set_zoom_level(clamped);
         self.set_status(&format!("缩放 {:.0}%", clamped * 100.0));
     }
@@ -634,6 +790,60 @@ impl AppWindow {
         let line = payload.get("line").and_then(|v| v.as_i64()).unwrap_or(0);
         let column = payload.get("column").and_then(|v| v.as_i64()).unwrap_or(0);
         self.set_status(&format!("字数 {words} · 行 {line} 列 {column}"));
+    }
+
+    /// 显示查找面板;回车发 findText(query\tcase\twhole)。
+    fn show_find_bar(self: &Rc<Self>) {
+        self.find_bar.set_search_mode(true);
+        self.find_entry.grab_focus();
+    }
+
+    fn send_find_command(self: &Rc<Self>, command: &str) {
+        let query = self.find_entry.text().to_string();
+        let payload = serde_json::json!({ "command": command, "text": format!("{query}\t0\t0") });
+        if let Some(state) = self.active_tab() {
+            let document_id = state.document.borrow().document_id.clone();
+            state
+                .webview
+                .post_to_editor(&HostMessage::command_with_request(&document_id, 0, payload, None));
+        }
+    }
+
+    fn wire_find_bar(
+        self: &Rc<Self>,
+        find_entry: &gtk::SearchEntry,
+        find_next: &gtk::Button,
+        find_prev: &gtk::Button,
+        find_close: &gtk::Button,
+    ) {
+        {
+            let this = self.clone();
+            find_entry.connect_activate(move |_entry| this.send_find_command("findText"));
+        }
+        {
+            let this = self.clone();
+            find_next.connect_clicked(move |_| this.send_find_command("findNext"));
+        }
+        {
+            let this = self.clone();
+            find_prev.connect_clicked(move |_| this.send_find_command("findPrev"));
+        }
+        {
+            let this = self.clone();
+            find_close.connect_clicked(move |_| {
+                this.find_bar.set_search_mode(false);
+                if let Some(state) = this.active_tab() {
+                    let document_id = state.document.borrow().document_id.clone();
+                    state.webview.post_to_editor(&HostMessage::command_with_request(
+                        &document_id,
+                        0,
+                        serde_json::json!({ "command": "findClose" }),
+                        None,
+                    ));
+                }
+            });
+        }
+        let _ = find_entry;
     }
 
     fn export_active_html(self: &Rc<Self>) {
@@ -712,6 +922,32 @@ impl AppWindow {
         };
         let operation = PrintOperation::new(state.webview.widget());
         operation.run_dialog(Some(&self.window));
+    }
+
+    /// 启动工作区 inotify 监视:防抖变更置位标志,主循环 500ms 轮询消费后重扫侧栏
+    /// (watcher 回调在 notify 线程,而 Rc<AppWindow> 非 Send,故用原子标志桥接)。
+    fn start_workspace_watcher(self: &Rc<Self>, root: &Path) {
+        *self.workspace_root.borrow_mut() = Some(root.to_path_buf());
+        let needs_rescan = self.needs_rescan.clone();
+        match crate::workspace::watcher::WorkspaceWatcher::new(root, 200, move || {
+            needs_rescan.store(true, std::sync::atomic::Ordering::Relaxed);
+        }) {
+            Ok(watcher) => {
+                *self.watcher.borrow_mut() = Some(watcher);
+                let this = self.clone();
+                let flag = self.needs_rescan.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+                    if flag.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                        let Some(root) = this.workspace_root.borrow().clone() else {
+                            return glib::ControlFlow::Continue;
+                        };
+                        this.sidebar.set_workspace_root(Some(root));
+                    }
+                    glib::ControlFlow::Continue
+                });
+            }
+            Err(err) => log::warn!("[workspace] 监视启动失败:{err}"),
+        }
     }
 
     fn update_tab_title(self: &Rc<Self>, state: &Rc<TabState>) {
@@ -803,23 +1039,31 @@ impl AppWindow {
         self.window.add_action(&print_action);
         app.set_accels_for_action("win.print", &["<Control>p"]);
 
-        // 打开工作区目录 → 侧栏扫描。
+        // 打开工作区目录 → 侧栏扫描 + inotify 监视。
         let sidebar_for_folder = self.sidebar.clone();
+        let sidebar_watch_holder: Rc<RefCell<Option<Rc<Self>>>> = Rc::new(RefCell::new(None));
+        let holder_for_cb = sidebar_watch_holder.clone();
         let open_folder_action = gio::SimpleAction::new("openFolder", None);
         {
             let window = self.window.clone();
             open_folder_action.connect_activate(move |_, _| {
                 let dialog = gtk::FileDialog::new();
                 let sidebar = sidebar_for_folder.clone();
+                let holder_for_cb = holder_for_cb.clone();
                 dialog.select_folder(Some(&window), None::<&gio::Cancellable>, move |result| {
                     if let Ok(file) = result {
                         if let Some(path) = file.path() {
-                            sidebar.set_workspace_root(Some(path));
+                            sidebar.set_workspace_root(Some(path.clone()));
+                            if let Some(this) = holder_for_cb.borrow().as_ref() {
+                                this.start_workspace_watcher(&path);
+                            }
                         }
                     }
                 });
             });
         }
+        *sidebar_watch_holder.borrow_mut() = Some(self.clone());
+        let _ = &sidebar_watch_holder;
         self.window.add_action(&open_folder_action);
         app.set_accels_for_action("win.openFolder", &["<Control><Shift>o"]);
         app.set_accels_for_action("win.toggleSidebar", &["<Control>backslash"]);
@@ -907,6 +1151,14 @@ impl AppWindow {
             "save" => self.save_active_tab(),
             "saveAs" => self.save_active_tab_as(),
             "sourceMode" => self.send_command_to_active("toggleSourceMode"),
+            "find" => self.show_find_bar(),
+            "showPreferences" => self.show_preferences_dialog(),
+            "newWindow" | "openInNewWindow" => self.create_window(),
+            "new" => {
+                self.create_tab_blank();
+            }
+            // macOS 将菜单 id rotateImage 映射为内核 rotateImageClockwise(M1 审计顺延项)。
+            "rotateImage" => self.send_command_to_active("rotateImageClockwise"),
             "undo" | "redo" | "toggleBold" | "toggleItalic" | "toggleUnderline" | "toggleStrike"
             | "toggleHighlight" | "toggleBlockquote" | "promoteHeading" | "demoteHeading"
             | "selectAll" | "exitCode" | "insertTable" | "insertHorizontalRule"
@@ -916,6 +1168,101 @@ impl AppWindow {
             // Linux 首发未映射的宿主命令:显式提示,不静默。
             other => self.set_status(&format!("命令 {other} 在 Linux 版尚未映射")),
         }
+    }
+
+    /// 新窗口:复用本窗口的 app/context/settings,注册进窗口表。
+    fn create_window(self: &Rc<Self>) {
+        let Some(app) = self.window.application().and_then(|a| a.downcast::<adw::Application>().ok()) else {
+            return;
+        };
+        let window = AppWindow::new(&app, &self.context, self.settings.clone(), self.windows.clone());
+        window.present();
+        self.windows.borrow_mut().push(window);
+    }
+
+    /// 空白新标签(未命名文档)。
+    fn create_tab_blank(self: &Rc<Self>) {
+        self.create_tab_with_snapshot(
+            PathBuf::from("未命名.md"),
+            DocumentSnapshot::default(),
+            None,
+        );
+    }
+
+    /// 设置对话框(v1):快捷键自定义(核心命令) + 设置文件路径。
+    /// gtk::Dialog 4.10 起 deprecated;M5 打磨迁 AdwDialog(同 TreeView 取舍,台账已记)。
+    #[allow(deprecated)]
+    fn show_preferences_dialog(self: &Rc<Self>) {
+        let dialog = gtk::Dialog::builder()
+            .title(crate::l10n::tr(&self.lang, "设置").unwrap_or_else(|| "设置".into()))
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(560)
+            .build();
+        let grid = gtk::Grid::new();
+        grid.set_row_spacing(8);
+        grid.set_column_spacing(8);
+        grid.set_margin_top(12);
+        grid.set_margin_bottom(12);
+        grid.set_margin_start(12);
+        grid.set_margin_end(12);
+
+        let table = crate::app::shortcuts(&self.settings.borrow());
+        let commands = [
+            "save", "saveAs", "open", "new", "find", "sourceMode", "print",
+            "toggleBold", "toggleItalic", "zoomIn", "zoomOut", "resetZoom",
+        ];
+        let entries: Vec<(String, gtk::Entry)> = commands
+            .iter()
+            .map(|command| {
+                let label = gtk::Label::new(Some(command));
+                label.set_halign(gtk::Align::Start);
+                let entry = gtk::Entry::new();
+                entry.set_text(table.accel_for(command).as_deref().unwrap_or(""));
+                entry.set_hexpand(true);
+                (command.to_string(), entry.clone())
+            })
+            .collect();
+        for (row, (command, entry)) in entries.iter().enumerate() {
+            grid.attach(&gtk::Label::new(Some(command)), 0, row as i32, 1, 1);
+            grid.attach(entry, 1, row as i32, 1, 1);
+        }
+        let _ = &entries;
+        dialog.content_area().append(&grid);
+        dialog.add_button("保存", gtk::ResponseType::Apply);
+        dialog.add_button(crate::l10n::tr(&self.lang, "关闭").unwrap_or_else(|| "关闭".into()).as_str(), gtk::ResponseType::Close);
+
+        let this = self.clone();
+        let entries_for_save = entries.iter().map(|(command, entry)| (command.clone(), entry.clone())).collect::<Vec<_>>();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Apply {
+                let mut settings = this.settings.borrow_mut();
+                settings.shortcuts.clear();
+                let mut table = crate::ui::shortcuts::default_table();
+                let mut conflicts = Vec::new();
+                for (command, entry) in &entries_for_save {
+                    let accel = entry.text().to_string();
+                    if accel.is_empty() {
+                        continue;
+                    }
+                    if let Err(conflict) = table.bind(command, &accel) {
+                        conflicts.push(format!("{command}: {accel} 与 {} 冲突", conflict.command));
+                    }
+                }
+                settings.shortcuts = table.custom_bindings().clone();
+                crate::app::persist_settings(&settings);
+                drop(settings);
+                if conflicts.is_empty() {
+                    this.set_status("快捷键已保存");
+                } else {
+                    this.set_status(&format!("部分快捷键被跳过:{}", conflicts.join(";")));
+                }
+                dialog.close();
+            } else if response == gtk::ResponseType::Close || response == gtk::ResponseType::DeleteEvent {
+                dialog.close();
+            }
+        });
+        dialog.present();
     }
 
     fn follow_dark_mode(self: &Rc<Self>) {
