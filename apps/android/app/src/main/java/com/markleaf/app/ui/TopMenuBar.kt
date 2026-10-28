@@ -129,8 +129,8 @@ fun TopMenuBar(
                                         {
                                             Text(
                                                 "✓",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.primary,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         }
                                     } else null,
@@ -178,8 +178,8 @@ fun TopMenuBar(
                                             {
                                                 Text(
                                                     "✓",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.primary,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 )
                                             }
                                         } else null,
