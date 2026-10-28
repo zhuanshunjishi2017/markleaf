@@ -1360,6 +1360,19 @@ editorMount.addEventListener('contextmenu', (event) => {
   // 在此记录，供工具条可见性判断。
   if (isAndroidHost) {
     lastSelectionGesture = 'longpress'
+    // 原子块（公式/mermaid）：长按接管为节点选区。preventDefault 阻止
+    // Chromium 在 SVG/KaTeX 文本上的原生选字——该 DOM 选区映射不回
+    // ProseMirror，会把光标重置到文档起点并跳滚到顶部。
+    const atomTarget = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('.markleaf-math, .markleaf-mermaid')
+      : null
+    if (atomTarget && editorMount.contains(atomTarget)) {
+      event.preventDefault()
+      selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+      // 不调用 focus()：会拉起输入法压缩窗口，把工具条顶走；
+      // 工具条命令经桥接执行，无需 DOM 焦点
+      sendEditorState()
+    }
     return
   }
   const documentBounds = editor.view.dom.getBoundingClientRect()
