@@ -2,6 +2,7 @@
 
 package com.markleaf.app
 
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
@@ -101,6 +102,10 @@ class MainActivity : ComponentActivity() {
     private val showZoomDialog = mutableStateOf(false)
     private val showPreferences = mutableStateOf(false)
     private val showAbout = mutableStateOf(false)
+    /** 启动恢复：待用户决策的快照（恢复 / 另存副本 / 丢弃）。 */
+    private val recoveryEntry = mutableStateOf<RecoveryStore.Entry?>(null)
+    private var pendingRecoveryMarkdown: String? = null
+    private var pendingRecoveryId: String? = null
     private lateinit var prefsStore: android.content.SharedPreferences
     private val editorPrefs = mutableStateOf(com.markleaf.app.ui.EditorPrefs())
     private val selectionToolbarRect = mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
@@ -133,6 +138,10 @@ class MainActivity : ComponentActivity() {
     private var pendingExportHtml: kotlinx.coroutines.CompletableDeferred<String>? = null
     private var rebuiltWebView: WebView? = null
     private lateinit var resolver: AssetResolver
+    /** 编辑容器实际挂载的 WebView（崩溃重建后切换，EditorContainer 的 update 跟随）。 */
+    private val activeWebViewState = mutableStateOf<WebView?>(null)
+    /** 渲染进程崩溃保留的内容：ready 握手后重放，避免回落到欢迎文档。 */
+    private var pendingCrashRestoreMarkdown: String? = null
 
     private val openTreeLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
@@ -191,6 +200,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             documentDir = this::activeDocumentDirectory,
             onRenderProcessGone = this::handleRenderProcessGone,
         )
+        activeWebViewState.value = webView
         session = EditorSessionState().apply { startDocument(WELCOME_DOCUMENT_ID) }
         source = SafDocumentSource(this)
         recoveryStore = RecoveryStore(this)
@@ -257,7 +267,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onSave = { lifecycleScope.launch { saveActiveDocument() } },
                             )
                             EditorContainer(
-                                webView = webView,
+                                activeWebView = activeWebViewState.value,
                                 onPinch = ::onPinchZoom,
                             )
                             StatusBarPlaceholder(
@@ -446,11 +456,51 @@ SafDocumentSource.takePersistablePermission(this, uri)
             androidx.activity.compose.BackHandler(enabled = showPreferences.value) {
                 showPreferences.value = false
             }
+            // 启动恢复：最近一份未保存快照（其余在消化后继续弹出）
+            recoveryEntry.value?.let { entry ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { /* 必须明确选择：恢复 / 另存副本 / 丢弃 */ },
+                    title = { Text("发现未保存的修改") },
+                    text = {
+                        Text(
+                            "文档「${recoveryDisplayName(entry)}」在 " +
+                                java.text.DateFormat.getDateTimeInstance()
+                                    .format(java.util.Date(entry.savedAt)) +
+                                " 有未保存的内容。",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { restoreRecoverySnapshot(entry) }) { Text("恢复") }
+                    },
+                    dismissButton = {
+                        androidx.compose.foundation.layout.Row {
+                            TextButton(onClick = { saveRecoveryCopy(entry) }) { Text("另存副本") }
+                            TextButton(onClick = { discardRecoverySnapshot(entry) }) { Text("丢弃") }
+                        }
+                    },
+                )
+            }
             }
         }
 
         bridge.onEditorMessageDispatcher = ::handleEditorMessage
         webView.loadUrl(EditorWebViewFactory.EDITOR_URL)
+        routeViewIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        routeViewIntent(intent)
+    }
+
+    /** 外部打开（ACTION_VIEW text/markdown|text/plain|*.md）：把 content uri
+     *  交给当前会话打开（singleTask 下经 onNewIntent 到达）。 */
+    private fun routeViewIntent(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_VIEW) return
+        val uri = intent.data?.toString() ?: return
+        if (uri.isEmpty()) return
+        intent.setData(null)
+        openDocument(DocumentRef.Saf(uri))
     }
 
     /** 当前文档目录（SAF document uri 字符串），供图片拦截器解析。 */
@@ -465,13 +515,24 @@ SafDocumentSource.takePersistablePermission(this, uri)
     /** 渲染进程崩溃恢复：销毁重建 WebView 并重置会话（spec §8）。 */
     private fun handleRenderProcessGone(goneWebView: WebView): Boolean {
         Log.e(TAG, "WebView 渲染进程崩溃，重建")
-        val container = goneWebView.parent as? android.view.ViewGroup ?: return false
-        container.removeAllViews()
-        goneWebView.destroy()
-        val rebuilt = EditorWebViewFactory.create(this, assetResolver = resolver)
+        // 保留当前内容：ready 握手后重放（lastKnownMarkdown 为空说明是欢迎文档，走原路径）
+        if (lastKnownMarkdown.isNotEmpty()) {
+            pendingCrashRestoreMarkdown = lastKnownMarkdown
+        }
+        val rebuilt = EditorWebViewFactory.create(
+            this,
+            assetResolver = resolver,
+            documentDir = this::activeDocumentDirectory,
+            onRenderProcessGone = this::handleRenderProcessGone,
+        )
         rebuiltWebView = rebuilt
-        container.addView(rebuilt)
-        // 重建后 ready 握手会重新走（前端重新初始化）
+        webView = rebuilt
+        // 新 WebView 重新注册 JS 桥；postScript 捕获的是 webView 属性，已指向新实例
+        bridge.attach(rebuilt)
+        activeWebViewState.value = rebuilt
+        // 旧实例待容器换载后销毁
+        goneWebView.post { goneWebView.destroy() }
+        // 会话沿用当前 documentId，ready 握手重新走
         session.startDocument(session.documentId, revision = 0)
         return true
     }
@@ -502,12 +563,46 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     documentEncoding.value = encodingDisplayName(result.encoding)
                     documentNewline.value = active.activeNewline
                     Log.i(TAG, "打开 ${result.name} 编码=${result.encoding.name}")
+                    // 启动恢复：打开目标文件后用快照内容覆盖
+                    val snapshot = pendingRecoveryMarkdown
+                    val snapshotId = pendingRecoveryId
+                    if (snapshot != null) {
+                        pendingRecoveryMarkdown = null
+                        pendingRecoveryId = null
+                        bridge.post(
+                            HostMessage.LoadDocument(
+                                documentId = session.documentId,
+                                revision = session.confirmedRevision,
+                                payload = HostMessage.LoadDocument.LoadDocumentPayload(markdown = snapshot),
+                            ),
+                        )
+                        dirty.value = true
+                        snapshotId?.let { recoveryStore.discard(it) }
+                        activeTitle.value = "${
+                            result.name.substringBeforeLast('.')
+                        }（恢复）"
+                        showToast("已恢复未保存的修改")
+                    }
                 }
                 DocumentController.OpenResult.PermissionLost -> {
                     showToast("文档权限失效，请重新打开")
                 }
+                is DocumentController.OpenResult.PermissionLost -> {
+                    showToast("无访问权限")
+                    // 恢复流程被打断：重新弹对话框让用户重选
+                    if (pendingRecoveryMarkdown != null) {
+                        pendingRecoveryMarkdown = null
+                        pendingRecoveryId = null
+                        maybeShowRecoveryDialog()
+                    }
+                }
                 is DocumentController.OpenResult.Failed -> {
                     showToast("打开失败: ${result.message}")
+                    if (pendingRecoveryMarkdown != null) {
+                        pendingRecoveryMarkdown = null
+                        pendingRecoveryId = null
+                        maybeShowRecoveryDialog()
+                    }
                 }
             }
         }
@@ -601,7 +696,20 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         ),
                     ),
                 )
-                bridge.post(welcomeDocumentMessage())
+                // 崩溃重建：重放崩溃前内容；冷启动：欢迎文档
+                val crashMarkdown = pendingCrashRestoreMarkdown
+                pendingCrashRestoreMarkdown = null
+                bridge.post(
+                    if (crashMarkdown != null) {
+                        HostMessage.LoadDocument(
+                            documentId = frontendId,
+                            revision = 0,
+                            payload = HostMessage.LoadDocument.LoadDocumentPayload(markdown = crashMarkdown),
+                        )
+                    } else {
+                        welcomeDocumentMessage()
+                    },
+                )
                 // 持久化外观（字号/行高/宽度/缩放）在首帧后应用
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
                     { applyAppearance() },
@@ -612,6 +720,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             is EditorMessage.DocumentLoaded -> {
                 Log.i(TAG, "document loaded at revision ${message.revision}")
                 documentLoaded.value = true
+                maybeShowRecoveryDialog()
             }
             is EditorMessage.Snapshot -> {
                 lastKnownMarkdown = message.payload.markdown
@@ -972,11 +1081,94 @@ SafDocumentSource.takePersistablePermission(this, uri)
         else -> info.name
     }
 
+    /** 启动发现未保存快照：取最近一份弹恢复对话框（其余在流程消化后继续弹）。 */
+    private fun maybeShowRecoveryDialog() {
+        if (recoveryEntry.value != null) return
+        val newest = recoveryStore.pendingIds()
+            .mapNotNull { recoveryStore.consume(it) }
+            .maxByOrNull { it.savedAt } ?: return
+        recoveryEntry.value = newest
+    }
+
+    /** 恢复快照：SAF 文档先打开再覆盖内容；未命名文档直接载入当前会话。 */
+    private fun restoreRecoverySnapshot(entry: RecoveryStore.Entry) {
+        recoveryEntry.value = null
+        val markdown = entry.markdown
+        val ref = entry.ref
+        if (ref == null) {
+            recoveryStore.discard(entry.documentId)
+            bridge.post(
+                HostMessage.LoadDocument(
+                    documentId = session.documentId,
+                    revision = session.confirmedRevision,
+                    payload = HostMessage.LoadDocument.LoadDocumentPayload(markdown = markdown),
+                ),
+            )
+            dirty.value = true
+            activeTitle.value = "未命名（恢复）"
+        } else {
+            pendingRecoveryMarkdown = markdown
+            pendingRecoveryId = entry.documentId
+            openDocument(ref)
+        }
+    }
+
+    /** 另存副本：快照写入工作区新文档（未打开工作区时不可用）。 */
+    private fun saveRecoveryCopy(entry: RecoveryStore.Entry) {
+        val folder = workspaceRoot
+        if (folder == null) {
+            showToast("未打开工作区，无法另存副本")
+            return
+        }
+        lifecycleScope.launch {
+            runCatching {
+                val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+                    .format(java.util.Date(entry.savedAt))
+                val newRef = source.createDocument(folder, "recovered-$stamp.md")
+                source.write(newRef, entry.markdown.toByteArray(Charsets.UTF_8))
+                newRef
+            }.onSuccess { newRef ->
+                recoveryStore.discard(entry.documentId)
+                recoveryEntry.value = null
+                showToast("已另存副本 ${(newRef as? DocumentRef.Saf)?.let { Uri.parse(it.uri).lastPathSegment?.substringAfterLast("%2F") } ?: ""}")
+                maybeShowRecoveryDialog()
+            }.onFailure {
+                showToast("另存副本失败：${it.message}")
+            }
+        }
+    }
+
+    private fun discardRecoverySnapshot(entry: RecoveryStore.Entry) {
+        recoveryStore.discard(entry.documentId)
+        recoveryEntry.value = null
+        maybeShowRecoveryDialog()
+    }
+
+    private fun recoveryDisplayName(entry: RecoveryStore.Entry): String =
+        entry.ref?.let { ref ->
+            Uri.parse(ref.uri).lastPathSegment?.substringAfterLast("%2F")
+                ?.substringBeforeLast('.')
+                ?.takeIf { it.isNotEmpty() }
+        } ?: "未命名文档"
+
     override fun onPause() {
         super.onPause()
-        // spec §4.3：切后台写恢复快照
-        if (dirty.value && lastKnownMarkdown.isNotEmpty()) {
-            controller?.writeRecovery(recoveryStore, lastKnownMarkdown, dirty = true)
+        // spec §4.3：切后台写恢复快照（含未命名文档——无 SAF 引用也进恢复链路）。
+        // lastKnownMarkdown 仅在保存/导出时刷新，切后台需现取一份快照；
+        // HOME 场景下进程仍存活，挂起请求可在 onPause 返回后完成。
+        if (dirty.value) {
+            lifecycleScope.launch {
+                runCatching {
+                    val markdown = requestSnapshotBlocking().markdown
+                    lastKnownMarkdown = markdown
+                    val active = controller
+                    if (active != null) {
+                        active.writeRecovery(recoveryStore, markdown, dirty = true)
+                    } else {
+                        recoveryStore.writePending(session.documentId, null, markdown)
+                    }
+                }
+            }
         }
     }
 
@@ -1173,31 +1365,42 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.EditorContainer(
-    webView: WebView,
+    activeWebView: WebView?,
     onPinch: (Float, Boolean) -> Unit,
 ) {
-    AndroidView(
-        factory = {
-            // 双指捏合缩放：OnTouchListener 位于 View 分发链最前，能看到原始多点
-            // 事件；返回 false 不消费，WebView 的滚动/点击照常。
-            val detector = android.view.ScaleGestureDetector(
-                webView.context,
-                object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                    override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
-                        onPinch(detector.scaleFactor, false)
-                        return true
-                    }
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { context -> android.widget.FrameLayout(context) },
+        update = { frame ->
+            // 崩溃重建后 activeWebView 换新实例：容器换载并重挂捏合手势
+            if (activeWebView != null &&
+                (frame.childCount == 0 || frame.getChildAt(0) !== activeWebView)
+            ) {
+                frame.removeAllViews()
+                frame.addView(
+                    activeWebView,
+                    android.widget.FrameLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    ),
+                )
+                val detector = android.view.ScaleGestureDetector(
+                    frame.context,
+                    object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                        override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                            onPinch(detector.scaleFactor, false)
+                            return true
+                        }
 
-                    override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
-                        onPinch(1f, true)
-                    }
-                },
-            )
-            webView.setOnTouchListener { _, event ->
-                detector.onTouchEvent(event)
-                false
+                        override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
+                            onPinch(1f, true)
+                        }
+                    },
+                )
+                activeWebView.setOnTouchListener { _, event ->
+                    detector.onTouchEvent(event)
+                    false
+                }
             }
-            webView
         },
         modifier = Modifier
             .fillMaxWidth()

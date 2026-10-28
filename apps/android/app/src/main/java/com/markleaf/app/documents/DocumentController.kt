@@ -156,14 +156,14 @@ class DocumentController(
         }
     }
 
-    /** 标签关闭/应用切后台时写恢复快照（markdown 由调用方从最新 snapshot 取）。 */
+    /** 标签关闭/应用切后台时写恢复快照（markdown 由调用方从最新 snapshot 取）。
+     *  未命名文档（无 SAF 引用）也进恢复链路：恢复时直接载入内容。 */
     fun writeRecovery(store: RecoveryStore, markdown: String, dirty: Boolean) {
-        val ref = currentRef ?: return
         if (!dirty) {
             store.discard(currentDocumentId)
             return
         }
-        store.writePending(currentDocumentId, ref, markdown)
+        store.writePending(currentDocumentId, currentRef, markdown)
     }
 
     fun discardRecovery(store: RecoveryStore) {

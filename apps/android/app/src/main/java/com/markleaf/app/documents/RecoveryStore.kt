@@ -14,15 +14,16 @@ class RecoveryStore(context: Context) {
 
     data class Entry(
         val documentId: String,
-        val ref: DocumentRef.Saf,
+        /** 未命名文档（欢迎文档等）无 SAF 引用：恢复时直接载入内容。 */
+        val ref: DocumentRef.Saf?,
         val markdown: String,
         val savedAt: Long,
     )
 
-    fun writePending(documentId: String, ref: DocumentRef.Saf, markdown: String) {
+    fun writePending(documentId: String, ref: DocumentRef.Saf?, markdown: String) {
         val payload = JSONObject().apply {
             put("documentId", documentId)
-            put("ref", documentRefToStableString(ref))
+            if (ref != null) put("ref", documentRefToStableString(ref))
             put("markdown", markdown)
             put("savedAt", System.currentTimeMillis())
         }
@@ -42,8 +43,11 @@ class RecoveryStore(context: Context) {
         }
         return runCatching {
             val payload = JSONObject(file.readText())
-            val ref = documentRefFromStableString(payload.getString("ref")) as? DocumentRef.Saf
-                ?: return null
+            val ref = if (payload.has("ref")) {
+                documentRefFromStableString(payload.getString("ref")) as? DocumentRef.Saf
+            } else {
+                null
+            }
             Entry(
                 documentId = payload.getString("documentId"),
                 ref = ref,
