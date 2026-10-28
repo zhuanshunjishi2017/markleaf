@@ -110,6 +110,11 @@ class MainActivity : ComponentActivity() {
     private val showCloseConfirm = mutableStateOf(false)
     private val showLinkDialog = mutableStateOf(false)
     private var linkInput = ""
+    private val showImageUrlDialog = mutableStateOf(false)
+    private var imageUrlInput = "https://"
+    private val showTableSizeDialog = mutableStateOf(false)
+    private val tableRowsState = mutableStateOf(3)
+    private val tableColsState = mutableStateOf(3)
     private val renameEntryDialog = mutableStateOf<DocumentEntry?>(null)
     private var renameEntryInput = ""
     private val deleteDocConfirm = mutableStateOf(false)
@@ -506,6 +511,82 @@ SafDocumentSource.takePersistablePermission(this, uri)
             // 系统返回手势：有覆盖层时先关覆盖层（首选项/关于），不要退出应用
             androidx.activity.compose.BackHandler(enabled = showPreferences.value) {
                 showPreferences.value = false
+            }
+            // 插入来自互联网的图片：URL 输入（CSP 允许 https 图片直连渲染）
+            if (showImageUrlDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showImageUrlDialog.value = false },
+                    title = { Text("插入来自互联网的图片") },
+                    text = {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = imageUrlInput,
+                            onValueChange = { imageUrlInput = it },
+                            label = { Text("图片 URL") },
+                            singleLine = true,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val url = imageUrlInput.trim()
+                            if (url.isNotBlank()) postCommand("insertImage", "$url\n图片")
+                            showImageUrlDialog.value = false
+                        }) { Text("插入") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showImageUrlDialog.value = false }) { Text("取消") }
+                    },
+                )
+            }
+            // 插入表格：独立对话框指定行列
+            if (showTableSizeDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showTableSizeDialog.value = false },
+                    title = { Text("插入表格") },
+                    text = {
+                        Column {
+                            androidx.compose.foundation.layout.Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Text("行数", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                TextButton(onClick = { tableRowsState.value = (tableRowsState.value - 1).coerceAtLeast(1) }) { Text("−") }
+                                Text(
+                                    "${tableRowsState.value}",
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                TextButton(onClick = { tableRowsState.value = (tableRowsState.value + 1).coerceAtMost(20) }) { Text("+") }
+                            }
+                            androidx.compose.foundation.layout.Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Text("列数", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                TextButton(onClick = { tableColsState.value = (tableColsState.value - 1).coerceAtLeast(1) }) { Text("−") }
+                                Text(
+                                    "${tableColsState.value}",
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                TextButton(onClick = { tableColsState.value = (tableColsState.value + 1).coerceAtMost(20) }) { Text("+") }
+                            }
+                            Text(
+                                "带表头行；行列范围 1–20",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            postCommand("insertTable", "${tableRowsState.value},${tableColsState.value}")
+                            showTableSizeDialog.value = false
+                        }) { Text("插入") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showTableSizeDialog.value = false }) { Text("取消") }
+                    },
+                )
             }
             // 关闭当前文档：脏状态先给保存/丢弃选择
             if (showCloseConfirm.value) {
@@ -1279,9 +1360,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
             TopMenuSection("插入", listOf(
                 sub("图片", enabled = hasDoc, children = listOf(
                     host("插入本地图片…") { openImageLauncher.launch("image/*") },
+                    host("插入来自互联网的图片…") {
+                        imageUrlInput = "https://"
+                        showImageUrlDialog.value = true
+                    },
                 )),
                 sub("表格", enabled = en("insertTable"), children = listOf(
-                    cmdEntry("插入表格（3×3）", "insertTable"),
+                    host("插入表格（指定行列）…") { showTableSizeDialog.value = true },
                 )),
                 entry("Mermaid 图表", "insertMermaid"),
                 entry("插入超链接…", "setLink", action = {
