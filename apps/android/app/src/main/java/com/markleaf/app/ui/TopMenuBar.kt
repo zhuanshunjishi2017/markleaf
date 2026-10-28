@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /** 顶栏菜单条目：children 非空时渲染为子菜单父项（二级嵌套，对齐桌面
@@ -51,6 +52,10 @@ fun TopMenuBar(
 ) {
     // 菜单单开互斥：同一时刻至多一个下拉展开
     var expandedSection by remember { mutableStateOf<String?>(null) }
+    // 二级面板（换页式）：嵌套 Popup 在手机上锚点会错位，改为同一面板
+    // 内切换「‹ 返回 + 子条目列表」
+    var submenuTitle by remember { mutableStateOf<String?>(null) }
+    var submenuEntries by remember { mutableStateOf<List<TopMenuEntry>>(emptyList()) }
     Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
@@ -90,74 +95,104 @@ fun TopMenuBar(
                     )
                     DropdownMenu(
                         expanded = expandedSection == section.title,
-                        onDismissRequest = { expandedSection = null },
+                        onDismissRequest = {
+                            expandedSection = null
+                            submenuTitle = null
+                        },
                     ) {
-                        section.entries.forEach { entry ->
-                            if (entry.separatorBefore) {
-                                HorizontalDivider()
-                            }
-                            MenuEntryItem(
-                                entry = entry,
-                                onCloseAll = { expandedSection = null },
+                        if (submenuTitle != null) {
+                            // 二级面板：返回头 + 子条目（同窗口内换页，无锚点问题）
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "‹ $submenuTitle",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                },
+                                onClick = { submenuTitle = null },
                             )
+                            HorizontalDivider()
+                            submenuEntries.forEach { entry ->
+                                if (entry.separatorBefore) {
+                                    HorizontalDivider()
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            entry.title,
+                                            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                        )
+                                    },
+                                    leadingIcon = if (entry.checked == true) {
+                                        {
+                                            Text(
+                                                "✓",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    } else null,
+                                    enabled = entry.enabled,
+                                    onClick = {
+                                        expandedSection = null
+                                        submenuTitle = null
+                                        entry.action()
+                                    },
+                                )
+                            }
+                        } else {
+                            section.entries.forEach { entry ->
+                                if (entry.separatorBefore) {
+                                    HorizontalDivider()
+                                }
+                                if (entry.children != null) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                entry.title,
+                                                color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            Text("▸", style = MaterialTheme.typography.labelSmall)
+                                        },
+                                        enabled = entry.enabled,
+                                        onClick = {
+                                            submenuTitle = entry.title
+                                            submenuEntries = entry.children
+                                        },
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                entry.title,
+                                                color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                            )
+                                        },
+                                        leadingIcon = if (entry.checked == true) {
+                                            {
+                                                Text(
+                                                    "✓",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        } else null,
+                                        enabled = entry.enabled,
+                                        onClick = {
+                                            expandedSection = null
+                                            entry.action()
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-/** 菜单条目渲染（递归支持二级子菜单）：子菜单父项点击展开嵌套
- *  DropdownMenu（锚定本条目），子项操作后父级一并关闭。 */
-@Composable
-private fun MenuEntryItem(
-    entry: TopMenuEntry,
-    onCloseAll: () -> Unit,
-) {
-    var childOpen by remember { mutableStateOf(false) }
-    androidx.compose.foundation.layout.Box {
-        DropdownMenuItem(
-            text = {
-                Text(
-                    entry.title,
-                    color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                )
-            },
-            // 对齐桌面：仅勾选态显示 ✓（checked=false 无勾选语义时不占位）
-            leadingIcon = if (entry.checked == true) {
-                {
-                    Text(
-                        "✓",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            } else null,
-            trailingIcon = if (entry.children != null) {
-                { Text("▸", style = MaterialTheme.typography.labelSmall) }
-            } else null,
-            enabled = entry.enabled,
-            onClick = {
-                if (entry.children != null) {
-                    childOpen = !childOpen
-                } else {
-                    onCloseAll()
-                    entry.action()
-                }
-            },
-        )
-        entry.children?.let { children ->
-            DropdownMenu(
-                expanded = childOpen,
-                onDismissRequest = { childOpen = false },
-            ) {
-                children.forEach { child ->
-                    if (child.separatorBefore) {
-                        HorizontalDivider()
-                    }
-                    MenuEntryItem(child, onCloseAll = { childOpen = false; onCloseAll() })
                 }
             }
         }
