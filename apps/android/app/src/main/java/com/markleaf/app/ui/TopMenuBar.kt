@@ -125,7 +125,7 @@ fun TopMenuBar(
                                             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                         )
                                     },
-                                    leadingIcon = if (entry.checked == true) {
+                                    trailingIcon = if (entry.checked == true) {
                                         {
                                             Text(
                                                 "✓",
@@ -174,7 +174,7 @@ fun TopMenuBar(
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                             )
                                         },
-                                        leadingIcon = if (entry.checked == true) {
+                                        trailingIcon = if (entry.checked == true) {
                                             {
                                                 Text(
                                                     "✓",
