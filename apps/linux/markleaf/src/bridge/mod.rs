@@ -2,6 +2,7 @@
 // JS 注入转义),历史导入路径(bridge::messages::*)由 messages.rs 兼容。
 pub mod messages;
 pub mod protocol;
+pub mod session_state;
 
 pub use protocol::EditorEnvelope as EditorMessage;
 pub use protocol::EditorMessageType;
