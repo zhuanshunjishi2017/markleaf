@@ -1498,6 +1498,7 @@ async function handleMessage(value: unknown): Promise<void> {
   // 此时 applyStyles/setAutoHideScrollbar 等文档无关的偏好推送必须放行。
     if (message.type !== 'loadDocument' && message.type !== 'setDocumentType' && message.type !== 'applyStyles' && message.type !== 'localizeFindBar' && message.type !== 'refreshOutline' && message.type !== 'setCodeFormatterSettings'
       && documentLoaded && message.documentId !== documentId) {
+      console.warn('[hostmsg] dropped: documentId mismatch, msg:', message.documentId, 'front:', documentId)
       return
   }
 
@@ -1541,7 +1542,8 @@ async function handleMessage(value: unknown): Promise<void> {
       break
     }
     case 'loadDocument': {
-      interactions.cancel()
+      try {
+        interactions.cancel()
       updateFormatPainterCursor()
       const payload = message.payload as {
         markdown?: unknown
@@ -1621,6 +1623,7 @@ async function handleMessage(value: unknown): Promise<void> {
       savedMarkdown = typeof payload.savedMarkdown === 'string' ? payload.savedMarkdown
         : payload.initialDirty === true ? null : getActiveMarkdown()
       send('documentLoaded', undefined, message.requestId)
+      console.log('[loadDocument] done')
       if (payload.initialDirty === true) {
         reportedContentDirty = true
         send('dirtyChanged', { dirty: true })
@@ -1638,6 +1641,9 @@ async function handleMessage(value: unknown): Promise<void> {
       sendEditorState()
       sendOutlineSelectionFromCursor()
       break
+    } catch (error) {
+      console.error('[loadDocument] THREW:', error)
+    }
     }
     case 'restoreViewport': {
       if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break

@@ -125,14 +125,16 @@ private fun MenuEntryItem(
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                 )
             },
-            leadingIcon = entry.checked?.let { checked ->
+            // 对齐桌面：仅勾选态显示 ✓（checked=false 无勾选语义时不占位）
+            leadingIcon = if (entry.checked == true) {
                 {
-                    androidx.compose.material3.Checkbox(
-                        checked = checked,
-                        onCheckedChange = null,
+                    Text(
+                        "✓",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
-            },
+            } else null,
             trailingIcon = if (entry.children != null) {
                 { Text("▸", style = MaterialTheme.typography.labelSmall) }
             } else null,

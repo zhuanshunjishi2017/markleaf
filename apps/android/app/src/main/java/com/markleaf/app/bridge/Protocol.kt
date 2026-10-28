@@ -599,6 +599,9 @@ private val editorJson = Json {
     ignoreUnknownKeys = true
     classDiscriminator = "type"
     encodeDefaults = true
+    // requestId 等可空字段缺省时不输出 null：前端 isHostMessage 只接受
+    // undefined 或 string，显式 null 会被静默拒收（协议一致性校验依赖此点）
+    explicitNulls = false
 }
 
 /** 解析宿主消息（测试与桥一致性校验用）。未知 type / 版本不符返回 null。 */

@@ -47,6 +47,9 @@ object EditorWebViewFactory {
             cacheMode = WebSettings.LOAD_DEFAULT
             // 缩放由前端 zoom 命令统一处理；系统 textZoom 固定避免双重缩放
             textZoom = 100
+            // 资产全部来自本地拦截器（同源即时供给），HTTP 缓存会让应用更新后
+            // 仍拿到旧 index/JS，前端与宿主协议错位（表现为编辑器空白/功能失效）
+            cacheMode = WebSettings.LOAD_NO_CACHE
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
