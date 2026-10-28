@@ -28,7 +28,7 @@ const HOST_COMMANDS: &[&str] = &[
     "treeView", "listView", "toggleStatusBar", "sourceMode", "toggleReadOnlyMode",
     "zoomIn", "zoomOut", "resetZoom", "toggleFocusMode", "toggleFullScreen",
     "toggleFollowSystemTheme", "toggleCodeHighlight", "toggleEditorFocusMode",
-    "toggleTypewriterMode", "formatPainter",
+    "toggleTypewriterMode",
     // 插入/对象宿主侧(选文件/URL/对话框)
     "insertLink", "insertImage", "insertImageFromUrl", "changeImage",
     "saveImageAs", "saveMermaidAs", "insertMathInline", "insertMathBlock",

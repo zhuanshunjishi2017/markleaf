@@ -109,12 +109,30 @@ pub fn detect(bytes: &[u8]) -> EncodingDetection {
 }
 
 /// 按编码回写(可选 BOM)。
+/// encoding_rs 不提供 UTF-16 编码器(encode 会静默回退 UTF-8),
+/// UTF-16LE/BE 在此自行产出 code unit 字节——否则 UTF-16 文档保存即损坏。
 pub fn encode(text: &str, encoding: &'static Encoding, bom: bool) -> Vec<u8> {
     let mut bytes = Vec::new();
+    if encoding == encoding_rs::UTF_16LE {
+        if bom {
+            bytes.extend_from_slice(&[0xFF, 0xFE]);
+        }
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        return bytes;
+    }
+    if encoding == encoding_rs::UTF_16BE {
+        if bom {
+            bytes.extend_from_slice(&[0xFE, 0xFF]);
+        }
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_be_bytes());
+        }
+        return bytes;
+    }
     if bom && encoding == encoding_rs::UTF_8 {
         bytes.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
-    } else if bom && encoding == encoding_rs::UTF_16LE {
-        bytes.extend_from_slice(&[0xFF, 0xFE]);
     }
     let (encoded, _, _) = encoding.encode(text);
     bytes.extend_from_slice(&encoded);

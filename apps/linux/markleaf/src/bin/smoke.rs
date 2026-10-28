@@ -129,26 +129,6 @@ fn main() {
                     Some("cmd-paste-1"),
                 ));
                 *phase.borrow_mut() = Phase::WaitCommandResult;
-                return;
-                // documentLoaded 之后留出渲染缓冲再截图。注意:快照回调经主循环
-                // 派发,绝不能在主循环线程上阻塞等待(死锁),故逻辑整体在回调内收尾。
-                let main_loop = main_loop.clone();
-                let success = success.clone();
-                let webview = webview.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
-                    print_page_status(&webview);
-                    let webview = webview.clone();
-                    webview.widget().snapshot(
-                        SnapshotRegion::Visible,
-                        SnapshotOptions::empty(),
-                        None::<&gtk::gio::Cancellable>,
-                        move |outcome| {
-                            let ok = check_snapshot(outcome);
-                            *success.borrow_mut() = ok;
-                            main_loop.quit();
-                        },
-                    );
-                });
             }
             EditorMessageType::CommandResult => {
                 if *phase.borrow() != Phase::WaitCommandResult {
