@@ -129,7 +129,7 @@ fun TopMenuBar(
                                     },
                                     leadingIcon = {
                                         androidx.compose.foundation.layout.Box(
-                                            modifier = Modifier.width(10.dp),
+                                            modifier = Modifier.width(4.dp),
                                             contentAlignment = androidx.compose.ui.Alignment.CenterStart,
                                         ) {
                                             if (entry.checked == true) {
@@ -165,7 +165,7 @@ fun TopMenuBar(
                                         },
                                         leadingIcon = {
                                             androidx.compose.foundation.layout.Box(
-                                                modifier = Modifier.width(10.dp),
+                                                modifier = Modifier.width(4.dp),
                                                 contentAlignment = Alignment.CenterStart,
                                             ) {}
                                         },
@@ -189,7 +189,7 @@ fun TopMenuBar(
                                         },
                                         leadingIcon = {
                                             Box(
-                                                modifier = Modifier.width(10.dp),
+                                                modifier = Modifier.width(4.dp),
                                                 contentAlignment = Alignment.CenterStart,
                                             ) {
                                                 if (entry.checked == true) {
