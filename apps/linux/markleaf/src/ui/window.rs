@@ -20,6 +20,8 @@ use crate::documents::controller::EncodingDecision;
 use crate::documents::encoding::{apply_newline, detect_newline, detect, encode};
 use crate::documents::store::{read_document, write_document, DocumentSnapshot, WriteError};
 use crate::editor::webview::{EditorWebView, WebContext};
+use webkit::prelude::WebViewExt;
+use webkit::{PrintOperation, SnapshotOptions, SnapshotRegion};
 use crate::ui::menus;
 
 /// 会话清单条目(退出时由 app 层汇总)。
@@ -376,6 +378,34 @@ impl AppWindow {
                 self.sidebar.set_outline(&items);
             }
             EditorMessageType::EditorStatusChanged => self.update_status_from_editor(state, &message),
+            EditorMessageType::ExportContent => {
+                if message.request_id.as_deref() != Some("export-html") {
+                    return;
+                }
+                let Some(html) = message.payload.as_ref().and_then(|p| p.get("html")).and_then(|v| v.as_str()).map(str::to_string) else {
+                    self.set_status("导出失败:内核未返回 HTML");
+                    return;
+                };
+                let dialog = gtk::FileDialog::new();
+                let initial = state
+                    .document
+                    .borrow()
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_stem().map(|n| format!("{}.html", n.to_string_lossy())))
+                    .unwrap_or_else(|| "export.html".into());
+                dialog.set_initial_name(Some(&initial));
+                dialog.save(Some(&self.window), None::<&gio::Cancellable>, move |result| {
+                    if let Ok(file) = result {
+                        if let Some(path) = file.path() {
+                            match std::fs::write(&path, html) {
+                                Ok(()) => println!("[export] HTML 已保存 {}", path.display()),
+                                Err(err) => eprintln!("[export] 写入失败 {err}"),
+                            }
+                        }
+                    }
+                });
+            }
             EditorMessageType::OpenLink => {
                 if let Some(url) = message.payload.as_ref().and_then(|payload| payload.get("url")).and_then(|v| v.as_str()) {
                     open_uri(url);
@@ -609,6 +639,84 @@ impl AppWindow {
         self.set_status(&format!("字数 {words} · 行 {line} 列 {column}"));
     }
 
+    fn export_active_html(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else {
+            return;
+        };
+        let document = state.document.borrow();
+        let title = document
+            .path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "未命名".into());
+        let document_id = document.document_id.clone();
+        // 载荷形态对齐 macOS EditorSession.requestExportHTML(spec §6)。
+        let payload = serde_json::json!({
+            "format": "html",
+            "style": "serif",
+            "header": "",
+            "footer": "",
+            "fontSize": 16,
+            "lineHeight": 1.75,
+            "maxWidth": 820,
+            "visualCjkAutoSpacing": true,
+            "colorSchemeCss": "",
+            "title": title,
+            "keepTablesTogether": false,
+            "keepHeadingsWithNextBlock": false,
+        });
+        drop(document);
+        state.webview.post_to_editor(&HostMessage::command_with_request(
+            &document_id,
+            0,
+            serde_json::json!({ "command": "exportDocument", "text": payload.to_string() }),
+            Some("export-html"),
+        ));
+        self.set_status("正在生成 HTML…");
+    }
+
+    fn export_active_image(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else {
+            return;
+        };
+        let webview = state.webview.clone();
+        let window = self.window.clone();
+        webview.widget().snapshot(
+            SnapshotRegion::FullDocument,
+            SnapshotOptions::empty(),
+            None::<&gtk::gio::Cancellable>,
+            move |outcome| match outcome {
+                Ok(texture) => {
+                    let dialog = gtk::FileDialog::new();
+                    dialog.set_initial_name(Some("export.png"));
+                    dialog.save(Some(&window), None::<&gio::Cancellable>, move |result| {
+                        if let Ok(file) = result {
+                            if let Some(path) = file.path() {
+                                // 分片数学见 markleaf::export::slice_heights
+                                // (v1 先整图落盘;按高度分片在打磨阶段接 cairo 裁切)。
+                                if let Err(err) = texture.save_to_png(&path) {
+                                    eprintln!("[export] PNG 写入失败 {err}");
+                                } else {
+                                    println!("[export] 长图已保存 {}", path.display());
+                                }
+                            }
+                        }
+                    });
+                }
+                Err(err) => eprintln!("[export] 全文档快照失败 {err}"),
+            },
+        );
+    }
+
+    fn print_active(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else {
+            return;
+        };
+        let operation = PrintOperation::new(state.webview.widget());
+        operation.run_dialog(Some(&self.window));
+    }
+
     fn update_tab_title(self: &Rc<Self>, state: &Rc<TabState>) {
         let document = state.document.borrow();
         let name = document
@@ -676,6 +784,27 @@ impl AppWindow {
             }
         });
         self.window.add_action(&ctx_action);
+
+        // 导出 HTML:发 exportDocument 命令,回包落盘(见 ExportContent 分支)。
+        let this_export = self.clone();
+        let export_action = gio::SimpleAction::new("exportHtml", None);
+        export_action.connect_activate(move |_, _| this_export.export_active_html());
+        self.window.add_action(&export_action);
+        app.set_accels_for_action("win.exportHtml", &["<Control><Shift>e"]);
+
+        // 导出长图:全文档快照 → save_to_png。
+        let this_image = self.clone();
+        let image_action = gio::SimpleAction::new("exportImage", None);
+        image_action.connect_activate(move |_, _| this_image.export_active_image());
+        self.window.add_action(&image_action);
+
+        // 打印/PDF:WebKit 打印对话框(GTK 打印面板内可选“另存为 PDF”——
+        // 页眉页脚/页码为显式降级项,spec §6)。
+        let this_print = self.clone();
+        let print_action = gio::SimpleAction::new("print", None);
+        print_action.connect_activate(move |_, _| this_print.print_active());
+        self.window.add_action(&print_action);
+        app.set_accels_for_action("win.print", &["<Control>p"]);
 
         // 打开工作区目录 → 侧栏扫描。
         let sidebar_for_folder = self.sidebar.clone();

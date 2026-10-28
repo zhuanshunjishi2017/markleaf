@@ -18,7 +18,9 @@ pub fn main_menu_model() -> gio::Menu {
     menu.append_submenu(Some("视图"), &view);
 
     let export = gio::Menu::new();
-    export.append(Some("导出 HTML"), Some("win.ctx-command::exportHtmlPlaceholder"));
+    export.append(Some("导出 HTML"), Some("win.exportHtml"));
+    export.append(Some("导出长图"), Some("win.exportImage"));
+    export.append(Some("打印"), Some("win.print"));
     menu.append_submenu(Some("导出"), &export);
 
     menu
