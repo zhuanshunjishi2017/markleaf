@@ -1,0 +1,18 @@
+# MarkLeaf Linux 宿主开发镜像(ubuntu-24.04,arm64/amd64 通用)
+# 提供 GTK4 + libadwaita + WebKitGTK 6.0 构建环境与 xvfb 冒烟能力,
+# 与 CI(linux.yml)的 ubuntu-24.04 runner 环境同构。
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config curl ca-certificates \
+    libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev \
+    xvfb git \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+
+WORKDIR /repo
