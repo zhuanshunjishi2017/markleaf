@@ -21,13 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** 顶栏菜单条目：action 为空仅作展示分隔用。checked 非空时渲染勾选框
- *  （格式开关类命令与视图模式类命令），null 表示无状态语义。 */
+/** 顶栏菜单条目：children 非空时渲染为子菜单父项（二级嵌套，对齐桌面
+ *  段落样式/列表/提示框/表格/图片等子菜单结构）；action 为空且无 children
+ *  仅作展示分隔用。checked 非空时渲染勾选框。 */
 data class TopMenuEntry(
     val title: String,
     val enabled: Boolean = true,
     val separatorBefore: Boolean = false,
     val checked: Boolean? = null,
+    val children: List<TopMenuEntry>? = null,
     val action: () -> Unit = {},
 )
 
@@ -94,30 +96,66 @@ fun TopMenuBar(
                             if (entry.separatorBefore) {
                                 HorizontalDivider()
                             }
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        entry.title,
-                                        color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                    )
-                                },
-                                leadingIcon = entry.checked?.let { checked ->
-                                    {
-                                        androidx.compose.material3.Checkbox(
-                                            checked = checked,
-                                            onCheckedChange = null,
-                                        )
-                                    }
-                                },
-                                enabled = entry.enabled,
-                                onClick = {
-                                    expandedSection = null
-                                    entry.action()
-                                },
+                            MenuEntryItem(
+                                entry = entry,
+                                onCloseAll = { expandedSection = null },
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** 菜单条目渲染（递归支持二级子菜单）：子菜单父项点击展开嵌套
+ *  DropdownMenu（锚定本条目），子项操作后父级一并关闭。 */
+@Composable
+private fun MenuEntryItem(
+    entry: TopMenuEntry,
+    onCloseAll: () -> Unit,
+) {
+    var childOpen by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        DropdownMenuItem(
+            text = {
+                Text(
+                    entry.title,
+                    color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                )
+            },
+            leadingIcon = entry.checked?.let { checked ->
+                {
+                    androidx.compose.material3.Checkbox(
+                        checked = checked,
+                        onCheckedChange = null,
+                    )
+                }
+            },
+            trailingIcon = if (entry.children != null) {
+                { Text("▸", style = MaterialTheme.typography.labelSmall) }
+            } else null,
+            enabled = entry.enabled,
+            onClick = {
+                if (entry.children != null) {
+                    childOpen = !childOpen
+                } else {
+                    onCloseAll()
+                    entry.action()
+                }
+            },
+        )
+        entry.children?.let { children ->
+            DropdownMenu(
+                expanded = childOpen,
+                onDismissRequest = { childOpen = false },
+            ) {
+                children.forEach { child ->
+                    if (child.separatorBefore) {
+                        HorizontalDivider()
+                    }
+                    MenuEntryItem(child, onCloseAll = { childOpen = false; onCloseAll() })
                 }
             }
         }

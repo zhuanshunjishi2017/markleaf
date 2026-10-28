@@ -1192,7 +1192,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
             separator: Boolean = false,
             text: String? = null,
             action: (() -> Unit)? = null,
-        ) = TopMenuEntry(title, en(cmd), separator, ck(cmd)) {
+            children: List<TopMenuEntry>? = null,
+        ) = TopMenuEntry(title, en(cmd), separator, ck(cmd), children) {
             if (action != null) action() else postCommand(cmd, text ?: "")
         }
         fun host(
@@ -1200,23 +1201,29 @@ SafDocumentSource.takePersistablePermission(this, uri)
             enabled: Boolean = true,
             separator: Boolean = false,
             checked: Boolean? = null,
+            children: List<TopMenuEntry>? = null,
             action: () -> Unit = {},
-        ) = TopMenuEntry(title, enabled, separator, checked, action)
+        ) = TopMenuEntry(title, enabled, separator, checked, children, action)
+        fun sub(title: String, enabled: Boolean = true, separator: Boolean = false, children: List<TopMenuEntry>) =
+            TopMenuEntry(title, enabled, separator, children = children)
+        fun cmdEntry(title: String, cmd: String, separator: Boolean = false, text: String? = null) =
+            TopMenuEntry(title, en(cmd), separator) { postCommand(cmd, text ?: "") }
         val hasDoc = documentLoaded.value
         val hasFile = controller?.activeRef != null
         val recent = recentFiles()
         return listOf(
             TopMenuSection("文件", buildList {
-                add(host("新建 Markdown") { newDocument("markdown") })
-                add(host("新建纯文本") { newDocument("plainText") })
+                add(sub("新建", children = listOf(
+                    host("Markdown 文档") { newDocument("markdown") },
+                    host("纯文本") { newDocument("plainText") },
+                )))
                 add(host("打开文件夹…", separator = true) { openTreeLauncher.launch(null) })
                 add(host("打开文件…") { pendingReadOnlyOpen = false; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
                 add(host("以只读方式打开…") { pendingReadOnlyOpen = true; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
                 if (recent.isNotEmpty()) {
-                    add(host("最近文件", separator = true, enabled = false))
-                    recent.forEach { recentEntry ->
-                        add(host(recentEntry.second, enabled = true) { openDocument(DocumentRef.Saf(recentEntry.first)) })
-                    }
+                    add(sub("最近文件", separator = true, children = recent.map { recentEntry ->
+                        host(recentEntry.second) { openDocument(DocumentRef.Saf(recentEntry.first)) }
+                    }))
                 }
                 add(host("恢复未保存的文件…", separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
                     maybeShowRecoveryDialog()
@@ -1270,17 +1277,21 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 entry("全选", "selectAll", separator = true),
             )),
             TopMenuSection("插入", listOf(
-                entry("行内公式", "insertMathInline"),
-                entry("块级公式", "insertMathBlock"),
+                sub("图片", enabled = hasDoc, children = listOf(
+                    host("插入本地图片…") { openImageLauncher.launch("image/*") },
+                )),
+                sub("表格", enabled = en("insertTable"), children = listOf(
+                    cmdEntry("插入表格（3×3）", "insertTable"),
+                )),
                 entry("Mermaid 图表", "insertMermaid"),
-                entry("水平线", "insertHorizontalRule"),
-                entry("插入脚注", "insertFootnote"),
-                entry("插入图片…", "insertImage", action = { openImageLauncher.launch("image/*") }),
-                entry("插入超链接…", "setLink", separator = true, action = {
+                entry("插入超链接…", "setLink", action = {
                     linkInput = "https://"
                     showLinkDialog.value = true
                 }),
-                entry("移除链接", "removeLink"),
+                entry("插入脚注", "insertFootnote"),
+                entry("行内公式", "insertMathInline", separator = true),
+                entry("块级公式", "insertMathBlock"),
+                entry("水平线", "insertHorizontalRule"),
                 entry("YAML 前置元数据", "showFrontMatter", separator = true),
             )),
             TopMenuSection("格式", buildList {
@@ -1290,63 +1301,65 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 add(entry("删除线", "toggleStrike"))
                 add(entry("高亮", "toggleHighlight"))
                 add(entry("行内代码", "toggleCode"))
-                add(entry("正文", "setParagraph", separator = true))
-                add(entry("一级标题", "setHeading1"))
-                add(entry("二级标题", "setHeading2"))
-                add(entry("三级标题", "setHeading3"))
-                add(entry("四级标题", "setHeading4"))
-                add(entry("五级标题", "setHeading5"))
-                add(entry("六级标题", "setHeading6"))
-                add(entry("无序列表", "toggleBulletList", separator = true))
-                add(entry("有序列表", "toggleOrderedList"))
-                add(entry("任务列表", "toggleTaskList"))
-                add(entry("增加列表缩进", "indentListItem"))
-                add(entry("减少列表缩进", "outdentListItem"))
-                add(entry("引用", "toggleBlockquote", separator = true))
+                add(sub("段落样式", separator = true, children = listOf(
+                    cmdEntry("正文", "setParagraph"),
+                    cmdEntry("一级标题", "setHeading1"),
+                    cmdEntry("二级标题", "setHeading2"),
+                    cmdEntry("三级标题", "setHeading3"),
+                    cmdEntry("四级标题", "setHeading4"),
+                    cmdEntry("五级标题", "setHeading5"),
+                    cmdEntry("六级标题", "setHeading6"),
+                )))
+                add(sub("列表", children = listOf(
+                    cmdEntry("无序列表", "toggleBulletList"),
+                    cmdEntry("有序列表", "toggleOrderedList"),
+                    cmdEntry("任务列表", "toggleTaskList"),
+                    cmdEntry("增加列表缩进", "indentListItem", separator = true),
+                    cmdEntry("减少列表缩进", "outdentListItem"),
+                )))
+                add(entry("引用", "toggleBlockquote"))
                 add(entry("代码块", "toggleCodeBlock"))
-                add(entry("声明代码语言…", "setCodeBlockLanguage", action = { showToolbarLanguageDialog.value = true }))
-                add(entry("格式化代码块", "formatCodeBlock"))
-                add(entry("提示框：备注", "insertAlertNote", separator = true))
-                add(entry("提示框：提示", "insertAlertTip"))
-                add(entry("提示框：重要", "insertAlertImportant"))
-                add(entry("提示框：警告", "insertAlertWarning"))
-                add(entry("提示框：注意", "insertAlertCaution"))
-                add(entry("顺时针旋转图片", "rotateImageClockwise", separator = true))
-                add(entry("图片 50%", "resizeImage", text = "50"))
-                add(entry("图片 75%", "resizeImage", text = "75"))
-                add(entry("图片 90%", "resizeImage", text = "90"))
-                add(entry("图片 100%", "resizeImage", text = "100"))
+                add(sub("提示框", children = listOf(
+                    cmdEntry("备注", "insertAlertNote"),
+                    cmdEntry("提示", "insertAlertTip"),
+                    cmdEntry("重要", "insertAlertImportant"),
+                    cmdEntry("警告", "insertAlertWarning"),
+                    cmdEntry("注意", "insertAlertCaution"),
+                )))
+                add(sub("表格", enabled = en("addRowAfter"), separator = true, children = listOf(
+                    cmdEntry("编辑表格标题", "setTableCaption"),
+                    cmdEntry("上方插行", "addRowBefore"),
+                    cmdEntry("下方插行", "addRowAfter"),
+                    cmdEntry("删除当前行", "deleteRow"),
+                    cmdEntry("左插列", "addColumnBefore"),
+                    cmdEntry("右插列", "addColumnAfter"),
+                    cmdEntry("删除当前列", "deleteColumn"),
+                    cmdEntry("左对齐", "alignTableLeft"),
+                    cmdEntry("居中对齐", "alignTableCenter"),
+                    cmdEntry("右对齐", "alignTableRight"),
+                    cmdEntry("删除表格", "deleteTable", separator = true),
+                )))
+                add(sub("图片", enabled = en("rotateImageClockwise"), separator = true, children = listOf(
+                    cmdEntry("顺时针旋转 90°", "rotateImageClockwise"),
+                    cmdEntry("缩放 50%", "resizeImage", text = "50"),
+                    cmdEntry("缩放 75%", "resizeImage", text = "75"),
+                    cmdEntry("缩放 90%", "resizeImage", text = "90"),
+                    cmdEntry("缩放 100%", "resizeImage", text = "100"),
+                )))
+                add(sub("段落操作", separator = true, children = listOf(
+                    cmdEntry("段前插入行", "insertLineBefore"),
+                    cmdEntry("段后插入行", "insertLineAfter"),
+                    cmdEntry("重复该段", "duplicateParagraph"),
+                    cmdEntry("删除该段", "deleteParagraph"),
+                )))
                 add(entry("格式刷", "formatPainter", separator = true))
                 add(entry("应用格式刷", "formatPainterApply"))
+                add(entry("格式化代码块", "formatCodeBlock"))
                 add(entry("清除格式", "clearFormat", separator = true))
             }),
-            TopMenuSection("表格", listOf(
-                entry("编辑表格标题", "setTableCaption"),
-                entry("上方插行", "addRowBefore", separator = true),
-                entry("下方插行", "addRowAfter"),
-                entry("删除当前行", "deleteRow"),
-                entry("左插列", "addColumnBefore", separator = true),
-                entry("右插列", "addColumnAfter"),
-                entry("删除当前列", "deleteColumn"),
-                entry("内容列宽", "fitTableContents", separator = true),
-                entry("平均列宽", "distributeTableColumns"),
-                entry("恢复自动列宽", "resetTableWidths"),
-                entry("左对齐", "alignTableLeft", separator = true),
-                entry("居中对齐", "alignTableCenter"),
-                entry("右对齐", "alignTableRight"),
-                entry("删除表格", "deleteTable", separator = true),
-            )),
-            TopMenuSection("段落", listOf(
-                entry("段前插入行", "insertLineBefore"),
-                entry("段后插入行", "insertLineAfter"),
-                entry("重复该段", "duplicateParagraph", separator = true),
-                entry("删除该段", "deleteParagraph"),
-            )),
             TopMenuSection("视图", listOf(
-                host("显示/隐藏侧栏", enabled = true) { onToggleSidebar() },
-                host("源码模式", enabled = hasDoc, checked = editorSourceMode.value, separator = true) {
-                    postCommand("toggleSourceMode")
-                },
+                host("显示/隐藏侧栏") { onToggleSidebar() },
+                host("源码模式", enabled = hasDoc, checked = editorSourceMode.value, separator = true) { postCommand("toggleSourceMode") },
                 host("只读模式", enabled = hasDoc, checked = androidReadOnly.value, separator = true) {
                     toggleReadOnly()
                 },
