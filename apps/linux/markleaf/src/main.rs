@@ -3,6 +3,8 @@
 use gtk::glib;
 use gtk::prelude::*;
 
+mod editor;
+
 const APP_ID: &str = "com.markleaf.MarkLeaf";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
