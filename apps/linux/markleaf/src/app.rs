@@ -1,0 +1,160 @@
+// GtkApplication 装配:单实例、文件打开、会话恢复/保存、设置持久化。
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use gtk::gio;
+use gtk::glib;
+use gtk::prelude::*;
+
+use crate::data::session::{load as load_session, save as save_session, SessionManifest};
+use crate::data::settings::{load_settings, save_settings, AppSettings};
+use crate::editor::webview::build_context;
+use crate::ui::window::AppWindow;
+
+pub const APP_ID: &str = "com.markleaf.MarkLeaf";
+
+/// XDG 目录:(配置目录, 状态目录);变量缺失回退 ~/.config 与 ~/.local/state。
+pub fn storage_dirs() -> (PathBuf, PathBuf) {
+    let config = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".config")
+        })
+        .join("markleaf");
+    let state = std::env::var("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".local/state")
+        })
+        .join("markleaf");
+    (config, state)
+}
+
+pub fn settings_path() -> PathBuf {
+    storage_dirs().0.join("settings.json")
+}
+
+pub fn session_path() -> PathBuf {
+    storage_dirs().1.join("session/manifest.json")
+}
+
+pub fn run() -> glib::ExitCode {
+    if std::env::args().any(|arg| arg == "--version") {
+        println!("markleaf {}", env!("CARGO_PKG_VERSION"));
+        return glib::ExitCode::SUCCESS;
+    }
+
+    let app = adw::Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::HANDLES_OPEN)
+        .build();
+
+    // 共享状态:设置 + WebContext(全部窗口共用一个 WebKit 进程池)+ 窗口表。
+    let settings = Rc::new(RefCell::new(AppSettings::default()));
+    let context: Rc<RefCell<Option<webkit::WebContext>>> = Rc::new(RefCell::new(None));
+    let windows: Rc<RefCell<Vec<Rc<AppWindow>>>> = Rc::new(RefCell::new(Vec::new()));
+
+    {
+        let settings = settings.clone();
+        let context = context.clone();
+        app.connect_startup(move |_app| {
+            *settings.borrow_mut() = load_settings(&settings_path());
+            let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor");
+            *context.borrow_mut() = Some(build_context(&resources));
+        });
+    }
+
+    {
+        let settings = settings.clone();
+        let context = context.clone();
+        let windows_activate = windows.clone();
+        app.connect_activate(move |app| {
+            let Some(context) = context.borrow().clone() else {
+                return;
+            };
+            // 会话恢复:清单里的每个窗口一组标签;无清单则开空窗口。
+            let restored = restored_session();
+            match restored {
+                Some(manifest) if !manifest.windows.is_empty() => {
+                    for window_session in manifest.windows {
+                        let window = AppWindow::new(app, &context, settings.clone(), windows_activate.clone());
+                        for tab_path in &window_session.tabs {
+                            window.open_document_in_tab(&PathBuf::from(tab_path));
+                        }
+                        window.present();
+                        windows_activate.borrow_mut().push(window);
+                    }
+                }
+                _ => {
+                    let window = AppWindow::new(app, &context, settings.clone(), windows_activate.clone());
+                    window.present();
+                    windows_activate.borrow_mut().push(window);
+                }
+            }
+        });
+    }
+
+    {
+        let settings = settings.clone();
+        let context = context.clone();
+        let windows_open = windows.clone();
+        app.connect_open(move |app, files, _hint| {
+            let Some(context) = context.borrow().clone() else {
+                return;
+            };
+            let paths: Vec<PathBuf> = files.iter().filter_map(|file| file.path()).collect();
+            let existing = windows_open.borrow().last().cloned();
+            match existing {
+                Some(window) => {
+                    for path in paths {
+                        window.open_document_in_tab(&path);
+                    }
+                    window.present();
+                }
+                None => {
+                    let window = AppWindow::new(app, &context, settings.clone(), windows_open.clone());
+                    for path in paths {
+                        window.open_document_in_tab(&path);
+                    }
+                    window.present();
+                    windows_open.borrow_mut().push(window);
+                }
+            }
+        });
+    }
+
+    // 正常退出:保存设置与会话清单(shutdown 在窗口销毁前触发)。
+    {
+        let settings = settings.clone();
+        let windows_shutdown = windows.clone();
+        app.connect_shutdown(move |_app| {
+            let manifest = SessionManifest {
+                windows: windows_shutdown
+                    .borrow()
+                    .iter()
+                    .map(|window| crate::data::session::WindowSession {
+                        tabs: window.tab_paths(),
+                        active_tab: window.active_tab_index(),
+                        width: 0,
+                        height: 0,
+                    })
+                    .collect(),
+            };
+            let _ = save_session(&session_path(), &manifest);
+            persist_settings(&settings.borrow());
+        });
+    }
+
+    app.run()
+}
+
+fn restored_session() -> Option<SessionManifest> {
+    load_session(&session_path())
+}
+
+fn persist_settings(settings: &AppSettings) {
+    let _ = save_settings(&settings_path(), settings);
+}

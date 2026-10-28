@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use webkit::prelude::WebViewExt;
-use webkit::{UserContentManager, WebContext, WebView};
+use webkit::{UserContentManager, WebView};
+
+pub use webkit::WebContext;
 
 use crate::bridge::messages::{EditorMessage, HostMessage};
 
@@ -50,6 +52,8 @@ impl EditorWebView {
     }
 
     /// 注册编辑器→宿主消息回调(shim 走字符串传输,这里解出 JSON 文本再解析)。
+    /// 同一 WebView 可注册多个处理器(逐个触发);按消息类型过滤的便捷封装
+    /// 见 [`connect_on_message_type`]。
     pub fn connect_message(&self, handler: impl Fn(EditorMessage) + 'static) {
         self._content_manager
             .connect_script_message_received(Some(HANDLER_NAME), move |_manager, value| {
@@ -63,6 +67,15 @@ impl EditorWebView {
                     Err(err) => eprintln!("[bridge] 消息解析失败:{err}"),
                 }
             });
+    }
+
+    /// 按消息类型注册处理器(如 ready 握手)。
+    pub fn connect_on_message_type(&self, message_type: crate::bridge::messages::EditorMessageType, handler: impl Fn() + 'static) {
+        self.connect_message(move |message| {
+            if message.message_type == message_type {
+                handler();
+            }
+        });
     }
 
     pub fn widget(&self) -> &WebView {

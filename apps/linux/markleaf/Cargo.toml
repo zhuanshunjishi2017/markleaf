@@ -24,6 +24,7 @@ encoding_rs = "0.8"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 chardetng = "0.1"
 sha2 = "0.10"
-gdk = { package = "gdk4", version = "0.11" }
+gdk = { workspace = true }
+graphene = { workspace = true }
 
 [dev-dependencies]

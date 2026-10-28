@@ -595,6 +595,7 @@ dependencies = [
  "chardetng",
  "encoding_rs",
  "gdk4",
+ "graphene-rs",
  "gtk4",
  "libadwaita",
  "notify",
