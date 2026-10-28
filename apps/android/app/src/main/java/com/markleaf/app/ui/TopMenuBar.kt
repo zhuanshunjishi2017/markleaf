@@ -1,11 +1,13 @@
 package com.markleaf.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -125,15 +127,20 @@ fun TopMenuBar(
                                             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                         )
                                     },
-                                    trailingIcon = if (entry.checked == true) {
-                                        {
-                                            Text(
-                                                "✓",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
+                                    leadingIcon = {
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = Modifier.width(16.dp),
+                                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                                        ) {
+                                            if (entry.checked == true) {
+                                                Text(
+                                                    "✓",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
                                         }
-                                    } else null,
+                                    },
                                     enabled = entry.enabled,
                                     onClick = {
                                         expandedSection = null
@@ -174,15 +181,20 @@ fun TopMenuBar(
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                             )
                                         },
-                                        trailingIcon = if (entry.checked == true) {
-                                            {
-                                                Text(
-                                                    "✓",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier.width(16.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                if (entry.checked == true) {
+                                                    Text(
+                                                        "✓",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                    )
+                                                }
                                             }
-                                        } else null,
+                                        },
                                         enabled = entry.enabled,
                                         onClick = {
                                             expandedSection = null
