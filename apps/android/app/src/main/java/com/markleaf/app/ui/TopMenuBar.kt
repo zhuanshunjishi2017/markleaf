@@ -44,7 +44,7 @@ data class TopMenuSection(val title: String, val entries: List<TopMenuEntry>)
 private fun MenuEntryText(entry: TopMenuEntry) {
     Row {
         Box(
-            modifier = Modifier.width(10.dp),
+            modifier = Modifier.width(18.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (entry.checked == true) {
@@ -161,7 +161,7 @@ fun TopMenuBar(
                                     DropdownMenuItem(
                                         text = {
                                             Row {
-                                                Box(modifier = Modifier.width(10.dp))
+                                                Box(modifier = Modifier.width(18.dp))
                                                 Text(
                                                     entry.title,
                                                     color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
