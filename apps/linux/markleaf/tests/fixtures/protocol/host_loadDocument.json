@@ -1,0 +1,14 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "documentType": "markdown",
+  "initialDirty": false,
+  "markdown": "# 你好\n\n中文正文与 English 混排",
+  "readOnly": false,
+  "restoreViewState": true,
+  "scrollTop": 0
+ },
+ "protocolVersion": 1,
+ "revision": 0,
+ "type": "loadDocument"
+}

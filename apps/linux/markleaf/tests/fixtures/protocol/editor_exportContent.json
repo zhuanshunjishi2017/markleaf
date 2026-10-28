@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "html": "<!doctype html><html></html>"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "exportContent"
+}

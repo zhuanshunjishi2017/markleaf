@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "name": "diagram",
+  "svg": "<svg/>"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "mermaidImageExport"
+}

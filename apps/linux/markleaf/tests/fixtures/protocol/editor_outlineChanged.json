@@ -1,0 +1,15 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "items": [
+   {
+    "id": "h1",
+    "level": 1,
+    "text": "标题"
+   }
+  ]
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "outlineChanged"
+}

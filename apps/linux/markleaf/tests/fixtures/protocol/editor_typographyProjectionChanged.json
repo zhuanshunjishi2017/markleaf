@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "enabled": true
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "typographyProjectionChanged"
+}

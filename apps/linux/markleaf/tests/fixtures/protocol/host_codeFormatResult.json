@@ -1,0 +1,11 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "formatted": "x = 1;",
+  "success": true
+ },
+ "protocolVersion": 1,
+ "requestId": "req-fmt-1",
+ "revision": 3,
+ "type": "codeFormatResult"
+}

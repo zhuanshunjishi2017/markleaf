@@ -1,0 +1,19 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "actions": {
+   "toggleBold": {
+    "checked": false,
+    "enabled": true
+   }
+  },
+  "canUndo": true,
+  "hasSelection": true,
+  "readOnly": false,
+  "semanticContext": "ordinaryBlock",
+  "sourceMode": false
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "commandStateChanged"
+}

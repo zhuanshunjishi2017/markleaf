@@ -10,7 +10,7 @@ use gdk::prelude::TextureExt;
 use gdk::prelude::TextureExtManual;
 use gtk::glib;
 use gtk::prelude::*;
-use markleaf::bridge::messages::{EditorMessage, HostMessage};
+use markleaf::bridge::messages::{EditorMessage, EditorMessageType, HostMessage};
 use markleaf::editor::webview::{build_context, EditorWebView};
 use webkit::prelude::WebViewExt;
 use webkit::{SnapshotOptions, SnapshotRegion};
@@ -70,8 +70,8 @@ fn main() {
         let phase = phase.clone();
         let stage = stage.clone();
         let success = success.clone();
-        move |message: EditorMessage| match message {
-            EditorMessage::Ready => {
+        move |message: EditorMessage| match message.message_type {
+            EditorMessageType::Ready => {
                 if *phase.borrow() != Phase::Ready {
                     return;
                 }
@@ -84,7 +84,7 @@ fn main() {
                 webview_slot.borrow().as_ref().expect("webview 就绪").post_to_editor(&apply);
                 *phase.borrow_mut() = Phase::StylesApplied;
             }
-            EditorMessage::StylesApplied => {
+            EditorMessageType::StylesApplied => {
                 if *phase.borrow() != Phase::StylesApplied {
                     return;
                 }
@@ -105,7 +105,8 @@ fn main() {
                 webview_slot.borrow().as_ref().expect("webview 就绪").post_to_editor(&load);
                 *phase.borrow_mut() = Phase::DocumentLoaded;
             }
-            EditorMessage::DocumentLoaded { document_id, revision } => {
+            EditorMessageType::DocumentLoaded => {
+                let (document_id, revision) = (message.document_id.clone(), message.revision);
                 if *phase.borrow() != Phase::DocumentLoaded {
                     return;
                 }

@@ -1,12 +1,17 @@
-// EditorBridge:protocol.ts 的 Rust 实现。
-// M1 最小集;M2(Task 8)扩展为 protocol.ts 全 12+31 消息。
+// EditorBridge:protocol.rs 提供完整线格式;此处是桥层公共出口(类型别名、
+// JS 注入转义),历史导入路径(bridge::messages::*)由 messages.rs 兼容。
 pub mod messages;
+pub mod protocol;
+
+pub use protocol::EditorEnvelope as EditorMessage;
+pub use protocol::EditorMessageType;
+pub use protocol::HostEnvelope as HostMessage;
 
 /// 把已序列化的 JSON 文本转成 JS 单引号字符串字面量的安全内容。
 /// 宿主→前端的注入形如 `window.postMessage(JSON.parse('<escaped>'), '*')`
 /// (与 macOS EditorSession.swift:896、Android EditorBridge.kt:95 同构)。
-/// 本函数只允许出现 JS 单引号字面量合法的转义:\' \\ \n \r \t \uXXXX;
-/// 其余 <0x20 控制字符一律转 \uXXXX。
+/// 只产生 JS 单引号字面量合法的转义:\' \\ \n \r \t \uXXXX(4 位十六进制);
+/// 其余 <0x20 控制字符一律 \uXXXX。
 pub fn escape_for_js_literal(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 8);
     for ch in text.chars() {
@@ -24,8 +29,7 @@ pub fn escape_for_js_literal(text: &str) -> String {
 }
 
 /// 按 JS 单引号字面量语义还原转义(仅覆盖 escape_for_js_literal 可能产生的
-/// 转义序列),用于测试 round-trip——等价于在 JS 里执行 JSON.parse('…') 的
-/// 字符串解析阶段。
+/// 序列),测试 round-trip 用。
 #[cfg(test)]
 fn js_unescape_literal(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -79,7 +83,6 @@ mod tests {
         ];
         for case in cases {
             let escaped = escape_for_js_literal(case);
-            // 模拟 JSON.parse('<escaped>') 的字符串解析阶段。
             assert_eq!(js_unescape_literal(&escaped), case, "round trip 失败:{case:?}");
         }
     }

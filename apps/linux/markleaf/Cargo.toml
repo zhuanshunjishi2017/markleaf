@@ -21,3 +21,5 @@ webkit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 gdk = { package = "gdk4", version = "0.11" }
+
+[dev-dependencies]

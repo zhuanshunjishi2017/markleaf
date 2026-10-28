@@ -1,0 +1,13 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "scrollTop": 12.5,
+  "selection": {
+   "from": 1,
+   "to": 2
+  }
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "restoreViewport"
+}

@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "ctrlKey": true,
+  "deltaY": -120.0
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "zoomWheel"
+}

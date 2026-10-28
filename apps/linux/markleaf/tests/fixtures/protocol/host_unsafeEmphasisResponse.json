@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "allowed": true
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "unsafeEmphasisResponse"
+}

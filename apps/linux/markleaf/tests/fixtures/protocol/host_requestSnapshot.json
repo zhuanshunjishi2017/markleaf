@@ -1,0 +1,7 @@
+{
+ "documentId": "doc-1",
+ "protocolVersion": 1,
+ "requestId": "req-snap-1",
+ "revision": 3,
+ "type": "requestSnapshot"
+}

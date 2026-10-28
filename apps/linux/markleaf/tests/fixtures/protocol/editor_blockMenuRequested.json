@@ -1,0 +1,11 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "blockId": "b1",
+  "clientX": 10.0,
+  "clientY": 10.0
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "blockMenuRequested"
+}
