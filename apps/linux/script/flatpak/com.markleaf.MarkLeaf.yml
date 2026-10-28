@@ -15,9 +15,8 @@ modules:
   - name: markleaf
     buildsystem: simple
     build-commands:
-      # 内核产物由 CI 先构建(pnpm build:editor-web)并注入 shim,
-      # 此处 cargo 直接编译,editor 资源经 apps/linux/script/prepare_resources.sh 装配。
-      - cd apps/linux && cargo build --release --bin markleaf
+      # Sdk 沙箱无 Rust 工具链:二进制由 CI 先构建(cargo build --release),
+      # 此处仅安装;editor 资源经 prepare_resources.sh 预装配进 sources 目录。
       - install -Dm755 apps/linux/target/release/markleaf /app/bin/markleaf
       - install -Dm644 apps/linux/markleaf/data/com.markleaf.MarkLeaf.desktop /app/share/applications/com.markleaf.MarkLeaf.desktop
       - install -Dm644 apps/linux/markleaf/data/com.markleaf.MarkLeaf.svg /app/share/icons/hicolor/scalable/apps/com.markleaf.MarkLeaf.svg

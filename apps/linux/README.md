@@ -11,7 +11,7 @@ GTK4 + libadwaita + WebKitGTK 6.0 原生壳,与 Windows/macOS/Android/VS Code �
 - 深浅色跟随、四语言(zh-Hans/zh-Hant/en-US/ja-JP)、快捷键自定义(settings.json)
 - 自定义 scheme:`markleaf://`(页面)与 `markleaf-asset://`(文档图片)
 
-**已知降级**(v1 显式声明,不静默):PDF 页眉页脚/页码/大纲书签;长图按高度分片;Unity 全局菜单。
+**已知降级**(v1 显式声明,不静默):PDF 页眉页脚/页码/大纲书签;长图按高度分片(单文件整图可用);导出对话框的格式切换/纸张/边距与打印友好模式(浅色覆盖)——深色模式下打印将带深色底,请先切换浅色;Unity 全局菜单。
 
 ## 构建(开发机为 macOS 时经容器)
 

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "[0-9]*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -67,9 +68,15 @@ jobs:
           flatpak-builder --force-clean --repo=artifacts/flatpak-repo build/flatpak apps/linux/script/flatpak/com.markleaf.MarkLeaf.yml
           flatpak build-bundle artifacts/flatpak-repo artifacts/com.markleaf.MarkLeaf.flatpak com.markleaf.MarkLeaf
 
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          sha256sum MarkLeaf-*.AppImage com.markleaf.MarkLeaf.flatpak > SHA256SUMS-linux.txt
+
       - name: Attach artifacts to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/MarkLeaf-*.AppImage
             artifacts/com.markleaf.MarkLeaf.flatpak
+            artifacts/SHA256SUMS-linux.txt
