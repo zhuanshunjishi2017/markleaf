@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -24,9 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** 顶栏菜单条目：children 非空时渲染为子菜单父项（二级嵌套，对齐桌面
- *  段落样式/列表/提示框/表格/图片等子菜单结构）；action 为空且无 children
- *  仅作展示分隔用。checked 非空时渲染勾选框。 */
+/** 顶栏菜单条目：children 非空时渲染为子菜单父项（换页式二级面板）；
+ *  checked 非空且为 true 时在统一勾选列显示 ✓。 */
 data class TopMenuEntry(
     val title: String,
     val enabled: Boolean = true,
@@ -37,6 +37,31 @@ data class TopMenuEntry(
 )
 
 data class TopMenuSection(val title: String, val entries: List<TopMenuEntry>)
+
+/** 条目文字：可选内嵌 10dp 勾选列 + 标题（✓ 与文字间距可控，绕过
+ *  M3 leadingIcon 槽的固定内容间距）。 */
+@Composable
+private fun MenuEntryText(entry: TopMenuEntry) {
+    Row {
+        Box(
+            modifier = Modifier.width(10.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (entry.checked == true) {
+                Text(
+                    "✓",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Text(
+            entry.title,
+            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
+    }
+}
 
 /** 顶栏 v2：行1 操作行（撤销/重做/保存），行2 菜单栏（桌面 NativeMenuBuilder
  *  同构——文件/编辑/插入/格式/视图/更多），条目对齐桌面菜单同名命令。 */
@@ -76,8 +101,6 @@ fun TopMenuBar(
         }
         // 菜单行不加 horizontalScroll：DropdownMenu 在可滚动容器内锚点
         // 会错位到行首；六项在常规屏宽内放得下，窄屏由文本自动收缩承载
-        // DropdownMenu 锚定其父布局节点：每组用 Box 包裹，菜单才能锚在
-        // 对应菜单名下方（直接放 Row 里会锚到整行左上角）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -85,7 +108,7 @@ fun TopMenuBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             sections.forEach { section ->
-                androidx.compose.foundation.layout.Box {
+                Box {
                     Text(
                         text = section.title,
                         modifier = Modifier
@@ -120,27 +143,7 @@ fun TopMenuBar(
                                     HorizontalDivider()
                                 }
                                 DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            entry.title,
-                                            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        androidx.compose.foundation.layout.Box(
-                                            modifier = Modifier.width(4.dp),
-                                            contentAlignment = androidx.compose.ui.Alignment.CenterStart,
-                                        ) {
-                                            if (entry.checked == true) {
-                                                Text(
-                                                    "✓",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                )
-                                            }
-                                        }
-                                    },
+                                    text = { MenuEntryText(entry) },
                                     enabled = entry.enabled,
                                     onClick = {
                                         expandedSection = null
@@ -157,17 +160,14 @@ fun TopMenuBar(
                                 if (entry.children != null) {
                                     DropdownMenuItem(
                                         text = {
-                                            Text(
-                                                entry.title,
-                                                color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            androidx.compose.foundation.layout.Box(
-                                                modifier = Modifier.width(4.dp),
-                                                contentAlignment = Alignment.CenterStart,
-                                            ) {}
+                                            Row {
+                                                Box(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    entry.title,
+                                                    color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                                )
+                                            }
                                         },
                                         trailingIcon = {
                                             Text("▸", style = MaterialTheme.typography.labelSmall)
@@ -180,27 +180,7 @@ fun TopMenuBar(
                                     )
                                 } else {
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                entry.title,
-                                                color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Box(
-                                                modifier = Modifier.width(4.dp),
-                                                contentAlignment = Alignment.CenterStart,
-                                            ) {
-                                                if (entry.checked == true) {
-                                                    Text(
-                                                        "✓",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                    )
-                                                }
-                                            }
-                                        },
+                                        text = { MenuEntryText(entry) },
                                         enabled = entry.enabled,
                                         onClick = {
                                             expandedSection = null
