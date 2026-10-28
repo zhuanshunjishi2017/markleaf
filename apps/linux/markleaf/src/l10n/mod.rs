@@ -7,11 +7,18 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &["zh-Hans", "zh-Hant", "en-US", "ja-JP
 pub fn tr(language: &str, key: &str) -> Option<String> {
     match language {
         "zh-Hans" => Some(key.to_string()),
-        lang => TABLES
-            .iter()
-            .find(|(name, _)| *name == lang)
-            .and_then(|(_, table)| table.iter().find(|(k, _)| *k == key).map(|(_, value)| (*value).to_string()))
-            .or(if lang.is_empty() { None } else { Some(key.to_string()) }),
+        // 已知语言查表,缺键回退原文(macOS tables[lang]?[text] ?? text);
+        // 未知语言返回 None。
+        lang => {
+            let (_, table) = TABLES.iter().find(|(name, _)| *name == lang)?;
+            Some(
+                table
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, value)| (*value).to_string())
+                    .unwrap_or_else(|| key.to_string()),
+            )
+        }
     }
 }
 

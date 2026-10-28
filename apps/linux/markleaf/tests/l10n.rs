@@ -2,6 +2,14 @@
 // zh-Hans 直返原文,其余语言查表,缺键回退原文;未知语言返回 None。
 use markleaf::l10n::{tr, SUPPORTED_LANGUAGES};
 
+/// 每种语言确有分歧的键(用于"必须不同于原文"断言;
+/// 日文与简中共享大量汉字词,如"保存/格式",故按语言各列)。
+const DIVERGENT_KEYS: &[(&str, &[&str])] = &[
+    ("zh-Hant", &["文件", "编辑", "视图", "导出", "帮助", "设置", "打开", "保存", "另存为", "打印"]),
+    ("en-US", &["文件", "编辑", "视图", "打开", "保存", "查找", "设置", "大纲"]),
+    ("ja-JP", &["文件", "编辑", "视图", "打开", "另存为", "帮助", "设置", "大纲"]),
+];
+
 const MENU_KEYS: &[&str] = &[
     "文件", "编辑", "视图", "格式", "插入", "导出", "帮助", "设置",
     "打开", "保存", "另存为", "新建文档", "打印", "工作区", "大纲",
@@ -26,7 +34,16 @@ fn all_languages_translate_every_shell_key() {
         for key in MENU_KEYS {
             let value = tr(lang, key);
             assert!(value.is_some(), "{lang} 缺键 {key}");
-            assert_ne!(value.unwrap(), key, "{lang} 键 {key} 未翻译(回退原文)");
+        }
+    }
+}
+
+#[test]
+fn divergent_keys_must_differ_from_original() {
+    for (lang, keys) in DIVERGENT_KEYS {
+        for key in *keys {
+            let value = tr(lang, key).unwrap_or_else(|| panic!("{lang} 缺键 {key}"));
+            assert_ne!(value.as_str(), *key, "{lang} 键 {key} 未翻译(回退原文)");
         }
     }
 }
