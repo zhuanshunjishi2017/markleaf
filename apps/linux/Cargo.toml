@@ -1,0 +1,20 @@
+# MarkLeaf Linux 宿主 workspace。
+# 版本对齐纪律:gtk4 / libadwaita / webkit6 必须落在同一 gtk4 major 线
+# (webkit6 0.6.x 与 libadwaita 0.9.x 均绑 gtk4 ^0.11 / glib ^0.22,2026-10 核实)。
+[workspace]
+resolver = "2"
+members = ["markleaf"]
+
+[workspace.package]
+version = "1.2.2"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+# v4_14:webkit6 0.6 的生成代码引用 v4_10 gate 的 gtk::Accessible 等类型,
+# 需消费方启用;Ubuntu 24.04 系统库为 GTK 4.14,feature 门与运行时一致。
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.9" }
+webkit = { package = "webkit6", version = "0.6" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

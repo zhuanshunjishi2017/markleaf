@@ -1,0 +1,4 @@
+/target
+
+# 根 .gitignore 的 **/bin/(构建产物)会误伤 Rust 的 src/bin/ 源码目录
+!markleaf/src/bin/

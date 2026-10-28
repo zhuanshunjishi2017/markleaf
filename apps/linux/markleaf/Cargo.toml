@@ -1,0 +1,22 @@
+[package]
+name = "markleaf"
+description = "MarkLeaf Linux 桌面宿主(GTK4 + WebKitGTK 薄壳)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "markleaf"
+path = "src/main.rs"
+
+# 无头冒烟测试(xvfb 下运行:装载 editor dist → ready → loadDocument → 快照非空白)
+[[bin]]
+name = "smoke"
+path = "src/bin/smoke.rs"
+
+[dependencies]
+gtk = { workspace = true }
+adw = { workspace = true }
+webkit = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
