@@ -129,8 +129,8 @@ fun TopMenuBar(
                                     },
                                     leadingIcon = {
                                         androidx.compose.foundation.layout.Box(
-                                            modifier = Modifier.width(16.dp),
-                                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                                            modifier = Modifier.width(10.dp),
+                                            contentAlignment = androidx.compose.ui.Alignment.CenterStart,
                                         ) {
                                             if (entry.checked == true) {
                                                 Text(
@@ -165,8 +165,8 @@ fun TopMenuBar(
                                         },
                                         leadingIcon = {
                                             androidx.compose.foundation.layout.Box(
-                                                modifier = Modifier.width(16.dp),
-                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.width(10.dp),
+                                                contentAlignment = Alignment.CenterStart,
                                             ) {}
                                         },
                                         trailingIcon = {
@@ -189,8 +189,8 @@ fun TopMenuBar(
                                         },
                                         leadingIcon = {
                                             Box(
-                                                modifier = Modifier.width(16.dp),
-                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.width(10.dp),
+                                                contentAlignment = Alignment.CenterStart,
                                             ) {
                                                 if (entry.checked == true) {
                                                     Text(
