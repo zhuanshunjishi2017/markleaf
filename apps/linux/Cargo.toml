@@ -16,5 +16,6 @@ license = "MIT"
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 adw = { package = "libadwaita", version = "0.9" }
 webkit = { package = "webkit6", version = "0.6" }
+gdk = { package = "gdk4", version = "0.11" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,0 +1,62 @@
+name: linux
+
+on:
+  push:
+    paths:
+      - 'apps/linux/**'
+      - 'packages/editor-web/**'
+      - 'packages/editor-core/**'
+      - '.github/workflows/linux.yml'
+  pull_request:
+    paths:
+      - 'apps/linux/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install GTK/WebKitGTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev \
+            build-essential pkg-config xvfb
+
+      - name: Build editor web bundle
+        run: |
+          corepack pnpm --dir packages/editor-core install --frozen-lockfile
+          corepack pnpm --dir packages/editor-web install --frozen-lockfile
+          corepack pnpm --dir packages/editor-core build:renderer
+          corepack pnpm --dir packages/editor-web build
+
+      - name: Assemble editor resources
+        run: MARKLEAF_USE_BUILT_EDITOR_WEB=1 apps/linux/script/prepare_resources.sh
+
+      - name: Unit tests
+        working-directory: apps/linux
+        run: cargo test --workspace
+
+      - name: Clippy
+        working-directory: apps/linux
+        run: cargo clippy -- -D warnings
+
+      - name: Headless smoke (load → ready → applyStyles → loadDocument → snapshot)
+        working-directory: apps/linux
+        env:
+          # CI runner 的 WebKit 沙箱(bubblewrap)在受限环境可能不可用;冒烟豁免。
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+        run: xvfb-run -a -s "-screen 0 1024x768x24" cargo run --bin smoke

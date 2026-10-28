@@ -43,7 +43,9 @@ case "$cmd" in
   build)  inside=(cargo build "$@") ;;
   test)   inside=(cargo test "$@") ;;
   clippy) inside=(cargo clippy "$@") ;;
-  smoke)  inside=(xvfb-run -a cargo run --bin smoke "$@") ;;
+  # 冒烟经 run_smoke.sh:手动 Xvfb + 沙箱豁免(xvfb-run 包装脚本在容器
+  # TTY 下会卡在 Xvfb 启动后;容器无 user namespace,WebKit 沙箱需豁免)。
+  smoke)  inside=(bash /repo/apps/linux/script/dev/run_smoke.sh "$@") ;;
   run)    inside=("$@") ;;
   *) echo "用法: container.sh build|test|smoke|clippy|run [args...]" >&2; exit 2 ;;
 esac
