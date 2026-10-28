@@ -79,6 +79,8 @@ pub struct AppWindow {
     context_popover: PopoverMenu,
     /// 活动标签坐标换算用的当前缩放(经 zoomWheel 消息维护)。
     zoom_levels: RefCell<std::collections::HashMap<usize, f64>>,
+    sidebar: Rc<super::sidebar::Sidebar>,
+    split: adw::OverlaySplitView,
 }
 
 /// 恢复快照防抖间隔(对齐 settings.snapshot_interval_seconds 的下限用法:脏即定时落)。
@@ -127,16 +129,30 @@ impl AppWindow {
         header.pack_start(&source_button);
         header.pack_end(&menu_button);
 
+        let sidebar = super::sidebar::Sidebar::new();
+        let tab_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        tab_box.append(&tab_bar);
+        tab_box.append(&tab_view);
+        // libadwaita 0.9:NavigationSplitView(OverlaySplitView 在该线不可用)。
+        let split = adw::OverlaySplitView::builder()
+            .sidebar(&sidebar.root)
+            .content(&tab_box)
+            .collapsed(false)
+            .show_sidebar(true)
+            .min_sidebar_width(260.0)
+            .build();
+
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&header);
-        content.append(&tab_bar);
+        content.append(&split);
         let scrolled_status = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         scrolled_status.append(&status_label);
         scrolled_status.set_margin_top(2);
         scrolled_status.set_margin_bottom(2);
-        content.append(&tab_view);
         content.append(&scrolled_status);
         window.set_content(Some(&content));
+
+        let sidebar_for_handler = sidebar.clone();
 
         let this = Rc::new(Self {
             window,
@@ -147,8 +163,14 @@ impl AppWindow {
             settings,
             context_popover,
             zoom_levels: RefCell::new(Default::default()),
+            sidebar,
+            split: split.clone(),
         });
 
+        {
+            let this_for_open = this.clone();
+            sidebar_for_handler.set_open_handler(move |path| this_for_open.open_document_in_tab(path));
+        }
         this.install_actions(app, windows);
         this.wire_tab_view();
         this.apply_shortcuts(app);
@@ -343,6 +365,16 @@ impl AppWindow {
             EditorMessageType::ContextMenuRequested => self.show_context_menu(state, &message),
             EditorMessageType::BlockMenuRequested => self.show_context_menu(state, &message),
             EditorMessageType::CommandStateChanged => { /* M4:驱动按钮启用态 */ }
+            EditorMessageType::OutlineChanged => {
+                let items = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("items"))
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                self.sidebar.set_outline(&items);
+            }
             EditorMessageType::EditorStatusChanged => self.update_status_from_editor(state, &message),
             EditorMessageType::OpenLink => {
                 if let Some(url) = message.payload.as_ref().and_then(|payload| payload.get("url")).and_then(|v| v.as_str()) {
@@ -644,6 +676,36 @@ impl AppWindow {
             }
         });
         self.window.add_action(&ctx_action);
+
+        // 打开工作区目录 → 侧栏扫描。
+        let sidebar_for_folder = self.sidebar.clone();
+        let open_folder_action = gio::SimpleAction::new("openFolder", None);
+        {
+            let window = self.window.clone();
+            open_folder_action.connect_activate(move |_, _| {
+                let dialog = gtk::FileDialog::new();
+                let sidebar = sidebar_for_folder.clone();
+                dialog.select_folder(Some(&window), None::<&gio::Cancellable>, move |result| {
+                    if let Ok(file) = result {
+                        if let Some(path) = file.path() {
+                            sidebar.set_workspace_root(Some(path));
+                        }
+                    }
+                });
+            });
+        }
+        self.window.add_action(&open_folder_action);
+        app.set_accels_for_action("win.openFolder", &["<Control><Shift>o"]);
+        app.set_accels_for_action("win.toggleSidebar", &["<Control>backslash"]);
+
+        // 侧栏开关动作。
+        let split_ref = RefCell::new(self.split.clone());
+        let toggle_sidebar_action = gio::SimpleAction::new("toggleSidebar", None);
+        toggle_sidebar_action.connect_activate(move |_, _| {
+            let split = split_ref.borrow();
+            split.set_show_sidebar(!split.shows_sidebar());
+        });
+        self.window.add_action(&toggle_sidebar_action);
 
         // 关闭窗口动作(菜单)。
         let close_action = gio::SimpleAction::new("close-window", None);
