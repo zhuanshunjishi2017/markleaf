@@ -4,3 +4,4 @@ pub mod bridge;
 pub mod data;
 pub mod documents;
 pub mod editor;
+pub mod workspace;
