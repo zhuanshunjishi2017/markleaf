@@ -29,11 +29,19 @@ fn entry_path(dir: &Path, document_id: &str) -> PathBuf {
 }
 
 /// 原子保存:temp + rename,并发同 id 最终一致。
+/// temp 名按调用唯一(固定名会让并发方的 rename 撞 NotFound)。
 pub fn save_recovery(dir: &Path, entry: &RecoveryEntry) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     let json = serde_json::to_string_pretty(entry).expect("RecoveryEntry 序列化");
     let target = entry_path(dir, &entry.document_id);
-    let temp = dir.join(".recovery.tmp");
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let unique = format!(
+        ".recovery.{}-{seq}.tmp",
+        std::process::id()
+    );
+    let temp = dir.join(unique);
     fs::write(&temp, json)?;
     fs::rename(&temp, target)
 }

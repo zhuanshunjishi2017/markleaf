@@ -18,12 +18,15 @@ use webkit::{SnapshotOptions, SnapshotRegion};
 
 const DOCUMENT_ID: &str = "smoke";
 const DEADLINE_SECONDS: u32 = 90;
+const INSERTED_TEXT: &str = "Linux 编辑闭环";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Phase {
     Ready,
     StylesApplied,
     DocumentLoaded,
+    WaitCommandResult,
+    WaitSnapshot,
 }
 
 fn editor_root() -> PathBuf {
@@ -97,7 +100,7 @@ fn main() {
                     serde_json::json!({
                         "markdown": "# 冒烟\n\nHello Linux",
                         "documentType": "markdown",
-                        "readOnly": true,
+                        "readOnly": false,
                         "initialDirty": false,
                         "scrollTop": 0,
                         "restoreViewState": false,
@@ -117,7 +120,16 @@ fn main() {
                     return;
                 }
                 println!("[smoke] documentLoaded revision={revision}");
-                *stage.borrow_mut() = "snapshot".to_string();
+                // M2 闭环:插入文本 → commandResult → requestSnapshot → snapshot 落盘。
+                *stage.borrow_mut() = "commandResult".to_string();
+                webview.post_to_editor(&HostMessage::command_with_request(
+                    DOCUMENT_ID,
+                    revision,
+                    serde_json::json!({ "command": "pasteText", "text": INSERTED_TEXT }),
+                    Some("cmd-paste-1"),
+                ));
+                *phase.borrow_mut() = Phase::WaitCommandResult;
+                return;
                 // documentLoaded 之后留出渲染缓冲再截图。注意:快照回调经主循环
                 // 派发,绝不能在主循环线程上阻塞等待(死锁),故逻辑整体在回调内收尾。
                 let main_loop = main_loop.clone();
@@ -137,6 +149,57 @@ fn main() {
                         },
                     );
                 });
+            }
+            EditorMessageType::CommandResult => {
+                if *phase.borrow() != Phase::WaitCommandResult {
+                    return;
+                }
+                let success = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("success"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if !success {
+                    eprintln!("[smoke] FAIL pasteText commandResult success=false");
+                    main_loop.quit();
+                    return;
+                }
+                println!("[smoke] pasteText 成功,请求快照");
+                *stage.borrow_mut() = "snapshot".to_string();
+                webview.post_to_editor(&HostMessage::request_snapshot(DOCUMENT_ID, message.revision, "snap-1"));
+                *phase.borrow_mut() = Phase::WaitSnapshot;
+            }
+            EditorMessageType::Snapshot => {
+                if *phase.borrow() != Phase::WaitSnapshot {
+                    return;
+                }
+                if message.request_id.as_deref() != Some("snap-1") {
+                    return;
+                }
+                let markdown = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("markdown"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !markdown.contains(INSERTED_TEXT) {
+                    eprintln!("[smoke] FAIL 快照缺插入文本:{markdown:?}");
+                    main_loop.quit();
+                    return;
+                }
+                println!("[smoke] 快照含插入文本,落盘保存");
+                // 编码决策:保持原编码(M2 冒烟用 UTF-8)→ 原子写 → markSaved。
+                let save_path = std::env::temp_dir().join(format!("markleaf-smoke-save-{}.md", std::process::id()));
+                let bytes = markleaf::documents::encoding::encode(&markdown, encoding_rs::UTF_8, false);
+                std::fs::write(&save_path, &bytes).expect("落盘");
+                let round = std::fs::read_to_string(&save_path).expect("回读");
+                assert_eq!(round, markdown, "落盘往返一致");
+                println!("[smoke] 已保存 {}", save_path.display());
+                webview.post_to_editor(&HostMessage::mark_saved(DOCUMENT_ID, message.revision));
+                *success.borrow_mut() = true;
+                main_loop.quit();
             }
             other => eprintln!("[smoke] 忽略消息:{other:?}"),
         }

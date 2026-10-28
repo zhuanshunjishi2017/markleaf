@@ -282,12 +282,22 @@ impl HostEnvelope {
     }
 
     pub fn command(document_id: &str, revision: i64, payload: serde_json::Value) -> Self {
+        Self::command_with_request(document_id, revision, payload, None)
+    }
+
+    /// 带 requestId 的命令(前端仅在有 requestId 时回 commandResult)。
+    pub fn command_with_request(
+        document_id: &str,
+        revision: i64,
+        payload: serde_json::Value,
+        request_id: Option<&str>,
+    ) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION,
             message_type: HostMessageType::Command,
             document_id: document_id.to_string(),
             revision,
-            request_id: None,
+            request_id: request_id.map(str::to_string),
             payload: Some(payload),
         }
     }
