@@ -9,6 +9,7 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -219,12 +220,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // targetSdk 35+ 强制 edge-to-edge：内容绘制到系统栏下。浅色主题要求
-        // 状态栏用深色图标；顶栏/底栏经 statusBarsPadding/navigationBarsPadding
-        // 让出系统栏区域，Surface 背景延伸到栏下保持同色。
+        // targetSdk 35+ 强制 edge-to-edge：内容绘制到系统栏下。系统栏图标
+        // 对比度由 enableEdgeToEdge 按系统深色模式自动处理；顶栏/底栏经
+        // statusBarsPadding/navigationBarsPadding 让出系统栏区域。
         enableEdgeToEdge()
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
 
         resolver = AssetResolver { path: String ->
             val active = controller?.activeRef
@@ -255,7 +254,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.attach(webView)
 
         setContent {
-            MaterialTheme {
+            // 壳层（菜单/对话框/抽屉/系统栏）跟随系统深色模式；编辑区文档
+            // 主题独立由首选项 colorTheme 控制（CSS 层），两者互不影响
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            MaterialTheme(
+                colorScheme = if (systemDark) androidx.compose.material3.darkColorScheme()
+                else androidx.compose.material3.lightColorScheme(),
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
