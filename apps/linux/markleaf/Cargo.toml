@@ -20,6 +20,9 @@ adw = { workspace = true }
 webkit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+encoding_rs = "0.8"
+chardetng = "0.1"
+sha2 = "0.10"
 gdk = { package = "gdk4", version = "0.11" }
 
 [dev-dependencies]
