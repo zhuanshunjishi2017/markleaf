@@ -2,3 +2,6 @@
 
 # 根 .gitignore 的 **/bin/(构建产物)会误伤 Rust 的 src/bin/ 源码目录
 !markleaf/src/bin/
+
+# prepare_resources.sh 的装配产物(内核 dist 同步 + shim 注入 + 资产清单)
+markleaf/resources/editor/
