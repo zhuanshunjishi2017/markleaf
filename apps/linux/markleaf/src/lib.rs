@@ -4,4 +4,5 @@ pub mod bridge;
 pub mod data;
 pub mod documents;
 pub mod editor;
+pub mod l10n;
 pub mod workspace;

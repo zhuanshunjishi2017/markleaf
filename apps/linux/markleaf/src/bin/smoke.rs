@@ -120,6 +120,7 @@ fn main() {
                     return;
                 }
                 println!("[smoke] documentLoaded revision={revision}");
+                print_page_status(&webview);
                 // M2 闭环:插入文本 → commandResult → requestSnapshot → snapshot 落盘。
                 *stage.borrow_mut() = "commandResult".to_string();
                 webview.post_to_editor(&HostMessage::command_with_request(
@@ -178,8 +179,24 @@ fn main() {
                 assert_eq!(round, markdown, "落盘往返一致");
                 println!("[smoke] 已保存 {}", save_path.display());
                 webview.post_to_editor(&HostMessage::mark_saved(DOCUMENT_ID, message.revision));
-                *success.borrow_mut() = true;
-                main_loop.quit();
+                // 收尾像素采样(无 GPU 环境降级告警;为 M4 长图导出保留该路径)。
+                *stage.borrow_mut() = "snapshot".to_string();
+                let main_loop = main_loop.clone();
+                let success = success.clone();
+                let webview = webview.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                    let webview = webview.clone();
+                    webview.widget().snapshot(
+                        SnapshotRegion::Visible,
+                        SnapshotOptions::empty(),
+                        None::<&gtk::gio::Cancellable>,
+                        move |outcome| {
+                            let ok = check_snapshot(outcome);
+                            *success.borrow_mut() = ok;
+                            main_loop.quit();
+                        },
+                    );
+                });
             }
             other => eprintln!("[smoke] 忽略消息:{other:?}"),
         }
