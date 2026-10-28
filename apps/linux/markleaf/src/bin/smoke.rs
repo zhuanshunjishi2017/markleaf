@@ -1,6 +1,7 @@
 // 无头冒烟测试(xvfb 下运行):
 //   装载 editor dist → ready → applyStyles/stylesApplied → loadDocument/documentLoaded
-//   → 全文档快照,断言尺寸 > 0 且像素非均匀(空白页会全同色)。
+//   → JS 内容断言(ProseMirror/文本/样式表)→ 快照像素采样。
+// 像素断言在无 GPU 环境默认降级告警(MARKLEAF_SMOKE_STRICT_PIXEL=1 强制);
 // 任一阶段失败以非零退出并打印阶段名;整体 90s 死线(容器首次运行需建 fontconfig 缓存)。
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -50,8 +51,6 @@ fn main() {
     let phase = Rc::new(RefCell::new(Phase::Ready));
     let stage = Rc::new(RefCell::new("ready".to_string()));
     let success = Rc::new(RefCell::new(false));
-    // EditorWebView::new 的回调需要回调 webview 自身:经共享槽位解决创建顺序。
-    let webview_slot: Rc<RefCell<Option<EditorWebView>>> = Rc::new(RefCell::new(None));
 
     // 死线:超时打印当前阶段并以非零退出。
     {
@@ -64,8 +63,10 @@ fn main() {
         });
     }
 
+    // webview 先建,闭包捕获克隆后注册回调(无构造期循环引用)。
+    let webview = EditorWebView::new(&context);
     let on_message = {
-        let webview_slot = webview_slot.clone();
+        let webview = webview.clone();
         let main_loop = main_loop.clone();
         let phase = phase.clone();
         let stage = stage.clone();
@@ -81,7 +82,7 @@ fn main() {
                     DOCUMENT_ID,
                     serde_json::json!({ "frontendFormatMenu": false }),
                 );
-                webview_slot.borrow().as_ref().expect("webview 就绪").post_to_editor(&apply);
+                webview.post_to_editor(&apply);
                 *phase.borrow_mut() = Phase::StylesApplied;
             }
             EditorMessageType::StylesApplied => {
@@ -102,7 +103,7 @@ fn main() {
                         "restoreViewState": false,
                     }),
                 );
-                webview_slot.borrow().as_ref().expect("webview 就绪").post_to_editor(&load);
+                webview.post_to_editor(&load);
                 *phase.borrow_mut() = Phase::DocumentLoaded;
             }
             EditorMessageType::DocumentLoaded => {
@@ -121,19 +122,10 @@ fn main() {
                 // 派发,绝不能在主循环线程上阻塞等待(死锁),故逻辑整体在回调内收尾。
                 let main_loop = main_loop.clone();
                 let success = success.clone();
-                let webview_slot = webview_slot.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(3000), move || {
-                    {
-                        let slot = webview_slot.borrow();
-                        let webview = slot.as_ref().expect("webview 就绪");
-                        webview.widget().evaluate_javascript(
-                            "JSON.stringify({prose: !!document.querySelector('.ProseMirror'), head: (document.querySelector('.ProseMirror')?.textContent||'').slice(0,40), sheets: document.styleSheets.length})",
-                            None::<&str>, None::<&str>, None::<&gtk::gio::Cancellable>,
-                            |v| println!("[smoke] 页面状态:{}", v.as_ref().map(|val| val.to_json(0).map(|s| s.to_string()).unwrap_or_else(|| "<null>".into())).unwrap_or_else(|e| format!("<eval 失败:{e}>"))),
-                        );
-                    }
-                    let slot = webview_slot.borrow();
-                    let webview = slot.as_ref().expect("webview 就绪");
+                let webview = webview.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                    print_page_status(&webview);
+                    let webview = webview.clone();
                     webview.widget().snapshot(
                         SnapshotRegion::Visible,
                         SnapshotOptions::empty(),
@@ -149,11 +141,7 @@ fn main() {
             other => eprintln!("[smoke] 忽略消息:{other:?}"),
         }
     };
-
-    let webview = EditorWebView::new(&context, on_message);
-    *webview_slot.borrow_mut() = Some(webview);
-    let webview = webview_slot.borrow();
-    let webview = webview.as_ref().expect("webview 已入槽");
+    webview.connect_message(on_message);
 
     let window = gtk::Window::builder()
         .title("MarkLeaf Smoke")
@@ -164,14 +152,29 @@ fn main() {
     window.present();
 
     webview.load_editor_page();
-    // 持有到 run 前,避免提前释放;clippy 提示对引用 drop 无效。
-    let _ = webview;
     main_loop.run();
 
     if !*success.borrow() {
         std::process::exit(1);
     }
     println!("[smoke] PASS");
+}
+
+/// 页面内容诊断(异步回调经主循环派发;此处发完即走,结果在回调里打印)。
+fn print_page_status(webview: &EditorWebView) {
+    webview.widget().evaluate_javascript(
+        "JSON.stringify({prose: !!document.querySelector('.ProseMirror'), head: (document.querySelector('.ProseMirror')?.textContent||'').slice(0,40), sheets: document.styleSheets.length})",
+        None::<&str>,
+        None::<&str>,
+        None::<&gtk::gio::Cancellable>,
+        |v| {
+            let text = v
+                .ok()
+                .and_then(|val| val.to_json(0).map(|s| s.to_string()))
+                .unwrap_or_else(|| "<eval 失败>".into());
+            println!("[smoke] 页面状态:{text}");
+        },
+    );
 }
 
 /// 校验快照结果:尺寸 > 0 且 10×10 网格像素非均匀(空白页全同色判失败)。

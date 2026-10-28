@@ -1,5 +1,6 @@
 // EditorBridge:protocol.rs 提供完整线格式;此处是桥层公共出口(类型别名、
 // JS 注入转义),历史导入路径(bridge::messages::*)由 messages.rs 兼容。
+pub mod editor_bridge;
 pub mod messages;
 pub mod protocol;
 pub mod session_state;
