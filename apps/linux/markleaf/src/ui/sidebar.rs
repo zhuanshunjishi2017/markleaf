@@ -88,6 +88,9 @@ impl Sidebar {
         root.set_margin_top(6);
         root.set_margin_start(6);
         root.set_margin_end(6);
+        // 固定侧栏宽度:不设的话页签组会把自然宽度撑到约 1/3 窗口(实机验收反馈)。
+        root.set_size_request(280, -1);
+        root.set_hexpand(false);
         root.append(&switcher);
         root.append(&stack);
 
