@@ -163,6 +163,12 @@ fun TopMenuBar(
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                                             )
                                         },
+                                        leadingIcon = {
+                                            androidx.compose.foundation.layout.Box(
+                                                modifier = Modifier.width(16.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {}
+                                        },
                                         trailingIcon = {
                                             Text("▸", style = MaterialTheme.typography.labelSmall)
                                         },
