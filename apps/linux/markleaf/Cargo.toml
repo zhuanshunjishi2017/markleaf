@@ -11,6 +11,10 @@ path = "src/main.rs"
 
 # 无头冒烟测试(xvfb 下运行:装载 editor dist → ready → loadDocument → 快照非空白)
 [[bin]]
+name = "diag"
+path = "src/bin/diag.rs"
+
+[[bin]]
 name = "smoke"
 path = "src/bin/smoke.rs"
 

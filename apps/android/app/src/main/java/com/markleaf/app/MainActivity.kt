@@ -58,6 +58,7 @@ import com.markleaf.app.documents.DocumentRef
 import com.markleaf.app.documents.EncodingInfo
 import com.markleaf.app.documents.RecoveryStore
 import com.markleaf.app.documents.SafDocumentSource
+import com.markleaf.app.documents.SafDocumentPath
 import com.markleaf.app.documents.isMarkdownName
 import com.markleaf.app.editor.EditorWebViewFactory
 import com.markleaf.app.editor.StyleAssets
@@ -143,6 +144,7 @@ class MainActivity : ComponentActivity() {
             }.onSuccess { savedRef ->
                 activeTitle.value = Uri.parse(savedRef.uri).lastPathSegment?.substringAfterLast("%2F") ?: "未命名"
                 dirty.value = false
+                androidReadOnly.value = false
                 showToast("已另存为 ${activeTitle.value}")
                 rememberRecentFile(savedRef.uri, activeTitle.value)
             }.onFailure { showToast("另存为失败：${it.message}") }
@@ -199,7 +201,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            openDocument(DocumentRef.Saf(uri.toString()))
+            val readOnly = pendingReadOnlyOpen
+            pendingReadOnlyOpen = false
+            openDocument(DocumentRef.Saf(uri.toString()), readOnly = readOnly)
         }
     }
 
@@ -790,7 +794,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
     }
 
     private fun documentDirectoryOf(ref: DocumentRef.Saf): String =
-        ref.uri.substringBeforeLast('/').substringAfterLast("%2F", "Documents")
+        SafDocumentPath.parentDocumentUri(Uri.parse(ref.uri))?.toString() ?: ref.uri
 
     /** 渲染进程崩溃恢复：销毁重建 WebView 并重置会话（spec §8）。 */
     private fun handleRenderProcessGone(goneWebView: WebView): Boolean {
@@ -828,7 +832,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
-    private fun openDocument(ref: DocumentRef.Saf) {
+    private fun openDocument(ref: DocumentRef.Saf, readOnly: Boolean = false) {
         val active = controller ?: DocumentController(source, bridge::post, session).also {
             // 新控制器落首选项的默认编码/换行；打开已有文件时会被探测值覆盖
             encodingInfoFromPref(editorPrefs.value.defaultEncoding)?.let(it::setEncoding)
@@ -836,10 +840,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
             controller = it
         }
         lifecycleScope.launch {
-            when (val result = active.open(ref)) {
+            when (val result = active.open(ref, readOnly = readOnly)) {
                 is DocumentController.OpenResult.Loaded -> {
                     activeTitle.value = result.name
                     dirty.value = false
+                    androidReadOnly.value = readOnly
                     documentEncoding.value = encodingDisplayName(result.encoding)
                     documentNewline.value = active.activeNewline
                     Log.i(TAG, "打开 ${result.name} 编码=${result.encoding.name}")
@@ -866,9 +871,6 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 }
                 DocumentController.OpenResult.PermissionLost -> {
                     showToast("文档权限失效，请重新打开")
-                }
-                is DocumentController.OpenResult.PermissionLost -> {
-                    showToast("无访问权限")
                     // 恢复流程被打断：重新弹对话框让用户重选
                     if (pendingRecoveryMarkdown != null) {
                         pendingRecoveryMarkdown = null
@@ -901,6 +903,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 active.discardRecovery(recoveryStore)
                 showToast("已保存")
             }
+            DocumentController.SaveResult.ReadOnly -> showToast("只读文档不能保存，请使用另存为")
             DocumentController.SaveResult.Conflict -> showToast("文件已被外部修改，请另存或覆盖")
             DocumentController.SaveResult.PermissionLost -> showToast("保存失败：权限失效")
             DocumentController.SaveResult.NotDirty -> Unit
@@ -1315,7 +1318,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     maybeShowRecoveryDialog()
                     if (recoveryEntry.value == null) showToast("没有待恢复的内容")
                 })
-                add(host("保存", separator = true, enabled = hasDoc) { lifecycleScope.launch { saveActiveDocument() } })
+                add(host("保存", separator = true, enabled = hasDoc && !androidReadOnly.value) { lifecycleScope.launch { saveActiveDocument() } })
                 add(host("另存为…", enabled = hasDoc) { saveAsLauncher.launch("未命名.md") })
                 add(host("导出…", enabled = hasDoc) { showExport.value = true })
                 add(host("关闭当前文档", enabled = hasDoc, separator = true) {
@@ -1470,6 +1473,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
     private fun toggleReadOnly() {
         val next = !androidReadOnly.value
         androidReadOnly.value = next
+        // 控制器同源：菜单开关后的保存放行/拦截跟随会话实际只读态
+        controller?.setReadOnly(next)
         bridge.post(command("setReadOnly", if (next) "1" else "0"))
         showToast(if (next) "已进入只读模式" else "已退出只读模式")
     }

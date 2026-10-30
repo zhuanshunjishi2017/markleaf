@@ -355,6 +355,7 @@ impl AppWindow {
             zoom: std::cell::Cell::new(1.0),
         });
         self.tab_states.borrow_mut().push(state.clone());
+        log::debug!("[create_tab] document_id={document_id} path={}", path.display());
 
         {
             let this = self.clone();
@@ -472,7 +473,9 @@ impl AppWindow {
     fn handle_editor_message(self: &Rc<Self>, state: &Rc<TabState>, message: EditorMessage) {
         // M2 会话纪律接入运行时:ready 直通(握手前 documentId 尚未绑定),
         // 其余消息过门控;拒绝时 log::warn 不静默(Plan Global Constraint)。
-        if message.message_type != EditorMessageType::Ready {
+        // ready 与空 documentId 的消息(文档加载前的前端 UI 初始化)直通,
+        // 与桌面端行为一致;其余消息过会话门控。
+        if message.message_type != EditorMessageType::Ready && !message.document_id.is_empty() {
             let decision = state.session.borrow().accept(&message);
             match decision {
                 crate::bridge::session_state::AcceptDecision::Accept => {
@@ -480,10 +483,11 @@ impl AppWindow {
                 }
                 other => {
                     log::warn!(
-                        "[bridge] 拒绝消息 type={} doc={} rev={}: {other:?}",
+                        "[bridge] 拒绝消息 type={} doc={} rev={}: {other:?} (会话 doc={})",
                         message.message_type_name(),
                         message.document_id,
-                        message.revision
+                        message.revision,
+                        state.session.borrow().document_id()
                     );
                     return;
                 }

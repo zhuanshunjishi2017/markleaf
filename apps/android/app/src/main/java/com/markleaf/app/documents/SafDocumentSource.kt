@@ -96,31 +96,56 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
 
     /**
      * 读取文档目录下的资源文件（图片等），供 assets.local 拦截器调用。
-     * @param documentDir 文档目录的 SAF document uri 字符串
-     * @param relativePath 相对授权根的 POSIX 路径（已由 AssetResolver 归一化）
+     * @param documentDir 文档目录的 SAF document uri 字符串（即相对路径的基准目录）
+     * @param relativePath 相对该目录的 POSIX 路径（已由 AssetResolver 归一化）
      */
     suspend fun readSiblingBytes(documentDir: String, relativePath: String): ByteArray? =
         withContext(Dispatchers.IO) {
-            val dirUri = Uri.parse(documentDir)
-            val documentId = runCatching { DocumentsContract.getDocumentId(dirUri) }.getOrNull()
-                ?: return@withContext null
-            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(dirUri, documentId)
-            val projection = arrayOf(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            )
-            // 目标文件名 = 相对路径末段（AssetResolver 已保证路径在授权根内）
-            val targetName = relativePath.substringAfterLast('/')
-            contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val name = cursor.getString(1) ?: continue
-                    if (!name.equals(targetName, ignoreCase = true)) continue
-                    val childUri = DocumentsContract.buildDocumentUriUsingTree(dirUri, cursor.getString(0))
-                    return@withContext contentResolver.openInputStream(childUri)?.use { it.readBytes() }
+            val documentUri = Uri.parse(documentDir)
+            val documentId = runCatching { DocumentsContract.getDocumentId(documentUri) }
+                .getOrNull() ?: return@withContext null
+            val segments = SafDocumentPath.segments(relativePath)
+            if (segments.isEmpty()) return@withContext null
+
+            // 从传入目录自身出发逐段行走（caller 已给基准目录，不再取父）
+            val finalId = SafDocumentPath.walkDocumentId(documentId, segments) { parentId, segment ->
+                childDocumentsUri(documentUri, parentId)?.let { childrenUri ->
+                    findChildDocumentId(childrenUri, segment)
+                }
+            } ?: return@withContext null
+            val targetUri = childDocumentUri(documentUri, finalId)
+            contentResolver.openInputStream(targetUri)?.use { stream -> stream.readBytes() }
+        }
+
+    private fun childDocumentsUri(documentUri: Uri, parentId: String): Uri? =
+        if (documentUri.pathSegments.contains("tree")) {
+            DocumentsContract.buildChildDocumentsUriUsingTree(documentUri, parentId)
+        } else {
+            documentUri.authority?.let { DocumentsContract.buildChildDocumentsUri(it, parentId) }
+        }
+
+    private fun childDocumentUri(documentUri: Uri, childId: String): Uri =
+        if (documentUri.pathSegments.contains("tree")) {
+            DocumentsContract.buildDocumentUriUsingTree(documentUri, childId)
+        } else {
+            DocumentsContract.buildDocumentUri(documentUri.authority, childId)
+        }
+
+    private fun findChildDocumentId(childrenUri: Uri, targetName: String): String? {
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        )
+        contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(1) ?: continue
+                if (name.equals(targetName, ignoreCase = true)) {
+                    return cursor.getString(0)
                 }
             }
-            null
         }
+        return null
+    }
 
     companion object {
         /** 持久化授权：打开文件夹后调用，重启后仍可访问（spec §4.3 前提）。 */
@@ -128,6 +153,49 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
             val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(treeUri, flags)
+        }
+    }
+}
+
+/** SAF 文档 ID 的纯路径规则，独立出来便于测试和避免 URI 字符串猜测。 */
+internal object SafDocumentPath {
+    fun parentDocumentId(documentId: String): String {
+        val slash = documentId.lastIndexOf('/')
+        val colon = documentId.indexOf(':')
+        return when {
+            slash > colon -> documentId.substring(0, slash)
+            colon >= 0 -> documentId.substring(0, colon + 1)
+            else -> documentId
+        }
+    }
+
+    fun segments(relativePath: String): List<String> =
+        relativePath.trim('/').split('/').filter { it.isNotEmpty() && it != "." && it != ".." }
+
+    /**
+     * 从 rootDocumentId 出发按段行走子文档 ID；任一段找不到返回 null。
+     * 起点是传入的根本身（caller 负责给对基准目录），不再自动取父——
+     * 回归护栏：曾从父目录起步导致从卷根查找、嵌套图片全 404。
+     */
+    fun walkDocumentId(
+        rootDocumentId: String,
+        segments: List<String>,
+        findChild: (parentDocumentId: String, name: String) -> String?,
+    ): String? {
+        var current = rootDocumentId
+        for (segment in segments) {
+            current = findChild(current, segment) ?: return null
+        }
+        return current
+    }
+
+    fun parentDocumentUri(documentUri: Uri): Uri? {
+        val documentId = runCatching { DocumentsContract.getDocumentId(documentUri) }.getOrNull() ?: return null
+        val parentId = parentDocumentId(documentId)
+        return if (documentUri.pathSegments.contains("tree")) {
+            DocumentsContract.buildDocumentUriUsingTree(documentUri, parentId)
+        } else {
+            documentUri.authority?.let { DocumentsContract.buildDocumentUri(it, parentId) }
         }
     }
 }

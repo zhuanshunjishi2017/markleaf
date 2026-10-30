@@ -33,6 +33,7 @@ class DocumentController(
         data object Saved : SaveResult
         data object NotDirty : SaveResult
         data object Conflict : SaveResult
+        data object ReadOnly : SaveResult
         data object PermissionLost : SaveResult
         data class Failed(val message: String) : SaveResult
     }
@@ -122,10 +123,17 @@ class DocumentController(
         currentReadOnly = false
     }
 
-    /** 另存为/重命名后收养新引用（基线清空：下次保存全量写入新文件）。 */
+    /** 另存为/重命名后收养新引用（基线清空：下次保存全量写入新文件）。
+     *  另存为产生的是可写副本，只读会话态一并解除。 */
     fun adoptRef(ref: DocumentRef.Saf) {
         currentRef = ref
         baselineBytes = null
+        currentReadOnly = false
+    }
+
+    /** 会话只读态切换（视图菜单只读模式开关调用），与打开时的只读态同源。 */
+    fun setReadOnly(value: Boolean) {
+        currentReadOnly = value
     }
 
     /**
@@ -140,6 +148,9 @@ class DocumentController(
     ): SaveResult {
         if (!dirty) {
             return SaveResult.NotDirty
+        }
+        if (currentReadOnly) {
+            return SaveResult.ReadOnly
         }
         val ref = currentRef ?: return SaveResult.Failed("无活动文档")
         if (externalChanged) {

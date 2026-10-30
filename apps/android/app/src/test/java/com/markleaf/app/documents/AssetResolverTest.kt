@@ -66,4 +66,41 @@ class AssetResolverTest {
         assertEquals("Docs/note-assets/pic.png", AssetResolver.join("Docs", "note-assets/pic.png"))
         assertEquals("Docs/pic.png", AssetResolver.join("Docs", "../Docs/pic.png"))
     }
+
+    @Test
+    fun `content directory passes clean relative path to loader`() {
+        // 回归：曾把 content:// URI 当 POSIX 前缀拼进相对路径，
+        // 交给 SAF 行走时被拆成垃圾段、嵌套图片必然 miss。
+        val seen = mutableListOf<String>()
+        val resolver = AssetResolver { path ->
+            seen.add(path)
+            images[path]?.copyOf()
+        }
+        val result = resolver.resolve(
+            "assets/cover.png",
+            "content://com.android.externalstorage.documents/document/primary%3ADocs",
+        )
+        assertNull(result) // 相对路径不与前缀拼接后独立成立，loader 未命中是预期
+        assertEquals(listOf("assets/cover.png"), seen)
+    }
+
+    @Test
+    fun `content directory loader hit uses relative path only`() {
+        val images = mapOf("assets/cover.png" to byteArrayOf(7))
+        val resolver = AssetResolver { path -> images[path]?.copyOf() }
+        assertArrayEquals(
+            byteArrayOf(7),
+            resolver.resolve(
+                "assets/cover.png",
+                "content://com.android.externalstorage.documents/document/primary%3ADocs",
+            ),
+        )
+    }
+
+    @Test
+    fun `traversal rejected against content directory`() {
+        val resolver = AssetResolver { null }
+        assertNull(resolver.resolve("../escape.png", "content://authority/document/primary%3ADocs"))
+        assertNull(resolver.resolve("%2e%2e/escape.png", "content://authority/document/primary%3ADocs"))
+    }
 }

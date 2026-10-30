@@ -13,7 +13,9 @@ class AssetResolver(private val loader: (path: String) -> ByteArray?) {
 
     /**
      * @param path 前端请求的 path 参数（文档相对路径或绝对路径）
-     * @param documentDir 文档所在目录（相对授权根）
+     * @param documentDir 文档所在目录：POSIX 目录路径，或 SAF 目录的
+     *   `content://` document URI 字符串（此时不能当 POSIX 前缀拼接——
+     *   URI 会被拆成垃圾段；只归一化相对路径，目录定位由 SAF 侧按段行走）
      */
     fun resolve(path: String, documentDir: String): ByteArray? {
         val decoded = path
@@ -23,8 +25,11 @@ class AssetResolver(private val loader: (path: String) -> ByteArray?) {
             .replace("%2F", "/")
             .replace("%5c", "/")
             .replace("%5C", "/")
-        val normalized = normalize(join(documentDir, decoded))
-            ?: return null
+        val normalized = if (documentDir.startsWith("content://")) {
+            normalize(decoded)
+        } else {
+            normalize(join(documentDir, decoded))
+        } ?: return null
         return loader(normalized)
     }
 

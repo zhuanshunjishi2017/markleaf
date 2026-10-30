@@ -5,6 +5,7 @@ import com.markleaf.app.bridge.EditorSessionState
 import com.markleaf.app.bridge.HostMessage
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,6 +73,70 @@ class DocumentControllerTest {
         // 会话切换到新文档 id
         assertEquals(opened.hashCode(), opened.hashCode())
         assertTrue(session.documentId != "pending")
+    }
+
+    @Test
+    fun `read only open marks payload and blocks save`() = runTest {
+        val source = FakeSource()
+        source.files["fake://locked.md"] = Pair("只读内容".toByteArray(Charsets.UTF_8), 0)
+        val posted = mutableListOf<HostMessage>()
+        val controller = DocumentController(source, { posted.add(it) }, EditorSessionState())
+
+        val opened = controller.open(ref("locked.md"), readOnly = true)
+
+        assertTrue(opened is DocumentController.OpenResult.Loaded)
+        val load = posted.filterIsInstance<HostMessage.LoadDocument>().single()
+        assertTrue(load.payload.readOnly)
+        assertTrue(controller.activeReadOnly)
+
+        val result = controller.save(
+            snapshotProvider = { EditorMessage.Snapshot.SnapshotPayload(markdown = "不应写回") },
+            dirty = true,
+        )
+
+        assertEquals(DocumentController.SaveResult.ReadOnly, result)
+        assertEquals("只读内容", String(source.files.getValue("fake://locked.md").first, Charsets.UTF_8))
+    }
+
+    @Test
+    fun `adopt ref after save-as clears read only`() = runTest {
+        val source = FakeSource()
+        source.files["fake://locked.md"] = Pair("只读内容".toByteArray(Charsets.UTF_8), 0)
+        val controller = DocumentController(source, { }, EditorSessionState())
+        controller.open(ref("locked.md"), readOnly = true)
+        assertTrue(controller.activeReadOnly)
+
+        // 另存为产生可写副本：只读会话态解除，后续保存放行
+        controller.adoptRef(ref("copy.md"))
+        assertFalse(controller.activeReadOnly)
+        val result = controller.save(
+            snapshotProvider = { EditorMessage.Snapshot.SnapshotPayload(markdown = "副本内容") },
+            dirty = true,
+        )
+        assertEquals(DocumentController.SaveResult.Saved, result)
+    }
+
+    @Test
+    fun `setReadOnly follows session toggle`() = runTest {
+        val source = FakeSource()
+        source.files["fake://doc.md"] = Pair("内容".toByteArray(Charsets.UTF_8), 0)
+        val controller = DocumentController(source, { }, EditorSessionState())
+        controller.open(ref("doc.md"))
+
+        // 视图菜单只读模式开关与打开时的只读态同源
+        controller.setReadOnly(true)
+        val blocked = controller.save(
+            snapshotProvider = { EditorMessage.Snapshot.SnapshotPayload(markdown = "不应写回") },
+            dirty = true,
+        )
+        assertEquals(DocumentController.SaveResult.ReadOnly, blocked)
+
+        controller.setReadOnly(false)
+        val allowed = controller.save(
+            snapshotProvider = { EditorMessage.Snapshot.SnapshotPayload(markdown = "已编辑") },
+            dirty = true,
+        )
+        assertEquals(DocumentController.SaveResult.Saved, allowed)
     }
 
     @Test

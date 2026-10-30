@@ -145,6 +145,14 @@ pub fn register_schemes(context: &WebContext, editor_root: &Path) {
 fn serve_page(request: &URISchemeRequest, editor_root: &Path) {
     let uri = request.uri().unwrap_or_default();
     match resolve_scheme_uri(&uri, editor_root) {
+        // 内核懒加载按文档根请求 katex.min.css,而装配产物在 kernel/ 下;
+        // macOS 端同样缺省(样式内嵌,404 无害),此处回退映射消掉错误日志。
+        Ok(SchemeRequest::Page(ref path))
+            if path.file_name().map(|n| n == "katex.min.css").unwrap_or(false)
+                && !path.exists() =>
+        {
+            serve_page_fallback_kernel(request, editor_root, path)
+        }
         Ok(SchemeRequest::Page(path)) => match std::fs::read(&path) {
             Ok(bytes) => {
                 let mime = guess_mime(&path);
@@ -160,6 +168,25 @@ fn serve_page(request: &URISchemeRequest, editor_root: &Path) {
         Ok(SchemeRequest::AssetImage(_)) => finish_empty(request),
         Err(err) => {
             eprintln!("[scheme] 拒绝 {}: {err:?}", uri);
+            finish_empty(request);
+        }
+    }
+}
+
+fn serve_page_fallback_kernel(
+    request: &URISchemeRequest,
+    editor_root: &Path,
+    original: &Path,
+) {
+    let fallback = editor_root.join("kernel").join("katex.min.css");
+    match std::fs::read(&fallback) {
+        Ok(bytes) => {
+            let length = bytes.len() as i64;
+            let stream = gio::MemoryInputStream::from_bytes(&glib::Bytes::from_owned(bytes));
+            request.finish(&stream, length, Some("text/css"));
+        }
+        Err(_) => {
+            eprintln!("[scheme] 读取失败 {:?} 与回退均失败", original);
             finish_empty(request);
         }
     }
