@@ -1265,6 +1265,16 @@ function syncThemeModeClass(): void {
   document.body.classList.toggle('markleaf-theme-dark', isDarkTheme())
 }
 
+function syncThemeSurface(): void {
+  const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim()
+  if (!background) return
+  const dark = isDarkTheme()
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+  document.body.style.backgroundColor = background
+  editorMount.style.backgroundColor = background
+  sourceMount.style.backgroundColor = background
+}
+
 let formatMenuHideTimer = 0
 
 function showFormatMenu(
@@ -1537,6 +1547,7 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
       syncThemeModeClass()
+      syncThemeSurface()
       window.__markleafClearStartupBackground?.()
       send('stylesApplied')
       break

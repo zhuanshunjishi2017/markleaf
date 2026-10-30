@@ -11,6 +11,7 @@ object StyleAssets {
 
     const val BASE_CSS = "editor/styles/base.css"
     const val DEFAULT_COLOR_THEME = "colors-default-light"
+    const val DEFAULT_DARK_THEME = "colors-apple-dark"
     const val DEFAULT_TYPOGRAPHY_ID = "serif"
 
     /** 颜色主题（id 对齐 styles 目录下 colors 开头的主题 css 文件名）。 */
@@ -52,6 +53,14 @@ object StyleAssets {
 
     fun readTypographyCss(context: Context, styleId: String): String =
         read(context, "editor/styles/$styleId.css")
+
+    /**
+     * The Android shell follows the system appearance. Keep the document in
+     * sync when the user has not selected a specific color theme; explicit
+     * theme choices remain stable across system appearance changes.
+     */
+    fun resolveColorThemeId(selected: String, systemDark: Boolean): String =
+        if (selected == DEFAULT_COLOR_THEME && systemDark) DEFAULT_DARK_THEME else selected
 
     private fun read(context: Context, path: String): String =
         context.assets.open(path).use { stream ->

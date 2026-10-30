@@ -328,14 +328,37 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     /// 应用主题外观：color-scheme 让 WebKit 以深色绘制 overlay 滚动条/控件，
     /// appearance 同步系统控件。WKWebView 无公开的内部 NSScrollView，无法用 legacy 滚动条。
     func applyThemeAppearance(dark: Bool) {
+        let themedAppearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Keep light mode explicit. Inheriting through nil can lag one
         // appearance-propagation pass behind the parent window during a
         // dark-to-light switch, leaving WebKit controls on the old palette.
-        webView.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        webView.appearance = themedAppearance
+        // WKWebView keeps its overlay scrollers in an internal NSScrollView.
+        // Updating only the web view appearance leaves the old dark knob/track
+        // cached when switching back to light mode, so invalidate both levels.
+        let scrollView = webKitScrollView()
+        scrollView?.appearance = themedAppearance
+        scrollView?.verticalScroller?.appearance = themedAppearance
+        scrollView?.horizontalScroller?.appearance = themedAppearance
+        scrollView?.needsLayout = true
+        scrollView?.layoutSubtreeIfNeeded()
+        scrollView?.needsDisplay = true
+        scrollView?.verticalScroller?.needsDisplay = true
+        scrollView?.horizontalScroller?.needsDisplay = true
         let scheme = dark ? "dark" : "light"
-        webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(scheme)'") { _, error in
+        webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(scheme)'") { [weak self] _, error in
             if let error {
                 AppLog.warning("color-scheme 注入失败: \(error.localizedDescription)")
+            }
+            // The CSS color-scheme update can trigger a later WebKit repaint;
+            // invalidate once more after that transaction has completed.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let scrollView = self.webKitScrollView()
+                scrollView?.appearance = themedAppearance
+                scrollView?.verticalScroller?.appearance = themedAppearance
+                scrollView?.verticalScroller?.needsDisplay = true
+                scrollView?.needsDisplay = true
             }
         }
         // 对齐 Windows 1.1.3：页面背景与宿主容器使用主题 --bg-primary，减少加载期明暗跳变。
@@ -351,6 +374,19 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             reloadCoverView?.wantsLayer = true
             reloadCoverView?.layer?.backgroundColor = background.cgColor
         }
+    }
+
+    /// WKWebView's AppKit scroll view is private, so locate it through the
+    /// normal view tree instead of relying on a platform-specific property.
+    private func webKitScrollView() -> NSScrollView? {
+        func find(in view: NSView) -> NSScrollView? {
+            if let scrollView = view as? NSScrollView { return scrollView }
+            for child in view.subviews {
+                if let scrollView = find(in: child) { return scrollView }
+            }
+            return nil
+        }
+        return find(in: webView)
     }
 
     /// 编辑器前端就绪后揭示 WebView。

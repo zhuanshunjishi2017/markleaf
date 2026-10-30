@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -184,6 +185,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var resolver: AssetResolver
     /** 编辑容器实际挂载的 WebView（崩溃重建后切换，EditorContainer 的 update 跟随）。 */
     private val activeWebViewState = mutableStateOf<WebView?>(null)
+    private val editorReadyState = mutableStateOf(false)
     /** 渲染进程崩溃保留的内容：ready 握手后重放，避免回落到欢迎文档。 */
     private var pendingCrashRestoreMarkdown: String? = null
 
@@ -258,9 +260,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.attach(webView)
 
         setContent {
-            // 壳层（菜单/对话框/抽屉/系统栏）跟随系统深色模式；编辑区文档
-            // 主题独立由首选项 colorTheme 控制（CSS 层），两者互不影响
+            // 壳层与编辑区文档都跟随系统外观；用户显式选择的颜色主题仍保持不变。
             val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            LaunchedEffect(systemDark, editorReadyState.value) {
+                if (editorReadyState.value) applyStyles()
+            }
             MaterialTheme(
                 colorScheme = if (systemDark) androidx.compose.material3.darkColorScheme()
                 else androidx.compose.material3.lightColorScheme(),
@@ -799,6 +803,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
     /** 渲染进程崩溃恢复：销毁重建 WebView 并重置会话（spec §8）。 */
     private fun handleRenderProcessGone(goneWebView: WebView): Boolean {
         Log.e(TAG, "WebView 渲染进程崩溃，重建")
+        editorReadyState.value = false
         // 保留当前内容：ready 握手后重放（lastKnownMarkdown 为空说明是欢迎文档，走原路径）
         if (lastKnownMarkdown.isNotEmpty()) {
             pendingCrashRestoreMarkdown = lastKnownMarkdown
@@ -961,18 +966,20 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 // 开启会话（对齐 Windows：loadDocument 用前端 documentId）。
                 val frontendId = message.documentId
                 session.startDocument(frontendId, revision = 0)
+                editorReadyState.value = true
                 welcomeDocumentId = frontendId
                 Log.i(TAG, "editor ready; adopting documentId=$frontendId")
                 // 主题样式：baseCss 按序拼接 base → 颜色主题 → serif，保证
                 // --ml-*/--bg-* 变量与排版规则完整且覆盖顺序正确。
                 lastAppliedStyleId = editorPrefs.value.styleId
+                val colorThemeId = effectiveColorThemeId()
                 bridge.post(
                     HostMessage.ApplyStyles(
                         documentId = frontendId,
                         revision = 0,
                         payload = HostMessage.ApplyStyles.ApplyStylesPayload(
                             baseCss = StyleAssets.readBaseCss(this) + "\n" +
-                                StyleAssets.readColorThemeCss(this, editorPrefs.value.colorTheme) + "\n" +
+                                StyleAssets.readColorThemeCss(this, colorThemeId) + "\n" +
                                 StyleAssets.readTypographyCss(this, editorPrefs.value.styleId),
                             styles = styleCatalogJson(),
                             activeStyle = editorPrefs.value.styleId,
@@ -1154,19 +1161,26 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
     /** 下发主题样式载荷（base + 当前颜色主题 + 排版样式目录）。 */
     private fun applyStyles() {
+        val colorThemeId = effectiveColorThemeId()
         bridge.post(
             HostMessage.ApplyStyles(
                 documentId = session.documentId,
                 revision = session.confirmedRevision,
                 payload = HostMessage.ApplyStyles.ApplyStylesPayload(
                     baseCss = StyleAssets.readBaseCss(this) + "\n" +
-                        StyleAssets.readColorThemeCss(this, editorPrefs.value.colorTheme) + "\n" +
+                        StyleAssets.readColorThemeCss(this, colorThemeId) + "\n" +
                         StyleAssets.readTypographyCss(this, editorPrefs.value.styleId),
                     styles = styleCatalogJson(),
                     activeStyle = editorPrefs.value.styleId,
                 ),
             ),
         )
+    }
+
+    private fun effectiveColorThemeId(): String {
+        val systemDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        return StyleAssets.resolveColorThemeId(editorPrefs.value.colorTheme, systemDark)
     }
 
     /** 双指捏合：factor 为本次增量；finished 表示手势结束（补齐被限流的末次应用）。 */
