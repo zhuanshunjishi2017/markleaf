@@ -15,7 +15,12 @@ data class EditorPrefs(
     val styleId: String = "serif",
     val colorTheme: String = "colors-default-light",
     val sourceFontSize: Int = 14,
+    val sourceFontFamily: String = "monospace",
+    val cjkLanguage: String = "zh-Hans",
     val adaptiveJustification: Boolean = true,
+    val codeHighlight: Boolean = true,
+    val autoSave: Boolean = false,
+    val saveOnSwitch: Boolean = true,
     val defaultEncoding: String = "UTF-8",
     val defaultNewline: String = "LF",
 ) {
@@ -31,7 +36,12 @@ data class EditorPrefs(
             .putString(PREF_STYLE_ID, styleId)
             .putString(PREF_COLOR_THEME, colorTheme)
             .putInt(PREF_SOURCE_FONT_SIZE, sourceFontSize)
+            .putString(PREF_SOURCE_FONT_FAMILY, sourceFontFamily)
+            .putString(PREF_CJK_LANGUAGE, cjkLanguage)
             .putBoolean(PREF_ADAPTIVE_JUSTIFICATION, adaptiveJustification)
+            .putBoolean(PREF_CODE_HIGHLIGHT, codeHighlight)
+            .putBoolean(PREF_AUTO_SAVE, autoSave)
+            .putBoolean(PREF_SAVE_ON_SWITCH, saveOnSwitch)
             .putString(PREF_DEFAULT_ENCODING, defaultEncoding)
             .putString(PREF_DEFAULT_NEWLINE, defaultNewline)
             .apply()
@@ -48,7 +58,12 @@ data class EditorPrefs(
         private const val PREF_STYLE_ID = "styleId"
         private const val PREF_COLOR_THEME = "colorTheme"
         private const val PREF_SOURCE_FONT_SIZE = "sourceFontSize"
+        private const val PREF_SOURCE_FONT_FAMILY = "sourceFontFamily"
+        private const val PREF_CJK_LANGUAGE = "cjkLanguage"
         private const val PREF_ADAPTIVE_JUSTIFICATION = "adaptiveJustification"
+        private const val PREF_CODE_HIGHLIGHT = "codeHighlight"
+        private const val PREF_AUTO_SAVE = "autoSave"
+        private const val PREF_SAVE_ON_SWITCH = "saveOnSwitch"
         private const val PREF_DEFAULT_ENCODING = "defaultEncoding"
         private const val PREF_DEFAULT_NEWLINE = "defaultNewline"
 
@@ -69,6 +84,21 @@ data class EditorPrefs(
         /** 可选换行符（对齐桌面 newLinePopup）。 */
         val NEWLINE_CHOICES = listOf("LF", "CRLF")
 
+        /** 源码字体（Android 通用字族；桌面为具体字体名）。 */
+        val SOURCE_FONT_FAMILIES = listOf(
+            "monospace" to "等宽",
+            "serif" to "衬线",
+            "sans-serif" to "无衬线",
+        )
+
+        /** 中文排版语言（对齐桌面 CJKLanguageTag）。 */
+        val CJK_LANGUAGES = listOf(
+            "zh-Hans" to "简体中文",
+            "zh-Hant" to "繁體中文",
+            "ja" to "日本語",
+            "ko" to "한국어",
+        )
+
         fun load(sp: SharedPreferences): EditorPrefs = EditorPrefs(
             fontSize = sp.getInt(PREF_FONT_SIZE, 16).coerceIn(12, 24),
             lineHeight = sp.getFloat(PREF_LINE_HEIGHT, 1.75f).toDouble(),
@@ -80,7 +110,12 @@ data class EditorPrefs(
             styleId = sp.getString(PREF_STYLE_ID, "serif") ?: "serif",
             colorTheme = sp.getString(PREF_COLOR_THEME, "colors-default-light") ?: "colors-default-light",
             sourceFontSize = sp.getInt(PREF_SOURCE_FONT_SIZE, 14).coerceIn(12, 20),
+            sourceFontFamily = sp.getString(PREF_SOURCE_FONT_FAMILY, "monospace") ?: "monospace",
+            cjkLanguage = sp.getString(PREF_CJK_LANGUAGE, "zh-Hans") ?: "zh-Hans",
             adaptiveJustification = sp.getBoolean(PREF_ADAPTIVE_JUSTIFICATION, true),
+            codeHighlight = sp.getBoolean(PREF_CODE_HIGHLIGHT, true),
+            autoSave = sp.getBoolean(PREF_AUTO_SAVE, false),
+            saveOnSwitch = sp.getBoolean(PREF_SAVE_ON_SWITCH, true),
             defaultEncoding = sp.getString(PREF_DEFAULT_ENCODING, "UTF-8") ?: "UTF-8",
             defaultNewline = sp.getString(PREF_DEFAULT_NEWLINE, "LF") ?: "LF",
         )

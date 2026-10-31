@@ -110,6 +110,14 @@ class MainActivity : ComponentActivity() {
     private val recoveryEntry = mutableStateOf<RecoveryStore.Entry?>(null)
     private var pendingRecoveryMarkdown: String? = null
     private var pendingRecoveryId: String? = null
+    private val autoSaveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val autoSaveRunnable = Runnable {
+        if (editorPrefs.value.autoSave && dirty.value && documentLoaded.value &&
+            !androidReadOnly.value && controller?.activeRef != null
+        ) {
+            lifecycleScope.launch { saveActiveDocument() }
+        }
+    }
     private val showCloseConfirm = mutableStateOf(false)
     private val showLinkDialog = mutableStateOf(false)
     private var linkInput = ""
@@ -838,6 +846,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
     }
 
     private fun openDocument(ref: DocumentRef.Saf, readOnly: Boolean = false) {
+        // 对齐桌面 SaveOnDocumentSwitch（默认开）：打开另一文件前保存当前修改
+        // （仅已有 SAF 引用且非只读；未命名/只读文档无写回目标或不适用）
+        if (editorPrefs.value.saveOnSwitch && dirty.value &&
+            controller?.activeRef != null && !androidReadOnly.value
+        ) {
+            lifecycleScope.launch { saveActiveDocument() }
+        }
         val active = controller ?: DocumentController(source, bridge::post, session).also {
             // 新控制器落首选项的默认编码/换行；打开已有文件时会被探测值覆盖
             encodingInfoFromPref(editorPrefs.value.defaultEncoding)?.let(it::setEncoding)
@@ -1010,6 +1025,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             is EditorMessage.DocumentLoaded -> {
                 Log.i(TAG, "document loaded at revision ${message.revision}")
                 documentLoaded.value = true
+                bridge.post(
+                    command(
+                        "setCodeHighlightVisible",
+                        if (editorPrefs.value.codeHighlight) "1" else "0",
+                    ),
+                )
                 maybeShowRecoveryDialog()
             }
             is EditorMessage.Snapshot -> {
@@ -1074,7 +1095,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 sourceModeDisplayHandler.postDelayed(commitSourceModeRunnable, 120)
                 editorSemanticContext.value = message.payload.semanticContext
             }
-            is EditorMessage.DirtyChanged -> dirty.value = message.payload.dirty
+            is EditorMessage.DirtyChanged -> {
+                dirty.value = message.payload.dirty
+                // 自动保存（对齐桌面 FileSettings.AutoSave，默认关）：脏起 3s 防抖；
+                // 仅对已有 SAF 引用且非只读的文档生效（未命名文档无写回目标）
+                autoSaveHandler.removeCallbacks(autoSaveRunnable)
+                if (message.payload.dirty) {
+                    autoSaveHandler.postDelayed(autoSaveRunnable, 3000)
+                }
+            }
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
             is EditorMessage.EditorStatusChanged -> {
                 val payload = message.payload as? kotlinx.serialization.json.JsonObject
@@ -1126,8 +1155,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
             "\"fontSize\":'${"%.2f".format(prefs.fontSize * factor)}px'," +
             "\"maxWidth\":$maxWidthPx," +
             "\"sourceFontSize\":'${"%.2f".format(prefs.sourceFontSize * factor)}px'," +
-            "\"sourceFontFamily\":'monospace'," +
-            "\"cjkLanguage\":'zh'," +
+            "\"sourceFontFamily\":'${prefs.sourceFontFamily}'," +
+            "\"cjkLanguage\":'${prefs.cjkLanguage}'," +
             "\"visualCjkAutoSpacing\":${prefs.cjkSpacing}," +
             "\"allowTableColumnResize\":${prefs.tableColumnResize}," +
             "\"visualAdaptiveJustification\":${prefs.adaptiveJustification}," +
@@ -1155,6 +1184,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
         if (newPrefs.styleId != old.styleId || newPrefs.colorTheme != old.colorTheme) {
             lastAppliedStyleId = newPrefs.styleId
             applyStyles()
+        }
+        if (newPrefs.codeHighlight != old.codeHighlight && documentLoaded.value) {
+            postCommand("setCodeHighlightVisible", if (newPrefs.codeHighlight) "1" else "0")
         }
         applyAppearance()
     }

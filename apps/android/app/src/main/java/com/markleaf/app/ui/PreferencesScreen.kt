@@ -76,6 +76,28 @@ fun PreferencesScreen(
                     onMinus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize - 1).coerceAtLeast(12))) },
                     onPlus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize + 1).coerceAtMost(20))) },
                 )
+                ChipRow(
+                    label = "源码字体",
+                    options = EditorPrefs.SOURCE_FONT_FAMILIES.map { it.second },
+                    selected = EditorPrefs.SOURCE_FONT_FAMILIES
+                        .firstOrNull { it.first == prefs.sourceFontFamily }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.SOURCE_FONT_FAMILIES
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(sourceFontFamily = it.first)) }
+                    },
+                )
+                ChipRow(
+                    label = "中文排版语言",
+                    options = EditorPrefs.CJK_LANGUAGES.map { it.second },
+                    selected = EditorPrefs.CJK_LANGUAGES
+                        .firstOrNull { it.first == prefs.cjkLanguage }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.CJK_LANGUAGES
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(cjkLanguage = it.first)) }
+                    },
+                )
                 SwitchRow(
                     label = "中西文之间自动加空格",
                     checked = prefs.cjkSpacing,
@@ -100,7 +122,6 @@ fun PreferencesScreen(
                     onSelect = { display ->
                         themeIds.firstOrNull { it.second == display }?.let { onChange(prefs.copy(colorTheme = it.first)) }
                     },
-                    wrap = true,
                 )
 
                 SectionTitle("视图")
@@ -126,13 +147,29 @@ fun PreferencesScreen(
                     }
                 }
 
+                SectionTitle("通用")
+                SwitchRow(
+                    label = "显示代码高亮",
+                    checked = prefs.codeHighlight,
+                    onChange = { onChange(prefs.copy(codeHighlight = it)) },
+                )
+                SwitchRow(
+                    label = "自动保存",
+                    checked = prefs.autoSave,
+                    onChange = { onChange(prefs.copy(autoSave = it)) },
+                )
+                SwitchRow(
+                    label = "切换文档时自动保存",
+                    checked = prefs.saveOnSwitch,
+                    onChange = { onChange(prefs.copy(saveOnSwitch = it)) },
+                )
+
                 SectionTitle("文件")
                 ChipRow(
                     label = "默认编码",
                     options = EditorPrefs.ENCODING_CHOICES,
                     selected = prefs.defaultEncoding,
                     onSelect = { onChange(prefs.copy(defaultEncoding = it)) },
-                    wrap = true,
                 )
                 ChipRow(
                     label = "默认换行符",
@@ -141,7 +178,7 @@ fun PreferencesScreen(
                     onSelect = { onChange(prefs.copy(defaultNewline = it)) },
                 )
                 Text(
-                    "更多设置（颜色主题自定义、源码字体、显示语言等）将在后续版本提供",
+                    "更多设置（颜色主题自定义、显示语言等）将在后续版本提供",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -182,34 +219,24 @@ private fun ChipRow(
     options: List<String>,
     selected: String,
     onSelect: (String) -> Unit,
-    wrap: Boolean = false,
 ) {
+    // 所有 chip 组统一走加权 FlowRow 列：各行的 chip 起始 x 对齐一致
+    // （此前非 wrap 行的 chip 右贴边，与相邻 wrap 行左对齐混排错位）
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        if (wrap) {
-            androidx.compose.foundation.layout.FlowRow(
-                modifier = Modifier.weight(2.2f),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
-            ) {
-                options.forEach { option ->
-                    FilterChip(
-                        selected = option == selected,
-                        onClick = { onSelect(option) },
-                        label = { Text(option, style = MaterialTheme.typography.labelMedium) },
-                    )
-                }
-            }
-        } else {
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.weight(2.2f),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+        ) {
             options.forEach { option ->
                 FilterChip(
                     selected = option == selected,
                     onClick = { onSelect(option) },
-                    label = { Text(option) },
-                    modifier = Modifier.padding(start = 6.dp),
+                    label = { Text(option, style = MaterialTheme.typography.labelMedium) },
                 )
             }
         }
