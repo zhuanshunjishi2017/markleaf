@@ -48,7 +48,36 @@ fun PreferencesScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             )
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                SectionTitle("排版")
+                // 分组顺序对齐桌面偏好设置页签：文件 → 编辑器 → 外观
+                // （通用/图片页 Android 暂无可接项）
+
+                SectionTitle("文件")
+                // 桌面文件页「保存选项」
+                SwitchRow(
+                    label = "自动保存",
+                    checked = prefs.autoSave,
+                    onChange = { onChange(prefs.copy(autoSave = it)) },
+                )
+                SwitchRow(
+                    label = "切换文档时自动保存",
+                    checked = prefs.saveOnSwitch,
+                    onChange = { onChange(prefs.copy(saveOnSwitch = it)) },
+                )
+                // 桌面文件页「文本格式」
+                ChipRow(
+                    label = "默认编码",
+                    options = EditorPrefs.ENCODING_CHOICES,
+                    selected = prefs.defaultEncoding,
+                    onSelect = { onChange(prefs.copy(defaultEncoding = it)) },
+                )
+                ChipRow(
+                    label = "默认换行符",
+                    options = EditorPrefs.NEWLINE_CHOICES,
+                    selected = prefs.defaultNewline,
+                    onSelect = { onChange(prefs.copy(defaultNewline = it)) },
+                )
+
+                SectionTitle("编辑器")
                 StepperRow(
                     label = "字号",
                     value = "${prefs.fontSize}",
@@ -113,18 +142,7 @@ fun PreferencesScreen(
                     checked = prefs.tableColumnResize,
                     onChange = { onChange(prefs.copy(tableColumnResize = it)) },
                 )
-
-                SectionTitle("外观")
-                ChipRow(
-                    label = "主题色",
-                    options = themeIds.map { it.second },
-                    selected = themeIds.firstOrNull { it.first == prefs.colorTheme }?.second ?: "",
-                    onSelect = { display ->
-                        themeIds.firstOrNull { it.second == display }?.let { onChange(prefs.copy(colorTheme = it.first)) }
-                    },
-                )
-
-                SectionTitle("视图")
+                // 桌面编辑器页「缩放视图」组
                 StepperRow(
                     label = "缩放",
                     value = "${prefs.zoom}%",
@@ -133,7 +151,8 @@ fun PreferencesScreen(
                     onPlus = { onChange(prefs.copy(zoom = (prefs.zoom + 10).coerceAtMost(200))) },
                 )
 
-                SectionTitle("主题")
+                SectionTitle("外观")
+                // 桌面外观页「文档外观」：排版样式 / 颜色主题 / 代码高亮
                 styleIds.forEach { (id, display) ->
                     Row(
                         modifier = Modifier
@@ -146,39 +165,22 @@ fun PreferencesScreen(
                         Text(display, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
-
-                SectionTitle("通用")
+                ChipRow(
+                    label = "主题色",
+                    options = themeIds.map { it.second },
+                    selected = themeIds.firstOrNull { it.first == prefs.colorTheme }?.second ?: "",
+                    onSelect = { display ->
+                        themeIds.firstOrNull { it.second == display }?.let { onChange(prefs.copy(colorTheme = it.first)) }
+                    },
+                )
                 SwitchRow(
                     label = "显示代码高亮",
                     checked = prefs.codeHighlight,
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
                 )
-                SwitchRow(
-                    label = "自动保存",
-                    checked = prefs.autoSave,
-                    onChange = { onChange(prefs.copy(autoSave = it)) },
-                )
-                SwitchRow(
-                    label = "切换文档时自动保存",
-                    checked = prefs.saveOnSwitch,
-                    onChange = { onChange(prefs.copy(saveOnSwitch = it)) },
-                )
 
-                SectionTitle("文件")
-                ChipRow(
-                    label = "默认编码",
-                    options = EditorPrefs.ENCODING_CHOICES,
-                    selected = prefs.defaultEncoding,
-                    onSelect = { onChange(prefs.copy(defaultEncoding = it)) },
-                )
-                ChipRow(
-                    label = "默认换行符",
-                    options = EditorPrefs.NEWLINE_CHOICES,
-                    selected = prefs.defaultNewline,
-                    onSelect = { onChange(prefs.copy(defaultNewline = it)) },
-                )
                 Text(
-                    "更多设置（颜色主题自定义、显示语言等）将在后续版本提供",
+                    "更多设置（显示语言、文件关联、图片处理等）将在后续版本提供",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),
