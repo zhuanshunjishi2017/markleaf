@@ -138,11 +138,11 @@ fun TopMenuBar(
                             targetState = submenuTitle,
                             transitionSpec = {
                                 if (targetState != null) {
-                                    (slideInHorizontally(tween(160)) { it / 3 } + fadeIn(tween(160))) togetherWith
-                                        (slideOutHorizontally(tween(160)) { -it / 3 } + fadeOut(tween(160)))
+                                    (slideInHorizontally(tween(110)) { it / 3 } + fadeIn(tween(110))) togetherWith
+                                        (slideOutHorizontally(tween(110)) { -it / 3 } + fadeOut(tween(110)))
                                 } else {
-                                    (slideInHorizontally(tween(160)) { -it / 3 } + fadeIn(tween(160))) togetherWith
-                                        (slideOutHorizontally(tween(160)) { it / 3 } + fadeOut(tween(160)))
+                                    (slideInHorizontally(tween(110)) { -it / 3 } + fadeIn(tween(110))) togetherWith
+                                        (slideOutHorizontally(tween(110)) { it / 3 } + fadeOut(tween(110)))
                                 }
                             },
                             label = "submenuPanel",
