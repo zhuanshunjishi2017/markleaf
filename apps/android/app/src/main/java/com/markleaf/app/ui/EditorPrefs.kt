@@ -19,6 +19,10 @@ data class EditorPrefs(
     val cjkLanguage: String = "zh-Hans",
     val adaptiveJustification: Boolean = true,
     val codeHighlight: Boolean = true,
+    val blockHandle: Boolean = true,
+    val sourceIndent: Int = 2,
+    val editorLanguage: String = "zh-Hans",
+    val recordRecent: Boolean = true,
     val autoSave: Boolean = false,
     val saveOnSwitch: Boolean = true,
     val defaultEncoding: String = "UTF-8",
@@ -40,6 +44,10 @@ data class EditorPrefs(
             .putString(PREF_CJK_LANGUAGE, cjkLanguage)
             .putBoolean(PREF_ADAPTIVE_JUSTIFICATION, adaptiveJustification)
             .putBoolean(PREF_CODE_HIGHLIGHT, codeHighlight)
+            .putBoolean(PREF_BLOCK_HANDLE, blockHandle)
+            .putInt(PREF_SOURCE_INDENT, sourceIndent)
+            .putString(PREF_EDITOR_LANGUAGE, editorLanguage)
+            .putBoolean(PREF_RECORD_RECENT, recordRecent)
             .putBoolean(PREF_AUTO_SAVE, autoSave)
             .putBoolean(PREF_SAVE_ON_SWITCH, saveOnSwitch)
             .putString(PREF_DEFAULT_ENCODING, defaultEncoding)
@@ -62,6 +70,10 @@ data class EditorPrefs(
         private const val PREF_CJK_LANGUAGE = "cjkLanguage"
         private const val PREF_ADAPTIVE_JUSTIFICATION = "adaptiveJustification"
         private const val PREF_CODE_HIGHLIGHT = "codeHighlight"
+        private const val PREF_BLOCK_HANDLE = "blockHandle"
+        private const val PREF_SOURCE_INDENT = "sourceIndent"
+        private const val PREF_EDITOR_LANGUAGE = "editorLanguage"
+        private const val PREF_RECORD_RECENT = "recordRecent"
         private const val PREF_AUTO_SAVE = "autoSave"
         private const val PREF_SAVE_ON_SWITCH = "saveOnSwitch"
         private const val PREF_DEFAULT_ENCODING = "defaultEncoding"
@@ -91,6 +103,14 @@ data class EditorPrefs(
             "sans-serif" to "无衬线",
         )
 
+        /** 编辑器内核字符串语言（对齐 shared-editor-strings 可选值）。 */
+        val EDITOR_LANGUAGES = listOf(
+            "zh-Hans" to "简体中文",
+            "zh-Hant" to "繁體中文",
+            "en" to "English",
+            "ja" to "日本語",
+        )
+
         /** 中文排版语言（对齐桌面 CJKLanguageTag）。 */
         val CJK_LANGUAGES = listOf(
             "zh-Hans" to "简体中文",
@@ -114,6 +134,10 @@ data class EditorPrefs(
             cjkLanguage = sp.getString(PREF_CJK_LANGUAGE, "zh-Hans") ?: "zh-Hans",
             adaptiveJustification = sp.getBoolean(PREF_ADAPTIVE_JUSTIFICATION, true),
             codeHighlight = sp.getBoolean(PREF_CODE_HIGHLIGHT, true),
+            blockHandle = sp.getBoolean(PREF_BLOCK_HANDLE, true),
+            sourceIndent = sp.getInt(PREF_SOURCE_INDENT, 2).coerceIn(1, 8),
+            editorLanguage = sp.getString(PREF_EDITOR_LANGUAGE, "zh-Hans") ?: "zh-Hans",
+            recordRecent = sp.getBoolean(PREF_RECORD_RECENT, true),
             autoSave = sp.getBoolean(PREF_AUTO_SAVE, false),
             saveOnSwitch = sp.getBoolean(PREF_SAVE_ON_SWITCH, true),
             defaultEncoding = sp.getString(PREF_DEFAULT_ENCODING, "UTF-8") ?: "UTF-8",

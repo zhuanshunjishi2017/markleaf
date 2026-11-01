@@ -520,6 +520,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     styleIds = StyleAssets.TYPOGRAPHY_STYLES,
                     themeIds = StyleAssets.COLOR_THEMES,
                     onChange = ::updatePrefs,
+                    onClearHistory = ::clearRecentHistory,
                     onDismiss = { showPreferences.value = false },
                 )
             }
@@ -1025,12 +1026,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             is EditorMessage.DocumentLoaded -> {
                 Log.i(TAG, "document loaded at revision ${message.revision}")
                 documentLoaded.value = true
-                bridge.post(
-                    command(
-                        "setCodeHighlightVisible",
-                        if (editorPrefs.value.codeHighlight) "1" else "0",
-                    ),
-                )
+                applyEditorKernelSettings()
                 maybeShowRecoveryDialog()
             }
             is EditorMessage.Snapshot -> {
@@ -1185,10 +1181,31 @@ SafDocumentSource.takePersistablePermission(this, uri)
             lastAppliedStyleId = newPrefs.styleId
             applyStyles()
         }
-        if (newPrefs.codeHighlight != old.codeHighlight && documentLoaded.value) {
-            postCommand("setCodeHighlightVisible", if (newPrefs.codeHighlight) "1" else "0")
+        if (documentLoaded.value) {
+            if (newPrefs.codeHighlight != old.codeHighlight) {
+                postCommand("setCodeHighlightVisible", if (newPrefs.codeHighlight) "1" else "0")
+            }
+            if (newPrefs.blockHandle != old.blockHandle) {
+                postCommand("setBlockHandleVisible", if (newPrefs.blockHandle) "1" else "0")
+            }
+            if (newPrefs.sourceIndent != old.sourceIndent) {
+                postCommand("setSourceIndent", newPrefs.sourceIndent.toString())
+            }
+            if (newPrefs.editorLanguage != old.editorLanguage) {
+                postCommand("setLanguage", newPrefs.editorLanguage)
+            }
         }
         applyAppearance()
+    }
+
+    /** 编辑器内核设置初始/变更应用：代码高亮、段落块手柄、源码缩进、
+     *  编辑器语言（frontend 命令通道；崩溃重建后 DocumentLoaded 重放时一并恢复）。 */
+    private fun applyEditorKernelSettings() {
+        val prefs = editorPrefs.value
+        bridge.post(command("setCodeHighlightVisible", if (prefs.codeHighlight) "1" else "0"))
+        bridge.post(command("setBlockHandleVisible", if (prefs.blockHandle) "1" else "0"))
+        bridge.post(command("setSourceIndent", prefs.sourceIndent.toString()))
+        bridge.post(command("setLanguage", prefs.editorLanguage))
     }
 
     /** 下发主题样式载荷（base + 当前颜色主题 + 排版样式目录）。 */
@@ -1586,12 +1603,19 @@ SafDocumentSource.takePersistablePermission(this, uri)
         showToast("已关闭工作区")
     }
 
-    /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 5 条，新开顶置）。 */
+    /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 5 条，新开顶置）。
+     *  记录开关关闭时不新增（对齐桌面 recordRecentFiles 语义：仅停记录，旧项仍显示）。 */
     private fun rememberRecentFile(uri: String, name: String) {
+        if (!editorPrefs.value.recordRecent) return
         val current = recentFiles().filter { it.first != uri }.toMutableList()
         current.add(0, uri to name)
         val trimmed = current.take(5)
         prefsStore.edit().putString("recentFiles", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
+    }
+
+    private fun clearRecentHistory() {
+        prefsStore.edit().remove("recentFiles").apply()
+        showToast("已清除历史记录")
     }
 
     private fun recentFiles(): List<Pair<String, String>> =

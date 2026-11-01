@@ -34,6 +34,7 @@ fun PreferencesScreen(
     styleIds: List<Pair<String, String>>,
     themeIds: List<Pair<String, String>>,
     onChange: (EditorPrefs) -> Unit,
+    onClearHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -76,6 +77,19 @@ fun PreferencesScreen(
                     selected = prefs.defaultNewline,
                     onSelect = { onChange(prefs.copy(defaultNewline = it)) },
                 )
+                // 桌面文件页「历史记录」组
+                SwitchRow(
+                    label = "记录最近文件",
+                    checked = prefs.recordRecent,
+                    onChange = { onChange(prefs.copy(recordRecent = it)) },
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("历史记录", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    TextButton(onClick = onClearHistory) { Text("清除…") }
+                }
 
                 SectionTitle("编辑器")
                 StepperRow(
@@ -116,6 +130,12 @@ fun PreferencesScreen(
                             ?.let { onChange(prefs.copy(sourceFontFamily = it.first)) }
                     },
                 )
+                StepperRow(
+                    label = "源码缩进宽度",
+                    value = "${prefs.sourceIndent}",
+                    onMinus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent - 1).coerceAtLeast(1))) },
+                    onPlus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent + 1).coerceAtMost(8))) },
+                )
                 ChipRow(
                     label = "中文排版语言",
                     options = EditorPrefs.CJK_LANGUAGES.map { it.second },
@@ -141,6 +161,11 @@ fun PreferencesScreen(
                     label = "允许拖拽调整表格列宽",
                     checked = prefs.tableColumnResize,
                     onChange = { onChange(prefs.copy(tableColumnResize = it)) },
+                )
+                SwitchRow(
+                    label = "显示段落块手柄",
+                    checked = prefs.blockHandle,
+                    onChange = { onChange(prefs.copy(blockHandle = it)) },
                 )
                 // 桌面编辑器页「缩放视图」组
                 StepperRow(
@@ -179,8 +204,23 @@ fun PreferencesScreen(
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
                 )
 
+                // 桌面通用页「显示语言」：此处作用于编辑器内核字符串
+                // （顶栏/菜单等宿主界面暂为中文）
+                SectionTitle("通用")
+                ChipRow(
+                    label = "编辑器语言",
+                    options = EditorPrefs.EDITOR_LANGUAGES.map { it.second },
+                    selected = EditorPrefs.EDITOR_LANGUAGES
+                        .firstOrNull { it.first == prefs.editorLanguage }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.EDITOR_LANGUAGES
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(editorLanguage = it.first)) }
+                    },
+                )
+
                 Text(
-                    "更多设置（显示语言、文件关联、图片处理等）将在后续版本提供",
+                    "更多设置（文件关联、图片处理等）将在后续版本提供",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),
