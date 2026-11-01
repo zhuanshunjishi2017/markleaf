@@ -151,12 +151,12 @@ class MainActivity : ComponentActivity() {
                 controller?.adoptRef(ref)
                 ref
             }.onSuccess { savedRef ->
-                activeTitle.value = Uri.parse(savedRef.uri).lastPathSegment?.substringAfterLast("%2F") ?: "未命名"
+                activeTitle.value = Uri.parse(savedRef.uri).lastPathSegment?.substringAfterLast("%2F") ?: L10n.t("未命名")
                 dirty.value = false
                 androidReadOnly.value = false
-                showToast("已另存为 ${activeTitle.value}")
+                showToast(L10n.f("已另存为 %s", activeTitle.value))
                 rememberRecentFile(savedRef.uri, activeTitle.value)
-            }.onFailure { showToast("另存为失败：${it.message}") }
+            }.onFailure { showToast(L10n.f("另存为失败：%s", it.message)) }
         }
     }
     private lateinit var prefsStore: android.content.SharedPreferences
@@ -180,7 +180,7 @@ class MainActivity : ComponentActivity() {
     private var lastAppliedStyleId = "serif"
     private val sidebarEntries = mutableStateOf<List<DocumentEntry>>(emptyList())
     private val outline = mutableStateOf<List<OutlineItem>>(emptyList())
-    private val activeTitle = mutableStateOf("未命名")
+    private val activeTitle = mutableStateOf(L10n.t("未命名"))
     private val showExport = mutableStateOf(false)
     private val showLanguageDialog = mutableStateOf<Pair<Long, String>?>(null)
     private val languageInput = mutableStateOf("")
@@ -226,7 +226,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 contentResolver.openOutputStream(uri)?.use { output ->
                     output.write(html.toByteArray(Charsets.UTF_8))
                 }
-                showToast("HTML 已导出")
+                showToast(L10n.t("HTML 已导出"))
             }
         }
     }
@@ -260,6 +260,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
         recoveryStore = RecoveryStore(this)
         prefsStore = getSharedPreferences("markleaf-settings", MODE_PRIVATE)
         editorPrefs.value = com.markleaf.app.ui.EditorPrefs.load(prefsStore)
+        L10n.language = editorPrefs.value.displayLanguage
+        activeTitle.value = L10n.t("未命名")
         zoomPercent.value = editorPrefs.value.zoom
         bridge = EditorBridge(
             postScript = { script -> webView.evaluateJavascript(script, null) },
@@ -379,7 +381,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     onSelect = { info ->
                                         controller?.setEncoding(info)
                                         documentEncoding.value = encodingDisplayName(info)
-                                        showToast("保存时将使用 ${documentEncoding.value} 编码")
+                                        showToast(L10n.f("保存时将使用 %s 编码", documentEncoding.value))
                                         showEncodingDialog.value = false
                                     },
                                     onDismiss = { showEncodingDialog.value = false },
@@ -426,7 +428,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                             showLanguageDialog.value?.let { (position, current) ->
                                 androidx.compose.material3.AlertDialog(
                                     onDismissRequest = { showLanguageDialog.value = null },
-                                    title = { Text("声明代码语言") },
+                                    title = { Text(L10n.t("声明代码语言")) },
                                     text = {
                                         // 预设列表与 macOS CodeBlockLanguageCatalog 对齐；
                                         // 输入框保持可编辑（列表只是便利项，非白名单）。
@@ -435,7 +437,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                             androidx.compose.material3.OutlinedTextField(
                                                 value = languageInput.value,
                                                 onValueChange = { languageInput.value = it },
-                                                label = { Text("语言") },
+                                                label = { Text(L10n.t("语言")) },
                                                 singleLine = true,
                                             )
                                             @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -460,10 +462,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                         TextButton(onClick = {
                                             bridge.post(command("setCodeBlockLanguageAt", """{"position":POSITION,"language":"LANG"}""".replace("POSITION", position.toString()).replace("LANG", languageInput.value)))
                                             showLanguageDialog.value = null
-                                        }) { Text("确定") }
+                                        }) { Text(L10n.t("确定")) }
                                     },
                                     dismissButton = {
-                                        TextButton(onClick = { showLanguageDialog.value = null }) { Text("取消") }
+                                        TextButton(onClick = { showLanguageDialog.value = null }) { Text(L10n.t("取消")) }
                                     },
                                 )
                             }
@@ -483,12 +485,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (showToolbarLanguageDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showToolbarLanguageDialog.value = false },
-                    title = { Text("声明代码语言") },
+                    title = { Text(L10n.t("声明代码语言")) },
                     text = {
                         androidx.compose.material3.OutlinedTextField(
                             value = toolbarLanguageInput,
                             onValueChange = { toolbarLanguageInput = it },
-                            label = { Text("语言") },
+                            label = { Text(L10n.t("语言")) },
                             singleLine = true,
                         )
                     },
@@ -496,10 +498,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         TextButton(onClick = {
                             bridge.post(command("setCodeBlockLanguage", toolbarLanguageInput))
                             showToolbarLanguageDialog.value = false
-                        }) { Text("确定") }
+                        }) { Text(L10n.t("确定")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showToolbarLanguageDialog.value = false }) { Text("取消") }
+                        TextButton(onClick = { showToolbarLanguageDialog.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -538,12 +540,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (showImageUrlDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showImageUrlDialog.value = false },
-                    title = { Text("插入来自互联网的图片") },
+                    title = { Text(L10n.t("插入来自互联网的图片")) },
                     text = {
                         androidx.compose.material3.OutlinedTextField(
                             value = imageUrlInput,
                             onValueChange = { imageUrlInput = it },
-                            label = { Text("图片 URL") },
+                            label = { Text(L10n.t("图片 URL")) },
                             singleLine = true,
                         )
                     },
@@ -552,10 +554,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                             val url = imageUrlInput.trim()
                             if (url.isNotBlank()) postCommand("insertImage", "$url\n图片")
                             showImageUrlDialog.value = false
-                        }) { Text("插入") }
+                        }) { Text(L10n.t("插入")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showImageUrlDialog.value = false }) { Text("取消") }
+                        TextButton(onClick = { showImageUrlDialog.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -563,14 +565,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (showTableSizeDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showTableSizeDialog.value = false },
-                    title = { Text("插入表格") },
+                    title = { Text(L10n.t("插入表格")) },
                     text = {
                         Column {
                             androidx.compose.foundation.layout.Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
-                                Text("行数", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                Text(L10n.t("行数"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                                 TextButton(onClick = { tableRowsState.value = (tableRowsState.value - 1).coerceAtLeast(1) }) { Text("−") }
                                 Text(
                                     "${tableRowsState.value}",
@@ -583,7 +585,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             ) {
-                                Text("列数", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                                Text(L10n.t("列数"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                                 TextButton(onClick = { tableColsState.value = (tableColsState.value - 1).coerceAtLeast(1) }) { Text("−") }
                                 Text(
                                     "${tableColsState.value}",
@@ -593,7 +595,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 TextButton(onClick = { tableColsState.value = (tableColsState.value + 1).coerceAtMost(20) }) { Text("+") }
                             }
                             Text(
-                                "带表头行；行列范围 1–20",
+                                L10n.t("带表头行；行列范围 1–20"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -603,10 +605,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         TextButton(onClick = {
                             postCommand("insertTable", "${tableRowsState.value},${tableColsState.value}")
                             showTableSizeDialog.value = false
-                        }) { Text("插入") }
+                        }) { Text(L10n.t("插入")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showTableSizeDialog.value = false }) { Text("取消") }
+                        TextButton(onClick = { showTableSizeDialog.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -614,8 +616,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (showCloseConfirm.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showCloseConfirm.value = false },
-                    title = { Text("关闭前保存修改？") },
-                    text = { Text("当前文档有未保存的修改。") },
+                    title = { Text(L10n.t("关闭前保存修改？")) },
+                    text = { Text(L10n.t("当前文档有未保存的修改。")) },
                     confirmButton = {
                         TextButton(onClick = {
                             showCloseConfirm.value = false
@@ -623,15 +625,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 saveActiveDocument()
                                 closeDocument()
                             }
-                        }) { Text("保存并关闭") }
+                        }) { Text(L10n.t("保存并关闭")) }
                     },
                     dismissButton = {
                         androidx.compose.foundation.layout.Row {
                             TextButton(onClick = {
                                 showCloseConfirm.value = false
                                 closeDocument()
-                            }) { Text("不保存") }
-                            TextButton(onClick = { showCloseConfirm.value = false }) { Text("取消") }
+                            }) { Text(L10n.t("不保存")) }
+                            TextButton(onClick = { showCloseConfirm.value = false }) { Text(L10n.t("取消")) }
                         }
                     },
                 )
@@ -640,12 +642,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (showLinkDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showLinkDialog.value = false },
-                    title = { Text("插入超链接") },
+                    title = { Text(L10n.t("插入超链接")) },
                     text = {
                         androidx.compose.material3.OutlinedTextField(
                             value = linkInput,
                             onValueChange = { linkInput = it },
-                            label = { Text("链接地址") },
+                            label = { Text(L10n.t("链接地址")) },
                             singleLine = true,
                         )
                     },
@@ -653,10 +655,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         TextButton(onClick = {
                             if (linkInput.isNotBlank()) postCommand("setLink", linkInput.trim())
                             showLinkDialog.value = false
-                        }) { Text("确定") }
+                        }) { Text(L10n.t("确定")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showLinkDialog.value = false }) { Text("取消") }
+                        TextButton(onClick = { showLinkDialog.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -664,12 +666,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (renameDocDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { renameDocDialog.value = false },
-                    title = { Text("重命名") },
+                    title = { Text(L10n.t("重命名")) },
                     text = {
                         androidx.compose.material3.OutlinedTextField(
                             value = renameDocInput,
                             onValueChange = { renameDocInput = it },
-                            label = { Text("新名称") },
+                            label = { Text(L10n.t("新名称")) },
                             singleLine = true,
                         )
                     },
@@ -684,15 +686,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                         .onSuccess { renamed ->
                                             controller?.adoptRef(renamed)
                                             activeTitle.value = name
-                                            showToast("已重命名")
+                                            showToast(L10n.t("已重命名"))
                                         }
-                                        .onFailure { showToast("重命名失败：${it.message}") }
+                                        .onFailure { showToast(L10n.f("重命名失败：%s", it.message)) }
                                 }
                             }
-                        }) { Text("确定") }
+                        }) { Text(L10n.t("确定")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { renameDocDialog.value = false }) { Text("取消") }
+                        TextButton(onClick = { renameDocDialog.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -700,8 +702,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (deleteDocConfirm.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { deleteDocConfirm.value = false },
-                    title = { Text("删除当前文档？") },
-                    text = { Text("将从存储中删除该文件，此操作不可撤销。") },
+                    title = { Text(L10n.t("删除当前文档？")) },
+                    text = { Text(L10n.t("将从存储中删除该文件，此操作不可撤销。")) },
                     confirmButton = {
                         TextButton(onClick = {
                             deleteDocConfirm.value = false
@@ -710,16 +712,16 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 lifecycleScope.launch {
                                     runCatching { source.delete(ref) }
                                         .onSuccess {
-                                            showToast("已删除")
+                                            showToast(L10n.t("已删除"))
                                             closeDocument()
                                         }
-                                        .onFailure { showToast("删除失败：${it.message}") }
+                                        .onFailure { showToast(L10n.f("删除失败：%s", it.message)) }
                                 }
                             }
-                        }) { Text("删除") }
+                        }) { Text(L10n.t("删除")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { deleteDocConfirm.value = false }) { Text("取消") }
+                        TextButton(onClick = { deleteDocConfirm.value = false }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -727,12 +729,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
             renameEntryDialog.value?.let { entry ->
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { renameEntryDialog.value = null },
-                    title = { Text("重命名「${entry.name}」") },
+                    title = { Text(L10n.f("重命名「%s」", entry.name)) },
                     text = {
                         androidx.compose.material3.OutlinedTextField(
                             value = renameEntryInput,
                             onValueChange = { renameEntryInput = it },
-                            label = { Text("新名称") },
+                            label = { Text(L10n.t("新名称")) },
                             singleLine = true,
                         )
                     },
@@ -746,10 +748,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                             } else {
                                 renameEntryDialog.value = null
                             }
-                        }) { Text("确定") }
+                        }) { Text(L10n.t("确定")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { renameEntryDialog.value = null }) { Text("取消") }
+                        TextButton(onClick = { renameEntryDialog.value = null }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -757,22 +759,24 @@ SafDocumentSource.takePersistablePermission(this, uri)
             recoveryEntry.value?.let { entry ->
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { /* 必须明确选择：恢复 / 另存副本 / 丢弃 */ },
-                    title = { Text("发现未保存的修改") },
+                    title = { Text(L10n.t("发现未保存的修改")) },
                     text = {
                         Text(
-                            "文档「${recoveryDisplayName(entry)}」在 " +
+                            L10n.f(
+                                "文档「%1${'$'}s」在 %2${'$'}s 有未保存的内容。",
+                                recoveryDisplayName(entry),
                                 java.text.DateFormat.getDateTimeInstance()
-                                    .format(java.util.Date(entry.savedAt)) +
-                                " 有未保存的内容。",
+                                    .format(java.util.Date(entry.savedAt)),
+                            ),
                         )
                     },
                     confirmButton = {
-                        TextButton(onClick = { restoreRecoverySnapshot(entry) }) { Text("恢复") }
+                        TextButton(onClick = { restoreRecoverySnapshot(entry) }) { Text(L10n.t("恢复")) }
                     },
                     dismissButton = {
                         androidx.compose.foundation.layout.Row {
-                            TextButton(onClick = { saveRecoveryCopy(entry) }) { Text("另存副本") }
-                            TextButton(onClick = { discardRecoverySnapshot(entry) }) { Text("丢弃") }
+                            TextButton(onClick = { saveRecoveryCopy(entry) }) { Text(L10n.t("另存副本")) }
+                            TextButton(onClick = { discardRecoverySnapshot(entry) }) { Text(L10n.t("丢弃")) }
                         }
                     },
                 )
@@ -884,14 +888,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         )
                         dirty.value = true
                         snapshotId?.let { recoveryStore.discard(it) }
-                        activeTitle.value = "${
-                            result.name.substringBeforeLast('.')
-                        }（恢复）"
-                        showToast("已恢复未保存的修改")
+                        activeTitle.value =
+                            result.name.substringBeforeLast('.') + L10n.t("（恢复）")
+                        showToast(L10n.t("已恢复未保存的修改"))
                     }
                 }
                 DocumentController.OpenResult.PermissionLost -> {
-                    showToast("文档权限失效，请重新打开")
+                    showToast(L10n.t("文档权限失效，请重新打开"))
                     // 恢复流程被打断：重新弹对话框让用户重选
                     if (pendingRecoveryMarkdown != null) {
                         pendingRecoveryMarkdown = null
@@ -900,7 +903,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     }
                 }
                 is DocumentController.OpenResult.Failed -> {
-                    showToast("打开失败: ${result.message}")
+                    showToast(L10n.f("打开失败: %s", result.message))
                     if (pendingRecoveryMarkdown != null) {
                         pendingRecoveryMarkdown = null
                         pendingRecoveryId = null
@@ -922,13 +925,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
             DocumentController.SaveResult.Saved -> {
                 dirty.value = false
                 active.discardRecovery(recoveryStore)
-                showToast("已保存")
+                showToast(L10n.t("已保存"))
             }
-            DocumentController.SaveResult.ReadOnly -> showToast("只读文档不能保存，请使用另存为")
-            DocumentController.SaveResult.Conflict -> showToast("文件已被外部修改，请另存或覆盖")
-            DocumentController.SaveResult.PermissionLost -> showToast("保存失败：权限失效")
+            DocumentController.SaveResult.ReadOnly -> showToast(L10n.t("只读文档不能保存，请使用另存为"))
+            DocumentController.SaveResult.Conflict -> showToast(L10n.t("文件已被外部修改，请另存或覆盖"))
+            DocumentController.SaveResult.PermissionLost -> showToast(L10n.t("保存失败：权限失效"))
             DocumentController.SaveResult.NotDirty -> Unit
-            is DocumentController.SaveResult.Failed -> showToast("保存失败: ${result.message}")
+            is DocumentController.SaveResult.Failed -> showToast(L10n.f("保存失败: %s", result.message))
         }
     }
 
@@ -1047,7 +1050,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 clipboard.setPrimaryClip(
                     android.content.ClipData.newPlainText("code", message.payload.text),
                 )
-                showToast("代码已复制")
+                showToast(L10n.t("代码已复制"))
             }
             is EditorMessage.CodeBlockLanguageRequested -> {
                 // 点击语言标签会顺带聚焦 WebView 编辑区弹出键盘，盖住对话框，先收起
@@ -1057,7 +1060,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             is EditorMessage.CodeFormatRequested -> {
                 // Android 第一版无外部代码格式化器：明示不可用（不静默吞）。
                 dismissKeyboard()
-                showToast("未配置代码格式化器")
+                showToast(L10n.t("未配置代码格式化器"))
             }
             is EditorMessage.RequestSave -> lifecycleScope.launch { saveActiveDocument() }
             is EditorMessage.OpenLink -> {
@@ -1068,7 +1071,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         startActivity(
                             android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)),
                         )
-                    }.onFailure { showToast("无法打开链接") }
+                    }.onFailure { showToast(L10n.t("无法打开链接")) }
                 }
             }
             is EditorMessage.SelectionExport -> {
@@ -1191,8 +1194,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (newPrefs.sourceIndent != old.sourceIndent) {
                 postCommand("setSourceIndent", newPrefs.sourceIndent.toString())
             }
-            if (newPrefs.editorLanguage != old.editorLanguage) {
-                postCommand("setLanguage", newPrefs.editorLanguage)
+            if (newPrefs.displayLanguage != old.displayLanguage) {
+                L10n.language = newPrefs.displayLanguage
+                postCommand("setLanguage", newPrefs.displayLanguage)
             }
         }
         applyAppearance()
@@ -1205,7 +1209,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.post(command("setCodeHighlightVisible", if (prefs.codeHighlight) "1" else "0"))
         bridge.post(command("setBlockHandleVisible", if (prefs.blockHandle) "1" else "0"))
         bridge.post(command("setSourceIndent", prefs.sourceIndent.toString()))
-        bridge.post(command("setLanguage", prefs.editorLanguage))
+        bridge.post(command("setLanguage", prefs.displayLanguage))
     }
 
     /** 下发主题样式载荷（base + 当前颜色主题 + 排版样式目录）。 */
@@ -1364,170 +1368,170 @@ SafDocumentSource.takePersistablePermission(this, uri)
         val hasFile = controller?.activeRef != null
         val recent = recentFiles()
         return listOf(
-            TopMenuSection("文件", buildList {
-                add(sub("新建", children = listOf(
-                    host("Markdown 文档") { newDocument("markdown") },
-                    host("纯文本") { newDocument("plainText") },
+            TopMenuSection(L10n.t("文件"), buildList {
+                add(sub(L10n.t("新建"), children = listOf(
+                    host(L10n.t("Markdown 文档")) { newDocument("markdown") },
+                    host(L10n.t("纯文本")) { newDocument("plainText") },
                 )))
-                add(host("打开文件夹…", separator = true) { openTreeLauncher.launch(null) })
-                add(host("打开文件…") { pendingReadOnlyOpen = false; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
-                add(host("以只读方式打开…") { pendingReadOnlyOpen = true; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
+                add(host(L10n.t("打开文件夹…"), separator = true) { openTreeLauncher.launch(null) })
+                add(host(L10n.t("打开文件…")) { pendingReadOnlyOpen = false; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
+                add(host(L10n.t("以只读方式打开…")) { pendingReadOnlyOpen = true; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
                 if (recent.isNotEmpty()) {
-                    add(sub("最近文件", separator = true, children = recent.map { recentEntry ->
+                    add(sub(L10n.t("最近文件"), separator = true, children = recent.map { recentEntry ->
                         host(recentEntry.second) { openDocument(DocumentRef.Saf(recentEntry.first)) }
                     }))
                 }
-                add(host("恢复未保存的文件…", separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
+                add(host(L10n.t("恢复未保存的文件…"), separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
                     maybeShowRecoveryDialog()
-                    if (recoveryEntry.value == null) showToast("没有待恢复的内容")
+                    if (recoveryEntry.value == null) showToast(L10n.t("没有待恢复的内容"))
                 })
-                add(host("保存", separator = true, enabled = hasDoc && !androidReadOnly.value) { lifecycleScope.launch { saveActiveDocument() } })
-                add(host("另存为…", enabled = hasDoc) { saveAsLauncher.launch("未命名.md") })
-                add(host("导出…", enabled = hasDoc) { showExport.value = true })
-                add(host("关闭当前文档", enabled = hasDoc, separator = true) {
+                add(host(L10n.t("保存"), separator = true, enabled = hasDoc && !androidReadOnly.value) { lifecycleScope.launch { saveActiveDocument() } })
+                add(host(L10n.t("另存为…"), enabled = hasDoc) { saveAsLauncher.launch(L10n.t("未命名.md")) })
+                add(host(L10n.t("导出…"), enabled = hasDoc) { showExport.value = true })
+                add(host(L10n.t("关闭当前文档"), enabled = hasDoc, separator = true) {
                     if (dirty.value) showCloseConfirm.value = true else closeDocument()
                 })
-                add(host("关闭工作区", enabled = workspaceRoot != null) { closeWorkspace() })
-                add(host("重命名…", enabled = hasFile, separator = true) {
+                add(host(L10n.t("关闭工作区"), enabled = workspaceRoot != null) { closeWorkspace() })
+                add(host(L10n.t("重命名…"), enabled = hasFile, separator = true) {
                     renameDocInput = activeTitle.value
                     renameDocDialog.value = true
                 })
-                add(host("删除", enabled = hasFile) { deleteDocConfirm.value = true })
-                add(host("复制文件路径", enabled = hasFile, separator = true) {
+                add(host(L10n.t("删除"), enabled = hasFile) { deleteDocConfirm.value = true })
+                add(host(L10n.t("复制文件路径"), enabled = hasFile, separator = true) {
                     controller?.activeRef?.let {
                         clipboardManager().setPrimaryClip(android.content.ClipData.newPlainText("path", it.uri))
-                        showToast("已复制文件 URI")
+                        showToast(L10n.t("已复制文件 URI"))
                     }
                 })
-                add(host("复制文件内容", enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                add(host(L10n.t("复制文件内容"), enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
                     lifecycleScope.launch {
                         clipboardManager().setPrimaryClip(
                             android.content.ClipData.newPlainText("markdown", requestSnapshotBlocking().markdown),
                         )
-                        showToast("已复制文件内容")
+                        showToast(L10n.t("已复制文件内容"))
                     }
                 })
-                add(host("分享文件", enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                add(host(L10n.t("分享文件"), enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
                     lifecycleScope.launch {
                         val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(android.content.Intent.EXTRA_TEXT, requestSnapshotBlocking().markdown)
                         }
-                        startActivity(android.content.Intent.createChooser(share, "分享文件"))
+                        startActivity(android.content.Intent.createChooser(share, L10n.t("分享文件")))
                     }
                 })
             }),
-            TopMenuSection("编辑", listOf(
-                entry("撤销", "undo"),
-                entry("重做", "redo"),
-                entry("剪切", "cut", separator = true),
-                entry("拷贝", "copy"),
-                TopMenuEntry("粘贴", true, false) {
+            TopMenuSection(L10n.t("编辑"), listOf(
+                entry(L10n.t("撤销"), "undo"),
+                entry(L10n.t("重做"), "redo"),
+                entry(L10n.t("剪切"), "cut", separator = true),
+                entry(L10n.t("拷贝"), "copy"),
+                TopMenuEntry(L10n.t("粘贴"), true, false) {
                     clipboardManager().primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
                         ?.takeIf { it.isNotEmpty() }?.let { postCommand("pasteClipboard") }
                 },
-                entry("全选", "selectAll", separator = true),
+                entry(L10n.t("全选"), "selectAll", separator = true),
             )),
-            TopMenuSection("插入", listOf(
-                sub("图片", enabled = hasDoc, children = listOf(
-                    host("插入本地图片…") { openImageLauncher.launch("image/*") },
-                    host("插入来自互联网的图片…") {
+            TopMenuSection(L10n.t("插入"), listOf(
+                sub(L10n.t("图片"), enabled = hasDoc, children = listOf(
+                    host(L10n.t("插入本地图片…")) { openImageLauncher.launch("image/*") },
+                    host(L10n.t("插入来自互联网的图片…")) {
                         imageUrlInput = "https://"
                         showImageUrlDialog.value = true
                     },
                 )),
-                sub("表格", enabled = en("insertTable"), children = listOf(
-                    host("插入表格（指定行列）…") { showTableSizeDialog.value = true },
+                sub(L10n.t("表格"), enabled = en("insertTable"), children = listOf(
+                    host(L10n.t("插入表格（指定行列）…")) { showTableSizeDialog.value = true },
                 )),
-                entry("Mermaid 图表", "insertMermaid"),
-                entry("插入超链接…", "setLink", action = {
+                entry(L10n.t("Mermaid 图表"), "insertMermaid"),
+                entry(L10n.t("插入超链接…"), "setLink", action = {
                     linkInput = "https://"
                     showLinkDialog.value = true
                 }),
-                entry("插入脚注", "insertFootnote"),
-                entry("行内公式", "insertMathInline", separator = true),
-                entry("块级公式", "insertMathBlock"),
-                entry("水平线", "insertHorizontalRule"),
-                entry("YAML 前置元数据", "showFrontMatter", separator = true),
+                entry(L10n.t("插入脚注"), "insertFootnote"),
+                entry(L10n.t("行内公式"), "insertMathInline", separator = true),
+                entry(L10n.t("块级公式"), "insertMathBlock"),
+                entry(L10n.t("水平线"), "insertHorizontalRule"),
+                entry(L10n.t("YAML 前置元数据"), "showFrontMatter", separator = true),
             )),
-            TopMenuSection("格式", buildList {
-                add(entry("粗体", "toggleBold"))
-                add(entry("斜体", "toggleItalic"))
-                add(entry("下划线", "toggleUnderline"))
-                add(entry("删除线", "toggleStrike"))
-                add(entry("高亮", "toggleHighlight"))
-                add(entry("行内代码", "toggleCode"))
-                add(sub("段落样式", separator = true, children = listOf(
-                    cmdEntry("正文", "setParagraph"),
-                    cmdEntry("一级标题", "setHeading1"),
-                    cmdEntry("二级标题", "setHeading2"),
-                    cmdEntry("三级标题", "setHeading3"),
-                    cmdEntry("四级标题", "setHeading4"),
-                    cmdEntry("五级标题", "setHeading5"),
-                    cmdEntry("六级标题", "setHeading6"),
+            TopMenuSection(L10n.t("格式"), buildList {
+                add(entry(L10n.t("粗体"), "toggleBold"))
+                add(entry(L10n.t("斜体"), "toggleItalic"))
+                add(entry(L10n.t("下划线"), "toggleUnderline"))
+                add(entry(L10n.t("删除线"), "toggleStrike"))
+                add(entry(L10n.t("高亮"), "toggleHighlight"))
+                add(entry(L10n.t("行内代码"), "toggleCode"))
+                add(sub(L10n.t("段落样式"), separator = true, children = listOf(
+                    cmdEntry(L10n.t("正文"), "setParagraph"),
+                    cmdEntry(L10n.t("一级标题"), "setHeading1"),
+                    cmdEntry(L10n.t("二级标题"), "setHeading2"),
+                    cmdEntry(L10n.t("三级标题"), "setHeading3"),
+                    cmdEntry(L10n.t("四级标题"), "setHeading4"),
+                    cmdEntry(L10n.t("五级标题"), "setHeading5"),
+                    cmdEntry(L10n.t("六级标题"), "setHeading6"),
                 )))
-                add(sub("列表", children = listOf(
-                    cmdEntry("无序列表", "toggleBulletList"),
-                    cmdEntry("有序列表", "toggleOrderedList"),
-                    cmdEntry("任务列表", "toggleTaskList"),
-                    cmdEntry("增加列表缩进", "indentListItem", separator = true),
-                    cmdEntry("减少列表缩进", "outdentListItem"),
+                add(sub(L10n.t("列表"), children = listOf(
+                    cmdEntry(L10n.t("无序列表"), "toggleBulletList"),
+                    cmdEntry(L10n.t("有序列表"), "toggleOrderedList"),
+                    cmdEntry(L10n.t("任务列表"), "toggleTaskList"),
+                    cmdEntry(L10n.t("增加列表缩进"), "indentListItem", separator = true),
+                    cmdEntry(L10n.t("减少列表缩进"), "outdentListItem"),
                 )))
-                add(entry("引用", "toggleBlockquote"))
-                add(entry("代码块", "toggleCodeBlock"))
-                add(sub("提示框", children = listOf(
-                    cmdEntry("备注", "insertAlertNote"),
-                    cmdEntry("提示", "insertAlertTip"),
-                    cmdEntry("重要", "insertAlertImportant"),
-                    cmdEntry("警告", "insertAlertWarning"),
-                    cmdEntry("注意", "insertAlertCaution"),
+                add(entry(L10n.t("引用"), "toggleBlockquote"))
+                add(entry(L10n.t("代码块"), "toggleCodeBlock"))
+                add(sub(L10n.t("提示框"), children = listOf(
+                    cmdEntry(L10n.t("备注"), "insertAlertNote"),
+                    cmdEntry(L10n.t("提示"), "insertAlertTip"),
+                    cmdEntry(L10n.t("重要"), "insertAlertImportant"),
+                    cmdEntry(L10n.t("警告"), "insertAlertWarning"),
+                    cmdEntry(L10n.t("注意"), "insertAlertCaution"),
                 )))
-                add(sub("表格", enabled = en("addRowAfter"), separator = true, children = listOf(
-                    cmdEntry("编辑表格标题", "setTableCaption"),
-                    cmdEntry("上方插行", "addRowBefore"),
-                    cmdEntry("下方插行", "addRowAfter"),
-                    cmdEntry("删除当前行", "deleteRow"),
-                    cmdEntry("左插列", "addColumnBefore"),
-                    cmdEntry("右插列", "addColumnAfter"),
-                    cmdEntry("删除当前列", "deleteColumn"),
-                    cmdEntry("左对齐", "alignTableLeft"),
-                    cmdEntry("居中对齐", "alignTableCenter"),
-                    cmdEntry("右对齐", "alignTableRight"),
-                    cmdEntry("删除表格", "deleteTable", separator = true),
+                add(sub(L10n.t("表格"), enabled = en("addRowAfter"), separator = true, children = listOf(
+                    cmdEntry(L10n.t("编辑表格标题"), "setTableCaption"),
+                    cmdEntry(L10n.t("上方插行"), "addRowBefore"),
+                    cmdEntry(L10n.t("下方插行"), "addRowAfter"),
+                    cmdEntry(L10n.t("删除当前行"), "deleteRow"),
+                    cmdEntry(L10n.t("左插列"), "addColumnBefore"),
+                    cmdEntry(L10n.t("右插列"), "addColumnAfter"),
+                    cmdEntry(L10n.t("删除当前列"), "deleteColumn"),
+                    cmdEntry(L10n.t("左对齐"), "alignTableLeft"),
+                    cmdEntry(L10n.t("居中对齐"), "alignTableCenter"),
+                    cmdEntry(L10n.t("右对齐"), "alignTableRight"),
+                    cmdEntry(L10n.t("删除表格"), "deleteTable", separator = true),
                 )))
-                add(sub("图片", enabled = en("rotateImageClockwise"), separator = true, children = listOf(
-                    cmdEntry("顺时针旋转 90°", "rotateImageClockwise"),
-                    cmdEntry("缩放 50%", "resizeImage", text = "50"),
-                    cmdEntry("缩放 75%", "resizeImage", text = "75"),
-                    cmdEntry("缩放 90%", "resizeImage", text = "90"),
-                    cmdEntry("缩放 100%", "resizeImage", text = "100"),
+                add(sub(L10n.t("图片"), enabled = en("rotateImageClockwise"), separator = true, children = listOf(
+                    cmdEntry(L10n.t("顺时针旋转 90°"), "rotateImageClockwise"),
+                    cmdEntry(L10n.t("缩放 50%"), "resizeImage", text = "50"),
+                    cmdEntry(L10n.t("缩放 75%"), "resizeImage", text = "75"),
+                    cmdEntry(L10n.t("缩放 90%"), "resizeImage", text = "90"),
+                    cmdEntry(L10n.t("缩放 100%"), "resizeImage", text = "100"),
                 )))
-                add(sub("段落操作", separator = true, children = listOf(
-                    cmdEntry("段前插入行", "insertLineBefore"),
-                    cmdEntry("段后插入行", "insertLineAfter"),
-                    cmdEntry("重复该段", "duplicateParagraph"),
-                    cmdEntry("删除该段", "deleteParagraph"),
+                add(sub(L10n.t("段落操作"), separator = true, children = listOf(
+                    cmdEntry(L10n.t("段前插入行"), "insertLineBefore"),
+                    cmdEntry(L10n.t("段后插入行"), "insertLineAfter"),
+                    cmdEntry(L10n.t("重复该段"), "duplicateParagraph"),
+                    cmdEntry(L10n.t("删除该段"), "deleteParagraph"),
                 )))
-                add(entry("格式刷", "formatPainter", separator = true))
-                add(entry("应用格式刷", "formatPainterApply"))
-                add(entry("格式化代码块", "formatCodeBlock"))
-                add(entry("清除格式", "clearFormat", separator = true))
+                add(entry(L10n.t("格式刷"), "formatPainter", separator = true))
+                add(entry(L10n.t("应用格式刷"), "formatPainterApply"))
+                add(entry(L10n.t("格式化代码块"), "formatCodeBlock"))
+                add(entry(L10n.t("清除格式"), "clearFormat", separator = true))
             }),
-            TopMenuSection("视图", listOf(
-                host("显示/隐藏侧栏") { onToggleSidebar() },
-                host("源码模式", enabled = hasDoc, checked = editorSourceMode.value, separator = true) { postCommand("toggleSourceMode") },
-                host("只读模式", enabled = hasDoc, checked = androidReadOnly.value, separator = true) {
+            TopMenuSection(L10n.t("视图"), listOf(
+                host(L10n.t("显示/隐藏侧栏")) { onToggleSidebar() },
+                host(L10n.t("源码模式"), enabled = hasDoc, checked = editorSourceMode.value, separator = true) { postCommand("toggleSourceMode") },
+                host(L10n.t("只读模式"), enabled = hasDoc, checked = androidReadOnly.value, separator = true) {
                     toggleReadOnly()
                 },
-                host("段落专注模式", enabled = hasDoc, separator = true) { postCommand("setEditorFocusMode") },
-                host("打字机模式", enabled = hasDoc) { postCommand("setEditorTypewriterMode") },
-                host("放大", enabled = hasDoc, separator = true) { applyZoom(zoomPercent.value + 10) },
-                host("缩小", enabled = hasDoc) { applyZoom(zoomPercent.value - 10) },
-                host("重置 100%", enabled = hasDoc) { applyZoom(100) },
+                host(L10n.t("段落专注模式"), enabled = hasDoc, separator = true) { postCommand("setEditorFocusMode") },
+                host(L10n.t("打字机模式"), enabled = hasDoc) { postCommand("setEditorTypewriterMode") },
+                host(L10n.t("放大"), enabled = hasDoc, separator = true) { applyZoom(zoomPercent.value + 10) },
+                host(L10n.t("缩小"), enabled = hasDoc) { applyZoom(zoomPercent.value - 10) },
+                host(L10n.t("重置 100%"), enabled = hasDoc) { applyZoom(100) },
             )),
-            TopMenuSection("更多", listOf(
-                host("首选项…") { showPreferences.value = true },
-                host("关于 MarkLeaf", separator = true) { showAbout.value = true },
+            TopMenuSection(L10n.t("更多"), listOf(
+                host(L10n.t("首选项…")) { showPreferences.value = true },
+                host(L10n.t("关于 MarkLeaf"), separator = true) { showAbout.value = true },
             )),
         )
     }
@@ -1539,7 +1543,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
         // 控制器同源：菜单开关后的保存放行/拦截跟随会话实际只读态
         controller?.setReadOnly(next)
         bridge.post(command("setReadOnly", if (next) "1" else "0"))
-        showToast(if (next) "已进入只读模式" else "已退出只读模式")
+        showToast(if (next) L10n.t("已进入只读模式") else L10n.t("已退出只读模式"))
     }
 
     /** 新建文档：清生命周期状态并下发空内容（纯文本另发文档类型）。 */
@@ -1566,9 +1570,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 ),
             ),
         )
-        activeTitle.value = "未命名"
+        activeTitle.value = L10n.t("未命名")
         dirty.value = false
-        showToast(if (documentType == "plainText") "已新建纯文本" else "已新建 Markdown 文档")
+        showToast(if (documentType == "plainText") L10n.t("已新建纯文本") else L10n.t("已新建 Markdown 文档"))
     }
 
     /** 关闭当前文档：丢弃前写恢复快照（重开应用可找回），回到欢迎文档。 */
@@ -1589,18 +1593,18 @@ SafDocumentSource.takePersistablePermission(this, uri)
             controller?.startNewDocument()
             androidReadOnly.value = false
             bridge.post(welcomeDocumentMessage())
-            activeTitle.value = "未命名"
+            activeTitle.value = L10n.t("未命名")
             dirty.value = false
             documentEncoding.value = "UTF-8"
             documentNewline.value = "LF"
-            showToast("已关闭当前文档")
+            showToast(L10n.t("已关闭当前文档"))
         }
     }
 
     private fun closeWorkspace() {
         workspaceRoot = null
         sidebarEntries.value = emptyList()
-        showToast("已关闭工作区")
+        showToast(L10n.t("已关闭工作区"))
     }
 
     /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 5 条，新开顶置）。
@@ -1615,7 +1619,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
     private fun clearRecentHistory() {
         prefsStore.edit().remove("recentFiles").apply()
-        showToast("已清除历史记录")
+        showToast(L10n.t("已清除历史记录"))
     }
 
     private fun recentFiles(): List<Pair<String, String>> =
@@ -1638,9 +1642,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         controller?.adoptRef(renamed)
                         activeTitle.value = newName
                     }
-                    showToast("已重命名")
+                    showToast(L10n.t("已重命名"))
                 }
-                .onFailure { showToast("重命名失败：${it.message}") }
+                .onFailure { showToast(L10n.f("重命名失败：%s", it.message)) }
         }
     }
 
@@ -1650,9 +1654,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
             runCatching { source.delete(entry.ref) }
                 .onSuccess {
                     refreshWorkspace()
-                    showToast("已删除")
+                    showToast(L10n.t("已删除"))
                 }
-                .onFailure { showToast("删除失败：${it.message}") }
+                .onFailure { showToast(L10n.f("删除失败：%s", it.message)) }
         }
     }
 
@@ -1662,14 +1666,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
             val docDir = activeDocumentDirectory()
             val name = "image-" + System.currentTimeMillis() + ".png"
             val bytes = contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
-                ?: throw IllegalStateException("无法读取所选图片")
+                ?: throw IllegalStateException(L10n.t("无法读取所选图片"))
             val ref = source.createDocument(DocumentRef.Saf(docDir), name)
             source.write(ref, bytes)
             "assets/$name"
         }.onSuccess { relativePath ->
             postCommandWithText("insertImage", relativePath)
         }.onFailure {
-            showToast("插入图片失败：${it.message}")
+            showToast(L10n.f("插入图片失败：%s", it.message))
         }
     }
 
@@ -1725,7 +1729,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 ),
             )
             dirty.value = true
-            activeTitle.value = "未命名（恢复）"
+            activeTitle.value = L10n.t("未命名（恢复）")
         } else {
             pendingRecoveryMarkdown = markdown
             pendingRecoveryId = entry.documentId
@@ -1737,7 +1741,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
     private fun saveRecoveryCopy(entry: RecoveryStore.Entry) {
         val folder = workspaceRoot
         if (folder == null) {
-            showToast("未打开工作区，无法另存副本")
+            showToast(L10n.t("未打开工作区，无法另存副本"))
             return
         }
         lifecycleScope.launch {
@@ -1750,10 +1754,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
             }.onSuccess { newRef ->
                 recoveryStore.discard(entry.documentId)
                 recoveryEntry.value = null
-                showToast("已另存副本 ${(newRef as? DocumentRef.Saf)?.let { Uri.parse(it.uri).lastPathSegment?.substringAfterLast("%2F") } ?: ""}")
+                showToast(L10n.f("已另存副本 %s", (newRef as? DocumentRef.Saf)?.let { Uri.parse(it.uri).lastPathSegment?.substringAfterLast("%2F") } ?: ""))
                 maybeShowRecoveryDialog()
             }.onFailure {
-                showToast("另存副本失败：${it.message}")
+                showToast(L10n.f("另存副本失败：%s", it.message))
             }
         }
     }
@@ -1769,7 +1773,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             Uri.parse(ref.uri).lastPathSegment?.substringAfterLast("%2F")
                 ?.substringBeforeLast('.')
                 ?.takeIf { it.isNotEmpty() }
-        } ?: "未命名文档"
+        } ?: L10n.t("未命名文档")
 
     override fun onPause() {
         super.onPause()
@@ -1835,15 +1839,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
         // 基础命令（对齐桌面文本选择组）
         val base = listOf(
-            SelectionToolbarItem("剪切", actions["cut"]?.first == true, action = asyncCopyThen {
+            SelectionToolbarItem(L10n.t("剪切"), actions["cut"]?.first == true, action = asyncCopyThen {
                 onCommand("cut", "")
             }),
-            SelectionToolbarItem("拷贝", actions["copy"]?.first == true, action = asyncCopyThen {}),
-            SelectionToolbarItem("粘贴", actions["paste"]?.first == true, action = {
+            SelectionToolbarItem(L10n.t("拷贝"), actions["copy"]?.first == true, action = asyncCopyThen {}),
+            SelectionToolbarItem(L10n.t("粘贴"), actions["paste"]?.first == true, action = {
                 clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
                     ?.takeIf { it.isNotEmpty() }?.let { onCommand("pasteClipboard", "") }
             }),
-            SelectionToolbarItem("全选", true, action = { onCommand("selectAll", "") }),
+            SelectionToolbarItem(L10n.t("全选"), true, action = { onCommand("selectAll", "") }),
         )
         // 上下文定制（对齐桌面 EditorSession+ContextMenu 各语义上下文命令组；
         // 桌面依赖原生面板的条目——更换/另存图片、将图表另存为、表格/图片标题、
@@ -1853,39 +1857,39 @@ SafDocumentSource.takePersistablePermission(this, uri)
         val contextItems = when (semanticContext) {
             // 桌面 math：编辑公式源码 / 公式编号…（块级）/ 转为行内·块级 ─ 删除
             "math" -> listOf(
-                item("编辑公式源码", "editMath"),
-                item("公式编号…", "setMathNumber"),
-                item("转为行内/块级", "convertMath"),
-                item("删除公式", "deleteMath", separator = true),
+                item(L10n.t("编辑公式源码"), "editMath"),
+                item(L10n.t("公式编号…"), "setMathNumber"),
+                item(L10n.t("转为行内/块级"), "convertMath"),
+                item(L10n.t("删除公式"), "deleteMath", separator = true),
             )
             // 桌面 mermaid：编辑源码 / 重新渲染 ─ 删除
             "mermaid" -> listOf(
-                item("编辑 Mermaid 源码", "editMermaid"),
-                item("重新渲染图表", "rerenderMermaid"),
-                item("删除图表", "deleteMermaid", separator = true),
+                item(L10n.t("编辑 Mermaid 源码"), "editMermaid"),
+                item(L10n.t("重新渲染图表"), "rerenderMermaid"),
+                item(L10n.t("删除图表"), "deleteMermaid", separator = true),
             )
             // 桌面 codeBlock：声明语言 / 格式化 / 复制整段 ─ 转为正文
             "codeBlock" -> listOf(
-                SelectionToolbarItem("声明代码语言…", true, onLanguagePicker),
-                item("格式化代码块", "formatCodeBlock"),
-                item("复制整段代码", "copyCodeBlock"),
-                item("转为正文", "exitCode", separator = true),
+                SelectionToolbarItem(L10n.t("声明代码语言…"), true, onLanguagePicker),
+                item(L10n.t("格式化代码块"), "formatCodeBlock"),
+                item(L10n.t("复制整段代码"), "copyCodeBlock"),
+                item(L10n.t("转为正文"), "exitCode", separator = true),
             )
             // 桌面 table：行组 / 列组 / 列宽组 / 对齐组 ─ 删除表格
             "table" -> listOf(
-                item("上方插行", "addRowBefore"),
-                item("下方插行", "addRowAfter"),
-                item("删除当前行", "deleteRow"),
-                item("左插列", "addColumnBefore"),
-                item("右插列", "addColumnAfter"),
-                item("删除当前列", "deleteColumn"),
-                item("内容列宽", "fitTableContents"),
-                item("平均列宽", "distributeTableColumns"),
-                item("恢复自动列宽", "resetTableWidths"),
-                item("左对齐", "alignTableLeft"),
-                item("居中对齐", "alignTableCenter"),
-                item("右对齐", "alignTableRight"),
-                item("删除表格", "deleteTable", separator = true),
+                item(L10n.t("上方插行"), "addRowBefore"),
+                item(L10n.t("下方插行"), "addRowAfter"),
+                item(L10n.t("删除当前行"), "deleteRow"),
+                item(L10n.t("左插列"), "addColumnBefore"),
+                item(L10n.t("右插列"), "addColumnAfter"),
+                item(L10n.t("删除当前列"), "deleteColumn"),
+                item(L10n.t("内容列宽"), "fitTableContents"),
+                item(L10n.t("平均列宽"), "distributeTableColumns"),
+                item(L10n.t("恢复自动列宽"), "resetTableWidths"),
+                item(L10n.t("左对齐"), "alignTableLeft"),
+                item(L10n.t("居中对齐"), "alignTableCenter"),
+                item(L10n.t("右对齐"), "alignTableRight"),
+                item(L10n.t("删除表格"), "deleteTable", separator = true),
             )
             // 桌面 image：缩放（子菜单拍平为百分比）/ 旋转
             "image" -> listOf(
@@ -1893,30 +1897,30 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 item("75%", "resizeImage", "75"),
                 item("90%", "resizeImage", "90"),
                 item("100%", "resizeImage", "100"),
-                item("顺时针旋转", "rotateImageClockwise"),
+                item(L10n.t("顺时针旋转"), "rotateImageClockwise"),
             )
             // 桌面 footnoteDefinition：转到引用 / 删除全部引用 / 删除脚注及全部引用
             "footnoteDefinition" -> listOf(
-                item("转到引用", "goToFootnoteReference"),
-                item("删除全部引用", "clearFootnoteReferences"),
-                item("删除脚注及全部引用", "deleteFootnote"),
+                item(L10n.t("转到引用"), "goToFootnoteReference"),
+                item(L10n.t("删除全部引用"), "clearFootnoteReferences"),
+                item(L10n.t("删除脚注及全部引用"), "deleteFootnote"),
             )
             // 桌面 frontMatter：复制元数据 ─ 移到元数据之后
             "frontMatter" -> listOf(
-                item("复制元数据", "copyCodeBlock"),
-                item("移到元数据之后", "exitCode"),
+                item(L10n.t("复制元数据"), "copyCodeBlock"),
+                item(L10n.t("移到元数据之后"), "exitCode"),
             )
             // 桌面普通文本：NativeFormatTextMenu（格式刷组 + 格式组 + 清除格式）
             else -> listOf(
-                item("格式刷", "formatPainter"),
-                item("应用格式刷", "formatPainterApply"),
-                item("粗体", "toggleBold"),
-                item("斜体", "toggleItalic"),
-                item("下划线", "toggleUnderline"),
-                item("删除线", "toggleStrike"),
-                item("高亮", "toggleHighlight"),
-                item("行内代码", "toggleCode"),
-                item("清除格式", "clearFormat", separator = true),
+                item(L10n.t("格式刷"), "formatPainter"),
+                item(L10n.t("应用格式刷"), "formatPainterApply"),
+                item(L10n.t("粗体"), "toggleBold"),
+                item(L10n.t("斜体"), "toggleItalic"),
+                item(L10n.t("下划线"), "toggleUnderline"),
+                item(L10n.t("删除线"), "toggleStrike"),
+                item(L10n.t("高亮"), "toggleHighlight"),
+                item(L10n.t("行内代码"), "toggleCode"),
+                item(L10n.t("清除格式"), "clearFormat", separator = true),
             )
         }
         val items = base + contextItems
@@ -2048,7 +2052,7 @@ private fun StatusBarPlaceholder(
     val characterCount = field("characterCount")
     val blockType = blockTypeDisplayName(field("blockType"))
     val leading = listOfNotNull(
-        if (line.isNotEmpty()) "行 $line 列 $column" else null,
+        if (line.isNotEmpty()) L10n.f("行 %1${'$'}s 列 %2${'$'}s", line, column) else null,
         blockType.ifEmpty { null },
     ).joinToString(" · ")
     // 单行状态栏（对齐桌面字段集）：位置·块类型 | 编码 | 换行 | 缩放% | 模式 …… 字符。
@@ -2087,7 +2091,7 @@ private fun StatusBarPlaceholder(
             style = itemStyle, color = itemColor,
         )
         Text(
-            text = if (sourceMode) "源码" else "可视化",
+            text = if (sourceMode) L10n.t("源码") else L10n.t("可视化"),
             modifier = Modifier
                 .padding(start = 10.dp)
                 .clickable(onClick = onToggleMode),
@@ -2103,7 +2107,7 @@ private fun StatusBarPlaceholder(
         if (characterCount.isNotEmpty()) {
             // 对齐桌面：字数按钮点击弹出文档统计面板
             Text(
-                text = "$characterCount 字符",
+                text = "$characterCount ${L10n.t("字符")}",
                 modifier = Modifier
                     .padding(start = 10.dp)
                     .clickable(onClick = onShowStatistics),
@@ -2116,21 +2120,21 @@ private fun StatusBarPlaceholder(
 
 /** 块类型内部名 → 桌面同款显示名（对齐 macOS EditorSession.blockTypeDisplayName）。 */
 private fun blockTypeDisplayName(blockType: String): String = when (blockType) {
-    "paragraph" -> "正文"
-    "heading1" -> "标题 1"
-    "heading2" -> "标题 2"
-    "heading3" -> "标题 3"
-    "heading4" -> "标题 4"
-    "heading5" -> "标题 5"
-    "heading6" -> "标题 6"
-    "blockquote" -> "引用"
-    "codeBlock" -> "代码块"
-    "bulletList" -> "无序列表"
-    "orderedList" -> "有序列表"
-    "taskList" -> "任务列表"
-    "table" -> "表格"
-    "image" -> "图片"
-    "footnoteDefinition" -> "脚注"
+    "paragraph" -> L10n.t("正文")
+    "heading1" -> L10n.t("标题 1")
+    "heading2" -> L10n.t("标题 2")
+    "heading3" -> L10n.t("标题 3")
+    "heading4" -> L10n.t("标题 4")
+    "heading5" -> L10n.t("标题 5")
+    "heading6" -> L10n.t("标题 6")
+    "blockquote" -> L10n.t("引用")
+    "codeBlock" -> L10n.t("代码块")
+    "bulletList" -> L10n.t("无序列表")
+    "orderedList" -> L10n.t("有序列表")
+    "taskList" -> L10n.t("任务列表")
+    "table" -> L10n.t("表格")
+    "image" -> L10n.t("图片")
+    "footnoteDefinition" -> L10n.t("脚注")
     else -> blockType
 }
 
@@ -2157,8 +2161,8 @@ private fun EncodingDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        title = { Text("保存编码") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(L10n.t("关闭")) } },
+        title = { Text(L10n.t("保存编码")) },
         text = {
             Column {
                 ENCODING_OPTIONS.forEach { (label, info) ->
@@ -2191,8 +2195,8 @@ private fun NewlineDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        title = { Text("换行符") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(L10n.t("关闭")) } },
+        title = { Text(L10n.t("换行符")) },
         text = {
             Column {
                 listOf("LF" to "LF（Unix/macOS）", "CRLF" to "CRLF（Windows）").forEach { (value, label) ->
@@ -2223,8 +2227,8 @@ private fun ZoomDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        title = { Text("缩放") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(L10n.t("关闭")) } },
+        title = { Text(L10n.t("缩放")) },
         text = {
             Column {
                 androidx.compose.foundation.layout.FlowRow(
@@ -2256,27 +2260,27 @@ private fun DocumentStatisticsDialog(
     fun field(name: String): String =
         (status?.get(name) as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "—"
     val rows: List<Pair<String, String>> = listOf(
-        "字符数" to field("characterCount"),
-        "已选字符数" to field("selectedCharacterCount"),
-        "总字符数" to field("totalCharacterCount"),
-        "非空白字符数" to field("nonWhitespaceCharacterCount"),
-        "CJK 字符数" to field("cjkCharacterCount"),
-        "西文单词数" to field("westernWordCount"),
-        "公式数" to field("formulaCount"),
-        "代码行数" to field("codeLineCount"),
-        "段落数" to field("paragraphCount"),
-        "行" to field("line"),
-        "列" to field("column"),
-        "块类型" to blockTypeDisplayName(field("blockType")),
-        "编码" to encoding,
-        "换行符" to newline,
+        L10n.t("字符数") to field("characterCount"),
+        L10n.t("已选字符数") to field("selectedCharacterCount"),
+        L10n.t("总字符数") to field("totalCharacterCount"),
+        L10n.t("非空白字符数") to field("nonWhitespaceCharacterCount"),
+        L10n.t("CJK 字符数") to field("cjkCharacterCount"),
+        L10n.t("西文单词数") to field("westernWordCount"),
+        L10n.t("公式数") to field("formulaCount"),
+        L10n.t("代码行数") to field("codeLineCount"),
+        L10n.t("段落数") to field("paragraphCount"),
+        L10n.t("行") to field("line"),
+        L10n.t("列") to field("column"),
+        L10n.t("块类型") to blockTypeDisplayName(field("blockType")),
+        L10n.t("编码") to encoding,
+        L10n.t("换行符") to newline,
     )
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(L10n.t("关闭")) }
         },
-        title = { Text("文档统计") },
+        title = { Text(L10n.t("文档统计")) },
         text = {
             Column {
                 rows.forEach { (label, value) ->

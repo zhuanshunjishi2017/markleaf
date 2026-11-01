@@ -2,6 +2,8 @@
 
 package com.markleaf.app.ui
 
+import com.markleaf.app.L10n
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -49,7 +51,7 @@ fun WorkspaceSidebar(
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
-                text = "工作区",
+                text = L10n.t("工作区"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
@@ -71,7 +73,7 @@ fun WorkspaceSidebar(
         }
         if (entries.isEmpty()) {
             Text(
-                text = "暂未打开文件夹",
+                text = L10n.t("暂未打开文件夹"),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
@@ -98,7 +100,7 @@ fun WorkspaceSidebar(
         }
 
         Text(
-            text = "大纲",
+            text = L10n.t("大纲"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),

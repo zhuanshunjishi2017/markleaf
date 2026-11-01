@@ -1,5 +1,7 @@
 package com.markleaf.app.ui
 
+import com.markleaf.app.L10n
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -102,9 +104,9 @@ fun TopMenuBar(
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
             )
-            TextButton(onClick = onUndo, enabled = undoEnabled) { Text("撤销") }
-            TextButton(onClick = onRedo, enabled = redoEnabled) { Text("重做") }
-            TextButton(onClick = onSave) { Text("保存") }
+            TextButton(onClick = onUndo, enabled = undoEnabled) { Text(L10n.t("撤销")) }
+            TextButton(onClick = onRedo, enabled = redoEnabled) { Text(L10n.t("重做")) }
+            TextButton(onClick = onSave) { Text(L10n.t("保存")) }
         }
         // 菜单行不加 horizontalScroll：DropdownMenu 在可滚动容器内锚点
         // 会错位到行首；六项在常规屏宽内放得下，窄屏由文本自动收缩承载

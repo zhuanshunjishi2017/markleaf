@@ -21,7 +21,7 @@ data class EditorPrefs(
     val codeHighlight: Boolean = true,
     val blockHandle: Boolean = true,
     val sourceIndent: Int = 2,
-    val editorLanguage: String = "zh-Hans",
+    val displayLanguage: String = detectDisplayLanguage(),
     val recordRecent: Boolean = true,
     val autoSave: Boolean = false,
     val saveOnSwitch: Boolean = true,
@@ -46,7 +46,7 @@ data class EditorPrefs(
             .putBoolean(PREF_CODE_HIGHLIGHT, codeHighlight)
             .putBoolean(PREF_BLOCK_HANDLE, blockHandle)
             .putInt(PREF_SOURCE_INDENT, sourceIndent)
-            .putString(PREF_EDITOR_LANGUAGE, editorLanguage)
+            .putString(PREF_DISPLAY_LANGUAGE, displayLanguage)
             .putBoolean(PREF_RECORD_RECENT, recordRecent)
             .putBoolean(PREF_AUTO_SAVE, autoSave)
             .putBoolean(PREF_SAVE_ON_SWITCH, saveOnSwitch)
@@ -72,7 +72,7 @@ data class EditorPrefs(
         private const val PREF_CODE_HIGHLIGHT = "codeHighlight"
         private const val PREF_BLOCK_HANDLE = "blockHandle"
         private const val PREF_SOURCE_INDENT = "sourceIndent"
-        private const val PREF_EDITOR_LANGUAGE = "editorLanguage"
+        private const val PREF_DISPLAY_LANGUAGE = "editorLanguage"
         private const val PREF_RECORD_RECENT = "recordRecent"
         private const val PREF_AUTO_SAVE = "autoSave"
         private const val PREF_SAVE_ON_SWITCH = "saveOnSwitch"
@@ -103,13 +103,25 @@ data class EditorPrefs(
             "sans-serif" to "无衬线",
         )
 
-        /** 编辑器内核字符串语言（对齐 shared-editor-strings 可选值）。 */
-        val EDITOR_LANGUAGES = listOf(
+        /** 显示语言（对齐桌面 displayLanguage；驱动宿主 L10n 与编辑器内核）。 */
+        val DISPLAY_LANGUAGES = listOf(
             "zh-Hans" to "简体中文",
             "zh-Hant" to "繁體中文",
             "en" to "English",
             "ja" to "日本語",
         )
+
+        /** 系统语言探测（对齐桌面 detectSystemLanguage）。 */
+        fun detectDisplayLanguage(): String {
+            val tag = java.util.Locale.getDefault().toLanguageTag()
+            return when {
+                tag.startsWith("zh-TW") || tag.startsWith("zh-HK") || tag.startsWith("zh-MO") ||
+                    tag.startsWith("zh-Hant") -> "zh-Hant"
+                tag.startsWith("ja") -> "ja"
+                tag.startsWith("en") -> "en"
+                else -> "zh-Hans"
+            }
+        }
 
         /** 中文排版语言（对齐桌面 CJKLanguageTag）。 */
         val CJK_LANGUAGES = listOf(
@@ -136,7 +148,7 @@ data class EditorPrefs(
             codeHighlight = sp.getBoolean(PREF_CODE_HIGHLIGHT, true),
             blockHandle = sp.getBoolean(PREF_BLOCK_HANDLE, true),
             sourceIndent = sp.getInt(PREF_SOURCE_INDENT, 2).coerceIn(1, 8),
-            editorLanguage = sp.getString(PREF_EDITOR_LANGUAGE, "zh-Hans") ?: "zh-Hans",
+            displayLanguage = sp.getString(PREF_DISPLAY_LANGUAGE, null) ?: detectDisplayLanguage(),
             recordRecent = sp.getBoolean(PREF_RECORD_RECENT, true),
             autoSave = sp.getBoolean(PREF_AUTO_SAVE, false),
             saveOnSwitch = sp.getBoolean(PREF_SAVE_ON_SWITCH, true),

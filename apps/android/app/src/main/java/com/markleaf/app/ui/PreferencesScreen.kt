@@ -2,6 +2,8 @@
 
 package com.markleaf.app.ui
 
+import com.markleaf.app.L10n
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +43,7 @@ fun PreferencesScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             // 退出走系统返回手势（BackHandler 已接管），不再放页内返回按钮
             Text(
-                "首选项",
+                L10n.t("首选项"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
@@ -52,34 +54,34 @@ fun PreferencesScreen(
                 // 分组顺序对齐桌面偏好设置页签：文件 → 编辑器 → 外观
                 // （通用/图片页 Android 暂无可接项）
 
-                SectionTitle("文件")
+                SectionTitle(L10n.t("文件"))
                 // 桌面文件页「保存选项」
                 SwitchRow(
-                    label = "自动保存",
+                    label = L10n.t("自动保存"),
                     checked = prefs.autoSave,
                     onChange = { onChange(prefs.copy(autoSave = it)) },
                 )
                 SwitchRow(
-                    label = "切换文档时自动保存",
+                    label = L10n.t("切换文档时自动保存"),
                     checked = prefs.saveOnSwitch,
                     onChange = { onChange(prefs.copy(saveOnSwitch = it)) },
                 )
                 // 桌面文件页「文本格式」
                 ChipRow(
-                    label = "默认编码",
+                    label = L10n.t("默认编码"),
                     options = EditorPrefs.ENCODING_CHOICES,
                     selected = prefs.defaultEncoding,
                     onSelect = { onChange(prefs.copy(defaultEncoding = it)) },
                 )
                 ChipRow(
-                    label = "默认换行符",
+                    label = L10n.t("默认换行符"),
                     options = EditorPrefs.NEWLINE_CHOICES,
                     selected = prefs.defaultNewline,
                     onSelect = { onChange(prefs.copy(defaultNewline = it)) },
                 )
                 // 桌面文件页「历史记录」组
                 SwitchRow(
-                    label = "记录最近文件",
+                    label = L10n.t("记录最近文件"),
                     checked = prefs.recordRecent,
                     onChange = { onChange(prefs.copy(recordRecent = it)) },
                 )
@@ -87,40 +89,40 @@ fun PreferencesScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("历史记录", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    TextButton(onClick = onClearHistory) { Text("清除…") }
+                    Text(L10n.t("历史记录"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    TextButton(onClick = onClearHistory) { Text(L10n.t("清除…")) }
                 }
 
-                SectionTitle("编辑器")
+                SectionTitle(L10n.t("编辑器"))
                 StepperRow(
-                    label = "字号",
+                    label = L10n.t("字号"),
                     value = "${prefs.fontSize}",
                     onMinus = { onChange(prefs.copy(fontSize = (prefs.fontSize - 1).coerceAtLeast(12))) },
                     onPlus = { onChange(prefs.copy(fontSize = (prefs.fontSize + 1).coerceAtMost(24))) },
                 )
                 ChipRow(
-                    label = "行高",
+                    label = L10n.t("行高"),
                     options = listOf("1.5", "1.75", "2.0"),
                     selected = prefs.lineHeight.toString(),
                     onSelect = { onChange(prefs.copy(lineHeight = it.toDouble())) },
                 )
                 ChipRow(
-                    label = "内容宽度",
-                    options = listOf("740", "820", "980", "不限"),
-                    selected = if (prefs.ignoreMaxWidth) "不限" else prefs.maxWidth.toString(),
+                    label = L10n.t("内容宽度"),
+                    options = listOf("740", "820", "980", L10n.t("不限")),
+                    selected = if (prefs.ignoreMaxWidth) L10n.t("不限") else prefs.maxWidth.toString(),
                     onSelect = {
-                        if (it == "不限") onChange(prefs.copy(ignoreMaxWidth = true))
+                        if (it == L10n.t("不限")) onChange(prefs.copy(ignoreMaxWidth = true))
                         else onChange(prefs.copy(ignoreMaxWidth = false, maxWidth = it.toInt()))
                     },
                 )
                 StepperRow(
-                    label = "源码字号",
+                    label = L10n.t("源码字号"),
                     value = "${prefs.sourceFontSize}",
                     onMinus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize - 1).coerceAtLeast(12))) },
                     onPlus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize + 1).coerceAtMost(20))) },
                 )
                 ChipRow(
-                    label = "源码字体",
+                    label = L10n.t("源码字体"),
                     options = EditorPrefs.SOURCE_FONT_FAMILIES.map { it.second },
                     selected = EditorPrefs.SOURCE_FONT_FAMILIES
                         .firstOrNull { it.first == prefs.sourceFontFamily }?.second ?: "",
@@ -131,13 +133,13 @@ fun PreferencesScreen(
                     },
                 )
                 StepperRow(
-                    label = "源码缩进宽度",
+                    label = L10n.t("源码缩进宽度"),
                     value = "${prefs.sourceIndent}",
                     onMinus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent - 1).coerceAtLeast(1))) },
                     onPlus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent + 1).coerceAtMost(8))) },
                 )
                 ChipRow(
-                    label = "中文排版语言",
+                    label = L10n.t("中文排版语言"),
                     options = EditorPrefs.CJK_LANGUAGES.map { it.second },
                     selected = EditorPrefs.CJK_LANGUAGES
                         .firstOrNull { it.first == prefs.cjkLanguage }?.second ?: "",
@@ -148,35 +150,35 @@ fun PreferencesScreen(
                     },
                 )
                 SwitchRow(
-                    label = "中西文之间自动加空格",
+                    label = L10n.t("中西文之间自动加空格"),
                     checked = prefs.cjkSpacing,
                     onChange = { onChange(prefs.copy(cjkSpacing = it)) },
                 )
                 SwitchRow(
-                    label = "西文两端对齐",
+                    label = L10n.t("西文两端对齐"),
                     checked = prefs.adaptiveJustification,
                     onChange = { onChange(prefs.copy(adaptiveJustification = it)) },
                 )
                 SwitchRow(
-                    label = "允许拖拽调整表格列宽",
+                    label = L10n.t("允许拖拽调整表格列宽"),
                     checked = prefs.tableColumnResize,
                     onChange = { onChange(prefs.copy(tableColumnResize = it)) },
                 )
                 SwitchRow(
-                    label = "显示段落块手柄",
+                    label = L10n.t("显示段落块手柄"),
                     checked = prefs.blockHandle,
                     onChange = { onChange(prefs.copy(blockHandle = it)) },
                 )
                 // 桌面编辑器页「缩放视图」组
                 StepperRow(
-                    label = "缩放",
+                    label = L10n.t("缩放"),
                     value = "${prefs.zoom}%",
                     step = 10,
                     onMinus = { onChange(prefs.copy(zoom = (prefs.zoom - 10).coerceAtLeast(50))) },
                     onPlus = { onChange(prefs.copy(zoom = (prefs.zoom + 10).coerceAtMost(200))) },
                 )
 
-                SectionTitle("外观")
+                SectionTitle(L10n.t("外观"))
                 // 桌面外观页「文档外观」：排版样式 / 颜色主题 / 代码高亮
                 styleIds.forEach { (id, display) ->
                     Row(
@@ -191,7 +193,7 @@ fun PreferencesScreen(
                     }
                 }
                 ChipRow(
-                    label = "主题色",
+                    label = L10n.t("主题色"),
                     options = themeIds.map { it.second },
                     selected = themeIds.firstOrNull { it.first == prefs.colorTheme }?.second ?: "",
                     onSelect = { display ->
@@ -199,28 +201,27 @@ fun PreferencesScreen(
                     },
                 )
                 SwitchRow(
-                    label = "显示代码高亮",
+                    label = L10n.t("显示代码高亮"),
                     checked = prefs.codeHighlight,
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
                 )
 
-                // 桌面通用页「显示语言」：此处作用于编辑器内核字符串
-                // （顶栏/菜单等宿主界面暂为中文）
-                SectionTitle("通用")
+                // 桌面通用页「显示语言」：驱动宿主 L10n 与编辑器内核字符串
+                SectionTitle(L10n.t("通用"))
                 ChipRow(
-                    label = "编辑器语言",
-                    options = EditorPrefs.EDITOR_LANGUAGES.map { it.second },
-                    selected = EditorPrefs.EDITOR_LANGUAGES
-                        .firstOrNull { it.first == prefs.editorLanguage }?.second ?: "",
+                    label = L10n.t("编辑器语言"),
+                    options = EditorPrefs.DISPLAY_LANGUAGES.map { it.second },
+                    selected = EditorPrefs.DISPLAY_LANGUAGES
+                        .firstOrNull { it.first == prefs.displayLanguage }?.second ?: "",
                     onSelect = { display ->
-                        EditorPrefs.EDITOR_LANGUAGES
+                        EditorPrefs.DISPLAY_LANGUAGES
                             .firstOrNull { it.second == display }
-                            ?.let { onChange(prefs.copy(editorLanguage = it.first)) }
+                            ?.let { onChange(prefs.copy(displayLanguage = it.first)) }
                     },
                 )
 
                 Text(
-                    "更多设置（文件关联、图片处理等）将在后续版本提供",
+                    L10n.t("更多设置（文件关联、图片处理等）将在后续版本提供"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -301,7 +302,7 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 fun AboutDialog(version: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("关于 MarkLeaf") },
+        title = { Text(L10n.t("关于 MarkLeaf")) },
         text = {
             Column {
                 Text("MarkLeaf Android", style = MaterialTheme.typography.bodyLarge)
@@ -313,6 +314,6 @@ fun AboutDialog(version: String, onDismiss: () -> Unit) {
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(L10n.t("关闭")) } },
     )
 }
