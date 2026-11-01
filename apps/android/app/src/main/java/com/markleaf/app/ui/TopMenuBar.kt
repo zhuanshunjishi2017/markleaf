@@ -1,5 +1,12 @@
 package com.markleaf.app.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -125,68 +132,87 @@ fun TopMenuBar(
                             submenuTitle = null
                         },
                     ) {
-                        if (submenuTitle != null) {
-                            // 二级面板：返回头 + 子条目（同窗口内换页，无锚点问题）
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "‹ $submenuTitle",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                },
-                                onClick = { submenuTitle = null },
-                            )
-                            HorizontalDivider()
-                            submenuEntries.forEach { entry ->
-                                if (entry.separatorBefore) {
-                                    HorizontalDivider()
+                        // 换页式二级面板统一动画：进二级从右滑入，返回从左滑入
+                        // （此前为无过渡硬切，仅菜单高度骤变产生不一致的观感）
+                        AnimatedContent(
+                            targetState = submenuTitle,
+                            transitionSpec = {
+                                if (targetState != null) {
+                                    (slideInHorizontally(tween(160)) { it / 3 } + fadeIn(tween(160))) togetherWith
+                                        (slideOutHorizontally(tween(160)) { -it / 3 } + fadeOut(tween(160)))
+                                } else {
+                                    (slideInHorizontally(tween(160)) { -it / 3 } + fadeIn(tween(160))) togetherWith
+                                        (slideOutHorizontally(tween(160)) { it / 3 } + fadeOut(tween(160)))
                                 }
-                                DropdownMenuItem(
-                                    text = { MenuEntryText(entry) },
-                                    enabled = entry.enabled,
-                                    onClick = {
-                                        expandedSection = null
-                                        submenuTitle = null
-                                        entry.action()
-                                    },
-                                )
-                            }
-                        } else {
-                            section.entries.forEach { entry ->
-                                if (entry.separatorBefore) {
-                                    HorizontalDivider()
-                                }
-                                if (entry.children != null) {
+                            },
+                            label = "submenuPanel",
+                        ) { panelTitle ->
+                            if (panelTitle != null) {
+                                Column {
                                     DropdownMenuItem(
                                         text = {
-                                            Row {
-                                                Box(modifier = Modifier.width(18.dp))
-                                                Text(
-                                                    entry.title,
-                                                    color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
-                                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                                                )
-                                            }
+                                            Text(
+                                                "‹ $panelTitle",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                            )
                                         },
-                                        trailingIcon = {
-                                            Text("▸", style = MaterialTheme.typography.labelSmall)
-                                        },
-                                        enabled = entry.enabled,
-                                        onClick = {
-                                            submenuTitle = entry.title
-                                            submenuEntries = entry.children
-                                        },
+                                        onClick = { submenuTitle = null },
                                     )
-                                } else {
-                                    DropdownMenuItem(
-                                        text = { MenuEntryText(entry) },
-                                        enabled = entry.enabled,
-                                        onClick = {
-                                            expandedSection = null
-                                            entry.action()
-                                        },
-                                    )
+                                    HorizontalDivider()
+                                    submenuEntries.forEach { entry ->
+                                        if (entry.separatorBefore) {
+                                            HorizontalDivider()
+                                        }
+                                        DropdownMenuItem(
+                                            text = { MenuEntryText(entry) },
+                                            enabled = entry.enabled,
+                                            onClick = {
+                                                expandedSection = null
+                                                submenuTitle = null
+                                                entry.action()
+                                            },
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    section.entries.forEach { entry ->
+                                        if (entry.separatorBefore) {
+                                            HorizontalDivider()
+                                        }
+                                        if (entry.children != null) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row {
+                                                        Box(modifier = Modifier.width(18.dp))
+                                                        Text(
+                                                            entry.title,
+                                                            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                                        )
+                                                    }
+                                                },
+                                                trailingIcon = {
+                                                    Text("▸", style = MaterialTheme.typography.labelSmall)
+                                                },
+                                                enabled = entry.enabled,
+                                                onClick = {
+                                                    submenuTitle = entry.title
+                                                    submenuEntries = entry.children
+                                                },
+                                            )
+                                        } else {
+                                            DropdownMenuItem(
+                                                text = { MenuEntryText(entry) },
+                                                enabled = entry.enabled,
+                                                onClick = {
+                                                    expandedSection = null
+                                                    entry.action()
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
