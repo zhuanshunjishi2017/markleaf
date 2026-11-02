@@ -61,6 +61,7 @@ import com.markleaf.app.documents.RecoveryStore
 import com.markleaf.app.documents.SafDocumentSource
 import com.markleaf.app.documents.SafDocumentPath
 import com.markleaf.app.documents.isMarkdownName
+import com.markleaf.app.documents.parsedUri
 import com.markleaf.app.editor.EditorWebViewFactory
 import com.markleaf.app.editor.StyleAssets
 import com.markleaf.app.export.ExportController
@@ -283,7 +284,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
         editorPrefs.value = com.markleaf.app.ui.EditorPrefs.load(prefsStore)
         L10n.language = editorPrefs.value.displayLanguage
         activeTitle.value = L10n.t("未命名")
-        zoomPercent.value = editorPrefs.value.zoom
+        // 对齐桌面 WindowSession：关闭「打开时还原上次的缩放比例」则会话从 100% 起步
+        zoomPercent.value = if (editorPrefs.value.restoreZoomOnOpen) editorPrefs.value.zoom else 100
         bridge = EditorBridge(
             postScript = { script -> webView.evaluateJavascript(script, null) },
             session = session,
@@ -541,7 +543,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 com.markleaf.app.ui.PreferencesScreen(
                     prefs = editorPrefs.value,
                     styleIds = StyleAssets.TYPOGRAPHY_STYLES,
-                    themeIds = StyleAssets.COLOR_THEMES,
+                    colorThemes = StyleAssets.colorThemes(this@MainActivity),
                     onChange = ::updatePrefs,
                     onClearHistory = ::clearRecentHistory,
                     onDismiss = { showPreferences.value = false },
@@ -1192,19 +1194,29 @@ SafDocumentSource.takePersistablePermission(this, uri)
         )
     }
 
-    /** 应用缩放：捏合/菜单共用；仅更新缩放值并下发外观。 */
+    /** 应用缩放：捏合/菜单共用；更新缩放值、持久化到首选项（供「打开时还原」）并下发外观。 */
     private fun applyZoom(percent: Int) {
-        zoomPercent.value = percent.coerceIn(50, 200)
+        val clamped = percent.coerceIn(50, 200)
+        zoomPercent.value = clamped
+        if (editorPrefs.value.zoom != clamped) {
+            editorPrefs.value = editorPrefs.value.copy(zoom = clamped)
+            editorPrefs.value.save(prefsStore)
+        }
         applyAppearance()
     }
 
-    /** 首选项变更：保存 + 立即应用（缩放字段同步 zoomPercent；主题/样式变更重发样式载荷）。 */
+    /** 首选项变更：保存 + 立即应用（缩放字段变化才同步 zoomPercent，避免关闭
+     *  「打开时还原」后改任意首选项把会话缩放拉回存档值；主题相关变更重发样式载荷）。 */
     private fun updatePrefs(newPrefs: com.markleaf.app.ui.EditorPrefs) {
         val old = editorPrefs.value
         editorPrefs.value = newPrefs
         newPrefs.save(prefsStore)
-        zoomPercent.value = newPrefs.zoom
-        if (newPrefs.styleId != old.styleId || newPrefs.colorTheme != old.colorTheme) {
+        if (newPrefs.zoom != old.zoom) zoomPercent.value = newPrefs.zoom
+        if (newPrefs.styleId != old.styleId || newPrefs.colorTheme != old.colorTheme ||
+            newPrefs.followSystemTheme != old.followSystemTheme ||
+            newPrefs.defaultLightTheme != old.defaultLightTheme ||
+            newPrefs.defaultDarkTheme != old.defaultDarkTheme
+        ) {
             lastAppliedStyleId = newPrefs.styleId
             applyStyles()
         }
@@ -1225,7 +1237,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
             if (newPrefs.codeFence != old.codeFence || newPrefs.emphasisMarker != old.emphasisMarker ||
                 newPrefs.bulletMarker != old.bulletMarker ||
                 newPrefs.exitBlockOnEmptyEnter != old.exitBlockOnEmptyEnter ||
-                newPrefs.useShiftEnterHardBreak != old.useShiftEnterHardBreak
+                newPrefs.useShiftEnterHardBreak != old.useShiftEnterHardBreak ||
+                newPrefs.escapeLiteralSymbols != old.escapeLiteralSymbols ||
+                newPrefs.escapeMarkdownLiteralSymbols != old.escapeMarkdownLiteralSymbols ||
+                newPrefs.codeBlockSpellcheck != old.codeBlockSpellcheck
             ) {
                 applyEditorKernelSettings()
             }
@@ -1241,13 +1256,16 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.post(command("setBlockHandleVisible", if (prefs.blockHandle) "1" else "0"))
         bridge.post(command("setSourceIndent", prefs.sourceIndent.toString()))
         bridge.post(command("setLanguage", prefs.displayLanguage))
+        // 字段集合与桌面 EditorSession.applyMarkdownEditingSettings 相同
         val markdownSettings = "{" +
             "\"exitBlockOnEmptyEnter\":${prefs.exitBlockOnEmptyEnter}," +
             "\"useShiftEnterHardBreak\":${prefs.useShiftEnterHardBreak}," +
             "\"codeFence\":\"${prefs.codeFence}\"," +
             "\"emphasisMarker\":\"${prefs.emphasisMarker}\"," +
             "\"bulletMarker\":\"${prefs.bulletMarker}\"," +
-            "\"escapeMarkdownLiteralSymbols\":true}"
+            "\"escapeLiteralSymbols\":${prefs.escapeLiteralSymbols}," +
+            "\"escapeMarkdownLiteralSymbols\":${prefs.escapeMarkdownLiteralSymbols}," +
+            "\"codeBlockSpellcheck\":${prefs.codeBlockSpellcheck}}"
         bridge.post(command("setMarkdownEditingSettings", markdownSettings))
     }
 
@@ -1269,14 +1287,26 @@ SafDocumentSource.takePersistablePermission(this, uri)
         )
     }
 
+    /** 生效颜色主题（对齐桌面 EditorSession.applyStyles：开启「与操作系统同步」时
+     *  按系统外观取默认浅/深主题，否则用已选主题；缺失项逐级回退）。 */
     private fun effectiveColorThemeId(): String {
         val systemDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        return StyleAssets.resolveColorThemeId(editorPrefs.value.colorTheme, systemDark)
+        val prefs = editorPrefs.value
+        return StyleAssets.resolveColorThemeId(
+            selected = prefs.colorTheme,
+            followSystem = prefs.followSystemTheme,
+            systemDark = systemDark,
+            preferredLight = prefs.defaultLightTheme,
+            preferredDark = prefs.defaultDarkTheme,
+            catalog = StyleAssets.colorThemes(this),
+        )
     }
 
-    /** 双指捏合：factor 为本次增量；finished 表示手势结束（补齐被限流的末次应用）。 */
+    /** 双指捏合：factor 为本次增量；finished 表示手势结束（补齐被限流的末次应用）。
+     *  首选项关闭「使用双指捏合进行缩放」时忽略手势。 */
     private fun onPinchZoom(factor: Float, finished: Boolean) {
+        if (!editorPrefs.value.pinchZoom) return
         pinchAccumulator = (pinchAccumulator * factor).coerceIn(50.0, 200.0)
         val now = System.currentTimeMillis()
         val target = pinchAccumulator.roundToInt()
@@ -1699,22 +1729,45 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
-    /** SAF 图片 → 复制进文档目录 → 以相对路径插入（insertImage 命令）。 */
+    /** SAF 图片 → 复制进文档目录下的 assets/ 子目录（无则创建）→ 以相对路径插入
+     *  （insertImage 命令）。对齐桌面 copyImageToAssets + markdownReferencePath：
+     *  保留原文件名（同名由 SAF 去重，以实际落盘名为准）、空格编码为 %20、
+     *  按首选项决定是否加 "./" 前缀。
+     *  回归护栏：曾把文件建在文档目录根下却引用 assets/<name>，且 MIME 硬编码为
+     *  text/markdown 导致落盘成 x.png.md——两处都让插入的图片显示不出来。 */
     private suspend fun insertImageFromSaf(sourceUri: Uri) {
         runCatching {
-            val docDir = activeDocumentDirectory()
-            val name = "image-" + System.currentTimeMillis() + ".png"
+            val docDirUri = activeDocumentDirectory()
+            if (docDirUri.isEmpty()) throw IllegalStateException(L10n.t("文档未保存，无法插入图片"))
+            val docDir = DocumentRef.Saf(docDirUri)
             val bytes = contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
                 ?: throw IllegalStateException(L10n.t("无法读取所选图片"))
-            val ref = source.createDocument(DocumentRef.Saf(docDir), name)
-            source.write(ref, bytes)
-            "assets/$name"
+            val sourceName = queryDisplayName(sourceUri)
+                ?: "image-${System.currentTimeMillis()}.${imageExtensionOf(sourceUri)}"
+            val assetsDir = source.listChildren(docDir)
+                .firstOrNull { it.isFolder && it.name.equals("assets", ignoreCase = true) }
+                ?.ref ?: source.createFolder(docDir, "assets")
+            val created = source.createDocument(assetsDir, sourceName)
+            source.write(created, bytes)
+            val finalName = (created as? DocumentRef.Saf)?.let { queryDisplayName(it.parsedUri) } ?: sourceName
+            val relative = "assets/$finalName".replace(" ", "%20")
+            if (editorPrefs.value.prefixRelativeWithDotSlash) "./$relative" else relative
         }.onSuccess { relativePath ->
             postCommandWithText("insertImage", relativePath)
         }.onFailure {
             showToast(L10n.f("插入图片失败：%s", it.message))
         }
     }
+
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    private fun imageExtensionOf(uri: Uri): String =
+        contentResolver.getType(uri)
+            ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+            ?: "png"
 
     private fun postCommandWithText(name: String, text: String) {
         bridge.post(command(name, text))

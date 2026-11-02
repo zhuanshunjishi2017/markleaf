@@ -74,10 +74,12 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
 
     override suspend fun createDocument(folder: DocumentRef, name: String): DocumentRef = withContext(Dispatchers.IO) {
         val folderUri = folder.requireSaf().parsedUri
+        // MIME 按文件名推断：DocumentsProvider 在扩展名与 MIME 不匹配时会追加
+        // MIME 对应的扩展名（曾把图片硬编码成 text/markdown → 落盘成 x.png.md）
         val created = DocumentsContract.createDocument(
             contentResolver,
             folderUri,
-            "text/markdown",
+            mimeForName(name),
             name,
         ) ?: throw SecurityException("SAF 拒绝创建文档：$folderUri")
         DocumentRef.Saf(created.toString())

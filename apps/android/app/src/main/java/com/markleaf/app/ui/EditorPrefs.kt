@@ -13,7 +13,7 @@ data class EditorPrefs(
     val tableColumnResize: Boolean = true,
     val zoom: Int = 100,
     val styleId: String = "serif",
-    val colorTheme: String = "colors-default-light",
+    val colorTheme: String = DEFAULT_LIGHT_THEME,
     val sourceFontSize: Int = 14,
     val sourceFontFamily: String = "monospace",
     val cjkLanguage: String = "zh-Hans",
@@ -33,6 +33,19 @@ data class EditorPrefs(
     val saveOnSwitch: Boolean = true,
     val defaultEncoding: String = "UTF-8",
     val defaultNewline: String = "LF",
+    // 桌面 Markdown 行为子窗口其余三项
+    val escapeLiteralSymbols: Boolean = false,
+    val escapeMarkdownLiteralSymbols: Boolean = false,
+    val codeBlockSpellcheck: Boolean = false,
+    // 桌面外观页「文档外观」：与操作系统同步 + 默认浅/深色主题
+    val followSystemTheme: Boolean = true,
+    val defaultLightTheme: String = DEFAULT_LIGHT_THEME,
+    val defaultDarkTheme: String = DEFAULT_DARK_THEME,
+    // 桌面编辑器页「缩放视图」；pinchZoom 对应桌面「⌘ + 滚轮缩放」的触屏等价项
+    val restoreZoomOnOpen: Boolean = true,
+    val pinchZoom: Boolean = true,
+    // 桌面图片页
+    val prefixRelativeWithDotSlash: Boolean = true,
 ) {
     fun save(sp: SharedPreferences) {
         sp.edit()
@@ -64,10 +77,23 @@ data class EditorPrefs(
             .putBoolean(PREF_SAVE_ON_SWITCH, saveOnSwitch)
             .putString(PREF_DEFAULT_ENCODING, defaultEncoding)
             .putString(PREF_DEFAULT_NEWLINE, defaultNewline)
+            .putBoolean(PREF_ESCAPE_LITERAL_SYMBOLS, escapeLiteralSymbols)
+            .putBoolean(PREF_ESCAPE_MARKDOWN_LITERAL_SYMBOLS, escapeMarkdownLiteralSymbols)
+            .putBoolean(PREF_CODE_BLOCK_SPELLCHECK, codeBlockSpellcheck)
+            .putBoolean(PREF_FOLLOW_SYSTEM_THEME, followSystemTheme)
+            .putString(PREF_DEFAULT_LIGHT_THEME, defaultLightTheme)
+            .putString(PREF_DEFAULT_DARK_THEME, defaultDarkTheme)
+            .putBoolean(PREF_RESTORE_ZOOM_ON_OPEN, restoreZoomOnOpen)
+            .putBoolean(PREF_PINCH_ZOOM, pinchZoom)
+            .putBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, prefixRelativeWithDotSlash)
             .apply()
     }
 
     companion object {
+        /** 默认浅/深色主题（对齐桌面 AppSettings：apple-blue / apple-dark）。 */
+        const val DEFAULT_LIGHT_THEME = "colors-apple-blue"
+        const val DEFAULT_DARK_THEME = "colors-apple-dark"
+
         private const val PREF_FONT_SIZE = "fontSize"
         private const val PREF_LINE_HEIGHT = "lineHeight"
         private const val PREF_MAX_WIDTH = "maxWidth"
@@ -96,6 +122,15 @@ data class EditorPrefs(
         private const val PREF_SAVE_ON_SWITCH = "saveOnSwitch"
         private const val PREF_DEFAULT_ENCODING = "defaultEncoding"
         private const val PREF_DEFAULT_NEWLINE = "defaultNewline"
+        private const val PREF_ESCAPE_LITERAL_SYMBOLS = "escapeLiteralSymbols"
+        private const val PREF_ESCAPE_MARKDOWN_LITERAL_SYMBOLS = "escapeMarkdownLiteralSymbols"
+        private const val PREF_CODE_BLOCK_SPELLCHECK = "codeBlockSpellcheck"
+        private const val PREF_FOLLOW_SYSTEM_THEME = "followSystemTheme"
+        private const val PREF_DEFAULT_LIGHT_THEME = "defaultLightTheme"
+        private const val PREF_DEFAULT_DARK_THEME = "defaultDarkTheme"
+        private const val PREF_RESTORE_ZOOM_ON_OPEN = "restoreZoomOnOpen"
+        private const val PREF_PINCH_ZOOM = "pinchZoom"
+        private const val PREF_PREFIX_RELATIVE_WITH_DOT_SLASH = "prefixRelativeWithDotSlash"
 
         /** 可选编码（与桌面 DocumentEncodingPolicy 同名同序）。 */
         val ENCODING_CHOICES = listOf(
@@ -121,8 +156,8 @@ data class EditorPrefs(
             "sans-serif" to "无衬线",
         )
 
-        /** 代码块围栏（对齐桌面 markdownCodeFence）。 */
-        val CODE_FENCES = listOf("backtick" to "反引号", "tilde" to "波浪线")
+        /** 代码围栏（对齐桌面 markdownCodeFence；展示名为桌面 L10n 键）。 */
+        val CODE_FENCES = listOf("backtick" to "反引号 `", "tilde" to "波浪号 ~")
 
         /** 强调标记（对齐桌面 markdownEmphasisMarker）。 */
         val EMPHASIS_MARKERS = listOf("asterisk" to "星号 *", "underscore" to "下划线 _")
@@ -167,7 +202,7 @@ data class EditorPrefs(
             tableColumnResize = sp.getBoolean(PREF_TABLE_COLUMN_RESIZE, true),
             zoom = sp.getInt(PREF_ZOOM, 100).coerceIn(50, 200),
             styleId = sp.getString(PREF_STYLE_ID, "serif") ?: "serif",
-            colorTheme = sp.getString(PREF_COLOR_THEME, "colors-default-light") ?: "colors-default-light",
+            colorTheme = sp.getString(PREF_COLOR_THEME, DEFAULT_LIGHT_THEME) ?: DEFAULT_LIGHT_THEME,
             sourceFontSize = sp.getInt(PREF_SOURCE_FONT_SIZE, 14).coerceIn(12, 20),
             sourceFontFamily = sp.getString(PREF_SOURCE_FONT_FAMILY, "monospace") ?: "monospace",
             cjkLanguage = sp.getString(PREF_CJK_LANGUAGE, "zh-Hans") ?: "zh-Hans",
@@ -187,6 +222,15 @@ data class EditorPrefs(
             saveOnSwitch = sp.getBoolean(PREF_SAVE_ON_SWITCH, true),
             defaultEncoding = sp.getString(PREF_DEFAULT_ENCODING, "UTF-8") ?: "UTF-8",
             defaultNewline = sp.getString(PREF_DEFAULT_NEWLINE, "LF") ?: "LF",
+            escapeLiteralSymbols = sp.getBoolean(PREF_ESCAPE_LITERAL_SYMBOLS, false),
+            escapeMarkdownLiteralSymbols = sp.getBoolean(PREF_ESCAPE_MARKDOWN_LITERAL_SYMBOLS, false),
+            codeBlockSpellcheck = sp.getBoolean(PREF_CODE_BLOCK_SPELLCHECK, false),
+            followSystemTheme = sp.getBoolean(PREF_FOLLOW_SYSTEM_THEME, true),
+            defaultLightTheme = sp.getString(PREF_DEFAULT_LIGHT_THEME, DEFAULT_LIGHT_THEME) ?: DEFAULT_LIGHT_THEME,
+            defaultDarkTheme = sp.getString(PREF_DEFAULT_DARK_THEME, DEFAULT_DARK_THEME) ?: DEFAULT_DARK_THEME,
+            restoreZoomOnOpen = sp.getBoolean(PREF_RESTORE_ZOOM_ON_OPEN, true),
+            pinchZoom = sp.getBoolean(PREF_PINCH_ZOOM, true),
+            prefixRelativeWithDotSlash = sp.getBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, true),
         )
     }
 }
