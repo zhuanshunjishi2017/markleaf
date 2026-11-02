@@ -46,6 +46,16 @@ data class EditorPrefs(
     val pinchZoom: Boolean = true,
     // 桌面图片页
     val prefixRelativeWithDotSlash: Boolean = true,
+    // 桌面文件页「历史记录」：记录最近文件夹
+    val recordRecentFolders: Boolean = true,
+    // 桌面外观页「状态栏」自定义（对齐 StatusBarSettings；侧栏切换/命令状态为桌面专属字段）
+    val statusBarPosition: Boolean = true,
+    val statusBarBlockType: Boolean = true,
+    val statusBarEncoding: Boolean = true,
+    val statusBarNewline: Boolean = true,
+    val statusBarModeToggle: Boolean = true,
+    val statusBarZoom: Boolean = true,
+    val statusBarWordCount: Boolean = true,
 ) {
     fun save(sp: SharedPreferences) {
         sp.edit()
@@ -86,6 +96,14 @@ data class EditorPrefs(
             .putBoolean(PREF_RESTORE_ZOOM_ON_OPEN, restoreZoomOnOpen)
             .putBoolean(PREF_PINCH_ZOOM, pinchZoom)
             .putBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, prefixRelativeWithDotSlash)
+            .putBoolean(PREF_RECORD_RECENT_FOLDERS, recordRecentFolders)
+            .putBoolean(PREF_STATUS_BAR_POSITION, statusBarPosition)
+            .putBoolean(PREF_STATUS_BAR_BLOCK_TYPE, statusBarBlockType)
+            .putBoolean(PREF_STATUS_BAR_ENCODING, statusBarEncoding)
+            .putBoolean(PREF_STATUS_BAR_NEWLINE, statusBarNewline)
+            .putBoolean(PREF_STATUS_BAR_MODE_TOGGLE, statusBarModeToggle)
+            .putBoolean(PREF_STATUS_BAR_ZOOM, statusBarZoom)
+            .putBoolean(PREF_STATUS_BAR_WORD_COUNT, statusBarWordCount)
             .apply()
     }
 
@@ -131,6 +149,14 @@ data class EditorPrefs(
         private const val PREF_RESTORE_ZOOM_ON_OPEN = "restoreZoomOnOpen"
         private const val PREF_PINCH_ZOOM = "pinchZoom"
         private const val PREF_PREFIX_RELATIVE_WITH_DOT_SLASH = "prefixRelativeWithDotSlash"
+        private const val PREF_RECORD_RECENT_FOLDERS = "recordRecentFolders"
+        private const val PREF_STATUS_BAR_POSITION = "statusBarPosition"
+        private const val PREF_STATUS_BAR_BLOCK_TYPE = "statusBarBlockType"
+        private const val PREF_STATUS_BAR_ENCODING = "statusBarEncoding"
+        private const val PREF_STATUS_BAR_NEWLINE = "statusBarNewline"
+        private const val PREF_STATUS_BAR_MODE_TOGGLE = "statusBarModeToggle"
+        private const val PREF_STATUS_BAR_ZOOM = "statusBarZoom"
+        private const val PREF_STATUS_BAR_WORD_COUNT = "statusBarWordCount"
 
         /** 可选编码（与桌面 DocumentEncodingPolicy 同名同序）。 */
         val ENCODING_CHOICES = listOf(
@@ -231,6 +257,14 @@ data class EditorPrefs(
             restoreZoomOnOpen = sp.getBoolean(PREF_RESTORE_ZOOM_ON_OPEN, true),
             pinchZoom = sp.getBoolean(PREF_PINCH_ZOOM, true),
             prefixRelativeWithDotSlash = sp.getBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, true),
+            recordRecentFolders = sp.getBoolean(PREF_RECORD_RECENT_FOLDERS, true),
+            statusBarPosition = sp.getBoolean(PREF_STATUS_BAR_POSITION, true),
+            statusBarBlockType = sp.getBoolean(PREF_STATUS_BAR_BLOCK_TYPE, true),
+            statusBarEncoding = sp.getBoolean(PREF_STATUS_BAR_ENCODING, true),
+            statusBarNewline = sp.getBoolean(PREF_STATUS_BAR_NEWLINE, true),
+            statusBarModeToggle = sp.getBoolean(PREF_STATUS_BAR_MODE_TOGGLE, true),
+            statusBarZoom = sp.getBoolean(PREF_STATUS_BAR_ZOOM, true),
+            statusBarWordCount = sp.getBoolean(PREF_STATUS_BAR_WORD_COUNT, true),
         )
     }
 }

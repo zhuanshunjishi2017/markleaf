@@ -224,6 +224,7 @@ class MainActivity : ComponentActivity() {
     ) { uri ->
         if (uri != null) {
 SafDocumentSource.takePersistablePermission(this, uri)
+            rememberRecentFolder(uri.toString(), treeDisplayName(uri))
             workspaceRoot = DocumentRef.Saf(uri.toString())
             refreshWorkspace()
         }
@@ -378,6 +379,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 newline = documentNewline.value,
                                 zoom = zoomPercent.value,
                                 sourceMode = editorSourceMode.value,
+                                prefs = editorPrefs.value,
                                 onShowStatistics = { showStatisticsDialog.value = true },
                                 onEncoding = { showEncodingDialog.value = true },
                                 onNewline = { showNewlineDialog.value = true },
@@ -1450,6 +1452,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         host(recentEntry.second) { openDocument(DocumentRef.Saf(recentEntry.first)) }
                     }))
                 }
+                val recentFolderList = recentFolders()
+                if (recentFolderList.isNotEmpty()) {
+                    add(sub(L10n.t("最近文件夹"), children = recentFolderList.map { recentEntry ->
+                        host(recentEntry.second) { reopenRecentFolder(recentEntry.first) }
+                    }))
+                }
                 add(host(L10n.t("恢复未保存的文件…"), separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
                     maybeShowRecoveryDialog()
                     if (recoveryEntry.value == null) showToast(L10n.t("没有待恢复的内容"))
@@ -1504,6 +1512,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
             TopMenuSection(L10n.t("插入"), listOf(
                 sub(L10n.t("图片"), enabled = hasDoc, children = listOf(
                     host(L10n.t("插入本地图片…")) { openImageLauncher.launch("image/*") },
+                    host(L10n.t("插入剪贴板图片…"), enabled = clipboardImageUri() != null) {
+                        clipboardImageUri()?.let { imageUri ->
+                            lifecycleScope.launch { insertImageFromSaf(imageUri) }
+                        }
+                    },
                     host(L10n.t("插入来自互联网的图片…")) {
                         imageUrlInput = "https://"
                         showImageUrlDialog.value = true
@@ -1686,8 +1699,18 @@ SafDocumentSource.takePersistablePermission(this, uri)
         prefsStore.edit().putString("recentFiles", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
     }
 
+    /** 记录最近文件夹（对齐桌面 recordRecentFolders；tree URI 已持持久化权限）。 */
+    private fun rememberRecentFolder(uri: String, name: String) {
+        if (!editorPrefs.value.recordRecentFolders) return
+        val current = recentFolders().filter { it.first != uri }.toMutableList()
+        current.add(0, uri to name)
+        val trimmed = current.take(5)
+        prefsStore.edit().putString("recentFolders", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
+    }
+
     private fun clearRecentHistory() {
-        prefsStore.edit().remove("recentFiles").apply()
+        // 对齐桌面确认文案：同时删除最近的文件和文件夹记录
+        prefsStore.edit().remove("recentFiles").remove("recentFolders").apply()
         showToast(L10n.t("已清除历史记录"))
     }
 
@@ -1700,6 +1723,22 @@ SafDocumentSource.takePersistablePermission(this, uri)
             }
             ?.toList()
             ?: emptyList()
+
+    private fun recentFolders(): List<Pair<String, String>> =
+        prefsStore.getString("recentFolders", null)
+            ?.lineSequence()
+            ?.mapNotNull { line ->
+                val split = line.indexOf('|')
+                if (split <= 0) null else line.substring(0, split) to line.substring(split + 1)
+            }
+            ?.toList()
+            ?: emptyList()
+
+    /** tree URI → 显示名：tree document id 冒号后的目录段（primary:Docs → Docs）。 */
+    private fun treeDisplayName(uri: Uri): String =
+        runCatching { android.provider.DocumentsContract.getTreeDocumentId(uri) }
+            .getOrNull()?.substringAfter(':', uri.toString())?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment ?: uri.toString()
 
     /** 工作区侧栏长按：重命名当前条目名（SAF rename）。 */
     private fun renameSidebarEntry(entry: DocumentEntry, newName: String) {
@@ -1763,6 +1802,31 @@ SafDocumentSource.takePersistablePermission(this, uri)
         contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /** 剪贴板中的图片 URI（相册「复制图片」等来源）；无图片返回 null。 */
+    private fun clipboardImageUri(): Uri? {
+        val clip = clipboardManager().primaryClip ?: return null
+        val mimeTypes = clip.description.filterMimeTypes("*/*")
+        if (mimeTypes.none { it.startsWith("image/") }) return null
+        for (index in 0 until clip.itemCount) {
+            clip.getItemAt(index).uri?.let { return it }
+        }
+        return null
+    }
+
+    /** 重新打开最近文件夹：tree URI 的持久化权限仍在（takePersistablePermission 已记录）。 */
+    private fun reopenRecentFolder(uri: String) {
+        val parsed = runCatching { Uri.parse(uri) }.getOrNull() ?: return
+        val persisted = contentResolver.persistedUriPermissions.any {
+            it.uri == parsed && it.isReadPermission
+        }
+        if (!persisted) {
+            showToast(L10n.t("权限已失效，请重新打开文件夹"))
+            return
+        }
+        workspaceRoot = DocumentRef.Saf(uri)
+        refreshWorkspace()
+    }
 
     private fun imageExtensionOf(uri: Uri): String =
         contentResolver.getType(uri)
@@ -2131,6 +2195,7 @@ private fun StatusBarPlaceholder(
     newline: String,
     zoom: Int,
     sourceMode: Boolean,
+    prefs: com.markleaf.app.ui.EditorPrefs,
     onShowStatistics: () -> Unit,
     onEncoding: () -> Unit,
     onNewline: () -> Unit,
@@ -2143,9 +2208,10 @@ private fun StatusBarPlaceholder(
     val column = field("column")
     val characterCount = field("characterCount")
     val blockType = blockTypeDisplayName(field("blockType"))
+    // 各字段可见性对齐桌面「自定义状态栏」（侧栏切换/命令状态为桌面专属字段）
     val leading = listOfNotNull(
-        if (line.isNotEmpty()) L10n.f("行 %1${'$'}s 列 %2${'$'}s", line, column) else null,
-        blockType.ifEmpty { null },
+        if (prefs.statusBarPosition && line.isNotEmpty()) L10n.f("行 %1${'$'}s 列 %2${'$'}s", line, column) else null,
+        if (prefs.statusBarBlockType) blockType.ifEmpty { null } else null,
     ).joinToString(" · ")
     // 单行状态栏（对齐桌面字段集）：位置·块类型 | 编码 | 换行 | 缩放% | 模式 …… 字符。
     // 瞬态消息（已保存/已复制/错误）改用 Toast，不挤占字段位。
@@ -2168,35 +2234,43 @@ private fun StatusBarPlaceholder(
         )
         val itemStyle = MaterialTheme.typography.labelSmall
         val itemColor = MaterialTheme.colorScheme.onSurfaceVariant
-        Text(
-            text = encoding,
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .clickable(onClick = onEncoding),
-            style = itemStyle, color = itemColor,
-        )
-        Text(
-            text = newline,
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .clickable(onClick = onNewline),
-            style = itemStyle, color = itemColor,
-        )
-        Text(
-            text = if (sourceMode) L10n.t("源码") else L10n.t("可视化"),
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .clickable(onClick = onToggleMode),
-            style = itemStyle, color = itemColor,
-        )
-        Text(
-            text = "$zoom%",
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .clickable(onClick = onZoom),
-            style = itemStyle, color = itemColor,
-        )
-        if (characterCount.isNotEmpty()) {
+        if (prefs.statusBarEncoding) {
+            Text(
+                text = encoding,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .clickable(onClick = onEncoding),
+                style = itemStyle, color = itemColor,
+            )
+        }
+        if (prefs.statusBarNewline) {
+            Text(
+                text = newline,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .clickable(onClick = onNewline),
+                style = itemStyle, color = itemColor,
+            )
+        }
+        if (prefs.statusBarModeToggle) {
+            Text(
+                text = if (sourceMode) L10n.t("源码") else L10n.t("可视化"),
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .clickable(onClick = onToggleMode),
+                style = itemStyle, color = itemColor,
+            )
+        }
+        if (prefs.statusBarZoom) {
+            Text(
+                text = "$zoom%",
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .clickable(onClick = onZoom),
+                style = itemStyle, color = itemColor,
+            )
+        }
+        if (prefs.statusBarWordCount && characterCount.isNotEmpty()) {
             // 对齐桌面：字数按钮点击弹出文档统计面板
             Text(
                 text = "$characterCount ${L10n.t("字符")}",

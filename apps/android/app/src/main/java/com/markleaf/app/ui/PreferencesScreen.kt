@@ -97,6 +97,11 @@ fun PreferencesScreen(
                     checked = prefs.recordRecent,
                     onChange = { onChange(prefs.copy(recordRecent = it)) },
                 )
+                SwitchRow(
+                    label = L10n.t("记录最近文件夹"),
+                    checked = prefs.recordRecentFolders,
+                    onChange = { onChange(prefs.copy(recordRecentFolders = it)) },
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -325,6 +330,43 @@ fun PreferencesScreen(
                     label = L10n.t("显示代码高亮"),
                     checked = prefs.codeHighlight,
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
+                )
+                // 桌面外观页「状态栏」：自定义各字段可见性（侧栏切换/命令状态为桌面专属）
+                GroupHeader(L10n.t("状态栏"))
+                SwitchRow(
+                    label = L10n.t("显示光标位置"),
+                    checked = prefs.statusBarPosition,
+                    onChange = { onChange(prefs.copy(statusBarPosition = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示块类型"),
+                    checked = prefs.statusBarBlockType,
+                    onChange = { onChange(prefs.copy(statusBarBlockType = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示编码"),
+                    checked = prefs.statusBarEncoding,
+                    onChange = { onChange(prefs.copy(statusBarEncoding = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示换行符"),
+                    checked = prefs.statusBarNewline,
+                    onChange = { onChange(prefs.copy(statusBarNewline = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示源码/可视化切换"),
+                    checked = prefs.statusBarModeToggle,
+                    onChange = { onChange(prefs.copy(statusBarModeToggle = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示缩放比例"),
+                    checked = prefs.statusBarZoom,
+                    onChange = { onChange(prefs.copy(statusBarZoom = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("显示字符数"),
+                    checked = prefs.statusBarWordCount,
+                    onChange = { onChange(prefs.copy(statusBarWordCount = it)) },
                 )
 
                 // ===== 通用（对齐桌面「通用」页签「显示」组）=====
