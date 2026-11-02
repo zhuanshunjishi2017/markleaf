@@ -28,8 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/** 偏好设置层（单页分组，字段对齐桌面 AppSettings 默认值）：
- *  排版 / 外观 / 视图 / 主题 / 文件。改值即回调 onChange（宿主保存并应用）。 */
+/** 偏好设置层（单页分组，字段对齐桌面 AppSettings 默认值）：分组顺序同桌面
+ *  偏好设置页签 文件 / 编辑器 / 外观 / 通用（图片页 Android 暂无可接项）。
+ *  改值即回调 onChange（宿主保存并应用）。 */
 @Composable
 fun PreferencesScreen(
     prefs: EditorPrefs,
@@ -258,10 +259,10 @@ fun PreferencesScreen(
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
                 )
 
-                // 桌面通用页「显示语言」：驱动宿主 L10n 与编辑器内核字符串
+                // 桌面通用页「显示 → 显示语言」：驱动宿主 L10n 与编辑器内核字符串
                 SectionTitle(L10n.t("通用"))
                 ChipRow(
-                    label = L10n.t("编辑器语言"),
+                    label = L10n.t("显示语言"),
                     options = EditorPrefs.DISPLAY_LANGUAGES.map { it.second },
                     selected = EditorPrefs.DISPLAY_LANGUAGES
                         .firstOrNull { it.first == prefs.displayLanguage }?.second ?: "",

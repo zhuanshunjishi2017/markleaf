@@ -18,7 +18,7 @@ class L10nTest {
         assertEquals("Appearance", L10n.t("外观"))
         assertEquals("File", L10n.t("文件"))
         assertEquals("Save", L10n.t("保存"))
-        assertEquals("Editor Language", L10n.t("编辑器语言"))
+        assertEquals("Language", L10n.t("显示语言"))
     }
 
     @Test
