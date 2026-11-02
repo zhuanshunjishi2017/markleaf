@@ -66,6 +66,13 @@ fun PreferencesScreen(
                     checked = prefs.saveOnSwitch,
                     onChange = { onChange(prefs.copy(saveOnSwitch = it)) },
                 )
+                StepperRow(
+                    label = L10n.t("快照保存间隔"),
+                    value = "${prefs.snapshotInterval} ${L10n.t("秒")}",
+                    step = 10,
+                    onMinus = { onChange(prefs.copy(snapshotInterval = (prefs.snapshotInterval - 10).coerceAtLeast(10))) },
+                    onPlus = { onChange(prefs.copy(snapshotInterval = (prefs.snapshotInterval + 10).coerceAtMost(300))) },
+                )
                 // 桌面文件页「文本格式」
                 ChipRow(
                     label = L10n.t("默认编码"),
@@ -168,6 +175,51 @@ fun PreferencesScreen(
                     label = L10n.t("显示段落块手柄"),
                     checked = prefs.blockHandle,
                     onChange = { onChange(prefs.copy(blockHandle = it)) },
+                )
+
+                // 桌面编辑器页「Markdown 行为」子窗口
+                ChipRow(
+                    label = L10n.t("代码块围栏"),
+                    options = EditorPrefs.CODE_FENCES.map { it.second },
+                    selected = EditorPrefs.CODE_FENCES
+                        .firstOrNull { it.first == prefs.codeFence }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.CODE_FENCES
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(codeFence = it.first)) }
+                    },
+                )
+                ChipRow(
+                    label = L10n.t("强调标记"),
+                    options = EditorPrefs.EMPHASIS_MARKERS.map { it.second },
+                    selected = EditorPrefs.EMPHASIS_MARKERS
+                        .firstOrNull { it.first == prefs.emphasisMarker }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.EMPHASIS_MARKERS
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(emphasisMarker = it.first)) }
+                    },
+                )
+                ChipRow(
+                    label = L10n.t("列表符号"),
+                    options = EditorPrefs.BULLET_MARKERS.map { it.second },
+                    selected = EditorPrefs.BULLET_MARKERS
+                        .firstOrNull { it.first == prefs.bulletMarker }?.second ?: "",
+                    onSelect = { display ->
+                        EditorPrefs.BULLET_MARKERS
+                            .firstOrNull { it.second == display }
+                            ?.let { onChange(prefs.copy(bulletMarker = it.first)) }
+                    },
+                )
+                SwitchRow(
+                    label = L10n.t("空回车退出块"),
+                    checked = prefs.exitBlockOnEmptyEnter,
+                    onChange = { onChange(prefs.copy(exitBlockOnEmptyEnter = it)) },
+                )
+                SwitchRow(
+                    label = L10n.t("Shift+Enter 硬换行"),
+                    checked = prefs.useShiftEnterHardBreak,
+                    onChange = { onChange(prefs.copy(useShiftEnterHardBreak = it)) },
                 )
                 // 桌面编辑器页「缩放视图」组
                 StepperRow(

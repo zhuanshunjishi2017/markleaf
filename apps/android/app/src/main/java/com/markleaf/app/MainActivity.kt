@@ -111,6 +111,27 @@ class MainActivity : ComponentActivity() {
     private var pendingRecoveryMarkdown: String? = null
     private var pendingRecoveryId: String? = null
     private val autoSaveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val snapshotHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val snapshotRunnable: Runnable = Runnable {
+        lifecycleScope.launch {
+            if (dirty.value) {
+                runCatching {
+                    val markdown = requestSnapshotBlocking().markdown
+                    lastKnownMarkdown = markdown
+                    val active = controller
+                    if (active != null) {
+                        active.writeRecovery(recoveryStore, markdown, dirty = true)
+                    } else {
+                        recoveryStore.writePending(session.documentId, null, markdown)
+                    }
+                }
+            }
+            // 脏期间按快照间隔循环；转 clean 由 DirtyChanged 取消
+            if (dirty.value) {
+                snapshotHandler.postDelayed(snapshotRunnable, editorPrefs.value.snapshotInterval * 1000L)
+            }
+        }
+    }
     private val autoSaveRunnable = Runnable {
         if (editorPrefs.value.autoSave && dirty.value && documentLoaded.value &&
             !androidReadOnly.value && controller?.activeRef != null
@@ -1099,8 +1120,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 // 自动保存（对齐桌面 FileSettings.AutoSave，默认关）：脏起 3s 防抖；
                 // 仅对已有 SAF 引用且非只读的文档生效（未命名文档无写回目标）
                 autoSaveHandler.removeCallbacks(autoSaveRunnable)
+                snapshotHandler.removeCallbacks(snapshotRunnable)
                 if (message.payload.dirty) {
                     autoSaveHandler.postDelayed(autoSaveRunnable, 3000)
+                    // 周期性恢复快照（对齐桌面快照保存间隔，默认 30s）
+                    snapshotHandler.postDelayed(snapshotRunnable, editorPrefs.value.snapshotInterval * 1000L)
                 }
             }
             is EditorMessage.OutlineChanged -> outline.value = parseOutline(message.payload)
@@ -1198,6 +1222,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 L10n.language = newPrefs.displayLanguage
                 postCommand("setLanguage", newPrefs.displayLanguage)
             }
+            if (newPrefs.codeFence != old.codeFence || newPrefs.emphasisMarker != old.emphasisMarker ||
+                newPrefs.bulletMarker != old.bulletMarker ||
+                newPrefs.exitBlockOnEmptyEnter != old.exitBlockOnEmptyEnter ||
+                newPrefs.useShiftEnterHardBreak != old.useShiftEnterHardBreak
+            ) {
+                applyEditorKernelSettings()
+            }
         }
         applyAppearance()
     }
@@ -1210,6 +1241,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.post(command("setBlockHandleVisible", if (prefs.blockHandle) "1" else "0"))
         bridge.post(command("setSourceIndent", prefs.sourceIndent.toString()))
         bridge.post(command("setLanguage", prefs.displayLanguage))
+        val markdownSettings = "{" +
+            "\"exitBlockOnEmptyEnter\":${prefs.exitBlockOnEmptyEnter}," +
+            "\"useShiftEnterHardBreak\":${prefs.useShiftEnterHardBreak}," +
+            "\"codeFence\":\"${prefs.codeFence}\"," +
+            "\"emphasisMarker\":\"${prefs.emphasisMarker}\"," +
+            "\"bulletMarker\":\"${prefs.bulletMarker}\"," +
+            "\"escapeMarkdownLiteralSymbols\":true}"
+        bridge.post(command("setMarkdownEditingSettings", markdownSettings))
     }
 
     /** 下发主题样式载荷（base + 当前颜色主题 + 排版样式目录）。 */

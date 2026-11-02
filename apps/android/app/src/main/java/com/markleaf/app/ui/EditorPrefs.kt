@@ -21,6 +21,12 @@ data class EditorPrefs(
     val codeHighlight: Boolean = true,
     val blockHandle: Boolean = true,
     val sourceIndent: Int = 2,
+    val codeFence: String = "backtick",
+    val emphasisMarker: String = "asterisk",
+    val bulletMarker: String = "dash",
+    val exitBlockOnEmptyEnter: Boolean = false,
+    val useShiftEnterHardBreak: Boolean = true,
+    val snapshotInterval: Int = 30,
     val displayLanguage: String = detectDisplayLanguage(),
     val recordRecent: Boolean = true,
     val autoSave: Boolean = false,
@@ -46,6 +52,12 @@ data class EditorPrefs(
             .putBoolean(PREF_CODE_HIGHLIGHT, codeHighlight)
             .putBoolean(PREF_BLOCK_HANDLE, blockHandle)
             .putInt(PREF_SOURCE_INDENT, sourceIndent)
+            .putString(PREF_CODE_FENCE, codeFence)
+            .putString(PREF_EMPHASIS_MARKER, emphasisMarker)
+            .putString(PREF_BULLET_MARKER, bulletMarker)
+            .putBoolean(PREF_EXIT_BLOCK_ON_EMPTY_ENTER, exitBlockOnEmptyEnter)
+            .putBoolean(PREF_USE_SHIFT_ENTER_HARD_BREAK, useShiftEnterHardBreak)
+            .putInt(PREF_SNAPSHOT_INTERVAL, snapshotInterval)
             .putString(PREF_DISPLAY_LANGUAGE, displayLanguage)
             .putBoolean(PREF_RECORD_RECENT, recordRecent)
             .putBoolean(PREF_AUTO_SAVE, autoSave)
@@ -72,6 +84,12 @@ data class EditorPrefs(
         private const val PREF_CODE_HIGHLIGHT = "codeHighlight"
         private const val PREF_BLOCK_HANDLE = "blockHandle"
         private const val PREF_SOURCE_INDENT = "sourceIndent"
+        private const val PREF_CODE_FENCE = "codeFence"
+        private const val PREF_EMPHASIS_MARKER = "emphasisMarker"
+        private const val PREF_BULLET_MARKER = "bulletMarker"
+        private const val PREF_EXIT_BLOCK_ON_EMPTY_ENTER = "exitBlockOnEmptyEnter"
+        private const val PREF_USE_SHIFT_ENTER_HARD_BREAK = "useShiftEnterHardBreak"
+        private const val PREF_SNAPSHOT_INTERVAL = "snapshotInterval"
         private const val PREF_DISPLAY_LANGUAGE = "editorLanguage"
         private const val PREF_RECORD_RECENT = "recordRecent"
         private const val PREF_AUTO_SAVE = "autoSave"
@@ -102,6 +120,15 @@ data class EditorPrefs(
             "serif" to "衬线",
             "sans-serif" to "无衬线",
         )
+
+        /** 代码块围栏（对齐桌面 markdownCodeFence）。 */
+        val CODE_FENCES = listOf("backtick" to "反引号", "tilde" to "波浪线")
+
+        /** 强调标记（对齐桌面 markdownEmphasisMarker）。 */
+        val EMPHASIS_MARKERS = listOf("asterisk" to "星号 *", "underscore" to "下划线 _")
+
+        /** 无序列表符号（对齐桌面 markdownBulletMarker）。 */
+        val BULLET_MARKERS = listOf("dash" to "短横线 -", "asterisk" to "星号 *", "plus" to "加号 +")
 
         /** 显示语言（对齐桌面 displayLanguage；驱动宿主 L10n 与编辑器内核）。 */
         val DISPLAY_LANGUAGES = listOf(
@@ -148,6 +175,12 @@ data class EditorPrefs(
             codeHighlight = sp.getBoolean(PREF_CODE_HIGHLIGHT, true),
             blockHandle = sp.getBoolean(PREF_BLOCK_HANDLE, true),
             sourceIndent = sp.getInt(PREF_SOURCE_INDENT, 2).coerceIn(1, 8),
+            codeFence = sp.getString(PREF_CODE_FENCE, "backtick") ?: "backtick",
+            emphasisMarker = sp.getString(PREF_EMPHASIS_MARKER, "asterisk") ?: "asterisk",
+            bulletMarker = sp.getString(PREF_BULLET_MARKER, "dash") ?: "dash",
+            exitBlockOnEmptyEnter = sp.getBoolean(PREF_EXIT_BLOCK_ON_EMPTY_ENTER, false),
+            useShiftEnterHardBreak = sp.getBoolean(PREF_USE_SHIFT_ENTER_HARD_BREAK, true),
+            snapshotInterval = sp.getInt(PREF_SNAPSHOT_INTERVAL, 30).coerceIn(10, 300),
             displayLanguage = sp.getString(PREF_DISPLAY_LANGUAGE, null) ?: detectDisplayLanguage(),
             recordRecent = sp.getBoolean(PREF_RECORD_RECENT, true),
             autoSave = sp.getBoolean(PREF_AUTO_SAVE, false),
