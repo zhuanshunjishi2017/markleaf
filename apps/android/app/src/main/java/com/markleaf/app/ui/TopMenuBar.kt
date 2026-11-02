@@ -47,14 +47,14 @@ data class TopMenuEntry(
 
 data class TopMenuSection(val title: String, val entries: List<TopMenuEntry>)
 
-/** 条目文字：可选内嵌 10dp 勾选列 + 标题（✓ 与文字间距可控，绕过
- *  M3 leadingIcon 槽的固定内容间距）。 */
+/** 条目文字：可选内嵌 18dp 勾选列 + 标题。✓ 在列内右对齐（贴住文字，
+ *  实际间距 ≈2dp），列宽保持 18dp 让有无勾选的条目文字仍对齐。 */
 @Composable
 private fun MenuEntryText(entry: TopMenuEntry) {
     Row {
         Box(
             modifier = Modifier.width(18.dp),
-            contentAlignment = Alignment.CenterStart,
+            contentAlignment = Alignment.CenterEnd,
         ) {
             if (entry.checked == true) {
                 Text(
