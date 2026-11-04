@@ -11,11 +11,16 @@
 
 - “Changelog” now opens in the current window when multi-tab mode is enabled. When multi-tab mode is disabled, it continues to open in a separate window.
 - Math rendering assets now load on demand, reducing the script and stylesheet work required during editor startup.
+- `Tab` / `Shift+Tab` indentation in code blocks now supports multi-line selections: every covered line gains or loses one indent level at once.
 
 ### Fixed
 
 - Fixed some paragraphs continuously jumping and reflowing after scrolling, resizing the window, or changing the zoom level.
 - Fixed adaptive layout no longer being applied to some English paragraphs, continuous mixed Chinese and English text, and paragraphs containing soft line breaks after editing or pasting.
+- Fixed the caret not landing after the inserted indent when pressing `Tab` inside a code block in Visual mode.
+- Fixed editor scrollbars keeping stale knob and track colors after switching between light and dark system appearances.
+- Fixed editor scrollbars occasionally reverting to wide legacy scrollers after system appearance changes.
+- Fixed QuickLook previews splitting a table when blank lines separated data rows, which dropped subsequent rows. Documents with CRLF line endings are handled as well.
 
 ## 1.7.8 — 2026-10-19
 
