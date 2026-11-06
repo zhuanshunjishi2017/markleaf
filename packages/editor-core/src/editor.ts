@@ -2731,6 +2731,39 @@ const MarkLeafParagraph = Node.create({
       return helpers.parseChildren([tokens[0]])
     }
     const content = helpers.parseInline(tokens)
+    // 连续图片行（每行一个 image）会解析为同一段落里的块级 image 与
+    // 换行文本混排——image 是块节点，与文本同段属于无效内容：编辑时
+    // contentMatchAt 崩溃、删除一张图片会触发内容重建并丢弃全部图片，
+    // 且历史未记录（撤销失效）。把段落内容按 image 切分成多个块返回：
+    // 内联片段各自成段，image 提升为独立块；紧邻 image 的换行是图片
+    // 行分隔符，随之丢弃。
+    if (content.some((n: any) => n.type === 'image')) {
+      const blocks: any[] = []
+      let inlineRun: any[] = []
+      const flush = () => {
+        if (inlineRun.length > 0) {
+          blocks.push(helpers.createNode('paragraph', undefined, inlineRun))
+          inlineRun = []
+        }
+      }
+      for (let i = 0; i < content.length; i++) {
+        const node = content[i]
+        if (node.type === 'image') {
+          flush()
+          blocks.push(node)
+          continue
+        }
+        const isBreak = node.type === 'hardBreak' || (node.type === 'text' && node.text === '\n')
+        if (isBreak) {
+          const prevIsImage = i > 0 && content[i - 1].type === 'image'
+          const nextIsImage = i + 1 < content.length && content[i + 1].type === 'image'
+          if (prevIsImage || nextIsImage) continue
+        }
+        inlineRun.push(node)
+      }
+      flush()
+      return blocks
+    }
     const explicitEmpty = tokens.length === 1
       && tokens[0].type === 'text'
       && (tokens[0].raw === EMPTY_PARAGRAPH_MARKDOWN

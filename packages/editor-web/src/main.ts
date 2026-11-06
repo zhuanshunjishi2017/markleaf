@@ -187,6 +187,11 @@ const editorCreationOptions = {
   },
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
+// dev fakehost 页面暴露编辑器实例，供隔离实验检查文档与选区状态。
+if ((window as { __markleafTestFlags?: unknown }).__markleafTestFlags) {
+  ;(window as { view?: unknown }).view = editor.view
+  ;(window as { editor?: unknown }).editor = editor
+}
 setCodeBlockControlHandlers({
   editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
   copyCode: text => send('copyCodeBlockRequested', { text }),
@@ -783,6 +788,11 @@ function sendDirtyState(force = false): void {
 const updateFormatPainterCursor = () => interactions.update()
 
 function bindEditorEvents(targetEditor: typeof editor): void {
+  // dev fakehost 页面暴露编辑器实例，供隔离实验检查文档与选区状态。
+  if ((window as { __markleafTestFlags?: unknown }).__markleafTestFlags) {
+    ;(window as { view?: unknown }).view = targetEditor.view
+    ;(window as { editor?: unknown }).editor = targetEditor
+  }
   targetEditor.on('update', ({ transaction }) => {
     // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
     if (!transaction.docChanged) {
