@@ -1465,39 +1465,18 @@ const ThemedSelection = Extension.create({
           view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
           paintSelectionHighlight()
         }
-        // 把组字串钉在"非选中"形态：WebKit 在 DOM 选区覆盖 marked text 时
-        // 按"选中文字"绘制（软色块、无下划线），否则画输入法下划线。组字
-        // 期间 WebKit 会反复把选区设为组字范围，这里在每次 selectionchange
-        // 把它折叠回组字末尾。绕过 PM 直接操作 DOM 选区（PM 的 dispatch/
-        // selectionToDOM 会与 marked text 提交竞争——拼音重复写入的根因），
-        // 折叠点仍在组字末尾，输入位置不变，不影响组字数据流。
-        const collapseDomSelectionToCompositionEnd = () => {
-          if (!composing) return
-          // 仅在 PM 持折叠光标时折叠（真实组字形态）。非空 PM 选区意味着
-          // 不存在真实 marked range（如合成测试事件），折叠会吞掉该选区。
-          if (!view.state.selection.empty) return
-          const domSelection = view.dom.ownerDocument.getSelection()
-          if (!domSelection || domSelection.rangeCount === 0 || domSelection.isCollapsed) return
-          if (!view.dom.contains(domSelection.anchorNode)) return
-          domSelection.collapseToEnd()
-        }
-        const onCompositionStartWithCollapse = () => {
-          onCompositionStart()
-          collapseDomSelectionToCompositionEnd()
-        }
-        view.dom.addEventListener('compositionstart', onCompositionStartWithCollapse)
-        view.dom.addEventListener('compositionupdate', collapseDomSelectionToCompositionEnd)
+        // 组字外观完全交给输入法：macOS WebKit 会为 marked text 自绘下划线
+        // （配合 base.css 的 markleaf-composing 选区规则），前端不再注册
+        // markleaf-ime 自绘下划线——与系统下划线叠加成两条线。
+        view.dom.addEventListener('compositionstart', onCompositionStart)
         view.dom.addEventListener('compositionend', onCompositionEnd)
-        view.dom.ownerDocument.addEventListener('selectionchange', collapseDomSelectionToCompositionEnd)
         return {
             destroy() {
               mount.removeEventListener('mousedown', handleManagedDragStart, true)
               view.dom.ownerDocument.removeEventListener('mousemove', handleManagedDragMove, true)
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)
-              view.dom.removeEventListener('compositionstart', onCompositionStartWithCollapse)
-              view.dom.removeEventListener('compositionupdate', collapseDomSelectionToCompositionEnd)
+              view.dom.removeEventListener('compositionstart', onCompositionStart)
               view.dom.removeEventListener('compositionend', onCompositionEnd)
-              view.dom.ownerDocument.removeEventListener('selectionchange', collapseDomSelectionToCompositionEnd)
               view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
               clearSelectionHighlight()
               highlightRegistry?.delete(selectionHighlightName)
