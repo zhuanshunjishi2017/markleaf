@@ -626,3 +626,13 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
 .markleaf-document table.markleaf-table-manual tr > :not(:last-child) { border-right-width: 0; }
 .markleaf-document table.markleaf-table-manual tr:not(:last-child) > th,
 .markleaf-document table.markleaf-table-manual tr:not(:last-child) > td { border-bottom-width: 0; }
+
+/* IME 组字下划线（editor.ts ThemedSelection 注册 markleaf-ime 高亮）：
+   WebKit 对 marked text 的"选中文字"形态不画系统下划线，这里补上自绘线，
+   保证组字串在两种形态下观感恒定。透明底避免叠加色块；不用 var()
+   （WebKit 对含 var() 的 ::highlight 规则会整条丢弃）。 */
+::highlight(markleaf-ime) {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+}

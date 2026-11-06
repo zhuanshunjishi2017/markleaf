@@ -1229,6 +1229,14 @@ const ThemedSelection = Extension.create({
             clearSelectionHighlight()
             return
           }
+          // 浮层源码编辑器打开期间，主文档不绘制文字选区高亮：WebKit 的
+          // "双击选词"范围会晚于选区钉回到达（selectionchange 异步），PM
+          // 读回后重新铺出跨行 accent 高亮——正是双击公式再右键时的异常。
+          // 浮层此时拥有视觉焦点，主文档任何文字高亮都视为残留。
+          if (expandedSourceEditorKey.getState(view.state) !== null) {
+            clearSelectionHighlight()
+            return
+          }
           const { from, to, empty } = view.state.selection
           if (view.state.selection instanceof NodeSelection) {
             // ProseMirror represents a node selection by selecting the node's
@@ -1463,13 +1471,36 @@ const ThemedSelection = Extension.create({
         const onCompositionEnd = () => {
           composing = false
           view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
+          imeHighlightRegistry?.delete(imeHighlightName)
           paintSelectionHighlight()
         }
-        // 组字外观完全交给输入法：macOS WebKit 会为 marked text 自绘下划线
-        // （配合 base.css 的 markleaf-composing 选区规则），前端不再注册
-        // markleaf-ime 自绘下划线——与系统下划线叠加成两条线。
-        view.dom.addEventListener('compositionstart', onCompositionStart)
-        view.dom.addEventListener('compositionend', onCompositionEnd)
+        // 组字下划线自绘：WebKit 对 marked text 有两种形态——DOM 选区覆盖
+        // 组字串时按"选中文字"绘制（无下划线），否则画系统下划线。组字期间
+        // 两种形态会随机切换，前端在两种形态下都注册 markleaf-ime 下划线
+        // （CSS ::highlight(markleaf-ime)），保证观感恒定为下划线。系统形态
+        // 的下划线与自绘线重叠在同一基线位置，视觉上是单线。
+        const imeHighlightName = 'markleaf-ime'
+        const imeHighlightRegistry = highlightRegistry
+        const refreshImeHighlight = () => {
+          if (!imeHighlightRegistry) return
+          if (!composing) { imeHighlightRegistry.delete(imeHighlightName); return }
+          const domSelection = view.dom.ownerDocument.getSelection()
+          if (!domSelection || domSelection.rangeCount === 0 || domSelection.isCollapsed
+            || !view.dom.contains(domSelection.anchorNode)) {
+            imeHighlightRegistry.delete(imeHighlightName)
+            return
+          }
+          try {
+            imeHighlightRegistry.set(imeHighlightName,
+              new (highlightCtor as any)(domSelection.getRangeAt(0)))
+          } catch {
+            imeHighlightRegistry.delete(imeHighlightName)
+          }
+        }
+        view.dom.addEventListener('compositionstart', () => { onCompositionStart(); refreshImeHighlight() })
+        view.dom.addEventListener('compositionupdate', refreshImeHighlight)
+        view.dom.addEventListener('compositionend', () => { onCompositionEnd(); refreshImeHighlight() })
+        view.dom.ownerDocument.addEventListener('selectionchange', () => { if (composing) refreshImeHighlight() })
         return {
             destroy() {
               mount.removeEventListener('mousedown', handleManagedDragStart, true)
@@ -1477,6 +1508,8 @@ const ThemedSelection = Extension.create({
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)
               view.dom.removeEventListener('compositionstart', onCompositionStart)
               view.dom.removeEventListener('compositionend', onCompositionEnd)
+              view.dom.ownerDocument.removeEventListener('selectionchange', refreshImeHighlight)
+              imeHighlightRegistry?.delete(imeHighlightName)
               view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
               clearSelectionHighlight()
               highlightRegistry?.delete(selectionHighlightName)
