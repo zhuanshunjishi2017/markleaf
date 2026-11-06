@@ -10,3 +10,6 @@ allowBuilds:
 # Float16Array。锁回 5.8.0，与 editor-web 既有依赖保持一致。
 overrides:
   type-fest: 5.8.0
+
+patchedDependencies:
+  prosemirror-view@1.42.3: patches/prosemirror-view@1.42.3.patch

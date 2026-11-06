@@ -4172,6 +4172,7 @@ export function createEditor(
   readOnly = false,
   options: EditorCreationOptions = {},
 ): Editor {
+  ;(window as { __mutLog?: string[] }).__mutLog?.push('==EDITOR-REBUILT==')
   // Apply the host's initial preference before creating the document view.
   // Enabling it afterwards rebuilds decorations across the whole document.
   codeHighlightVisible = options.codeHighlightVisible ?? codeHighlightVisible

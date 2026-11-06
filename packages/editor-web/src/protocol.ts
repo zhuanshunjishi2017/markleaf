@@ -48,6 +48,7 @@ export type EditorMessage = {
     | 'footnoteReferenceMissing'
     | 'codeFormatRequested'
     | 'codeFormatResult'
+    | 'debugLog'
     | 'error'
   requestId?: string
   documentId: string
