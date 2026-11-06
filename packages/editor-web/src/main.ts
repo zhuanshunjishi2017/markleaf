@@ -782,15 +782,6 @@ function sendDirtyState(force = false): void {
 
 const updateFormatPainterCursor = () => interactions.update()
 
-// dev 页 IME 事件序列上报（仅 ?fakehost 页面）：累积最近 8 条到标题。
-const imeTitle = (line: string): void => {
-  if (!(window as { __markleafTestFlags?: unknown }).__markleafTestFlags) return
-  const w = window as { __imeLog?: string[] }
-  ;(w.__imeLog ||= []).push(line)
-  if (w.__imeLog.length > 8) w.__imeLog.shift()
-  document.title = (w.__imeLog || []).join('|')
-}
-
 function bindEditorEvents(targetEditor: typeof editor): void {
   targetEditor.on('update', ({ transaction }) => {
     // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
@@ -806,14 +797,6 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     if (suppressUpdate || compositionActive) {
       if (compositionActive) {
         compositionChanged = true
-        // IME-DIAG：组字期间的每次文档事务都记录步骤与来源堆栈，
-        // 用于取证"谁在组字时改写文档"（拼音重复写入）。
-        const steps = transaction.steps.map(step => (step as unknown as { toJSON(): { stepType?: string } }).toJSON().stepType ?? 'unknown').join(',')
-        const stack = new Error().stack?.split('\n').slice(2, 10).map(line => line.trim().replace(/^at\s+/, '')).join(' <- ') ?? 'no-stack'
-        send('debugLog', {
-          text: `IME txn pmLen=${targetEditor.state.doc.content.size} steps=${steps} stack=${stack}`,
-        })
-        imeTitle(`txnL${targetEditor.state.doc.content.size}`)
       }
       return
     }
@@ -841,38 +824,13 @@ function bindEditorEvents(targetEditor: typeof editor): void {
     }
   })
 
-  targetEditor.view.dom.addEventListener('compositionstart', (event) => {
+  targetEditor.view.dom.addEventListener('compositionstart', () => {
     compositionActive = true
     compositionChanged = false
-    ;(window as { __mutLog?: string[] }).__mutLog?.push('==IME-START==')
-    {
-      const mw = window as { __mutLog?: string[]; __titleFreezeUntil?: number }
-      if (mw.__mutLog && mw.__titleFreezeUntil !== undefined) {
-        mw.__titleFreezeUntil = Date.now() + 4000
-        document.title = 'START前: ' + mw.__mutLog.slice(-5).join(' | ')
-      }
-    }
-    // IME-DIAG：记录组字事件流（数据经 debugLog 通道到宿主日志）。
-    send('debugLog', {
-      text: `IME start data=${JSON.stringify((event as CompositionEvent).data ?? null)} pmLen=${targetEditor.state.doc.content.size} pmComposing=${targetEditor.view.composing}`,
-    })
-    imeTitle(`start${targetEditor.state.doc.content.size}`)
   })
 
-  targetEditor.view.dom.addEventListener('compositionupdate', (event) => {
-    send('debugLog', {
-      text: `IME update data=${JSON.stringify((event as CompositionEvent).data ?? null)} pmLen=${targetEditor.state.doc.content.size} pmComposing=${targetEditor.view.composing}`,
-    })
-    imeTitle(`upd${JSON.stringify((event as CompositionEvent).data ?? '')}L${targetEditor.state.doc.content.size}`)
-  })
-
-  targetEditor.view.dom.addEventListener('compositionend', (event) => {
+  targetEditor.view.dom.addEventListener('compositionend', () => {
     compositionActive = false
-    ;(window as { __mutLog?: string[] }).__mutLog?.push('==IME-END==')
-    send('debugLog', {
-      text: `IME end data=${JSON.stringify((event as CompositionEvent).data ?? null)} pmLen=${targetEditor.state.doc.content.size} pmComposing=${targetEditor.view.composing}`,
-    })
-    imeTitle(`end${JSON.stringify((event as CompositionEvent).data ?? '')}L${targetEditor.state.doc.content.size}`)
     if (compositionChanged) {
       revision += 1
       sendDirtyState()

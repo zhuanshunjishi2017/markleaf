@@ -1698,43 +1698,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     }
 
     #if DEBUG
-    /// IME-DIAG：轮询文档正文尾部文本（300ms），变化才落日志——观察拼音
-    /// 组字期间与提交后文档的真实内容演变。
+    /// 临时诊断（公式右键后渲染成空白框）：公式被选中或源码浮层打开期间，
+    /// 周期性把公式的 DOM/计算样式/::highlight 注册表状态写入 app 日志。
     private var mathDiagnosticTimer: Timer?
     func startMathDisplayDiagnostics() {
         guard mathDiagnosticTimer == nil else { return }
         var lastSignature = ""
-        mathDiagnosticTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            guard let self, let webView else { return }
-            let script = """
-            (() => {
-              const pm = document.querySelector('.ProseMirror');
-              const sel = document.getSelection();
-              return JSON.stringify({
-                len: pm ? pm.textContent.length : -1,
-                tail: pm ? pm.textContent.slice(-50) : null,
-                marked: (() => { try { const c = window.getComposer; return typeof c === 'function' ? c() : null } catch(_) { return null } })(),
-                domSel: sel && sel.rangeCount ? (sel.isCollapsed ? 'collapsed' : sel.toString().slice(0, 30)) : 'none',
-              });
-            })()
-            """
-            webView.evaluateJavaScript(script) { [weak self] result, _ in
-                guard let self, let value = result as? String, value != "null", value != lastSignature else { return }
-                lastSignature = value
-                AppLog.info("IME-DIAG \(value)")
-            }
-        }
-    }
-    #endif
-
-    #if DEBUG
-    /// 临时诊断（公式右键后渲染成空白框）：公式被选中或源码浮层打开期间，
-    /// 周期性把公式的 DOM/计算样式/::highlight 注册表状态写入 app 日志。
-    private var mathDiagnosticTimer2: Timer?
-    func startMathDisplayDiagnostics2() {
-        guard mathDiagnosticTimer2 == nil else { return }
-        var lastSignature = ""
-        mathDiagnosticTimer2 = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+        mathDiagnosticTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
             guard let self, let webView else { return }
             let script = """
             (() => {
