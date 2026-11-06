@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- Fixed deleting one image in a run of consecutive image lines wiping out the whole group with no way to undo.
 - Fixed Chinese IME composition leaving pinyin fragments in the document and mis-applying or losing the committed candidate text.
 - Fixed the formula rendering going blank briefly when right-clicking a formula.
 - Fixed incorrect selection highlighting in the formula source overlay.
