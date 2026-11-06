@@ -235,12 +235,18 @@ export function bindDocumentPointerInteractions(
       const selectedKind = selectedNode.type.name === 'mathInline' ? 'mathInline' : 'mathBlock'
       if (isSourceEditorExpanded(editor, position, selectedKind)) collapseSourceEditor(editor)
       else expandSourceEditor(editor, position, selectedKind)
+      // 双击原子时 WebKit 的"选词"行为会在原子周围生成 DOM 范围，PM 读回
+      // 后变成跨行 TextSelection——浮层已接管视觉，行级 accent 高亮属于
+      // 残留。把选区钉回原子 NodeSelection；该绘制路径会顺带清掉原生
+      // DOM 范围与文字高亮，右键菜单也随之指向原子而非整行选区。
+      editor.commands.setNodeSelection(position)
       changed()
       return
     }
     editor.commands.setNodeSelection(position)
     if (isSourceEditorExpanded(editor, position, 'mermaid')) collapseSourceEditor(editor)
     else expandSourceEditor(editor, position, 'mermaid')
+    editor.commands.setNodeSelection(position)
     changed()
   }, { signal })
   return () => events.abort()
