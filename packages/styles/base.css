@@ -56,9 +56,13 @@
    cells, so it cannot stack a second darker layer over the editor-owned
    highlight. IME 组字期间 WebKit 把 marked range 当作"选中文字"绘制，而
    ::selection 底色完全透明会被判定为不可见并回退到系统高亮色——拼音串上
-   因此出现蓝块。这里用 4% 中性色代替透明：肉眼无感，但绕过该回退。 */
-.markleaf-themed-visual-selection .markleaf-document::selection,
-.markleaf-themed-visual-selection .markleaf-document *::selection {
+   因此出现蓝块。这里用 4% 中性色代替透明：肉眼无感，但绕过该回退。
+   :root 前缀把特异性抬到 (0,3,1)：必须压过上方全局门控规则（同为
+   (0,3,1) 且定义在前——平级时按源序本规则胜出），否则主题化模式下任何
+   存活的 DOM 选区（如公式右键的 preserve 选区）都会被全局规则画成
+   accent 实底。 */
+:root.markleaf-themed-visual-selection .markleaf-document::selection,
+:root.markleaf-themed-visual-selection .markleaf-document *::selection {
   background: rgb(128 128 128 / 4%) !important;
 }
 
