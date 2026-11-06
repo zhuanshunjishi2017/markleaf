@@ -64,6 +64,10 @@
 :root.markleaf-themed-visual-selection .markleaf-document::selection,
 :root.markleaf-themed-visual-selection .markleaf-document *::selection {
   background: rgb(128 128 128 / 4%) !important;
+  /* 前景一并中和：裸 UI 规则的白色 fill-color 按属性独立级联，accent 底
+     被本规则压掉后白字仍会残留——公式等原子被选中时内容直接隐形。 */
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 
 /* IME 组字期间（html.markleaf-composing，editor.ts ThemedSelection 切换）：
