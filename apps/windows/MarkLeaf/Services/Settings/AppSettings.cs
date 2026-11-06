@@ -366,7 +366,7 @@ public sealed class EditorSettings
 
     public bool VisualCjkAutoSpacing { get; set; } = true;
     public bool AllowTableColumnResize { get; set; } = true;
-    public bool VisualAdaptiveJustification { get; set; } = true;
+    public bool VisualAdaptiveJustification { get; set; } = false;
 
     public bool ExitBlockOnEmptyEnter { get; set; }
 

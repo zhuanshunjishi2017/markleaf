@@ -1,11 +1,11 @@
 # MarkLeaf Changelog
 
-## 1.7.9 — 2026-10-20
+## 1.7.8.5 — 2026-11-6
 
 ### New
 
 - Added “Adjust Table Column Widths” with manual column resizing, content-based fitting, and even column distribution.
-- Added “Adaptive Justification”, enabled by default, to optimize line breaks and spacing based on paragraph content and available width.
+- Added “Adaptive Justification” to optimize line breaks and spacing based on paragraph content and available width; disabled by default.
 
 ### Changed
 
@@ -15,11 +15,15 @@
 
 ### Fixed
 
+- Fixed Chinese IME composition leaving pinyin fragments in the document and mis-applying or losing the committed candidate text.
+- Fixed the formula rendering going blank briefly when right-clicking a formula.
+- Fixed incorrect selection highlighting in the formula source overlay.
 - Fixed some paragraphs continuously jumping and reflowing after scrolling, resizing the window, or changing the zoom level.
 - Fixed adaptive layout no longer being applied to some English paragraphs, continuous mixed Chinese and English text, and paragraphs containing soft line breaks after editing or pasting.
 - Fixed the caret not landing after the inserted indent when pressing `Tab` inside a code block in Visual mode.
 - Fixed editor scrollbars keeping stale knob and track colors after switching between light and dark system appearances.
 - Fixed editor scrollbars occasionally reverting to wide legacy scrollers after system appearance changes.
+- Fixed inserted local images failing to load.
 - Fixed QuickLook previews splitting a table when blank lines separated data rows, which dropped subsequent rows. Documents with CRLF line endings are handled as well.
 
 ## 1.7.8 — 2026-10-19
