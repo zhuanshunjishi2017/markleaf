@@ -65,11 +65,30 @@ export function createTypographyCoordinator(options: {
     && a.alignment === b.alignment
     && JSON.stringify(a.runs) === JSON.stringify(b.runs)
     && JSON.stringify(JSON.parse(a.environmentKey).slice(3)) === JSON.stringify(JSON.parse(b.environmentKey).slice(3))
+  const sameExceptAutoSpacing = (a: ProjectionSnapshot, b: ProjectionSnapshot) => a.id === b.id && a.revision === b.revision
+    && Math.abs(a.width - b.width) < .25 && a.language === b.language && a.text === b.text
+    && a.alignment === b.alignment
+    && JSON.stringify(a.runs) === JSON.stringify(b.runs)
+    && JSON.stringify(JSON.parse(a.environmentKey).slice(3, -1)) === JSON.stringify(JSON.parse(b.environmentKey).slice(3, -1))
+    && JSON.parse(a.environmentKey).at(-1) !== JSON.parse(b.environmentKey).at(-1)
   const sameEntries = (a: Entries, b: Entries) => a.length === b.length && a.every((entry, i) => {
     const other = b[i]!
     return entry.eligible && other.eligible ? same(entry.snapshot, other.snapshot)
       : !entry.eligible && !other.eligible && entry.nodeFrom === other.nodeFrom && entry.nodeTo === other.nodeTo && entry.reason === other.reason
   })
+  const sameEntriesExceptAutoSpacing = (a: Entries, b: Entries) => {
+    if (a.length !== b.length) return false
+    let changed = false
+    for (let i = 0; i < a.length; i++) {
+      const entry = a[i]!, other = b[i]!
+      if (entry.eligible && other.eligible) {
+        if (same(entry.snapshot, other.snapshot)) continue
+        if (sameExceptAutoSpacing(entry.snapshot, other.snapshot)) { changed = true; continue }
+      } else if (!entry.eligible && !other.eligible && entry.nodeFrom === other.nodeFrom && entry.nodeTo === other.nodeTo && entry.reason === other.reason) continue
+      return false
+    }
+    return changed
+  }
   const originalBatch = measurement.onBatch
   const onBatch: NonNullable<MeasurementService['onBatch']> = stats => { originalBatch?.(stats); if (cycle) cycle.cacheHits += stats.cacheHits }
   measurement.onBatch = onBatch
@@ -93,8 +112,18 @@ export function createTypographyCoordinator(options: {
   function invalidate(reason: 'document' | 'style' | 'width' | 'font' | 'mode') {
     if (disposed) return
     const baseline = cycle?.entries ?? previous
-    if (reason === 'style' && baseline && fonts?.status !== 'loading'
-      && sameEntries(baseline, extractProjectionSnapshots(editor.view, getTypographyProjectionRevision(editor), epoch))) return
+    if (reason === 'style' && baseline && fonts?.status !== 'loading') {
+      const currentEntries = extractProjectionSnapshots(editor.view, getTypographyProjectionRevision(editor), epoch)
+      if (sameEntries(baseline, currentEntries)) return
+      // Changing only the CJK/Latin auto-spacing preference does not change
+      // the measure or font metrics. Keep the verified projection visible while
+      // the new spacing ownership is prepared; clearing it first exposes a
+      // native reflow and produces a visible page jump.
+      if (sameEntriesExceptAutoSpacing(baseline, currentEntries)) {
+        trace('invalidate', { reason, preserveProjection: true })
+        generation++; cancelCycle(); previous = undefined; schedule(); return
+      }
+    }
     if (reason === 'document' || reason === 'font') { verified.clear(); verifiedLines = 0 }
     trace('invalidate', { reason }); generation++
     cancelCycle()
@@ -215,12 +244,12 @@ export function createTypographyCoordinator(options: {
         if (c.phase === 'planning') {
           previous = undefined
           trace('publish', { plans: plans(c).length })
-          timed(c, () => registerTypographySnapshots(editor, true, c.entries, plans(c))); nativePhase = false
+          timed(c, () => { const r = registerTypographySnapshots(editor, true, c.entries, plans(c)); trace('register', { applied: r, verified: plans(c).every(p => p.verified) }); }); nativePhase = false
           if (!plans(c).length) { finish(c); return }
           beginChecks(c); schedule(); return // Actual DOM reads start next frame.
         }
         if (c.changed) {
-          timed(c, () => applyTypographyPlan(editor, plans(c), c.revision))
+          timed(c, () => { const r = applyTypographyPlan(editor, plans(c), c.revision); trace('apply', { applied: r }) })
           if (!c.round && plans(c).length) { c.revisions++; c.round++; beginChecks(c); schedule(); return }
         }
         finish(c); return

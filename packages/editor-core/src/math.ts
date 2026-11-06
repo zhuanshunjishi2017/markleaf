@@ -1,5 +1,7 @@
 import { mathInlineTokenizer, mathBlockTokenizer, normalizeMathSource } from './document/markdown-syntax'
 import { InputRule, Node } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 import { renderMathElement } from './katex-runtime'
 
 type MathNodeContent = { content?: Array<{ text?: string }> }
@@ -11,6 +13,46 @@ export function mathNumberFromLatex(latex: string): string | null {
 
 function nodeLatex(node: MathNodeContent): string {
   return node.content?.map(child => child.text ?? '').join('') ?? ''
+}
+
+function escapedAt(text: string, offset: number): boolean {
+  let backslashes = 0
+  for (let index = offset - 1; index >= 0 && text[index] === '\\'; index--) backslashes++
+  return backslashes % 2 === 1
+}
+
+/**
+ * Safari can commit an IME range as `$...$` followed by ordinary text in one
+ * composition. The regular input rule only sees the final caret and therefore
+ * misses the formula when that text follows its closing delimiter. Revisit the
+ * short range touched by the composition and convert the newest closed pair.
+ */
+function closeInlineMathAfterComposition(view: EditorView, compositionStart: number): void {
+  if (view.isDestroyed || !view.editable) return
+  const { selection, schema } = view.state
+  if (!selection.empty) return
+  const $from = selection.$from
+  if (!$from.parent.isTextblock || $from.parent.type.spec.code) return
+
+  const parentStart = $from.start($from.depth)
+  const cursorOffset = $from.parentOffset
+  const compositionOffset = Math.max(0, compositionStart - parentStart)
+  const text = $from.parent.textContent
+  const closing = text.lastIndexOf('$', cursorOffset - 1)
+  if (closing < compositionOffset || closing <= 0 || escapedAt(text, closing)) return
+  const opening = text.lastIndexOf('$', closing - 1)
+  if (opening < 0 || opening >= closing || escapedAt(text, opening)) return
+  if (text[opening - 1] === '$' || text[closing + 1] === '$') return
+  const latex = text.slice(opening + 1, closing)
+  if (!latex || /[\n$]/.test(latex)) return
+
+  const mathType = schema.nodes.mathInline
+  if (!mathType) return
+  view.dispatch(view.state.tr.replaceWith(
+    parentStart + opening,
+    parentStart + closing + 1,
+    mathType.create(null, schema.text(normalizeMathSource(latex))),
+  ))
 }
 
 
@@ -163,6 +205,27 @@ export const MathInline = Node.create({
         },
       }),
     ]
+  },
+
+  addProseMirrorPlugins() {
+    let compositionStart: number | null = null
+    return [new Plugin({
+      props: {
+        handleDOMEvents: {
+          compositionstart(view) {
+            compositionStart = view.state.selection.from
+            return false
+          },
+          compositionend(view) {
+            const start = compositionStart
+            compositionStart = null
+            if (start === null) return false
+            window.setTimeout(() => closeInlineMathAfterComposition(view, start), 0)
+            return false
+          },
+        },
+      },
+    })]
   },
 
   addNodeView() {

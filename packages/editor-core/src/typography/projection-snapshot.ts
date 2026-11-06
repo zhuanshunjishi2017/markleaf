@@ -35,7 +35,16 @@ export function extractProjectionSnapshots(view: EditorView, revision: number, f
   view.state.doc.descendants((node, pos) => {
     if (!node.isTextblock) return true
     const fail = (reason: DiagnosticReason) => results.push({ eligible: false, nodeFrom: pos, nodeTo: pos + node.nodeSize, reason })
-    if (node.type.name !== 'paragraph' || view.state.doc.resolve(pos).depth !== 0) {
+    const $pos = view.state.doc.resolve(pos)
+    let isListParagraph = false
+    for (let depth = 0; depth <= $pos.depth; depth++) {
+      const ancestor = $pos.node(depth)
+      if (ancestor.type.name === 'bulletList' || ancestor.type.name === 'orderedList') {
+        isListParagraph = true
+        break
+      }
+    }
+    if (node.type.name !== 'paragraph' || ($pos.depth !== 0 && !isListParagraph)) {
       fail('unsupported-block'); return false
     }
     const element = view.nodeDOM(pos) as HTMLElement | null

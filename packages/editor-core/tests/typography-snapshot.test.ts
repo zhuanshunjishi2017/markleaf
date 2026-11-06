@@ -47,7 +47,9 @@ describe('typography snapshot', () => {
     const all = extractProjectionSnapshots(editor.view, 1, 0)
     expect(all[0]).toMatchObject({ eligible: false, reason: 'author-alignment' })
     expect(all[1]).toMatchObject({ eligible: false, reason: 'unsupported-text' })
-    expect(all[2]).toMatchObject({ eligible: false, reason: 'unsupported-block' })
+    expect(all[2]?.eligible).toBe(true)
+    if (!all[2]?.eligible) throw Error('missing list snapshot')
+    expect(all[2].snapshot.width).toBeGreaterThan(0)
   })
   it('keepsHardBreakSegmentsWithinOneParent', () => {
     const editor = setup('A👍  \n中文')

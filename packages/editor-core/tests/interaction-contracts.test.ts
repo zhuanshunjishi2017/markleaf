@@ -38,6 +38,38 @@ describe('shared editing interactions', () => {
       vi.useRealTimers()
     }
   })
+
+  it('hands the visual selection back to the native IME during composition', async () => {
+    const previousCSS = Object.getOwnPropertyDescriptor(window, 'CSS')
+    const previousHighlight = Object.getOwnPropertyDescriptor(window, 'Highlight')
+    const highlights = new Map<string, { ranges: Range[] }>()
+    class TestHighlight {
+      ranges: Range[] = []
+      add(range: Range) { this.ranges.push(range) }
+      clear() { this.ranges = [] }
+    }
+    Object.defineProperty(window, 'CSS', { configurable: true, value: { highlights } })
+    Object.defineProperty(window, 'Highlight', { configurable: true, value: TestHighlight })
+    cleanup.push(() => {
+      if (previousCSS) Object.defineProperty(window, 'CSS', previousCSS)
+      else delete (window as unknown as { CSS?: unknown }).CSS
+      if (previousHighlight) Object.defineProperty(window, 'Highlight', previousHighlight)
+      else delete (window as unknown as { Highlight?: unknown }).Highlight
+    })
+    const { editor, mount } = setup('拼音输入', true)
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    expect(highlights.get('markleaf-selection')?.ranges).toHaveLength(1)
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    expect(highlights.get('markleaf-selection')?.ranges).toHaveLength(0)
+    expect(document.documentElement.classList.contains('markleaf-composing')).toBe(true)
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    expect(highlights.get('markleaf-selection')?.ranges).toHaveLength(1)
+    expect(document.documentElement.classList.contains('markleaf-composing')).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 60))
+  })
+
   it('inserts and removes the visual indent inside code blocks with Tab', () => {
     const { editor } = setup('```js\nconst value = 1\n```')
     const codeBlock = editor.state.doc.firstChild!

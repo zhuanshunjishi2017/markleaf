@@ -36,8 +36,13 @@ it('hides native text ranges while a CellSelection owns table highlighting', () 
 
 it('hides the native range across themed table text', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../../styles/base.css'), 'utf8')
-  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]*?background:\s*transparent\s*!important/)
-  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document \*::selection[\s\S]*?color:\s*var\(--text-selected\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-selected\)\s*!important/)
+  // 主题化托管选区下，原生选区底色用 4% 中性色压到肉眼不可见。绝不能写
+  // `background: transparent`：WebKit 把组字串（marked text）当"选中文字"
+  // 绘制时，完全透明的 ::selection 底色会被判为不可见并回退到系统高亮色，
+  // 拼音串上出现实心蓝块。
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]*?background:\s*rgb\(128 128 128 \/ 4%\)\s*!important/)
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document \*::selection\s*\{[^}]*background:\s*rgb\(128 128 128 \/ 4%\)\s*!important/)
+  expect(css).not.toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]{0,200}background:\s*transparent\s*!important/)
   expect(css).not.toMatch(/\.markleaf-themed-visual-selection \.markleaf-document td::selection,[\s\S]*?background:\s*var\(--ml-selection-bg/)
 })
 

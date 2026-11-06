@@ -266,7 +266,7 @@ body.markleaf-theme-dark {
   -webkit-text-fill-color: inherit !important;
 }
 
-.markleaf-themed-visual-selection .markleaf-document ::selection {
+:root.markleaf-themed-visual-selection:not(.markleaf-composing) .markleaf-document ::selection {
   background: transparent;
   color: inherit;
 }
@@ -1223,7 +1223,9 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
 /* A fallback gap stays on the preceding token, so wrapping cannot carry it
    into the next line. Whole Latin tokens retain their kerning and ligatures. */
 .markleaf-cjk-autospace #editor .markleaf-cjk-autospace-trailing-space {
-  padding-inline-end: 0.125em;
+  /* Keep unsupported/fallback paragraphs aligned with the measured path and
+     with the legacy auto-spacing decoration. */
+  padding-inline-end: 0.35em;
 }
 
 .markleaf-typography-native {

@@ -256,6 +256,46 @@ describe('typography coordinator', () => {
     expect(s.frames.size).toBe(0)
     expect(s.reports[0]?.plannedParagraphs).toBe(1)
   })
+  it('doesNotRestartAfterItsOwnAutoSpacingDecorationsAreApplied', async () => {
+    const s = setup()
+    s.editor.commands.setContent('中文English中文')
+    const p = s.editor.view.dom.querySelector('p')!
+    p.style.fontSize = '16px'; p.getBoundingClientRect = () => ({ width: 160 } as DOMRect)
+    s.coordinator.setEnabled(true); s.flush()
+    const before = s.traces.filter(t => t.event === 'invalidate').length
+    document.documentElement.classList.add('markleaf-cjk-autospace')
+    await Promise.resolve()
+    s.flush(); await Promise.resolve(); s.flush()
+    const after = s.traces.filter(t => t.event === 'invalidate').length
+    expect(after - before).toBe(1)
+    expect(s.reports.at(-1)?.plannedParagraphs).toBe(1)
+    document.documentElement.classList.remove('markleaf-cjk-autospace')
+  })
+  it('keepsTheCurrentProjectionVisibleWhileAutoSpacingIsReplanned', async () => {
+    const s = setup()
+    s.editor.commands.setContent('中文English中文')
+    const p = s.editor.view.dom.querySelector('p')!
+    p.style.fontSize = '16px'; p.getBoundingClientRect = () => ({ width: 160 } as DOMRect)
+    s.coordinator.setEnabled(true); s.flush()
+    expect(s.editor.view.dom.querySelector('.markleaf-typography-v2')).not.toBeNull()
+    document.documentElement.classList.add('markleaf-cjk-autospace')
+    await Promise.resolve()
+    expect(s.editor.view.dom.querySelector('.markleaf-typography-v2')).not.toBeNull()
+    s.flush(); await Promise.resolve(); s.flush()
+    expect(s.editor.view.dom.querySelector('.markleaf-typography-v2')).not.toBeNull()
+    document.documentElement.classList.remove('markleaf-cjk-autospace')
+  })
+  it('plansUnorderedListParagraphsUsingTheirOwnContentWidth', () => {
+    const s = setup()
+    s.editor.commands.setContent('- 中文English中文English', { contentType: 'markdown' })
+    const paragraph = s.editor.view.dom.querySelector<HTMLElement>('li > p')!
+    paragraph.style.fontSize = '16px'
+    paragraph.getBoundingClientRect = () => ({ width: 160 } as DOMRect)
+    s.coordinator.setEnabled(true)
+    s.flush()
+    expect(paragraph.classList.contains('markleaf-typography-v2')).toBe(true)
+    expect(s.reports.at(-1)?.plannedParagraphs).toBeGreaterThanOrEqual(1)
+  })
   it('finishesVerificationDespiteOffscreenMeasurementAndUnrelatedUiMutations', async () => {
     const s = setup()
     const measurement = createTypographyMeasurementService(document)

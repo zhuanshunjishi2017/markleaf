@@ -37,24 +37,54 @@
   width: 100%;
 }
 
-.markleaf-document::selection,
-.markleaf-document *::selection,
-.ProseMirror::selection,
-.ProseMirror *::selection,
-.cm-editor::selection,
-.cm-content::selection,
-.cm-content *::selection {
+:root:not(.markleaf-composing) .markleaf-document::selection,
+:root:not(.markleaf-composing) .markleaf-document *::selection,
+:root:not(.markleaf-composing) .ProseMirror::selection,
+:root:not(.markleaf-composing) .ProseMirror *::selection,
+:root:not(.markleaf-composing) .cm-editor::selection,
+:root:not(.markleaf-composing) .cm-content::selection,
+:root:not(.markleaf-composing) .cm-content *::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
-  color: var(--text-selected) !important;
-  -webkit-text-fill-color: var(--text-selected) !important;
+  /* 不强制前景色：可视化宿主把原生选区背景透明化后，任何在此处写死的
+     前景色都会让组字文本/原子节点内容被染白（白底上不可见）。拖选的
+     蓝底白字由 ::highlight(markleaf-selection) 提供；浮层源码区有自己的
+     恢复规则。 */
 }
 
 /* macOS visual-selection mode paints one CSS Custom Highlight range. Keep the
-   browser's native range transparent everywhere, including table cells, so
-   it cannot stack a second darker layer over the editor-owned highlight. */
+   browser's native range effectively invisible everywhere, including table
+   cells, so it cannot stack a second darker layer over the editor-owned
+   highlight. IME 组字期间 WebKit 把 marked range 当作"选中文字"绘制，而
+   ::selection 底色完全透明会被判定为不可见并回退到系统高亮色——拼音串上
+   因此出现蓝块。这里用 4% 中性色代替透明：肉眼无感，但绕过该回退。 */
 .markleaf-themed-visual-selection .markleaf-document::selection,
 .markleaf-themed-visual-selection .markleaf-document *::selection {
-  background: transparent !important;
+  background: rgb(128 128 128 / 4%) !important;
+}
+
+/* IME 组字期间（html.markleaf-composing，editor.ts ThemedSelection 切换）：
+   托管高亮已暂停，白色选区前景没有主题背板可衬，会变白底白字。前景回落
+   到正文色，配合近隐形底色，只保留输入法自带下划线的原生形态（WebKit
+   为 marked text 自绘下划线，前端不再注册 markleaf-ime 自绘）。 */
+:root.markleaf-composing .markleaf-document::selection,
+:root.markleaf-composing .markleaf-document *::selection,
+:root.markleaf-composing .ProseMirror::selection,
+:root.markleaf-composing .ProseMirror *::selection,
+:root.markleaf-composing .cm-editor::selection,
+:root.markleaf-composing .cm-content::selection,
+:root.markleaf-composing .cm-content *::selection,
+:root.markleaf-composing ::selection {
+  background: rgb(128 128 128 / 4%) !important;
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* 公式/Mermaid 源码浮层是独立的纯文本编辑区，不参与可视化编辑器的
+   「透明原生选区 + ::highlight 托管绘制」模型；透明+白字规则会让浮层内
+   的选区直接不可见（白字无背景）。恢复系统选区外观。 */
+.markleaf-themed-visual-selection .markleaf-expanded-source .markleaf-document::selection,
+.markleaf-themed-visual-selection .markleaf-expanded-source .markleaf-document *::selection {
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
@@ -106,7 +136,9 @@
 .markleaf-format-preview[data-format-preview="toggleStrike"][data-format-preview-state="remove"] * { text-decoration-line: none !important; }
 .markleaf-format-preview[data-format-preview="toggleHighlight"] { background-color: var(--highlight, #FFF36D) !important; }
 .markleaf-format-preview[data-format-preview="toggleHighlight"][data-format-preview-state="remove"] { background-color: transparent !important; }
-::selection {
+/* 编辑器内容之外的 UI 选区（大纲、列表等）。组字期间同样让位：
+   marked text 可能落在这类宿主节点上，写死前景会染白组字串。 */
+:root:not(.markleaf-composing) ::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;

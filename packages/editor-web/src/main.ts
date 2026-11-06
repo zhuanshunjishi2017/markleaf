@@ -168,6 +168,12 @@ const editorCreationOptions = {
   themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
   handlePaste: handleVisualEditorPaste,
   sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
+    // 与正文右键路径一致：原生菜单弹出会夺走 WebView 焦点触发 blur；
+    // 不打 preserve 标志时 blur 处理器会把公式 NodeSelection 塌缩成
+    // TextSelection——KaTeX NodeView 在 NSMenu 同步跟踪期间被重建，
+    // 渲染停留中间态，表现为公式变空白蓝框。菜单关闭由 endContextMenu
+    // → endContextMenuSession 清除该标志。
+    editor.view.dom.dataset.markleafPreserveSelection = '1'
     sendEditorState()
     send('contextMenuRequested', { clientX, clientY, menuHeight: 0, readOnly, sourceMode: false, expandedSource: true,
       menuSessionId: beginContextMenuSession(),
@@ -1412,13 +1418,18 @@ editorMount.addEventListener('contextmenu', (event) => {
     && resolved.pos >= previousSelection.from
     && resolved.pos <= previousSelection.to,
   )
-  if (shouldPreserveSelection && previousSelection) {
-    restoreContextSelection(previousSelection)
-  } else {
-    selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+  // 组字期间右键：选区准备流（setTextSelection/focus 的 dispatch）会与
+  // WebKit 的 marked text 提交竞争，把拼音串重复写进正文。此时不动选区，
+  // 菜单按当前 PM 选区弹出。
+  if (!editor.view.composing) {
+    if (shouldPreserveSelection && previousSelection) {
+      restoreContextSelection(previousSelection)
+    } else {
+      selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+    }
+    selectionBeforeContextMenu = null
+    editor.commands.focus()
   }
-  selectionBeforeContextMenu = null
-  editor.commands.focus()
   contextMenuSelection = editor.state.selection.toJSON()
   contextMenuCommandCommitted = false
   // 原生菜单弹出会夺走 WebView 焦点触发 blur；标记期间保留选区，

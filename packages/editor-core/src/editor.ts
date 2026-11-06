@@ -849,6 +849,37 @@ function runCodeFormattingShortcut(editor: Editor): boolean {
   return true
 }
 
+function getSelectedCodeLineOffsets(
+  parentText: string,
+  fromOffset: number,
+  toOffset: number,
+): number[] {
+  const start = Math.max(0, Math.min(fromOffset, toOffset))
+  const end = Math.max(start, Math.max(fromOffset, toOffset))
+  const lastCoveredOffset = Math.max(start, end - 1)
+  const offsets = [parentText.lastIndexOf('\n', start - 1) + 1]
+  let newline = parentText.indexOf('\n', offsets[0])
+  while (newline >= 0 && newline + 1 <= lastCoveredOffset) {
+    offsets.push(newline + 1)
+    newline = parentText.indexOf('\n', newline + 1)
+  }
+  return offsets
+}
+
+function getCodeBlockSelection(editor: Editor) {
+  const { selection } = editor.state
+  const { $from, $to } = selection
+  if ($from.parent.type.name !== 'codeBlock' || !$from.sameParent($to)) return null
+  const fromOffset = Math.min($from.parentOffset, $to.parentOffset)
+  const toOffset = Math.max($from.parentOffset, $to.parentOffset)
+  return {
+    $from,
+    parent: $from.parent,
+    parentStart: $from.start($from.depth),
+    lineOffsets: getSelectedCodeLineOffsets($from.parent.textContent, fromOffset, toOffset),
+  }
+}
+
 const CodeFormattingShortcuts = Extension.create({
   name: 'markleafCodeFormattingShortcuts',
 
@@ -869,15 +900,24 @@ const VisualIndent = Extension.create({
       Tab: () => {
         if (!this.editor.isEditable) return false
         if (getListItemTypeAtSelection(this.editor)) return indentListItem(this.editor)
-        const { $from } = this.editor.state.selection
-        if ($from.parent.type.name === 'codeBlock') {
-          const lineStartOffset = $from.parent.textContent.lastIndexOf('\n', $from.parentOffset - 1) + 1
-          const lineStart = $from.start($from.depth) + lineStartOffset
-          return this.editor.chain()
-            .focus()
-            .insertContentAt({ from: lineStart, to: lineStart }, VISUAL_INDENT)
-            .run()
+        const codeSelection = getCodeBlockSelection(this.editor)
+        if (codeSelection) {
+          const transaction = codeSelection.lineOffsets
+            .slice()
+            .reverse()
+            .reduce(
+              (current, lineOffset) => current.insertText(
+                VISUAL_INDENT,
+                codeSelection.parentStart + lineOffset,
+                codeSelection.parentStart + lineOffset,
+              ),
+              this.editor.state.tr,
+            )
+          transaction.setSelection(this.editor.state.selection.map(transaction.doc, transaction.mapping))
+          this.editor.view.dispatch(transaction.scrollIntoView())
+          return true
         }
+        const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
           if (nodeName === 'table' || nodeName === 'tableRow'
@@ -902,17 +942,28 @@ const VisualIndent = Extension.create({
       'Shift-Tab': () => {
         if (!this.editor.isEditable) return false
         if (getListItemTypeAtSelection(this.editor)) return outdentListItem(this.editor)
-        const { $from } = this.editor.state.selection
-        if ($from.parent.type.name === 'codeBlock') {
-          const lineStartOffset = $from.parent.textContent.lastIndexOf('\n', $from.parentOffset - 1) + 1
-          const lineStart = $from.start($from.depth) + lineStartOffset
-          const removable = $from.parent.textContent.slice(lineStartOffset, lineStartOffset + VISUAL_INDENT.length)
-          if (removable !== VISUAL_INDENT) return false
-          return this.editor.chain()
-            .focus()
-            .deleteRange({ from: lineStart, to: lineStart + VISUAL_INDENT.length })
-            .run()
+        const codeSelection = getCodeBlockSelection(this.editor)
+        if (codeSelection) {
+          const text = codeSelection.parent.textContent
+          const removableOffsets = codeSelection.lineOffsets.filter((lineOffset) => (
+            text.slice(lineOffset, lineOffset + VISUAL_INDENT.length) === VISUAL_INDENT
+          ))
+          if (removableOffsets.length === 0) return false
+          const transaction = removableOffsets
+            .slice()
+            .reverse()
+            .reduce(
+              (current, lineOffset) => current.delete(
+                codeSelection.parentStart + lineOffset,
+                codeSelection.parentStart + lineOffset + VISUAL_INDENT.length,
+              ),
+              this.editor.state.tr,
+            )
+          transaction.setSelection(this.editor.state.selection.map(transaction.doc, transaction.mapping))
+          this.editor.view.dispatch(transaction.scrollIntoView())
+          return true
         }
+        const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
           if (nodeName === 'table' || nodeName === 'tableRow'
@@ -1071,6 +1122,11 @@ function selectionHighlightSupport(targetWindow: Window | null): {
 const ThemedSelection = Extension.create({
   name: 'markleafThemedSelection',
   addProseMirrorPlugins() {
+    // While the browser owns an IME marked range, do not publish the editor's
+    // visual selection highlight. WebKit uses the same DOM selection for the
+    // composing text; painting a second CSS Highlight makes the pinyin range
+    // appear as an ordinary blue selection and it grows again on each update.
+    let composing = false
     return [new Plugin({
       key: themedSelectionKey,
       view(view) {
@@ -1169,6 +1225,10 @@ const ThemedSelection = Extension.create({
           return validPosition(view.state.selection.from)
         }
         const paintSelectionHighlight = () => {
+          if (composing || view.composing) {
+            clearSelectionHighlight()
+            return
+          }
           const { from, to, empty } = view.state.selection
           if (view.state.selection instanceof NodeSelection) {
             // ProseMirror represents a node selection by selecting the node's
@@ -1260,6 +1320,9 @@ const ThemedSelection = Extension.create({
 
         const handleManagedDragStart = (event: MouseEvent) => {
           if (!view.editable || event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.detail > 1) return
+          // macOS 上按住拖动不会打断组字；拖选引擎的 dispatch 会与 marked
+          // text 提交竞争，把拼音串写进正文。组字期间不接管拖选。
+          if (composing || view.composing) return
           delete mount.dataset.markleafManagedDrag
           const target = event.target instanceof Element
             ? event.target
@@ -1338,6 +1401,10 @@ const ThemedSelection = Extension.create({
             finishManagedDrag()
             return
           }
+          // 组字期间点击（重定位光标/误触）后的选区归一化会 dispatch 事务
+          // 并清写 DOM 选区，与输入法的 marked text 提交竞争——拼音重复
+          // 写入正文的另一个入口。组字期间完全放手。
+          if (composing || view.composing) return
           if (view.state.selection instanceof NodeSelection) {
             clearNativeNodeSelection()
             return
@@ -1388,11 +1455,29 @@ const ThemedSelection = Extension.create({
         mount.addEventListener('mousedown', handleManagedDragStart, true)
         view.dom.ownerDocument.addEventListener('mousemove', handleManagedDragMove, true)
         view.dom.ownerDocument.addEventListener('mouseup', handleMouseUp, true)
+        const onCompositionStart = () => {
+          composing = true
+          view.dom.ownerDocument.documentElement.classList.add('markleaf-composing')
+          clearSelectionHighlight()
+        }
+        const onCompositionEnd = () => {
+          composing = false
+          view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
+          paintSelectionHighlight()
+        }
+        // 组字外观完全交给输入法：macOS WebKit 会为 marked text 自绘下划线
+        // （配合 base.css 的 markleaf-composing 选区规则），前端不再注册
+        // markleaf-ime 自绘下划线——与系统下划线叠加成两条线。
+        view.dom.addEventListener('compositionstart', onCompositionStart)
+        view.dom.addEventListener('compositionend', onCompositionEnd)
         return {
             destroy() {
               mount.removeEventListener('mousedown', handleManagedDragStart, true)
               view.dom.ownerDocument.removeEventListener('mousemove', handleManagedDragMove, true)
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)
+              view.dom.removeEventListener('compositionstart', onCompositionStart)
+              view.dom.removeEventListener('compositionend', onCompositionEnd)
+              view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
               clearSelectionHighlight()
               highlightRegistry?.delete(selectionHighlightName)
           },
@@ -1410,6 +1495,9 @@ const ThemedSelection = Extension.create({
             // CSS Custom Highlight is O(1) DOM state for a giant selection and
           // avoids wrapping thousands of nodes while the user drags.
           if (selectionHighlightSupport(typeof window === 'undefined' ? null : window)) {
+            return DecorationSet.empty
+          }
+          if (composing) {
             return DecorationSet.empty
           }
           // Preview shows the actual result, not the selection tint covering it.
@@ -1434,6 +1522,13 @@ const ThemedSelection = Extension.create({
             // 作用范围。前端在 contextmenu 时打 markleafPreserveSelection 标，
             // 菜单关闭随 hideFormatMenu 清除。
             if (view.dom.dataset.markleafPreserveSelection === '1') {
+              return false
+            }
+            // 组字期间的瞬时 blur（候选窗、原生菜单、窗口切换）绝不能触发
+            // dispatch 或改写 DOM 选区：PM 中途同步选区会让 WebKit 把 marked
+            // text 直接提交进文档，候选字随后再落一次——拼音与汉字重复写入
+            // 正文。组字的提交/取消完全交给输入法自身。
+            if (composing || view.composing) {
               return false
             }
             const selection = view.state.selection

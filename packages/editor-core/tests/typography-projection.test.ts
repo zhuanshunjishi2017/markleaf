@@ -92,15 +92,11 @@ describe('typography paragraph extraction', () => {
     })
   })
 
-  it('keeps nested list paragraphs on native justified fallback', () => {
+  it('projects nested list paragraphs using their list content width', () => {
     const { editor } = setup('- nested list text\n\n- another item')
     const paragraphs = extractTypographyParagraphs(editor.state.doc)
-    const nested = paragraphs.filter(paragraph => (
-      paragraph.fallbackReason === 'unsupported-block'
-      && editor.state.doc.resolve(paragraph.from).depth > 1
-    ))
-
-    expect(nested).toHaveLength(2)
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs.every(paragraph => paragraph.eligible)).toBe(true)
     setTypographyProjectionEnabled(editor, true, {
       availableWidth: 400,
       measure: value => ({
@@ -109,8 +105,8 @@ describe('typography paragraph extraction', () => {
         shrink: value.trim() === '' ? 2 : value.length,
       }),
     })
-    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-native')).toHaveLength(2)
-    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-planned')).toHaveLength(0)
+    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-planned')).toHaveLength(2)
+    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-native')).toHaveLength(0)
   })
 })
 
