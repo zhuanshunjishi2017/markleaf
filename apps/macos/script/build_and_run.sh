@@ -206,7 +206,21 @@ if command -v codesign >/dev/null 2>&1; then
   codesign --force --sign - "$APP_BUNDLE" >/dev/null
   strip_bundle_metadata "$APP_BUNDLE"
   rm -rf "$SIGNING_ROOT"
-  codesign --verify --deep --strict "$APP_BUNDLE"
+  # File Provider 会在 strip 与 verify 之间异步恢复 FinderInfo（竞态），
+  # 表现为嵌套 Quick Look 扩展报 "resource fork ... detritus"。失败时
+  # 再清理并重签，最多四轮；仍然失败才抛出真实错误。
+  verify_attempt=1
+  until codesign --verify --deep --strict "$APP_BUNDLE" 2>/dev/null; do
+    verify_attempt=$((verify_attempt + 1))
+    if [ "$verify_attempt" -gt 4 ]; then
+      codesign --verify --deep --strict "$APP_BUNDLE"
+      break
+    fi
+    strip_bundle_metadata "$APP_BUNDLE"
+    codesign --force --sign - "$APP_BUNDLE/Contents/PlugIns/MarkLeafQuickLook.appex" >/dev/null
+    codesign --force --sign - "$APP_BUNDLE" >/dev/null
+    strip_bundle_metadata "$APP_BUNDLE"
+  done
   echo "[build] 已 ad-hoc 签名并通过严格校验 ($(codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | grep -o 'Signature=.*' | head -1))"
 else
   echo "[build] codesign 不可用，跳过签名"
