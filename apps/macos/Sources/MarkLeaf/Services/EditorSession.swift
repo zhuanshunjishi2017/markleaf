@@ -445,7 +445,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "ready":
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
+            #if DEBUG
             startMathDisplayDiagnostics()
+            #endif
             // applyStyles 经 postMessage 异步派发；揭示必须等前端确认 CSS 已落地。
             isWaitingForStylesAcknowledgement = true
             applyStyles()
