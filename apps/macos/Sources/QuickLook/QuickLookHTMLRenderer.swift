@@ -91,30 +91,51 @@ enum QuickLookHTMLRenderer {
                 continue
             }
 
-            if index + 1 < lines.count, isTableRow(line), isTableSeparator(lines[index + 1]) {
-                let alignments = tableAlignments(lines[index + 1])
-                index += 2
-                var body = ""
-                var first = true
-                while index < lines.count, isTableRow(lines[index]) {
-                    let cells = tableCells(lines[index])
-                    if first {
-                        body += "<thead><tr>"
-                        for (cell, alignment) in zip(cells, alignments) {
-                            body += "<th\(alignment)>\(renderInline(cell))</th>"
-                        }
-                        body += "</tr></thead><tbody>"
-                        first = false
-                    } else {
-                        body += "<tr>"
-                        for cell in cells {
-                            body += "<td>\(renderInline(cell))</td>"
-                        }
-                        body += "</tr>"
+            let nextContentIndex = (index + 1..<lines.count).first {
+                !lines[$0].trimmingCharacters(in: .whitespaces).isEmpty
+            }
+            if let nextContentIndex,
+               isTableRow(line),
+               isTableSeparator(lines[nextContentIndex]) {
+                let alignments = tableAlignments(lines[nextContentIndex])
+                let headerCells = tableCells(line)
+                index = nextContentIndex + 1
+                var rows: [[String]] = [headerCells]
+                while index < lines.count {
+                    let current = lines[index].trimmingCharacters(in: .whitespaces)
+                    if isTableRow(current) {
+                        rows.append(tableCells(lines[index]))
+                        index += 1
+                        continue
                     }
-                    index += 1
+                    guard current.isEmpty else { break }
+
+                    // MarkLeaf tolerates blank lines between visual table rows.
+                    // Quick Look should project that same editing model while
+                    // still stopping cleanly when non-table prose follows.
+                    var lookahead = index + 1
+                    while lookahead < lines.count,
+                          lines[lookahead].trimmingCharacters(in: .whitespaces).isEmpty {
+                        lookahead += 1
+                    }
+                    guard lookahead < lines.count, isTableRow(lines[lookahead]) else { break }
+                    // A row immediately followed by a separator starts a new
+                    // table, so the current table must not absorb it.
+                    if lookahead + 1 < lines.count,
+                       isTableSeparator(lines[lookahead + 1]) {
+                        break
+                    }
+                    index = lookahead
                 }
-                output += "<table>\(body)</tbody></table>"
+
+                let header = rows[0].enumerated().map { offset, cell -> String in
+                    let alignment = offset < alignments.count ? alignments[offset] : ""
+                    return "<th\(alignment)>\(renderInline(cell))</th>"
+                }.joined()
+                let bodyRows = rows.dropFirst().map { cells -> String in
+                    "<tr>" + cells.map { "<td>\(renderInline($0))</td>" }.joined() + "</tr>"
+                }.joined()
+                output += "<table><thead><tr>\(header)</tr></thead><tbody>\(bodyRows)</tbody></table>"
                 continue
             }
 

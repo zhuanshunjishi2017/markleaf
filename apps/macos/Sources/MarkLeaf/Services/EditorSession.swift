@@ -445,6 +445,7 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "ready":
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
+            startMathDisplayDiagnostics()
             // applyStyles 经 postMessage 异步派发；揭示必须等前端确认 CSS 已落地。
             isWaitingForStylesAcknowledgement = true
             applyStyles()
@@ -719,6 +720,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "pasteImage":
             pasteFromClipboard()
+
+        #if DEBUG
+        case "debugLog":
+            if let text = payload?["text"] as? String {
+                AppLog.info("FE \(text)")
+            }
+        #endif
 
         case "zoomWheel":
             handleZoomWheel(
@@ -1685,8 +1693,54 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// 滚动条外观：autoHideScrollbars 关 → 常显滚动条（跟随主题明暗）；开 → 系统 overlay。
     func applyScrollbarAppearance(dark: Bool) {
         (webView?.superview as? EditorWebContainerView)?.applyThemeAppearance(
-            dark: dark)
+            dark: dark,
+            autoHide: SettingsService.shared.settings.autoHideScrollbars)
     }
+
+    #if DEBUG
+    /// 临时诊断（公式右键后渲染成空白框）：公式被选中或源码浮层打开期间，
+    /// 周期性把公式的 DOM/计算样式/::highlight 注册表状态写入 app 日志。
+    private var mathDiagnosticTimer: Timer?
+    func startMathDisplayDiagnostics() {
+        guard mathDiagnosticTimer == nil else { return }
+        var lastSignature = ""
+        mathDiagnosticTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            guard let self, let webView else { return }
+            let script = """
+            (() => {
+              const span = document.querySelector('.ProseMirror-selectednode.markleaf-math, .markleaf-math.ProseMirror-selectednode');
+              const anyMath = document.querySelector('.markleaf-document .markleaf-math');
+              const target = span ?? anyMath;
+              if (!target) return null;
+              const katex = target.querySelector('.katex');
+              const cs = getComputedStyle(target);
+              const hl = window.CSS && CSS.highlights ? CSS.highlights.get('markleaf-selection') : null;
+              let hlInfo = 'none';
+              if (hl) {
+                const ranges = [];
+                hl.forEach(r => ranges.push(JSON.stringify(r.toString().slice(0, 40))));
+                hlInfo = ranges.join(';;') || 'empty-instance';
+              }
+              const sel = document.getSelection();
+              return JSON.stringify({
+                selected: !!span,
+                htmlHead: target.innerHTML.replace(/\\s+/g, ' ').slice(0, 80),
+                color: cs.color,
+                fill: cs.webkitTextFillColor,
+                bg: cs.backgroundColor,
+                hl: hlInfo,
+                domSel: sel && sel.rangeCount > 0 && !sel.isCollapsed ? sel.toString().slice(0, 30) : 'collapsed',
+              });
+            })()
+            """
+            webView.evaluateJavaScript(script) { [weak self] result, _ in
+                guard let self, let value = result as? String, value != "null", value != lastSignature else { return }
+                lastSignature = value
+                AppLog.info("MATH-DIAG \(value)")
+            }
+        }
+    }
+    #endif
 
     func toggleSourceMode() { execute("toggleSourceMode") }
     var onFindResult: ((Int, Int) -> Void)?

@@ -227,8 +227,10 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
         } else {
             AppLog.error("EditorWeb 资源目录缺失")
         }
-        // 本地图片资源服务（assets.local → markleaf-asset://）
-        configuration.setURLSchemeHandler(AssetSchemeHandler(), forURLScheme: "markleaf-asset")
+        // 本地图片资源服务（assets.local → markleaf-asset://）；相对路径按当前文档目录解析
+        configuration.setURLSchemeHandler(AssetSchemeHandler(documentDirectory: { [weak session] in
+            session?.documentURL?.deletingLastPathComponent().path
+        }), forURLScheme: "markleaf-asset")
         configuration.userContentController.add(session, name: "markleaf")
 
         // 开发期启用 Web 检查器（仅 Debug 构建）
@@ -326,8 +328,10 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     }
 
     /// 应用主题外观：color-scheme 让 WebKit 以深色绘制 overlay 滚动条/控件，
-    /// appearance 同步系统控件。WKWebView 无公开的内部 NSScrollView，无法用 legacy 滚动条。
-    func applyThemeAppearance(dark: Bool) {
+    /// appearance 同步系统控件。WKWebView 无公开的内部 NSScrollView，
+    /// 通过视图树找到它并强制恢复 overlay/autohide，避免系统外观切换后
+    /// 回退为宽大的 legacy 滚动条。
+    func applyThemeAppearance(dark: Bool, autoHide: Bool = true) {
         let themedAppearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Keep light mode explicit. Inheriting through nil can lag one
         // appearance-propagation pass behind the parent window during a
@@ -336,15 +340,10 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
         // WKWebView keeps its overlay scrollers in an internal NSScrollView.
         // Updating only the web view appearance leaves the old dark knob/track
         // cached when switching back to light mode, so invalidate both levels.
-        let scrollView = webKitScrollView()
-        scrollView?.appearance = themedAppearance
-        scrollView?.verticalScroller?.appearance = themedAppearance
-        scrollView?.horizontalScroller?.appearance = themedAppearance
-        scrollView?.needsLayout = true
-        scrollView?.layoutSubtreeIfNeeded()
-        scrollView?.needsDisplay = true
-        scrollView?.verticalScroller?.needsDisplay = true
-        scrollView?.horizontalScroller?.needsDisplay = true
+        configureWebKitScrollView(
+            appearance: themedAppearance,
+            autoHide: autoHide
+        )
         let scheme = dark ? "dark" : "light"
         webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(scheme)'") { [weak self] _, error in
             if let error {
@@ -354,11 +353,10 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             // invalidate once more after that transaction has completed.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                let scrollView = self.webKitScrollView()
-                scrollView?.appearance = themedAppearance
-                scrollView?.verticalScroller?.appearance = themedAppearance
-                scrollView?.verticalScroller?.needsDisplay = true
-                scrollView?.needsDisplay = true
+                self.configureWebKitScrollView(
+                    appearance: themedAppearance,
+                    autoHide: autoHide
+                )
             }
         }
         // 对齐 Windows 1.1.3：页面背景与宿主容器使用主题 --bg-primary，减少加载期明暗跳变。
@@ -387,6 +385,27 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             return nil
         }
         return find(in: webView)
+    }
+
+    private func configureWebKitScrollView(
+        appearance: NSAppearance?,
+        autoHide: Bool
+    ) {
+        guard let scrollView = webKitScrollView() else { return }
+        scrollView.appearance = appearance
+        // WebKit's internal scroll view can revert to legacy scrollers when
+        // the system appearance changes. Keep the editor on the same compact
+        // overlay behavior as the rest of the app and let AppKit handle the
+        // fade/visibility lifecycle.
+        scrollView.scrollerStyle = .overlay
+        scrollView.autohidesScrollers = autoHide
+        scrollView.verticalScroller?.appearance = appearance
+        scrollView.horizontalScroller?.appearance = appearance
+        scrollView.needsLayout = true
+        scrollView.layoutSubtreeIfNeeded()
+        scrollView.needsDisplay = true
+        scrollView.verticalScroller?.needsDisplay = true
+        scrollView.horizontalScroller?.needsDisplay = true
     }
 
     /// 编辑器前端就绪后揭示 WebView。

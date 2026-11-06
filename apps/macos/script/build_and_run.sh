@@ -187,9 +187,26 @@ if command -v codesign >/dev/null 2>&1; then
   codesign --force --sign - "$SIGNING_BUNDLE" >/dev/null
   codesign --verify --deep --strict "$SIGNING_BUNDLE"
   rm -rf "$APP_BUNDLE"
-  cp -RX "$SIGNING_BUNDLE" "$APP_BUNDLE"
+  # Copy the already-verified bundle without Finder metadata. Documents/File
+  # Provider can reattach resource forks during a normal cp, which makes the
+  # nested Quick Look extension fail strict verification after the copy.
+  ditto --norsrc --noqtn "$SIGNING_BUNDLE" "$APP_BUNDLE"
+  strip_bundle_metadata() {
+    local bundle="$1"
+    xattr -cr "$bundle"
+    xattr -dr com.apple.FinderInfo "$bundle" >/dev/null 2>&1 || true
+    xattr -dr 'com.apple.fileprovider.fpfs#P' "$bundle" >/dev/null 2>&1 || true
+  }
+  # The file provider may restore these two attributes immediately after the
+  # copy. Re-sign the nested extension and app after removing them, then verify
+  # the exact bundle that will be launched.
+  strip_bundle_metadata "$APP_BUNDLE"
+  codesign --force --sign - "$APP_BUNDLE/Contents/PlugIns/MarkLeafQuickLook.appex" >/dev/null
+  strip_bundle_metadata "$APP_BUNDLE"
+  codesign --force --sign - "$APP_BUNDLE" >/dev/null
+  strip_bundle_metadata "$APP_BUNDLE"
   rm -rf "$SIGNING_ROOT"
-  codesign --verify --deep "$APP_BUNDLE"
+  codesign --verify --deep --strict "$APP_BUNDLE"
   echo "[build] 已 ad-hoc 签名并通过严格校验 ($(codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | grep -o 'Signature=.*' | head -1))"
 else
   echo "[build] codesign 不可用，跳过签名"
