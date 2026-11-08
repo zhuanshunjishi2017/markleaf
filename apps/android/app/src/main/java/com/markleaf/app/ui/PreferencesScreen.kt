@@ -425,7 +425,7 @@ fun PreferencesScreen(
                 )
 
                 Text(
-                    L10n.t("更多设置（文件关联等）将在后续版本提供"),
+                    L10n.t("更多设置将在后续版本提供"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),

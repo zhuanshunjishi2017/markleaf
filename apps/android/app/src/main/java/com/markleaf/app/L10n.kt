@@ -27,6 +27,7 @@ object L10n {
 
     private val tables: Map<String, Map<String, String>> = mapOf(
         "zh-Hant" to mapOf(
+        "更多设置将在后续版本提供" to "更多設定將在後續版本提供",
         "插入图片方式" to "插入圖片方式",
         "复制到 assets" to "複製到 assets",
         "引用原图" to "引用原圖",
@@ -42,7 +43,6 @@ object L10n {
         "保留 Markdown 字面量" to "保留 Markdown 字面量",
         "转换为 HTML" to "轉換為 HTML",
         "不再提示并记住此选择" to "不再提示並記住此選擇",
-        "更多设置（文件关联等）将在后续版本提供" to "更多設定（檔案關聯等）將在後續版本提供",
         "CJK 字符数" to "CJK 字數",
         "HTML 已导出" to "HTML 已匯出",
         "Markdown 文档" to "Markdown 文件",
@@ -363,6 +363,7 @@ object L10n {
         "默认编码" to "預設編碼",
         ),
         "en" to mapOf(
+        "更多设置将在后续版本提供" to "More settings will arrive in a later version.",
         "插入图片方式" to "Insert Images",
         "复制到 assets" to "Copy to assets",
         "引用原图" to "Reference original",
@@ -378,7 +379,6 @@ object L10n {
         "保留 Markdown 字面量" to "Keep Markdown Literals",
         "转换为 HTML" to "Convert to HTML",
         "不再提示并记住此选择" to "Don't ask again and remember this choice",
-        "更多设置（文件关联等）将在后续版本提供" to "More settings (file associations, etc.) will arrive in a later version.",
         "CJK 字符数" to "CJK Characters",
         "HTML 已导出" to "HTML Exported",
         "Markdown 文档" to "Markdown Document",
@@ -699,6 +699,7 @@ object L10n {
         "默认编码" to "Default Encoding",
         ),
         "ja" to mapOf(
+        "更多设置将在后续版本提供" to "その他の設定は今後のバージョンで提供予定です",
         "插入图片方式" to "画像の挿入方法",
         "复制到 assets" to "assets にコピー",
         "引用原图" to "元画像を参照",
@@ -714,7 +715,6 @@ object L10n {
         "保留 Markdown 字面量" to "Markdown のリテラルを保持",
         "转换为 HTML" to "HTML に変換",
         "不再提示并记住此选择" to "今後表示せず、この選択を記憶",
-        "更多设置（文件关联等）将在后续版本提供" to "その他の設定（ファイルの関連付けなど）は今後のバージョンで提供予定です",
         "CJK 字符数" to "CJK 文字数",
         "HTML 已导出" to "HTML をエクスポートしました",
         "Markdown 文档" to "Markdown ドキュメント",
