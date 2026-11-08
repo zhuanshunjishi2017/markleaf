@@ -184,6 +184,19 @@ fun PreferencesScreen(
                             ?.let { onChange(prefs.copy(sourceFontFamily = it.first)) }
                     },
                 )
+                ChipRow(
+                    label = L10n.t("源码中文字体"),
+                    options = EditorPrefs.SOURCE_CJK_FONT_FAMILIES.map { L10n.t(it.second) },
+                    selected = L10n.t(
+                        EditorPrefs.SOURCE_CJK_FONT_FAMILIES
+                            .firstOrNull { it.first == prefs.sourceCjkFontFamily }?.second ?: "",
+                    ),
+                    onSelect = { display ->
+                        EditorPrefs.SOURCE_CJK_FONT_FAMILIES
+                            .firstOrNull { L10n.t(it.second) == display }
+                            ?.let { onChange(prefs.copy(sourceCjkFontFamily = it.first)) }
+                    },
+                )
                 StepperRow(
                     label = L10n.t("源码缩进宽度"),
                     value = "${prefs.sourceIndent}",
@@ -239,6 +252,19 @@ fun PreferencesScreen(
                         EditorPrefs.EMPHASIS_MARKERS
                             .firstOrNull { L10n.t(it.second) == display }
                             ?.let { onChange(prefs.copy(emphasisMarker = it.first)) }
+                    },
+                )
+                ChipRow(
+                    label = L10n.t("不安全强调标记"),
+                    options = EditorPrefs.UNSAFE_EMPHASIS_CHOICES.map { L10n.t(it.second) },
+                    selected = L10n.t(
+                        EditorPrefs.UNSAFE_EMPHASIS_CHOICES
+                            .firstOrNull { it.first == prefs.unsafeEmphasis }?.second ?: "",
+                    ),
+                    onSelect = { display ->
+                        EditorPrefs.UNSAFE_EMPHASIS_CHOICES
+                            .firstOrNull { L10n.t(it.second) == display }
+                            ?.let { onChange(prefs.copy(unsafeEmphasis = it.first)) }
                     },
                 )
                 ChipRow(
@@ -384,14 +410,22 @@ fun PreferencesScreen(
                     },
                 )
 
-                // ===== 图片（对齐桌面「图片」页签；Android 暂只接「./」前缀，
-                //      图片始终复制到文档 assets 目录）=====
+                // ===== 图片（对齐桌面「图片」页签；Android 通过 SAF 插入，
+                //      clipboardImageHandling / imageDefaultDirectory 依赖任意
+                //      目录路径，scoped storage 下无可靠映射，不提供）=====
                 SectionTitle(L10n.t("图片"))
-                Text(
-                    L10n.t("图片始终复制到文档目录下的 assets 文件夹"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                ChipRow(
+                    label = L10n.t("插入图片方式"),
+                    options = EditorPrefs.FILE_IMAGE_HANDLINGS.map { L10n.t(it.second) },
+                    selected = L10n.t(
+                        EditorPrefs.FILE_IMAGE_HANDLINGS
+                            .firstOrNull { it.first == prefs.fileImageHandling }?.second ?: "",
+                    ),
+                    onSelect = { display ->
+                        EditorPrefs.FILE_IMAGE_HANDLINGS
+                            .firstOrNull { L10n.t(it.second) == display }
+                            ?.let { onChange(prefs.copy(fileImageHandling = it.first)) }
+                    },
                 )
                 SwitchRow(
                     label = L10n.t("相对路径前加 \"./\""),
@@ -400,7 +434,7 @@ fun PreferencesScreen(
                 )
 
                 Text(
-                    L10n.t("更多设置（文件关联、图片处理等）将在后续版本提供"),
+                    L10n.t("更多设置（文件关联等）将在后续版本提供"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),

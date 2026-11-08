@@ -1003,6 +1003,54 @@ SafDocumentSource.takePersistablePermission(this, uri)
         payload = HostMessage.Command.CommandPayload(command = name, text = text),
     )
 
+    /** 不安全强调：对话框（保留字面量 / 转 HTML + 不再询问）。 */
+    private fun showUnsafeEmphasisDialog(kind: String, requestId: String?) {
+        val title = if (kind == "italic") L10n.t("Markdown 斜体标记可能不安全")
+        else L10n.t("Markdown 粗体标记可能不安全")
+        val message = if (kind == "italic")
+            L10n.t("这段斜体标记可能与相邻字符连在一起。请选择保留 Markdown 字面量，或转换为 HTML 标签。")
+        else L10n.t("这段粗体标记可能与相邻字符连在一起。请选择保留 Markdown 字面量，或转换为 HTML 标签。")
+        val checkbox = android.widget.CheckBox(this).apply {
+            text = L10n.t("不再提示并记住此选择")
+            setPadding(48, 16, 48, 0)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setView(checkbox)
+            .setPositiveButton(L10n.t("保留 Markdown 字面量")) { dialog, _ ->
+                applyUnsafeEmphasisChoice(requestId, "literal", checkbox.isChecked)
+                dialog.dismiss()
+            }
+            .setNegativeButton(L10n.t("转换为 HTML")) { dialog, _ ->
+                applyUnsafeEmphasisChoice(requestId, "html", checkbox.isChecked)
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun applyUnsafeEmphasisChoice(requestId: String?, action: String, remember: Boolean) {
+        if (remember) {
+            editorPrefs.value = editorPrefs.value.copy(unsafeEmphasis = action)
+            editorPrefs.value.save(prefsStore)
+        }
+        respondUnsafeEmphasis(requestId, action)
+    }
+
+    private fun respondUnsafeEmphasis(requestId: String?, action: String) {
+        if (requestId.isNullOrBlank()) return
+        bridge.post(
+            HostMessage.UnsafeEmphasisResponse(
+                documentId = session.documentId,
+                revision = session.confirmedRevision,
+                payload = kotlinx.serialization.json.buildJsonObject {
+                    put("action", kotlinx.serialization.json.JsonPrimitive(action))
+                },
+                requestId = requestId,
+            )
+        )
+    }
+
     private fun handleEditorMessage(message: EditorMessage) {
         when (message) {
             is EditorMessage.Ready -> {
@@ -1086,6 +1134,21 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 // Android 第一版无外部代码格式化器：明示不可用（不静默吞）。
                 dismissKeyboard()
                 showToast(L10n.t("未配置代码格式化器"))
+            }
+            is EditorMessage.UnsafeEmphasisRequested -> {
+                // 桌面同款流程：记住选择则直接回；否则弹对话框（可勾选不再询问）。
+                // 此前 Android 未处理该消息，前端转换会一直等待响应。
+                val kind = runCatching {
+                    (message.payload as? kotlinx.serialization.json.JsonObject)
+                        ?.get("kind")?.let { it as kotlinx.serialization.json.JsonPrimitive }
+                        ?.content
+                }.getOrNull() ?: "bold"
+                val saved = if (editorPrefs.value.unsafeEmphasis != "ask") editorPrefs.value.unsafeEmphasis else null
+                if (saved == "literal" || saved == "html") {
+                    respondUnsafeEmphasis(message.requestId, saved)
+                } else {
+                    showUnsafeEmphasisDialog(kind, message.requestId)
+                }
             }
             is EditorMessage.RequestSave -> lifecycleScope.launch { saveActiveDocument() }
             is EditorMessage.OpenLink -> {
@@ -1182,7 +1245,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
             "\"fontSize\":'${"%.2f".format(prefs.fontSize * factor)}px'," +
             "\"maxWidth\":$maxWidthPx," +
             "\"sourceFontSize\":'${"%.2f".format(prefs.sourceFontSize * factor)}px'," +
-            "\"sourceFontFamily\":'${prefs.sourceFontFamily}'," +
+            "\"sourceFontFamily\":'${(listOf(prefs.sourceFontFamily, prefs.sourceCjkFontFamily).filter { it.isNotBlank() } + "monospace").joinToString(", ")}'," +
             "\"cjkLanguage\":'${prefs.cjkLanguage}'," +
             "\"visualCjkAutoSpacing\":${prefs.cjkSpacing}," +
             "\"allowTableColumnResize\":${prefs.tableColumnResize}," +
@@ -1778,6 +1841,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
         runCatching {
             val docDirUri = activeDocumentDirectory()
             if (docDirUri.isEmpty()) throw IllegalStateException(L10n.t("文档未保存，无法插入图片"))
+            // 「引用原图」：SAF 文档 id 以文档目录为前缀 → 引用树内相对路径，
+            // 不复制（资源解析按文档目录行走，树外图片无法解析）。
+            if (editorPrefs.value.fileImageHandling == "referenceOriginal") {
+                originalReferenceWithinDocTree(docDirUri, sourceUri)?.let { return@runCatching it }
+                showToast(L10n.t("原图不在文档目录内，已复制到 assets"))
+            }
             val docDir = DocumentRef.Saf(docDirUri)
             val bytes = contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
                 ?: throw IllegalStateException(L10n.t("无法读取所选图片"))
@@ -1796,6 +1865,25 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }.onFailure {
             showToast(L10n.f("插入图片失败：%s", it.message))
         }
+    }
+
+    /** 引用原图：SAF 文档 id 以文档目录 documentId 为前缀 → 目录内相对引用；
+     *  树外图片无法被编辑器资源解析（AssetResolver 按文档目录行走），返回 null 走复制。 */
+    private fun originalReferenceWithinDocTree(docDirUri: String, imageUri: Uri): String? {
+        val imageId = runCatching { android.provider.DocumentsContract.getDocumentId(imageUri) }.getOrNull()
+            ?: return null
+        val docBaseId = runCatching {
+            val uri = Uri.parse(docDirUri)
+            if (uri.pathSegments.contains("tree")) {
+                android.provider.DocumentsContract.getTreeDocumentId(uri)
+            } else {
+                android.provider.DocumentsContract.getDocumentId(uri)
+            }
+        }.getOrNull() ?: return null
+        if (docBaseId.isEmpty() || imageId == docBaseId || !imageId.startsWith("$docBaseId/")) return null
+        val relative = imageId.removePrefix("$docBaseId/").replace(" ", "%20")
+        if (relative.isBlank()) return null
+        return if (editorPrefs.value.prefixRelativeWithDotSlash) "./$relative" else relative
     }
 
     private fun queryDisplayName(uri: Uri): String? = runCatching {

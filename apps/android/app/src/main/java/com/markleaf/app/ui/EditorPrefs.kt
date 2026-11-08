@@ -17,7 +17,8 @@ data class EditorPrefs(
     val sourceFontSize: Int = 14,
     val sourceFontFamily: String = "monospace",
     val cjkLanguage: String = "zh-Hans",
-    val adaptiveJustification: Boolean = true,
+    // 桌面 1.7.8.5 起默认关闭（效果不达标，后续版本继续打磨）
+    val adaptiveJustification: Boolean = false,
     val codeHighlight: Boolean = true,
     val blockHandle: Boolean = true,
     val sourceIndent: Int = 2,
@@ -46,6 +47,17 @@ data class EditorPrefs(
     val pinchZoom: Boolean = true,
     // 桌面图片页
     val prefixRelativeWithDotSlash: Boolean = true,
+    // 桌面图片页「插入图片方式」：SAF 插入时复制到 assets 或引用原图。
+    // 引用仅对文档目录树内的图片可用（编辑器资源解析按文档目录行走），
+    // 树外图片回退复制并提示。clipboardImageHandling / imageDefaultDirectory
+    // 依赖任意目录文件路径，scoped storage 下无可靠映射，不提供。
+    val fileImageHandling: String = "copyToAssets",
+    // 桌面 Markdown 行为「不安全强调」：ask=每次询问；literal/html=记住选择
+    // 不再询问（对应桌面 unsafeEmphasisAction + suppressUnsafeEmphasisPrompt）
+    val unsafeEmphasis: String = "ask",
+    // 桌面源码字体设置：源码中文字体（空 = 系统默认；发送时组合为
+    // 西文, 中文, monospace，与桌面 sourceFontFamily 组装一致）
+    val sourceCjkFontFamily: String = "",
     // 桌面文件页「历史记录」：记录最近文件夹
     val recordRecentFolders: Boolean = true,
     // 桌面外观页「状态栏」自定义（对齐 StatusBarSettings；侧栏切换/命令状态为桌面专属字段）
@@ -96,6 +108,9 @@ data class EditorPrefs(
             .putBoolean(PREF_RESTORE_ZOOM_ON_OPEN, restoreZoomOnOpen)
             .putBoolean(PREF_PINCH_ZOOM, pinchZoom)
             .putBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, prefixRelativeWithDotSlash)
+            .putString(PREF_FILE_IMAGE_HANDLING, fileImageHandling)
+            .putString(PREF_UNSAFE_EMPHASIS, unsafeEmphasis)
+            .putString(PREF_SOURCE_CJK_FONT_FAMILY, sourceCjkFontFamily)
             .putBoolean(PREF_RECORD_RECENT_FOLDERS, recordRecentFolders)
             .putBoolean(PREF_STATUS_BAR_POSITION, statusBarPosition)
             .putBoolean(PREF_STATUS_BAR_BLOCK_TYPE, statusBarBlockType)
@@ -149,6 +164,9 @@ data class EditorPrefs(
         private const val PREF_RESTORE_ZOOM_ON_OPEN = "restoreZoomOnOpen"
         private const val PREF_PINCH_ZOOM = "pinchZoom"
         private const val PREF_PREFIX_RELATIVE_WITH_DOT_SLASH = "prefixRelativeWithDotSlash"
+        private const val PREF_FILE_IMAGE_HANDLING = "fileImageHandling"
+        private const val PREF_UNSAFE_EMPHASIS = "unsafeEmphasis"
+        private const val PREF_SOURCE_CJK_FONT_FAMILY = "sourceCjkFontFamily"
         private const val PREF_RECORD_RECENT_FOLDERS = "recordRecentFolders"
         private const val PREF_STATUS_BAR_POSITION = "statusBarPosition"
         private const val PREF_STATUS_BAR_BLOCK_TYPE = "statusBarBlockType"
@@ -180,6 +198,22 @@ data class EditorPrefs(
             "monospace" to "等宽",
             "serif" to "衬线",
             "sans-serif" to "无衬线",
+        )
+
+        /** 源码中文字体（空 = 系统默认；选项对齐源码字体列表）。 */
+        val SOURCE_CJK_FONT_FAMILIES = listOf("" to "系统默认") + SOURCE_FONT_FAMILIES
+
+        /** 插入图片方式（对齐桌面 fileImageHandling）。 */
+        val FILE_IMAGE_HANDLINGS = listOf(
+            "copyToAssets" to "复制到 assets",
+            "referenceOriginal" to "引用原图",
+        )
+
+        /** 不安全强调（对齐桌面 unsafeEmphasisAction + suppressUnsafeEmphasisPrompt）。 */
+        val UNSAFE_EMPHASIS_CHOICES = listOf(
+            "ask" to "每次询问",
+            "literal" to "保留 Markdown 字面量",
+            "html" to "转换为 HTML",
         )
 
         /** 代码围栏（对齐桌面 markdownCodeFence；展示名为桌面 L10n 键）。 */
@@ -257,6 +291,9 @@ data class EditorPrefs(
             restoreZoomOnOpen = sp.getBoolean(PREF_RESTORE_ZOOM_ON_OPEN, true),
             pinchZoom = sp.getBoolean(PREF_PINCH_ZOOM, true),
             prefixRelativeWithDotSlash = sp.getBoolean(PREF_PREFIX_RELATIVE_WITH_DOT_SLASH, true),
+            fileImageHandling = sp.getString(PREF_FILE_IMAGE_HANDLING, "copyToAssets") ?: "copyToAssets",
+            unsafeEmphasis = sp.getString(PREF_UNSAFE_EMPHASIS, "ask") ?: "ask",
+            sourceCjkFontFamily = sp.getString(PREF_SOURCE_CJK_FONT_FAMILY, "") ?: "",
             recordRecentFolders = sp.getBoolean(PREF_RECORD_RECENT_FOLDERS, true),
             statusBarPosition = sp.getBoolean(PREF_STATUS_BAR_POSITION, true),
             statusBarBlockType = sp.getBoolean(PREF_STATUS_BAR_BLOCK_TYPE, true),
