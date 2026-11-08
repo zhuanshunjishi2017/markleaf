@@ -18,7 +18,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -302,23 +301,15 @@ fun PreferencesScreen(
                 // ===== 外观（对齐桌面「外观」页签「文档外观」组）=====
                 SectionTitle(L10n.t("外观"))
                 GroupHeader(L10n.t("文档外观"))
-                Text(
-                    L10n.t("排版样式"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 4.dp),
+                ChipRow(
+                    label = L10n.t("排版样式"),
+                    options = styleIds.map { L10n.t(it.second) },
+                    selected = L10n.t(styleIds.firstOrNull { it.first == prefs.styleId }?.second ?: ""),
+                    onSelect = { display ->
+                        styleIds.firstOrNull { L10n.t(it.second) == display }
+                            ?.let { onChange(prefs.copy(styleId = it.first)) }
+                    },
                 )
-                styleIds.forEach { (id, display) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onChange(prefs.copy(styleId = id)) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = prefs.styleId == id, onClick = { onChange(prefs.copy(styleId = id)) })
-                        Text(L10n.t(display), style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
                 // 与桌面一致：开启「与操作系统同步」时颜色主题被默认浅/深主题接管
                 ChipRow(
                     label = L10n.t("颜色主题"),
