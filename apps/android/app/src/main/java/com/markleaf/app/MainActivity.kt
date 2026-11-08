@@ -1699,21 +1699,25 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     }
                 })
             }),
+            // 顺序对齐桌面 editMenu()：撤销/重做 ─ 剪切/拷贝/复制为/粘贴/粘贴为纯文本 ─ 全选 ─ 查找与替换
             TopMenuSection(L10n.t("编辑"), listOf(
                 entry(L10n.t("撤销"), "undo"),
                 entry(L10n.t("重做"), "redo"),
-                host(L10n.t("查找…"), enabled = documentLoaded.value, separator = true) { openFindBar(withReplace = false) },
-                host(L10n.t("查找与替换…"), enabled = documentLoaded.value) { openFindBar(withReplace = true) },
                 entry(L10n.t("剪切"), "cut", separator = true),
                 entry(L10n.t("拷贝"), "copy"),
-                TopMenuEntry(L10n.t("粘贴"), true, false) { pasteFromClipboard() },
                 sub(L10n.t("复制为"), enabled = en("copyPlainText"), children = listOf(
                     host(L10n.t("纯文本"), enabled = en("copyPlainText")) { copySelectionAs("plain") },
                     host(L10n.t("Markdown"), enabled = en("copyMarkdown")) { copySelectionAs("markdown") },
                     host(L10n.t("HTML"), enabled = en("copyPlainText")) { copySelectionAs("html") },
                 )),
+                TopMenuEntry(L10n.t("粘贴"), true, false) { pasteFromClipboard() },
                 host(L10n.t("粘贴为纯文本"), enabled = en("pastePlainText")) { pastePlainTextFromClipboard() },
                 entry(L10n.t("全选"), "selectAll", separator = true),
+                // 单入口对齐桌面：替换行在查找条内经 ⌄ 展开
+                host(L10n.t("查找与替换"), enabled = documentLoaded.value, separator = true) {
+                    // 对齐桌面：该入口始终带替换行展开
+                    openFindBar(withReplace = true)
+                },
             )),
             TopMenuSection(L10n.t("插入"), listOf(
                 sub(L10n.t("图片"), enabled = hasDoc, children = listOf(
