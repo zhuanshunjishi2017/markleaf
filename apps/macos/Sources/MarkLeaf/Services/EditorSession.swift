@@ -1595,6 +1595,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var systemThemeObserver: NSObjectProtocol?
 
     /// 注册系统外观变化监听（浅色/深色切换时重新解析默认主题）。
+    /// 主路径是编辑器视图的 viewDidChangeEffectiveAppearance（外观解析后
+    /// 精确触发）；此分布式通知仅作兜底——它送达早于外观解析时采样到
+    /// 旧值，本次换肤等于重放旧主题，真正的刷新由视图回调补上。
     private func startFollowingSystemAppearance() {
         guard systemThemeObserver == nil else { return }
         systemThemeObserver = DistributedNotificationCenter.default().addObserver(
@@ -1602,6 +1605,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             object: nil, queue: .main) { [weak self] _ in
             self?.applyFollowSystemTheme()
         }
+    }
+
+    /// 编辑器宿主视图上报 effectiveAppearance 已解析变化（跟随系统时换肤）。
+    func systemEffectiveAppearanceDidChange() {
+        guard isFollowSystemTheme else { return }
+        applyFollowSystemTheme()
     }
 
     /// 跟随系统外观：重新解析默认主题并换肤（开关切换或系统外观变化时调用）。
@@ -1667,7 +1676,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 NSApp.appearance = nil
             }
             if let window = self.webView?.window {
-                window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                // 跟随系统时不钉住窗口外观：钉住会让 effectiveAppearance 不再
+                // 跟踪系统解析，编辑器视图的 viewDidChangeEffectiveAppearance
+                // （跟随模式的主换肤信号）在后续系统切换时不再触发。
+                window.appearance = self.isFollowSystemTheme
+                    ? nil
+                    : NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.backgroundColor = self.themeBackgroundColor ?? .windowBackgroundColor
                 window.isOpaque = true
             }

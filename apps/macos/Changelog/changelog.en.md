@@ -1,5 +1,11 @@
 # MarkLeaf Changelog
 
+## 1.7.9 — 2026-11-8
+
+### Fixed
+
+- Fixed the theme not updating promptly after switching the system appearance while following the system light/dark setting.
+
 ## 1.7.8.5 — 2026-11-6
 
 ### New
@@ -64,7 +70,6 @@
 - Fixed missing menu-bar check states, including view modes, paragraph styles, formatting toggles, and the no-tab state.
 - Fixed window-local state overwriting shared preferences when multiple windows saved settings concurrently.
 - Fixed related settings groups being unexpectedly retained or overwritten while clearing history, resetting preferences, or updating formatter settings.
-- Fixed delayed theme-state synchronization after the system appearance changed.
 - Fixed export-preview flashing when changing header settings.
 - Fixed print/export host lifecycle issues that could leave processes behind or destabilize previews.
 

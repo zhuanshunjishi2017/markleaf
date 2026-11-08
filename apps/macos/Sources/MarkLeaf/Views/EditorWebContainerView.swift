@@ -210,6 +210,7 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     let webView: WKWebView
     private weak var session: EditorSession?
     private var didFinishLoadOnce = false
+    private var appearanceChangeDebounce: DispatchWorkItem?
     private var reloadCoverView: NSView?
     /// WebView 之下的主题色垫层。WKWebView 关闭 drawsBackground 后，内部
     /// scroll view 在局部重绘（如点击原子节点触发的同步失效）时会让未
@@ -581,6 +582,23 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             return
         }
         decisionHandler(.allow)
+    }
+
+    /// 系统外观解析变化的权威回调。分布式通知（AppleInterfaceThemeChanged）
+    /// 送达时 NSApp.effectiveAppearance 常常尚未解析完新外观——采样到旧值
+    /// 会把编辑器"换肤"成同一个旧主题，表现为跟随系统深浅色更新不及时；
+    /// 且该分布式通知在新 macOS 上送达延迟明显。此回调在外观解析完成后
+    /// 精确触发（手动切换/自动模式的日落过渡/窗口覆盖均覆盖），是唯一
+    /// 可靠的采样时机。手动主题路径不会进入会话的跟随分支（守卫在前）。
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceChangeDebounce?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.session?.systemEffectiveAppearanceDidChange()
+        }
+        appearanceChangeDebounce = work
+        // 轻微合并窗口/应用两级的外观解析变化，避免同一过渡重复换肤。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 }
 
