@@ -39,6 +39,7 @@ import {
   replaceEditorDocument,
   pasteMarkdownText,
   pasteMarkdownTextWithResult,
+  pasteMarkdownAsPlainText,
   pasteClipboardContentWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
@@ -2127,7 +2128,15 @@ async function handleMessage(value: unknown): Promise<void> {
                     return sourceEditor?.gotoSourceHeading(headingText, Number.isFinite(approximate) ? approximate : undefined) ?? false
                   })()
                 : false
-          : payload.command === 'pasteMarkdown' && commandText !== undefined
+          : payload.command === 'pasteText' && commandText !== undefined
+            ? (() => {
+                // 粘贴为纯文本（对齐桌面 pastePlainText）：字面插入，不解析语法。
+                const result = pasteMarkdownAsPlainText(editor, commandText)
+                commandOutcome = result.outcome
+                commandError = result.error
+                return result.success
+              })()
+            : payload.command === 'pasteMarkdown' && commandText !== undefined
             ? (() => {
                 const result = pasteMarkdownTextWithResult(editor, commandText)
                 commandOutcome = result.outcome

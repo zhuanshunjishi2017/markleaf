@@ -202,6 +202,8 @@ class MainActivity : ComponentActivity() {
     }
     private var pendingSelectionExport: kotlinx.coroutines.CompletableDeferred<String>? = null
     private var pendingSelectionExportRequestId: String? = null
+    // 选区导出的完整三格式内容（text=纯文本、markdown、html）——复制为子菜单按需取用
+    private var lastSelectionExport: Triple<String, String, String>? = null
     private var pinchAccumulator = 100.0
     private var lastPinchApplyAt = 0L
     private var lastAppliedStyleId = "serif"
@@ -1179,12 +1181,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 }
             }
             is EditorMessage.SelectionExport -> {
-                // 原生工具条 剪切/拷贝 的取文本回包（requestId 关联）
+                // 原生工具条 剪切/拷贝 的取文本回包（requestId 关联）；
+                // 同时缓存 text/markdown/html 三格式（复制为子菜单取用）。
                 if (message.requestId != null && message.requestId == pendingSelectionExportRequestId) {
-                    pendingSelectionExport?.complete(
-                        (message.payload as? kotlinx.serialization.json.JsonObject)
-                            ?.get("text")?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: "",
-                    )
+                    val obj = message.payload as? kotlinx.serialization.json.JsonObject
+                    fun field(name: String): String =
+                        obj?.get(name)?.let { (it as kotlinx.serialization.json.JsonPrimitive).content } ?: ""
+                    val text = field("text")
+                    lastSelectionExport = Triple(text, field("markdown"), field("html"))
+                    pendingSelectionExport?.complete(text)
                     pendingSelectionExport = null
                     pendingSelectionExportRequestId = null
                 }
@@ -1406,6 +1411,81 @@ SafDocumentSource.takePersistablePermission(this, uri)
     }
 
     /** 取当前选区纯文本（请求-回包模式，对齐 pendingSnapshot）。 */
+    /** 选区三格式导出（text/markdown/html）；失败返回 null。 */
+    private suspend fun requestSelectionExport(): Triple<String, String, String>? {
+        requestSelectionText()
+        return lastSelectionExport?.takeIf { it.first.isNotEmpty() || it.second.isNotEmpty() || it.third.isNotEmpty() }
+    }
+
+    /** 拷贝（对齐桌面 .formatted）：纯文本为主体，HTML 附 EXTRA 供支持富文本的消费方。 */
+    private fun copySelectionFormatted(text: String, html: String) {
+        if (text.isEmpty() && html.isEmpty()) {
+            showToast(L10n.t("当前没有可复制的文本"))
+            return
+        }
+        val clip = if (html.isNotEmpty() && android.os.Build.VERSION.SDK_INT >= 31) {
+            android.content.ClipData.newHtmlText("markleaf", text, html)
+        } else {
+            android.content.ClipData.newPlainText("markleaf", text)
+        }
+        clipboardManager().setPrimaryClip(clip)
+        showToast(L10n.t("已复制"))
+    }
+
+    private fun copySelectionAs(mode: String) {
+        lifecycleScope.launch {
+            val export = requestSelectionExport()
+            if (export == null) {
+                showToast(L10n.t("当前没有可复制的文本"))
+                return@launch
+            }
+            val (text, markdown, html) = export
+            val payload = when (mode) {
+                "markdown" -> markdown
+                "html" -> html
+                else -> text
+            }
+            if (payload.isEmpty()) {
+                showToast(L10n.t("当前没有可复制的文本"))
+                return@launch
+            }
+            clipboardManager().setPrimaryClip(android.content.ClipData.newPlainText("markleaf", payload))
+            showToast(L10n.t("已复制"))
+        }
+    }
+
+    /** 粘贴（对齐桌面 pasteFromClipboard）：剪贴板图片优先导入，其次文本交前端
+     *  智能解析（markdown/HTML）。此前发送 pasteClipboard 不带内容，前端收到
+     *  空串直接 failed——粘贴主路径是坏的。 */
+    private fun pasteFromClipboard() {
+        if (androidReadOnly.value) return
+        if (!editorSourceMode.value) {
+            clipboardImageUri()?.let { imageUri ->
+                lifecycleScope.launch { insertImageFromSaf(imageUri) }
+                return
+            }
+        }
+        val text = clipboardManager().primaryClip?.getItemAt(0)?.coerceToText(this)
+            ?.toString()?.takeIf { it.isNotEmpty() }
+        if (text == null) {
+            showToast(L10n.t("剪贴板中没有可粘贴的内容"))
+            return
+        }
+        postCommand("pasteClipboard", text)
+    }
+
+    /** 粘贴为纯文本（对齐桌面 pastePlainText）：字面插入，不解析语法。 */
+    private fun pastePlainTextFromClipboard() {
+        if (androidReadOnly.value) return
+        val text = clipboardManager().primaryClip?.getItemAt(0)?.coerceToText(this)
+            ?.toString()?.takeIf { it.isNotEmpty() }
+        if (text == null) {
+            showToast(L10n.t("剪贴板中没有可粘贴的内容"))
+            return
+        }
+        postCommand("pasteText", text)
+    }
+
     private suspend fun requestSelectionText(): String {
         val requestId = java.util.UUID.randomUUID().toString()
         val deferred = kotlinx.coroutines.CompletableDeferred<String>()
@@ -1626,10 +1706,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 host(L10n.t("查找与替换…"), enabled = documentLoaded.value) { openFindBar(withReplace = true) },
                 entry(L10n.t("剪切"), "cut", separator = true),
                 entry(L10n.t("拷贝"), "copy"),
-                TopMenuEntry(L10n.t("粘贴"), true, false) {
-                    clipboardManager().primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
-                        ?.takeIf { it.isNotEmpty() }?.let { postCommand("pasteClipboard") }
-                },
+                TopMenuEntry(L10n.t("粘贴"), true, false) { pasteFromClipboard() },
+                sub(L10n.t("复制为"), enabled = en("copyPlainText"), children = listOf(
+                    host(L10n.t("纯文本"), enabled = en("copyPlainText")) { copySelectionAs("plain") },
+                    host(L10n.t("Markdown"), enabled = en("copyMarkdown")) { copySelectionAs("markdown") },
+                    host(L10n.t("HTML"), enabled = en("copyPlainText")) { copySelectionAs("html") },
+                )),
+                host(L10n.t("粘贴为纯文本"), enabled = en("pastePlainText")) { pastePlainTextFromClipboard() },
                 entry(L10n.t("全选"), "selectAll", separator = true),
             )),
             TopMenuSection(L10n.t("插入"), listOf(
@@ -2257,10 +2340,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 onCommand("cut", "")
             }),
             SelectionToolbarItem(L10n.t("拷贝"), actions["copy"]?.first == true, action = asyncCopyThen {}),
-            SelectionToolbarItem(L10n.t("粘贴"), actions["paste"]?.first == true, action = {
-                clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
-                    ?.takeIf { it.isNotEmpty() }?.let { onCommand("pasteClipboard", "") }
-            }),
+            SelectionToolbarItem(L10n.t("粘贴"), actions["paste"]?.first == true, action = { pasteFromClipboard() }),
             SelectionToolbarItem(L10n.t("全选"), true, action = { onCommand("selectAll", "") }),
         )
         // 上下文定制（对齐桌面 EditorSession+ContextMenu 各语义上下文命令组；

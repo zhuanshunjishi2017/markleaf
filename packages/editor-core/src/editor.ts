@@ -4517,7 +4517,7 @@ function summarizeMarkdownPasteError(error: unknown): string {
   return singleLine.length <= 120 ? singleLine : `${singleLine.slice(0, 117)}...`
 }
 
-function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: string): MarkdownPasteResult {
+export function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: string): MarkdownPasteResult {
   try {
     if (editor.view.pasteText(markdown)) return { success: true, outcome: 'plainText', error }
   } catch {
