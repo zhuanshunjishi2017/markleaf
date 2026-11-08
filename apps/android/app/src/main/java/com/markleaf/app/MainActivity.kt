@@ -1663,13 +1663,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 add(entry(L10n.t("清除格式"), "clearFormat", separator = true))
             }),
             TopMenuSection(L10n.t("视图"), listOf(
-                host(L10n.t("显示/隐藏侧栏")) { onToggleSidebar() },
-                host(L10n.t("源码模式"), enabled = hasDoc, checked = editorSourceMode.value, separator = true) { postCommand("toggleSourceMode") },
+                // 侧栏开关不设：侧栏是抽屉（☰ 打开/遮罩关闭），菜单项冗余；
+                // 专注/打字机不接入：手机视口小，淡化邻段收益低，且打字机的
+                // 强制滚动与触摸滚动、IME inset 处理相冲突（桌面滚轮习惯的
+                // 反模式）。
+                host(L10n.t("源码模式"), enabled = hasDoc, checked = editorSourceMode.value) { postCommand("toggleSourceMode") },
                 host(L10n.t("只读模式"), enabled = hasDoc, checked = androidReadOnly.value, separator = true) {
                     toggleReadOnly()
                 },
-                host(L10n.t("段落专注模式"), enabled = hasDoc, separator = true) { postCommand("setEditorFocusMode") },
-                host(L10n.t("打字机模式"), enabled = hasDoc) { postCommand("setEditorTypewriterMode") },
                 host(L10n.t("放大"), enabled = hasDoc, separator = true) { applyZoom(zoomPercent.value + 10) },
                 host(L10n.t("缩小"), enabled = hasDoc) { applyZoom(zoomPercent.value - 10) },
                 host(L10n.t("重置 100%"), enabled = hasDoc) { applyZoom(100) },
