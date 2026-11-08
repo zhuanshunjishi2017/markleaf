@@ -1585,9 +1585,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         showImageUrlDialog.value = true
                     },
                 )),
-                sub(L10n.t("表格"), enabled = en("insertTable"), children = listOf(
-                    host(L10n.t("插入表格（指定行列）…")) { showTableSizeDialog.value = true },
-                )),
+                // 单项目子菜单拍平：点击直接弹行列对话框
+                entry(L10n.t("表格…"), "insertTable", action = { showTableSizeDialog.value = true }),
                 entry(L10n.t("Mermaid 图表"), "insertMermaid"),
                 entry(L10n.t("插入超链接…"), "setLink", action = {
                     linkInput = "https://"
@@ -1631,7 +1630,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     cmdEntry(L10n.t("警告"), "insertAlertWarning"),
                     cmdEntry(L10n.t("注意"), "insertAlertCaution"),
                 )))
-                add(sub(L10n.t("表格"), enabled = en("addRowAfter"), separator = true, children = listOf(
+                // 上下文相关区块：仅在语义上下文匹配时出现（光标在表格内 /
+                // 图片选中），替代永久置灰——与底部选择工具条同源
+                // （CommandStateChanged.semanticContext）。
+                if (editorSemanticContext.value == "table") add(sub(L10n.t("表格"), enabled = en("addRowAfter"), separator = true, children = listOf(
                     cmdEntry(L10n.t("编辑表格标题"), "setTableCaption"),
                     cmdEntry(L10n.t("上方插行"), "addRowBefore"),
                     cmdEntry(L10n.t("下方插行"), "addRowAfter"),
@@ -1644,7 +1646,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     cmdEntry(L10n.t("右对齐"), "alignTableRight"),
                     cmdEntry(L10n.t("删除表格"), "deleteTable", separator = true),
                 )))
-                add(sub(L10n.t("图片"), enabled = en("rotateImageClockwise"), separator = true, children = listOf(
+                if (editorSemanticContext.value == "image") add(sub(L10n.t("图片"), enabled = en("rotateImageClockwise"), separator = true, children = listOf(
                     cmdEntry(L10n.t("顺时针旋转 90°"), "rotateImageClockwise"),
                     cmdEntry(L10n.t("缩放 50%"), "resizeImage", text = "50"),
                     cmdEntry(L10n.t("缩放 75%"), "resizeImage", text = "75"),
