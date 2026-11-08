@@ -386,7 +386,15 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onRedo = { postCommand("redo") },
                                 onSave = { lifecycleScope.launch { saveActiveDocument() } },
                             )
-                            if (showFindBar.value) FindReplaceBar()
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = showFindBar.value,
+                                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
+                                    androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(110)),
+                                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)) +
+                                    androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(110)),
+                            ) {
+                                FindReplaceBar()
+                            }
                             EditorContainer(
                                 activeWebView = activeWebViewState.value,
                                 onPinch = ::onPinchZoom,
@@ -2282,8 +2290,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     label = { Text(L10n.t("全字匹配"), style = MaterialTheme.typography.labelMedium) },
                 )
             }
-            // 行3（可展开）：替换行
-            if (showFindReplace.value) {
+            // 行3（可展开）：替换行（展开/收起 110ms，与菜单面板一致）
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showFindReplace.value,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
+                    androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(110)),
+                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)) +
+                    androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(110)),
+            ) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.OutlinedTextField(
                         value = findReplaceText.value,
