@@ -27,6 +27,12 @@ object L10n {
 
     private val tables: Map<String, Map<String, String>> = mapOf(
         "zh-Hant" to mapOf(
+        "查找…" to "查找…",
+        "查找与替换…" to "查找與替換…",
+        "替换" to "替換",
+        "全部替换" to "全部替換",
+        "区分大小写" to "區分大小寫",
+        "全字匹配" to "全字匹配",
         "更多设置将在后续版本提供" to "更多設定將在後續版本提供",
         "插入图片方式" to "插入圖片方式",
         "复制到 assets" to "複製到 assets",
@@ -363,6 +369,12 @@ object L10n {
         "默认编码" to "預設編碼",
         ),
         "en" to mapOf(
+        "查找…" to "Find…",
+        "查找与替换…" to "Find & Replace…",
+        "替换" to "Replace",
+        "全部替换" to "Replace All",
+        "区分大小写" to "Case Sensitive",
+        "全字匹配" to "Whole Word",
         "更多设置将在后续版本提供" to "More settings will arrive in a later version.",
         "插入图片方式" to "Insert Images",
         "复制到 assets" to "Copy to assets",
@@ -699,6 +711,12 @@ object L10n {
         "默认编码" to "Default Encoding",
         ),
         "ja" to mapOf(
+        "查找…" to "検索…",
+        "查找与替换…" to "検索と置換…",
+        "替换" to "置換",
+        "全部替换" to "すべて置換",
+        "区分大小写" to "大文字と小文字を区別",
+        "全字匹配" to "単語単位",
         "更多设置将在后续版本提供" to "その他の設定は今後のバージョンで提供予定です",
         "插入图片方式" to "画像の挿入方法",
         "复制到 assets" to "assets にコピー",

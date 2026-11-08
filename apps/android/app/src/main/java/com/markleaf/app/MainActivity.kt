@@ -12,6 +12,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -40,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
@@ -207,6 +212,16 @@ class MainActivity : ComponentActivity() {
     private val showLanguageDialog = mutableStateOf<Pair<Long, String>?>(null)
     private val languageInput = mutableStateOf("")
     private val editorActions = mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap())
+    // 查找与替换面板状态（命令驱动的内核查找：findText/findNext/replaceOne/…）
+    private val showFindBar = mutableStateOf(false)
+    private val showFindReplace = mutableStateOf(false)
+    private val findQuery = mutableStateOf("")
+    private val findReplaceText = mutableStateOf("")
+    private val findCaseSensitive = mutableStateOf(false)
+    private val findWholeWord = mutableStateOf(false)
+    private val findCurrentCount = mutableStateOf(0)
+    private val findTotalCount = mutableStateOf(0)
+    private val findFocusRequester = androidx.compose.ui.focus.FocusRequester()
     private var welcomeDocumentId = WELCOME_DOCUMENT_ID
     private var lastKnownMarkdown = ""
     private var pendingSnapshot: kotlinx.coroutines.CompletableDeferred<EditorMessage.Snapshot.SnapshotPayload>? = null
@@ -369,6 +384,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                 onRedo = { postCommand("redo") },
                                 onSave = { lifecycleScope.launch { saveActiveDocument() } },
                             )
+                            if (showFindBar.value) FindReplaceBar()
                             EditorContainer(
                                 activeWebView = activeWebViewState.value,
                                 onPinch = ::onPinchZoom,
@@ -1173,6 +1189,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     pendingSelectionExportRequestId = null
                 }
             }
+            is EditorMessage.FindResult -> {
+                val obj = message.payload as? kotlinx.serialization.json.JsonObject
+                findCurrentCount.value = (obj?.get("current") as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.content?.toIntOrNull() ?: 0
+                findTotalCount.value = (obj?.get("total") as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.content?.toIntOrNull() ?: 0
+            }
             is EditorMessage.CommandStateChanged -> {
                 editorActions.value = message.payload.actions.mapValues { (_, state) ->
                     Pair(state.enabled, state.checked)
@@ -1471,6 +1494,41 @@ SafDocumentSource.takePersistablePermission(this, uri)
         bridge.post(command(name, text))
     }
 
+    /** 打开查找条（withReplace=true 同时展开替换行）。 */
+    private fun openFindBar(withReplace: Boolean) {
+        showFindBar.value = true
+        showFindReplace.value = withReplace
+        findCurrentCount.value = 0
+        findTotalCount.value = 0
+        if (findQuery.value.isNotEmpty()) sendFindText()
+    }
+
+    private fun closeFindBar() {
+        showFindBar.value = false
+        postCommand("findClose")
+    }
+
+    /** 查找状态串：query\tcase\twhole（对齐前端 findText 解析）。 */
+    private fun findStateText(): String =
+        "${findQuery.value}\t${if (findCaseSensitive.value) "1" else "0"}\t${if (findWholeWord.value) "1" else "0"}"
+
+    private fun sendFindText() {
+        if (findQuery.value.isEmpty()) return
+        postCommand("findText", findStateText())
+    }
+
+    private fun findNext(backwards: Boolean) {
+        if (findQuery.value.isEmpty()) return
+        postCommand(if (backwards) "findPrev" else "findNext", findStateText())
+    }
+
+    private fun sendReplace(all: Boolean) {
+        if (findQuery.value.isEmpty()) return
+        val text = "${findQuery.value}\t${findReplaceText.value}\t" +
+            "${if (findCaseSensitive.value) "1" else "0"}\t${if (findWholeWord.value) "1" else "0"}"
+        postCommand(if (all) "replaceAll" else "replaceOne", text)
+    }
+
     private fun topMenuSections(
         onToggleSidebar: () -> Unit,
     ): List<TopMenuSection> {
@@ -1564,6 +1622,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
             TopMenuSection(L10n.t("编辑"), listOf(
                 entry(L10n.t("撤销"), "undo"),
                 entry(L10n.t("重做"), "redo"),
+                host(L10n.t("查找…"), enabled = documentLoaded.value, separator = true) { openFindBar(withReplace = false) },
+                host(L10n.t("查找与替换…"), enabled = documentLoaded.value) { openFindBar(withReplace = true) },
                 entry(L10n.t("剪切"), "cut", separator = true),
                 entry(L10n.t("拷贝"), "copy"),
                 TopMenuEntry(L10n.t("粘贴"), true, false) {
@@ -2061,6 +2121,113 @@ SafDocumentSource.takePersistablePermission(this, uri)
         val action: () -> Unit,
         val separatorBefore: Boolean = false,
     )
+
+    /** 查找与替换条：驱动内核查找命令（findText/findNext/replaceOne/replaceAll/
+     *  findClose），结果由前端 findResult 回报（current/total）。无前端改动。 */
+    @Composable
+    private fun FindReplaceBar() {
+        val focusRequester = findFocusRequester
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            // 行1：查找框 + 计数 + 上一个/下一个 + 关闭
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = findQuery.value,
+                    onValueChange = {
+                        findQuery.value = it
+                        sendFindText()
+                    },
+                    modifier = Modifier.weight(1f).focusRequester(focusRequester)
+                        .heightIn(min = 48.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    placeholder = { Text(L10n.t("查找"), style = MaterialTheme.typography.bodySmall) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSearch = { findNext(backwards = false) },
+                    ),
+                )
+                Text(
+                    text = "${findCurrentCount.value}/${findTotalCount.value}",
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { findNext(backwards = true) }, enabled = findQuery.value.isNotEmpty()) {
+                    Text("↑")
+                }
+                TextButton(onClick = { findNext(backwards = false) }, enabled = findQuery.value.isNotEmpty()) {
+                    Text("↓")
+                }
+                TextButton(onClick = { showFindReplace.value = !showFindReplace.value }) {
+                    Text(if (showFindReplace.value) "⌃" else "⌄")
+                }
+                TextButton(onClick = { closeFindBar() }) { Text("✕") }
+            }
+            // 行2：选项 + 替换展开开关
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.FilterChip(
+                    selected = findCaseSensitive.value,
+                    onClick = {
+                        findCaseSensitive.value = !findCaseSensitive.value
+                        sendFindText()
+                    },
+                    label = { Text("Aa", style = MaterialTheme.typography.labelMedium) },
+                )
+                Text(
+                    L10n.t("区分大小写"),
+                    modifier = Modifier.padding(start = 2.dp, end = 10.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = findWholeWord.value,
+                    onClick = {
+                        findWholeWord.value = !findWholeWord.value
+                        sendFindText()
+                    },
+                    label = { Text(L10n.t("全字匹配"), style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+            // 行3（可展开）：替换行
+            if (showFindReplace.value) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = findReplaceText.value,
+                        onValueChange = { findReplaceText.value = it },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        placeholder = { Text(L10n.t("替换"), style = MaterialTheme.typography.bodySmall) },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onDone = { sendReplace(all = false) },
+                        ),
+                    )
+                    TextButton(
+                        onClick = { sendReplace(all = false) },
+                        enabled = findQuery.value.isNotEmpty(),
+                    ) { Text(L10n.t("替换")) }
+                    TextButton(
+                        onClick = { sendReplace(all = true) },
+                        enabled = findQuery.value.isNotEmpty(),
+                    ) { Text(L10n.t("全部替换")) }
+                }
+            }
+            // 打开时聚焦查找框（拉起键盘）
+            androidx.compose.runtime.LaunchedEffect(showFindBar.value) {
+                if (showFindBar.value) focusRequester.requestFocus()
+            }
+        }
+    }
 
     @Composable
     private fun SelectionToolbar(
@@ -2561,6 +2728,8 @@ private fun DocumentStatisticsDialog(
             }
         },
     )
+
+
 }
 
 /** 代码块语言预设：与 macOS CodeBlockLanguageCatalog.commonLanguages 对齐。
