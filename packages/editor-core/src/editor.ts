@@ -6,7 +6,7 @@ import { isHostCommandAllowed } from './host-command-policy'
 import { exportMermaidImage, type MermaidImageFormat, type MermaidImageExport } from './mermaid-image-export'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions, generateJSON, type JSONContent } from '@tiptap/core'
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -5462,6 +5462,56 @@ function semanticTableText(table: any): string {
   })
   return rows.join('\n')
 }
+/**
+ * 把序列化 HTML 转回 Markdown，全程不实例化第二个编辑器。
+ * 路径：generateJSON（与 createEditor 的 parse 相同的 HTML→JSON 通道，
+ * 但仅构建 schema，无视图、无全局监听）→ 主编辑器的 markdown 扩展
+ * serialize → 字面标记保护（== 高亮）。之前的临时 createEditor 会注册
+ * 全局事件监听并在销毁时触发主编辑器选区重算，大选区导出（复制、
+ * 恢复快照）时表现为选区高亮白闪与导出卡顿。
+ */
+function markdownFromSerializedHTML(editor: Editor, html: string): string {
+  const json = generateJSON(html, editor.extensionManager.extensions) as JSONContent
+  // 主编辑器的 markdown 序列化由扩展管理器提供；直接走同一入口。
+  const manager = (editor as unknown as {
+    markdown?: { serialize: (doc: JSONContent) => string }
+  }).markdown
+  if (manager?.serialize) {
+    // ==高亮 字面保护：无编辑器实例时等价复刻 serializeWithLiteralMarkers
+    // 的核心（占位转义）——只有非 code/atom 节点里的字面 ==（如 C(a)==b）
+    // 需要转义；真正的 highlight mark 序列化本就输出 ==…==，不在此列。
+    const replacements = new Map<string, string>()
+    const prefix = `\u0000markleaf-equals-${crypto.randomUUID()}-`
+    const schema = editor.schema
+    const protect = (node: JSONContent): JSONContent => {
+      if (node.type === 'text' && node.text?.includes('=') && !isCodeText(node, schema)) {
+        return { ...node, text: node.text.replace(/={2,}/g, (literal: string) => {
+          const placeholder = `${prefix}${replacements.size}\u0000`
+          replacements.set(placeholder, literal.replace(/=/g, '\\='))
+          return placeholder
+        }) }
+      }
+      return node.content ? { ...node, content: node.content.map(protect) } : node
+    }
+    const protectedJson = protect(json)
+    let markdown = manager.serialize(protectedJson)
+    for (const [placeholder, literal] of replacements) markdown = markdown.replaceAll(placeholder, literal)
+    return markdown
+  }
+  // 兜底：管理器不可用时回退纯文本（历史上不会走到）。
+  return jsonToPlainText(json)
+}
+
+function isCodeText(node: { type?: string; content?: { text?: string }[] }, schema: Editor['schema']): boolean {
+  const nodeSpec = schema.nodes[node.type ?? '']?.spec
+  return Boolean(nodeSpec?.code || nodeSpec?.atom)
+}
+
+function jsonToPlainText(node: { type?: string; text?: string; content?: { type?: string; text?: string; content?: unknown[] }[] }): string {
+  if (node.type === 'text') return node.text ?? ''
+  return (node.content ?? []).map(child => jsonToPlainText(child as { type?: string; text?: string; content?: { type?: string; text?: string; content?: { type?: string; text?: string; content?: unknown[] }[] }[] })).join(node.type === 'paragraph' || node.type === 'heading' ? '\n\n' : '')
+}
+
 export function exportEditorSelection(editor: Editor): SelectionExport {
   // 公式/图表浮层源码框是普通 DOM 文本，没有 ProseMirror 选区：
   // 导出只取用户在源码框里真正选中的片段，且不改变焦点或选区。
@@ -5485,11 +5535,13 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
     }
     applyTableLayoutDOM(container, true, isTableLayoutEnabled(editor.view))
 
+    // 用主编辑器的 markdown 管线序列化克隆 JSON，不实例化临时编辑器：
+    // 临时 createEditor 会注册全局 selectionchange/mouseup 监听与新的
+    // ::highlight 名称，销毁时触发主编辑器选区高亮重算——大段选区导出
+    // （复制/恢复快照）时表现为高亮白闪、导出慢甚至 GC 阻塞。
     const temporary = document.createElement('div')
     temporary.append(table.cloneNode(true))
-    const selectionEditor = createEditor(temporary, container.innerHTML)
-    const markdown = getMarkdown(selectionEditor)
-    selectionEditor.destroy()
+    const markdown = markdownFromSerializedHTML(editor, container.innerHTML)
 
     const text = Array.from(table.querySelectorAll('tr')).map((row) => (
       Array.from(row.querySelectorAll('th,td'))
@@ -5502,10 +5554,7 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
   const slice = editor.state.doc.slice(selection.from, selection.to)
   const container = document.createElement('div')
   container.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(slice.content))
-  const temporary = document.createElement('div')
-  const selectionEditor = createEditor(temporary, container.innerHTML)
-  const markdown = getMarkdown(selectionEditor)
-  selectionEditor.destroy()
+  const markdown = markdownFromSerializedHTML(editor, container.innerHTML)
   return {
     text: semanticSelectionText(slice.content, 0, slice.content.size, '\n'),
     markdown,

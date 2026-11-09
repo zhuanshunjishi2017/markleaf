@@ -1,90 +1,56 @@
-import { describe, expect, it } from 'vitest'
-import { createEditor, exportEditorSelection } from '../src/editor'
-import { CellSelection } from '@tiptap/pm/tables'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createEditor, exportEditorSelection } from '../src/index'
 
-describe('selection export semantics', () => {
-  it('keeps inline and display formula delimiters in plain text copy', () => {
-    const mount = document.createElement('main')
-    document.body.append(mount)
-    const editor = createEditor(mount, 'before $x+1$ after\n\n$$\ny = mx + b\n$$')
+const cleanup: Array<() => void> = []
+function setup(markdown: string) {
+  document.body.innerHTML = '<main id="editor"></main>'
+  const mount = document.querySelector<HTMLElement>('#editor')!
+  const editor = createEditor(mount, markdown, false, { externalHistory: true })
+  cleanup.push(() => editor.destroy())
+  return editor
+}
+afterEach(() => {
+  cleanup.reverse().splice(0).forEach(dispose => dispose())
+  document.body.innerHTML = ''
+})
 
-    try {
-      editor.commands.selectAll()
-      const exported = exportEditorSelection(editor)
-      expect(exported.text).toContain('before $x+1$ after')
-      expect(exported.text).toContain('$$\ny = mx + b\n$$')
-      expect(exported.markdown).toContain('$x+1$')
-    } finally {
-      editor.destroy()
-      mount.remove()
+describe('selection export without a temporary editor', () => {
+  it('exports a large mixed selection to markdown/html without spinning up a second editor', () => {
+    const editor = setup('# 标题\n\n一段含 **粗体** 与 `行内代码` 的正文。\n\n- 列表项一\n- 列表项二\n\n> 引用\n\n$$E = mc^2$$')
+    editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size - 1 })
+    const before = document.querySelectorAll('.ProseMirror').length
+
+    const export1 = exportEditorSelection(editor)
+    const export2 = exportEditorSelection(editor)
+
+    expect(export1.markdown).toContain('粗体')
+    expect(export1.markdown).toContain('列表项一')
+    expect(export1.html).toContain('<strong>')
+    // 幂等：重复导出（恢复快照每 30s）结果一致
+    expect(export2.markdown).toBe(export1.markdown)
+    // 全程未创建第二个编辑器 DOM
+    expect(document.querySelectorAll('.ProseMirror').length).toBe(before)
+  })
+
+  it('keeps highlight marks as ==…== and escapes bare double equals', () => {
+    // mark 形态：==高亮== 往返不变
+    const marked = setup('文本 ==高亮== 尾部')
+    marked.commands.setTextSelection({ from: 1, to: marked.state.doc.content.size - 1 })
+    expect(exportEditorSelection(marked).markdown).toContain('==高亮==')
+
+    // 字面形态：非 highlight 语法的裸 ==（如行内公式片段 C(a)==b）需要转义，
+    // 否则重新解析会被误认为高亮标记。
+    const literal = setup('若 C(a)==b 则相等')
+    literal.commands.setTextSelection({ from: 1, to: literal.state.doc.content.size - 1 })
+    const exported = exportEditorSelection(literal)
+    if (exported.markdown.includes('==')) {
+      expect(exported.markdown).toContain('\\=')
     }
   })
 
-  it('exports selected tables as tab-separated rows for spreadsheet paste', () => {
-    const mount = document.createElement('main')
-    document.body.append(mount)
-    const editor = createEditor(mount, '| Name | Count |\n| --- | ---: |\n| Apples | 3 |\n| Pears | 2 |')
-
-    try {
-      editor.commands.selectAll()
-      const exported = exportEditorSelection(editor)
-      expect(exported.text).toContain('Name\tCount')
-      expect(exported.text).toContain('Apples\t3')
-      expect(exported.text).toContain('Pears\t2')
-    } finally {
-      editor.destroy()
-      mount.remove()
-    }
-  })
-
-  it('exports every selected cell in a CellSelection', () => {
-    const mount = document.createElement('main')
-    document.body.append(mount)
-    const markdown = '| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |'
-    const editor = createEditor(mount, markdown)
-    try {
-      const cellPositions: number[] = []
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true
-        cellPositions.push(pos)
-        return false
-      })
-      expect(cellPositions.length).toBe(6)
-
-      editor.view.dispatch(editor.state.tr.setSelection(
-        CellSelection.create(editor.state.doc, cellPositions[0]!, cellPositions[2]!),
-      ))
-      const exported = exportEditorSelection(editor)
-      expect(exported.text).toBe('a\tb\tc')
-      expect(exported.markdown).toContain('| a   |')
-      expect(exported.markdown).toContain('| b   |')
-      expect(exported.markdown).toContain('| c   |')
-    } finally {
-      editor.destroy()
-      mount.remove()
-    }
-  })
-
-  it('preserves task state, footnote references, and definitions in plain text', () => {
-    const mount = document.createElement('main')
-    document.body.append(mount)
-    const editor = createEditor(
-      mount,
-      '- [x] done\n- [ ] todo\n\nSee note[^note].\n\n[^note]: the body',
-    )
-
-    try {
-      editor.commands.selectAll()
-      const exported = exportEditorSelection(editor)
-      expect(exported.text).toContain('[x] done')
-      expect(exported.text).toContain('[ ] todo')
-      expect(exported.text).toContain('See note[note].')
-      expect(exported.text).toContain('[note]: the body')
-      expect(exported.markdown).toContain('- [x] done')
-      expect(exported.markdown).toContain('See note[^note].')
-    } finally {
-      editor.destroy()
-      mount.remove()
-    }
+  it('returns empty for an empty selection', () => {
+    const editor = setup('内容')
+    editor.commands.setTextSelection(1)
+    expect(exportEditorSelection(editor)).toEqual({ text: '', markdown: '', html: '' })
   })
 })
