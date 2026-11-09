@@ -401,6 +401,37 @@ fun PreferencesScreen(
                     },
                 )
 
+                // ===== 通用（顶栏快捷操作自定义）=====
+                GroupHeader(L10n.t("顶栏快捷操作"))
+                val selectedSet = EditorPrefs.parseQuickActions(prefs.quickActions).toSet()
+                // 展示顺序=池顺序；选中集合驱动的显示顺序与顶栏一致
+                val ordered = EditorPrefs.QUICK_ACTION_POOL.filter { it.first in selectedSet }
+                    .map { it.first } + EditorPrefs.parseQuickActions(prefs.quickActions)
+                    .filter { id -> EditorPrefs.QUICK_ACTION_POOL.none { it.first == id } }
+                Text(
+                    L10n.t("点选启用，再次点击停用；顶栏按此顺序显示"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+                ) {
+                    EditorPrefs.QUICK_ACTION_POOL.forEach { (id, display) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = id in selectedSet,
+                            onClick = {
+                                val current = EditorPrefs.parseQuickActions(prefs.quickActions).toMutableList()
+                                if (id in current) current.remove(id) else current.add(id)
+                                onChange(prefs.copy(quickActions = current.joinToString(",")))
+                            },
+                            label = { Text(L10n.t(display), style = MaterialTheme.typography.labelMedium) },
+                        )
+                    }
+                }
+
                 // ===== 图片（对齐桌面「图片」页签；Android 通过 SAF 插入，
                 //      clipboardImageHandling / imageDefaultDirectory 依赖任意
                 //      目录路径，scoped storage 下无可靠映射，不提供）=====

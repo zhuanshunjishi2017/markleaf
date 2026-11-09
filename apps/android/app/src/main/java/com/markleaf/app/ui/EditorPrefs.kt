@@ -58,6 +58,10 @@ data class EditorPrefs(
     // 桌面源码字体设置：源码中文字体（空 = 系统默认；发送时组合为
     // 西文, 中文, monospace，与桌面 sourceFontFamily 组装一致）
     val sourceCjkFontFamily: String = "",
+    // 顶栏快捷操作（自定义候选池，逗号分隔 id，展示顺序=池顺序）：
+    // undo/redo/save/sourceToggle/newDoc/export/find；缺失 id 忽略，
+    // 空值回退默认三件套 undo,redo,save
+    val quickActions: String = "undo,redo,save",
     // 桌面文件页「历史记录」：记录最近文件夹
     val recordRecentFolders: Boolean = true,
     // 桌面外观页「状态栏」自定义（对齐 StatusBarSettings；侧栏切换/命令状态为桌面专属字段）
@@ -111,6 +115,7 @@ data class EditorPrefs(
             .putString(PREF_FILE_IMAGE_HANDLING, fileImageHandling)
             .putString(PREF_UNSAFE_EMPHASIS, unsafeEmphasis)
             .putString(PREF_SOURCE_CJK_FONT_FAMILY, sourceCjkFontFamily)
+            .putString(PREF_QUICK_ACTIONS, quickActions)
             .putBoolean(PREF_RECORD_RECENT_FOLDERS, recordRecentFolders)
             .putBoolean(PREF_STATUS_BAR_POSITION, statusBarPosition)
             .putBoolean(PREF_STATUS_BAR_BLOCK_TYPE, statusBarBlockType)
@@ -167,6 +172,7 @@ data class EditorPrefs(
         private const val PREF_FILE_IMAGE_HANDLING = "fileImageHandling"
         private const val PREF_UNSAFE_EMPHASIS = "unsafeEmphasis"
         private const val PREF_SOURCE_CJK_FONT_FAMILY = "sourceCjkFontFamily"
+        private const val PREF_QUICK_ACTIONS = "quickActions"
         private const val PREF_RECORD_RECENT_FOLDERS = "recordRecentFolders"
         private const val PREF_STATUS_BAR_POSITION = "statusBarPosition"
         private const val PREF_STATUS_BAR_BLOCK_TYPE = "statusBarBlockType"
@@ -215,6 +221,26 @@ data class EditorPrefs(
             "literal" to "保留 Markdown 字面量",
             "html" to "转换为 HTML",
         )
+
+        /** 顶栏快捷操作候选池（展示顺序=池顺序；sourceToggle 为双态标签）。 */
+        val QUICK_ACTION_POOL = listOf(
+            "undo" to "撤销",
+            "redo" to "重做",
+            "save" to "保存",
+            "sourceToggle" to "源码/可视化",
+            "newDoc" to "新建",
+            "export" to "导出",
+            "find" to "查找",
+        )
+        val QUICK_ACTION_DEFAULT = "undo,redo,save"
+
+        /** 解析 quickActions：过滤未知 id，空/全无效回退默认。 */
+        fun parseQuickActions(raw: String?): List<String> {
+            if (raw.isNullOrBlank()) return QUICK_ACTION_DEFAULT.split(',')
+            val known = QUICK_ACTION_POOL.map { it.first }.toSet()
+            val parsed = raw.split(',').map { it.trim() }.filter { it in known }
+            return parsed.ifEmpty { QUICK_ACTION_DEFAULT.split(',') }
+        }
 
         /** 代码围栏（对齐桌面 markdownCodeFence；展示名为桌面 L10n 键）。 */
         val CODE_FENCES = listOf("backtick" to "反引号 `", "tilde" to "波浪号 ~")
@@ -294,6 +320,7 @@ data class EditorPrefs(
             fileImageHandling = sp.getString(PREF_FILE_IMAGE_HANDLING, "copyToAssets") ?: "copyToAssets",
             unsafeEmphasis = sp.getString(PREF_UNSAFE_EMPHASIS, "ask") ?: "ask",
             sourceCjkFontFamily = sp.getString(PREF_SOURCE_CJK_FONT_FAMILY, "") ?: "",
+            quickActions = sp.getString(PREF_QUICK_ACTIONS, QUICK_ACTION_DEFAULT) ?: QUICK_ACTION_DEFAULT,
             recordRecentFolders = sp.getBoolean(PREF_RECORD_RECENT_FOLDERS, true),
             statusBarPosition = sp.getBoolean(PREF_STATUS_BAR_POSITION, true),
             statusBarBlockType = sp.getBoolean(PREF_STATUS_BAR_BLOCK_TYPE, true),

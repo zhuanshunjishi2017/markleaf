@@ -382,9 +382,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     },
                                 ),
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
-                                onUndo = { postCommand("undo") },
-                                onRedo = { postCommand("redo") },
-                                onSave = { lifecycleScope.launch { saveActiveDocument() } },
+                                quickActions = buildQuickActions(
+                                    onSave = { lifecycleScope.launch { saveActiveDocument() } },
+                                    onUndo = { postCommand("undo") },
+                                    onRedo = { postCommand("redo") },
+                                ),
                             )
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = showFindBar.value,
@@ -1021,6 +1023,34 @@ SafDocumentSource.takePersistablePermission(this, uri)
             ),
         )
         return deferred.await()
+    }
+
+    /** 顶栏快捷操作：按偏好顺序展开候选池；sourceToggle 双态标签
+     *  （当前可视化→显示「源码」；当前源码→显示「可视化」）。 */
+    private fun buildQuickActions(
+        onSave: () -> Unit,
+        onUndo: () -> Unit,
+        onRedo: () -> Unit,
+    ): List<com.markleaf.app.ui.QuickAction> {
+        val undoEnabled = editorActions.value["undo"]?.first == true
+        val redoEnabled = editorActions.value["redo"]?.first == true
+        val hasDoc = documentLoaded.value
+        return com.markleaf.app.ui.EditorPrefs.parseQuickActions(editorPrefs.value.quickActions).mapNotNull { id ->
+            when (id) {
+                "undo" -> com.markleaf.app.ui.QuickAction(id, L10n.t("撤销"), undoEnabled, onUndo)
+                "redo" -> com.markleaf.app.ui.QuickAction(id, L10n.t("重做"), redoEnabled, onRedo)
+                "save" -> com.markleaf.app.ui.QuickAction(id, L10n.t("保存"), hasDoc && !androidReadOnly.value, onSave)
+                "sourceToggle" -> com.markleaf.app.ui.QuickAction(
+                    id,
+                    if (editorSourceMode.value) L10n.t("可视化") else L10n.t("源码"),
+                    hasDoc,
+                ) { postCommand("toggleSourceMode") }
+                "newDoc" -> com.markleaf.app.ui.QuickAction(id, L10n.t("新建"), true) { newDocument("markdown") }
+                "export" -> com.markleaf.app.ui.QuickAction(id, L10n.t("导出"), hasDoc) { showExport.value = true }
+                "find" -> com.markleaf.app.ui.QuickAction(id, L10n.t("查找"), hasDoc) { openFindBar(withReplace = false) }
+                else -> null
+            }
+        }
     }
 
     private fun command(name: String, text: String? = null): HostMessage.Command = HostMessage.Command(

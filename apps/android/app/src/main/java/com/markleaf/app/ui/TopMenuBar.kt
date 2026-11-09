@@ -72,7 +72,15 @@ private fun MenuEntryText(entry: TopMenuEntry) {
     }
 }
 
-/** 顶栏 v2：行1 操作行（撤销/重做/保存），行2 菜单栏（桌面 NativeMenuBuilder
+/** 单个快捷操作：id、展示标签、启用态、动作。标签随状态变化（如源码/可视化）。 */
+data class QuickAction(
+    val id: String,
+    val label: String,
+    val enabled: Boolean = true,
+    val action: () -> Unit,
+)
+
+/** 顶栏 v2：行1 快捷操作（自定义候选池），行2 菜单栏（桌面 NativeMenuBuilder
  *  同构——文件/编辑/插入/格式/视图/更多），条目对齐桌面菜单同名命令。 */
 @Composable
 fun TopMenuBar(
@@ -81,10 +89,8 @@ fun TopMenuBar(
     undoEnabled: Boolean,
     redoEnabled: Boolean,
     sections: List<TopMenuSection>,
+    quickActions: List<QuickAction>,
     onOpenDrawer: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    onSave: () -> Unit,
 ) {
     // 菜单单开互斥：同一时刻至多一个下拉展开
     var expandedSection by remember { mutableStateOf<String?>(null) }
@@ -104,9 +110,34 @@ fun TopMenuBar(
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
             )
-            TextButton(onClick = onUndo, enabled = undoEnabled) { Text(L10n.t("撤销")) }
-            TextButton(onClick = onRedo, enabled = redoEnabled) { Text(L10n.t("重做")) }
-            TextButton(onClick = onSave) { Text(L10n.t("保存")) }
+            // 快捷操作自定义（候选池见 EditorPrefs.QUICK_ACTION_POOL）：
+            // 容量按实际宽度动态计算——预留 ☰ 与标题最小可读宽，单项按
+            // 标签估宽（CJK 15dp/字 + 按钮内边距 24dp）；下限 2、上限 6。
+            // 超出容量的已选项不渲染（不丢用户选择）。
+            androidx.compose.foundation.layout.BoxWithConstraints(
+                modifier = Modifier.weight(1f, fill = false),
+            ) {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val availablePx = constraints.maxWidth
+                val chromePx = with(density) { 72.dp.toPx() }
+                val usablePx = (availablePx - chromePx).coerceAtLeast(0f)
+                var capacity = 0
+                var used = 0f
+                for (qa in quickActions) {
+                    val w = with(density) { (qa.label.length * 15 + 24).dp.toPx() }
+                    if (used + w > usablePx) break
+                    used += w
+                    capacity++
+                }
+                capacity = capacity.coerceIn(2, 6)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    quickActions.take(capacity).forEach { qa ->
+                        TextButton(onClick = qa.action, enabled = qa.enabled) {
+                            Text(qa.label)
+                        }
+                    }
+                }
+            }
         }
         // 菜单行不加 horizontalScroll：DropdownMenu 在可滚动容器内锚点
         // 会错位到行首；六项在常规屏宽内放得下，窄屏由文本自动收缩承载
