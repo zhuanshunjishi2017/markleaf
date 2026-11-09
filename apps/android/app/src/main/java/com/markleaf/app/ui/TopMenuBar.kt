@@ -106,21 +106,20 @@ fun TopMenuBar(
             TextButton(onClick = onOpenDrawer) { Text("☰") }
             Text(
                 text = (if (dirty) "● " else "") + active,
-                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                modifier = Modifier.padding(vertical = 12.dp),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             // 快捷操作自定义（候选池见 EditorPrefs.QUICK_ACTION_POOL）：
-            // 容量按实际宽度动态计算——预留 ☰ 与标题最小可读宽，单项按
-            // 标签估宽（CJK 15dp/字 + 按钮内边距 24dp）；下限 2、上限 6。
-            // 超出容量的已选项不渲染（不丢用户选择）。
+            // 容量按实际宽度动态计算——单项按标签估宽（CJK 15dp/字 +
+            // 按钮内边距 24dp）；下限 2、上限 6。超出容量的已选项不渲染
+            // （不丢用户选择）。标题 weight(1f) 占满左侧，按钮右贴屏幕边。
             androidx.compose.foundation.layout.BoxWithConstraints(
-                modifier = Modifier.weight(1f, fill = false),
+                modifier = Modifier.weight(1f),
             ) {
                 val density = androidx.compose.ui.platform.LocalDensity.current
-                val availablePx = constraints.maxWidth
-                val chromePx = with(density) { 72.dp.toPx() }
-                val usablePx = (availablePx - chromePx).coerceAtLeast(0f)
+                val usablePx = constraints.maxWidth.toFloat().coerceAtLeast(0f)
                 var capacity = 0
                 var used = 0f
                 for (qa in quickActions) {
@@ -130,10 +129,17 @@ fun TopMenuBar(
                     capacity++
                 }
                 capacity = capacity.coerceIn(2, 6)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    quickActions.take(capacity).forEach { qa ->
-                        TextButton(onClick = qa.action, enabled = qa.enabled) {
-                            Text(qa.label)
+                // 按钮组右贴容器边（容器=标题右侧至屏幕边的全部剩余宽度）：
+                // 顺序=池顺序、勾选子集按原相对顺序编排（如 撤销/保存）。
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        quickActions.take(capacity).forEach { qa ->
+                            TextButton(onClick = qa.action, enabled = qa.enabled) {
+                                Text(qa.label)
+                            }
                         }
                     }
                 }
