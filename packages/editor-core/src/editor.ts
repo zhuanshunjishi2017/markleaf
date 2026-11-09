@@ -1148,6 +1148,11 @@ const ThemedSelection = Extension.create({
 
         const clearSelectionHighlight = () => {
           selectionHighlightInstance?.clear()
+          // 同步把名称从注册表摘除：仅 instance.clear() 在 WebKit 里有
+          // 一帧的绘制滞后（孤儿 Highlight Range 会被回退绘制成系统选区
+          // 外观——白底黑字），表现为选区折叠后的白闪。摘除名称后该
+          // highlight 立即失效，重绘时不会出现中间帧。
+          highlightRegistry?.delete(selectionHighlightName)
           highlightRange = null
         }
         const clearNativeNodeSelection = () => {
