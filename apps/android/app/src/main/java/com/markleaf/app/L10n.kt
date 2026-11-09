@@ -27,6 +27,10 @@ object L10n {
 
     private val tables: Map<String, Map<String, String>> = mapOf(
         "zh-Hant" to mapOf(
+        "确定要清除历史记录吗？" to "確定要清除歷史記錄嗎？",
+        "此操作会删除最近的文件和文件夹记录。" to "此操作會刪除最近的檔案和資料夾記錄。",
+        "清除" to "清除",
+        "历史记录已清除" to "記錄已清除",
         "查找…" to "查找…",
         "查找与替换…" to "查找與替換…",
         "替换" to "替換",

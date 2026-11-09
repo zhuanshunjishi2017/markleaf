@@ -1960,9 +1960,17 @@ SafDocumentSource.takePersistablePermission(this, uri)
     }
 
     private fun clearRecentHistory() {
-        // 对齐桌面确认文案：同时删除最近的文件和文件夹记录
-        prefsStore.edit().remove("recentFiles").remove("recentFolders").apply()
-        showToast(L10n.t("已清除历史记录"))
+        // 对齐桌面：不可恢复的数据删除前弹确认（清除按钮 destructive）
+        android.app.AlertDialog.Builder(this)
+            .setTitle(L10n.t("确定要清除历史记录吗？"))
+            .setMessage(L10n.t("此操作会删除最近的文件和文件夹记录。"))
+            .setPositiveButton(L10n.t("清除")) { dialog, _ ->
+                prefsStore.edit().remove("recentFiles").remove("recentFolders").apply()
+                showToast(L10n.t("历史记录已清除"))
+                dialog.dismiss()
+            }
+            .setNegativeButton(L10n.t("取消"), null)
+            .show()
     }
 
     private fun recentFiles(): List<Pair<String, String>> =
