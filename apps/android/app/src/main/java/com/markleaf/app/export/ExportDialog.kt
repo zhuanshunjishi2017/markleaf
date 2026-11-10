@@ -195,7 +195,7 @@ internal val HEADER_PRESET_MAP: Map<String, String> = mapOf(
 
 /** 通用「标签 + FilterChip 组」行。 */
 @Composable
-private fun ChipRowGroup(label: String, presets: Map<String, String>, selectedId: String, onSelect: (String) -> Unit) {
+internal fun ChipRowGroup(label: String, presets: Map<String, String>, selectedId: String, onSelect: (String) -> Unit) {
     Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 2.dp))
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -212,7 +212,7 @@ private fun ChipRowGroup(label: String, presets: Map<String, String>, selectedId
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Switch(checked = checked, onCheckedChange = { onChange(it) })
         Text(label, modifier = Modifier.padding(start = 8.dp))
