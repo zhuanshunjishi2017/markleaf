@@ -404,6 +404,76 @@ describe('shared editing interactions', () => {
     expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(false)
     expect(editor.view.hasFocus()).toBe(true)
   })
+
+  it('auto-scrolls the document while a managed drag is held near the viewport edge', () => {
+    const { editor, mount } = setup(`${'line\n\n'.repeat(200)}tail`, true)
+    const paragraph = editor.view.dom.querySelector('p')!
+    const scrollingElement = document.documentElement
+    Object.defineProperty(document, 'scrollingElement', {
+      configurable: true,
+      value: scrollingElement,
+    })
+    Object.defineProperties(scrollingElement, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 2400 },
+      scrollTop: { configurable: true, writable: true, value: 100 },
+    })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    vi.spyOn(editor.view, 'posAtCoords')
+      .mockReturnValueOnce({ pos: 1, inside: -1 })
+      .mockReturnValue({ pos: 10, inside: -1 })
+
+    paragraph.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 590,
+    }))
+    expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(true)
+
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 599,
+    }))
+    frames.shift()?.(0)
+
+    expect(scrollingElement.scrollTop).toBeGreaterThan(100)
+    expect(frames).toHaveLength(1)
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  })
+
+  it('does not auto-scroll when clicking at a viewport edge without dragging', () => {
+    const { editor } = setup(`${'line\n\n'.repeat(80)}tail`, true)
+    const paragraph = editor.view.dom.querySelector('p')!
+    const scrollingElement = document.documentElement
+    Object.defineProperty(document, 'scrollingElement', {
+      configurable: true,
+      value: scrollingElement,
+    })
+    Object.defineProperties(scrollingElement, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 2400 },
+      scrollTop: { configurable: true, writable: true, value: 100 },
+    })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: -1 })
+
+    paragraph.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 599,
+    }))
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+
+    expect(frames).toHaveLength(0)
+    expect(scrollingElement.scrollTop).toBe(100)
+  })
+
   it('collects unreferenced footnotes and edits their labels and definitions', () => {
     const { editor } = setup('text\n\n[^1]: unreferenced')
     expect(getFootnoteLabels(editor)).toEqual(['1'])

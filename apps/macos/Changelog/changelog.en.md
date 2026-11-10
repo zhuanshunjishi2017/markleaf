@@ -2,6 +2,10 @@
 
 ## 1.7.9 — 2026-11-8
 
+### Changed
+
+- When dragging text to the editor's top or bottom edge, auto-scroll speed now changes progressively based on pointer distance from the edge, avoiding an abrupt jump from slow to fast.
+
 ### Fixed
 
 - Fixed the theme not updating promptly after switching the system appearance while following the system light/dark setting.

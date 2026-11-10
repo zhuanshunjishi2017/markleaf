@@ -1133,6 +1133,17 @@ const ThemedSelection = Extension.create({
         const mount = view.dom.parentElement
         if (!mount) return {}
         const targetWindow = view.dom.ownerDocument.defaultView
+        const ownerWindow = targetWindow ?? window
+        const hostPlatform = (ownerWindow as Window & {
+          chrome?: { webview?: { hostPlatform?: string } }
+        }).chrome?.webview?.hostPlatform
+        const isMacHost = hostPlatform === 'macOS'
+          || view.dom.ownerDocument.documentElement.classList.contains('markleaf-host-macos')
+        const isAndroidHost = hostPlatform === 'Android'
+          || view.dom.ownerDocument.documentElement.classList.contains('markleaf-host-android')
+        // macOS and Android use a deliberately gentle cap; Windows keeps its
+        // established speed. The normalized curve below is shared by hosts.
+        const maxAutoScrollSpeed = isMacHost || isAndroidHost ? 1.5 : 24
         const selectionHighlight = selectionHighlightSupport(targetWindow)
         const highlightRegistry = selectionHighlight?.registry
         const highlightCtor = selectionHighlight?.ctor
@@ -1174,6 +1185,11 @@ const ThemedSelection = Extension.create({
         let managedDragActive = false
         let managedDragAnchor: number | null = null
         let managedDragMoved = false
+        let managedDragPointer: { clientX: number; clientY: number } | null = null
+        let managedDragScrollFrame = 0
+        let updatingManagedDragFromScroll = false
+        let managedDragScrollRemainder = 0
+        let managedDragScrollDirection = 0
         const resolveDragPosition = (event: MouseEvent): { pos: number } | null => {
           const validPosition = (position: number | null | undefined): { pos: number } | null => {
             const max = view.state.doc.content.size
@@ -1307,6 +1323,12 @@ const ThemedSelection = Extension.create({
 
         const finishManagedDrag = () => {
           if (!managedDragActive) return
+          if (managedDragScrollFrame) {
+            ownerWindow.cancelAnimationFrame(managedDragScrollFrame)
+            managedDragScrollFrame = 0
+          }
+          managedDragScrollRemainder = 0
+          managedDragScrollDirection = 0
           // The synthetic click follows mouseup in the same browser event
           // turn, before the deferred cleanup below. Publish the guard now so
           // document-pointer cannot reinterpret a drag endpoint as a click on
@@ -1321,6 +1343,9 @@ const ThemedSelection = Extension.create({
             managedDragActive = false
             managedDragAnchor = null
             managedDragMoved = false
+            managedDragPointer = null
+            managedDragScrollRemainder = 0
+            managedDragScrollDirection = 0
             clearDomSelection(view.dom.ownerDocument)
             // Clearing the DOM range moves the browser selection to the body.
             // Restore focus so the final TextSelection remains the insertion
@@ -1363,6 +1388,7 @@ const ThemedSelection = Extension.create({
           const selection = TextSelection.near(view.state.doc.resolve(resolved.pos), 1)
           managedDragAnchor = selection.anchor
           managedDragActive = true
+          managedDragPointer = { clientX: event.clientX, clientY: event.clientY }
           mount.classList.add('markleaf-managed-selection-active')
           clearSelectionHighlight()
           clearDomSelection(view.dom.ownerDocument)
@@ -1374,11 +1400,113 @@ const ThemedSelection = Extension.create({
           view.focus()
           clearDomSelection(view.dom.ownerDocument)
         }
+
+        const findDragScrollContainer = (): HTMLElement | null => {
+          const ownerDocument = view.dom.ownerDocument
+          const candidates: HTMLElement[] = []
+          const scrollingElement = ownerDocument.scrollingElement
+          if (scrollingElement instanceof HTMLElement) candidates.push(scrollingElement)
+          for (let element = view.dom.parentElement; element; element = element.parentElement) {
+            if (!candidates.includes(element)) candidates.push(element)
+          }
+          if (ownerDocument.documentElement instanceof HTMLElement
+            && !candidates.includes(ownerDocument.documentElement)) {
+            candidates.push(ownerDocument.documentElement)
+          }
+          if (ownerDocument.body && !candidates.includes(ownerDocument.body)) candidates.push(ownerDocument.body)
+
+          for (const element of candidates) {
+            if (element.scrollHeight <= element.clientHeight + 1) continue
+            const overflowY = ownerWindow.getComputedStyle(element).overflowY
+            if (overflowY === 'hidden' || overflowY === 'clip') continue
+            return element
+          }
+          return candidates[0] ?? null
+        }
+
+        const autoScrollManagedDrag = () => {
+          managedDragScrollFrame = 0
+          if (!managedDragActive || !managedDragPointer) return
+
+          const container = findDragScrollContainer()
+          if (container) {
+            const isPageScroller = container === view.dom.ownerDocument.documentElement
+              || container === view.dom.ownerDocument.body
+            const rect = isPageScroller
+              ? { top: 0, bottom: ownerWindow.innerHeight }
+              : container.getBoundingClientRect()
+            const viewportHeight = Math.max(1, rect.bottom - rect.top)
+            const threshold = Math.min(96, Math.max(40, viewportHeight * 0.15))
+            const pointerY = managedDragPointer.clientY
+            let direction = 0
+            let ratio = 0
+            if (pointerY < rect.top + threshold) {
+              direction = -1
+              ratio = Math.min(1, Math.max(0, (rect.top + threshold - pointerY) / threshold))
+            } else if (pointerY > rect.bottom - threshold) {
+              direction = 1
+              ratio = Math.min(1, Math.max(0, (pointerY - (rect.bottom - threshold)) / threshold))
+            }
+
+            let speed = 0
+            if (direction === 0) {
+              managedDragScrollRemainder = 0
+              managedDragScrollDirection = 0
+            } else {
+              // Both desktop hosts use the same linear, fractional curve.
+              // Only the platform cap differs: macOS stays deliberately slow,
+              // while Windows keeps its existing maximum speed. Accumulating
+              // sub-pixel movement prevents integer speed buckets from making
+              // a small pointer adjustment jump to a faster tier.
+              if (managedDragScrollDirection !== direction) managedDragScrollRemainder = 0
+              managedDragScrollDirection = direction
+              managedDragScrollRemainder += maxAutoScrollSpeed * ratio
+              const wholePixels = Math.floor(managedDragScrollRemainder)
+              managedDragScrollRemainder -= wholePixels
+              speed = direction * wholePixels
+            }
+
+            if (speed !== 0) {
+              const maximum = Math.max(0, container.scrollHeight - container.clientHeight)
+              const next = Math.min(maximum, Math.max(0, container.scrollTop + speed))
+              if (next !== container.scrollTop) {
+                container.scrollTop = next
+                // Re-resolve the endpoint after scrolling so the logical
+                // selection follows the line now exposed at the edge even
+                // when the pointer itself has stopped moving.
+                updatingManagedDragFromScroll = true
+                try {
+                  handleManagedDragMove({
+                    buttons: 1,
+                    clientX: managedDragPointer.clientX,
+                    clientY: managedDragPointer.clientY,
+                    preventDefault() {},
+                    stopPropagation() {},
+                  } as MouseEvent)
+                } finally {
+                  updatingManagedDragFromScroll = false
+                }
+              }
+            }
+          }
+
+          if (managedDragActive) {
+            managedDragScrollFrame = ownerWindow.requestAnimationFrame(autoScrollManagedDrag)
+          }
+        }
+
         const handleManagedDragMove = (event: MouseEvent) => {
           if (!managedDragActive || managedDragAnchor === null) return
+          managedDragPointer = { clientX: event.clientX, clientY: event.clientY }
           if (event.buttons !== 1) {
             finishManagedDrag()
             return
+          }
+          // A simple click near the viewport edge must not scroll. Start the
+          // animation only after the pointer has actually moved while held.
+          managedDragMoved = true
+          if (!updatingManagedDragFromScroll && !managedDragScrollFrame) {
+            managedDragScrollFrame = ownerWindow.requestAnimationFrame(autoScrollManagedDrag)
           }
           event.preventDefault()
           event.stopPropagation()
@@ -1518,6 +1646,11 @@ const ThemedSelection = Extension.create({
         view.dom.ownerDocument.addEventListener('selectionchange', () => { if (composing) refreshImeHighlight() })
         return {
             destroy() {
+              if (managedDragScrollFrame) ownerWindow.cancelAnimationFrame(managedDragScrollFrame)
+              managedDragScrollFrame = 0
+              managedDragPointer = null
+              managedDragScrollRemainder = 0
+              managedDragScrollDirection = 0
               mount.removeEventListener('mousedown', handleManagedDragStart, true)
               view.dom.ownerDocument.removeEventListener('mousemove', handleManagedDragMove, true)
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)

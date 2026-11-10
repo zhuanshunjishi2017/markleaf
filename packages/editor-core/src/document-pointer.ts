@@ -20,7 +20,9 @@ export function bindDocumentPointerInteractions(
   // Android 触屏：单击原子节点直接切换编辑浮层（桌面为两击语义，
   // 触屏两击会被原生手势/文字选择打断，这里单击即编辑）
   const isAndroidHost = typeof window !== 'undefined'
-    && window.chrome?.webview?.hostPlatform === 'Android'
+    && (window as Window & {
+      chrome?: { webview?: { hostPlatform?: string } }
+    }).chrome?.webview?.hostPlatform === 'Android'
   const events = new AbortController()
   const { signal } = events
   const active = () => !editorMount.hidden && !getEditor().isDestroyed
