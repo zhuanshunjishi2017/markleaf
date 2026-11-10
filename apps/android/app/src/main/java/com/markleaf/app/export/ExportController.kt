@@ -4,7 +4,7 @@ package com.markleaf.app.export
  * 导出格式。HTML 走前端 export-html 分包产自包含 HTML；
  * PDF 走 WebView createPrintDocumentAdapter + PrintManager（spec §5.2）。
  */
-enum class ExportFormat { HTML, PDF }
+enum class ExportFormat { HTML, PDF, IMAGE }
 
 /**
  * 导出选项（对应桌面 ExportOptions 的移动端子集）。
@@ -20,6 +20,9 @@ data class ExportOptions(
     val keepHeadingsWithNextBlock: Boolean = true,
     val headerPresetId: String = "none",
     val footerPresetId: String = "none",
+    val imageFormat: String = "png",
+    val imageJpegQuality: Int = 90,
+    val imageScale: Int = 2,
 )
 
 /** 导出控制器：文件名清洗、job 名、导出编排的纯逻辑部分。 */
