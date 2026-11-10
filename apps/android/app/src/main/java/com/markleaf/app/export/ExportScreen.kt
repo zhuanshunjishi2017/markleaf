@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
+import com.markleaf.app.L10n
 
 /**
  * 全屏导出页（对齐桌面 ExportWindowController：左侧选项 + 右侧实时预览）。
@@ -39,6 +40,8 @@ import android.webkit.WebView
 @Composable
 fun ExportScreen(
     defaultName: String,
+    styleIds: List<Pair<String, String>>,
+    colorThemes: List<com.markleaf.app.editor.StyleAssets.ColorTheme>,
     previewHtmlProvider: suspend (optionsText: String) -> String,
     onDismiss: () -> Unit,
     onExport: (name: String, options: ExportOptions) -> Unit,
@@ -53,6 +56,8 @@ fun ExportScreen(
     var keepHeadingsWithNextBlock by remember { mutableStateOf(true) }
     var headerPreset by remember { mutableStateOf("none") }
     var footerPreset by remember { mutableStateOf("none") }
+    var styleId by remember { mutableStateOf("serif") }
+    var colorThemeId by remember { mutableStateOf("") }
     var imageFormat by remember { mutableStateOf("png") }
     var imageJpegQuality by remember { mutableStateOf(90) }
     var imageScale by remember { mutableStateOf(2) }
@@ -154,6 +159,23 @@ fun ExportScreen(
                 SwitchRow("打印友好（浅色）", printFriendly) { printFriendly = it; bump() }
             }
 
+            // 排版样式 + 配色方案（对齐桌面导出窗口两行；两种格式均提供，
+            // 图片格式无分页概念但样式同样影响渲染）
+            ChipRowGroup(
+                "排版样式",
+                styleIds.associate { it.first to L10n.t(it.second) },
+                styleId,
+            ) { styleId = it; bump() }
+            val themeNames = colorThemes.associate { it.id to L10n.t(it.name) }
+            ChipRowGroup(
+                "配色方案",
+                themeNames + ("follow-style" to "跟随排版样式"),
+                colorThemeId.ifEmpty { "follow-style" },
+            ) { picked ->
+                colorThemeId = if (picked == "follow-style") "" else picked
+                bump()
+            }
+
             // 图片专属
             if (format == ExportFormat.IMAGE) {
                 Text(
@@ -202,6 +224,8 @@ fun ExportScreen(
             generating = true
             val opts = """
                 {"format":"${if (format == ExportFormat.HTML) "html" else "pdf"}",
+                 "style":"$styleId",
+                 "colorTheme":"$colorThemeId",
                  "header":"${if (format == ExportFormat.HTML) presetTitle(headerPreset) else ""}",
                  "footer":"${if (format == ExportFormat.HTML) presetTitle(footerPreset) else ""}",
                  "title":"$name",

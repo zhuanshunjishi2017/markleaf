@@ -73,6 +73,7 @@ import com.markleaf.app.export.ExportController
 import com.markleaf.app.export.ExportFormat
 import com.markleaf.app.export.ExportDialog
 import com.markleaf.app.export.ExportOptions
+import com.markleaf.app.export.ExportScreen
 import com.markleaf.app.export.PdfExporter
 import com.markleaf.app.ui.OutlineItem
 import com.markleaf.app.ui.TopMenuBar
@@ -427,6 +428,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     newline = documentNewline.value,
                                     onDismiss = { showStatisticsDialog.value = false },
                                 )
+
                             }
                             if (showEncodingDialog.value) {
                                 EncodingDialog(
@@ -461,20 +463,21 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     onDismiss = { showZoomDialog.value = false },
                                 )
                             }
-                            if (showExport.value) {
-                                androidx.compose.material3.AlertDialog(
-                                    onDismissRequest = { showExport.value = false },
-                                    confirmButton = {},
-                                    title = {},
-                                    text = {
-                                        ExportDialog(
-                                            defaultName = activeTitle.value,
-                                            onDismiss = { showExport.value = false },
-                                            onExport = { name, options ->
-                                                showExport.value = false
-                                                performExport(name, options)
-                                            },
-                                        )
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = showExport.value,
+                                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
+                                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(110)) { it / 4 },
+                                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)),
+                            ) {
+                                ExportScreen(
+                                    defaultName = activeTitle.value,
+                                    styleIds = com.markleaf.app.editor.StyleAssets.TYPOGRAPHY_STYLES,
+                                    colorThemes = StyleAssets.colorThemes(this@MainActivity),
+                                    previewHtmlProvider = { optionsText -> exportHtmlBlockingWithOptions(optionsText) },
+                                    onDismiss = { showExport.value = false },
+                                    onExport = { name, options ->
+                                        showExport.value = false
+                                        performExport(name, options)
                                     },
                                 )
                             }
@@ -1004,10 +1007,90 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 if (options.printFriendly) {
                     bridge.post(command("setPrintFriendly", "true"))
                 }
-                PdfExporter.printToPdf(this, webView, name, options.landscape)
+                val margins = com.markleaf.app.export.MARGIN_PRESETS
+                    .firstOrNull { it.id == options.marginPresetId }
+                    ?: com.markleaf.app.export.MARGIN_PRESETS.first()
+                PdfExporter.printToPdf(this, webView, name, options.landscape, margins, options.printFriendly)
             }
-            ExportFormat.HTML -> createHtmlLauncher.launch("$name.html")
+            ExportFormat.HTML -> {
+                // 页眉/页脚预设：{page}/{pages} 由前端 generateExportHtml 展开
+                val headerFooter = mapOf(
+                    "none" to ("" to ""),
+                    "title-left" to ("{title}" to ""),
+                    "page-center" to ("{page}" to ""),
+                    "page-right" to ("" to "{page}"),
+                    "page-total-center" to ("{page}/{pages}" to ""),
+                )
+                val (header, footer) = headerFooter[options.headerPresetId] ?: ("" to "")
+                lifecycleScope.launch {
+                    // 先发 exportDocument（带 header/footer 选项）拿到自包含 HTML，
+                    // 再经 SAF 落盘——对齐桌面"页眉页脚仅 HTML"语义。
+                    bridge.post(
+                        HostMessage.Command(
+                            documentId = session.documentId,
+                            revision = session.confirmedRevision,
+                            payload = HostMessage.Command.CommandPayload(
+                                command = "exportDocument",
+                                text = kotlinx.serialization.json.buildJsonObject {
+                                    put("format", kotlinx.serialization.json.JsonPrimitive("html"))
+                                    put("header", kotlinx.serialization.json.JsonPrimitive(header))
+                                    put("footer", kotlinx.serialization.json.JsonPrimitive(footer))
+                                    put("title", kotlinx.serialization.json.JsonPrimitive(name))
+                                }.toString(),
+                            ),
+                        ),
+                    )
+                }
+                createHtmlLauncher.launch("$name.html")
+            }
+            ExportFormat.IMAGE -> lifecycleScope.launch { exportAsImages(name, options) }
         }
+    }
+
+    /** 图片导出：exportDocument(format=image) → 自包含 HTML → 复用主
+     *  WebView 渲染整篇（宽度 = 1080 × 缩放），draw 到 Bitmap 落盘。 */
+    private suspend fun exportAsImages(name: String, options: ExportOptions) {
+        val html = exportHtmlBlocking()
+        val scale = options.imageScale
+        val widthPx = 1080 * scale
+        webView.post {
+            webView.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(widthPx, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+            )
+            webView.layout(0, 0, widthPx, webView.measuredHeight.coerceAtLeast(1))
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                widthPx, webView.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888,
+            )
+            webView.draw(android.graphics.Canvas(bitmap))
+            val fileName = "${name}_${System.currentTimeMillis()}." + if (options.imageFormat == "jpeg") "jpg" else "png"
+            val file = java.io.File(getExternalFilesDir(null), fileName)
+            java.io.FileOutputStream(file).use { out ->
+                val fmt = if (options.imageFormat == "jpeg") android.graphics.Bitmap.CompressFormat.JPEG
+                else android.graphics.Bitmap.CompressFormat.PNG
+                bitmap.compress(fmt, options.imageJpegQuality, out)
+            }
+            bitmap.recycle()
+            showToast(L10n.f("图片已导出：%s", file.name))
+        }
+    }
+
+    /** 带选项文本的 exportDocument 往返（供导出页实时预览）。 */
+    private suspend fun exportHtmlBlockingWithOptions(optionsText: String): String {
+        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+        pendingExportHtml = deferred
+        bridge.post(
+            HostMessage.Command(
+                documentId = session.documentId,
+                revision = session.confirmedRevision,
+                requestId = session.registerRequest("exportContent"),
+                payload = HostMessage.Command.CommandPayload(
+                    command = "exportDocument",
+                    text = optionsText,
+                ),
+            ),
+        )
+        return deferred.await()
     }
 
     /** HTML 导出：exportDocument 命令 → exportContent 回环（挂起等待）。 */
