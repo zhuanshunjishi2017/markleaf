@@ -323,6 +323,25 @@ SafDocumentSource.takePersistablePermission(this, uri)
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize()) {
+                        // 全屏导出页：显示时覆盖菜单栏/顶部栏/状态栏与编辑区
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showExport.value,
+                            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
+                                androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(110)) { it / 4 },
+                            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)),
+                        ) {
+                            ExportScreen(
+                                defaultName = activeTitle.value,
+                                styleIds = com.markleaf.app.editor.StyleAssets.TYPOGRAPHY_STYLES,
+                                colorThemes = StyleAssets.colorThemes(this@MainActivity),
+                                previewHtmlProvider = { optionsText -> exportHtmlBlockingWithOptions(optionsText) },
+                                onDismiss = { showExport.value = false },
+                                onExport = { name, options ->
+                                    showExport.value = false
+                                    performExport(name, options)
+                                },
+                            )
+                        }
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
                     ModalNavigationDrawer(
@@ -463,24 +482,6 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     onDismiss = { showZoomDialog.value = false },
                                 )
                             }
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = showExport.value,
-                                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
-                                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(110)) { it / 4 },
-                                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)),
-                            ) {
-                                ExportScreen(
-                                    defaultName = activeTitle.value,
-                                    styleIds = com.markleaf.app.editor.StyleAssets.TYPOGRAPHY_STYLES,
-                                    colorThemes = StyleAssets.colorThemes(this@MainActivity),
-                                    previewHtmlProvider = { optionsText -> exportHtmlBlockingWithOptions(optionsText) },
-                                    onDismiss = { showExport.value = false },
-                                    onExport = { name, options ->
-                                        showExport.value = false
-                                        performExport(name, options)
-                                    },
-                                )
-                            }
                             showLanguageDialog.value?.let { (position, current) ->
                                 androidx.compose.material3.AlertDialog(
                                     onDismissRequest = { showLanguageDialog.value = null },
@@ -528,6 +529,25 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         }
                     }
                 }
+            // 全屏导出页：显示时覆盖菜单栏/顶部栏/状态栏与编辑区（后绘者在上）
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showExport.value,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(110)) +
+                    androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(110)) { it / 4 },
+                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)),
+            ) {
+                ExportScreen(
+                    defaultName = activeTitle.value,
+                    styleIds = com.markleaf.app.editor.StyleAssets.TYPOGRAPHY_STYLES,
+                    colorThemes = StyleAssets.colorThemes(this@MainActivity),
+                    previewHtmlProvider = { optionsText -> exportHtmlBlockingWithOptions(optionsText) },
+                    onDismiss = { showExport.value = false },
+                    onExport = { name, options ->
+                        showExport.value = false
+                        performExport(name, options)
+                    },
+                )
+            }
             }
             SelectionToolbar(
                 rect = selectionToolbarRect.value,
