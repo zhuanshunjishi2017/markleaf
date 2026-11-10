@@ -408,12 +408,6 @@ fun PreferencesScreen(
                 val ordered = EditorPrefs.QUICK_ACTION_POOL.filter { it.first in selectedSet }
                     .map { it.first } + EditorPrefs.parseQuickActions(prefs.quickActions)
                     .filter { id -> EditorPrefs.QUICK_ACTION_POOL.none { it.first == id } }
-                Text(
-                    L10n.t("点选启用，再次点击停用；顶栏按此顺序显示"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
                 androidx.compose.foundation.layout.FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
