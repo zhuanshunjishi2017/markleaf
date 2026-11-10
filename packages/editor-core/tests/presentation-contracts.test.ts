@@ -34,22 +34,26 @@ it('hides native text ranges while a CellSelection owns table highlighting', () 
   expect(css).toMatch(/markleaf-cell-selection-locked[^}]*td \*::selection[\s\S]*?background:\s*transparent\s*!important/s)
 })
 
-it('hides the native range across themed table text', () => {
+it('keeps native text ranges on the shared color while the themed highlight settles', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../../styles/base.css'), 'utf8')
-  // 主题化托管选区下，原生选区底色用 4% 中性色压到肉眼不可见。绝不能写
-  // `background: transparent`：WebKit 把组字串（marked text）当"选中文字"
-  // 绘制时，完全透明的 ::selection 底色会被判为不可见并回退到系统高亮色，
-  // 拼音串上出现实心蓝块。
-  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]*?background:\s*rgb\(128 128 128 \/ 4%\)\s*!important/)
-  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document \*::selection\s*\{[^}]*background:\s*rgb\(128 128 128 \/ 4%\)\s*!important/)
+  // A transparent native range falls back to the system white selection on
+  // macOS while the CSS Highlight is settling. Both layers must use the same
+  // theme color throughout a drag.
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]*?background:\s*var\(--ml-selection-bg,\s*var\(--theme-light\)\)\s*!important/)
+  expect(css).toMatch(/\.markleaf-themed-visual-selection \.markleaf-document \*::selection\s*\{[^}]*background:\s*var\(--ml-selection-bg,\s*var\(--theme-light\)\)\s*!important/)
   expect(css).not.toMatch(/\.markleaf-themed-visual-selection \.markleaf-document::selection,[\s\S]{0,200}background:\s*transparent\s*!important/)
   expect(css).not.toMatch(/\.markleaf-themed-visual-selection \.markleaf-document td::selection,[\s\S]*?background:\s*var\(--ml-selection-bg/)
 })
 
-it('hides the native drag selection while the editor-owned highlight is active', () => {
+it('keeps the native drag selection on the shared color while the editor-owned highlight is active', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
-  expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document::selection[\s\S]*?background:\s*transparent\s*!important/s)
-  expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document \*::selection[\s\S]*?color:\s*var\(--text-selected\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-selected\)\s*!important/s)
+  // WebKit falls back to its system white selection when a managed drag uses
+  // a fully transparent native range. Keep that range on the document surface
+  // while the editor-owned CSS Highlight is the only visible selection layer.
+  expect(css).toMatch(/:root\.markleaf-themed-visual-selection \.markleaf-managed-selection-active \.markleaf-document::selection,[\s\S]*?background:\s*var\(--bg-primary\)\s*!important/s)
+  expect(css).toMatch(/:root\.markleaf-themed-visual-selection \.markleaf-managed-selection-active \.markleaf-document \*::selection,[\s\S]*?background:\s*var\(--bg-primary\)\s*!important/s)
+  expect(css).not.toMatch(/\.markleaf-managed-selection-active \.markleaf-document::selection[\s\S]{0,220}background:\s*transparent\s*!important/s)
+  expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document \*::selection[\s\S]*?color:\s*var\(--text-primary\)\s*!important[\s\S]*?-webkit-text-fill-color:\s*var\(--text-primary\)\s*!important/s)
   expect(css).toMatch(/\.markleaf-managed-selection-active \.markleaf-document,\s*\n\.markleaf-managed-selection-active \.markleaf-document \*\s*\{[\s\S]*?user-select:\s*none\s*!important/s)
 })
 

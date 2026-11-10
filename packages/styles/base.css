@@ -45,29 +45,23 @@
 :root:not(.markleaf-composing) .cm-content::selection,
 :root:not(.markleaf-composing) .cm-content *::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
-  /* 不强制前景色：可视化宿主把原生选区背景透明化后，任何在此处写死的
-     前景色都会让组字文本/原子节点内容被染白（白底上不可见）。拖选的
-     蓝底白字由 ::highlight(markleaf-selection) 提供；浮层源码区有自己的
-     恢复规则。 */
+  /* 非主题化宿主沿用浏览器自己的前景色；主题化宿主在下面的规则中把
+     原生范围和 CSS Highlight 的前景色一起锁定为 --text-selected。 */
 }
 
-/* macOS visual-selection mode paints one CSS Custom Highlight range. Keep the
-   browser's native range effectively invisible everywhere, including table
-   cells, so it cannot stack a second darker layer over the editor-owned
-   highlight. IME 组字期间 WebKit 把 marked range 当作"选中文字"绘制，而
-   ::selection 底色完全透明会被判定为不可见并回退到系统高亮色——拼音串上
-   因此出现蓝块。这里用 4% 中性色代替透明：肉眼无感，但绕过该回退。
-   :root 前缀把特异性抬到 (0,3,1)：必须压过上方全局门控规则（同为
-   (0,3,1) 且定义在前——平级时按源序本规则胜出），否则主题化模式下任何
-   存活的 DOM 选区（如公式右键的 preserve 选区）都会被全局规则画成
-   accent 实底。 */
+/* macOS visual-selection mode paints one CSS Custom Highlight range. Keep
+   WebKit's native range on the exact same theme colors while the editor-owned
+   range is being published. This is intentionally opaque: a transparent
+   ::selection is treated as "no selection" by WebKit and can fall back to the
+   system white selection during a drag, then switch to the editor's dark
+   highlight on mouse-up. IME 组字期间 the later .markleaf-composing rule
+   returns to a near-invisible foreground-preserving range so the input method
+   keeps its native underline instead of a blue selection block. */
 :root.markleaf-themed-visual-selection .markleaf-document::selection,
 :root.markleaf-themed-visual-selection .markleaf-document *::selection {
-  background: rgb(128 128 128 / 4%) !important;
-  /* 前景一并中和：裸 UI 规则的白色 fill-color 按属性独立级联，accent 底
-     被本规则压掉后白字仍会残留——公式等原子被选中时内容直接隐形。 */
-  color: currentColor !important;
-  -webkit-text-fill-color: currentColor !important;
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
+  color: var(--text-selected) !important;
+  -webkit-text-fill-color: var(--text-selected) !important;
 }
 
 /* IME 组字期间（html.markleaf-composing，editor.ts ThemedSelection 切换）：

@@ -1326,8 +1326,18 @@ const ThemedSelection = Extension.create({
             // Restore focus so the final TextSelection remains the insertion
             // range when the user types immediately after releasing the drag.
             view.focus()
-            mount.classList.remove('markleaf-managed-selection-active')
+            // focus() reruns ProseMirror's selection-to-DOM pass. Keep the
+            // neutral native-selection shield in place until the next frame,
+            // clear that restored range, then reveal only the CSS Highlight.
+            clearDomSelection(view.dom.ownerDocument)
             paintSelectionHighlight()
+            window.requestAnimationFrame(() => {
+              // A new drag may have started before this deferred cleanup. In
+              // that case its shield belongs to the new gesture and must stay.
+              if (managedDragActive) return
+              clearDomSelection(view.dom.ownerDocument)
+              mount.classList.remove('markleaf-managed-selection-active')
+            })
           }, 0)
         }
 
