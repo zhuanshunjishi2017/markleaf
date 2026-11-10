@@ -25,15 +25,28 @@ object PdfExporter {
      * @param documentName 文档名（自动清洗为合法文件名）
      * @param landscape 横向
      */
-    fun printToPdf(context: Context, webView: WebView, documentName: String, landscape: Boolean) {
+    fun printToPdf(
+        context: Context,
+        webView: WebView,
+        documentName: String,
+        landscape: Boolean,
+        margins: MarginPreset = MARGIN_PRESETS.first(),
+        printFriendly: Boolean = false,
+    ) {
         val jobName = ExportController.jobName(documentName)
+        // MinMargins 单位 = 1/1000 英寸（对齐桌面 ExportMargins 的 pt 预设）
         val attributes = PrintAttributes.Builder()
             .setMediaSize(
                 if (landscape) PrintAttributes.MediaSize.ISO_A4.asLandscape()
                 else PrintAttributes.MediaSize.ISO_A4.asPortrait(),
             )
             .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
-            .setMinMargins(PrintAttributes.Margins(1000, 1000, 1000, 1000))
+            .setMinMargins(
+                PrintAttributes.Margins(
+                    margins.left * 1000, margins.top * 1000,
+                    margins.right * 1000, margins.bottom * 1000,
+                ),
+            )
             .build()
         val adapter = webView.createPrintDocumentAdapter(jobName)
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager

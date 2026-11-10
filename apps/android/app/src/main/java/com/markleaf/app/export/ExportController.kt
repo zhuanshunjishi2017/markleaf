@@ -15,6 +15,11 @@ data class ExportOptions(
     val paperSize: String? = if (format == ExportFormat.PDF) "A4" else null,
     val landscape: Boolean = false,
     val printFriendly: Boolean = false,
+    val marginPresetId: String = "standard",
+    val keepTablesTogether: Boolean = true,
+    val keepHeadingsWithNextBlock: Boolean = true,
+    val headerPresetId: String = "none",
+    val footerPresetId: String = "none",
 )
 
 /** 导出控制器：文件名清洗、job 名、导出编排的纯逻辑部分。 */
