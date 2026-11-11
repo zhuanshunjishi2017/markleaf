@@ -218,10 +218,10 @@ fun ExportScreen(
                 val themeNames = colorThemes.associate { it.id to L10n.t(it.name) }
                 ChipRowGroup(
                     "配色方案",
-                    themeNames + ("follow-style" to "跟随排版样式"),
-                    colorThemeId.ifEmpty { "follow-style" },
+                    themeNames,
+                    colorThemeId,
                 ) { picked ->
-                    colorThemeId = if (picked == "follow-style") "" else picked
+                    colorThemeId = picked
                 }
 
                 // 图片专属
