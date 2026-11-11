@@ -51,8 +51,13 @@ object PdfExporter {
         val web = createWebView(context)
         var completed = false
         try {
-            val attrs = attributes(options.landscape,
-                MARGIN_PRESETS.firstOrNull { it.id == options.marginPresetId } ?: MARGIN_PRESETS.first())
+            val margins = if (options.marginPresetId == "custom")
+                MarginPreset("custom", "custom",
+                    options.marginTop.toInt(), options.marginBottom.toInt(),
+                    options.marginLeft.toInt(), options.marginRight.toInt())
+            else
+                MARGIN_PRESETS.firstOrNull { it.id == options.marginPresetId } ?: MARGIN_PRESETS.first()
+            val attrs = attributes(options.landscape, margins)
             // Give fonts/formulas the printable width before the print adapter performs pagination.
             val cssWidth = attrs.mediaSize!!.widthMils * 96 / 1000
             val pixelWidth = (cssWidth * context.resources.displayMetrics.density).roundToInt()

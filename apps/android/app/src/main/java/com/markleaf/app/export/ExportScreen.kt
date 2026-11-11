@@ -62,6 +62,8 @@ fun ExportScreen(
     var printFriendly by remember { mutableStateOf(false) }
     var landscape by remember { mutableStateOf(false) }
     var marginPresetId by remember { mutableStateOf("standard") }
+    var customMargins by remember { mutableStateOf(listOf(18.0, 18.0, 15.0, 15.0)) } // top,bottom,left,right
+    var showCustomMarginDialog by remember { mutableStateOf(false) }
     // 兼容旧引用：本页直接以 id 驱动（MarginPreset 对象仅用于预设常量）
     var keepTablesTogether by remember { mutableStateOf(true) }
     var keepHeadingsWithNextBlock by remember { mutableStateOf(true) }
@@ -74,7 +76,10 @@ fun ExportScreen(
     var imageScale by remember { mutableStateOf(2) }
     val options = ExportOptions(
         format = format, landscape = landscape, printFriendly = printFriendly,
-        marginPresetId = marginPresetId, keepTablesTogether = keepTablesTogether,
+        marginPresetId = marginPresetId,
+        marginTop = customMargins[0], marginBottom = customMargins[1],
+        marginLeft = customMargins[2], marginRight = customMargins[3],
+        keepTablesTogether = keepTablesTogether,
         keepHeadingsWithNextBlock = keepHeadingsWithNextBlock,
         headerPresetId = headerPreset, footerPresetId = footerPreset,
         imageFormat = imageFormat, imageJpegQuality = imageJpegQuality, imageScale = imageScale,
@@ -204,7 +209,25 @@ fun ExportScreen(
                         Switch(checked = landscape, onCheckedChange = { landscape = it })
                         Text("横向", modifier = Modifier.padding(start = 8.dp))
                     }
-                    ChipRowGroup("页边距", MARGIN_PRESETS_MAP, marginPresetId) { marginPresetId = it }
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ChipRowGroup("", MARGIN_PRESETS_MAP, marginPresetId) { marginPresetId = it }
+                        TextButton(onClick = { showCustomMarginDialog = true }) {
+                            Text(L10n.t("自定义边距…"))
+                        }
+                    }
+                    // 当前边距摘要（对齐桌面小字：上/下/左/右 mm）
+                    val summary = if (marginPresetId == "custom")
+                        "上: ${customMargins[0]}mm, 下: ${customMargins[1]}mm, 左: ${customMargins[2]}mm, 右: ${customMargins[3]}mm"
+                    else
+                        MARGIN_PRESETS.firstOrNull { it.id == marginPresetId }?.let {
+                            "上: ${it.top}mm, 下: ${it.bottom}mm, 左: ${it.left}mm, 右: ${it.right}mm"
+                        } ?: ""
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
                     SwitchRow("打印友好（浅色）", printFriendly) { printFriendly = it }
                 }
 
@@ -305,3 +328,52 @@ fun ExportScreen(
         }
     }
 }
+
+
+@Composable
+private fun CustomMarginsDialog(
+    initial: List<Double>,
+    onConfirm: (List<Double>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val labels = listOf("上边距", "下边距", "左边距", "右边距")
+    val texts = remember {
+        androidx.compose.runtime.mutableStateListOf(*initial.map { compactMargin(it) }.toTypedArray())
+    }
+    val valid = texts.all { it.toDoubleOrNull()?.let { v -> v in 0.0..100.0 } != null }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(L10n.t("自定义边距")) },
+        text = {
+            Column {
+                labels.forEachIndexed { index, label ->
+                    OutlinedTextField(
+                        value = texts[index],
+                        onValueChange = { input ->
+                            // 对齐桌面：过滤非法字符、允许清空
+                            texts[index] = input.filter { it.isDigit() || it == '.' }.take(6)
+                        },
+                        label = { Text(L10n.t(label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = valid,
+                onClick = {
+                    onConfirm(texts.map { it.toDoubleOrNull() ?: 0.0 })
+                    onDismiss()
+                },
+            ) { Text(L10n.t("确定")) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text(L10n.t("取消")) }
+        },
+    )
+}
+
+private fun compactMargin(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

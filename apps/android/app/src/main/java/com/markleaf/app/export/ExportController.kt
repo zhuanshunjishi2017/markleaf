@@ -19,6 +19,11 @@ data class ExportOptions(
     val landscape: Boolean = false,
     val printFriendly: Boolean = false,
     val marginPresetId: String = "standard",
+    // 自定义边距（mm，对应桌面 ExportMargins；marginPresetId == "custom" 时生效）
+    val marginTop: Double = 18.0,
+    val marginBottom: Double = 18.0,
+    val marginLeft: Double = 15.0,
+    val marginRight: Double = 15.0,
     val keepTablesTogether: Boolean = true,
     val keepHeadingsWithNextBlock: Boolean = true,
     val headerPresetId: String = "none",
