@@ -209,10 +209,25 @@ fun ExportScreen(
                         Switch(checked = landscape, onCheckedChange = { landscape = it })
                         Text("横向", modifier = Modifier.padding(start = 8.dp))
                     }
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ChipRowGroup("", MARGIN_PRESETS_MAP, marginPresetId) { marginPresetId = it }
+                    Text(
+                        "页边距",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                    ) {
+                        MARGIN_PRESETS.forEach { preset ->
+                            FilterChip(
+                                selected = marginPresetId == preset.id,
+                                onClick = { marginPresetId = preset.id },
+                                label = { Text(preset.display, style = MaterialTheme.typography.labelMedium) },
+                            )
+                        }
                         TextButton(onClick = { showCustomMarginDialog = true }) {
-                            Text(L10n.t("自定义边距…"))
+                            Text(L10n.t("自定义边距…"), style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     // 当前边距摘要（对齐桌面小字：上/下/左/右 mm）
@@ -226,7 +241,7 @@ fun ExportScreen(
                         summary,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
                     )
                     SwitchRow("打印友好（浅色）", printFriendly) { printFriendly = it }
                 }
