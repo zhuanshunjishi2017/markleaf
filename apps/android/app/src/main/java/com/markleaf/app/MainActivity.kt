@@ -550,6 +550,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         ) {
                             ExportScreen(
                                 defaultName = activeTitle.value,
+                                initialStyleId = editorPrefs.value.styleId,
+                                initialColorThemeId = effectiveColorThemeId(),
                                 styleIds = com.markleaf.app.editor.StyleAssets.TYPOGRAPHY_STYLES,
                                 colorThemes = StyleAssets.colorThemes(this@MainActivity),
                                 previewHtmlProvider = ::prepareExportHtml,

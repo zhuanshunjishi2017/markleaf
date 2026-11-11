@@ -46,6 +46,8 @@ import com.markleaf.app.L10n
 @Composable
 fun ExportScreen(
     defaultName: String,
+    initialStyleId: String,
+    initialColorThemeId: String,
     styleIds: List<Pair<String, String>>,
     colorThemes: List<com.markleaf.app.editor.StyleAssets.ColorTheme>,
     previewHtmlProvider: suspend (name: String, options: ExportOptions) -> String,
@@ -65,8 +67,8 @@ fun ExportScreen(
     var keepHeadingsWithNextBlock by remember { mutableStateOf(true) }
     var headerPreset by remember { mutableStateOf("none") }
     var footerPreset by remember { mutableStateOf("none") }
-    var styleId by remember { mutableStateOf("serif") }
-    var colorThemeId by remember { mutableStateOf("") }
+    var styleId by remember { mutableStateOf(initialStyleId) }
+    var colorThemeId by remember { mutableStateOf(initialColorThemeId) }
     var imageFormat by remember { mutableStateOf("png") }
     var imageJpegQuality by remember { mutableStateOf(90) }
     var imageScale by remember { mutableStateOf(2) }
