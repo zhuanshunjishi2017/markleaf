@@ -9,7 +9,7 @@ MarkLeaf 的 Android 宿主（第四端）：查看 + 轻编辑 + 导出的 Mark
 - **每标签一个 WebView**：装载 `packages/editor-web/dist`（与 macOS/Windows/VS Code 逐字节同源）
 - **EditorBridge**：`protocol.ts` JSON 消息协议的 Kotlin 实现（`window.postMessage` 注入 + `markleafHost` JS 接口回传）
 - **SAF 文档源**：单文件 + 授权文件夹（`DocumentSource` 抽象，远程源预留接口）
-- **导出**：HTML（前端 export-html 分包）+ PDF（PrintManager）
+- **导出**：HTML（前端 export-html 分包）+ PDF（专用 WebView 打印适配器分页、PdfRenderer 预览、SAF 保存同一份 PDF）；系统打印预览作为兼容回退。
 
 设计文档：`docs/superpowers/specs/2026-10-27-android-host-design.md`
 实现计划：`docs/superpowers/plans/2026-10-27-android-host.md`

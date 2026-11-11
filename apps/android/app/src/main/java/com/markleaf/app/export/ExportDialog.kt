@@ -1,6 +1,7 @@
 package com.markleaf.app.export
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -174,7 +175,7 @@ fun ExportDialog(
     }
 }
 
-/** 页边距预设（对齐桌面 ExportWindowController.marginPresets）。 */
+/** 页边距预设，单位为毫米（对齐桌面 ExportWindowController.marginPresets）。 */
 data class MarginPreset(val id: String, val display: String, val top: Int, val bottom: Int, val left: Int, val right: Int)
 
 internal val MARGIN_PRESETS: List<MarginPreset> = listOf(
@@ -195,9 +196,10 @@ internal val HEADER_PRESET_MAP: Map<String, String> = mapOf(
 
 /** 通用「标签 + FilterChip 组」行。 */
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 internal fun ChipRowGroup(label: String, presets: Map<String, String>, selectedId: String, onSelect: (String) -> Unit) {
     Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 2.dp))
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
     ) {

@@ -1,8 +1,11 @@
 package com.markleaf.app.export
 
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+
 /**
  * 导出格式。HTML 走前端 export-html 分包产自包含 HTML；
- * PDF 走 WebView createPrintDocumentAdapter + PrintManager（spec §5.2）。
+ * PDF 走专用 WebView 的打印适配器，预览与保存复用同一分页文件。
  */
 enum class ExportFormat { HTML, PDF, IMAGE }
 
@@ -23,10 +26,33 @@ data class ExportOptions(
     val imageFormat: String = "png",
     val imageJpegQuality: Int = 90,
     val imageScale: Int = 2,
+    val styleId: String = "serif",
+    val colorThemeId: String = "",
 )
 
 /** 导出控制器：文件名清洗、job 名、导出编排的纯逻辑部分。 */
 object ExportController {
+
+    /** The same content request is used for preview and the saved document. */
+    fun htmlRequest(title: String, options: ExportOptions, colorSchemeCss: String = ""): String = buildJsonObject {
+        put("format", JsonPrimitive(options.format.name.lowercase()))
+        put("style", JsonPrimitive(options.styleId))
+        put("colorSchemeCss", JsonPrimitive(colorSchemeCss))
+        put("title", JsonPrimitive(title))
+        put("keepTablesTogether", JsonPrimitive(options.keepTablesTogether))
+        put("keepHeadingsWithNextBlock", JsonPrimitive(options.keepHeadingsWithNextBlock))
+        if (options.format == ExportFormat.HTML) {
+            put("header", JsonPrimitive(presetText(options.headerPresetId)))
+            put("footer", JsonPrimitive(presetText(options.footerPresetId)))
+        }
+    }.toString()
+
+    private fun presetText(id: String): String = when (id) {
+        "title-left" -> "{title}"
+        "page-center", "page-right" -> "{page}"
+        "page-total-center" -> "{page}/{pages}"
+        else -> ""
+    }
 
     /**
      * Windows ImageAssetService.SanitizeFileName 同规则：
