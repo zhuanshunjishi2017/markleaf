@@ -113,31 +113,32 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayNam
 
 [Code]
 #if SelfContained == "0"
-function RejectSlimOverSelfContained(): Boolean;
+function RejectSlimOverSelfContained(const InstallDir: string): Boolean;
 begin
-  Result := FileExists(ExpandConstant('{app}\MarkLeaf.self-contained'))
-    or FileExists(ExpandConstant('{app}\hostfxr.dll'));
+  Result := FileExists(AddBackslash(InstallDir) + 'MarkLeaf.self-contained')
+    or FileExists(AddBackslash(InstallDir) + 'hostfxr.dll');
 end;
 #endif
 
 function InitializeSetup(): Boolean;
 begin
   Result := True;
+end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+
+  // {app} is not initialized while InitializeSetup runs. Check the resolved
+  // installation directory only after the wizard has selected it, otherwise a
+  // slim upgrade fails before the installer window can be shown.
+#if SelfContained == "0"
   // Both installers intentionally share an application directory. A slim
   // upgrade over a self-contained install would leave hostfxr.dll behind but
   // replace runtimeconfig.json with a shared-framework version, producing an
   // incomplete local .NET root that cannot start.
-#if SelfContained == "0"
-  if RejectSlimOverSelfContained() then
-  begin
-    SuppressibleMsgBox(
-      'This computer has MarkLeaf with the bundled .NET runtime. Install the matching with-runtime package; the slim package cannot upgrade it safely.',
-      mbError,
-      MB_OK,
-      IDOK);
-    Result := False;
-  end;
+  if RejectSlimOverSelfContained(WizardDirValue) then
+    Result := 'This computer has MarkLeaf with the bundled .NET runtime. Install the matching with-runtime package; the slim package cannot upgrade it safely.';
 #endif
 end;
 
