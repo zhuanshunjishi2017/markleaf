@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "code": "x=1",
+  "language": "js"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "codeFormatRequested"
+}

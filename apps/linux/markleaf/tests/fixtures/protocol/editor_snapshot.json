@@ -1,0 +1,14 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "markdown": "# 你好",
+  "selection": {
+   "from": 0,
+   "to": 0
+  }
+ },
+ "protocolVersion": 1,
+ "requestId": "req-snap-1",
+ "revision": 3,
+ "type": "snapshot"
+}

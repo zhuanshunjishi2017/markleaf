@@ -266,20 +266,25 @@ body.markleaf-theme-dark {
   -webkit-text-fill-color: inherit !important;
 }
 
-.markleaf-themed-visual-selection .markleaf-document ::selection {
+:root.markleaf-themed-visual-selection:not(.markleaf-composing) .markleaf-document ::selection {
   background: transparent;
   color: inherit;
 }
 
 /* During any ordinary editable drag, the editor owns the endpoint and paints
-   one CSS Highlight. Hide WebKit's own range while that state is being
-   updated; otherwise its asynchronous endpoint can flash at a table-cell
-   boundary. */
+   one CSS Highlight. Keep WebKit's native range visually neutral while that
+   state is being updated. A fully transparent ::selection is treated as "no
+   selection" by WebKit and falls back to the system white selection. Matching
+   the document surface instead avoids that fallback without stacking a second
+   colored layer under the editor-owned highlight. The native range is cleared
+   once more after focus restoration before this shield is removed. */
+:root.markleaf-themed-visual-selection .markleaf-managed-selection-active .markleaf-document::selection,
+:root.markleaf-themed-visual-selection .markleaf-managed-selection-active .markleaf-document *::selection,
 .markleaf-managed-selection-active .markleaf-document::selection,
 .markleaf-managed-selection-active .markleaf-document *::selection {
-  background: transparent !important;
-  color: var(--text-selected) !important;
-  -webkit-text-fill-color: var(--text-selected) !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
 }
 
 .markleaf-managed-selection-active .markleaf-document,
@@ -1223,7 +1228,9 @@ body.markleaf-theme-dark .markleaf-formula-symbol-separator {
 /* A fallback gap stays on the preceding token, so wrapping cannot carry it
    into the next line. Whole Latin tokens retain their kerning and ligatures. */
 .markleaf-cjk-autospace #editor .markleaf-cjk-autospace-trailing-space {
-  padding-inline-end: 0.125em;
+  /* Keep unsupported/fallback paragraphs aligned with the measured path and
+     with the legacy auto-spacing decoration. */
+  padding-inline-end: 0.35em;
 }
 
 .markleaf-typography-native {

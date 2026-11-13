@@ -3,9 +3,26 @@ package com.markleaf.app.export
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** 导出控制器纯逻辑契约（spec §5）。 */
 class ExportControllerTest {
+
+    @Test
+    fun `preview and export requests retain selected style pagination and escaped title`() {
+        val request = Json.parseToJsonElement(ExportController.htmlRequest(
+            "A \"quoted\" title\nnext line",
+            ExportOptions(format = ExportFormat.PDF, styleId = "sans", keepTablesTogether = false),
+            ":root { --bg-primary: white; }",
+        )).jsonObject
+        assertEquals("pdf", request["format"]!!.jsonPrimitive.content)
+        assertEquals("sans", request["style"]!!.jsonPrimitive.content)
+        assertEquals("A \"quoted\" title\nnext line", request["title"]!!.jsonPrimitive.content)
+        assertEquals("false", request["keepTablesTogether"]!!.jsonPrimitive.content)
+        assertEquals(":root { --bg-primary: white; }", request["colorSchemeCss"]!!.jsonPrimitive.content)
+    }
 
     // ---- 文件名清洗（与 Windows saveName 同规则）----
 

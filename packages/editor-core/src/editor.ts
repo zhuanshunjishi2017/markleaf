@@ -6,7 +6,7 @@ import { isHostCommandAllowed } from './host-command-policy'
 import { exportMermaidImage, type MermaidImageFormat, type MermaidImageExport } from './mermaid-image-export'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
-import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions } from '@tiptap/core'
+import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions, generateJSON, type JSONContent } from '@tiptap/core'
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -849,6 +849,37 @@ function runCodeFormattingShortcut(editor: Editor): boolean {
   return true
 }
 
+function getSelectedCodeLineOffsets(
+  parentText: string,
+  fromOffset: number,
+  toOffset: number,
+): number[] {
+  const start = Math.max(0, Math.min(fromOffset, toOffset))
+  const end = Math.max(start, Math.max(fromOffset, toOffset))
+  const lastCoveredOffset = Math.max(start, end - 1)
+  const offsets = [parentText.lastIndexOf('\n', start - 1) + 1]
+  let newline = parentText.indexOf('\n', offsets[0])
+  while (newline >= 0 && newline + 1 <= lastCoveredOffset) {
+    offsets.push(newline + 1)
+    newline = parentText.indexOf('\n', newline + 1)
+  }
+  return offsets
+}
+
+function getCodeBlockSelection(editor: Editor) {
+  const { selection } = editor.state
+  const { $from, $to } = selection
+  if ($from.parent.type.name !== 'codeBlock' || !$from.sameParent($to)) return null
+  const fromOffset = Math.min($from.parentOffset, $to.parentOffset)
+  const toOffset = Math.max($from.parentOffset, $to.parentOffset)
+  return {
+    $from,
+    parent: $from.parent,
+    parentStart: $from.start($from.depth),
+    lineOffsets: getSelectedCodeLineOffsets($from.parent.textContent, fromOffset, toOffset),
+  }
+}
+
 const CodeFormattingShortcuts = Extension.create({
   name: 'markleafCodeFormattingShortcuts',
 
@@ -869,15 +900,24 @@ const VisualIndent = Extension.create({
       Tab: () => {
         if (!this.editor.isEditable) return false
         if (getListItemTypeAtSelection(this.editor)) return indentListItem(this.editor)
-        const { $from } = this.editor.state.selection
-        if ($from.parent.type.name === 'codeBlock') {
-          const lineStartOffset = $from.parent.textContent.lastIndexOf('\n', $from.parentOffset - 1) + 1
-          const lineStart = $from.start($from.depth) + lineStartOffset
-          return this.editor.chain()
-            .focus()
-            .insertContentAt({ from: lineStart, to: lineStart }, VISUAL_INDENT)
-            .run()
+        const codeSelection = getCodeBlockSelection(this.editor)
+        if (codeSelection) {
+          const transaction = codeSelection.lineOffsets
+            .slice()
+            .reverse()
+            .reduce(
+              (current, lineOffset) => current.insertText(
+                VISUAL_INDENT,
+                codeSelection.parentStart + lineOffset,
+                codeSelection.parentStart + lineOffset,
+              ),
+              this.editor.state.tr,
+            )
+          transaction.setSelection(this.editor.state.selection.map(transaction.doc, transaction.mapping))
+          this.editor.view.dispatch(transaction.scrollIntoView())
+          return true
         }
+        const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
           if (nodeName === 'table' || nodeName === 'tableRow'
@@ -902,17 +942,28 @@ const VisualIndent = Extension.create({
       'Shift-Tab': () => {
         if (!this.editor.isEditable) return false
         if (getListItemTypeAtSelection(this.editor)) return outdentListItem(this.editor)
-        const { $from } = this.editor.state.selection
-        if ($from.parent.type.name === 'codeBlock') {
-          const lineStartOffset = $from.parent.textContent.lastIndexOf('\n', $from.parentOffset - 1) + 1
-          const lineStart = $from.start($from.depth) + lineStartOffset
-          const removable = $from.parent.textContent.slice(lineStartOffset, lineStartOffset + VISUAL_INDENT.length)
-          if (removable !== VISUAL_INDENT) return false
-          return this.editor.chain()
-            .focus()
-            .deleteRange({ from: lineStart, to: lineStart + VISUAL_INDENT.length })
-            .run()
+        const codeSelection = getCodeBlockSelection(this.editor)
+        if (codeSelection) {
+          const text = codeSelection.parent.textContent
+          const removableOffsets = codeSelection.lineOffsets.filter((lineOffset) => (
+            text.slice(lineOffset, lineOffset + VISUAL_INDENT.length) === VISUAL_INDENT
+          ))
+          if (removableOffsets.length === 0) return false
+          const transaction = removableOffsets
+            .slice()
+            .reverse()
+            .reduce(
+              (current, lineOffset) => current.delete(
+                codeSelection.parentStart + lineOffset,
+                codeSelection.parentStart + lineOffset + VISUAL_INDENT.length,
+              ),
+              this.editor.state.tr,
+            )
+          transaction.setSelection(this.editor.state.selection.map(transaction.doc, transaction.mapping))
+          this.editor.view.dispatch(transaction.scrollIntoView())
+          return true
         }
+        const { $from } = this.editor.state.selection
         for (let depth = $from.depth; depth > 0; depth -= 1) {
           const nodeName = $from.node(depth).type.name
           if (nodeName === 'table' || nodeName === 'tableRow'
@@ -1071,12 +1122,28 @@ function selectionHighlightSupport(targetWindow: Window | null): {
 const ThemedSelection = Extension.create({
   name: 'markleafThemedSelection',
   addProseMirrorPlugins() {
+    // While the browser owns an IME marked range, do not publish the editor's
+    // visual selection highlight. WebKit uses the same DOM selection for the
+    // composing text; painting a second CSS Highlight makes the pinyin range
+    // appear as an ordinary blue selection and it grows again on each update.
+    let composing = false
     return [new Plugin({
       key: themedSelectionKey,
       view(view) {
         const mount = view.dom.parentElement
         if (!mount) return {}
         const targetWindow = view.dom.ownerDocument.defaultView
+        const ownerWindow = targetWindow ?? window
+        const hostPlatform = (ownerWindow as Window & {
+          chrome?: { webview?: { hostPlatform?: string } }
+        }).chrome?.webview?.hostPlatform
+        const isMacHost = hostPlatform === 'macOS'
+          || view.dom.ownerDocument.documentElement.classList.contains('markleaf-host-macos')
+        const isAndroidHost = hostPlatform === 'Android'
+          || view.dom.ownerDocument.documentElement.classList.contains('markleaf-host-android')
+        // macOS and Android use a deliberately gentle cap; Windows keeps its
+        // established speed. The normalized curve below is shared by hosts.
+        const maxAutoScrollSpeed = isMacHost || isAndroidHost ? 1.5 : 24
         const selectionHighlight = selectionHighlightSupport(targetWindow)
         const highlightRegistry = selectionHighlight?.registry
         const highlightCtor = selectionHighlight?.ctor
@@ -1092,6 +1159,11 @@ const ThemedSelection = Extension.create({
 
         const clearSelectionHighlight = () => {
           selectionHighlightInstance?.clear()
+          // 同步把名称从注册表摘除：仅 instance.clear() 在 WebKit 里有
+          // 一帧的绘制滞后（孤儿 Highlight Range 会被回退绘制成系统选区
+          // 外观——白底黑字），表现为选区折叠后的白闪。摘除名称后该
+          // highlight 立即失效，重绘时不会出现中间帧。
+          highlightRegistry?.delete(selectionHighlightName)
           highlightRange = null
         }
         const clearNativeNodeSelection = () => {
@@ -1113,6 +1185,11 @@ const ThemedSelection = Extension.create({
         let managedDragActive = false
         let managedDragAnchor: number | null = null
         let managedDragMoved = false
+        let managedDragPointer: { clientX: number; clientY: number } | null = null
+        let managedDragScrollFrame = 0
+        let updatingManagedDragFromScroll = false
+        let managedDragScrollRemainder = 0
+        let managedDragScrollDirection = 0
         const resolveDragPosition = (event: MouseEvent): { pos: number } | null => {
           const validPosition = (position: number | null | undefined): { pos: number } | null => {
             const max = view.state.doc.content.size
@@ -1169,6 +1246,18 @@ const ThemedSelection = Extension.create({
           return validPosition(view.state.selection.from)
         }
         const paintSelectionHighlight = () => {
+          if (composing || view.composing) {
+            clearSelectionHighlight()
+            return
+          }
+          // 浮层源码编辑器打开期间，主文档不绘制文字选区高亮：WebKit 的
+          // "双击选词"范围会晚于选区钉回到达（selectionchange 异步），PM
+          // 读回后重新铺出跨行 accent 高亮——正是双击公式再右键时的异常。
+          // 浮层此时拥有视觉焦点，主文档任何文字高亮都视为残留。
+          if (expandedSourceEditorKey.getState(view.state) !== null) {
+            clearSelectionHighlight()
+            return
+          }
           const { from, to, empty } = view.state.selection
           if (view.state.selection instanceof NodeSelection) {
             // ProseMirror represents a node selection by selecting the node's
@@ -1234,6 +1323,12 @@ const ThemedSelection = Extension.create({
 
         const finishManagedDrag = () => {
           if (!managedDragActive) return
+          if (managedDragScrollFrame) {
+            ownerWindow.cancelAnimationFrame(managedDragScrollFrame)
+            managedDragScrollFrame = 0
+          }
+          managedDragScrollRemainder = 0
+          managedDragScrollDirection = 0
           // The synthetic click follows mouseup in the same browser event
           // turn, before the deferred cleanup below. Publish the guard now so
           // document-pointer cannot reinterpret a drag endpoint as a click on
@@ -1248,18 +1343,34 @@ const ThemedSelection = Extension.create({
             managedDragActive = false
             managedDragAnchor = null
             managedDragMoved = false
+            managedDragPointer = null
+            managedDragScrollRemainder = 0
+            managedDragScrollDirection = 0
             clearDomSelection(view.dom.ownerDocument)
             // Clearing the DOM range moves the browser selection to the body.
             // Restore focus so the final TextSelection remains the insertion
             // range when the user types immediately after releasing the drag.
             view.focus()
-            mount.classList.remove('markleaf-managed-selection-active')
+            // focus() reruns ProseMirror's selection-to-DOM pass. Keep the
+            // neutral native-selection shield in place until the next frame,
+            // clear that restored range, then reveal only the CSS Highlight.
+            clearDomSelection(view.dom.ownerDocument)
             paintSelectionHighlight()
+            window.requestAnimationFrame(() => {
+              // A new drag may have started before this deferred cleanup. In
+              // that case its shield belongs to the new gesture and must stay.
+              if (managedDragActive) return
+              clearDomSelection(view.dom.ownerDocument)
+              mount.classList.remove('markleaf-managed-selection-active')
+            })
           }, 0)
         }
 
         const handleManagedDragStart = (event: MouseEvent) => {
           if (!view.editable || event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.detail > 1) return
+          // macOS 上按住拖动不会打断组字；拖选引擎的 dispatch 会与 marked
+          // text 提交竞争，把拼音串写进正文。组字期间不接管拖选。
+          if (composing || view.composing) return
           delete mount.dataset.markleafManagedDrag
           const target = event.target instanceof Element
             ? event.target
@@ -1277,6 +1388,7 @@ const ThemedSelection = Extension.create({
           const selection = TextSelection.near(view.state.doc.resolve(resolved.pos), 1)
           managedDragAnchor = selection.anchor
           managedDragActive = true
+          managedDragPointer = { clientX: event.clientX, clientY: event.clientY }
           mount.classList.add('markleaf-managed-selection-active')
           clearSelectionHighlight()
           clearDomSelection(view.dom.ownerDocument)
@@ -1288,11 +1400,113 @@ const ThemedSelection = Extension.create({
           view.focus()
           clearDomSelection(view.dom.ownerDocument)
         }
+
+        const findDragScrollContainer = (): HTMLElement | null => {
+          const ownerDocument = view.dom.ownerDocument
+          const candidates: HTMLElement[] = []
+          const scrollingElement = ownerDocument.scrollingElement
+          if (scrollingElement instanceof HTMLElement) candidates.push(scrollingElement)
+          for (let element = view.dom.parentElement; element; element = element.parentElement) {
+            if (!candidates.includes(element)) candidates.push(element)
+          }
+          if (ownerDocument.documentElement instanceof HTMLElement
+            && !candidates.includes(ownerDocument.documentElement)) {
+            candidates.push(ownerDocument.documentElement)
+          }
+          if (ownerDocument.body && !candidates.includes(ownerDocument.body)) candidates.push(ownerDocument.body)
+
+          for (const element of candidates) {
+            if (element.scrollHeight <= element.clientHeight + 1) continue
+            const overflowY = ownerWindow.getComputedStyle(element).overflowY
+            if (overflowY === 'hidden' || overflowY === 'clip') continue
+            return element
+          }
+          return candidates[0] ?? null
+        }
+
+        const autoScrollManagedDrag = () => {
+          managedDragScrollFrame = 0
+          if (!managedDragActive || !managedDragPointer) return
+
+          const container = findDragScrollContainer()
+          if (container) {
+            const isPageScroller = container === view.dom.ownerDocument.documentElement
+              || container === view.dom.ownerDocument.body
+            const rect = isPageScroller
+              ? { top: 0, bottom: ownerWindow.innerHeight }
+              : container.getBoundingClientRect()
+            const viewportHeight = Math.max(1, rect.bottom - rect.top)
+            const threshold = Math.min(96, Math.max(40, viewportHeight * 0.15))
+            const pointerY = managedDragPointer.clientY
+            let direction = 0
+            let ratio = 0
+            if (pointerY < rect.top + threshold) {
+              direction = -1
+              ratio = Math.min(1, Math.max(0, (rect.top + threshold - pointerY) / threshold))
+            } else if (pointerY > rect.bottom - threshold) {
+              direction = 1
+              ratio = Math.min(1, Math.max(0, (pointerY - (rect.bottom - threshold)) / threshold))
+            }
+
+            let speed = 0
+            if (direction === 0) {
+              managedDragScrollRemainder = 0
+              managedDragScrollDirection = 0
+            } else {
+              // Both desktop hosts use the same linear, fractional curve.
+              // Only the platform cap differs: macOS stays deliberately slow,
+              // while Windows keeps its existing maximum speed. Accumulating
+              // sub-pixel movement prevents integer speed buckets from making
+              // a small pointer adjustment jump to a faster tier.
+              if (managedDragScrollDirection !== direction) managedDragScrollRemainder = 0
+              managedDragScrollDirection = direction
+              managedDragScrollRemainder += maxAutoScrollSpeed * ratio
+              const wholePixels = Math.floor(managedDragScrollRemainder)
+              managedDragScrollRemainder -= wholePixels
+              speed = direction * wholePixels
+            }
+
+            if (speed !== 0) {
+              const maximum = Math.max(0, container.scrollHeight - container.clientHeight)
+              const next = Math.min(maximum, Math.max(0, container.scrollTop + speed))
+              if (next !== container.scrollTop) {
+                container.scrollTop = next
+                // Re-resolve the endpoint after scrolling so the logical
+                // selection follows the line now exposed at the edge even
+                // when the pointer itself has stopped moving.
+                updatingManagedDragFromScroll = true
+                try {
+                  handleManagedDragMove({
+                    buttons: 1,
+                    clientX: managedDragPointer.clientX,
+                    clientY: managedDragPointer.clientY,
+                    preventDefault() {},
+                    stopPropagation() {},
+                  } as MouseEvent)
+                } finally {
+                  updatingManagedDragFromScroll = false
+                }
+              }
+            }
+          }
+
+          if (managedDragActive) {
+            managedDragScrollFrame = ownerWindow.requestAnimationFrame(autoScrollManagedDrag)
+          }
+        }
+
         const handleManagedDragMove = (event: MouseEvent) => {
           if (!managedDragActive || managedDragAnchor === null) return
+          managedDragPointer = { clientX: event.clientX, clientY: event.clientY }
           if (event.buttons !== 1) {
             finishManagedDrag()
             return
+          }
+          // A simple click near the viewport edge must not scroll. Start the
+          // animation only after the pointer has actually moved while held.
+          managedDragMoved = true
+          if (!updatingManagedDragFromScroll && !managedDragScrollFrame) {
+            managedDragScrollFrame = ownerWindow.requestAnimationFrame(autoScrollManagedDrag)
           }
           event.preventDefault()
           event.stopPropagation()
@@ -1338,6 +1552,10 @@ const ThemedSelection = Extension.create({
             finishManagedDrag()
             return
           }
+          // 组字期间点击（重定位光标/误触）后的选区归一化会 dispatch 事务
+          // 并清写 DOM 选区，与输入法的 marked text 提交竞争——拼音重复
+          // 写入正文的另一个入口。组字期间完全放手。
+          if (composing || view.composing) return
           if (view.state.selection instanceof NodeSelection) {
             clearNativeNodeSelection()
             return
@@ -1388,11 +1606,59 @@ const ThemedSelection = Extension.create({
         mount.addEventListener('mousedown', handleManagedDragStart, true)
         view.dom.ownerDocument.addEventListener('mousemove', handleManagedDragMove, true)
         view.dom.ownerDocument.addEventListener('mouseup', handleMouseUp, true)
+        const onCompositionStart = () => {
+          composing = true
+          view.dom.ownerDocument.documentElement.classList.add('markleaf-composing')
+          clearSelectionHighlight()
+        }
+        const onCompositionEnd = () => {
+          composing = false
+          view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
+          imeHighlightRegistry?.delete(imeHighlightName)
+          paintSelectionHighlight()
+        }
+        // 组字下划线自绘：WebKit 对 marked text 有两种形态——DOM 选区覆盖
+        // 组字串时按"选中文字"绘制（无下划线），否则画系统下划线。组字期间
+        // 两种形态会随机切换，前端在两种形态下都注册 markleaf-ime 下划线
+        // （CSS ::highlight(markleaf-ime)），保证观感恒定为下划线。系统形态
+        // 的下划线与自绘线重叠在同一基线位置，视觉上是单线。
+        const imeHighlightName = 'markleaf-ime'
+        const imeHighlightRegistry = highlightRegistry
+        const refreshImeHighlight = () => {
+          if (!imeHighlightRegistry) return
+          if (!composing) { imeHighlightRegistry.delete(imeHighlightName); return }
+          const domSelection = view.dom.ownerDocument.getSelection()
+          if (!domSelection || domSelection.rangeCount === 0 || domSelection.isCollapsed
+            || !view.dom.contains(domSelection.anchorNode)) {
+            imeHighlightRegistry.delete(imeHighlightName)
+            return
+          }
+          try {
+            imeHighlightRegistry.set(imeHighlightName,
+              new (highlightCtor as any)(domSelection.getRangeAt(0)))
+          } catch {
+            imeHighlightRegistry.delete(imeHighlightName)
+          }
+        }
+        view.dom.addEventListener('compositionstart', () => { onCompositionStart(); refreshImeHighlight() })
+        view.dom.addEventListener('compositionupdate', refreshImeHighlight)
+        view.dom.addEventListener('compositionend', () => { onCompositionEnd(); refreshImeHighlight() })
+        view.dom.ownerDocument.addEventListener('selectionchange', () => { if (composing) refreshImeHighlight() })
         return {
             destroy() {
+              if (managedDragScrollFrame) ownerWindow.cancelAnimationFrame(managedDragScrollFrame)
+              managedDragScrollFrame = 0
+              managedDragPointer = null
+              managedDragScrollRemainder = 0
+              managedDragScrollDirection = 0
               mount.removeEventListener('mousedown', handleManagedDragStart, true)
               view.dom.ownerDocument.removeEventListener('mousemove', handleManagedDragMove, true)
               view.dom.ownerDocument.removeEventListener('mouseup', handleMouseUp, true)
+              view.dom.removeEventListener('compositionstart', onCompositionStart)
+              view.dom.removeEventListener('compositionend', onCompositionEnd)
+              view.dom.ownerDocument.removeEventListener('selectionchange', refreshImeHighlight)
+              imeHighlightRegistry?.delete(imeHighlightName)
+              view.dom.ownerDocument.documentElement.classList.remove('markleaf-composing')
               clearSelectionHighlight()
               highlightRegistry?.delete(selectionHighlightName)
           },
@@ -1410,6 +1676,9 @@ const ThemedSelection = Extension.create({
             // CSS Custom Highlight is O(1) DOM state for a giant selection and
           // avoids wrapping thousands of nodes while the user drags.
           if (selectionHighlightSupport(typeof window === 'undefined' ? null : window)) {
+            return DecorationSet.empty
+          }
+          if (composing) {
             return DecorationSet.empty
           }
           // Preview shows the actual result, not the selection tint covering it.
@@ -1434,6 +1703,13 @@ const ThemedSelection = Extension.create({
             // 作用范围。前端在 contextmenu 时打 markleafPreserveSelection 标，
             // 菜单关闭随 hideFormatMenu 清除。
             if (view.dom.dataset.markleafPreserveSelection === '1') {
+              return false
+            }
+            // 组字期间的瞬时 blur（候选窗、原生菜单、窗口切换）绝不能触发
+            // dispatch 或改写 DOM 选区：PM 中途同步选区会让 WebKit 把 marked
+            // text 直接提交进文档，候选字随后再落一次——拼音与汉字重复写入
+            // 正文。组字的提交/取消完全交给输入法自身。
+            if (composing || view.composing) {
               return false
             }
             const selection = view.state.selection
@@ -2603,6 +2879,39 @@ const MarkLeafParagraph = Node.create({
       return helpers.parseChildren([tokens[0]])
     }
     const content = helpers.parseInline(tokens)
+    // 连续图片行（每行一个 image）会解析为同一段落里的块级 image 与
+    // 换行文本混排——image 是块节点，与文本同段属于无效内容：编辑时
+    // contentMatchAt 崩溃、删除一张图片会触发内容重建并丢弃全部图片，
+    // 且历史未记录（撤销失效）。把段落内容按 image 切分成多个块返回：
+    // 内联片段各自成段，image 提升为独立块；紧邻 image 的换行是图片
+    // 行分隔符，随之丢弃。
+    if (content.some((n: any) => n.type === 'image')) {
+      const blocks: any[] = []
+      let inlineRun: any[] = []
+      const flush = () => {
+        if (inlineRun.length > 0) {
+          blocks.push(helpers.createNode('paragraph', undefined, inlineRun))
+          inlineRun = []
+        }
+      }
+      for (let i = 0; i < content.length; i++) {
+        const node = content[i]
+        if (node.type === 'image') {
+          flush()
+          blocks.push(node)
+          continue
+        }
+        const isBreak = node.type === 'hardBreak' || (node.type === 'text' && node.text === '\n')
+        if (isBreak) {
+          const prevIsImage = i > 0 && content[i - 1].type === 'image'
+          const nextIsImage = i + 1 < content.length && content[i + 1].type === 'image'
+          if (prevIsImage || nextIsImage) continue
+        }
+        inlineRun.push(node)
+      }
+      flush()
+      return blocks
+    }
     const explicitEmpty = tokens.length === 1
       && tokens[0].type === 'text'
       && (tokens[0].raw === EMPTY_PARAGRAPH_MARKDOWN
@@ -4356,7 +4665,7 @@ function summarizeMarkdownPasteError(error: unknown): string {
   return singleLine.length <= 120 ? singleLine : `${singleLine.slice(0, 117)}...`
 }
 
-function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: string): MarkdownPasteResult {
+export function pasteMarkdownAsPlainText(editor: Editor, markdown: string, error?: string): MarkdownPasteResult {
   try {
     if (editor.view.pasteText(markdown)) return { success: true, outcome: 'plainText', error }
   } catch {
@@ -5301,6 +5610,56 @@ function semanticTableText(table: any): string {
   })
   return rows.join('\n')
 }
+/**
+ * 把序列化 HTML 转回 Markdown，全程不实例化第二个编辑器。
+ * 路径：generateJSON（与 createEditor 的 parse 相同的 HTML→JSON 通道，
+ * 但仅构建 schema，无视图、无全局监听）→ 主编辑器的 markdown 扩展
+ * serialize → 字面标记保护（== 高亮）。之前的临时 createEditor 会注册
+ * 全局事件监听并在销毁时触发主编辑器选区重算，大选区导出（复制、
+ * 恢复快照）时表现为选区高亮白闪与导出卡顿。
+ */
+function markdownFromSerializedHTML(editor: Editor, html: string): string {
+  const json = generateJSON(html, editor.extensionManager.extensions) as JSONContent
+  // 主编辑器的 markdown 序列化由扩展管理器提供；直接走同一入口。
+  const manager = (editor as unknown as {
+    markdown?: { serialize: (doc: JSONContent) => string }
+  }).markdown
+  if (manager?.serialize) {
+    // ==高亮 字面保护：无编辑器实例时等价复刻 serializeWithLiteralMarkers
+    // 的核心（占位转义）——只有非 code/atom 节点里的字面 ==（如 C(a)==b）
+    // 需要转义；真正的 highlight mark 序列化本就输出 ==…==，不在此列。
+    const replacements = new Map<string, string>()
+    const prefix = `\u0000markleaf-equals-${crypto.randomUUID()}-`
+    const schema = editor.schema
+    const protect = (node: JSONContent): JSONContent => {
+      if (node.type === 'text' && node.text?.includes('=') && !isCodeText(node, schema)) {
+        return { ...node, text: node.text.replace(/={2,}/g, (literal: string) => {
+          const placeholder = `${prefix}${replacements.size}\u0000`
+          replacements.set(placeholder, literal.replace(/=/g, '\\='))
+          return placeholder
+        }) }
+      }
+      return node.content ? { ...node, content: node.content.map(protect) } : node
+    }
+    const protectedJson = protect(json)
+    let markdown = manager.serialize(protectedJson)
+    for (const [placeholder, literal] of replacements) markdown = markdown.replaceAll(placeholder, literal)
+    return markdown
+  }
+  // 兜底：管理器不可用时回退纯文本（历史上不会走到）。
+  return jsonToPlainText(json)
+}
+
+function isCodeText(node: { type?: string; content?: { text?: string }[] }, schema: Editor['schema']): boolean {
+  const nodeSpec = schema.nodes[node.type ?? '']?.spec
+  return Boolean(nodeSpec?.code || nodeSpec?.atom)
+}
+
+function jsonToPlainText(node: { type?: string; text?: string; content?: { type?: string; text?: string; content?: unknown[] }[] }): string {
+  if (node.type === 'text') return node.text ?? ''
+  return (node.content ?? []).map(child => jsonToPlainText(child as { type?: string; text?: string; content?: { type?: string; text?: string; content?: { type?: string; text?: string; content?: unknown[] }[] }[] })).join(node.type === 'paragraph' || node.type === 'heading' ? '\n\n' : '')
+}
+
 export function exportEditorSelection(editor: Editor): SelectionExport {
   // 公式/图表浮层源码框是普通 DOM 文本，没有 ProseMirror 选区：
   // 导出只取用户在源码框里真正选中的片段，且不改变焦点或选区。
@@ -5324,11 +5683,13 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
     }
     applyTableLayoutDOM(container, true, isTableLayoutEnabled(editor.view))
 
+    // 用主编辑器的 markdown 管线序列化克隆 JSON，不实例化临时编辑器：
+    // 临时 createEditor 会注册全局 selectionchange/mouseup 监听与新的
+    // ::highlight 名称，销毁时触发主编辑器选区高亮重算——大段选区导出
+    // （复制/恢复快照）时表现为高亮白闪、导出慢甚至 GC 阻塞。
     const temporary = document.createElement('div')
     temporary.append(table.cloneNode(true))
-    const selectionEditor = createEditor(temporary, container.innerHTML)
-    const markdown = getMarkdown(selectionEditor)
-    selectionEditor.destroy()
+    const markdown = markdownFromSerializedHTML(editor, container.innerHTML)
 
     const text = Array.from(table.querySelectorAll('tr')).map((row) => (
       Array.from(row.querySelectorAll('th,td'))
@@ -5341,10 +5702,7 @@ export function exportEditorSelection(editor: Editor): SelectionExport {
   const slice = editor.state.doc.slice(selection.from, selection.to)
   const container = document.createElement('div')
   container.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(slice.content))
-  const temporary = document.createElement('div')
-  const selectionEditor = createEditor(temporary, container.innerHTML)
-  const markdown = getMarkdown(selectionEditor)
-  selectionEditor.destroy()
+  const markdown = markdownFromSerializedHTML(editor, container.innerHTML)
   return {
     text: semanticSelectionText(slice.content, 0, slice.content.size, '\n'),
     markdown,
@@ -5536,26 +5894,44 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   }
 }
 
+// 文档级统计只随文档内容变化（WeakMap 以不可变 doc 对象为键，事务后自动
+// 失效并被 GC）；选区变化（拖拽/移动光标，每帧多次）只计算增量字段，
+// 避免大文档在拖拽选区时全量遍历造成卡顿。
+const documentStatsCache = new WeakMap<object, {
+  documentText: string
+  characterCount: number
+  stats: ReturnType<typeof getDocumentStatistics>
+}>()
+
 export function getEditorStatus(editor: Editor): EditorStatus {
   const selection = editor.state.selection
-  const documentText = textBetweenWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
+  const cached = documentStatsCache.get(editor.state.doc)
+  const documentText = cached?.documentText
+    ?? textWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
   const selectedText = selection.empty
     ? ''
-    : textBetweenWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
-  const textBeforeCursor = textBetweenWithoutFrontMatter(editor.state.doc, 0, selection.from)
+    : textWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
+  const textBeforeCursor = textWithoutFrontMatter(editor.state.doc, 0, selection.from)
   const lines = textBeforeCursor.split('\n')
 
+  const characterCount = cached?.characterCount ?? countVisibleCharacters(documentText)
+  let docStats = cached?.stats
+  if (!docStats) {
+    docStats = getDocumentStatistics(editor, documentText)
+    documentStatsCache.set(editor.state.doc, { documentText, characterCount, stats: docStats })
+  }
+
   return {
-    characterCount: countVisibleCharacters(documentText),
+    characterCount,
     selectedCharacterCount: countVisibleCharacters(selectedText),
-    ...getDocumentStatistics(editor, documentText),
+    ...docStats,
     blockType: getCurrentBlockType(editor),
     line: lines.length,
     column: Array.from(lines.at(-1) ?? '').length + 1,
   }
 }
 
-function textBetweenWithoutFrontMatter(doc: any, from: number, to: number): string {
+function textWithoutFrontMatter(doc: any, from: number, to: number): string {
   const parts: string[] = []
   doc.forEach((node: any, offset: number) => {
     if (node.type.name === 'frontMatter') return
@@ -5749,6 +6125,8 @@ export function executeEditorCommand(
     },
     setParagraph: () => chain.setParagraph().run(),
     clearFormat: () => clearParagraphFormat(editor),
+    // Android 宿主工具条：拷贝已由宿主经 exportSelection 写入系统剪贴板，这里只删选区
+    cut: () => { editor.commands.deleteSelection(); return true },
     insertLineBefore: () => insertLineAroundBlock(editor, 'before'),
     insertLineAfter: () => insertLineAroundBlock(editor, 'after'),
     duplicateParagraph: () => duplicateCurrentParagraph(editor),

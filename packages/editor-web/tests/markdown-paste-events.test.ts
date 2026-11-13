@@ -212,7 +212,9 @@ it('keeps native pasteText Markdown punctuation literal in visual mode', async (
 
   harness.send('command', { command: 'pasteText', text: '# plain text' }, 'plain-text')
 
-  expect(harness.messages.find((message) => message.requestId === 'plain-text')?.payload).toEqual({ success: true })
+  // 粘贴为纯文本现在回传 outcome（对齐宿主 commandResult 契约），插入语义不变：字面文本
+  expect(harness.messages.find((message) => message.requestId === 'plain-text')?.payload)
+    .toEqual({ success: true, outcome: 'plainText' })
   expect(harness.editorDom().querySelector('h1')).toBeNull()
   expect(harness.editorDom().querySelector('p')?.textContent).toBe('# plain text')
 })

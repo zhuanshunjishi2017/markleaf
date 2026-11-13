@@ -1,6 +1,9 @@
 import type { AllocationResult, GapSlot, ParagraphSnapshot } from './layout-model'
 import { graphemeOffsets } from './opportunities'
 
+/** Visual gap used by the legacy CJK/Latin auto-spacing decoration. */
+export const cjkAutoSpacingEm = .35
+
 /** Conservative experimental rule set; changing it invalidates measured plans. */
 export const typographySpacingRules = Object.freeze({
   version: 7,
@@ -33,11 +36,20 @@ export function* prepareGapSlots(snapshot: ParagraphSnapshot, spaceWidths: Reado
     if (!kind) continue
     const rule = typographySpacingRules[kind]
     const suppressAutoGap = kind === 'mixed' && snapshot.cjkAutoSpacing === false
+    // A managed paragraph hides the legacy decoration. When the preference is
+    // enabled, carry its visual baseline into the measured plan instead of
+    // silently falling back to the adaptive-only 0.125em gap.
+    const naturalEm = kind === 'mixed' && snapshot.cjkAutoSpacing === true
+      ? cjkAutoSpacingEm
+      : rule.naturalEm
+    const preferredMaxEm = kind === 'mixed' && snapshot.cjkAutoSpacing === true
+      ? Math.max(rule.preferredMaxEm, cjkAutoSpacingEm)
+      : rule.preferredMaxEm
     const owner = han(text) ? { from, to } : { from: offsets[i - 1]!, to: from }
     result.push({ id: `${kind}:${from}`, at: from, kind, owner, edge: han(text) ? 'start' : 'end',
-      natural: suppressAutoGap ? 0 : rule.naturalEm * size, min: suppressAutoGap ? 0 : rule.minEm * size,
+      natural: suppressAutoGap ? 0 : naturalEm * size, min: suppressAutoGap ? 0 : rule.minEm * size,
       max: rule.maxEm * size, weight: rule.weight,
-      preferredMax: rule.preferredMaxEm * size,
+      preferredMax: preferredMaxEm * size,
       leftStyleKey: leftRun?.styleKey ?? '', rightStyleKey: rightRun?.styleKey ?? '' })
   }
   return result

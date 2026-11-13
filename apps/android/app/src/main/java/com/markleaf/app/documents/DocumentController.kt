@@ -33,6 +33,7 @@ class DocumentController(
         data object Saved : SaveResult
         data object NotDirty : SaveResult
         data object Conflict : SaveResult
+        data object ReadOnly : SaveResult
         data object PermissionLost : SaveResult
         data class Failed(val message: String) : SaveResult
     }
@@ -79,7 +80,13 @@ class DocumentController(
      * 打开文档：读字节 → 探测编码 → 解码 → 新 documentId → loadDocument。
      * 会话状态切换到新 id（revision 从 0 重新计——Windows 端 stale bug 的修正路径）。
      */
-    suspend fun open(ref: DocumentRef.Saf): OpenResult = try {
+    private var currentReadOnly = false
+
+    /** 当前文档是否只读（只读打开菜单的勾选与置灰依据）。 */
+    val activeReadOnly: Boolean
+        get() = currentReadOnly
+
+    suspend fun open(ref: DocumentRef.Saf, readOnly: Boolean = false): OpenResult = try {
         val documentBytes = source.read(ref)
         val markdown = DocumentCodings.decode(documentBytes.bytes, documentBytes.encoding)
         val documentId = "doc-" + UUID.randomUUID().toString().take(8)
@@ -90,7 +97,7 @@ class DocumentController(
                 revision = 0,
                 payload = HostMessage.LoadDocument.LoadDocumentPayload(
                     markdown = markdown,
-                    readOnly = false,
+                    readOnly = readOnly,
                     documentPath = ref.uri,
                 ),
             ),
@@ -98,6 +105,7 @@ class DocumentController(
         currentRef = ref
         baselineBytes = documentBytes.bytes
         currentEncoding = documentBytes.encoding
+        currentReadOnly = readOnly
         currentNewline = if (markdown.contains("\r\n")) "CRLF" else "LF"
         currentDocumentId = documentId
         OpenResult.Loaded(documentId, documentBytes.encoding, ref.uri.substringAfterLast('/'))
@@ -105,6 +113,27 @@ class DocumentController(
         OpenResult.PermissionLost
     } catch (exception: Exception) {
         OpenResult.Failed(exception.message ?: exception.javaClass.simpleName)
+    }
+
+    /** 新建文档：清引用与探测状态，会话沿用当前 documentId，内容由宿主下发。 */
+    fun startNewDocument() {
+        currentRef = null
+        baselineBytes = null
+        currentEncoding = null
+        currentReadOnly = false
+    }
+
+    /** 另存为/重命名后收养新引用（基线清空：下次保存全量写入新文件）。
+     *  另存为产生的是可写副本，只读会话态一并解除。 */
+    fun adoptRef(ref: DocumentRef.Saf) {
+        currentRef = ref
+        baselineBytes = null
+        currentReadOnly = false
+    }
+
+    /** 会话只读态切换（视图菜单只读模式开关调用），与打开时的只读态同源。 */
+    fun setReadOnly(value: Boolean) {
+        currentReadOnly = value
     }
 
     /**
@@ -119,6 +148,9 @@ class DocumentController(
     ): SaveResult {
         if (!dirty) {
             return SaveResult.NotDirty
+        }
+        if (currentReadOnly) {
+            return SaveResult.ReadOnly
         }
         val ref = currentRef ?: return SaveResult.Failed("无活动文档")
         if (externalChanged) {
@@ -156,14 +188,14 @@ class DocumentController(
         }
     }
 
-    /** 标签关闭/应用切后台时写恢复快照（markdown 由调用方从最新 snapshot 取）。 */
+    /** 标签关闭/应用切后台时写恢复快照（markdown 由调用方从最新 snapshot 取）。
+     *  未命名文档（无 SAF 引用）也进恢复链路：恢复时直接载入内容。 */
     fun writeRecovery(store: RecoveryStore, markdown: String, dirty: Boolean) {
-        val ref = currentRef ?: return
         if (!dirty) {
             store.discard(currentDocumentId)
             return
         }
-        store.writePending(currentDocumentId, ref, markdown)
+        store.writePending(currentDocumentId, currentRef, markdown)
     }
 
     fun discardRecovery(store: RecoveryStore) {

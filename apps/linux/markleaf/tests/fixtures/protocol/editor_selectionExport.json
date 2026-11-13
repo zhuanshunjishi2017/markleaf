@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "html": "<p>选区</p>",
+  "markdown": "选区"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "selectionExport"
+}

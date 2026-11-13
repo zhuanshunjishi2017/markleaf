@@ -48,6 +48,7 @@ export type EditorMessage = {
     | 'footnoteReferenceMissing'
     | 'codeFormatRequested'
     | 'codeFormatResult'
+    | 'debugLog'
     | 'error'
   requestId?: string
   documentId: string
@@ -61,7 +62,7 @@ declare global {
     __markleafTypographyTrace?: boolean
     chrome?: {
       webview?: {
-        hostPlatform?: 'macOS' | 'Windows' | 'Android'
+        hostPlatform?: 'macOS' | 'Windows' | 'Android' | 'Linux'
         postMessage(message: EditorMessage): void
         postMessageWithAdditionalObjects?(message: EditorMessage, additionalObjects: object[]): void
         addEventListener(

@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { createEditor, getMarkdown } from '../src/index'
 import { applyTypographyPlan, getTypographyProjectionRevision, registerTypographySnapshots } from '../src/typography/projection'
 import { extractProjectionSnapshots } from '../src/typography/projection-snapshot'
@@ -98,6 +98,35 @@ it('appliesOnlyVerifiedCurrentPlansWithoutChangingSource', () => {
   editor.commands.insertContent('x')
   expect(applyTypographyPlan(editor, [plan], revision)).toBe(false)
   expect(registerTypographySnapshots(editor, true, snapshots, [plan])).toBe(false)
+})
+
+it('resynchronizesTheFocusedCaretAfterProjectionDecorationsReplaceTheTextDOM', () => {
+  const mount = document.createElement('div'); document.body.append(mount)
+  const editor = createEditor(mount, '中文English中文', false)
+  cleanup.push(() => editor.destroy())
+  editor.commands.setTextSelection(editor.state.doc.content.size - 2)
+  editor.view.focus()
+  expect(editor.view.hasFocus()).toBe(true)
+  const focus = vi.spyOn(editor.view, 'focus')
+  const revision = getTypographyProjectionRevision(editor)
+  const entries = extractProjectionSnapshots(editor.view, revision, 0)
+  const entry = entries[0]!
+  if (!entry.eligible) throw Error('missing snapshot')
+  const snapshot = entry.snapshot
+  const plan: MeasuredPlan = {
+    snapshotId: snapshot.id,
+    environmentKey: snapshot.environmentKey,
+    revision,
+    verified: true,
+    lines: [{ from: 0, to: snapshot.text.length, contentTo: snapshot.text.length,
+      key: 'caret', targetWidth: 100, naturalWidth: 90, slots: [], gaps: [], cost: 0,
+      breakReason: 'paragraph-end' }],
+  }
+  registerTypographySnapshots(editor, true, entries)
+  applyTypographyPlan(editor, [plan], revision)
+  expect(focus).toHaveBeenCalled()
+  expect(editor.state.selection.empty).toBe(true)
+  expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 2)
 })
 
 it('rendersAllocatedSlotsExactlyOnceWithoutChangingSourceOrEnvironment', () => {

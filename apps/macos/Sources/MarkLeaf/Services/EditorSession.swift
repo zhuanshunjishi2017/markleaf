@@ -445,6 +445,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case "ready":
             AppLog.info("编辑器就绪 (protocol v1)")
             isReady = true
+            #if DEBUG
+            startMathDisplayDiagnostics()
+            #endif
             // applyStyles 经 postMessage 异步派发；揭示必须等前端确认 CSS 已落地。
             isWaitingForStylesAcknowledgement = true
             applyStyles()
@@ -719,6 +722,13 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
 
         case "pasteImage":
             pasteFromClipboard()
+
+        #if DEBUG
+        case "debugLog":
+            if let text = payload?["text"] as? String {
+                AppLog.info("FE \(text)")
+            }
+        #endif
 
         case "zoomWheel":
             handleZoomWheel(
@@ -1585,6 +1595,9 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var systemThemeObserver: NSObjectProtocol?
 
     /// 注册系统外观变化监听（浅色/深色切换时重新解析默认主题）。
+    /// 主路径是编辑器视图的 viewDidChangeEffectiveAppearance（外观解析后
+    /// 精确触发）；此分布式通知仅作兜底——它送达早于外观解析时采样到
+    /// 旧值，本次换肤等于重放旧主题，真正的刷新由视图回调补上。
     private func startFollowingSystemAppearance() {
         guard systemThemeObserver == nil else { return }
         systemThemeObserver = DistributedNotificationCenter.default().addObserver(
@@ -1592,6 +1605,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             object: nil, queue: .main) { [weak self] _ in
             self?.applyFollowSystemTheme()
         }
+    }
+
+    /// 编辑器宿主视图上报 effectiveAppearance 已解析变化（跟随系统时换肤）。
+    func systemEffectiveAppearanceDidChange() {
+        guard isFollowSystemTheme else { return }
+        applyFollowSystemTheme()
     }
 
     /// 跟随系统外观：重新解析默认主题并换肤（开关切换或系统外观变化时调用）。
@@ -1657,7 +1676,12 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 NSApp.appearance = nil
             }
             if let window = self.webView?.window {
-                window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                // 跟随系统时不钉住窗口外观：钉住会让 effectiveAppearance 不再
+                // 跟踪系统解析，编辑器视图的 viewDidChangeEffectiveAppearance
+                // （跟随模式的主换肤信号）在后续系统切换时不再触发。
+                window.appearance = self.isFollowSystemTheme
+                    ? nil
+                    : NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.backgroundColor = self.themeBackgroundColor ?? .windowBackgroundColor
                 window.isOpaque = true
             }
@@ -1685,8 +1709,54 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     /// 滚动条外观：autoHideScrollbars 关 → 常显滚动条（跟随主题明暗）；开 → 系统 overlay。
     func applyScrollbarAppearance(dark: Bool) {
         (webView?.superview as? EditorWebContainerView)?.applyThemeAppearance(
-            dark: dark)
+            dark: dark,
+            autoHide: SettingsService.shared.settings.autoHideScrollbars)
     }
+
+    #if DEBUG
+    /// 临时诊断（公式右键后渲染成空白框）：公式被选中或源码浮层打开期间，
+    /// 周期性把公式的 DOM/计算样式/::highlight 注册表状态写入 app 日志。
+    private var mathDiagnosticTimer: Timer?
+    func startMathDisplayDiagnostics() {
+        guard mathDiagnosticTimer == nil else { return }
+        var lastSignature = ""
+        mathDiagnosticTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            guard let self, let webView else { return }
+            let script = """
+            (() => {
+              const span = document.querySelector('.ProseMirror-selectednode.markleaf-math, .markleaf-math.ProseMirror-selectednode');
+              const anyMath = document.querySelector('.markleaf-document .markleaf-math');
+              const target = span ?? anyMath;
+              if (!target) return null;
+              const katex = target.querySelector('.katex');
+              const cs = getComputedStyle(target);
+              const hl = window.CSS && CSS.highlights ? CSS.highlights.get('markleaf-selection') : null;
+              let hlInfo = 'none';
+              if (hl) {
+                const ranges = [];
+                hl.forEach(r => ranges.push(JSON.stringify(r.toString().slice(0, 40))));
+                hlInfo = ranges.join(';;') || 'empty-instance';
+              }
+              const sel = document.getSelection();
+              return JSON.stringify({
+                selected: !!span,
+                htmlHead: target.innerHTML.replace(/\\s+/g, ' ').slice(0, 80),
+                color: cs.color,
+                fill: cs.webkitTextFillColor,
+                bg: cs.backgroundColor,
+                hl: hlInfo,
+                domSel: sel && sel.rangeCount > 0 && !sel.isCollapsed ? sel.toString().slice(0, 30) : 'collapsed',
+              });
+            })()
+            """
+            webView.evaluateJavaScript(script) { [weak self] result, _ in
+                guard let self, let value = result as? String, value != "null", value != lastSignature else { return }
+                lastSignature = value
+                AppLog.info("MATH-DIAG \(value)")
+            }
+        }
+    }
+    #endif
 
     func toggleSourceMode() { execute("toggleSourceMode") }
     var onFindResult: ((Int, Int) -> Void)?

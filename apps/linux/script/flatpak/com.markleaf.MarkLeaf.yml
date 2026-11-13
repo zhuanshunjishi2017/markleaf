@@ -1,0 +1,29 @@
+id: com.markleaf.MarkLeaf
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+command: markleaf
+finish-args:
+  # 工作区语义:打开文件夹作为工作区(--filesystem=home 与 VS Code Flatpak 同级取舍)
+  - --filesystem=home
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+modules:
+  - name: markleaf
+    buildsystem: simple
+    build-commands:
+      # Sdk 沙箱无 Rust 工具链:二进制由 CI 先构建(cargo build --release),
+      # 此处仅安装;editor 资源经 prepare_resources.sh 预装配进 sources 目录。
+      - install -Dm755 apps/linux/target/release/markleaf /app/bin/markleaf
+      - install -Dm644 apps/linux/markleaf/data/com.markleaf.MarkLeaf.desktop /app/share/applications/com.markleaf.MarkLeaf.desktop
+      - install -Dm644 apps/linux/markleaf/data/com.markleaf.MarkLeaf.svg /app/share/icons/hicolor/scalable/apps/com.markleaf.MarkLeaf.svg
+      - install -Dm644 apps/linux/markleaf/data/com.markleaf.MarkLeaf.appdata.xml /app/share/metainfo/com.markleaf.MarkLeaf.appdata.xml
+      # 编辑器资源(markleaf:// 与 markleaf-asset:// scheme 服务的数据源)
+      - mkdir -p /app/share/markleaf
+      - cp -R apps/linux/markleaf/resources/editor /app/share/markleaf/editor
+    sources:
+      - type: dir
+        path: ../../..

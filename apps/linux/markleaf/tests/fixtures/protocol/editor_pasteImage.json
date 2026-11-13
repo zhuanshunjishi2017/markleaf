@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "name": "clip.png",
+  "type": "image/png"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "pasteImage"
+}

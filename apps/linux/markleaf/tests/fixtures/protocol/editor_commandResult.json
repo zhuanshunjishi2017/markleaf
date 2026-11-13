@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "success": true
+ },
+ "protocolVersion": 1,
+ "requestId": "req-cmd-1",
+ "revision": 3,
+ "type": "commandResult"
+}

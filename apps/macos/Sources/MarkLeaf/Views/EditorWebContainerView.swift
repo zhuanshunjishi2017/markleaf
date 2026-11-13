@@ -210,6 +210,7 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     let webView: WKWebView
     private weak var session: EditorSession?
     private var didFinishLoadOnce = false
+    private var appearanceChangeDebounce: DispatchWorkItem?
     private var reloadCoverView: NSView?
     /// WebView 之下的主题色垫层。WKWebView 关闭 drawsBackground 后，内部
     /// scroll view 在局部重绘（如点击原子节点触发的同步失效）时会让未
@@ -227,8 +228,10 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
         } else {
             AppLog.error("EditorWeb 资源目录缺失")
         }
-        // 本地图片资源服务（assets.local → markleaf-asset://）
-        configuration.setURLSchemeHandler(AssetSchemeHandler(), forURLScheme: "markleaf-asset")
+        // 本地图片资源服务（assets.local → markleaf-asset://）；相对路径按当前文档目录解析
+        configuration.setURLSchemeHandler(AssetSchemeHandler(documentDirectory: { [weak session] in
+            session?.documentURL?.deletingLastPathComponent().path
+        }), forURLScheme: "markleaf-asset")
         configuration.userContentController.add(session, name: "markleaf")
 
         // 开发期启用 Web 检查器（仅 Debug 构建）
@@ -326,16 +329,35 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     }
 
     /// 应用主题外观：color-scheme 让 WebKit 以深色绘制 overlay 滚动条/控件，
-    /// appearance 同步系统控件。WKWebView 无公开的内部 NSScrollView，无法用 legacy 滚动条。
-    func applyThemeAppearance(dark: Bool) {
+    /// appearance 同步系统控件。WKWebView 无公开的内部 NSScrollView，
+    /// 通过视图树找到它并强制恢复 overlay/autohide，避免系统外观切换后
+    /// 回退为宽大的 legacy 滚动条。
+    func applyThemeAppearance(dark: Bool, autoHide: Bool = true) {
+        let themedAppearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Keep light mode explicit. Inheriting through nil can lag one
         // appearance-propagation pass behind the parent window during a
         // dark-to-light switch, leaving WebKit controls on the old palette.
-        webView.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        webView.appearance = themedAppearance
+        // WKWebView keeps its overlay scrollers in an internal NSScrollView.
+        // Updating only the web view appearance leaves the old dark knob/track
+        // cached when switching back to light mode, so invalidate both levels.
+        configureWebKitScrollView(
+            appearance: themedAppearance,
+            autoHide: autoHide
+        )
         let scheme = dark ? "dark" : "light"
-        webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(scheme)'") { _, error in
+        webView.evaluateJavaScript("document.documentElement.style.colorScheme = '\(scheme)'") { [weak self] _, error in
             if let error {
                 AppLog.warning("color-scheme 注入失败: \(error.localizedDescription)")
+            }
+            // The CSS color-scheme update can trigger a later WebKit repaint;
+            // invalidate once more after that transaction has completed.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.configureWebKitScrollView(
+                    appearance: themedAppearance,
+                    autoHide: autoHide
+                )
             }
         }
         // 对齐 Windows 1.1.3：页面背景与宿主容器使用主题 --bg-primary，减少加载期明暗跳变。
@@ -351,6 +373,40 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             reloadCoverView?.wantsLayer = true
             reloadCoverView?.layer?.backgroundColor = background.cgColor
         }
+    }
+
+    /// WKWebView's AppKit scroll view is private, so locate it through the
+    /// normal view tree instead of relying on a platform-specific property.
+    private func webKitScrollView() -> NSScrollView? {
+        func find(in view: NSView) -> NSScrollView? {
+            if let scrollView = view as? NSScrollView { return scrollView }
+            for child in view.subviews {
+                if let scrollView = find(in: child) { return scrollView }
+            }
+            return nil
+        }
+        return find(in: webView)
+    }
+
+    private func configureWebKitScrollView(
+        appearance: NSAppearance?,
+        autoHide: Bool
+    ) {
+        guard let scrollView = webKitScrollView() else { return }
+        scrollView.appearance = appearance
+        // WebKit's internal scroll view can revert to legacy scrollers when
+        // the system appearance changes. Keep the editor on the same compact
+        // overlay behavior as the rest of the app and let AppKit handle the
+        // fade/visibility lifecycle.
+        scrollView.scrollerStyle = .overlay
+        scrollView.autohidesScrollers = autoHide
+        scrollView.verticalScroller?.appearance = appearance
+        scrollView.horizontalScroller?.appearance = appearance
+        scrollView.needsLayout = true
+        scrollView.layoutSubtreeIfNeeded()
+        scrollView.needsDisplay = true
+        scrollView.verticalScroller?.needsDisplay = true
+        scrollView.horizontalScroller?.needsDisplay = true
     }
 
     /// 编辑器前端就绪后揭示 WebView。
@@ -526,6 +582,23 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
             return
         }
         decisionHandler(.allow)
+    }
+
+    /// 系统外观解析变化的权威回调。分布式通知（AppleInterfaceThemeChanged）
+    /// 送达时 NSApp.effectiveAppearance 常常尚未解析完新外观——采样到旧值
+    /// 会把编辑器"换肤"成同一个旧主题，表现为跟随系统深浅色更新不及时；
+    /// 且该分布式通知在新 macOS 上送达延迟明显。此回调在外观解析完成后
+    /// 精确触发（手动切换/自动模式的日落过渡/窗口覆盖均覆盖），是唯一
+    /// 可靠的采样时机。手动主题路径不会进入会话的跟随分支（守卫在前）。
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceChangeDebounce?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.session?.systemEffectiveAppearanceDidChange()
+        }
+        appearanceChangeDebounce = work
+        // 轻微合并窗口/应用两级的外观解析变化，避免同一过渡重复换肤。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 }
 

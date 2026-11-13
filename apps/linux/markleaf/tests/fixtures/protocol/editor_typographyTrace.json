@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "events": []
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "typographyTrace"
+}

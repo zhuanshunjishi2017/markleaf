@@ -1,0 +1,18 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "canStartFormatPainter": true,
+  "clientX": 100.0,
+  "clientY": 80.0,
+  "expandedSource": false,
+  "formatPainterArmed": false,
+  "menuHeight": 320.0,
+  "outsideDocument": false,
+  "readOnly": false,
+  "sourceMode": false,
+  "trigger": "rightClick"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "contextMenuRequested"
+}

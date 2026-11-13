@@ -39,6 +39,7 @@ import {
   replaceEditorDocument,
   pasteMarkdownText,
   pasteMarkdownTextWithResult,
+  pasteMarkdownAsPlainText,
   pasteClipboardContentWithResult,
   shouldParsePastedTextAsMarkdown,
   resetEditorViewport,
@@ -109,9 +110,15 @@ if (isAndroidHost) {
   applyViewportUnitShim()
   window.addEventListener('resize', applyViewportUnitShim)
 }
+// dev 分层隔离实验（?fakehost&nothemed）可关闭主题化托管选区；生产环境
+// __markleafTestFlags 未定义 → 维持 hostCapabilities 判定。
+const themedVisualSelectionEnabled = (() => {
+  const flags = (window as { __markleafTestFlags?: { themedSelection?: boolean } }).__markleafTestFlags
+  return flags?.themedSelection === false ? false : hostCapabilities.usesThemedVisualSelection
+})()
 document.documentElement.classList.toggle(
   'markleaf-themed-visual-selection',
-  hostCapabilities.usesThemedVisualSelection,
+  themedVisualSelectionEnabled,
 )
 
 let documentId: string = crypto.randomUUID()
@@ -165,9 +172,15 @@ let tableColumnResizePreferred = true
 const editorCreationOptions = {
   allowTableColumnResize: true,
   spellCheck: !isAndroidHost,
-  themedVisualSelection: hostCapabilities.usesThemedVisualSelection,
+  themedVisualSelection: themedVisualSelectionEnabled,
   handlePaste: handleVisualEditorPaste,
   sourceContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
+    // 与正文右键路径一致：原生菜单弹出会夺走 WebView 焦点触发 blur；
+    // 不打 preserve 标志时 blur 处理器会把公式 NodeSelection 塌缩成
+    // TextSelection——KaTeX NodeView 在 NSMenu 同步跟踪期间被重建，
+    // 渲染停留中间态，表现为公式变空白蓝框。菜单关闭由 endContextMenu
+    // → endContextMenuSession 清除该标志。
+    editor.view.dom.dataset.markleafPreserveSelection = '1'
     sendEditorState()
     send('contextMenuRequested', { clientX, clientY, menuHeight: 0, readOnly, sourceMode: false, expandedSource: true,
       menuSessionId: beginContextMenuSession(),
@@ -175,6 +188,11 @@ const editorCreationOptions = {
   },
 }
 let editor = createEditor(editorMount, '', false, editorCreationOptions)
+// dev fakehost 页面暴露编辑器实例，供隔离实验检查文档与选区状态。
+if ((window as { __markleafTestFlags?: unknown }).__markleafTestFlags) {
+  ;(window as { view?: unknown }).view = editor.view
+  ;(window as { editor?: unknown }).editor = editor
+}
 setCodeBlockControlHandlers({
   editLanguage: (position, language) => send('codeBlockLanguageRequested', { position, language }),
   copyCode: text => send('copyCodeBlockRequested', { text }),
@@ -718,12 +736,41 @@ function sendCommandState(): void {
   send('commandStateChanged', { ...state, sourceMode, readOnly })
 }
 
+function selectionRectForToolbar(
+  ed: { state: { selection: { empty: boolean; from: number; to: number; head: number } }; view: { coordsAtPos(pos: number): { left: number; right: number; top: number; bottom: number } } },
+): { x: number; y: number; w: number; h: number } | null {
+  // 可视化模式的选区矩形（WebView 视口 CSS 坐标）：Android 宿主用它定位自绘
+  // 选择工具条，随拖动手柄实时跟随。空选区返回 null（工具条隐藏）。
+  if (sourceMode) return null
+  const selection = ed.state.selection
+  try {
+    if (selection.empty) {
+      // 空选区（caret）：双击菜单需要光标位置兜底（iOS caret 菜单对等）
+      const caret = ed.view.coordsAtPos(selection.head)
+      return { x: caret.left, y: caret.top, w: 0, h: caret.bottom - caret.top }
+    }
+    const start = ed.view.coordsAtPos(selection.from)
+    const end = ed.view.coordsAtPos(selection.to)
+    const x = Math.min(start.left, end.left)
+    const y = Math.min(start.top, end.top)
+    const right = Math.max(start.right, end.right)
+    const bottom = Math.max(start.bottom, end.bottom)
+    return { x, y, w: Math.max(4, right - x), h: Math.max(8, bottom - y) }
+  } catch {
+    return null
+  }
+}
+
 function sendEditorStatus(): void {
   if (sourceEditor) {
     send('editorStatusChanged', sourceEditor.getStatus())
     return
   }
-  send('editorStatusChanged', getEditorStatus(editor))
+  send('editorStatusChanged', {
+    ...getEditorStatus(editor),
+    selectionRect: selectionRectForToolbar(editor),
+    selectionFromGesture: lastSelectionGesture === 'longpress' || lastSelectionGesture === 'doubletap',
+  })
 }
 
 function sendEditorState(): void {
@@ -742,6 +789,11 @@ function sendDirtyState(force = false): void {
 const updateFormatPainterCursor = () => interactions.update()
 
 function bindEditorEvents(targetEditor: typeof editor): void {
+  // dev fakehost 页面暴露编辑器实例，供隔离实验检查文档与选区状态。
+  if ((window as { __markleafTestFlags?: unknown }).__markleafTestFlags) {
+    ;(window as { view?: unknown }).view = targetEditor.view
+    ;(window as { editor?: unknown }).editor = targetEditor
+  }
   targetEditor.on('update', ({ transaction }) => {
     // 仅装饰/元数据事务（如块手柄高亮）不改变文档，跳过脏标记与大纲刷新。
     if (!transaction.docChanged) {
@@ -1236,6 +1288,16 @@ function syncThemeModeClass(): void {
   document.body.classList.toggle('markleaf-theme-dark', isDarkTheme())
 }
 
+function syncThemeSurface(): void {
+  const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim()
+  if (!background) return
+  const dark = isDarkTheme()
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+  document.body.style.backgroundColor = background
+  editorMount.style.backgroundColor = background
+  sourceMount.style.backgroundColor = background
+}
+
 let formatMenuHideTimer = 0
 
 function showFormatMenu(
@@ -1287,8 +1349,65 @@ function endContextMenuSession(restoreSelection = true): void {
   activeMenuSessionId = null
 }
 
-editorMount.addEventListener('contextmenu', (event) => {
+// 最近一次选择手势来源：工具条只在长按/双击产生的选择上显示，
+// 单点（公式/表格节点选中、caret 放置）不弹。
+let lastSelectionGesture: 'none' | 'tap' | 'longpress' | 'doubletap' = 'none'
+
+editorMount.addEventListener('pointerdown', () => {
+  lastSelectionGesture = 'tap'
+})
+
+// Android 触屏：双击 = 选词 + 上下文菜单（对齐 iOS 双击选词与 iPad 指针菜单的
+// 复合语义）。preventDefault 抑制 Chromium 原生选词，改用编辑器主题化选区。
+editorMount.addEventListener('dblclick', (event) => {
+  if (!isAndroidHost) {
+    return
+  }
+  lastSelectionGesture = 'doubletap'
   event.preventDefault()
+  const resolved = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  if (!resolved) {
+    return
+  }
+  selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+  editor.commands.focus()
+  contextMenuSelection = editor.state.selection.toJSON()
+  contextMenuCommandCommitted = false
+  editor.view.dom.dataset.markleafPreserveSelection = '1'
+  sendEditorState()
+  send('contextMenuRequested', {
+    menuSessionId: beginContextMenuSession(),
+    clientX: event.clientX,
+    clientY: event.clientY,
+    menuHeight: 0,
+    canStartFormatPainter: interactions.state().canStartFormatPainter,
+    formatPainterArmed: !sourceMode && interactions.state().formatPainterArmed,
+    readOnly,
+  })
+})
+
+editorMount.addEventListener('contextmenu', (event) => {
+  // Android 触屏：保留 Chromium 原生行为——长按/双击选择文字时由系统弹出
+  // 原生选择工具条（ActionMode）。preventDefault 会抑制该工具条，故提前返回，
+  // 也不做选区准备流（长按=纯选择，对齐 iOS 文本交互惯例）。长按手势来源
+  // 在此记录，供工具条可见性判断。
+  if (isAndroidHost) {
+    lastSelectionGesture = 'longpress'
+    // 原子块（公式/mermaid）：长按接管为节点选区。preventDefault 阻止
+    // Chromium 在 SVG/KaTeX 文本上的原生选字——该 DOM 选区映射不回
+    // ProseMirror，会把光标重置到文档起点并跳滚到顶部。
+    const atomTarget = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('.markleaf-math, .markleaf-mermaid')
+      : null
+    if (atomTarget && editorMount.contains(atomTarget)) {
+      event.preventDefault()
+      selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+      // 不调用 focus()：会拉起输入法压缩窗口，把工具条顶走；
+      // 工具条命令经桥接执行，无需 DOM 焦点
+      sendEditorState()
+    }
+    return
+  }
   const documentBounds = editor.view.dom.getBoundingClientRect()
   const outsideDocument = event.clientX < documentBounds.left
     || event.clientX > documentBounds.right
@@ -1316,13 +1435,18 @@ editorMount.addEventListener('contextmenu', (event) => {
     && resolved.pos >= previousSelection.from
     && resolved.pos <= previousSelection.to,
   )
-  if (shouldPreserveSelection && previousSelection) {
-    restoreContextSelection(previousSelection)
-  } else {
-    selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+  // 组字期间右键：选区准备流（setTextSelection/focus 的 dispatch）会与
+  // WebKit 的 marked text 提交竞争，把拼音串重复写进正文。此时不动选区，
+  // 菜单按当前 PM 选区弹出。
+  if (!editor.view.composing) {
+    if (shouldPreserveSelection && previousSelection) {
+      restoreContextSelection(previousSelection)
+    } else {
+      selectEditorContextAt(editor, { left: event.clientX, top: event.clientY })
+    }
+    selectionBeforeContextMenu = null
+    editor.commands.focus()
   }
-  selectionBeforeContextMenu = null
-  editor.commands.focus()
   contextMenuSelection = editor.state.selection.toJSON()
   contextMenuCommandCommitted = false
   // 原生菜单弹出会夺走 WebView 焦点触发 blur；标记期间保留选区，
@@ -1347,7 +1471,11 @@ editorMount.addEventListener('contextmenu', (event) => {
   })
 })
 
+
 sourceMount.addEventListener('contextmenu', (event) => {
+  if (isAndroidHost) {
+    return
+  }
   event.preventDefault()
   sourceEditor?.focus()
   sendEditorState()
@@ -1408,6 +1536,7 @@ async function handleMessage(value: unknown): Promise<void> {
   // 此时 applyStyles/setAutoHideScrollbar 等文档无关的偏好推送必须放行。
     if (message.type !== 'loadDocument' && message.type !== 'setDocumentType' && message.type !== 'applyStyles' && message.type !== 'localizeFindBar' && message.type !== 'refreshOutline' && message.type !== 'setCodeFormatterSettings'
       && documentLoaded && message.documentId !== documentId) {
+      console.warn('[hostmsg] dropped: documentId mismatch, msg:', message.documentId, 'front:', documentId)
       return
   }
 
@@ -1446,12 +1575,14 @@ async function handleMessage(value: unknown): Promise<void> {
       }
       applyMarkleafStyle(typeof payload?.activeStyle === 'string' ? payload.activeStyle : 'serif')
       syncThemeModeClass()
+      syncThemeSurface()
       window.__markleafClearStartupBackground?.()
       send('stylesApplied')
       break
     }
     case 'loadDocument': {
-      interactions.cancel()
+      try {
+        interactions.cancel()
       updateFormatPainterCursor()
       const payload = message.payload as {
         markdown?: unknown
@@ -1531,6 +1662,7 @@ async function handleMessage(value: unknown): Promise<void> {
       savedMarkdown = typeof payload.savedMarkdown === 'string' ? payload.savedMarkdown
         : payload.initialDirty === true ? null : getActiveMarkdown()
       send('documentLoaded', undefined, message.requestId)
+      console.log('[loadDocument] done')
       if (payload.initialDirty === true) {
         reportedContentDirty = true
         send('dirtyChanged', { dirty: true })
@@ -1548,6 +1680,9 @@ async function handleMessage(value: unknown): Promise<void> {
       sendEditorState()
       sendOutlineSelectionFromCursor()
       break
+    } catch (error) {
+      console.error('[loadDocument] THREW:', error)
+    }
     }
     case 'restoreViewport': {
       if (!documentLoaded || !isRestoreViewportPayload(message.payload)) break
@@ -1993,7 +2128,15 @@ async function handleMessage(value: unknown): Promise<void> {
                     return sourceEditor?.gotoSourceHeading(headingText, Number.isFinite(approximate) ? approximate : undefined) ?? false
                   })()
                 : false
-          : payload.command === 'pasteMarkdown' && commandText !== undefined
+          : payload.command === 'pasteText' && commandText !== undefined
+            ? (() => {
+                // 粘贴为纯文本（对齐桌面 pastePlainText）：字面插入，不解析语法。
+                const result = pasteMarkdownAsPlainText(editor, commandText)
+                commandOutcome = result.outcome
+                commandError = result.error
+                return result.success
+              })()
+            : payload.command === 'pasteMarkdown' && commandText !== undefined
             ? (() => {
                 const result = pasteMarkdownTextWithResult(editor, commandText)
                 commandOutcome = result.outcome

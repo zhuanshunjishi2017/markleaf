@@ -324,6 +324,8 @@ sealed interface EditorMessage {
             val sourceMode: Boolean = false,
             val readOnly: Boolean = false,
             val actions: Map<String, ActionState> = emptyMap(),
+            val semanticContext: String? = null,
+            val hasSelection: Boolean = false,
         )
 
         @Serializable
@@ -348,6 +350,7 @@ sealed interface EditorMessage {
             val canStartFormatPainter: Boolean = false,
             val formatPainterArmed: Boolean = false,
             val readOnly: Boolean = false,
+            val trigger: String = "",
             val sourceMode: Boolean = false,
             val expandedSource: Boolean = false,
             val outsideDocument: Boolean = false,
@@ -596,6 +599,9 @@ private val editorJson = Json {
     ignoreUnknownKeys = true
     classDiscriminator = "type"
     encodeDefaults = true
+    // requestId 等可空字段缺省时不输出 null：前端 isHostMessage 只接受
+    // undefined 或 string，显式 null 会被静默拒收（协议一致性校验依赖此点）
+    explicitNulls = false
 }
 
 /** 解析宿主消息（测试与桥一致性校验用）。未知 type / 版本不符返回 null。 */
@@ -627,7 +633,9 @@ fun encodeEditorMessage(message: EditorMessage): String {
 }
 
 fun encodeHostMessage(message: HostMessage): String {
-    val json = hostJson.encodeToString(message)
+    // 必须带 encodeDefaults：markdown="" 等默认值字段不序列化会被前端
+    // 以 "loadDocument requires a markdown string" 拒收（新建文档场景）。
+    val json = editorJson.encodeToString(message)
     return injectProtocolVersion(json)
 }
 

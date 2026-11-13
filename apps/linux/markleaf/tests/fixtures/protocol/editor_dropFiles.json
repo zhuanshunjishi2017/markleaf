@@ -1,0 +1,15 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "files": [
+   {
+    "name": "a.png",
+    "size": 1024,
+    "type": "image/png"
+   }
+  ]
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "dropFiles"
+}

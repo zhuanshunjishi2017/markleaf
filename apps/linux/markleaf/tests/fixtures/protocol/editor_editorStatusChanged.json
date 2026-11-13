@@ -1,0 +1,14 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "characters": 210,
+  "column": 7,
+  "encoding": "UTF-8",
+  "line": 3,
+  "words": 42,
+  "zoom": 1.0
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "editorStatusChanged"
+}

@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "label": "1"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "footnoteDefinitionMissing"
+}

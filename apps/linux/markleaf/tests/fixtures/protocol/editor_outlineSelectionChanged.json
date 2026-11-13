@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "id": "h1"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "outlineSelectionChanged"
+}

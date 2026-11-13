@@ -78,29 +78,36 @@ describe('typography paragraph extraction', () => {
     expect(paragraphs.every(paragraph => paragraph.eligible)).toBe(true)
   })
 
-  it('marks unsupported blocks and inline atoms as fallbacks', () => {
+  it('marks unsupported blocks as fallbacks and splits image runs into image blocks', () => {
     const { editor } = setup('# Title\n\nbefore ![image](image.png) after')
+    // 图片混排行现在拆分为独立块（image 是块节点，与文本同段无效）：
+    // 段落内容不再含内联图片原子，排版可直接生效。
     const paragraphs = extractTypographyParagraphs(editor.state.doc)
 
     expect(paragraphs[0]).toMatchObject({
       eligible: false,
       fallbackReason: 'unsupported-block',
     })
-    expect(paragraphs[1]).toMatchObject({
+    expect(paragraphs.map(paragraph => paragraph.text)).toEqual(['Title', 'before ', ' after'])
+    expect(paragraphs[1]).toMatchObject({ eligible: true })
+    expect(paragraphs[2]).toMatchObject({ eligible: true })
+  })
+
+  it('marks paragraphs with inline atoms as fallbacks', () => {
+    const { editor } = setup('before $x$ after')
+    const paragraphs = extractTypographyParagraphs(editor.state.doc)
+
+    expect(paragraphs[0]).toMatchObject({
       eligible: false,
       fallbackReason: 'inline-atom',
     })
   })
 
-  it('keeps nested list paragraphs on native justified fallback', () => {
+  it('projects nested list paragraphs using their list content width', () => {
     const { editor } = setup('- nested list text\n\n- another item')
     const paragraphs = extractTypographyParagraphs(editor.state.doc)
-    const nested = paragraphs.filter(paragraph => (
-      paragraph.fallbackReason === 'unsupported-block'
-      && editor.state.doc.resolve(paragraph.from).depth > 1
-    ))
-
-    expect(nested).toHaveLength(2)
+    expect(paragraphs).toHaveLength(2)
+    expect(paragraphs.every(paragraph => paragraph.eligible)).toBe(true)
     setTypographyProjectionEnabled(editor, true, {
       availableWidth: 400,
       measure: value => ({
@@ -109,8 +116,8 @@ describe('typography paragraph extraction', () => {
         shrink: value.trim() === '' ? 2 : value.length,
       }),
     })
-    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-native')).toHaveLength(2)
-    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-planned')).toHaveLength(0)
+    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-planned')).toHaveLength(2)
+    expect(editor.view.dom.querySelectorAll('li > p.markleaf-typography-native')).toHaveLength(0)
   })
 })
 

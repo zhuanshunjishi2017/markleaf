@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -164,10 +164,20 @@ export function extractTypographyParagraphs(doc: PMNode): ExtractedTypographyPar
       return { nodeFrom, nodeTo, from, to, text, clusterOffsets, eligible, fallbackReason }
     }
 
-    // Phase 1A measures one top-level content width. Nested textblocks have a
-    // smaller measure, so keep them on native justified fallback until the
-    // measurement contract carries per-paragraph widths.
-    if (doc.resolve(position).depth > 1) {
+    // Lists keep a paragraph-local content width in the DOM, so they can use
+    // the same measured projection as top-level paragraphs. Other nested
+    // textblocks (tables, quotes and containers) still need their own measure
+    // contract and remain on native fallback for now.
+    const $position = doc.resolve(position)
+    let isListParagraph = false
+    for (let depth = 0; depth <= $position.depth; depth++) {
+      const ancestor = $position.node(depth)
+      if (ancestor.type.name === 'bulletList' || ancestor.type.name === 'orderedList') {
+        isListParagraph = true
+        break
+      }
+    }
+    if ($position.depth > 1 && !isListParagraph) {
       paragraphs.push(makeParagraph(position + 1, position + node.nodeSize - 1,
         node.textContent, false, 'unsupported-block'))
       return true
@@ -415,13 +425,30 @@ export function getTypographyProjectionRevision(editor: Editor): number {
   return typographyProjectionKey.getState(editor.state)?.revision ?? 0
 }
 
+/**
+ * Decoration-only projection transactions can rebuild the text DOM around the
+ * active caret. ProseMirror keeps the logical selection, but when the
+ * selection object itself did not change it may skip its normal DOM sync. If
+ * the editor was focused, explicitly resync the native caret after the
+ * projection transaction so typing never appears to jump to the old DOM
+ * endpoint. `focus()` uses ProseMirror's prevent-scroll path.
+ */
+function dispatchTypographyManaged(editor: Editor, transaction: Transaction): void {
+  const view = editor.view
+  const wasFocused = view.hasFocus()
+  view.dispatch(transaction)
+  if (wasFocused && !view.composing && !editor.isDestroyed && view.dom.isConnected) {
+    view.focus()
+  }
+}
+
 export function registerTypographySnapshots(editor: Editor, enabled: boolean, snapshots: readonly SnapshotResult[], plans: readonly MeasuredPlan[] = []): boolean {
   const revision = getTypographyProjectionRevision(editor)
   if (plans.some(p => !enabled || !p.verified || p.revision !== revision
     || !snapshots.some(e => e.eligible && e.snapshot.revision === revision && e.snapshot.id === p.snapshotId && e.snapshot.environmentKey === p.environmentKey))) return false
   // Register the environment and its plan in one transaction. Clearing the
   // displayed plan before asynchronous measurement exposes native wrapping.
-  editor.view.dispatch(editor.state.tr.setMeta('typography-managed', { enabled, snapshots, plans }).setMeta('addToHistory', false))
+  dispatchTypographyManaged(editor, editor.state.tr.setMeta('typography-managed', { enabled, snapshots, plans }).setMeta('addToHistory', false))
   return true
 }
 
@@ -429,6 +456,6 @@ export function applyTypographyPlan(editor: Editor, plans: readonly MeasuredPlan
   const state = typographyProjectionKey.getState(editor.state)
   if (!state?.enabled || state.revision !== revision || !state.snapshots || plans.some(p => !p.verified || p.revision !== revision
     || !state.snapshots!.some(e => e.eligible && e.snapshot.id === p.snapshotId && e.snapshot.environmentKey === p.environmentKey))) return false
-  editor.view.dispatch(editor.state.tr.setMeta('typography-managed', { enabled: true, snapshots: state.snapshots, plans }).setMeta('addToHistory', false))
+  dispatchTypographyManaged(editor, editor.state.tr.setMeta('typography-managed', { enabled: true, snapshots: state.snapshots, plans }).setMeta('addToHistory', false))
   return true
 }

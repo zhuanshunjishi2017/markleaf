@@ -1,6 +1,6 @@
 # 共享内核与产品边界
 
-`packages/editor-core` 统一提供 Markdown 渲染、编辑和组件交互，各产品装配公共 JavaScript/CSS 产物。无 DOM 的文档规则目前仅供 VS Code 使用；macOS 和 Windows 保留原生文件、编码、搜索与恢复实现。产品负责系统接口和控件呈现：AppKit、WinForms、VS Code 的窗口、菜单外观、液态玻璃等效果不进入渲染内核。
+`packages/editor-core` 统一提供 Markdown 渲染、编辑和组件交互，各产品装配公共 JavaScript/CSS 产物。无 DOM 的文档规则目前仅供 VS Code 使用；macOS、Windows 与 Linux 保留原生文件、编码、搜索与恢复实现。产品负责系统接口和控件呈现：AppKit、WinForms、VS Code 的窗口、菜单外观、液态玻璃等效果不进入渲染内核。
 
 ## 一次构建，多个宿主加载
 
@@ -8,15 +8,15 @@
 packages/editor-core
     └─ corepack pnpm build:kernel
        ├─ dist/renderer/               渲染、编辑、组件交互和共享 CSS
-       │   ├─ editor-web/kernel/       macOS WKWebView / Windows WebView2
+       │   ├─ editor-web/kernel/       macOS WKWebView / Windows WebView2 / Android WebView / Linux WebKitGTK
        │   └─ vscode-webview/kernel/   VS Code Webview
        └─ dist/document-kernel.cjs     无 DOM 的文档规则
             └─ VS Code Node.js（仅 VS Code）
 ```
 
-渲染入口供三个 WebView 使用；无 DOM 文档入口仅供 VS Code 扩展进程使用。macOS 和 Windows 保留原生的编码、文件读写、恢复和搜索实现。
+渲染入口供多个 WebView 宿主使用（macOS WKWebView、Windows WebView2、Android WebView、Linux WebKitGTK）；无 DOM 文档入口仅供 VS Code 扩展进程使用。桌面与 Linux 宿主保留原生的编码、文件读写、恢复和搜索实现。
 
-macOS 和 Windows 不装载 `document-kernel.cjs`，因此不引入 JavaScriptCore 文档运行时或 Jint。VS Code 使用 Node.js 加载该无 DOM 文档入口。
+macOS、Windows 与 Linux 不装载 `document-kernel.cjs`，因此不引入 JavaScriptCore 文档运行时或 Jint。VS Code 使用 Node.js 加载该无 DOM 文档入口。
 
 产品生产构建将 `@markleaf/editor-core` 标记为外部模块，再原样复制 `dist/renderer/`；仅 VS Code 扩展进程复制 `document-kernel.cjs`，macOS 和 Windows 不复制该文件。产品不重新打包内核源码，不直接持有 Tiptap、ProseMirror、CodeMirror、Mermaid、KaTeX 依赖。
 

@@ -1,0 +1,13 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "clientX": 10.5,
+  "clientY": 20.5,
+  "command": "toggleBold",
+  "text": "加粗"
+ },
+ "protocolVersion": 1,
+ "requestId": "req-cmd-1",
+ "revision": 3,
+ "type": "command"
+}

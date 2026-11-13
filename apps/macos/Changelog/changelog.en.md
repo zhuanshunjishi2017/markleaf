@@ -1,21 +1,43 @@
 # MarkLeaf Changelog
 
-## 1.7.9 — 2026-10-20
+## 1.7.9 — 2026-11-8
+
+### Changed
+
+- When dragging text to the editor's top or bottom edge, auto-scroll speed now changes progressively based on pointer distance from the edge, avoiding an abrupt jump from slow to fast.
+
+### Fixed
+
+- Fixed the theme not updating promptly after switching the system appearance while following the system light/dark setting.
+- Fixed macOS text drag selections showing different colors while dragging and after release because the native selection and editor highlight were painted together.
+- Improved selection cleanup and focus-restoration timing to reduce flicker and duplicate highlighting when a selection is released.
+
+## 1.7.8.5 — 2026-11-6
 
 ### New
 
 - Added “Adjust Table Column Widths” with manual column resizing, content-based fitting, and even column distribution.
-- Added “Adaptive Justification”, enabled by default, to optimize line breaks and spacing based on paragraph content and available width.
+- Added “Adaptive Justification” to optimize line breaks and spacing based on paragraph content and available width; disabled by default.
 
 ### Changed
 
 - “Changelog” now opens in the current window when multi-tab mode is enabled. When multi-tab mode is disabled, it continues to open in a separate window.
 - Math rendering assets now load on demand, reducing the script and stylesheet work required during editor startup.
+- `Tab` / `Shift+Tab` indentation in code blocks now supports multi-line selections: every covered line gains or loses one indent level at once.
 
 ### Fixed
 
+- Fixed deleting one image in a run of consecutive image lines wiping out the whole group with no way to undo.
+- Fixed Chinese IME composition leaving pinyin fragments in the document and mis-applying or losing the committed candidate text.
+- Fixed the formula rendering going blank briefly when right-clicking a formula.
+- Fixed incorrect selection highlighting in the formula source overlay.
 - Fixed some paragraphs continuously jumping and reflowing after scrolling, resizing the window, or changing the zoom level.
 - Fixed adaptive layout no longer being applied to some English paragraphs, continuous mixed Chinese and English text, and paragraphs containing soft line breaks after editing or pasting.
+- Fixed the caret not landing after the inserted indent when pressing `Tab` inside a code block in Visual mode.
+- Fixed editor scrollbars keeping stale knob and track colors after switching between light and dark system appearances.
+- Fixed editor scrollbars occasionally reverting to wide legacy scrollers after system appearance changes.
+- Fixed inserted local images failing to load.
+- Fixed QuickLook previews splitting a table when blank lines separated data rows, which dropped subsequent rows. Documents with CRLF line endings are handled as well.
 
 ## 1.7.8 — 2026-10-19
 
@@ -54,7 +76,6 @@
 - Fixed missing menu-bar check states, including view modes, paragraph styles, formatting toggles, and the no-tab state.
 - Fixed window-local state overwriting shared preferences when multiple windows saved settings concurrently.
 - Fixed related settings groups being unexpectedly retained or overwritten while clearing history, resetting preferences, or updating formatter settings.
-- Fixed delayed theme-state synchronization after the system appearance changed.
 - Fixed export-preview flashing when changing header settings.
 - Fixed print/export host lifecycle issues that could leave processes behind or destabilize previews.
 

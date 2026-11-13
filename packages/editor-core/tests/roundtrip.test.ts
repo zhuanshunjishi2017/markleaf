@@ -345,6 +345,24 @@ describe('visual Markdown shortcuts', () => {
     expect(findFootnoteDefinitionBody(editor, '1')).toBe('公式 x^2')
   })
 
+  it('closes an inline formula when its delimiter is committed during IME composition', async () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '前')
+    editors.push(editor)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+    typeVisualText(editor, '$q')
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    typeVisualText(editor, '$jie')
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(editor.state.doc.firstChild?.childCount).toBe(3)
+    expect(editor.state.doc.firstChild?.child(1).type.name).toBe('mathInline')
+    expect(getMarkdown(editor)).toBe('前$q$jie')
+  })
+
   it('turns a closed footnote reference after paragraph text into superscript', () => {
     const element = document.createElement('div')
     document.body.append(element)

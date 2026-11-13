@@ -4,9 +4,17 @@ import WebKit
 /// 本地图片资源服务：对应 C# EditorHostController.OnAssetResourceRequested。
 /// 前端图片引用为 https://assets.local/image?path=<encoded>，WKWebView 无法注册 https scheme，
 /// 因此由注入的 JS 把 src 重写为 markleaf-asset://image?path=...，再由此处理器读取本地文件。
+/// 相对路径（copyToAssets 产生的 assets/... 与文档内相对引用）按文档目录解析——
+/// 曾把相对路径当绝对路径交给 standardizingPath（拼到进程工作目录）导致全部 404 问号图。
 final class AssetSchemeHandler: NSObject, WKURLSchemeHandler {
     private let queue = DispatchQueue(label: "com.markleaf.asset")
     private var activeTasks = Set<ObjectIdentifier>()
+    private let documentDirectoryProvider: () -> String?
+
+    init(documentDirectory: @escaping () -> String? = { nil }) {
+        self.documentDirectoryProvider = documentDirectory
+        super.init()
+    }
 
     private static let allowedExtensions: Set<String> = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
 
@@ -35,7 +43,13 @@ final class AssetSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        let path = (decoded as NSString).standardizingPath
+        var candidate = decoded
+        if !candidate.hasPrefix("/") {
+            if let docDir = documentDirectoryProvider() {
+                candidate = docDir + "/" + candidate
+            }
+        }
+        let path = (candidate as NSString).standardizingPath
         let ext = (path as NSString).pathExtension.lowercased()
         guard Self.allowedExtensions.contains("." + ext),
               FileManager.default.fileExists(atPath: path) else {

@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "current": 1,
+  "matches": 3
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "findResult"
+}

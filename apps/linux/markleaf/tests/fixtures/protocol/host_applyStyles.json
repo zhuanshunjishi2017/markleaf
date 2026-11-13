@@ -1,0 +1,19 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "activeStyle": "web",
+  "baseCss": "body{margin:0}",
+  "colorThemeCss": ":root{--bg:#fff}",
+  "frontendFormatMenu": true,
+  "styles": [
+   {
+    "css": ".m{}",
+    "displayName": "网页",
+    "id": "web"
+   }
+  ]
+ },
+ "protocolVersion": 1,
+ "revision": 0,
+ "type": "applyStyles"
+}

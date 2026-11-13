@@ -1,0 +1,9 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "url": "https://example.com"
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "openLink"
+}

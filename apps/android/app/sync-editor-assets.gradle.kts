@@ -31,10 +31,13 @@ val syncEditorAssets by tasks.registering(Sync::class) {
     }
     into(editorAssetsDir)
 
-    // 文档主题样式：base.css（排版基础）+ 默认浅色主题 + serif 排版样式。
-    // 宿主 applyStyles 载荷需要它们定义 --theme-*/--ml-* 变量。
+    // 文档主题样式：base.css（排版基础）+ 全部颜色主题 + 常用排版样式。
+    // 宿主 applyStyles 载荷需要它们定义 --theme-*/--ml-* 变量；
+    // 颜色主题与排版样式列表见 StyleAssets（首选项页可选）。
     from(stylesDir) {
-        include("base.css", "colors-default-light.css", "serif.css")
+        include("base.css")
+        include("colors-*.css")
+        include("serif.css", "sans.css", "minimal.css", "notebook.css", "magazine.css")
         into("styles")
     }
 }

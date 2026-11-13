@@ -37,24 +37,56 @@
   width: 100%;
 }
 
-.markleaf-document::selection,
-.markleaf-document *::selection,
-.ProseMirror::selection,
-.ProseMirror *::selection,
-.cm-editor::selection,
-.cm-content::selection,
-.cm-content *::selection {
+:root:not(.markleaf-composing) .markleaf-document::selection,
+:root:not(.markleaf-composing) .markleaf-document *::selection,
+:root:not(.markleaf-composing) .ProseMirror::selection,
+:root:not(.markleaf-composing) .ProseMirror *::selection,
+:root:not(.markleaf-composing) .cm-editor::selection,
+:root:not(.markleaf-composing) .cm-content::selection,
+:root:not(.markleaf-composing) .cm-content *::selection {
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
+  /* 非主题化宿主沿用浏览器自己的前景色；主题化宿主在下面的规则中把
+     原生范围和 CSS Highlight 的前景色一起锁定为 --text-selected。 */
+}
+
+/* macOS visual-selection mode paints one CSS Custom Highlight range. Keep
+   WebKit's native range on the exact same theme colors while the editor-owned
+   range is being published. This is intentionally opaque: a transparent
+   ::selection is treated as "no selection" by WebKit and can fall back to the
+   system white selection during a drag, then switch to the editor's dark
+   highlight on mouse-up. IME 组字期间 the later .markleaf-composing rule
+   returns to a near-invisible foreground-preserving range so the input method
+   keeps its native underline instead of a blue selection block. */
+:root.markleaf-themed-visual-selection .markleaf-document::selection,
+:root.markleaf-themed-visual-selection .markleaf-document *::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
 
-/* macOS visual-selection mode paints one CSS Custom Highlight range. Keep the
-   browser's native range transparent everywhere, including table cells, so
-   it cannot stack a second darker layer over the editor-owned highlight. */
-.markleaf-themed-visual-selection .markleaf-document::selection,
-.markleaf-themed-visual-selection .markleaf-document *::selection {
-  background: transparent !important;
+/* IME 组字期间（html.markleaf-composing，editor.ts ThemedSelection 切换）：
+   托管高亮已暂停，白色选区前景没有主题背板可衬，会变白底白字。前景回落
+   到正文色，配合近隐形底色，只保留输入法自带下划线的原生形态（WebKit
+   为 marked text 自绘下划线，前端不再注册 markleaf-ime 自绘）。 */
+:root.markleaf-composing .markleaf-document::selection,
+:root.markleaf-composing .markleaf-document *::selection,
+:root.markleaf-composing .ProseMirror::selection,
+:root.markleaf-composing .ProseMirror *::selection,
+:root.markleaf-composing .cm-editor::selection,
+:root.markleaf-composing .cm-content::selection,
+:root.markleaf-composing .cm-content *::selection,
+:root.markleaf-composing ::selection {
+  background: rgb(128 128 128 / 4%) !important;
+  color: currentColor !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* 公式/Mermaid 源码浮层是独立的纯文本编辑区，不参与可视化编辑器的
+   「透明原生选区 + ::highlight 托管绘制」模型；透明+白字规则会让浮层内
+   的选区直接不可见（白字无背景）。恢复系统选区外观。 */
+.markleaf-themed-visual-selection .markleaf-expanded-source .markleaf-document::selection,
+.markleaf-themed-visual-selection .markleaf-expanded-source .markleaf-document *::selection {
+  background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
 }
@@ -106,7 +138,9 @@
 .markleaf-format-preview[data-format-preview="toggleStrike"][data-format-preview-state="remove"] * { text-decoration-line: none !important; }
 .markleaf-format-preview[data-format-preview="toggleHighlight"] { background-color: var(--highlight, #FFF36D) !important; }
 .markleaf-format-preview[data-format-preview="toggleHighlight"][data-format-preview-state="remove"] { background-color: transparent !important; }
-::selection {
+/* 编辑器内容之外的 UI 选区（大纲、列表等）。组字期间同样让位：
+   marked text 可能落在这类宿主节点上，写死前景会染白组字串。 */
+:root:not(.markleaf-composing) ::selection {
   background: var(--ml-selection-bg, var(--theme-light)) !important;
   color: var(--text-selected) !important;
   -webkit-text-fill-color: var(--text-selected) !important;
@@ -594,3 +628,13 @@ html.markleaf-auto-hide-scrollbar.markleaf-scrolling .cm-scroller::-webkit-scrol
 .markleaf-document table.markleaf-table-manual tr > :not(:last-child) { border-right-width: 0; }
 .markleaf-document table.markleaf-table-manual tr:not(:last-child) > th,
 .markleaf-document table.markleaf-table-manual tr:not(:last-child) > td { border-bottom-width: 0; }
+
+/* IME 组字下划线（editor.ts ThemedSelection 注册 markleaf-ime 高亮）：
+   WebKit 对 marked text 的"选中文字"形态不画系统下划线，这里补上自绘线，
+   保证组字串在两种形态下观感恒定。透明底避免叠加色块；不用 var()
+   （WebKit 对含 var() 的 ::highlight 规则会整条丢弃）。 */
+::highlight(markleaf-ime) {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+}

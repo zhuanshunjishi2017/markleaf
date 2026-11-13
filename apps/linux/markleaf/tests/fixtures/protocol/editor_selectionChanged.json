@@ -1,0 +1,11 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "from": 0,
+  "sourceMode": false,
+  "to": 5
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "selectionChanged"
+}

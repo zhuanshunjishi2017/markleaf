@@ -1,6 +1,7 @@
 package com.markleaf.app.editor
 
 import android.content.Context
+import android.graphics.Color
 import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -47,7 +48,14 @@ object EditorWebViewFactory {
             cacheMode = WebSettings.LOAD_DEFAULT
             // 缩放由前端 zoom 命令统一处理；系统 textZoom 固定避免双重缩放
             textZoom = 100
+            // 资产全部来自本地拦截器（同源即时供给），HTTP 缓存会让应用更新后
+            // 仍拿到旧 index/JS，前端与宿主协议错位（表现为编辑器空白/功能失效）
+            cacheMode = WebSettings.LOAD_NO_CACHE
         }
+        // The document surface is owned by the injected theme CSS. Keep the
+        // WebView itself transparent so Android's light default window cannot
+        // leak through while a dark theme is being applied or refreshed.
+        webView.setBackgroundColor(Color.TRANSPARENT)
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,

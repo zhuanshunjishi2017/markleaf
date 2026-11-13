@@ -13,7 +13,15 @@ describe('mixed spacing rules', () => {
     const edges = candidateGapSlots(snap, new Map())
     expect(edges.filter(x => x.kind === 'mixed').map(x => [x.natural, x.min, x.max])).toEqual([[0, 0, 9.6], [0, 0, 9.6]])
     expect(edges.filter(x => x.kind === 'cjk').every(x => x.natural === 0 && x.preferredMax === 1.28 && x.max === 2.56)).toBe(true)
-    expect(candidateGapSlots({ ...snap, cjkAutoSpacing: true }, new Map()).filter(x => x.kind === 'mixed').every(x => x.natural === 2 && x.min === 1.28)).toBe(true)
+    expect(candidateGapSlots({ ...snap, cjkAutoSpacing: true }, new Map()).filter(x => x.kind === 'mixed').every(x => x.natural === 5.6 && x.min === 1.28)).toBe(true)
+  })
+  it('keepsTheAutomaticSpacingBaselineWhenAdaptiveJustificationOwnsTheParagraph', () => {
+    const snap = { ...s('中文English中文'), cjkAutoSpacing: true }
+    const mixed = candidateGapSlots(snap, new Map()).filter(x => x.kind === 'mixed')
+    // The adaptive projection suppresses the legacy decoration for a managed
+    // paragraph, so its mixed slots must carry the same 0.35em visual gap.
+    expect(mixed.map(x => x.natural)).toEqual([5.6, 5.6])
+    expect(mixed.every(x => x.preferredMax === 5.6)).toBe(true)
   })
   it('buildsExactBudgets', () => {
     expect(slots('中A')[0]).toMatchObject({ kind: 'mixed', natural: 2, min: 1.28, max: 9.6, preferredMax: 3.2, weight: .5, edge: 'end' })

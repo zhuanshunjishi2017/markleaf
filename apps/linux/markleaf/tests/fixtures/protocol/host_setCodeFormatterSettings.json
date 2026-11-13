@@ -1,0 +1,10 @@
+{
+ "documentId": "doc-1",
+ "payload": {
+  "indentWidth": 4,
+  "useTabs": false
+ },
+ "protocolVersion": 1,
+ "revision": 3,
+ "type": "setCodeFormatterSettings"
+}

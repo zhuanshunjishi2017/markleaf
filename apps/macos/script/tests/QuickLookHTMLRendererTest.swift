@@ -25,6 +25,15 @@ let markdown = [
     "| --- | ---: |",
     "| Apples | 3 |",
     "",
+    "| Name | Count |",
+    "| --- | ---: |",
+    "",
+    "| Alpha | 1 |",
+    "",
+    "| Beta | 2 |",
+    "",
+    "Paragraph after the separated table.",
+    "",
     "![Figure](figure.png)",
     "![Bad](../../secret.png)",
     "",
@@ -38,6 +47,32 @@ let html = QuickLookHTMLRenderer.document(
     isPlainText: false
 )
 
+let separatedRows = QuickLookHTMLRenderer.document(
+    title: "Separated rows",
+    markdown: [
+        "| Name | Count |",
+        "| --- | ---: |",
+        "",
+        "| Alpha | 1 |",
+        "",
+        "| Beta | 2 |",
+        "",
+        "After",
+    ].joined(separator: "\n"),
+    isPlainText: false
+)
+expect(separatedRows.contains("<tbody><tr><td>Alpha</td><td>1</td></tr><tr><td>Beta</td><td>2</td></tr>"), "blank lines between data rows stay in one table")
+expect(separatedRows.contains("<p>After</p>"), "separated row scanning stops at prose")
+
+let crlfRows = QuickLookHTMLRenderer.document(
+    title: "CRLF rows",
+    markdown: "| Name | Count |\r\n\r\n| --- | ---: |\r\n\r\n| Alpha | 1 |\r\n\r\n| Beta | 2 |",
+    isPlainText: false
+)
+expect(crlfRows.contains("<table>"), "CRLF blank lines do not prevent table parsing")
+expect(crlfRows.contains("<tbody><tr><td>Alpha</td><td>1</td></tr><tr><td>Beta</td><td>2</td></tr>"), "CRLF-separated data rows stay in one table")
+expect(!crlfRows.contains("<p>| Name | Count |</p>"), "CRLF table headers are not rendered as prose")
+
 expect(html.contains("<h1>标题</h1>"), "ATX headings render")
 expect(html.contains("&lt;script&gt;"), "raw HTML is escaped")
 expect(html.contains("<strong>bold</strong>"), "bold renders")
@@ -46,6 +81,9 @@ expect(html.contains("task-item"), "task lists render")
 expect(html.contains("<blockquote>"), "quotes render")
 expect(html.contains("<pre><code class=\"language-swift\">"), "fenced code preserves language")
 expect(html.contains("<table>"), "tables render")
+expect(html.contains("<td>Alpha</td>"), "blank-separated rows render after the separator table")
+expect(html.contains("<td>Beta</td>"), "all rows after blank lines render")
+expect(html.contains("<p>Paragraph after the separated table.</p>"), "table scanning stops at prose")
 expect(html.contains("<span class=\"image-fallback\">Figure</span>"), "local images keep alt text")
 expect(html.contains("<span class=\"image-fallback\">Bad</span>"), "unavailable images keep alt text")
 expect(!html.contains("secret.png"), "traversal target never reaches HTML")

@@ -1,0 +1,263 @@
+package com.markleaf.app.ui
+
+import com.markleaf.app.L10n
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+/** 顶栏菜单条目：children 非空时渲染为子菜单父项（换页式二级面板）；
+ *  checked 非空且为 true 时在统一勾选列显示 ✓。 */
+data class TopMenuEntry(
+    val title: String,
+    val enabled: Boolean = true,
+    val separatorBefore: Boolean = false,
+    val checked: Boolean? = null,
+    val children: List<TopMenuEntry>? = null,
+    val action: () -> Unit = {},
+)
+
+data class TopMenuSection(val title: String, val entries: List<TopMenuEntry>)
+
+/** 条目文字：可选内嵌 18dp 勾选列 + 标题。✓ 在列内右对齐（贴住文字，
+ *  实际间距 ≈2dp），列宽保持 18dp 让有无勾选的条目文字仍对齐。 */
+@Composable
+private fun MenuEntryText(entry: TopMenuEntry) {
+    Row {
+        Box(
+            modifier = Modifier.width(18.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (entry.checked == true) {
+                Text(
+                    "✓",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Text(
+            entry.title,
+            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
+    }
+}
+
+/** 单个快捷操作：id、展示标签、启用态、动作。标签随状态变化（如源码/可视化）。 */
+data class QuickAction(
+    val id: String,
+    val label: String,
+    val enabled: Boolean = true,
+    val action: () -> Unit,
+)
+
+/** 顶栏 v2：行1 快捷操作（自定义候选池），行2 菜单栏（桌面 NativeMenuBuilder
+ *  同构——文件/编辑/插入/格式/视图/更多），条目对齐桌面菜单同名命令。 */
+@Composable
+fun TopMenuBar(
+    active: String,
+    dirty: Boolean,
+    undoEnabled: Boolean,
+    redoEnabled: Boolean,
+    sections: List<TopMenuSection>,
+    quickActions: List<QuickAction>,
+    onOpenDrawer: () -> Unit,
+) {
+    // 菜单单开互斥：同一时刻至多一个下拉展开
+    var expandedSection by remember { mutableStateOf<String?>(null) }
+    // 二级面板（换页式）：嵌套 Popup 在手机上锚点会错位，改为同一面板
+    // 内切换「‹ 返回 + 子条目列表」
+    var submenuTitle by remember { mutableStateOf<String?>(null) }
+    var submenuEntries by remember { mutableStateOf<List<TopMenuEntry>>(emptyList()) }
+    Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onOpenDrawer) { Text("☰") }
+            Text(
+                text = (if (dirty) "● " else "") + active,
+                modifier = Modifier.padding(vertical = 12.dp),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            // 快捷操作自定义（候选池见 EditorPrefs.QUICK_ACTION_POOL）：
+            // 容量按实际宽度动态计算——单项按标签估宽（CJK 15dp/字 +
+            // 按钮内边距 24dp）；下限 2、上限 6。超出容量的已选项不渲染
+            // （不丢用户选择）。标题 weight(1f) 占满左侧，按钮右贴屏幕边。
+            androidx.compose.foundation.layout.BoxWithConstraints(
+                modifier = Modifier.weight(1f),
+            ) {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val usablePx = constraints.maxWidth.toFloat().coerceAtLeast(0f)
+                var capacity = 0
+                var used = 0f
+                for (qa in quickActions) {
+                    val w = with(density) { (qa.label.length * 15 + 24).dp.toPx() }
+                    if (used + w > usablePx) break
+                    used += w
+                    capacity++
+                }
+                capacity = capacity.coerceIn(2, 6)
+                // 按钮组右贴容器边（容器=标题右侧至屏幕边的全部剩余宽度）：
+                // 顺序=池顺序、勾选子集按原相对顺序编排（如 撤销/保存）。
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        quickActions.take(capacity).forEach { qa ->
+                            TextButton(onClick = qa.action, enabled = qa.enabled) {
+                                Text(qa.label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 菜单行不加 horizontalScroll：DropdownMenu 在可滚动容器内锚点
+        // 会错位到行首；六项在常规屏宽内放得下，窄屏由文本自动收缩承载
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            sections.forEach { section ->
+                Box {
+                    Text(
+                        text = section.title,
+                        modifier = Modifier
+                            .clickable { expandedSection = section.title }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (expandedSection == section.title) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    DropdownMenu(
+                        expanded = expandedSection == section.title,
+                        onDismissRequest = {
+                            expandedSection = null
+                            submenuTitle = null
+                        },
+                    ) {
+                        // 换页式二级面板统一动画：进二级从右滑入，返回从左滑入
+                        // （此前为无过渡硬切，仅菜单高度骤变产生不一致的观感）
+                        AnimatedContent(
+                            targetState = submenuTitle,
+                            transitionSpec = {
+                                if (targetState != null) {
+                                    (slideInHorizontally(tween(110)) { it / 3 } + fadeIn(tween(110))) togetherWith
+                                        (slideOutHorizontally(tween(110)) { -it / 3 } + fadeOut(tween(110)))
+                                } else {
+                                    (slideInHorizontally(tween(110)) { -it / 3 } + fadeIn(tween(110))) togetherWith
+                                        (slideOutHorizontally(tween(110)) { it / 3 } + fadeOut(tween(110)))
+                                }
+                            },
+                            label = "submenuPanel",
+                        ) { panelTitle ->
+                            if (panelTitle != null) {
+                                Column {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "‹ $panelTitle",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        },
+                                        onClick = { submenuTitle = null },
+                                    )
+                                    HorizontalDivider()
+                                    submenuEntries.forEach { entry ->
+                                        if (entry.separatorBefore) {
+                                            HorizontalDivider()
+                                        }
+                                        DropdownMenuItem(
+                                            text = { MenuEntryText(entry) },
+                                            enabled = entry.enabled,
+                                            onClick = {
+                                                expandedSection = null
+                                                submenuTitle = null
+                                                entry.action()
+                                            },
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    section.entries.forEach { entry ->
+                                        if (entry.separatorBefore) {
+                                            HorizontalDivider()
+                                        }
+                                        if (entry.children != null) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row {
+                                                        Box(modifier = Modifier.width(18.dp))
+                                                        Text(
+                                                            entry.title,
+                                                            color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
+                                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                                        )
+                                                    }
+                                                },
+                                                trailingIcon = {
+                                                    Text("▸", style = MaterialTheme.typography.labelSmall)
+                                                },
+                                                enabled = entry.enabled,
+                                                onClick = {
+                                                    submenuTitle = entry.title
+                                                    submenuEntries = entry.children
+                                                },
+                                            )
+                                        } else {
+                                            DropdownMenuItem(
+                                                text = { MenuEntryText(entry) },
+                                                enabled = entry.enabled,
+                                                onClick = {
+                                                    expandedSection = null
+                                                    entry.action()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

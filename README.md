@@ -73,6 +73,7 @@ Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版�
 | ---------- | ----------------------------------------------- | ----------------------- |
 | Windows    | C# + .NET 10 WinForms + WebView2                | `apps/windows/MarkLeaf` |
 | macOS      | Swift + AppKit + WKWebView                      | `apps/macos`            |
+| Linux      | Rust + GTK4 + WebKitGTK                         | `apps/linux`            |
 | VS Code 扩展 | TypeScript + CustomTextEditorProvider + Webview | `apps/vscode`           |
 
 

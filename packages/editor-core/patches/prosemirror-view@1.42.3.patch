@@ -1,0 +1,24 @@
+diff --git a/dist/index.js b/dist/index.js
+index 012237dd813a21d86d6d527263b49c5af0a0e2f0..f9543b7c6c4b7a29e95255d7fd2e0030f3862fcc 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4803,6 +4803,19 @@ class DOMObserver {
+         let mutations = this.pendingRecords();
+         if (mutations.length)
+             this.queue = [];
++        // PATCH(markleaf-ime): WebKit (Safari / WKWebView) aborts and restarts
++        // an active IME composition as soon as ProseMirror reads the marked
++        // text mutations mid-composition: the adoption transaction re-renders
++        // the composition's text node, the input method sees its marked range
++        // destroyed, commits the partial string and starts over — pinyin
++        // fragments pile up in the document and compositionstart fires
++        // repeatedly. Defer every mutation read to compositionend (the
++        // compositionPendingChanges path flushes once with composing=false),
++        // so the DOM stays untouched while the IME owns the marked text.
++        if (view.composing && mutations.length) {
++            this.queue.push(...mutations);
++            return;
++        }
+         let sel = view.domSelectionRange();
+         let newSel = !this.suppressingSelectionUpdates && !this.currentSelection.eq(sel) && hasFocusAndSelection(view) && !this.ignoreSelectionChange(sel);
+         let from = -1, to = -1, typeOver = false, added = [];

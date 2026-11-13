@@ -40,3 +40,38 @@ it('removes the host startup background after theme styles are applied', async (
 
   expect(document.getElementById('markleaf-startup-background')).toBeNull()
 })
+
+it('synchronizes the page surface with the active color theme', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
+  document.body.innerHTML = '<div id="app"><div id="editor"></div><div id="source-editor" hidden></div><button id="source-toggle" hidden></button></div>'
+  let receiveFromHost: ((event: MessageEvent) => void) | undefined
+  window.chrome = {
+    webview: {
+      hostPlatform: 'macOS',
+      postMessage() {},
+      addEventListener(_type: string, listener: (event: MessageEvent) => void) {
+        receiveFromHost = listener
+      },
+    },
+  }
+
+  await import('../src/main')
+  receiveFromHost!(new MessageEvent('message', {
+    data: {
+      protocolVersion: 1,
+      type: 'applyStyles',
+      documentId: 'theme-surface-test',
+      revision: 0,
+      payload: {
+        baseCss: 'body { background: var(--bg-primary); }',
+        colorThemeCss: ':root{--bg-primary:#1c1c1e;--text-primary:#e5e5ea}',
+        styles: [],
+        activeStyle: 'serif',
+      },
+    },
+  }))
+  await Promise.resolve()
+
+  expect(document.body.style.backgroundColor).toBe('rgb(28, 28, 30)')
+  expect(document.getElementById('editor')?.style.backgroundColor).toBe('rgb(28, 28, 30)')
+})

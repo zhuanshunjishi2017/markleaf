@@ -38,6 +38,43 @@ describe('shared editing interactions', () => {
       vi.useRealTimers()
     }
   })
+
+  it('hands the visual selection back to the native IME during composition', async () => {
+    const previousCSS = Object.getOwnPropertyDescriptor(window, 'CSS')
+    const previousHighlight = Object.getOwnPropertyDescriptor(window, 'Highlight')
+    const highlights = new Map<string, { ranges: Range[] }>()
+    class TestHighlight {
+      ranges: Range[] = []
+      add(range: Range) { this.ranges.push(range) }
+      clear() { this.ranges = [] }
+    }
+    Object.defineProperty(window, 'CSS', { configurable: true, value: { highlights } })
+    Object.defineProperty(window, 'Highlight', { configurable: true, value: TestHighlight })
+    cleanup.push(() => {
+      if (previousCSS) Object.defineProperty(window, 'CSS', previousCSS)
+      else delete (window as unknown as { CSS?: unknown }).CSS
+      if (previousHighlight) Object.defineProperty(window, 'Highlight', previousHighlight)
+      else delete (window as unknown as { Highlight?: unknown }).Highlight
+    })
+    const { editor, mount } = setup('拼音输入', true)
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    expect(highlights.get('markleaf-selection')?.ranges).toHaveLength(1)
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    // clear 同步摘除注册表键（键可能不存在，而非空实例）
+    const during = highlights.get('markleaf-selection')
+    expect(during === undefined || during.ranges.length === 0).toBe(true)
+    expect(document.documentElement.classList.contains('markleaf-composing')).toBe(true)
+
+    editor.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    // clearSelectionHighlight 会同步把名称从注册表摘除（WebKit 孤儿 Range
+    // 回退绘制的白闪修复）；compositionend 后 paint 重新 set，ranges 恢复。
+    const restored = highlights.get('markleaf-selection')
+    expect(restored === undefined || restored.ranges.length === 1).toBe(true)
+    expect(document.documentElement.classList.contains('markleaf-composing')).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 60))
+  })
+
   it('inserts and removes the visual indent inside code blocks with Tab', () => {
     const { editor } = setup('```js\nconst value = 1\n```')
     const codeBlock = editor.state.doc.firstChild!
@@ -367,6 +404,76 @@ describe('shared editing interactions', () => {
     expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(false)
     expect(editor.view.hasFocus()).toBe(true)
   })
+
+  it('auto-scrolls the document while a managed drag is held near the viewport edge', () => {
+    const { editor, mount } = setup(`${'line\n\n'.repeat(200)}tail`, true)
+    const paragraph = editor.view.dom.querySelector('p')!
+    const scrollingElement = document.documentElement
+    Object.defineProperty(document, 'scrollingElement', {
+      configurable: true,
+      value: scrollingElement,
+    })
+    Object.defineProperties(scrollingElement, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 2400 },
+      scrollTop: { configurable: true, writable: true, value: 100 },
+    })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    vi.spyOn(editor.view, 'posAtCoords')
+      .mockReturnValueOnce({ pos: 1, inside: -1 })
+      .mockReturnValue({ pos: 10, inside: -1 })
+
+    paragraph.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 590,
+    }))
+    expect(mount.classList.contains('markleaf-managed-selection-active')).toBe(true)
+
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 599,
+    }))
+    frames.shift()?.(0)
+
+    expect(scrollingElement.scrollTop).toBeGreaterThan(100)
+    expect(frames).toHaveLength(1)
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+  })
+
+  it('does not auto-scroll when clicking at a viewport edge without dragging', () => {
+    const { editor } = setup(`${'line\n\n'.repeat(80)}tail`, true)
+    const paragraph = editor.view.dom.querySelector('p')!
+    const scrollingElement = document.documentElement
+    Object.defineProperty(document, 'scrollingElement', {
+      configurable: true,
+      value: scrollingElement,
+    })
+    Object.defineProperties(scrollingElement, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 2400 },
+      scrollTop: { configurable: true, writable: true, value: 100 },
+    })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({ pos: 1, inside: -1 })
+
+    paragraph.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: 20, clientY: 599,
+    }))
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+
+    expect(frames).toHaveLength(0)
+    expect(scrollingElement.scrollTop).toBe(100)
+  })
+
   it('collects unreferenced footnotes and edits their labels and definitions', () => {
     const { editor } = setup('text\n\n[^1]: unreferenced')
     expect(getFootnoteLabels(editor)).toEqual(['1'])
