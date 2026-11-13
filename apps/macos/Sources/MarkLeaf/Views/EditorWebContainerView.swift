@@ -394,6 +394,11 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     ) {
         guard let scrollView = webKitScrollView() else { return }
         scrollView.appearance = appearance
+        // The editor surface is painted by WebKit/CSS and the themed backing
+        // view. Leaving this native background enabled lets AppKit expose its
+        // default light track during an appearance transition.
+        scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
         // WebKit's internal scroll view can revert to legacy scrollers when
         // the system appearance changes. Keep the editor on the same compact
         // overlay behavior as the rest of the app and let AppKit handle the
@@ -592,6 +597,15 @@ final class EditorWebContainerView: NSView, WKNavigationDelegate {
     /// 可靠的采样时机。手动主题路径不会进入会话的跟随分支（守卫在前）。
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        // Refresh the AppKit scroll container at the point where its own
+        // effective appearance has resolved. Waiting for EditorSession's
+        // debounced theme message can leave WebKit's cached light track
+        // visible after a system dark/light switch.
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        applyThemeAppearance(
+            dark: dark,
+            autoHide: SettingsService.shared.settings.autoHideScrollbars
+        )
         appearanceChangeDebounce?.cancel()
         let work = DispatchWorkItem { [weak self] in
             self?.session?.systemEffectiveAppearanceDidChange()

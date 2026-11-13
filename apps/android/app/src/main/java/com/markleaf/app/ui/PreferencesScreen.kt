@@ -23,9 +23,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 
 /** 偏好设置层（单页分组，字段对齐桌面 AppSettings 默认值）。分组与桌面偏好设置
@@ -36,15 +40,13 @@ fun PreferencesScreen(
     prefs: EditorPrefs,
     styleIds: List<Pair<String, String>>,
     colorThemes: List<StyleAssets.ColorTheme>,
+    activeColorThemeId: String,
     onChange: (EditorPrefs) -> Unit,
     onClearHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val lightThemes = colorThemes.filter { !it.isDark }
     val darkThemes = colorThemes.filter { it.isDark }
-    fun themeDisplay(id: String): String =
-        L10n.t(colorThemes.firstOrNull { it.id == id }?.name ?: id)
-
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.fillMaxSize()) {
             // 退出走系统返回手势（BackHandler 已接管），不再放页内返回按钮
@@ -310,33 +312,28 @@ fun PreferencesScreen(
                             ?.let { onChange(prefs.copy(styleId = it.first)) }
                     },
                 )
-                // 与桌面一致：开启「与操作系统同步」时颜色主题被默认浅/深主题接管
-                ChipRow(
+                // 与桌面一致：这里显示当前实际渲染的主题；开启系统同步时
+                // 该项只读，默认浅/深色主题分别由下面两行控制。
+                ThemeChipRow(
                     label = L10n.t("颜色主题"),
-                    options = colorThemes.map { L10n.t(it.name) },
-                    selected = themeDisplay(prefs.colorTheme),
+                    options = colorThemes,
+                    selectedId = activeColorThemeId,
                     enabled = !prefs.followSystemTheme,
-                    onSelect = { display ->
-                        colorThemes.firstOrNull { L10n.t(it.name) == display }?.let { onChange(prefs.copy(colorTheme = it.id)) }
-                    },
+                    onSelect = { id -> onChange(prefs.copy(colorTheme = id)) },
                 )
-                ChipRow(
+                ThemeChipRow(
                     label = L10n.t("默认浅色主题"),
-                    options = lightThemes.map { L10n.t(it.name) },
-                    selected = themeDisplay(prefs.defaultLightTheme),
+                    options = lightThemes,
+                    selectedId = prefs.defaultLightTheme,
                     enabled = prefs.followSystemTheme,
-                    onSelect = { display ->
-                        lightThemes.firstOrNull { L10n.t(it.name) == display }?.let { onChange(prefs.copy(defaultLightTheme = it.id)) }
-                    },
+                    onSelect = { id -> onChange(prefs.copy(defaultLightTheme = id)) },
                 )
-                ChipRow(
+                ThemeChipRow(
                     label = L10n.t("默认深色主题"),
-                    options = darkThemes.map { L10n.t(it.name) },
-                    selected = themeDisplay(prefs.defaultDarkTheme),
+                    options = darkThemes,
+                    selectedId = prefs.defaultDarkTheme,
                     enabled = prefs.followSystemTheme,
-                    onSelect = { display ->
-                        darkThemes.firstOrNull { L10n.t(it.name) == display }?.let { onChange(prefs.copy(defaultDarkTheme = it.id)) }
-                    },
+                    onSelect = { id -> onChange(prefs.copy(defaultDarkTheme = id)) },
                 )
                 SwitchRow(
                     label = L10n.t("与操作系统同步"),
@@ -404,6 +401,11 @@ fun PreferencesScreen(
                 // ===== 通用（顶栏快捷操作自定义）=====
                 GroupHeader(L10n.t("顶栏快捷操作"))
                 val selectedSet = EditorPrefs.parseQuickActions(prefs.quickActions).toSet()
+                // 勾选上限自适应设备宽度：按顶栏可用宽度（屏宽扣除汉堡按
+                // 钮、标题、行边距等固定开销）与池内各标签实测文本宽贪心
+                // 累加估算，与顶栏 SubcomposeLayout 实测结果一致（手机约
+                // 6 项，平板/大屏可容纳全部候选）。
+                val quickActionCapacity = rememberQuickActionCapacity()
                 // 展示顺序=池顺序；选中集合驱动的显示顺序与顶栏一致
                 val ordered = EditorPrefs.QUICK_ACTION_POOL.filter { it.first in selectedSet }
                     .map { it.first } + EditorPrefs.parseQuickActions(prefs.quickActions)
@@ -416,9 +418,16 @@ fun PreferencesScreen(
                     EditorPrefs.QUICK_ACTION_POOL.forEach { (id, display) ->
                         androidx.compose.material3.FilterChip(
                             selected = id in selectedSet,
+                            // 选满容量后，未选中项自动置灰（M3 禁用态），表意
+                            // 「不可用」而非点了没反应；取消一项即恢复可选。
+                            enabled = id in selectedSet || selectedSet.size < quickActionCapacity,
                             onClick = {
                                 val current = EditorPrefs.parseQuickActions(prefs.quickActions).toMutableList()
-                                if (id in current) current.remove(id) else current.add(id)
+                                if (id in current) {
+                                    current.remove(id)
+                                } else if (current.size < quickActionCapacity) {
+                                    current.add(id)
+                                }
                                 onChange(prefs.copy(quickActions = current.joinToString(",")))
                             },
                             label = { Text(L10n.t(display), style = MaterialTheme.typography.labelMedium) },
@@ -456,6 +465,37 @@ fun PreferencesScreen(
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
             }
+        }
+    }
+}
+
+/** 估算顶栏快捷操作可容纳数（即勾选上限）：屏幕宽扣除顶栏固定开销
+ *  （汉堡按钮 48dp、标题预留 64dp、行水平边距 16dp）得可用宽，再按
+ *  池序以 labelLarge 实测各标签文本宽 + 16dp 按钮内边距贪心累加。
+ *  与 TopMenuBar 的 SubcomposeLayout 实测口径一致，随设备宽度自适应；
+ *  下限 2、上限=候选池大小。标题预留按常见短名取值，文档标题过长时
+ *  顶栏实际显示数会少于该上限（超出的项不渲染、不丢失）。 */
+@Composable
+private fun rememberQuickActionCapacity(): Int {
+    val density = LocalDensity.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val measurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val language = L10n.language
+    return remember(screenWidth, language) {
+        with(density) {
+            var available = (screenWidth - 48.dp - 64.dp - 16.dp).toPx()
+            var count = 0
+            for ((_, display) in EditorPrefs.QUICK_ACTION_POOL) {
+                val w = measurer.measure(
+                    text = androidx.compose.ui.text.AnnotatedString(L10n.translate(display, language)),
+                    style = labelStyle,
+                ).size.width + 16.dp.toPx()
+                if (available < w) break
+                available -= w
+                count++
+            }
+            count.coerceIn(2, EditorPrefs.QUICK_ACTION_POOL.size)
         }
     }
 }
@@ -529,6 +569,42 @@ private fun ChipRow(
                     onClick = { onSelect(option) },
                     enabled = enabled,
                     label = { Text(option, style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeChipRow(
+    label: String,
+    options: List<StyleAssets.ColorTheme>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.weight(2.2f),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+        ) {
+            options.forEach { option ->
+                FilterChip(
+                    selected = option.id == selectedId,
+                    onClick = { onSelect(option.id) },
+                    enabled = enabled,
+                    label = { Text(L10n.t(option.name), style = MaterialTheme.typography.labelMedium) },
                 )
             }
         }

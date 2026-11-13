@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -82,6 +84,7 @@ data class QuickAction(
 
 /** 顶栏 v2：行1 快捷操作（自定义候选池），行2 菜单栏（桌面 NativeMenuBuilder
  *  同构——文件/编辑/插入/格式/视图/更多），条目对齐桌面菜单同名命令。 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TopMenuBar(
     active: String,
@@ -112,34 +115,62 @@ fun TopMenuBar(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             // 快捷操作自定义（候选池见 EditorPrefs.QUICK_ACTION_POOL）：
-            // 容量按实际宽度动态计算——单项按标签估宽（CJK 15dp/字 +
-            // 按钮内边距 24dp）；下限 2、上限 6。超出容量的已选项不渲染
-            // （不丢用户选择）。标题 weight(1f) 占满左侧，按钮右贴屏幕边。
-            androidx.compose.foundation.layout.BoxWithConstraints(
-                modifier = Modifier.weight(1f),
+            // 用 SubcomposeLayout 逐项实测按钮宽度后从左截取放得下的最
+            // 大前缀并右贴容器边（容器=标题右侧至屏幕边的全部剩余宽度）
+            // ——不依赖估算（M3 触达最小尺寸等隐藏开销会让估宽失真），
+            // 数量随设备宽度自适应（平板/大屏可容纳全部候选）。下限 2；
+            // 超出容量的已选项不渲染（不丢用户选择，如文档标题过长挤占
+            // 空间时）。顺序=池顺序、勾选子集按原相对顺序编排（如 撤销/
+            // 保存）。局部关闭 M3 最小触达尺寸强制：否则每个按钮布局宽
+            // 被顶到 48dp，六项在常规手机屏放不下（关闭后 2 字按钮约
+            // 44dp）。
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalMinimumInteractiveComponentEnforcement provides false,
             ) {
-                val density = androidx.compose.ui.platform.LocalDensity.current
-                val usablePx = constraints.maxWidth.toFloat().coerceAtLeast(0f)
-                var capacity = 0
-                var used = 0f
-                for (qa in quickActions) {
-                    val w = with(density) { (qa.label.length * 15 + 24).dp.toPx() }
-                    if (used + w > usablePx) break
-                    used += w
-                    capacity++
-                }
-                capacity = capacity.coerceIn(2, 6)
-                // 按钮组右贴容器边（容器=标题右侧至屏幕边的全部剩余宽度）：
-                // 顺序=池顺序、勾选子集按原相对顺序编排（如 撤销/保存）。
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        quickActions.take(capacity).forEach { qa ->
-                            TextButton(onClick = qa.action, enabled = qa.enabled) {
-                                Text(qa.label)
-                            }
+                androidx.compose.ui.layout.SubcomposeLayout(
+                    modifier = Modifier.weight(1f),
+                ) { constraints ->
+                    // 不用 TextButton：其内部 defaultMinSize(minWidth=58dp)
+                    // 会把两字按钮钳宽，六项放不下。轻量文本按钮实测宽
+                    // = 文本 + 16dp 内边距，颜色与 M3 禁用态一致。
+                    val content: @Composable androidx.compose.foundation.layout.RowScope.(com.markleaf.app.ui.QuickAction) -> Unit = { qa ->
+                        Text(
+                            text = qa.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (qa.enabled) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(enabled = qa.enabled, onClick = qa.action)
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                        )
+                    }
+                    val rows = quickActions.map { qa ->
+                        subcompose(qa.id) { androidx.compose.foundation.layout.Row { content(qa) } }
+                            .map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+                    }
+                    var used = 0
+                    var count = 0
+                    for (row in rows) {
+                        val w = row.maxOf { it.width }
+                        if (count >= quickActions.size || used + w > constraints.maxWidth) break
+                        used += w
+                        count++
+                    }
+                    // 下限 2 = 宽度再窄也至少显示两项（首选项容量估算同理）；
+                    // 下限须钳到列表实际大小——勾选被取消到剩 1 项时
+                    // coerceIn(2, 1) 是空区间，会抛 IllegalArgumentException
+                    // （此前「取消勾选全部」崩溃的根源）。
+                    count = count.coerceIn(minOf(2, quickActions.size), quickActions.size)
+                    val chosen = rows.take(count)
+                    val height = chosen.maxOfOrNull { it.maxOf { p -> p.height } } ?: 0
+                    layout(constraints.maxWidth, height) {
+                        // 右贴边：从右往左逆序排布
+                        var x = constraints.maxWidth
+                        for (row in chosen.reversed()) {
+                            val p = row.first()
+                            x -= p.width
+                            p.placeRelative(x = x, y = 0)
                         }
                     }
                 }
@@ -190,11 +221,19 @@ fun TopMenuBar(
                                 Column {
                                     DropdownMenuItem(
                                         text = {
-                                            Text(
-                                                "‹ $panelTitle",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    "‹",
+                                                    style = MaterialTheme.typography.titleLarge,
+                                                    fontWeight = FontWeight.Medium,
+                                                )
+                                                Text(
+                                                    panelTitle,
+                                                    modifier = Modifier.padding(start = 6.dp),
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                            }
                                         },
                                         onClick = { submenuTitle = null },
                                     )
@@ -233,7 +272,12 @@ fun TopMenuBar(
                                                     }
                                                 },
                                                 trailingIcon = {
-                                                    Text("▸", style = MaterialTheme.typography.labelSmall)
+                                                    Text(
+                                                        "›",
+                                                        style = MaterialTheme.typography.titleLarge,
+                                                        fontWeight = FontWeight.Medium,
+                                                        modifier = Modifier.padding(end = 4.dp),
+                                                    )
                                                 },
                                                 enabled = entry.enabled,
                                                 onClick = {

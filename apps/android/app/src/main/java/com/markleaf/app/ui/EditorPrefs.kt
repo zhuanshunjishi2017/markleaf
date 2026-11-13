@@ -234,7 +234,9 @@ data class EditorPrefs(
         )
         val QUICK_ACTION_DEFAULT = "undo,redo,save"
 
-        /** 解析 quickActions：过滤未知 id，空/全无效回退默认。 */
+        /** 解析 quickActions：过滤未知 id，空/全无效回退默认。
+         *  可显示数不在此截断：顶栏按屏幕宽度实测自适应（见 TopMenuBar），
+         *  首选项勾选上限同样按宽度估算（见 PreferencesScreen）。 */
         fun parseQuickActions(raw: String?): List<String> {
             if (raw.isNullOrBlank()) return QUICK_ACTION_DEFAULT.split(',')
             val known = QUICK_ACTION_POOL.map { it.first }.toSet()

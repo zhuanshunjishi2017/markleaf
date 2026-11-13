@@ -1353,14 +1353,26 @@ const ThemedSelection = Extension.create({
             view.focus()
             // focus() reruns ProseMirror's selection-to-DOM pass. Keep the
             // neutral native-selection shield in place until the next frame,
-            // clear that restored range, then reveal only the CSS Highlight.
-            clearDomSelection(view.dom.ownerDocument)
-            paintSelectionHighlight()
+            // then hand the final selection back to WebKit. The editor-owned
+            // CSS Highlight is a drag-time transport layer; keeping it after
+            // mouseup makes syntax-token colors leak through as a second,
+            // darker selection surface.
             window.requestAnimationFrame(() => {
               // A new drag may have started before this deferred cleanup. In
               // that case its shield belongs to the new gesture and must stay.
               if (managedDragActive) return
-              clearDomSelection(view.dom.ownerDocument)
+              if (highlightRegistry && highlightCtor) {
+                // CSS Custom Highlight is the drag-time layer on WebKit.
+                // Remove it before revealing the native range so syntax
+                // colors cannot remain as a second surface.
+                clearSelectionHighlight()
+              } else {
+                // Environments without CSS Custom Highlight use the
+                // ProseMirror inline decoration below. Keep the DOM range
+                // empty there; otherwise the fallback decoration and the
+                // native selection are painted on top of each other.
+                clearDomSelection(view.dom.ownerDocument)
+              }
               mount.classList.remove('markleaf-managed-selection-active')
             })
           }, 0)
@@ -4552,6 +4564,9 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
   }
   const expanded = executeExpandedSourceCommand(editor, 'pasteText', markdown)
   if (expanded !== undefined) return { success: expanded, outcome: expanded ? 'plainText' : 'failed' }
+  if (looksLikePastedSourceCode(markdown)) {
+    return pastePastedSourceCode(editor, markdown)
+  }
 
   try {
     // Keep pasted Markdown consistent with full-document loading. Without the
@@ -4581,6 +4596,59 @@ export function pasteMarkdownTextWithResult(editor: Editor, markdown: string): M
   } catch (error) {
     // Invalid parser output is handled by the lossless literal-text fallback.
     return pasteMarkdownAsPlainText(editor, markdown, summarizeMarkdownPasteError(error))
+  }
+}
+
+/**
+ * A source editor often places the copied code on the clipboard as plain text
+ * (and sometimes as syntax-highlighted HTML whose text is identical). Parsing
+ * that payload as Markdown splits it at headings, indentation and list-like
+ * lines. Require several independent code signals before treating it as a
+ * literal code block so ordinary Markdown paragraphs remain on the Markdown
+ * path.
+ */
+function looksLikePastedSourceCode(value: string): boolean {
+  const text = value.replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '')
+  const lines = text.split('\n')
+  const nonEmpty = lines.filter(line => line.trim().length > 0)
+  if (nonEmpty.length < 2 || /^\s*```/.test(nonEmpty[0] ?? '')) return false
+
+  const codeKeyword = /^\s*(?:import\b|from\b.+\bimport\b|#include\b|(?:class|def|function|fn|func)\b|(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=|(?:if|for|while|switch|catch)\b.*[(:{]|return\b|public\s+(?:class|static)|private\s+(?:class|static)|using\s+\S+|package\s+\S+)/
+  const assignmentOrCall = /\b[A-Za-z_$][\w$]*\s*=\s*[^=]|\b[A-Za-z_$][\w$]*\s*\([^\n]*\)\s*[{:]?/
+  const structural = /[{}[\]();]|=>|::|\bself\.[A-Za-z_$][\w$]*/
+  const indented = /^\s{2,}\S/
+  const comments = /^\s*(?:\/\/|\/\*|\*\/|<!--)/
+
+  let keywordLines = 0
+  let syntaxLines = 0
+  let commentLines = 0
+  for (const line of nonEmpty) {
+    if (codeKeyword.test(line)) keywordLines += 1
+    if (assignmentOrCall.test(line) || structural.test(line) || indented.test(line)) syntaxLines += 1
+    if (comments.test(line)) commentLines += 1
+  }
+  // Python comments begin with '#', but a single Markdown heading must not be
+  // enough to force an otherwise ordinary paragraph into a code block.
+  const hashCommentLines = nonEmpty.filter(line => /^\s*#\s+\S/.test(line)).length
+  if (keywordLines >= 2) return true
+  if (keywordLines >= 1 && syntaxLines >= 2) return true
+  if ((commentLines > 0 || hashCommentLines > 0) && syntaxLines >= 1) return true
+  if (syntaxLines >= 3 && (commentLines > 0 || hashCommentLines > 0)) return true
+  return false
+}
+
+function pastePastedSourceCode(editor: Editor, value: string): MarkdownPasteResult {
+  const codeBlock = editor.schema.nodes.codeBlock
+  if (!codeBlock) return pasteMarkdownAsPlainText(editor, value, 'Code block schema is unavailable')
+  const source = value.replace(/\r\n?/g, '\n').replace(/^\uFEFF/, '')
+  try {
+    const content = source.length > 0 ? editor.schema.text(source) : null
+    const node = codeBlock.create(null, content)
+    const transaction = editor.state.tr.replaceSelectionWith(node).scrollIntoView()
+    editor.view.dispatch(transaction)
+    return { success: true, outcome: 'normalized' }
+  } catch {
+    return pasteMarkdownAsPlainText(editor, value, 'Code block insertion was rejected')
   }
 }
 

@@ -133,7 +133,13 @@ fun ExportScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) { Text("‹") }
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        "‹",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                    )
+                }
                 Text(
                     "导出文档",
                     modifier = Modifier.weight(1f),
@@ -230,12 +236,12 @@ fun ExportScreen(
                             Text(L10n.t("自定义边距…"), style = MaterialTheme.typography.labelMedium)
                         }
                     }
-                    // 当前边距摘要（对齐桌面小字：上/下/左/右 mm）
+                    // 当前边距摘要（对齐桌面小字：上/下/左/右 mm，整数省略小数）
                     val summary = if (marginPresetId == "custom")
-                        "上: ${customMargins[0]}mm, 下: ${customMargins[1]}mm, 左: ${customMargins[2]}mm, 右: ${customMargins[3]}mm"
+                        "上: ${compactMargin(customMargins[0])}mm, 下: ${compactMargin(customMargins[1])}mm, 左: ${compactMargin(customMargins[2])}mm, 右: ${compactMargin(customMargins[3])}mm"
                     else
                         MARGIN_PRESETS.firstOrNull { it.id == marginPresetId }?.let {
-                            "上: ${it.top}mm, 下: ${it.bottom}mm, 左: ${it.left}mm, 右: ${it.right}mm"
+                            "上: ${compactMargin(it.top)}mm, 下: ${compactMargin(it.bottom)}mm, 左: ${compactMargin(it.left)}mm, 右: ${compactMargin(it.right)}mm"
                         } ?: ""
                     Text(
                         summary,
@@ -246,7 +252,16 @@ fun ExportScreen(
                     SwitchRow("打印友好（浅色）", printFriendly) { printFriendly = it }
                 }
 
-                // 排版样式 + 配色方案（对齐桌面导出窗口两行；两种格式均提供，
+                if (showCustomMarginDialog) {
+                    CustomMarginsDialog(
+                        initial = customMargins,
+                        onConfirm = { values ->
+                            customMargins = values
+                            marginPresetId = "custom"
+                        },
+                        onDismiss = { showCustomMarginDialog = false },
+                    )
+                }
                 // 图片格式无分页概念但样式同样影响渲染）
                 ChipRowGroup(
                     "排版样式",
@@ -390,5 +405,7 @@ private fun CustomMarginsDialog(
     )
 }
 
-private fun compactMargin(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+private fun compactMargin(value: Number): String {
+    val d = value.toDouble()
+    return if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
+}

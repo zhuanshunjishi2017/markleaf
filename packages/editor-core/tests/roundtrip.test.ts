@@ -1534,6 +1534,34 @@ describe('document history isolation', () => {
 })
 
 describe('paste safety', () => {
+  it('pastes a copied source-code snippet as one literal code block', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '')
+    editors.push(editor)
+
+    const source = [
+      'import requests  # 第三方库，用来发送网络请求',
+      'from bs4 import BeautifulSoup  # 第三方库，用来解析网页 HTML',
+      'import csv',
+      '',
+      'class BookCrawler:',
+      '    def __init__(self):',
+      '        # 模拟浏览器的请求头',
+      '        self.headers = {',
+      '            "User-Agent": "Mozilla/5.0"',
+      '        }',
+    ].join('\n')
+
+    const result = pasteClipboardContentWithResult(editor, source, '')
+
+    expect(result.success).toBe(true)
+    expect(editor.state.doc.childCount).toBe(1)
+    expect(editor.state.doc.firstChild?.type.name).toBe('codeBlock')
+    expect(editor.state.doc.firstChild?.textContent).toBe(source)
+    expect(getMarkdown(editor).trimEnd()).toBe('```\n' + source + '\n```')
+  })
+
   it('removes executable and embedded content while keeping safe formatting', () => {
     const output = sanitizePastedHtml(`
       <p onclick="alert(1)" style="color:red">保留 <strong>粗体</strong></p>

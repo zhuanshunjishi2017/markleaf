@@ -1738,12 +1738,25 @@ final class EditorSession: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 hlInfo = ranges.join(';;') || 'empty-instance';
               }
               const sel = document.getSelection();
+              // 白闪取证：html 类 + 选中首字的实际绘制色（::selection 无法直接
+              // 计算，用 CSS.highlights 与变量回退链定位）
+              const probeSpan = document.querySelector('.markleaf-document p, .markleaf-document h1, .markleaf-document h2, .markleaf-document li');
+              const probeRange = document.createRange();
+              probeRange.selectNodeContents(probeSpan || target);
+              const probeEl = document.createElement('span');
+              probeEl.appendChild(probeRange.cloneContents());
+              const probeChild = probeEl.firstElementChild;
+              const probeCs = getComputedStyle(probeChild instanceof Element ? probeChild : document.body);
+              probeEl.remove();
               return JSON.stringify({
                 selected: !!span,
-                htmlHead: target.innerHTML.replace(/\\s+/g, ' ').slice(0, 80),
-                color: cs.color,
-                fill: cs.webkitTextFillColor,
-                bg: cs.backgroundColor,
+                htmlClasses: document.documentElement.className.split(' ').filter(c => c.includes('markleaf')).join(','),
+                selBgVar: getComputedStyle(document.documentElement).getPropertyValue('--ml-selection-bg') || '(unset)',
+                themeLightVar: getComputedStyle(document.documentElement).getPropertyValue('--theme-light') || '(unset)',
+                textSelVar: getComputedStyle(document.documentElement).getPropertyValue('--text-selected') || '(unset)',
+                probeColor: probeCs.color,
+                probeFill: probeCs.webkitTextFillColor,
+                htmlHead: target.innerHTML.replace(/\\s+/g, ' ').slice(0, 60),
                 hl: hlInfo,
                 domSel: sel && sel.rangeCount > 0 && !sel.isCollapsed ? sel.toString().slice(0, 30) : 'collapsed',
               });

@@ -65,6 +65,7 @@ import com.markleaf.app.documents.EncodingInfo
 import com.markleaf.app.documents.RecoveryStore
 import com.markleaf.app.documents.SafDocumentSource
 import com.markleaf.app.documents.SafDocumentPath
+import com.markleaf.app.documents.StartupDocumentPolicy
 import com.markleaf.app.documents.isMarkdownName
 import com.markleaf.app.documents.parsedUri
 import com.markleaf.app.editor.EditorWebViewFactory
@@ -78,6 +79,7 @@ import com.markleaf.app.export.PdfExporter
 import com.markleaf.app.export.loadExportDocument
 import com.markleaf.app.export.evaluateExportScript
 import com.markleaf.app.ui.OutlineItem
+import com.markleaf.app.ui.ThemeSelectionPolicy
 import com.markleaf.app.ui.TopMenuBar
 import com.markleaf.app.ui.TopMenuEntry
 import com.markleaf.app.ui.TopMenuSection
@@ -614,6 +616,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     prefs = editorPrefs.value,
                     styleIds = StyleAssets.TYPOGRAPHY_STYLES,
                     colorThemes = StyleAssets.colorThemes(this@MainActivity),
+                    activeColorThemeId = effectiveColorThemeId(),
                     onChange = ::updatePrefs,
                     onClearHistory = ::clearRecentHistory,
                     onDismiss = { showPreferences.value = false },
@@ -1251,19 +1254,19 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         ),
                     ),
                 )
-                // 崩溃重建：重放崩溃前内容；冷启动：欢迎文档
+                // 崩溃重建：重放崩溃前内容；普通冷启动：空白未命名 Markdown 文档。
                 val crashMarkdown = pendingCrashRestoreMarkdown
                 pendingCrashRestoreMarkdown = null
+                val startupDocument = StartupDocumentPolicy.initialDocument(crashMarkdown)
                 bridge.post(
-                    if (crashMarkdown != null) {
-                        HostMessage.LoadDocument(
-                            documentId = frontendId,
-                            revision = 0,
-                            payload = HostMessage.LoadDocument.LoadDocumentPayload(markdown = crashMarkdown),
-                        )
-                    } else {
-                        welcomeDocumentMessage()
-                    },
+                    HostMessage.LoadDocument(
+                        documentId = frontendId,
+                        revision = 0,
+                        payload = HostMessage.LoadDocument.LoadDocumentPayload(
+                            markdown = startupDocument.markdown,
+                            documentType = startupDocument.documentType,
+                        ),
+                    ),
                 )
                 // 持久化外观（字号/行高/宽度/缩放）在首帧后应用
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
@@ -1456,38 +1459,43 @@ SafDocumentSource.takePersistablePermission(this, uri)
      *  「打开时还原」后改任意首选项把会话缩放拉回存档值；主题相关变更重发样式载荷）。 */
     private fun updatePrefs(newPrefs: com.markleaf.app.ui.EditorPrefs) {
         val old = editorPrefs.value
-        editorPrefs.value = newPrefs
-        newPrefs.save(prefsStore)
-        if (newPrefs.zoom != old.zoom) zoomPercent.value = newPrefs.zoom
-        if (newPrefs.styleId != old.styleId || newPrefs.colorTheme != old.colorTheme ||
-            newPrefs.followSystemTheme != old.followSystemTheme ||
-            newPrefs.defaultLightTheme != old.defaultLightTheme ||
-            newPrefs.defaultDarkTheme != old.defaultDarkTheme
+        val normalizedPrefs = ThemeSelectionPolicy.preserveRenderedThemeWhenDisablingSystemSync(
+            oldFollowSystem = old.followSystemTheme,
+            newPrefs = newPrefs,
+            renderedThemeId = effectiveColorThemeId(),
+        )
+        editorPrefs.value = normalizedPrefs
+        normalizedPrefs.save(prefsStore)
+        if (normalizedPrefs.zoom != old.zoom) zoomPercent.value = normalizedPrefs.zoom
+        if (normalizedPrefs.styleId != old.styleId || normalizedPrefs.colorTheme != old.colorTheme ||
+            normalizedPrefs.followSystemTheme != old.followSystemTheme ||
+            normalizedPrefs.defaultLightTheme != old.defaultLightTheme ||
+            normalizedPrefs.defaultDarkTheme != old.defaultDarkTheme
         ) {
-            lastAppliedStyleId = newPrefs.styleId
+            lastAppliedStyleId = normalizedPrefs.styleId
             applyStyles()
         }
         if (documentLoaded.value) {
-            if (newPrefs.codeHighlight != old.codeHighlight) {
-                postCommand("setCodeHighlightVisible", if (newPrefs.codeHighlight) "1" else "0")
+            if (normalizedPrefs.codeHighlight != old.codeHighlight) {
+                postCommand("setCodeHighlightVisible", if (normalizedPrefs.codeHighlight) "1" else "0")
             }
-            if (newPrefs.blockHandle != old.blockHandle) {
-                postCommand("setBlockHandleVisible", if (newPrefs.blockHandle) "1" else "0")
+            if (normalizedPrefs.blockHandle != old.blockHandle) {
+                postCommand("setBlockHandleVisible", if (normalizedPrefs.blockHandle) "1" else "0")
             }
-            if (newPrefs.sourceIndent != old.sourceIndent) {
-                postCommand("setSourceIndent", newPrefs.sourceIndent.toString())
+            if (normalizedPrefs.sourceIndent != old.sourceIndent) {
+                postCommand("setSourceIndent", normalizedPrefs.sourceIndent.toString())
             }
-            if (newPrefs.displayLanguage != old.displayLanguage) {
-                L10n.language = newPrefs.displayLanguage
-                postCommand("setLanguage", newPrefs.displayLanguage)
+            if (normalizedPrefs.displayLanguage != old.displayLanguage) {
+                L10n.language = normalizedPrefs.displayLanguage
+                postCommand("setLanguage", normalizedPrefs.displayLanguage)
             }
-            if (newPrefs.codeFence != old.codeFence || newPrefs.emphasisMarker != old.emphasisMarker ||
-                newPrefs.bulletMarker != old.bulletMarker ||
-                newPrefs.exitBlockOnEmptyEnter != old.exitBlockOnEmptyEnter ||
-                newPrefs.useShiftEnterHardBreak != old.useShiftEnterHardBreak ||
-                newPrefs.escapeLiteralSymbols != old.escapeLiteralSymbols ||
-                newPrefs.escapeMarkdownLiteralSymbols != old.escapeMarkdownLiteralSymbols ||
-                newPrefs.codeBlockSpellcheck != old.codeBlockSpellcheck
+            if (normalizedPrefs.codeFence != old.codeFence || normalizedPrefs.emphasisMarker != old.emphasisMarker ||
+                normalizedPrefs.bulletMarker != old.bulletMarker ||
+                normalizedPrefs.exitBlockOnEmptyEnter != old.exitBlockOnEmptyEnter ||
+                normalizedPrefs.useShiftEnterHardBreak != old.useShiftEnterHardBreak ||
+                normalizedPrefs.escapeLiteralSymbols != old.escapeLiteralSymbols ||
+                normalizedPrefs.escapeMarkdownLiteralSymbols != old.escapeMarkdownLiteralSymbols ||
+                normalizedPrefs.codeBlockSpellcheck != old.codeBlockSpellcheck
             ) {
                 applyEditorKernelSettings()
             }
