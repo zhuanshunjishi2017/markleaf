@@ -1560,6 +1560,11 @@ const ThemedSelection = Extension.create({
         }
         paintSelectionHighlight()
         const handleMouseUp = () => {
+          // The expanded formula/mermaid source editor owns the native DOM
+          // range while it is open. The main editor may still expose a
+          // NodeSelection for its anchor, but clearing that selection here
+          // would also clear the floating editor's text selection.
+          if (expandedSourceEditorKey.getState(view.state) !== null) return
           if (managedDragActive) {
             finishManagedDrag()
             return
@@ -1715,6 +1720,13 @@ const ThemedSelection = Extension.create({
             // 作用范围。前端在 contextmenu 时打 markleafPreserveSelection 标，
             // 菜单关闭随 hideFormatMenu 清除。
             if (view.dom.dataset.markleafPreserveSelection === '1') {
+              return false
+            }
+            // The expanded formula/mermaid source editor lives in document.body
+            // and owns the native DOM range while it is open. Blurring the main
+            // editor must not collapse its ProseMirror selection or clear the
+            // floating editor's text selection after a drag ends.
+            if (expandedSourceEditorKey.getState(view.state) !== null) {
               return false
             }
             // 组字期间的瞬时 blur（候选窗、原生菜单、窗口切换）绝不能触发
@@ -2014,9 +2026,9 @@ function inlineContentAfterTextOffset(content: any[], offset: number): any[] {
   return result
 }
 
-export function getCurrentBlockPosition(editor: Editor): number | null {
-  const { from } = editor.state.selection
-  const $from = editor.state.doc.resolve(from)
+function getCurrentBlockPositionFromState(state: Editor['state']): number | null {
+  const { from } = state.selection
+  const $from = state.doc.resolve(from)
   let insideList = false
   for (let depth = $from.depth; depth >= 1; depth -= 1) {
     if (['bulletList', 'orderedList', 'taskList'].includes($from.node(depth).type.name)) {
@@ -2036,6 +2048,10 @@ export function getCurrentBlockPosition(editor: Editor): number | null {
     }
   }
   return nodePos
+}
+
+export function getCurrentBlockPosition(editor: Editor): number | null {
+  return getCurrentBlockPositionFromState(editor.state)
 }
 
 export function getBlockHandleInfo(editor: Editor): BlockHandleInfo | null {
@@ -2093,6 +2109,7 @@ const BlockHandle = Extension.create({
         apply(transaction, previous): BlockHandleState {
           const update = transaction.getMeta(blockHandleKey) as BlockHandleMeta | undefined
           if (update) return { ...previous, ...update }
+          if (transaction.docChanged) return { activeBlock: null }
           return previous
         },
       },
@@ -2102,6 +2119,12 @@ const BlockHandle = Extension.create({
         if (!transactions.some((tr) => tr.selectionSet)) return null
         const { activeBlock } = blockHandleKey.getState(newState) ?? { activeBlock: null }
         if (activeBlock === null) return null
+        // Any document edit invalidates the transient block selection. This
+        // covers Enter/split transactions and Android IME paths that do not
+        // emit a DOM keydown before the new paragraph is committed.
+        if (transactions.some((tr) => tr.docChanged)) {
+          return newState.tr.setMeta(blockHandleKey, { activeBlock: null } satisfies BlockHandleMeta)
+        }
         const node = newState.doc.nodeAt(activeBlock)
         if (!node) return null
         const blockEnd = activeBlock + node.nodeSize

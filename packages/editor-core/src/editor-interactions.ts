@@ -21,7 +21,7 @@ export function createEditorInteractions(options: {
   let composing = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const enabled = () => options.enabled() && getEditor().isEditable && !composing
-  const handle = createBlockHandle(mount, getEditor, enabled, options.onMenu, options.label)
+  const handle = createBlockHandle(mount, getEditor, enabled, options.onMenu, options.label, () => options.onStateChanged?.())
   function update(): void {
     if (!enabled()) painter.cancel()
     mount.classList.toggle('format-painter-armed', painter.isArmed)
@@ -46,6 +46,18 @@ export function createEditorInteractions(options: {
   }, { signal: events.signal })
   mount.addEventListener('compositionstart', () => { composing = true; cancel() }, { signal: events.signal })
   mount.addEventListener('compositionend', () => { composing = false; update() }, { signal: events.signal })
+  // Enter splits the current block after the editor's own keymap runs. Clear
+  // the transient handle decoration in the next task so a new paragraph never
+  // inherits the old block's shadow.
+  mount.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return
+    window.setTimeout(() => {
+      if (getEditor().isDestroyed) return
+      setBlockHighlight(getEditor(), null)
+      update()
+      options.onStateChanged?.()
+    }, 0)
+  }, { signal: events.signal })
   document.addEventListener('selectionchange', () => { if (hasExpandedSourceEditor(getEditor())) options.onStateChanged?.() }, { signal: events.signal })
   window.addEventListener('resize', update, { signal: events.signal })
   window.addEventListener('scroll', update, { signal: events.signal, capture: true, passive: true })

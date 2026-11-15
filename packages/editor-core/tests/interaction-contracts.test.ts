@@ -128,7 +128,7 @@ describe('shared editing interactions', () => {
     mount.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
   })
 
-  it('keeps block menus outside editable content and disables them in reading mode', () => {
+  it('selects a block on a short handle press and opens its menu on long press', async () => {
     const { editor, mount } = setup('paragraph')
     const menu = vi.fn()
     const interactions = createEditorInteractions({ mount, getEditor: () => editor, enabled: () => editor.isEditable, onMenu: menu, label: 'Block menu' })
@@ -137,18 +137,40 @@ describe('shared editing interactions', () => {
     const handle = mount.querySelector<HTMLButtonElement>('.ml-block-handle')!
     expect(handle.hidden).toBe(false)
     expect(editor.view.dom.contains(handle)).toBe(false)
-    handle.dispatchEvent(new MouseEvent('mousedown'))
+    vi.useFakeTimers()
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 }))
+    handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0 }))
+    expect(menu).not.toHaveBeenCalled()
+    expect(mount.querySelector('.markleaf-block-active')).not.toBeNull()
+
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', button: 0 }))
+    vi.advanceTimersByTime(450)
     expect(menu).toHaveBeenCalledTimes(1)
+    handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', button: 0 }))
+    vi.useRealTimers()
     editor.setEditable(false, false)
     interactions.update()
     expect(handle.hidden).toBe(true)
-    handle.dispatchEvent(new MouseEvent('mousedown'))
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 }))
     expect(menu).toHaveBeenCalledTimes(1)
     editor.setEditable(true, false)
     setBlockHandleVisible(editor, false)
     interactions.update()
     expect(handle.hidden).toBe(true)
     setBlockHandleVisible(editor, true)
+  })
+
+  it('clears the selected block shadow after Enter creates a new paragraph', async () => {
+    const { editor, mount } = setup('paragraph')
+    const interactions = createEditorInteractions({ mount, getEditor: () => editor, enabled: () => editor.isEditable, onMenu: vi.fn(), label: 'Block menu' })
+    cleanup.push(interactions.dispose)
+    interactions.update()
+    const handle = mount.querySelector<HTMLButtonElement>('.ml-block-handle')!
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 }))
+    handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0 }))
+    expect(mount.querySelector('.markleaf-block-active')).not.toBeNull()
+    editor.commands.splitBlock()
+    expect(mount.querySelector('.markleaf-block-active')).toBeNull()
   })
 
   it('changes table dimensions, alignment and caption through shared commands', () => {
@@ -656,6 +678,20 @@ describe('shared editing interactions', () => {
     editor.setEditable(false, false)
     expect(executeEditorCommand(editor, 'deleteSelection')).toBe(false)
     expect(editor.state.doc.firstChild?.textContent).toBe('a**x**def')
+  })
+
+  it('keeps a formula source selection when the main editor blurs', async () => {
+    const { editor } = setup('$$abcdef$$', true)
+    expect(expandSourceEditor(editor, 0, 'mathBlock')).toBe(true)
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const source = document.querySelector<HTMLElement>('.markleaf-expanded-source-editor')!
+    const text = source.firstChild!
+    window.getSelection()!.setBaseAndExtent(text, 1, text, 3)
+
+    editor.view.dom.dispatchEvent(new FocusEvent('blur', { bubbles: false, relatedTarget: source }))
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+
+    expect(window.getSelection()?.toString()).toBe('bc')
   })
 
   it('positions formula source inside the viewport and removes it when disposed', () => {
