@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +43,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -422,7 +426,21 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     },
                                     onOutlineClick = { item ->
                                         scope.launch { drawerState.close() }
-                                        bridge.post(command("scrollToPosition", item.position.toString()))
+                                        // 源码模式的标题定位以标题文本为锚
+                                        // （scrollToSourceHeading，对齐桌面契约）：
+                                        // 可视化大纲的 position 是 ProseMirror
+                                        // 偏移，比源码字符偏移小，直接当源码
+                                        // 位置用会固定落在标题上方几个段落。
+                                        if (editorSourceMode.value) {
+                                            bridge.post(
+                                                command(
+                                                    "scrollToSourceHeading",
+                                                    "${item.position}\t${item.text}",
+                                                ),
+                                            )
+                                        } else {
+                                            bridge.post(command("scrollToPosition", item.position.toString()))
+                                        }
                                     },
                                     onCreateDocument = {
                                         scope.launch { drawerState.close() }
@@ -630,9 +648,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     semanticContext = editorSemanticContext.value,
                     actions = editorActions.value,
                     onDismiss = { dismissBlockMenu() },
-                    onCommand = { command ->
+                    onCommand = { command, text ->
                         dismissBlockMenu()
-                        postCommand(command)
+                        postCommand(command, text ?: "")
                     },
                     onLanguagePicker = {
                         dismissBlockMenu()
@@ -2954,6 +2972,13 @@ SafDocumentSource.takePersistablePermission(this, uri)
         val title: String,
         val command: String,
         val separatorBefore: Boolean = false,
+        val languagePicker: Boolean = false,
+        val text: String? = null,
+    )
+
+    private data class BlockMenuGroup(
+        val title: String,
+        val items: List<BlockMenuItem>,
     )
 
     private fun dismissBlockMenu() {
@@ -2962,67 +2987,192 @@ SafDocumentSource.takePersistablePermission(this, uri)
         postCommand("clearBlockHighlight")
     }
 
+    private fun blockMenuGroups(
+        semanticContext: String?,
+        blockType: String?,
+        actions: Map<String, Pair<Boolean, Boolean>>,
+    ): List<BlockMenuGroup> {
+        fun item(title: String, command: String, languagePicker: Boolean = false, text: String? = null) =
+            BlockMenuItem(title, command, languagePicker = languagePicker, text = text)
+        fun group(title: String, vararg items: BlockMenuItem): BlockMenuGroup =
+            BlockMenuGroup(title, items.filter { actions[it.command]?.first == true })
+
+        val groups = mutableListOf(
+            group(
+                L10n.t("编辑"),
+                item(L10n.t("撤销"), "undo"),
+                item(L10n.t("重做"), "redo"),
+                item(L10n.t("上方插入段落"), "insertLineBefore"),
+                item(L10n.t("下方插入段落"), "insertLineAfter"),
+                item(L10n.t("复制段落"), "duplicateParagraph"),
+                item(L10n.t("删除段落"), "deleteParagraph"),
+            ),
+            group(
+                if (blockType?.startsWith("heading") == true) L10n.t("标题")
+                else if (blockType?.endsWith("List") == true) L10n.t("列表")
+                else L10n.t("段落"),
+                item(L10n.t("正文"), "setParagraph"),
+                item(L10n.t("一级标题"), "setHeading1"),
+                item(L10n.t("二级标题"), "setHeading2"),
+                item(L10n.t("三级标题"), "setHeading3"),
+                item(L10n.t("四级标题"), "setHeading4"),
+                item(L10n.t("五级标题"), "setHeading5"),
+                item(L10n.t("六级标题"), "setHeading6"),
+                item(L10n.t("提升标题级别"), "promoteHeading"),
+                item(L10n.t("降低标题级别"), "demoteHeading"),
+                item(L10n.t("引用"), "toggleBlockquote"),
+                item(L10n.t("无序列表"), "toggleBulletList"),
+                item(L10n.t("有序列表"), "toggleOrderedList"),
+                item(L10n.t("任务列表"), "toggleTaskList"),
+                item(L10n.t("增加列表缩进"), "indentListItem"),
+                item(L10n.t("减少列表缩进"), "outdentListItem"),
+                item(L10n.t("代码块"), "toggleCodeBlock"),
+            ),
+            group(
+                L10n.t("插入"),
+                item(L10n.t("行内公式"), "insertMathInline"),
+                item(L10n.t("块级公式"), "insertMathBlock"),
+                item(L10n.t("表格"), "insertTable"),
+                item(L10n.t("水平分隔线"), "insertHorizontalRule"),
+                item(L10n.t("Mermaid 图表"), "insertMermaid"),
+            ),
+            group(
+                L10n.t("格式"),
+                item(L10n.t("粗体"), "toggleBold"),
+                item(L10n.t("斜体"), "toggleItalic"),
+                item(L10n.t("下划线"), "toggleUnderline"),
+                item(L10n.t("删除线"), "toggleStrike"),
+                item(L10n.t("高亮"), "toggleHighlight"),
+                item(L10n.t("行内代码"), "toggleCode"),
+                item(L10n.t("格式刷"), "formatPainter"),
+                item(L10n.t("清除格式"), "clearFormat"),
+            ),
+        )
+
+        val contextItems = when (semanticContext) {
+            "codeBlock" -> listOf(
+                item(L10n.t("声明代码语言…"), "setCodeBlockLanguage", languagePicker = true),
+                item(L10n.t("格式化代码块"), "formatCodeBlock"),
+                item(L10n.t("复制整段代码"), "copyCodeBlock"),
+                item(L10n.t("转为正文"), "exitCode"),
+            )
+            "table" -> listOf(
+                item(L10n.t("上方插行"), "addRowBefore"),
+                item(L10n.t("下方插行"), "addRowAfter"),
+                item(L10n.t("删除当前行"), "deleteRow"),
+                item(L10n.t("左插列"), "addColumnBefore"),
+                item(L10n.t("右插列"), "addColumnAfter"),
+                item(L10n.t("删除当前列"), "deleteColumn"),
+                item(L10n.t("根据内容调整列宽"), "fitTableContents"),
+                item(L10n.t("平均分配列宽"), "distributeTableColumns"),
+                item(L10n.t("恢复自动列宽"), "resetTableWidths"),
+                item(L10n.t("左对齐"), "alignTableLeft"),
+                item(L10n.t("居中对齐"), "alignTableCenter"),
+                item(L10n.t("右对齐"), "alignTableRight"),
+                item(L10n.t("删除表格"), "deleteTable"),
+            )
+            "math" -> listOf(
+                item(L10n.t("编辑公式源码"), "editMath"),
+                item(L10n.t("公式编号…"), "setMathNumber"),
+                item(L10n.t("转为行内/块级"), "convertMath"),
+                item(L10n.t("删除公式"), "deleteMath"),
+            )
+            "mermaid" -> listOf(
+                item(L10n.t("编辑 Mermaid 源码"), "editMermaid"),
+                item(L10n.t("重新渲染图表"), "rerenderMermaid"),
+                item(L10n.t("保存图表"), "saveMermaidAs"),
+                item(L10n.t("删除图表"), "deleteMermaid"),
+            )
+            "image" -> listOf(
+                item(L10n.t("50%"), "resizeImage", text = "50"),
+                item(L10n.t("75%"), "resizeImage", text = "75"),
+                item(L10n.t("90%"), "resizeImage", text = "90"),
+                item(L10n.t("100%"), "resizeImage", text = "100"),
+                item(L10n.t("顺时针旋转"), "rotateImageClockwise"),
+                item(L10n.t("保存图片"), "saveImageAs"),
+            )
+            else -> emptyList()
+        }
+        if (contextItems.isNotEmpty()) groups += BlockMenuGroup(
+            when (semanticContext) {
+                "codeBlock" -> L10n.t("代码块")
+                "table" -> L10n.t("表格")
+                "math" -> L10n.t("公式")
+                "mermaid" -> L10n.t("Mermaid")
+                "image" -> L10n.t("图片")
+                else -> L10n.t("上下文")
+            },
+            contextItems.filter { actions[it.command]?.first == true },
+        )
+        return groups.filter { it.items.isNotEmpty() }
+    }
+
     @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     @Composable
     private fun BlockMenuSheet(
         semanticContext: String?,
         actions: Map<String, Pair<Boolean, Boolean>>,
         onDismiss: () -> Unit,
-        onCommand: (String) -> Unit,
+        onCommand: (String, String?) -> Unit,
         onLanguagePicker: () -> Unit,
     ) {
-        val common = listOf(
-            BlockMenuItem(L10n.t("上方插入段落"), "insertLineBefore"),
-            BlockMenuItem(L10n.t("下方插入段落"), "insertLineAfter"),
-            BlockMenuItem(L10n.t("复制段落"), "duplicateParagraph"),
-            BlockMenuItem(L10n.t("删除段落"), "deleteParagraph", separatorBefore = true),
-        )
-        val specific = when (semanticContext) {
-            "codeBlock" -> listOf(
-                BlockMenuItem(L10n.t("声明代码语言…"), "setCodeBlockLanguage"),
-                BlockMenuItem(L10n.t("格式化代码块"), "formatCodeBlock"),
-                BlockMenuItem(L10n.t("复制整段代码"), "copyCodeBlock"),
-                BlockMenuItem(L10n.t("转为正文"), "exitCode", separatorBefore = true),
-            )
-            "table" -> listOf(
-                BlockMenuItem(L10n.t("根据内容调整列宽"), "fitTableContents"),
-                BlockMenuItem(L10n.t("平均分配列宽"), "distributeTableColumns"),
-                BlockMenuItem(L10n.t("恢复自动列宽"), "resetTableWidths"),
-                BlockMenuItem(L10n.t("删除表格"), "deleteTable", separatorBefore = true),
-            )
-            "math" -> listOf(
-                BlockMenuItem(L10n.t("编辑公式源码"), "editMath"),
-                BlockMenuItem(L10n.t("转为行内/块级"), "convertMath"),
-                BlockMenuItem(L10n.t("删除公式"), "deleteMath", separatorBefore = true),
-            )
-            "mermaid" -> listOf(
-                BlockMenuItem(L10n.t("编辑 Mermaid 源码"), "editMermaid"),
-                BlockMenuItem(L10n.t("重新渲染图表"), "rerenderMermaid"),
-                BlockMenuItem(L10n.t("删除图表"), "deleteMermaid", separatorBefore = true),
-            )
-            else -> listOf(
-                BlockMenuItem(L10n.t("清除格式"), "clearFormat", separatorBefore = true),
-            )
-        }
+        val blockType = (editorStatus.value?.get("blockType") as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val groups = blockMenuGroups(semanticContext, blockType, actions)
+        var selectedGroup by remember(groups) { mutableStateOf(0) }
         androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
             Text(
-                L10n.t("段落操作"),
+                L10n.f("%s操作", blockTypeLabel(blockType)),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
-            (common + specific).forEach { item ->
-                if (item.separatorBefore) SheetDivider()
-                val enabled = actions[item.command]?.first == true
-                if (item.command == "setCodeBlockLanguage") {
-                    SheetMenuRow(item.title, enabled = enabled) {
-                        if (enabled) onLanguagePicker()
-                    }
-                } else {
-                    SheetMenuRow(item.title, enabled = enabled) {
-                        if (enabled) onCommand(item.command)
+            androidx.compose.material3.ScrollableTabRow(
+                selectedTabIndex = selectedGroup.coerceIn(0, (groups.size - 1).coerceAtLeast(0)),
+                edgePadding = 16.dp,
+            ) {
+                groups.forEachIndexed { index, group ->
+                    androidx.compose.material3.Tab(
+                        selected = selectedGroup == index,
+                        onClick = { selectedGroup = index },
+                        text = { Text(group.title) },
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                val group = groups.getOrNull(selectedGroup.coerceIn(0, (groups.size - 1).coerceAtLeast(0)))
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    group?.items?.forEach { item ->
+                        val enabled = actions[item.command]?.first == true
+                        androidx.compose.material3.FilterChip(
+                            selected = false,
+                            enabled = enabled,
+                            onClick = { if (item.languagePicker) onLanguagePicker() else onCommand(item.command, item.text) },
+                            label = { Text(item.title) },
+                        )
                     }
                 }
             }
+        }
+    }
+
+    private fun blockTypeLabel(blockType: String?): String = when {
+        blockType == null -> L10n.t("段落")
+        blockType.startsWith("heading") -> L10n.t("标题")
+        blockType.endsWith("List") -> L10n.t("列表")
+        else -> when (blockType) {
+            "codeBlock" -> L10n.t("代码块")
+            "table" -> L10n.t("表格")
+            "image" -> L10n.t("图片")
+            else -> L10n.t("段落")
         }
     }
 
