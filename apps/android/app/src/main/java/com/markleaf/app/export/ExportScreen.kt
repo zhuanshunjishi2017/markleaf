@@ -69,6 +69,8 @@ fun ExportScreen(
     var keepHeadingsWithNextBlock by remember { mutableStateOf(true) }
     var headerPreset by remember { mutableStateOf("none") }
     var footerPreset by remember { mutableStateOf("none") }
+    var headerCustom by remember { mutableStateOf("") }
+    var footerCustom by remember { mutableStateOf("") }
     var styleId by remember { mutableStateOf(initialStyleId) }
     var colorThemeId by remember { mutableStateOf(initialColorThemeId) }
     var imageFormat by remember { mutableStateOf("png") }
@@ -82,6 +84,7 @@ fun ExportScreen(
         keepTablesTogether = keepTablesTogether,
         keepHeadingsWithNextBlock = keepHeadingsWithNextBlock,
         headerPresetId = headerPreset, footerPresetId = footerPreset,
+        headerCustom = headerCustom, footerCustom = footerCustom,
         imageFormat = imageFormat, imageJpegQuality = imageJpegQuality, imageScale = imageScale,
         styleId = styleId, colorThemeId = colorThemeId,
     )
@@ -308,10 +311,28 @@ fun ExportScreen(
                     )
                 }
 
-                // HTML 专属：页眉 / 页脚
-                if (format == ExportFormat.HTML) {
+                // HTML/PDF 共用页眉 / 页脚；PDF 预览与保存走同一份 HTML。
+                if (format == ExportFormat.HTML || format == ExportFormat.PDF) {
                     ChipRowGroup("页眉", HEADER_PRESET_MAP, headerPreset) { headerPreset = it }
+                    if (headerPreset == "custom") {
+                        OutlinedTextField(
+                            value = headerCustom,
+                            onValueChange = { headerCustom = it },
+                            label = { Text(L10n.t("页眉内容")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        )
+                    }
                     ChipRowGroup("页脚", HEADER_PRESET_MAP, footerPreset) { footerPreset = it }
+                    if (footerPreset == "custom") {
+                        OutlinedTextField(
+                            value = footerCustom,
+                            onValueChange = { footerCustom = it },
+                            label = { Text(L10n.t("页脚内容")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        )
+                    }
                 }
             }
 

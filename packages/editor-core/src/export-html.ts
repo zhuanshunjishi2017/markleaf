@@ -316,6 +316,34 @@ html:has(body.markleaf-export-image)::-webkit-scrollbar {
   padding-right: 5px;
   width: 100%;
 }
+/* Android WebView's print adapter repeats fixed elements on every page. Keep
+   them out of normal flow so the document body keeps the same pagination in
+   preview and in the saved PDF. Chromium exposes the paged-media counters for
+   these generated spans. */
+.markleaf-export-pdf .export-header,
+.markleaf-export-pdf .export-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+  background: var(--bg-primary);
+  font-size: 0.82em;
+}
+.markleaf-export-pdf .export-header { top: 0; }
+.markleaf-export-pdf .export-footer { bottom: 0; }
+.markleaf-export-pdf .export-header .markleaf-page-number::after,
+.markleaf-export-pdf .export-footer .markleaf-page-number::after {
+  content: counter(page);
+}
+.markleaf-export-pdf .export-header .markleaf-page-total::after,
+.markleaf-export-pdf .export-footer .markleaf-page-total::after {
+  content: counter(pages);
+}
+.markleaf-export-pdf .markleaf-document {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
 
 /* PDF export: prevent horizontal overflow (scrollbars) and wrap long lines. */
 .markleaf-export-pdf .markleaf-document pre {

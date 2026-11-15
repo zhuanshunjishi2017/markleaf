@@ -24,6 +24,22 @@ class ExportControllerTest {
         assertEquals(":root { --bg-primary: white; }", request["colorSchemeCss"]!!.jsonPrimitive.content)
     }
 
+    @Test
+    fun `pdf requests carry title page and custom header footer`() {
+        val request = Json.parseToJsonElement(ExportController.htmlRequest(
+            "报告",
+            ExportOptions(
+                format = ExportFormat.PDF,
+                headerPresetId = "title-left",
+                footerPresetId = "custom",
+                footerCustom = "内部 · {page}/{pages}",
+            ),
+        )).jsonObject
+        assertEquals("<span style=\"display:block;text-align:left\">报告</span>", request["header"]!!.jsonPrimitive.content)
+        assertTrue(request["footer"]!!.jsonPrimitive.content.contains("markleaf-page-number"))
+        assertTrue(request["footer"]!!.jsonPrimitive.content.contains("markleaf-page-total"))
+    }
+
     // ---- 文件名清洗（与 Windows saveName 同规则）----
 
     @Test

@@ -128,3 +128,15 @@ val writeNativeShim by tasks.registering {
 tasks.named("preBuild") {
     dependsOn(writeAssetManifest, writeNativeShim)
 }
+
+// The generated directory is an Android asset source root. AGP can otherwise
+// mark merge*Assets up-to-date before the generated shim is visible, producing
+// an APK whose index references native-shim.js but which does not contain it.
+// Make the generated entry points explicit inputs of every variant asset merge.
+tasks.matching { task ->
+    task.name.startsWith("merge") && task.name.endsWith("Assets")
+}.configureEach {
+    dependsOn(writeNativeShim)
+    inputs.file(editorAssetsDir.map { it.file("index.html") })
+    inputs.file(editorAssetsDir.map { it.file("native-shim.js") })
+}

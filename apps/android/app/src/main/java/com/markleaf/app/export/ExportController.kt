@@ -11,7 +11,7 @@ enum class ExportFormat { HTML, PDF, IMAGE }
 
 /**
  * 导出选项（对应桌面 ExportOptions 的移动端子集）。
- * PDF 页眉/页脚：第一版由系统打印框架决定，自定义页眉页脚**显式降级**（spec §5.2）。
+ * PDF 页眉/页脚由导出 HTML 统一生成，预览与保存复用同一份分页文件。
  */
 data class ExportOptions(
     val format: ExportFormat,
@@ -28,6 +28,8 @@ data class ExportOptions(
     val keepHeadingsWithNextBlock: Boolean = true,
     val headerPresetId: String = "none",
     val footerPresetId: String = "none",
+    val headerCustom: String = "",
+    val footerCustom: String = "",
     val imageFormat: String = "png",
     val imageJpegQuality: Int = 90,
     val imageScale: Int = 2,
@@ -46,18 +48,42 @@ object ExportController {
         put("title", JsonPrimitive(title))
         put("keepTablesTogether", JsonPrimitive(options.keepTablesTogether))
         put("keepHeadingsWithNextBlock", JsonPrimitive(options.keepHeadingsWithNextBlock))
-        if (options.format == ExportFormat.HTML) {
-            put("header", JsonPrimitive(presetText(options.headerPresetId)))
-            put("footer", JsonPrimitive(presetText(options.footerPresetId)))
-        }
+        // HTML 与 PDF 使用同一份导出文档。PDF 由固定页眉/页脚元素重复到
+        // 每一页；页码占位符在 export-html.css 中由打印计数器渲染。
+        val header = if (options.format == ExportFormat.IMAGE) "" else
+            presetText(options.headerPresetId, title, options.headerCustom, options.format)
+        val footer = if (options.format == ExportFormat.IMAGE) "" else
+            presetText(options.footerPresetId, title, options.footerCustom, options.format)
+        put("header", JsonPrimitive(header))
+        put("footer", JsonPrimitive(footer))
     }.toString()
 
-    private fun presetText(id: String): String = when (id) {
-        "title-left" -> "{title}"
-        "page-center", "page-right" -> "{page}"
-        "page-total-center" -> "{page}/{pages}"
-        else -> ""
+    private fun presetText(id: String, title: String, custom: String, format: ExportFormat): String {
+        val (template, alignment) = when (id) {
+            "title-left" -> title to "left"
+            "page-center" -> "{page}" to "center"
+            "page-right" -> "{page}" to "right"
+            "page-total-center" -> "{page}/{pages}" to "center"
+            "custom" -> custom to "center"
+            else -> "" to "left"
+        }
+        if (template.isBlank()) return ""
+        val escaped = escapeHtml(template)
+            .replace("{page}", if (format == ExportFormat.PDF) "<span class=\"markleaf-page-number\"></span>" else "{page}")
+            .replace("{pages}", if (format == ExportFormat.PDF) "<span class=\"markleaf-page-total\"></span>" else "{pages}")
+        return if (format == ExportFormat.PDF) {
+            "<span style=\"display:block;text-align:$alignment\">$escaped</span>"
+        } else {
+            escaped
+        }
     }
+
+    private fun escapeHtml(value: String): String = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 
     /**
      * Windows ImageAssetService.SanitizeFileName 同规则：

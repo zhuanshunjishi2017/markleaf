@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
  * 导出页（对齐桌面 ExportWindowController 选项集，移动端单列布局）：
  * 格式（PDF/HTML/图片）+ 文件名 + 格式专属选项：
  * - PDF：纸张方向/页边距预设/分页组（表格不跨页、标题不落页底）/打印友好浅色
- * - HTML：页眉/页脚预设
+ * - HTML/PDF：页眉/页脚预设
  * - 图片：格式 PNG/JPEG、JPEG 质量、缩放比例
  * 实际边距由 PrintManager MinMargins 应用；页眉/页脚 {page}/{pages} 占位
  * 由前端 generateExportHtml 展开。
@@ -139,8 +139,8 @@ fun ExportDialog(
             )
         }
 
-        // HTML 专属：页眉 / 页脚预设
-        if (format == ExportFormat.HTML) {
+        // HTML/PDF 共用页眉 / 页脚预设
+        if (format == ExportFormat.HTML || format == ExportFormat.PDF) {
             ChipRowGroup(label = "页眉", presets = HEADER_PRESET_MAP, selectedId = headerPreset) { headerPreset = it }
             ChipRowGroup(label = "页脚", presets = HEADER_PRESET_MAP, selectedId = footerPreset) { footerPreset = it }
         }
@@ -191,7 +191,7 @@ internal val MARGIN_PRESETS_MAP: Map<String, String> = mapOf(
 internal val IMAGE_FORMATS: Map<String, String> = mapOf("png" to "PNG", "jpeg" to "JPEG")
 internal val HEADER_PRESET_MAP: Map<String, String> = mapOf(
     "none" to "无", "title-left" to "标题（左对齐）", "page-center" to "页码（居中）",
-    "page-right" to "页码（右对齐）", "page-total-center" to "页码/总页数（居中）",
+    "page-right" to "页码（右对齐）", "page-total-center" to "页码/总页数（居中）", "custom" to "自定义",
 )
 
 /** 通用「标签 + FilterChip 组」行。 */
