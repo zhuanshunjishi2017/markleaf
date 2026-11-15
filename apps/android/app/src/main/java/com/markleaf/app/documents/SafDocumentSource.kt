@@ -18,9 +18,20 @@ class SafDocumentSource(private val context: Context) : DocumentSource {
 
     override suspend fun listChildren(folder: DocumentRef): List<DocumentEntry> = withContext(Dispatchers.IO) {
         val folderUri = folder.requireSaf().parsedUri
+        // getDocumentId 只接受 document uri；workspaceRoot 是 tree uri，
+        // 直接传入会抛 IllegalArgumentException（此前侧栏树恒为空的根因），
+        // 先归一为该目录自身的 document uri。
+        val effectiveUri = if (folderUri.pathSegments.contains("tree")) {
+            DocumentsContract.buildDocumentUriUsingTree(
+                folderUri,
+                DocumentsContract.getTreeDocumentId(folderUri),
+            )
+        } else {
+            folderUri
+        }
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            folderUri,
-            DocumentsContract.getDocumentId(folderUri),
+            effectiveUri,
+            DocumentsContract.getDocumentId(effectiveUri),
         )
         val entries = mutableListOf<DocumentEntry>()
         val projection = arrayOf(

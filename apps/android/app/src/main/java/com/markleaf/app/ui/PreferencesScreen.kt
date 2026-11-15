@@ -7,6 +7,7 @@ import com.markleaf.app.editor.StyleAssets
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +25,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -45,6 +50,9 @@ fun PreferencesScreen(
     onClearHistory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var showVisualSettings by remember { mutableStateOf(false) }
+    var showSourceSettings by remember { mutableStateOf(false) }
+    var showMarkdownSettings by remember { mutableStateOf(false) }
     val lightThemes = colorThemes.filter { !it.isDark }
     val darkThemes = colorThemes.filter { it.isDark }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -113,174 +121,11 @@ fun PreferencesScreen(
                 // ===== 编辑器（对齐桌面「编辑器」页签：可视化 / 源码模式 / Markdown 行为 / 缩放视图）=====
                 SectionTitle(L10n.t("编辑器"))
                 GroupHeader(L10n.t("可视化"))
-                StepperRow(
-                    label = L10n.t("字号"),
-                    value = "${prefs.fontSize}",
-                    onMinus = { onChange(prefs.copy(fontSize = (prefs.fontSize - 1).coerceAtLeast(12))) },
-                    onPlus = { onChange(prefs.copy(fontSize = (prefs.fontSize + 1).coerceAtMost(24))) },
-                )
-                ChipRow(
-                    label = L10n.t("行高"),
-                    options = listOf("1.5", "1.75", "2.0"),
-                    selected = prefs.lineHeight.toString(),
-                    onSelect = { onChange(prefs.copy(lineHeight = it.toDouble())) },
-                )
-                ChipRow(
-                    label = L10n.t("内容宽度"),
-                    options = listOf("740", "820", "980", L10n.t("不限")),
-                    selected = if (prefs.ignoreMaxWidth) L10n.t("不限") else prefs.maxWidth.toString(),
-                    onSelect = {
-                        if (it == L10n.t("不限")) onChange(prefs.copy(ignoreMaxWidth = true))
-                        else onChange(prefs.copy(ignoreMaxWidth = false, maxWidth = it.toInt()))
-                    },
-                )
-                ChipRow(
-                    label = L10n.t("中文排版语言"),
-                    options = EditorPrefs.CJK_LANGUAGES.map { it.second },
-                    selected = EditorPrefs.CJK_LANGUAGES
-                        .firstOrNull { it.first == prefs.cjkLanguage }?.second ?: "",
-                    onSelect = { display ->
-                        EditorPrefs.CJK_LANGUAGES
-                            .firstOrNull { it.second == display }
-                            ?.let { onChange(prefs.copy(cjkLanguage = it.first)) }
-                    },
-                )
-                SwitchRow(
-                    label = L10n.t("中西文之间自动加空格"),
-                    checked = prefs.cjkSpacing,
-                    onChange = { onChange(prefs.copy(cjkSpacing = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("西文两端对齐"),
-                    checked = prefs.adaptiveJustification,
-                    onChange = { onChange(prefs.copy(adaptiveJustification = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("允许拖拽调整表格列宽"),
-                    checked = prefs.tableColumnResize,
-                    onChange = { onChange(prefs.copy(tableColumnResize = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示段落块手柄"),
-                    checked = prefs.blockHandle,
-                    onChange = { onChange(prefs.copy(blockHandle = it)) },
-                )
+                LinkRow(L10n.t("可视化设置…")) { showVisualSettings = true }
                 GroupHeader(L10n.t("源码模式"))
-                StepperRow(
-                    label = L10n.t("源码字号"),
-                    value = "${prefs.sourceFontSize}",
-                    onMinus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize - 1).coerceAtLeast(12))) },
-                    onPlus = { onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize + 1).coerceAtMost(20))) },
-                )
-                ChipRow(
-                    label = L10n.t("源码字体"),
-                    options = EditorPrefs.SOURCE_FONT_FAMILIES.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.SOURCE_FONT_FAMILIES
-                            .firstOrNull { it.first == prefs.sourceFontFamily }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.SOURCE_FONT_FAMILIES
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(sourceFontFamily = it.first)) }
-                    },
-                )
-                ChipRow(
-                    label = L10n.t("源码中文字体"),
-                    options = EditorPrefs.SOURCE_CJK_FONT_FAMILIES.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.SOURCE_CJK_FONT_FAMILIES
-                            .firstOrNull { it.first == prefs.sourceCjkFontFamily }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.SOURCE_CJK_FONT_FAMILIES
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(sourceCjkFontFamily = it.first)) }
-                    },
-                )
-                StepperRow(
-                    label = L10n.t("源码缩进宽度"),
-                    value = "${prefs.sourceIndent}",
-                    onMinus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent - 1).coerceAtLeast(1))) },
-                    onPlus = { onChange(prefs.copy(sourceIndent = (prefs.sourceIndent + 1).coerceAtMost(8))) },
-                )
+                LinkRow(L10n.t("字体设置…")) { showSourceSettings = true }
                 GroupHeader(L10n.t("Markdown 行为"))
-                SwitchRow(
-                    label = L10n.t("转义文本中的 Markdown 符号"),
-                    checked = prefs.escapeLiteralSymbols,
-                    onChange = { onChange(prefs.copy(escapeLiteralSymbols = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("转义 Markdown 字面量符号"),
-                    checked = prefs.escapeMarkdownLiteralSymbols,
-                    onChange = { onChange(prefs.copy(escapeMarkdownLiteralSymbols = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("代码块拼写检查"),
-                    checked = prefs.codeBlockSpellcheck,
-                    onChange = { onChange(prefs.copy(codeBlockSpellcheck = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("空行回车退出块"),
-                    checked = prefs.exitBlockOnEmptyEnter,
-                    onChange = { onChange(prefs.copy(exitBlockOnEmptyEnter = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("Shift+Enter 插入硬换行"),
-                    checked = prefs.useShiftEnterHardBreak,
-                    onChange = { onChange(prefs.copy(useShiftEnterHardBreak = it)) },
-                )
-                ChipRow(
-                    label = L10n.t("代码围栏"),
-                    options = EditorPrefs.CODE_FENCES.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.CODE_FENCES.firstOrNull { it.first == prefs.codeFence }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.CODE_FENCES
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(codeFence = it.first)) }
-                    },
-                )
-                ChipRow(
-                    label = L10n.t("强调标记"),
-                    options = EditorPrefs.EMPHASIS_MARKERS.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.EMPHASIS_MARKERS
-                            .firstOrNull { it.first == prefs.emphasisMarker }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.EMPHASIS_MARKERS
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(emphasisMarker = it.first)) }
-                    },
-                )
-                ChipRow(
-                    label = L10n.t("不安全强调标记"),
-                    options = EditorPrefs.UNSAFE_EMPHASIS_CHOICES.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.UNSAFE_EMPHASIS_CHOICES
-                            .firstOrNull { it.first == prefs.unsafeEmphasis }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.UNSAFE_EMPHASIS_CHOICES
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(unsafeEmphasis = it.first)) }
-                    },
-                )
-                ChipRow(
-                    label = L10n.t("列表标记"),
-                    options = EditorPrefs.BULLET_MARKERS.map { L10n.t(it.second) },
-                    selected = L10n.t(
-                        EditorPrefs.BULLET_MARKERS
-                            .firstOrNull { it.first == prefs.bulletMarker }?.second ?: "",
-                    ),
-                    onSelect = { display ->
-                        EditorPrefs.BULLET_MARKERS
-                            .firstOrNull { L10n.t(it.second) == display }
-                            ?.let { onChange(prefs.copy(bulletMarker = it.first)) }
-                    },
-                )
+                LinkRow(L10n.t("Markdown 行为…")) { showMarkdownSettings = true }
                 GroupHeader(L10n.t("缩放视图"))
                 SwitchRow(
                     label = L10n.t("打开时还原上次的缩放比例"),
@@ -321,6 +166,11 @@ fun PreferencesScreen(
                     enabled = !prefs.followSystemTheme,
                     onSelect = { id -> onChange(prefs.copy(colorTheme = id)) },
                 )
+                SwitchRow(
+                    label = L10n.t("与操作系统同步"),
+                    checked = prefs.followSystemTheme,
+                    onChange = { onChange(prefs.copy(followSystemTheme = it)) },
+                )
                 ThemeChipRow(
                     label = L10n.t("默认浅色主题"),
                     options = lightThemes,
@@ -334,11 +184,6 @@ fun PreferencesScreen(
                     selectedId = prefs.defaultDarkTheme,
                     enabled = prefs.followSystemTheme,
                     onSelect = { id -> onChange(prefs.copy(defaultDarkTheme = id)) },
-                )
-                SwitchRow(
-                    label = L10n.t("与操作系统同步"),
-                    checked = prefs.followSystemTheme,
-                    onChange = { onChange(prefs.copy(followSystemTheme = it)) },
                 )
                 SwitchRow(
                     label = L10n.t("显示代码高亮"),
@@ -458,11 +303,122 @@ fun PreferencesScreen(
                     onChange = { onChange(prefs.copy(prefixRelativeWithDotSlash = it)) },
                 )
 
-                Text(
-                    L10n.t("更多设置将在后续版本提供"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 16.dp),
+            }
+            if (showVisualSettings) {
+                AlertDialog(
+                    onDismissRequest = { showVisualSettings = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                    title = { Text(L10n.t("可视化设置")) },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .heightIn(max = 520.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            StepperRow(
+                                label = L10n.t("字号"),
+                                value = "${prefs.fontSize}",
+                                onMinus = { onChange(prefs.copy(fontSize = (prefs.fontSize - 1).coerceAtLeast(12))) },
+                                onPlus = { onChange(prefs.copy(fontSize = (prefs.fontSize + 1).coerceAtMost(24))) },
+                            )
+                            ChipRow(L10n.t("行高"), listOf("1.5", "1.75", "2.0"), prefs.lineHeight.toString()) {
+                                onChange(prefs.copy(lineHeight = it.toDouble()))
+                            }
+                            ChipRow(
+                                L10n.t("内容宽度"),
+                                listOf("740", "820", "980", L10n.t("不限")),
+                                if (prefs.ignoreMaxWidth) L10n.t("不限") else prefs.maxWidth.toString(),
+                            ) {
+                                if (it == L10n.t("不限")) onChange(prefs.copy(ignoreMaxWidth = true))
+                                else onChange(prefs.copy(ignoreMaxWidth = false, maxWidth = it.toInt()))
+                            }
+                            ChipRow(
+                                L10n.t("中文排版语言"),
+                                EditorPrefs.CJK_LANGUAGES.map { it.second },
+                                EditorPrefs.CJK_LANGUAGES.firstOrNull { it.first == prefs.cjkLanguage }?.second ?: "",
+                            ) { display ->
+                                EditorPrefs.CJK_LANGUAGES.firstOrNull { it.second == display }
+                                    ?.let { onChange(prefs.copy(cjkLanguage = it.first)) }
+                            }
+                            SwitchRow(L10n.t("中西文之间自动加空格"), prefs.cjkSpacing) { onChange(prefs.copy(cjkSpacing = it)) }
+                            SwitchRow(L10n.t("西文两端对齐"), prefs.adaptiveJustification) { onChange(prefs.copy(adaptiveJustification = it)) }
+                            SwitchRow(L10n.t("允许调整表格列宽"), prefs.tableColumnResize) { onChange(prefs.copy(tableColumnResize = it)) }
+                            SwitchRow(L10n.t("显示段落块手柄"), prefs.blockHandle) { onChange(prefs.copy(blockHandle = it)) }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showVisualSettings = false }) { Text(L10n.t("关闭")) } },
+                )
+            }
+            if (showSourceSettings) {
+                AlertDialog(
+                    onDismissRequest = { showSourceSettings = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                    title = { Text(L10n.t("字体设置")) },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(0.92f).heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                        ) {
+                            StepperRow(L10n.t("源码字号"), "${prefs.sourceFontSize}", onMinus = {
+                                onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize - 1).coerceAtLeast(12)))
+                            }, onPlus = {
+                                onChange(prefs.copy(sourceFontSize = (prefs.sourceFontSize + 1).coerceAtMost(20)))
+                            })
+                            ChipRow(
+                                L10n.t("源码字体"),
+                                EditorPrefs.SOURCE_FONT_FAMILIES.map { L10n.t(it.second) },
+                                L10n.t(EditorPrefs.SOURCE_FONT_FAMILIES.firstOrNull { it.first == prefs.sourceFontFamily }?.second ?: ""),
+                            ) { display ->
+                                EditorPrefs.SOURCE_FONT_FAMILIES.firstOrNull { L10n.t(it.second) == display }
+                                    ?.let { onChange(prefs.copy(sourceFontFamily = it.first)) }
+                            }
+                            ChipRow(
+                                L10n.t("源码中文字体"),
+                                EditorPrefs.SOURCE_CJK_FONT_FAMILIES.map { L10n.t(it.second) },
+                                L10n.t(EditorPrefs.SOURCE_CJK_FONT_FAMILIES.firstOrNull { it.first == prefs.sourceCjkFontFamily }?.second ?: ""),
+                            ) { display ->
+                                EditorPrefs.SOURCE_CJK_FONT_FAMILIES.firstOrNull { L10n.t(it.second) == display }
+                                    ?.let { onChange(prefs.copy(sourceCjkFontFamily = it.first)) }
+                            }
+                            StepperRow(L10n.t("源码缩进宽度"), "${prefs.sourceIndent}", onMinus = {
+                                onChange(prefs.copy(sourceIndent = (prefs.sourceIndent - 1).coerceAtLeast(1)))
+                            }, onPlus = {
+                                onChange(prefs.copy(sourceIndent = (prefs.sourceIndent + 1).coerceAtMost(8)))
+                            })
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showSourceSettings = false }) { Text(L10n.t("关闭")) } },
+                )
+            }
+            if (showMarkdownSettings) {
+                AlertDialog(
+                    onDismissRequest = { showMarkdownSettings = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                    title = { Text(L10n.t("Markdown 行为")) },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(0.92f).heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                        ) {
+                            SwitchRow(L10n.t("转义文本中的 Markdown 符号"), prefs.escapeLiteralSymbols) { onChange(prefs.copy(escapeLiteralSymbols = it)) }
+                            SwitchRow(L10n.t("转义 Markdown 字面量符号"), prefs.escapeMarkdownLiteralSymbols) { onChange(prefs.copy(escapeMarkdownLiteralSymbols = it)) }
+                            SwitchRow(L10n.t("代码块拼写检查"), prefs.codeBlockSpellcheck) { onChange(prefs.copy(codeBlockSpellcheck = it)) }
+                            SwitchRow(L10n.t("空行回车退出块"), prefs.exitBlockOnEmptyEnter) { onChange(prefs.copy(exitBlockOnEmptyEnter = it)) }
+                            SwitchRow(L10n.t("Shift+Enter 插入硬换行"), prefs.useShiftEnterHardBreak) { onChange(prefs.copy(useShiftEnterHardBreak = it)) }
+                            ChipRow(L10n.t("代码围栏"), EditorPrefs.CODE_FENCES.map { L10n.t(it.second) }, L10n.t(EditorPrefs.CODE_FENCES.firstOrNull { it.first == prefs.codeFence }?.second ?: "")) { display ->
+                                EditorPrefs.CODE_FENCES.firstOrNull { L10n.t(it.second) == display }?.let { onChange(prefs.copy(codeFence = it.first)) }
+                            }
+                            ChipRow(L10n.t("强调标记"), EditorPrefs.EMPHASIS_MARKERS.map { L10n.t(it.second) }, L10n.t(EditorPrefs.EMPHASIS_MARKERS.firstOrNull { it.first == prefs.emphasisMarker }?.second ?: "")) { display ->
+                                EditorPrefs.EMPHASIS_MARKERS.firstOrNull { L10n.t(it.second) == display }?.let { onChange(prefs.copy(emphasisMarker = it.first)) }
+                            }
+                            ChipRow(L10n.t("不安全强调标记"), EditorPrefs.UNSAFE_EMPHASIS_CHOICES.map { L10n.t(it.second) }, L10n.t(EditorPrefs.UNSAFE_EMPHASIS_CHOICES.firstOrNull { it.first == prefs.unsafeEmphasis }?.second ?: "")) { display ->
+                                EditorPrefs.UNSAFE_EMPHASIS_CHOICES.firstOrNull { L10n.t(it.second) == display }?.let { onChange(prefs.copy(unsafeEmphasis = it.first)) }
+                            }
+                            ChipRow(L10n.t("列表标记"), EditorPrefs.BULLET_MARKERS.map { L10n.t(it.second) }, L10n.t(EditorPrefs.BULLET_MARKERS.firstOrNull { it.first == prefs.bulletMarker }?.second ?: "")) { display ->
+                                EditorPrefs.BULLET_MARKERS.firstOrNull { L10n.t(it.second) == display }?.let { onChange(prefs.copy(bulletMarker = it.first)) }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showMarkdownSettings = false }) { Text(L10n.t("关闭")) } },
                 )
             }
         }
@@ -525,6 +481,16 @@ private fun GroupHeader(title: String) {
 }
 
 @Composable
+private fun LinkRow(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onClick) { Text(label) }
+    }
+}
+
+@Composable
 private fun StepperRow(label: String, value: String, step: Int = 1, onMinus: () -> Unit, onPlus: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -542,24 +508,14 @@ private fun ChipRow(
     label: String,
     options: List<String>,
     selected: String,
-    onSelect: (String) -> Unit,
     enabled: Boolean = true,
+    onSelect: (String) -> Unit,
 ) {
-    // 所有 chip 组统一走加权 FlowRow 列：各行的 chip 起始 x 对齐一致
-    // （此前非 wrap 行的 chip 右贴边，与相邻 wrap 行左对齐混排错位）
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-        )
+    val compact = LocalConfiguration.current.screenWidthDp < 600
+    @Composable
+    fun Options() {
         androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier.weight(2.2f),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
         ) {
@@ -573,6 +529,31 @@ private fun ChipRow(
             }
         }
     }
+    if (compact) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            )
+            Options()
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            )
+            androidx.compose.foundation.layout.Box(modifier = Modifier.weight(2.2f)) { Options() }
+        }
+    }
 }
 
 @Composable
@@ -583,19 +564,11 @@ private fun ThemeChipRow(
     onSelect: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-        )
+    val compact = LocalConfiguration.current.screenWidthDp < 600
+    @Composable
+    fun Options() {
         androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier.weight(2.2f),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
         ) {
@@ -607,6 +580,21 @@ private fun ThemeChipRow(
                     label = { Text(L10n.t(option.name), style = MaterialTheme.typography.labelMedium) },
                 )
             }
+        }
+    }
+    if (compact) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            Options()
+        }
+    } else {
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            androidx.compose.foundation.layout.Box(modifier = Modifier.weight(2.2f)) { Options() }
         }
     }
 }

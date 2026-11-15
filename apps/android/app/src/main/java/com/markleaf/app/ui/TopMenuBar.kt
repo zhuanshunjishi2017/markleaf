@@ -132,7 +132,9 @@ fun TopMenuBar(
                 ) { constraints ->
                     // 不用 TextButton：其内部 defaultMinSize(minWidth=58dp)
                     // 会把两字按钮钳宽，六项放不下。轻量文本按钮实测宽
-                    // = 文本 + 16dp 内边距，颜色与 M3 禁用态一致。
+                    // = 文本 + 8dp 内边距；条目间另加 10dp 间距（触达区域
+                    // 分离、视觉更宽松），容量计算把间距一并计入。
+                    val itemGap = 10.dp.roundToPx()
                     val content: @Composable androidx.compose.foundation.layout.RowScope.(com.markleaf.app.ui.QuickAction) -> Unit = { qa ->
                         Text(
                             text = qa.label,
@@ -142,7 +144,7 @@ fun TopMenuBar(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
                                 .clickable(enabled = qa.enabled, onClick = qa.action)
-                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                                .padding(horizontal = 4.dp, vertical = 10.dp),
                         )
                     }
                     val rows = quickActions.map { qa ->
@@ -152,7 +154,7 @@ fun TopMenuBar(
                     var used = 0
                     var count = 0
                     for (row in rows) {
-                        val w = row.maxOf { it.width }
+                        val w = row.maxOf { it.width } + if (count > 0) itemGap else 0
                         if (count >= quickActions.size || used + w > constraints.maxWidth) break
                         used += w
                         count++
@@ -165,12 +167,13 @@ fun TopMenuBar(
                     val chosen = rows.take(count)
                     val height = chosen.maxOfOrNull { it.maxOf { p -> p.height } } ?: 0
                     layout(constraints.maxWidth, height) {
-                        // 右贴边：从右往左逆序排布
+                        // 右贴边：从右往左逆序排布，条目间留 itemGap
                         var x = constraints.maxWidth
-                        for (row in chosen.reversed()) {
+                        chosen.reversed().forEachIndexed { index, row ->
                             val p = row.first()
                             x -= p.width
                             p.placeRelative(x = x, y = 0)
+                            if (index < chosen.size - 1) x -= itemGap
                         }
                     }
                 }
@@ -189,6 +192,7 @@ fun TopMenuBar(
                     Text(
                         text = section.title,
                         modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable { expandedSection = section.title }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.bodyMedium,
@@ -201,6 +205,7 @@ fun TopMenuBar(
                             expandedSection = null
                             submenuTitle = null
                         },
+                        shape = RoundedCornerShape(14.dp),
                     ) {
                         // 换页式二级面板统一动画：进二级从右滑入，返回从左滑入
                         // （此前为无过渡硬切，仅菜单高度骤变产生不一致的观感）
@@ -242,15 +247,19 @@ fun TopMenuBar(
                                         if (entry.separatorBefore) {
                                             HorizontalDivider()
                                         }
-                                        DropdownMenuItem(
-                                            text = { MenuEntryText(entry) },
-                                            enabled = entry.enabled,
-                                            onClick = {
-                                                expandedSection = null
-                                                submenuTitle = null
-                                                entry.action()
-                                            },
-                                        )
+                                        // 空标题 + 分隔标记 = 纯分隔行（最近项目
+                                        // 组间距），不渲染空菜单行
+                                        if (entry.title.isNotEmpty()) {
+                                            DropdownMenuItem(
+                                                text = { MenuEntryText(entry) },
+                                                enabled = entry.enabled,
+                                                onClick = {
+                                                    expandedSection = null
+                                                    submenuTitle = null
+                                                    entry.action()
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             } else {

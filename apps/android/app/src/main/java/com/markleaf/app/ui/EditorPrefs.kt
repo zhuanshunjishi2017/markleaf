@@ -227,6 +227,7 @@ data class EditorPrefs(
             "undo" to "撤销",
             "redo" to "重做",
             "save" to "保存",
+            "share" to "分享",
             "sourceToggle" to "源码/可视化",
             "newDoc" to "新建",
             "export" to "导出",

@@ -5,6 +5,7 @@ package com.markleaf.app
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -45,6 +46,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
@@ -96,6 +99,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var recoveryStore: RecoveryStore
     private var controller: DocumentController? = null
     private var workspaceRoot: DocumentRef.Saf? = null
+    // 工作区开合的 Compose 镜像：workspaceRoot 为普通 var，组合内读不到
+    // 变更（空目录时 sidebarEntries 不变、无法触发重组），侧栏空态文案
+    // 需要它区分「未打开」与「无受支持文件」。
+    private val workspaceOpen = mutableStateOf(false)
 
     private val documentLoaded = mutableStateOf(false)
     private val dirty = mutableStateOf(false)
@@ -151,6 +158,25 @@ class MainActivity : ComponentActivity() {
         }
     }
     private val showCloseConfirm = mutableStateOf(false)
+    // 侧栏新建文件但未打开工作区：对齐桌面（桌面侧栏无工作区时只提供
+    // 「打开文件夹」入口），弹窗引导用户先打开工作区文件夹。
+    private val showNeedWorkspaceDialog = mutableStateOf(false)
+    // 侧栏 ＋ 新建文件（已开工作区，对齐桌面 createWorkspaceFile）：名称
+    // 对话框 → 建到当前文档所在文件夹/工作区根 → 打开并重扫。
+    private val showNewFileDialog = mutableStateOf(false)
+    private var newFileFolderRef: DocumentRef.Saf? = null
+    private val newFileNameInput = mutableStateOf(
+        androidx.compose.ui.text.input.TextFieldValue(""),
+    )
+    private var newFileKind = "markdown"
+    // 侧栏条目长按：对齐桌面右键菜单（bottom sheet 承载，分组一致）
+    private val contextEntry = mutableStateOf<com.markleaf.app.documents.DocumentEntry?>(null)
+    private val showNewFolderDialog = mutableStateOf(false)
+    private var newFolderRef: DocumentRef.Saf? = null
+    private val newFolderNameInput = mutableStateOf(
+        androidx.compose.ui.text.input.TextFieldValue(""),
+    )
+    private val deleteEntryConfirm = mutableStateOf<com.markleaf.app.documents.DocumentEntry?>(null)
     private val showLinkDialog = mutableStateOf(false)
     private var linkInput = ""
     private val showImageUrlDialog = mutableStateOf(false)
@@ -195,6 +221,7 @@ class MainActivity : ComponentActivity() {
     private val editorPrefs = mutableStateOf(com.markleaf.app.ui.EditorPrefs())
     private val selectionToolbarRect = mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
     private val selectionToolbarVisible = mutableStateOf(false)
+    private val blockMenuVisible = mutableStateOf(false)
     private val editorSemanticContext = mutableStateOf<String?>(null)
     private val showToolbarLanguageDialog = mutableStateOf(false)
     private var toolbarLanguageInput = ""
@@ -242,6 +269,14 @@ class MainActivity : ComponentActivity() {
     private val editorReadyState = mutableStateOf(false)
     /** 渲染进程崩溃保留的内容：ready 握手后重放，避免回落到欢迎文档。 */
     private var pendingCrashRestoreMarkdown: String? = null
+    // Activity recreation state. The recovery store remains the durable source
+    // of truth; this state makes rotation/process recreation restore the same
+    // document immediately when Android can provide a saved instance bundle.
+    private var pendingActivityRestoreMarkdown: String? = null
+    private var pendingActivityRestoreRef: DocumentRef.Saf? = null
+    private var pendingActivityRestoreDocumentId: String? = null
+    private var pendingActivityRestoreTitle: String? = null
+    private var pendingActivityRestoreDirty = false
 
     private val openTreeLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
@@ -250,6 +285,7 @@ class MainActivity : ComponentActivity() {
 SafDocumentSource.takePersistablePermission(this, uri)
             rememberRecentFolder(uri.toString(), treeDisplayName(uri))
             workspaceRoot = DocumentRef.Saf(uri.toString())
+            workspaceOpen.value = true
             refreshWorkspace()
         }
     }
@@ -299,8 +335,16 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        pendingActivityRestoreMarkdown = savedInstanceState?.getString(STATE_MARKDOWN)
+        pendingActivityRestoreRef = savedInstanceState?.getString(STATE_REF_URI)
+            ?.let { DocumentRef.Saf(it) }
+        pendingActivityRestoreDocumentId = savedInstanceState?.getString(STATE_DOCUMENT_ID)
+        pendingActivityRestoreTitle = savedInstanceState?.getString(STATE_TITLE)
+        pendingActivityRestoreDirty = savedInstanceState?.getBoolean(STATE_DIRTY, false) == true
 
         // targetSdk 35+ 强制 edge-to-edge：内容绘制到系统栏下。系统栏图标
         // 对比度由 enableEdgeToEdge 按系统深色模式自动处理；顶栏/底栏经
@@ -382,13 +426,17 @@ SafDocumentSource.takePersistablePermission(this, uri)
                                     },
                                     onCreateDocument = {
                                         scope.launch { drawerState.close() }
-                                        newDocument("markdown")
+                                        if (workspaceRoot == null) {
+                                            showNeedWorkspaceDialog.value = true
+                                        } else {
+                                            promptNewWorkspaceFile()
+                                        }
                                     },
                                     onRefresh = { refreshWorkspace() },
                                     onEntryLongPress = { entry ->
-                                        renameEntryInput = entry.name
-                                        renameEntryDialog.value = entry
+                                        contextEntry.value = entry
                                     },
+                                    hasWorkspace = workspaceOpen.value,
                                 )
                             }
                         },
@@ -577,6 +625,21 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 onCommand = { cmd, text -> bridge.post(command(cmd, text)) },
                 onLanguagePicker = { showToolbarLanguageDialog.value = true },
             )
+            if (blockMenuVisible.value) {
+                BlockMenuSheet(
+                    semanticContext = editorSemanticContext.value,
+                    actions = editorActions.value,
+                    onDismiss = { dismissBlockMenu() },
+                    onCommand = { command ->
+                        dismissBlockMenu()
+                        postCommand(command)
+                    },
+                    onLanguagePicker = {
+                        dismissBlockMenu()
+                        showToolbarLanguageDialog.value = true
+                    },
+                )
+            }
             if (showToolbarLanguageDialog.value) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showToolbarLanguageDialog.value = false },
@@ -791,6 +854,189 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     },
                     dismissButton = {
                         TextButton(onClick = { renameDocDialog.value = false }) { Text(L10n.t("取消")) }
+                    },
+                )
+            }
+            // 侧栏新建文件但未打开工作区：引导先打开工作区（对齐桌面侧栏）
+            if (showNeedWorkspaceDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showNeedWorkspaceDialog.value = false },
+                    title = { Text(L10n.t("请先打开工作区")) },
+                    text = { Text(L10n.t("新建文件需要先打开一个工作区文件夹。")) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showNeedWorkspaceDialog.value = false
+                            openTreeLauncher.launch(null)
+                        }) { Text(L10n.t("打开文件夹…")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showNeedWorkspaceDialog.value = false }) { Text(L10n.t("取消")) }
+                    },
+                )
+            }
+            // 侧栏 ＋ 新建文件名称对话框（对齐桌面：预填建议名并全选）
+            if (showNewFileDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showNewFileDialog.value = false },
+                    title = { Text(L10n.t("新建文件")) },
+                    text = {
+                        Column {
+                            Text(L10n.t("输入文件名："))
+                            androidx.compose.material3.OutlinedTextField(
+                                value = newFileNameInput.value,
+                                onValueChange = { newFileNameInput.value = it },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { createWorkspaceFileFromDialog() }) { Text(L10n.t("确定")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showNewFileDialog.value = false }) { Text(L10n.t("取消")) }
+                    },
+                )
+            }
+            // 侧栏条目长按菜单（对齐桌面右键菜单分组；bottom sheet 承载）
+            contextEntry.value?.let { entry ->
+                androidx.compose.material3.ModalBottomSheet(
+                    onDismissRequest = { contextEntry.value = null },
+                ) {
+                    Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = if (entry.isFolder) "📁" else "📄",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                        Text(
+                            text = entry.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                    }
+                    if (entry.isFolder) {
+                        SheetMenuRow(L10n.t("Markdown 文件")) {
+                            contextEntry.value = null
+                            promptNewWorkspaceFile(folder = entry.ref as? DocumentRef.Saf, kind = "markdown")
+                        }
+                        SheetMenuRow(L10n.t("文本文件")) {
+                            contextEntry.value = null
+                            promptNewWorkspaceFile(folder = entry.ref as? DocumentRef.Saf, kind = "plainText")
+                        }
+                        SheetMenuRow(L10n.t("新建文件夹")) {
+                            contextEntry.value = null
+                            promptNewWorkspaceFolder(folder = entry.ref as? DocumentRef.Saf)
+                        }
+                        SheetDivider()
+                        SheetMenuRow(L10n.t("复制文件夹路径")) {
+                            contextEntry.value = null
+                            copyEntryPath(entry)
+                        }
+                        SheetDivider()
+                        SheetMenuRow(L10n.t("重命名")) {
+                            contextEntry.value = null
+                            renameEntryInput = entry.name
+                            renameEntryDialog.value = entry
+                        }
+                        SheetMenuRow(L10n.t("删除"), destructive = true) {
+                            contextEntry.value = null
+                            deleteEntryConfirm.value = entry
+                        }
+                    } else {
+                        SheetMenuRow(L10n.t("打开")) {
+                            contextEntry.value = null
+                            (entry.ref as? DocumentRef.Saf)?.let(::openDocument)
+                        }
+                        SheetDivider()
+                        SheetMenuRow(L10n.t("复制文件路径")) {
+                            contextEntry.value = null
+                            copyEntryPath(entry)
+                        }
+                        val copyable = androidx.compose.runtime.produceState(false, entry.name + entry.ref) {
+                            val ext = entry.name.substringAfterLast('.', "").lowercase()
+                            value = ext in setOf("md", "markdown", "txt") && entryHasCopyableContent(entry)
+                        }
+                        SheetMenuRow(
+                            L10n.t("复制文件内容"),
+                            enabled = copyable.value,
+                        ) {
+                            contextEntry.value = null
+                            copyEntryContent(entry)
+                        }
+                        SheetMenuRow(L10n.t("分享")) {
+                            contextEntry.value = null
+                            shareEntry(entry)
+                        }
+                        SheetDivider()
+                        SheetMenuRow(L10n.t("重命名")) {
+                            contextEntry.value = null
+                            renameEntryInput = entry.name
+                            renameEntryDialog.value = entry
+                        }
+                        SheetMenuRow(L10n.t("删除"), destructive = true) {
+                            contextEntry.value = null
+                            deleteEntryConfirm.value = entry
+                        }
+                    }
+                }
+            }
+            // 侧栏新建文件夹对话框（对齐桌面 createWorkspaceFolder：预填避让名）
+            if (showNewFolderDialog.value) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showNewFolderDialog.value = false },
+                    title = { Text(L10n.t("新建文件夹")) },
+                    text = {
+                        Column {
+                            Text(L10n.t("输入新名称："))
+                            androidx.compose.material3.OutlinedTextField(
+                                value = newFolderNameInput.value,
+                                onValueChange = { newFolderNameInput.value = it },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { createWorkspaceFolderFromDialog() }) { Text(L10n.t("确定")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showNewFolderDialog.value = false }) { Text(L10n.t("取消")) }
+                    },
+                )
+            }
+            // 侧栏条目删除确认（对齐桌面 deleteEntry：不可恢复，红色 destructive）
+            deleteEntryConfirm.value?.let { entry ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { deleteEntryConfirm.value = null },
+                    title = { Text(L10n.f("删除「%s」？", entry.name)) },
+                    text = { Text(L10n.t("将从存储中删除该文件，此操作不可撤销。")) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            deleteEntryConfirm.value = null
+                            val target = entry
+                            lifecycleScope.launch {
+                                runCatching { source.delete(target.ref) }
+                                    .onSuccess {
+                                        if (controller?.activeRef == target.ref) {
+                                            closeDocument()
+                                        }
+                                        refreshWorkspace()
+                                        showToast(L10n.t("已删除"))
+                                    }
+                                    .onFailure { showToast(L10n.f("删除失败：%s", it.message)) }
+                            }
+                        }) { Text(L10n.t("删除")) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deleteEntryConfirm.value = null }) { Text(L10n.t("取消")) }
                     },
                 )
             }
@@ -1031,6 +1277,17 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
+    /** 顶栏快捷操作/文件菜单「分享」：以文本形式分享当前文档内容。 */
+    private fun shareActiveDocument() {
+        lifecycleScope.launch {
+            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TEXT, requestSnapshotBlocking().markdown)
+            }
+            startActivity(android.content.Intent.createChooser(share, activeTitle.value))
+        }
+    }
+
     /** requestSnapshot → snapshot 回环（挂起等待宿主消息）。 */
     private suspend fun requestSnapshotBlocking(): EditorMessage.Snapshot.SnapshotPayload {
         val deferred = kotlinx.coroutines.CompletableDeferred<EditorMessage.Snapshot.SnapshotPayload>()
@@ -1160,6 +1417,9 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 "undo" -> com.markleaf.app.ui.QuickAction(id, L10n.t("撤销"), undoEnabled, onUndo)
                 "redo" -> com.markleaf.app.ui.QuickAction(id, L10n.t("重做"), redoEnabled, onRedo)
                 "save" -> com.markleaf.app.ui.QuickAction(id, L10n.t("保存"), hasDoc && !androidReadOnly.value, onSave)
+                "share" -> com.markleaf.app.ui.QuickAction(id, L10n.t("分享"), hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                    shareActiveDocument()
+                }
                 "sourceToggle" -> com.markleaf.app.ui.QuickAction(
                     id,
                     if (editorSourceMode.value) L10n.t("可视化") else L10n.t("源码"),
@@ -1257,7 +1517,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 // 崩溃重建：重放崩溃前内容；普通冷启动：空白未命名 Markdown 文档。
                 val crashMarkdown = pendingCrashRestoreMarkdown
                 pendingCrashRestoreMarkdown = null
-                val startupDocument = StartupDocumentPolicy.initialDocument(crashMarkdown)
+                val activityMarkdown = pendingActivityRestoreMarkdown
+                val startupDocument = StartupDocumentPolicy.initialDocument(
+                    crashMarkdown ?: if (pendingActivityRestoreRef == null) activityMarkdown else null,
+                )
                 bridge.post(
                     HostMessage.LoadDocument(
                         documentId = frontendId,
@@ -1279,6 +1542,30 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 Log.i(TAG, "document loaded at revision ${message.revision}")
                 documentLoaded.value = true
                 applyEditorKernelSettings()
+                // A saved instance with a SAF reference must reopen that file
+                // after the initial WebView handshake. If a snapshot was saved,
+                // openDocument overlays it through the existing recovery path.
+                val restoredRef = pendingActivityRestoreRef
+                if (restoredRef != null) {
+                    pendingActivityRestoreRef = null
+                    pendingActivityRestoreDocumentId?.let(recoveryStore::discard)
+                    pendingActivityRestoreDocumentId = null
+                    pendingRecoveryMarkdown = pendingActivityRestoreMarkdown
+                    pendingRecoveryId = null
+                    pendingActivityRestoreMarkdown = null
+                    pendingActivityRestoreTitle = null
+                    openDocument(restoredRef)
+                    return
+                }
+                if (pendingActivityRestoreMarkdown != null) {
+                    if (pendingActivityRestoreDirty) dirty.value = true
+                    pendingActivityRestoreTitle?.let { activeTitle.value = it }
+                    pendingActivityRestoreMarkdown = null
+                    pendingActivityRestoreTitle = null
+                }
+                pendingActivityRestoreDocumentId?.let(recoveryStore::discard)
+                pendingActivityRestoreDocumentId = null
+                pendingActivityRestoreDirty = false
                 maybeShowRecoveryDialog()
             }
             is EditorMessage.Snapshot -> {
@@ -1350,6 +1637,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     pendingSelectionExport = null
                     pendingSelectionExportRequestId = null
                 }
+            }
+            is EditorMessage.BlockMenuRequested -> {
+                // 块句柄长按只显示块级操作面板；正文长按仍保留原生文本选择工具条。
+                selectionToolbarVisible.value = false
+                selectionToolbarRect.value = null
+                blockMenuVisible.value = true
             }
             is EditorMessage.FindResult -> {
                 val obj = message.payload as? kotlinx.serialization.json.JsonObject
@@ -1800,7 +2093,6 @@ SafDocumentSource.takePersistablePermission(this, uri)
             TopMenuEntry(title, en(cmd), separator) { postCommand(cmd, text ?: "") }
         val hasDoc = documentLoaded.value
         val hasFile = controller?.activeRef != null
-        val recent = recentFiles()
         return listOf(
             TopMenuSection(L10n.t("文件"), buildList {
                 add(sub(L10n.t("新建"), children = listOf(
@@ -1810,17 +2102,44 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 add(host(L10n.t("打开文件夹…"), separator = true) { openTreeLauncher.launch(null) })
                 add(host(L10n.t("打开文件…")) { pendingReadOnlyOpen = false; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
                 add(host(L10n.t("以只读方式打开…")) { pendingReadOnlyOpen = true; openFileLauncher.launch(arrayOf("text/markdown", "text/plain")) })
-                if (recent.isNotEmpty()) {
-                    add(sub(L10n.t("最近文件"), separator = true, children = recent.map { recentEntry ->
-                        host(recentEntry.second) { openDocument(DocumentRef.Saf(recentEntry.first)) }
-                    }))
-                }
-                val recentFolderList = recentFolders()
-                if (recentFolderList.isNotEmpty()) {
-                    add(sub(L10n.t("最近文件夹"), children = recentFolderList.map { recentEntry ->
-                        host(recentEntry.second) { reopenRecentFolder(recentEntry.first) }
-                    }))
-                }
+                // 最近项目（对齐桌面「最近项目」子菜单：最近文件/最近文件夹
+                // 两组带编号列表；空组显示 (暂无)；双记录开关均关闭时显示
+                // (未启用记录)。组间以纯分隔线隔开。）
+                add(sub(L10n.t("最近项目"), separator = true, children = run {
+                    val files = if (editorPrefs.value.recordRecent) recentFiles() else emptyList()
+                    val folders = if (editorPrefs.value.recordRecentFolders) recentFolders() else emptyList()
+                    val allNames = files.map { it.second } + folders.map { it.second }
+                    buildList {
+                        if (editorPrefs.value.recordRecent) {
+                            add(host(L10n.t("最近文件"), enabled = false) {})
+                            if (files.isEmpty()) {
+                                add(host(L10n.t("(暂无)"), enabled = false) {})
+                            } else {
+                                files.forEachIndexed { index, (uri, name) ->
+                                    add(host("${index + 1}  ${recentMenuTitle(uri, name, allNames)}") {
+                                        openDocument(DocumentRef.Saf(uri))
+                                    })
+                                }
+                            }
+                            add(TopMenuEntry(title = "", separatorBefore = true))
+                        }
+                        if (editorPrefs.value.recordRecentFolders) {
+                            add(host(L10n.t("最近文件夹"), enabled = false) {})
+                            if (folders.isEmpty()) {
+                                add(host(L10n.t("(暂无)"), enabled = false) {})
+                            } else {
+                                folders.forEachIndexed { index, (uri, name) ->
+                                    add(host("${index + 1}  ${recentMenuTitle(uri, name, allNames)}") {
+                                        reopenRecentFolder(uri)
+                                    })
+                                }
+                            }
+                        }
+                        if (!editorPrefs.value.recordRecent && !editorPrefs.value.recordRecentFolders) {
+                            add(host(L10n.t("(未启用记录)"), enabled = false) {})
+                        }
+                    }
+                }))
                 add(host(L10n.t("恢复未保存的文件…"), separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
                     maybeShowRecoveryDialog()
                     if (recoveryEntry.value == null) showToast(L10n.t("没有待恢复的内容"))
@@ -1837,6 +2156,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     renameDocDialog.value = true
                 })
                 add(host(L10n.t("删除"), enabled = hasFile) { deleteDocConfirm.value = true })
+                // 分享紧跟重命名/删除组（对齐桌面 File 菜单 shareActiveTab 的位置）
+                add(host(L10n.t("分享"), enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
+                    shareActiveDocument()
+                })
                 add(host(L10n.t("复制文件路径"), enabled = hasFile, separator = true) {
                     controller?.activeRef?.let {
                         clipboardManager().setPrimaryClip(android.content.ClipData.newPlainText("path", it.uri))
@@ -1849,15 +2172,6 @@ SafDocumentSource.takePersistablePermission(this, uri)
                             android.content.ClipData.newPlainText("markdown", requestSnapshotBlocking().markdown),
                         )
                         showToast(L10n.t("已复制文件内容"))
-                    }
-                })
-                add(host(L10n.t("分享文件"), enabled = hasDoc && lastKnownMarkdown.isNotEmpty()) {
-                    lifecycleScope.launch {
-                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_TEXT, requestSnapshotBlocking().markdown)
-                        }
-                        startActivity(android.content.Intent.createChooser(share, L10n.t("分享文件")))
                     }
                 })
             }),
@@ -2060,17 +2374,32 @@ SafDocumentSource.takePersistablePermission(this, uri)
 
     private fun closeWorkspace() {
         workspaceRoot = null
+        workspaceOpen.value = false
         sidebarEntries.value = emptyList()
         showToast(L10n.t("已关闭工作区"))
     }
 
-    /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 5 条，新开顶置）。
-     *  记录开关关闭时不新增（对齐桌面 recordRecentFiles 语义：仅停记录，旧项仍显示）。 */
+    /** 最近项目菜单标题：重名时以「名称 — 父目录」消歧（对齐桌面
+     *  recentMenuTitle）。父目录取 SAF URI document/tree 段路径的倒数
+     *  第二段；tree 根目录无父段时保持原名称。 */
+    private fun recentMenuTitle(uri: String, name: String, allNames: List<String>): String {
+        val duplicate = allNames.count { it.equals(name, ignoreCase = true) } > 1
+        if (!duplicate) return name
+        val decoded = android.net.Uri.decode(uri)
+            .substringAfterLast("/document/", "").substringAfterLast("/tree/", "")
+        val segments = decoded.substringAfter(':').split('/').filter { it.isNotEmpty() }
+        val parent = segments.getOrNull(segments.size - 2) ?: return name
+        return "$name — $parent"
+    }
+
+    /** 最近文件：SharedPreferences 持久化（uri|名称 按行，最多 10 条，
+     *  新开顶置）。记录开关关闭时不新增（对齐桌面 recordRecentFiles：
+     *  菜单里该组整体隐藏）。 */
     private fun rememberRecentFile(uri: String, name: String) {
         if (!editorPrefs.value.recordRecent) return
         val current = recentFiles().filter { it.first != uri }.toMutableList()
         current.add(0, uri to name)
-        val trimmed = current.take(5)
+        val trimmed = current.take(10)
         prefsStore.edit().putString("recentFiles", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
     }
 
@@ -2079,7 +2408,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
         if (!editorPrefs.value.recordRecentFolders) return
         val current = recentFolders().filter { it.first != uri }.toMutableList()
         current.add(0, uri to name)
-        val trimmed = current.take(5)
+        val trimmed = current.take(10)
         prefsStore.edit().putString("recentFolders", trimmed.joinToString("\n") { "${it.first}|${it.second}" }).apply()
     }
 
@@ -2233,7 +2562,186 @@ SafDocumentSource.takePersistablePermission(this, uri)
             return
         }
         workspaceRoot = DocumentRef.Saf(uri)
+        workspaceOpen.value = true
         refreshWorkspace()
+    }
+
+    /** 侧栏 ＋ / 长按菜单新建文件：目标文件夹优先用调用方给定（长按文件
+     *  夹时），否则当前文档所在文件夹/工作区根（对齐桌面
+     *  newMarkdownFileFromHeader）；建议名避让后弹名称对话框。 */
+    private fun promptNewWorkspaceFile(folder: DocumentRef.Saf? = null, kind: String = "markdown") {
+        val root = workspaceRoot ?: return
+        val target = folder ?: currentDocFolderInWorkspace(root) ?: rootFolderRef(root)
+        newFileKind = kind
+        lifecycleScope.launch {
+            val taken = runCatching { source.listChildren(target).map { it.name } }
+                .getOrDefault(emptyList())
+            newFileFolderRef = target
+            val base = L10n.t(if (kind == "plainText") "未命名.txt" else "未命名.md")
+            val suggested = availableWorkspaceName(base, taken)
+            newFileNameInput.value = androidx.compose.ui.text.input.TextFieldValue(
+                text = suggested,
+                selection = androidx.compose.ui.text.TextRange(0, suggested.length),
+            )
+            showNewFileDialog.value = true
+        }
+    }
+
+    /** 侧栏长按菜单新建文件夹（对齐桌面 createWorkspaceFolder：预填避让名）。 */
+    private fun promptNewWorkspaceFolder(folder: DocumentRef.Saf? = null) {
+        val root = workspaceRoot ?: return
+        val target = folder ?: rootFolderRef(root)
+        lifecycleScope.launch {
+            val taken = runCatching { source.listChildren(target).map { it.name } }
+                .getOrDefault(emptyList())
+            newFolderRef = target
+            val suggested = availableWorkspaceName(L10n.t("新建文件夹"), taken)
+            newFolderNameInput.value = androidx.compose.ui.text.input.TextFieldValue(
+                text = suggested,
+                selection = androidx.compose.ui.text.TextRange(0, suggested.length),
+            )
+            showNewFolderDialog.value = true
+        }
+    }
+
+    /** 从对话框创建工作区文件夹：重名拦截，创建后刷新侧栏。 */
+    private fun createWorkspaceFolderFromDialog() {
+        val folder = newFolderRef ?: return
+        val name = newFolderNameInput.value.text.trim()
+        if (name.isEmpty()) return
+        showNewFolderDialog.value = false
+        lifecycleScope.launch {
+            val duplicate = runCatching { source.listChildren(folder).map { it.name } }
+                .getOrDefault(emptyList())
+                .any { it.equals(name, ignoreCase = true) }
+            if (duplicate) {
+                showToast(L10n.t("同名文件或文件夹已存在。"))
+                return@launch
+            }
+            runCatching { source.createFolder(folder, name) }
+                .onSuccess {
+                    refreshWorkspace()
+                    showToast(L10n.f("已创建文件夹 %s", name))
+                }
+                .onFailure { showToast(L10n.f("创建文件夹失败：%s", it.message)) }
+        }
+    }
+
+    /** 复制条目路径（SAF URI）到剪贴板。 */
+    private fun copyEntryPath(entry: com.markleaf.app.documents.DocumentEntry) {
+        val uri = (entry.ref as? DocumentRef.Saf)?.uri ?: return
+        clipboardManager().setPrimaryClip(
+            android.content.ClipData.newPlainText("path", uri),
+        )
+        showToast(L10n.t("已复制文件 URI"))
+    }
+
+    /** 复制文件内容（按探测编码解码，去 BOM）到剪贴板。 */
+    private fun copyEntryContent(entry: com.markleaf.app.documents.DocumentEntry) {
+        val safRef = entry.ref as? DocumentRef.Saf ?: return
+        lifecycleScope.launch {
+            runCatching { source.read(safRef) }
+                .onSuccess { bytes ->
+                    val charset = runCatching {
+                        java.nio.charset.Charset.forName(bytes.encoding.name)
+                    }.getOrDefault(Charsets.UTF_8)
+                    var text = String(bytes.bytes, charset)
+                    if (bytes.encoding.hasBom) text = text.removePrefix("\uFEFF")
+                    clipboardManager().setPrimaryClip(
+                        android.content.ClipData.newPlainText("markdown", text),
+                    )
+                    showToast(L10n.t("已复制文件内容"))
+                }
+                .onFailure { showToast(L10n.f("读取失败：%s", it.message)) }
+        }
+    }
+
+    /** 分享（对齐桌面 shareEntry）：以内容 URI 走系统分享面板。 */
+    private fun shareEntry(entry: com.markleaf.app.documents.DocumentEntry) {
+        val safUri = (entry.ref as? DocumentRef.Saf)?.uri ?: return
+        val uri = Uri.parse(safUri)
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/markdown"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            clipData = android.content.ClipData.newRawUri(entry.name, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(android.content.Intent.createChooser(intent, entry.name))
+    }
+
+    /** 「复制文件内容」内容探测（对齐桌面 hasCopyableContent 的非空判定；
+     *  扩展名过滤在调用侧先行）。 */
+    private suspend fun entryHasCopyableContent(entry: com.markleaf.app.documents.DocumentEntry): Boolean =
+        (entry.ref as? DocumentRef.Saf)?.let { ref ->
+            runCatching { source.read(ref).bytes.isNotEmpty() }.getOrDefault(false)
+        } ?: false
+
+    /** 当前文档所在文件夹（在工作区内时返回其 SAF 引用）；否则 null。
+     *  通过 tree document id 前缀判断归属，父 id 取最后一段前缀。 */
+    private fun currentDocFolderInWorkspace(root: DocumentRef.Saf): DocumentRef.Saf? {
+        val docRef = controller?.activeRef as? DocumentRef.Saf ?: return null
+        val treeUri = root.parsedUri
+        val treeId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        val docId = android.provider.DocumentsContract.getDocumentId(docRef.parsedUri)
+        if (docId != treeId && !docId.startsWith("$treeId/")) return null
+        val parentDocId = docId.substringBeforeLast('/', missingDelimiterValue = treeId)
+        val folderUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
+        return DocumentRef.Saf(folderUri.toString())
+    }
+
+    /** tree 引用 → 工作区根目录的 document 引用：createDocument 需要父级
+     *  为 document uri，直接传 tree uri 会被 SAF 拒绝。 */
+    private fun rootFolderRef(root: DocumentRef.Saf): DocumentRef.Saf {
+        val treeUri = root.parsedUri
+        val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            android.provider.DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        return DocumentRef.Saf(docUri.toString())
+    }
+
+    /** 对齐桌面 availableWorkspaceName：base 未占用直接用；否则追加
+     *  " 2"、" 3"…（保留扩展名），大小写不敏感比较。 */
+    private fun availableWorkspaceName(base: String, taken: List<String>): String {
+        if (taken.none { it.equals(base, ignoreCase = true) }) return base
+        val dot = base.lastIndexOf('.')
+        val stem = if (dot > 0) base.substring(0, dot) else base
+        val ext = if (dot > 0) base.substring(dot) else ""
+        var index = 2
+        while (true) {
+            val candidate = "$stem $index$ext"
+            if (taken.none { it.equals(candidate, ignoreCase = true) }) return candidate
+            index++
+        }
+    }
+
+    /** 对齐桌面 createWorkspaceFile：扩展名归一（无 md/markdown/txt 后缀
+     *  → 追加 .md）、重名拦截、创建后打开新文件并重扫侧栏。 */
+    private fun createWorkspaceFileFromDialog() {
+        val folder = newFileFolderRef ?: return
+        var name = newFileNameInput.value.text.trim()
+        if (name.isEmpty()) return
+        val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext != "md" && ext != "markdown" && ext != "txt") name += ".md"
+        showNewFileDialog.value = false
+        lifecycleScope.launch {
+            val duplicate = runCatching { source.listChildren(folder).map { it.name } }
+                .getOrDefault(emptyList())
+                .any { it.equals(name, ignoreCase = true) }
+            if (duplicate) {
+                showToast(L10n.t("同名文件或文件夹已存在。"))
+                return@launch
+            }
+            runCatching { source.createDocument(folder, name) as DocumentRef.Saf }
+                .onSuccess { ref ->
+                    refreshWorkspace()
+                    openDocument(ref)
+                    showToast(L10n.f("已创建文件 %s", name))
+                }
+                .onFailure {
+                    showToast(L10n.f("创建文件失败：%s", it.message))
+                }
+        }
     }
 
     private fun imageExtensionOf(uri: Uri): String =
@@ -2360,6 +2868,69 @@ SafDocumentSource.takePersistablePermission(this, uri)
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // lastKnownMarkdown is refreshed by the normal snapshot/recovery loop.
+        // Saving it here closes the rotation/process-recreation gap without
+        // synchronously blocking the UI thread while WebView evaluates JS.
+        outState.putString(STATE_MARKDOWN, lastKnownMarkdown.takeIf { dirty.value && it.isNotEmpty() })
+        outState.putString(STATE_REF_URI, controller?.activeRef?.uri)
+        outState.putString(STATE_DOCUMENT_ID, session.documentId)
+        outState.putString(STATE_TITLE, activeTitle.value)
+        outState.putBoolean(STATE_DIRTY, dirty.value)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (dismissKeyboardOverlay()) return true
+        }
+        val command = KeyboardShortcutPolicy.commandFor(event)
+        if (command != null && editorHasFocus()) {
+            when (command) {
+                "save" -> if (documentLoaded.value) lifecycleScope.launch { saveActiveDocument() }
+                "find" -> if (documentLoaded.value) openFindBar(withReplace = false)
+                else -> if (documentLoaded.value) postCommand(command)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun editorHasFocus(): Boolean =
+        ::webView.isInitialized && (webView.hasFocus() || currentFocus === webView)
+
+    private fun dismissKeyboardOverlay(): Boolean {
+        return when {
+            showFindBar.value -> {
+                closeFindBar()
+                true
+            }
+            showExport.value -> {
+                showExport.value = false
+                true
+            }
+            showPreferences.value -> {
+                showPreferences.value = false
+                true
+            }
+            showAbout.value -> {
+                showAbout.value = false
+                true
+            }
+            blockMenuVisible.value -> {
+                dismissBlockMenu()
+                true
+            }
+            selectionToolbarVisible.value -> {
+                toolbarHandler.removeCallbacks(showSelectionToolbarRunnable)
+                selectionToolbarVisible.value = false
+                selectionToolbarRect.value = null
+                true
+            }
+            else -> false
+        }
+    }
+
     /** 压制原生文本选择工具条：浮动 ActionMode 一启动就结束。选区与拖动
      *  手柄由 Chromium 绘制不受影响，工具条由自绘浮层替代。 */
     override fun onActionModeStarted(mode: android.view.ActionMode) {
@@ -2378,6 +2949,82 @@ SafDocumentSource.takePersistablePermission(this, uri)
         val action: () -> Unit,
         val separatorBefore: Boolean = false,
     )
+
+    private data class BlockMenuItem(
+        val title: String,
+        val command: String,
+        val separatorBefore: Boolean = false,
+    )
+
+    private fun dismissBlockMenu() {
+        if (!blockMenuVisible.value) return
+        blockMenuVisible.value = false
+        postCommand("clearBlockHighlight")
+    }
+
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    @Composable
+    private fun BlockMenuSheet(
+        semanticContext: String?,
+        actions: Map<String, Pair<Boolean, Boolean>>,
+        onDismiss: () -> Unit,
+        onCommand: (String) -> Unit,
+        onLanguagePicker: () -> Unit,
+    ) {
+        val common = listOf(
+            BlockMenuItem(L10n.t("上方插入段落"), "insertLineBefore"),
+            BlockMenuItem(L10n.t("下方插入段落"), "insertLineAfter"),
+            BlockMenuItem(L10n.t("复制段落"), "duplicateParagraph"),
+            BlockMenuItem(L10n.t("删除段落"), "deleteParagraph", separatorBefore = true),
+        )
+        val specific = when (semanticContext) {
+            "codeBlock" -> listOf(
+                BlockMenuItem(L10n.t("声明代码语言…"), "setCodeBlockLanguage"),
+                BlockMenuItem(L10n.t("格式化代码块"), "formatCodeBlock"),
+                BlockMenuItem(L10n.t("复制整段代码"), "copyCodeBlock"),
+                BlockMenuItem(L10n.t("转为正文"), "exitCode", separatorBefore = true),
+            )
+            "table" -> listOf(
+                BlockMenuItem(L10n.t("根据内容调整列宽"), "fitTableContents"),
+                BlockMenuItem(L10n.t("平均分配列宽"), "distributeTableColumns"),
+                BlockMenuItem(L10n.t("恢复自动列宽"), "resetTableWidths"),
+                BlockMenuItem(L10n.t("删除表格"), "deleteTable", separatorBefore = true),
+            )
+            "math" -> listOf(
+                BlockMenuItem(L10n.t("编辑公式源码"), "editMath"),
+                BlockMenuItem(L10n.t("转为行内/块级"), "convertMath"),
+                BlockMenuItem(L10n.t("删除公式"), "deleteMath", separatorBefore = true),
+            )
+            "mermaid" -> listOf(
+                BlockMenuItem(L10n.t("编辑 Mermaid 源码"), "editMermaid"),
+                BlockMenuItem(L10n.t("重新渲染图表"), "rerenderMermaid"),
+                BlockMenuItem(L10n.t("删除图表"), "deleteMermaid", separatorBefore = true),
+            )
+            else -> listOf(
+                BlockMenuItem(L10n.t("清除格式"), "clearFormat", separatorBefore = true),
+            )
+        }
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+            Text(
+                L10n.t("段落操作"),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            (common + specific).forEach { item ->
+                if (item.separatorBefore) SheetDivider()
+                val enabled = actions[item.command]?.first == true
+                if (item.command == "setCodeBlockLanguage") {
+                    SheetMenuRow(item.title, enabled = enabled) {
+                        if (enabled) onLanguagePicker()
+                    }
+                } else {
+                    SheetMenuRow(item.title, enabled = enabled) {
+                        if (enabled) onCommand(item.command)
+                    }
+                }
+            }
+        }
+    }
 
     /** 查找与替换条：驱动内核查找命令（findText/findNext/replaceOne/replaceAll/
      *  findClose），结果由前端 findResult 回报（current/total）。无前端改动。 */
@@ -2658,6 +3305,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
     companion object {
         private const val TAG = "MainActivity"
         private const val WELCOME_DOCUMENT_ID = "welcome"
+        private const val STATE_MARKDOWN = "markleaf.state.markdown"
+        private const val STATE_REF_URI = "markleaf.state.refUri"
+        private const val STATE_DOCUMENT_ID = "markleaf.state.documentId"
+        private const val STATE_TITLE = "markleaf.state.title"
+        private const val STATE_DIRTY = "markleaf.state.dirty"
     }
 }
 
@@ -2756,8 +3408,7 @@ private fun StatusBarPlaceholder(
             Text(
                 text = encoding,
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .clickable(onClick = onEncoding),
+                    .statusBarAction(onEncoding),
                 style = itemStyle, color = itemColor,
             )
         }
@@ -2765,8 +3416,7 @@ private fun StatusBarPlaceholder(
             Text(
                 text = newline,
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .clickable(onClick = onNewline),
+                    .statusBarAction(onNewline),
                 style = itemStyle, color = itemColor,
             )
         }
@@ -2774,8 +3424,7 @@ private fun StatusBarPlaceholder(
             Text(
                 text = if (sourceMode) L10n.t("源码") else L10n.t("可视化"),
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .clickable(onClick = onToggleMode),
+                    .statusBarAction(onToggleMode),
                 style = itemStyle, color = itemColor,
             )
         }
@@ -2783,8 +3432,7 @@ private fun StatusBarPlaceholder(
             Text(
                 text = "$zoom%",
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .clickable(onClick = onZoom),
+                    .statusBarAction(onZoom),
                 style = itemStyle, color = itemColor,
             )
         }
@@ -2793,14 +3441,18 @@ private fun StatusBarPlaceholder(
             Text(
                 text = "$characterCount ${L10n.t("字符")}",
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .clickable(onClick = onShowStatistics),
+                    .statusBarAction(onShowStatistics),
                 style = itemStyle,
                 color = itemColor,
             )
         }
     }
 }
+
+private fun Modifier.statusBarAction(onClick: () -> Unit): Modifier =
+    clip(RoundedCornerShape(8.dp))
+        .clickable(onClick = onClick)
+        .padding(horizontal = 6.dp, vertical = 2.dp)
 
 /** 块类型内部名 → 桌面同款显示名（对齐 macOS EditorSession.blockTypeDisplayName）。 */
 private fun blockTypeDisplayName(blockType: String): String = when (blockType) {
@@ -3044,3 +3696,40 @@ graph LR
     B --> C[导出]
 ```
 """.trim()
+
+/** 侧栏长按菜单行（bottom sheet 内），对齐桌面右键菜单的条目形态；
+ *  destructive 项（删除）用 error 色。 */
+@androidx.compose.runtime.Composable
+private fun SheetMenuRow(
+    title: String,
+    enabled: Boolean = true,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Text(
+            title,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            color = when {
+                !enabled -> androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                destructive -> androidx.compose.material3.MaterialTheme.colorScheme.error
+                else -> androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+            },
+        )
+    }
+}
+
+/** 侧栏长按菜单分组分隔线。 */
+@androidx.compose.runtime.Composable
+private fun SheetDivider() {
+    androidx.compose.material3.HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+        color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant,
+    )
+}

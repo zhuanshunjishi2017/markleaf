@@ -38,6 +38,7 @@ fun WorkspaceSidebar(
     onCreateDocument: () -> Unit,
     onRefresh: () -> Unit,
     onEntryLongPress: (DocumentEntry) -> Unit,
+    hasWorkspace: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -47,7 +48,7 @@ fun WorkspaceSidebar(
             .verticalScroll(rememberScrollState())
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
@@ -61,21 +62,23 @@ fun WorkspaceSidebar(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .clickable(onClick = onCreateDocument)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
             )
             Text(
                 text = "↻",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .clickable(onClick = onRefresh)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
             )
         }
         if (entries.isEmpty()) {
             Text(
-                text = L10n.t("暂未打开文件夹"),
+                // 对齐桌面两种空态：未打开工作区 vs 工作区无受支持文件
+                text = L10n.t(if (hasWorkspace) "当前工作区没有受支持的文件" else "暂未打开文件夹"),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
         }
         for (entry in entries) {
@@ -90,7 +93,7 @@ fun WorkspaceSidebar(
                         },
                         onLongClick = { onEntryLongPress(entry) },
                     )
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 Text(
                     text = if (entry.isFolder) "📁 ${entry.name}" else "📄 ${entry.name}",
@@ -99,20 +102,26 @@ fun WorkspaceSidebar(
             }
         }
 
+        // 大纲区与工作区之间：分隔线 + 更充裕的节间距
+        androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
         Text(
             text = L10n.t("大纲"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
         )
         for (item in outline) {
             Text(
-                text = "  ".repeat((item.level - 1).coerceAtLeast(0)) + item.text,
+                // 层级用固定 dp 缩进表达（原空格缩进在长标题下不可见）
+                text = item.text,
                 style = if (item.level <= 2) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onOutlineClick(item) }
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(start = 16.dp + 14.dp * (item.level - 1).coerceAtLeast(0), end = 16.dp, top = 9.dp, bottom = 9.dp),
             )
         }
     }

@@ -108,7 +108,13 @@ class DocumentController(
         currentReadOnly = readOnly
         currentNewline = if (markdown.contains("\r\n")) "CRLF" else "LF"
         currentDocumentId = documentId
-        OpenResult.Loaded(documentId, documentBytes.encoding, ref.uri.substringAfterLast('/'))
+        // 显示名：SAF document uri 末段是百分号编码的 documentId
+        // （primary%3AMusic%2F未命名.md），解码后取最后一段作文件名
+        val rawName = ref.uri.substringAfterLast('/')
+        val decodedName = runCatching { java.net.URLDecoder.decode(rawName, "UTF-8") }
+            .getOrDefault(rawName)
+            .substringAfterLast('/')
+        OpenResult.Loaded(documentId, documentBytes.encoding, decodedName)
     } catch (exception: SecurityException) {
         OpenResult.PermissionLost
     } catch (exception: Exception) {
