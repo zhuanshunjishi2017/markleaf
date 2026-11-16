@@ -28,6 +28,11 @@ class EditorSessionState {
      * 拒绝时调用方应记日志（不静默丢弃）。
      * 例外：ready 豁免——前端 ready 携带自生成占位 documentId（此时双方
      * 尚未约定会话 id），宿主靠它开启会话（对齐 C# allowReadyWithoutDocument）。
+     * 例外：documentLoaded 豁免——它是前端对 loadDocument 的回执，宣告
+     * 文档已按宿主下发内容重置（前端自身 revision 归 0）。竞态下旧文档的
+     * 迟到消息（rev=N）可能先于回执到达并把基线推高，按旧基线拒绝回执会让
+     * 新文档的全部后续消息永远被拒（编辑器冻结）。对齐 C# 宿主：回执无条件
+     * 接受并把基线重置为回执 revision。
      */
     fun accept(message: EditorMessage): Boolean {
         if (message is EditorMessage.Ready) {
@@ -35,6 +40,10 @@ class EditorSessionState {
         }
         if (message.documentId != documentId) {
             return false
+        }
+        if (message is EditorMessage.DocumentLoaded) {
+            confirmedRevision = maxOf(0L, message.revision)
+            return true
         }
         if (message.revision < confirmedRevision) {
             return false

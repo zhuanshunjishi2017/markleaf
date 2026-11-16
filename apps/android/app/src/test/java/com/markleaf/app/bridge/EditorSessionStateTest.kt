@@ -90,6 +90,21 @@ class EditorSessionStateTest {
         assertFalse(s.completeRequest("missing", "snapshot"))
     }
 
+    @Test
+    fun `documentLoaded resyncs baseline past stale in-flight revisions`() {
+        // newDocument 竞态：loadDocument(reset=0) 之后、前端回执到达之前，
+        // 旧文档的迟到消息（rev=5）先把基线推高；回执 rev=0 必须重置基线，
+        // 否则新文档全部后续消息被拒（编辑器冻结）。
+        val s = state()
+        s.startDocument("doc-1")
+        s.accept(editorMessage("doc-1", revision = 5))
+        val loaded = EditorMessage.DocumentLoaded(documentId = "doc-1", revision = 0)
+        assertTrue(s.accept(loaded))
+        assertEquals(0L, s.confirmedRevision)
+        // 回执之后 rev<5 的正常新消息应被接受
+        assertTrue(s.accept(editorMessage("doc-1", revision = 1)))
+    }
+
     private fun editorReady(documentId: String): EditorMessage.Ready =
         EditorMessage.Ready(documentId = documentId, revision = 0)
 
