@@ -30,6 +30,10 @@ data class EditorPrefs(
     val snapshotInterval: Int = 30,
     val displayLanguage: String = detectDisplayLanguage(),
     val recordRecent: Boolean = true,
+    // 桌面「启动」组「启动操作」：新建空白文档 / 恢复最后工作区 / 恢复完整会话。
+    // Android 单窗口无多会话标签，restoreSession 行为与 openLastWorkspace 一致
+    // （都重开最近工作区），保留同一枚举便于与桌面设置语义对应。
+    val startupAction: String = "newDocument",
     val autoSave: Boolean = false,
     val saveOnSwitch: Boolean = true,
     val defaultEncoding: String = "UTF-8",
@@ -99,6 +103,7 @@ data class EditorPrefs(
             .putInt(PREF_SNAPSHOT_INTERVAL, snapshotInterval)
             .putString(PREF_DISPLAY_LANGUAGE, displayLanguage)
             .putBoolean(PREF_RECORD_RECENT, recordRecent)
+            .putString(PREF_STARTUP_ACTION, startupAction)
             .putBoolean(PREF_AUTO_SAVE, autoSave)
             .putBoolean(PREF_SAVE_ON_SWITCH, saveOnSwitch)
             .putString(PREF_DEFAULT_ENCODING, defaultEncoding)
@@ -156,6 +161,7 @@ data class EditorPrefs(
         private const val PREF_SNAPSHOT_INTERVAL = "snapshotInterval"
         private const val PREF_DISPLAY_LANGUAGE = "editorLanguage"
         private const val PREF_RECORD_RECENT = "recordRecent"
+        private const val PREF_STARTUP_ACTION = "startupAction"
         private const val PREF_AUTO_SAVE = "autoSave"
         private const val PREF_SAVE_ON_SWITCH = "saveOnSwitch"
         private const val PREF_DEFAULT_ENCODING = "defaultEncoding"
@@ -220,6 +226,14 @@ data class EditorPrefs(
             "ask" to "每次询问",
             "literal" to "保留 Markdown 字面量",
             "html" to "转换为 HTML",
+        )
+
+        /** 桌面「启动」组「启动操作」选项（对齐桌面 startupPopup 三项；
+         *  restoreSession 在 Android 单窗口下与 openLastWorkspace 行为一致）。 */
+        val STARTUP_ACTIONS = listOf(
+            "newDocument" to "新建空白文档",
+            "openLastWorkspace" to "恢复最后工作区",
+            "restoreSession" to "恢复完整会话",
         )
 
         /** 顶栏快捷操作候选池（展示顺序=池顺序；sourceToggle 为双态标签）。 */
@@ -307,6 +321,7 @@ data class EditorPrefs(
             snapshotInterval = sp.getInt(PREF_SNAPSHOT_INTERVAL, 30).coerceIn(10, 300),
             displayLanguage = sp.getString(PREF_DISPLAY_LANGUAGE, null) ?: detectDisplayLanguage(),
             recordRecent = sp.getBoolean(PREF_RECORD_RECENT, true),
+            startupAction = sp.getString(PREF_STARTUP_ACTION, "newDocument") ?: "newDocument",
             autoSave = sp.getBoolean(PREF_AUTO_SAVE, false),
             saveOnSwitch = sp.getBoolean(PREF_SAVE_ON_SWITCH, true),
             defaultEncoding = sp.getString(PREF_DEFAULT_ENCODING, "UTF-8") ?: "UTF-8",

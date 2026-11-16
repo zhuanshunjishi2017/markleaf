@@ -48,6 +48,7 @@ fun PreferencesScreen(
     activeColorThemeId: String,
     onChange: (EditorPrefs) -> Unit,
     onClearHistory: () -> Unit,
+    onOpenRecoveryList: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var showVisualSettings by remember { mutableStateOf(false) }
@@ -55,6 +56,7 @@ fun PreferencesScreen(
     var showMarkdownSettings by remember { mutableStateOf(false) }
     var showStatusBarSettings by remember { mutableStateOf(false) }
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
     val lightThemes = colorThemes.filter { !it.isDark }
     val darkThemes = colorThemes.filter { it.isDark }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -71,6 +73,17 @@ fun PreferencesScreen(
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                 // ===== 文件（对齐桌面「文件」页签）=====
                 SectionTitle(L10n.t("文件"))
+                GroupHeader(L10n.t("启动"))
+                ChipRow(
+                    label = L10n.t("启动操作"),
+                    options = EditorPrefs.STARTUP_ACTIONS.map { L10n.t(it.second) },
+                    selected = L10n.t(EditorPrefs.STARTUP_ACTIONS.firstOrNull { it.first == prefs.startupAction }?.second ?: ""),
+                    onSelect = { display ->
+                        EditorPrefs.STARTUP_ACTIONS
+                            .firstOrNull { L10n.t(it.second) == display }
+                            ?.let { onChange(prefs.copy(startupAction = it.first)) }
+                    },
+                )
                 GroupHeader(L10n.t("保存选项"))
                 SwitchRow(
                     label = L10n.t("自动保存"),
@@ -117,6 +130,8 @@ fun PreferencesScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 对齐桌面「文件」页签「历史记录」组：恢复入口 + 清除入口并列
+                    TextButton(onClick = onOpenRecoveryList) { Text(L10n.t("恢复未保存的文档…")) }
                     TextButton(onClick = { showClearHistoryConfirm = true }) { Text(L10n.t("清除历史记录…")) }
                 }
 
@@ -139,13 +154,9 @@ fun PreferencesScreen(
                     checked = prefs.pinchZoom,
                     onChange = { onChange(prefs.copy(pinchZoom = it)) },
                 )
-                StepperRow(
-                    label = L10n.t("缩放"),
-                    value = "${prefs.zoom}%",
-                    step = 10,
-                    onMinus = { onChange(prefs.copy(zoom = (prefs.zoom - 10).coerceAtLeast(50))) },
-                    onPlus = { onChange(prefs.copy(zoom = (prefs.zoom + 10).coerceAtMost(200))) },
-                )
+                // 会话内缩放（「缩放」±）不进首选项：它是当前文档的即时视图
+                // 状态，属于视图菜单/手势（桌面同款约定：首选项只有「打开时
+                // 还原」与缩放方式开关）。
 
                 // ===== 外观（对齐桌面「外观」页签「文档外观」组）=====
                 SectionTitle(L10n.t("外观"))
@@ -271,6 +282,13 @@ fun PreferencesScreen(
                     checked = prefs.prefixRelativeWithDotSlash,
                     onChange = { onChange(prefs.copy(prefixRelativeWithDotSlash = it)) },
                 )
+
+                // 底部操作（对齐桌面 PreferencesWindowController 底部「恢复
+                // 默认设置」）：确认后整体重置为默认值。
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                TextButton(onClick = { showResetConfirm = true }) {
+                    Text(L10n.t("恢复默认设置…"), color = MaterialTheme.colorScheme.error)
+                }
 
             }
             if (showVisualSettings) {
@@ -412,6 +430,25 @@ fun PreferencesScreen(
                         }
                     },
                     confirmButton = { TextButton(onClick = { showStatusBarSettings = false }) { Text(L10n.t("关闭")) } },
+                )
+            }
+            // 恢复默认设置确认（对齐桌面 resetAll：整体重置为 AppSettings() 默认值）
+            if (showResetConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showResetConfirm = false },
+                    title = { Text(L10n.t("重置所有设置为默认值？")) },
+                    text = { Text(L10n.t("此操作会恢复默认设置，包括外观、缩放与图片设置。")) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showResetConfirm = false
+                            onChange(EditorPrefs())
+                        }) {
+                            Text(L10n.t("重置"), color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetConfirm = false }) { Text(L10n.t("取消")) }
+                    },
                 )
             }
             // 清除历史记录确认（对齐桌面：不可恢复删除前确认，destructive 红）

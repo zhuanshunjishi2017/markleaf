@@ -130,6 +130,9 @@ class MainActivity : ComponentActivity() {
     private val showAbout = mutableStateOf(false)
     /** 启动恢复：待用户决策的快照（恢复 / 另存副本 / 丢弃）。 */
     private val recoveryEntry = mutableStateOf<RecoveryStore.Entry?>(null)
+    // 「恢复未保存的文档」列表弹窗（对齐桌面 RecoveryWindowController）：
+    // 文件菜单入口打开，展示全部快照供逐条选择。
+    private val recoveryList = mutableStateOf<List<RecoveryStore.Entry>>(emptyList())
     private var pendingRecoveryMarkdown: String? = null
     private var pendingRecoveryId: String? = null
     private val autoSaveHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -700,6 +703,14 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     activeColorThemeId = effectiveColorThemeId(),
                     onChange = ::updatePrefs,
                     onClearHistory = ::clearRecentHistory,
+                    onOpenRecoveryList = {
+                        // 打开「恢复未保存的文档」列表：首选项层保持打开，
+                        // 列表弹窗以覆盖层形式叠在其上（关闭后回到首选项）。
+                        recoveryList.value = recoveryStore.pendingIds()
+                            .mapNotNull { recoveryStore.consume(it) }
+                            .sortedByDescending { it.savedAt }
+                        if (recoveryList.value.isEmpty()) showToast(L10n.t("没有待恢复的内容"))
+                    },
                     onDismiss = { showPreferences.value = false },
                 )
             }
@@ -1141,6 +1152,70 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     },
                 )
             }
+            // 「恢复未保存的文档」列表弹窗（对齐桌面 RecoveryWindowController：
+            // 介绍行 + 名称/时间/原路径列表 + 打开/另存副本/丢弃/全部丢弃/取消）
+            if (recoveryList.value.isNotEmpty()) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { recoveryList.value = emptyList() },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                    title = { Text(L10n.t("恢复未保存的文档")) },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth(0.94f)
+                                .heightIn(max = 480.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            Text(
+                                L10n.f("检测到 %s 个未保存的文档。请选择要恢复的快照：", recoveryList.value.size.toString()),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                            recoveryList.value.forEach { entry ->
+                                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            recoveryList.value = emptyList()
+                                            restoreRecoverySnapshot(entry)
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            recoveryDisplayName(entry),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                        )
+                                        Text(
+                                            java.text.DateFormat.getDateTimeInstance()
+                                                .format(java.util.Date(entry.savedAt)),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            recoveryList.value.forEach { recoveryStore.discard(it.documentId) }
+                            recoveryList.value = emptyList()
+                            refreshWorkspace()
+                            showToast(L10n.t("已删除"))
+                        }) {
+                            Text(L10n.t("全部丢弃"), color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { recoveryList.value = emptyList() }) { Text(L10n.t("取消")) }
+                    },
+                )
+            }
             }
         }
 
@@ -1554,6 +1629,20 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     { applyAppearance() },
                     400,
                 )
+                // 桌面「启动」组「启动操作」：非 newDocument 时自动重开最近
+                // 工作区（Android 单窗口，openLastWorkspace 与 restoreSession
+                // 行为一致）。崩溃重建/活动重建有自己的恢复路径，不叠加。
+                val startupAction = editorPrefs.value.startupAction
+                if ((startupAction == "openLastWorkspace" || startupAction == "restoreSession") &&
+                    crashMarkdown == null && pendingActivityRestoreRef == null
+                ) {
+                    recentFolders().firstOrNull()?.let { (uri, _) ->
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                            { if (workspaceRoot == null) reopenRecentFolder(uri) },
+                            600,
+                        )
+                    }
+                }
             }
             is EditorMessage.StylesApplied -> Log.i(TAG, "styles applied")
             is EditorMessage.DocumentLoaded -> {
@@ -2158,9 +2247,11 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         }
                     }
                 }))
-                add(host(L10n.t("恢复未保存的文件…"), separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
-                    maybeShowRecoveryDialog()
-                    if (recoveryEntry.value == null) showToast(L10n.t("没有待恢复的内容"))
+                add(host(L10n.t("恢复未保存的文档…"), separator = true, enabled = recoveryStore.pendingIds().isNotEmpty()) {
+                    recoveryList.value = recoveryStore.pendingIds()
+                        .mapNotNull { recoveryStore.consume(it) }
+                        .sortedByDescending { it.savedAt }
+                    if (recoveryList.value.isEmpty()) showToast(L10n.t("没有待恢复的内容"))
                 })
                 add(host(L10n.t("保存"), separator = true, enabled = hasDoc && !androidReadOnly.value) { lifecycleScope.launch { saveActiveDocument() } })
                 add(host(L10n.t("另存为…"), enabled = hasDoc) { saveAsLauncher.launch(L10n.t("未命名.md")) })
@@ -2342,6 +2433,10 @@ SafDocumentSource.takePersistablePermission(this, uri)
             it.setNewline(editorPrefs.value.defaultNewline)
             controller = it
         }
+        // 重置会话基线：当前文档（如欢迎页输入）已把 confirmedRevision 推进到
+        // N，而前端 loadDocument 会把自身 revision 归 0——不重置的话新文档的
+        // 所有消息（rev<N）都被会话守卫当作过期消息拒收，编辑器表现为冻结。
+        session.startDocument(session.documentId, revision = 0)
         active.startNewDocument()
         androidReadOnly.value = false
         if (documentType == "plainText") {
@@ -2379,6 +2474,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     }
                 }
             }
+            // 重置会话基线（同 newDocument：欢迎文档消息在新基线之下才会被接受）
+            session.startDocument(session.documentId, revision = 0)
             controller?.startNewDocument()
             androidReadOnly.value = false
             bridge.post(welcomeDocumentMessage())
@@ -2848,6 +2945,8 @@ SafDocumentSource.takePersistablePermission(this, uri)
     private fun discardRecoverySnapshot(entry: RecoveryStore.Entry) {
         recoveryStore.discard(entry.documentId)
         recoveryEntry.value = null
+        // 列表弹窗打开时移除该条（其余快照仍可选择）
+        recoveryList.value = recoveryList.value.filter { it.documentId != entry.documentId }
         maybeShowRecoveryDialog()
     }
 
