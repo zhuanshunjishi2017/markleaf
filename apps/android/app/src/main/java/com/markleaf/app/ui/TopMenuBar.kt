@@ -10,7 +10,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -33,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -207,6 +211,14 @@ fun TopMenuBar(
                         },
                         shape = RoundedCornerShape(14.dp),
                     ) {
+                        // DropdownMenu 自身不滚动：文件菜单条目在无工作区等场景
+                        // 会超出屏高，底部（首选项…/关于）被截断且无法触达。
+                        // 内容限高到屏高减 96dp（状态栏+菜单行余量）并可滚动。
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp - 96.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
                         // 换页式二级面板统一动画：进二级从右滑入，返回从左滑入
                         // （此前为无过渡硬切，仅菜单高度骤变产生不一致的观感）
                         AnimatedContent(
@@ -307,6 +319,7 @@ fun TopMenuBar(
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }
