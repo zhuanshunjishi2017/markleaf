@@ -53,6 +53,8 @@ fun PreferencesScreen(
     var showVisualSettings by remember { mutableStateOf(false) }
     var showSourceSettings by remember { mutableStateOf(false) }
     var showMarkdownSettings by remember { mutableStateOf(false) }
+    var showStatusBarSettings by remember { mutableStateOf(false) }
+    var showClearHistoryConfirm by remember { mutableStateOf(false) }
     val lightThemes = colorThemes.filter { !it.isDark }
     val darkThemes = colorThemes.filter { it.isDark }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -115,7 +117,7 @@ fun PreferencesScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onClearHistory) { Text(L10n.t("清除历史记录…")) }
+                    TextButton(onClick = { showClearHistoryConfirm = true }) { Text(L10n.t("清除历史记录…")) }
                 }
 
                 // ===== 编辑器（对齐桌面「编辑器」页签：可视化 / 源码模式 / Markdown 行为 / 缩放视图）=====
@@ -190,43 +192,10 @@ fun PreferencesScreen(
                     checked = prefs.codeHighlight,
                     onChange = { onChange(prefs.copy(codeHighlight = it)) },
                 )
-                // 桌面外观页「状态栏」：自定义各字段可见性（侧栏切换/命令状态为桌面专属）
+                // 桌面外观页「状态栏」：自定义各字段可见性（侧栏切换/命令状态
+                // 为桌面专属）。字段较多，收进独立弹窗（同可视化设置形态）。
                 GroupHeader(L10n.t("状态栏"))
-                SwitchRow(
-                    label = L10n.t("显示光标位置"),
-                    checked = prefs.statusBarPosition,
-                    onChange = { onChange(prefs.copy(statusBarPosition = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示块类型"),
-                    checked = prefs.statusBarBlockType,
-                    onChange = { onChange(prefs.copy(statusBarBlockType = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示编码"),
-                    checked = prefs.statusBarEncoding,
-                    onChange = { onChange(prefs.copy(statusBarEncoding = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示换行符"),
-                    checked = prefs.statusBarNewline,
-                    onChange = { onChange(prefs.copy(statusBarNewline = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示源码/可视化切换"),
-                    checked = prefs.statusBarModeToggle,
-                    onChange = { onChange(prefs.copy(statusBarModeToggle = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示缩放比例"),
-                    checked = prefs.statusBarZoom,
-                    onChange = { onChange(prefs.copy(statusBarZoom = it)) },
-                )
-                SwitchRow(
-                    label = L10n.t("显示字符数"),
-                    checked = prefs.statusBarWordCount,
-                    onChange = { onChange(prefs.copy(statusBarWordCount = it)) },
-                )
+                LinkRow(L10n.t("状态栏设置…")) { showStatusBarSettings = true }
 
                 // ===== 通用（对齐桌面「通用」页签「显示」组）=====
                 SectionTitle(L10n.t("通用"))
@@ -419,6 +388,52 @@ fun PreferencesScreen(
                         }
                     },
                     confirmButton = { TextButton(onClick = { showMarkdownSettings = false }) { Text(L10n.t("关闭")) } },
+                )
+            }
+            if (showStatusBarSettings) {
+                AlertDialog(
+                    onDismissRequest = { showStatusBarSettings = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                    title = { Text(L10n.t("状态栏设置")) },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            // 对齐桌面外观页「状态栏」：侧栏切换/命令状态为桌面专属，不提供
+                            SwitchRow(L10n.t("显示光标位置"), prefs.statusBarPosition) { onChange(prefs.copy(statusBarPosition = it)) }
+                            SwitchRow(L10n.t("显示块类型"), prefs.statusBarBlockType) { onChange(prefs.copy(statusBarBlockType = it)) }
+                            SwitchRow(L10n.t("显示编码"), prefs.statusBarEncoding) { onChange(prefs.copy(statusBarEncoding = it)) }
+                            SwitchRow(L10n.t("显示换行符"), prefs.statusBarNewline) { onChange(prefs.copy(statusBarNewline = it)) }
+                            SwitchRow(L10n.t("显示源码/可视化切换"), prefs.statusBarModeToggle) { onChange(prefs.copy(statusBarModeToggle = it)) }
+                            SwitchRow(L10n.t("显示缩放比例"), prefs.statusBarZoom) { onChange(prefs.copy(statusBarZoom = it)) }
+                            SwitchRow(L10n.t("显示字符数"), prefs.statusBarWordCount) { onChange(prefs.copy(statusBarWordCount = it)) }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showStatusBarSettings = false }) { Text(L10n.t("关闭")) } },
+                )
+            }
+            // 清除历史记录确认（对齐桌面：不可恢复删除前确认，destructive 红）
+            if (showClearHistoryConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showClearHistoryConfirm = false },
+                    title = { Text(L10n.t("确定要清除历史记录吗？")) },
+                    text = { Text(L10n.t("此操作会删除最近的文件和文件夹记录。")) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showClearHistoryConfirm = false
+                            onClearHistory()
+                        }) {
+                            Text(
+                                L10n.t("清除"),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showClearHistoryConfirm = false }) { Text(L10n.t("取消")) }
+                    },
                 )
             }
         }
