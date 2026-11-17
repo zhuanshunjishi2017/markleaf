@@ -11,6 +11,7 @@
 - Fixed the theme not updating promptly after switching the system appearance while following the system light/dark setting.
 - Fixed macOS text drag selections showing different colors while dragging and after release because the native selection and editor highlight were painted together.
 - Improved selection cleanup and focus-restoration timing to reduce flicker and duplicate highlighting when a selection is released.
+- Fixed local folder links in documents failing to open with Command-click and tooltips incorrectly identifying them as files.
 
 ## 1.7.8.5 — 2026-11-6
 

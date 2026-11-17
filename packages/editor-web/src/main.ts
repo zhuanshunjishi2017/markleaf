@@ -1020,10 +1020,11 @@ editorTooltip.hidden = true
 document.body.appendChild(editorTooltip)
 
 let tooltipKind: 'link' | 'footnote' | null = null
-let tooltipIsLocalFile = false
+let tooltipLocalKind: 'file' | 'folder' | null = null
+let tooltipDetail: string | null = null
 let tooltipHideTimer = 0
 
-function editorTooltipTexts(): { link: string; file: string; footnote: string; footnoteNotFound: string } {
+function editorTooltipTexts(): { link: string; file: string; folder: string; footnote: string; footnoteNotFound: string } {
   const strings = sharedEditorStrings(
     markleafLanguage,
     hostCapabilities.primaryActivationModifier,
@@ -1031,6 +1032,7 @@ function editorTooltipTexts(): { link: string; file: string; footnote: string; f
   return {
     link: strings.linkTooltip,
     file: strings.fileLinkTooltip,
+    folder: strings.folderLinkTooltip,
     footnote: strings.footnoteTooltip,
     footnoteNotFound: strings.footnoteNotFound,
   }
@@ -1058,7 +1060,7 @@ function positionEditorTooltip(event: MouseEvent): void {
   editorTooltip.style.top = `${top}px`
 }
 
-function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null, isLocalFile = false): void {
+function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null, localKind: 'file' | 'folder' | null = null): void {
   const texts = editorTooltipTexts()
   editorTooltip.textContent = ''
 
@@ -1075,7 +1077,7 @@ function buildEditorTooltip(kind: 'link' | 'footnote', detail: string | null, is
   const hint = document.createElement('div')
   hint.className = 'editor-tooltip-hint'
   hint.textContent = kind === 'link'
-    ? (isLocalFile ? texts.file : texts.link)
+    ? (localKind === 'folder' ? texts.folder : localKind === 'file' ? texts.file : texts.link)
     : texts.footnote
   editorTooltip.appendChild(hint)
 }
@@ -1095,10 +1097,16 @@ function updateEditorTooltip(event: MouseEvent): void {
     const detail = kind === 'footnote'
       ? findFootnoteDefinitionBody(editor, footnoteEl!.getAttribute('data-footnote-ref') ?? '')
       : (anchorEl?.getAttribute('href') ?? '')
-    if (tooltipKind !== kind || tooltipIsLocalFile !== localFile) {
+    // A trailing slash explicitly denotes a directory; the host resolves the actual
+    // filesystem target when opening, including directories without a trailing slash.
+    let path = (detail ?? '').split(/[?#]/, 1)[0] ?? ''
+    try { path = decodeURIComponent(path) } catch { /* Keep malformed escapes literal. */ }
+    const localKind = localFile ? (/[\\/]$/.test(path) ? 'folder' : 'file') : null
+    if (tooltipKind !== kind || tooltipLocalKind !== localKind || tooltipDetail !== detail) {
       tooltipKind = kind
-      tooltipIsLocalFile = localFile
-      buildEditorTooltip(kind, detail, localFile)
+      tooltipLocalKind = localKind
+      tooltipDetail = detail
+      buildEditorTooltip(kind, detail, localKind)
     }
     positionEditorTooltip(event)
   } else {

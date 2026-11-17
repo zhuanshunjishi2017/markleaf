@@ -10,8 +10,9 @@ enum LocalLinkPolicy {
         return !text.contains(":")
     }
 
-    static func isOpenableFile(_ path: String) -> Bool {
-        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
+    static func isOpenableItem(_ path: String) -> Bool {
+        guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey]) else { return false }
+        return values.isRegularFile == true || values.isDirectory == true
     }
 
     static func resolve(_ value: String, documentPath: String?) -> String? {

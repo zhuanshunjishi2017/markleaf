@@ -10,6 +10,8 @@ internal static class ExternalLinkService
             && uri.Scheme is "http" or "https" or "mailto";
     }
 
+    public static bool IsOpenableLocalPath(string path) => File.Exists(path) || Directory.Exists(path);
+
     public static void Open(string value, string? documentPath = null)
     {
         if (IsAllowed(value))
@@ -19,9 +21,9 @@ internal static class ExternalLinkService
         }
 
         var localPath = TryResolveLocalPath(value, documentPath);
-        if (localPath is null || !File.Exists(localPath))
+        if (localPath is null || !IsOpenableLocalPath(localPath))
         {
-            throw new FileNotFoundException("The linked local file does not exist.", localPath ?? value);
+            throw new FileNotFoundException("The linked local file or folder does not exist.", localPath ?? value);
         }
 
         OpenLocal(localPath);

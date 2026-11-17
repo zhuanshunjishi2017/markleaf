@@ -95,6 +95,22 @@ function clickLink(anchor: HTMLAnchorElement, messages: EditorMessage[], modifie
 }
 
 describe('primary activation modifier', () => {
+  it('opens relative directories with Command and shows a folder hint without stale tooltip content', async () => {
+    const { anchor, messages } = await loadLink('macOS')
+    anchor.setAttribute('href', '会议记录/')
+    anchor.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+    expect(document.querySelector('.editor-tooltip-hint')?.textContent).toContain('打开文件夹')
+    clickLink(anchor, messages, 'meta')
+    expect(messages.find(message => message.type === 'openLink')?.payload).toEqual({ url: '会议记录/' })
+    anchor.setAttribute('href', 'notes.md')
+    anchor.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+    expect(document.querySelector('.editor-tooltip-hint')?.textContent).toContain('打开文件')
+    expect(document.querySelector('.editor-tooltip-definition')?.textContent).toBe('notes.md')
+    anchor.setAttribute('href', 'other.md')
+    anchor.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+    expect(document.querySelector('.editor-tooltip-definition')?.textContent).toBe('other.md')
+  })
+
   // 链接激活自内核统一重构（3203175）起绑定在 mount 的 click 事件上，
   // 派发必须用 click；此前测试用 mousedown 导致两条平台契约静默失效。
   it('uses Command and leaves Control-click to the context menu on macOS', async () => {
@@ -106,6 +122,15 @@ describe('primary activation modifier', () => {
     clickLink(anchor, messages, 'meta')
     expect(openLinkCount(messages)).toBe(1)
     expect(messages.find(message => message.type === 'openLink')?.payload).toEqual({ url: 'https://example.com' })
+  })
+
+  it('opens a local folder with Ctrl on Windows and labels it as a folder', async () => {
+    const { anchor, messages } = await loadLink()
+    anchor.setAttribute('href', '会议记录/')
+    anchor.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+    expect(document.querySelector('.editor-tooltip-hint')?.textContent).toBe('按住 Ctrl 并单击以打开文件夹')
+    clickLink(anchor, messages, 'ctrl')
+    expect(messages.find(message => message.type === 'openLink')?.payload).toEqual({ url: '会议记录/' })
   })
 
   it('keeps Ctrl-click activation for the Windows/default host', async () => {
