@@ -1125,7 +1125,15 @@ impl AppWindow {
         let this = self.clone();
         self.tabs.borrow().connect_close_page(move |_view, page| {
             // 找到状态,取消恢复定时器并清理恢复快照。
-            if let Some(state) = this.tab_states.borrow().iter().find(|s| s.page == *page) {
+            // 外层借用必须先释放:闭包体内还要 borrow_mut 同一 RefCell
+            // (retain 移除),嵌套借用在关闭第一个标签时即 panic。
+            let matched = this
+                .tab_states
+                .borrow()
+                .iter()
+                .find(|s| s.page == *page)
+                .cloned();
+            if let Some(state) = matched {
                 if let Some(source) = state.recovery_source.borrow_mut().take() {
                     source.remove();
                 }
@@ -1134,7 +1142,7 @@ impl AppWindow {
                 discard_recovery(&state_dir.join("recovery"), &document_id);
                 this.tab_states
                     .borrow_mut()
-                    .retain(|candidate| !Rc::ptr_eq(candidate, state));
+                    .retain(|candidate| !Rc::ptr_eq(candidate, &state));
             }
             glib::Propagation::Proceed
         });
