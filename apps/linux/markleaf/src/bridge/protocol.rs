@@ -142,6 +142,8 @@ pub enum EditorMessageType {
     CodeFormatRequested,
     #[serde(rename = "codeFormatResult")]
     CodeFormatResult,
+    #[serde(rename = "debugLog")]
+    DebugLog,
     #[serde(rename = "error")]
     Error,
 }
@@ -180,6 +182,7 @@ impl EditorMessageType {
             "footnoteReferenceMissing",
             "codeFormatRequested",
             "codeFormatResult",
+            "debugLog",
             "error",
         ]
     }
@@ -217,6 +220,7 @@ impl EditorMessageType {
             EditorMessageType::FootnoteReferenceMissing => "footnoteReferenceMissing",
             EditorMessageType::CodeFormatRequested => "codeFormatRequested",
             EditorMessageType::CodeFormatResult => "codeFormatResult",
+            EditorMessageType::DebugLog => "debugLog",
             EditorMessageType::Error => "error",
         }
     }

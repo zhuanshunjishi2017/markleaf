@@ -92,3 +92,25 @@ fn confirm_uses_revision_from_message() {
     );
     let _ = parse_json_type("documentLoaded"); // 保持 fixture 解析路径被引用
 }
+
+/// 文档切换竞态(对齐 Android ac280dab 的回归测试):
+/// 旧文档迟到消息先把基线推到 N,新文档的 documentLoaded(rev=0) 回执必须
+/// 无条件接受并把基线重置为 0;否则新文档全部后续消息被拒,编辑器冻结。
+#[test]
+fn document_loaded_resyncs_baseline_past_stale_inflight_revisions() {
+    let mut state = EditorSessionState::new();
+    state.start_document("doc-1");
+    // 旧文档消息推进基线到 5(在宿主 start_document 重置之后迟到到达)。
+    let stale = envelope(EditorMessageType::DirtyChanged, "doc-1", 5, None);
+    let _ = state.accept(&stale);
+    state.confirm(&stale);
+    // 新文档回执 rev=0:接受 + 基线重置。
+    let receipt = envelope(EditorMessageType::DocumentLoaded, "doc-1", 0, None);
+    assert_eq!(state.accept(&receipt), AcceptDecision::Accept);
+    state.confirm(&receipt);
+    // 回执之后的正常新消息(rev=1 < 旧基线 5)应被接受。
+    assert_eq!(
+        state.accept(&envelope(EditorMessageType::DirtyChanged, "doc-1", 1, None)),
+        AcceptDecision::Accept
+    );
+}

@@ -9,14 +9,32 @@ fn label(lang: &str, key: &str) -> String {
     tr(lang, key).unwrap_or_else(|| key.to_string())
 }
 
-/// 主菜单:文档/视图/导出分组(对齐桌面菜单结构,精简到 Linux 首发集合)。
-pub fn main_menu_model(lang: &str) -> gio::Menu {
+/// 主菜单:文档/视图/导出分组(对齐桌面菜单结构)。
+/// recent:最近文件条目((name, "win.openRecent::<index>");按 settings.recent_files 顺序)。
+pub fn main_menu_model(lang: &str, recent: &[(String, String)]) -> gio::Menu {
     let menu = gio::Menu::new();
 
     let document = gio::Menu::new();
+    let new_doc = gio::Menu::new();
+    new_doc.append(Some(&label(lang, "Markdown 文档")), Some("win.newMarkdown"));
+    new_doc.append(Some(&label(lang, "纯文本")), Some("win.newPlainText"));
+    document.append_submenu(Some(&label(lang, "新建")), &new_doc);
     document.append(Some(&label(lang, "打开")), Some("win.open"));
+    if !recent.is_empty() {
+        let recent_menu = gio::Menu::new();
+        for (index, (name, _)) in recent.iter().enumerate() {
+            recent_menu.append(
+                Some(&format!("{}  {}", index + 1, name)),
+                Some(&format!("win.openRecent::{index}")),
+            );
+        }
+        let section = gio::Menu::new();
+        section.append_submenu(Some(&label(lang, "最近项目")), &recent_menu);
+        document.append_section(None, &section);
+    }
     document.append(Some(&label(lang, "保存")), Some("win.save"));
     document.append(Some(&label(lang, "另存为")), Some("win.saveAs"));
+    document.append(Some(&label(lang, "分享")), Some("win.share"));
     document.append(Some(&label(lang, "关闭")), Some("win.close-window"));
     menu.append_submenu(Some(&label(lang, "文件")), &document);
 
@@ -48,6 +66,7 @@ pub fn context_menu_model(lang: &str) -> gio::Menu {
         ("斜体", "toggleItalic"),
         ("插入表格", "insertTable"),
         ("清除格式", "clearFormat"),
+        ("声明代码语言", "setCodeBlockLanguage"),
     ] {
         menu.append(Some(&label(lang, key)), Some(&format!("win.ctx-command::{command}")));
     }

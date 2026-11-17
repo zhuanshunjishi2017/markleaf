@@ -28,8 +28,11 @@ pub struct Sidebar {
     /// 搜索面板。
     search_entry: SearchEntry,
     search_store: gtk::TreeStore,
-    /// 大纲列表。
+    /// 大纲列表(第 0 列显示文本,第 1 列 position 字符串,第 2 列标题文本)。
     outline_store: gtk::TreeStore,
+    outline_view: gtk::TreeView,
+    /// 大纲条目激活回调(窗口注入;参数 = position, 标题文本)。
+    on_outline_activate: RefCell<Box<dyn Fn(i64, String)>>,
     /// 双击打开回调(窗口注入)。
     on_open_path: RefCell<OpenPathHandler>,
     /// 当前工作区根(扫描/搜索基准;None = 无工作区)。
@@ -57,8 +60,12 @@ impl Sidebar {
         tree_scroll.set_child(Some(&tree_view));
         workspace_page.append(&tree_scroll);
 
-        // ---- 大纲页 ----
-        let outline_store = gtk::TreeStore::new(&[glib::Type::STRING, glib::Type::STRING]);
+        // ---- 大纲页(列:显示文本 / position / 标题文本,后两者不渲染) ----
+        let outline_store = gtk::TreeStore::new(&[
+            glib::Type::STRING,
+            glib::Type::STRING,
+            glib::Type::STRING,
+        ]);
         let outline_view = gtk::TreeView::with_model(&outline_store);
         outline_view.set_headers_visible(false);
         append_text_column(&outline_view, 0);
@@ -102,9 +109,34 @@ impl Sidebar {
             search_entry,
             search_store,
             outline_store,
+            outline_view: outline_view.clone(),
+            on_outline_activate: RefCell::new(Box::new(|_, _| {})),
             on_open_path: RefCell::new(Box::new(|_| {})),
             current_workspace_root: RefCell::new(None),
         });
+
+        // 大纲双击 → 跳转(position + 标题文本交给窗口层;源码模式契约由窗口决定)。
+        {
+            let this_for_outline = Rc::clone(&this);
+            let store_for_outline = this.outline_store.clone();
+            this.outline_view
+                .connect_row_activated(move |_view, path, _column| {
+                    let store = store_for_outline.clone();
+                    if let Some(iter) = store.iter(path) {
+                        let position = store
+                            .get_value(&iter, 1)
+                            .get::<String>()
+                            .ok()
+                            .and_then(|s| s.parse::<i64>().ok())
+                            .unwrap_or(0);
+                        let text = store
+                            .get_value(&iter, 2)
+                            .get::<String>()
+                            .unwrap_or_default();
+                        (this_for_outline.on_outline_activate.borrow())(position, text);
+                    }
+                });
+        }
 
         // 工作区树双击 → 打开。
         {
@@ -150,6 +182,11 @@ impl Sidebar {
         *self.on_open_path.borrow_mut() = Box::new(handler);
     }
 
+    /// 注入大纲激活回调(窗口层;参数 = ProseMirror position, 标题文本)。
+    pub fn set_outline_handler(&self, handler: impl Fn(i64, String) + 'static) {
+        *self.on_outline_activate.borrow_mut() = Box::new(handler);
+    }
+
     /// 注入工作区根(设置后扫描;None = 无工作区)。
     pub fn set_workspace_root(self: &Rc<Self>, root: Option<PathBuf>) {
         *self.current_workspace_root.borrow_mut() = root.clone();
@@ -183,15 +220,18 @@ impl Sidebar {
         self.stack.set_visible_child_name("workspace");
     }
 
-    /// 大纲刷新(outlineChanged 消息驱动)。
+    /// 大纲刷新(outlineChanged 消息驱动)。position/标题文本存隐藏列,
+    /// 供激活回调发起跳转(可视化 scrollToPosition / 源码 scrollToSourceHeading)。
     pub fn set_outline(&self, items: &[serde_json::Value]) {
         self.outline_store.clear();
         for item in items {
             let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
             let level = item.get("level").and_then(|v| v.as_i64()).unwrap_or(1);
+            let position = item.get("position").and_then(|v| v.as_i64()).unwrap_or(0);
             let iter = self.outline_store.append(None);
             self.outline_store.set_value(&iter, 0, &format!("{}{}", "  ".repeat(level.saturating_sub(1) as usize), text).to_value());
-            self.outline_store.set_value(&iter, 1, &text.to_value());
+            self.outline_store.set_value(&iter, 1, &position.to_string().to_value());
+            self.outline_store.set_value(&iter, 2, &text.to_value());
         }
         if !items.is_empty() {
             self.stack.set_visible_child_name("outline");

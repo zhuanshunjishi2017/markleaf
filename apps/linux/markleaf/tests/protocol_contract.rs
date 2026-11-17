@@ -106,7 +106,7 @@ fn malformed_json_is_rejected() {
 #[test]
 fn type_enums_expose_all_names() {
     // 同步测试(protocol_sync.rs)负责与 protocol.ts 比对;此处锁定枚举数量
-    // 防止意外收缩。protocol.ts 为准:宿主 12,编辑器 32。
+    // 防止意外收缩。protocol.ts 为准:宿主 12,编辑器 33(debugLog 并入)。
     assert_eq!(HostMessageType::all_names().len(), 12);
-    assert_eq!(EditorMessageType::all_names().len(), 32);
+    assert_eq!(EditorMessageType::all_names().len(), 33);
 }

@@ -43,6 +43,32 @@ pub struct AppSettings {
     pub recent_folders: Vec<RecentEntry>,
 }
 
+impl AppSettings {
+    /// 记录最近文件(新开顶置去重,上限 10;对齐桌面 recentFiles 语义)。
+    pub fn remember_recent_file(&mut self, path: &str, name: &str) {
+        if !self.record_recent_files {
+            return;
+        }
+        self.recent_files.retain(|entry| entry.path != path);
+        self.recent_files.insert(
+            0,
+            RecentEntry {
+                path: path.to_string(),
+                name: name.to_string(),
+                at: chrono_time_secs(),
+            },
+        );
+        self.recent_files.truncate(10);
+    }
+}
+
+fn chrono_time_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {

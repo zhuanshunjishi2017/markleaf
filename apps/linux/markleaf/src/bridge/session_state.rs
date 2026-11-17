@@ -40,14 +40,27 @@ impl EditorSessionState {
     /// 由编辑器消息确认 revision(documentLoaded/stylesApplied/snapshot 类)。
     pub fn confirm(&mut self, message: &EditorEnvelope) {
         if message.document_id == self.document_id {
-            self.confirm_revision(message.revision);
+            if message.message_type == EditorMessageType::DocumentLoaded {
+                // 回执重置基线(max 语义无法把基线拉回 0,见 accept 的豁免说明)。
+                self.confirmed_revision = message.revision.max(0);
+            } else {
+                self.confirm_revision(message.revision);
+            }
         }
     }
 
     /// 门控:仅接受当前文档且 revision 未回退的消息。拒绝时由调用方记日志。
+    /// documentLoaded 豁免:它是前端对 loadDocument 的回执,宣告文档已按宿主
+    /// 下发内容重置(前端 revision 归 0)。竞态下旧文档的迟到消息(rev=N)可能
+    /// 先于回执到达并推高基线,按旧基线拒绝回执会让新文档的全部后续消息
+    /// 永远被拒(编辑器冻结)。对齐 Android ac280dab / Windows 宿主的处理:
+    /// 回执无条件接受并由调用方把基线重置为回执 revision。
     pub fn accept(&self, message: &EditorEnvelope) -> AcceptDecision {
         if message.document_id != self.document_id {
             return AcceptDecision::RejectWrongDocument;
+        }
+        if message.message_type == EditorMessageType::DocumentLoaded {
+            return AcceptDecision::Accept;
         }
         if message.revision < self.confirmed_revision {
             return AcceptDecision::RejectStale;

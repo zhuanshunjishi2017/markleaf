@@ -40,6 +40,11 @@ struct TabState {
     recovery_source: RefCell<Option<glib::SourceId>>,
     /// 该标签的 WebView 缩放(zoomWheel 驱动)。
     zoom: std::cell::Cell<f64>,
+    /// 源码模式镜像(selectionChanged.sourceMode 驱动;大纲跳转分流用)。
+    source_mode: std::cell::Cell<bool>,
+    /// 页面 ready 携带的自生成占位 documentId(handle_editor_message 捕获,
+    /// send_after_ready 的 ready 回调采纳重绑会话;对齐 Android)。
+    frontend_ready_id: RefCell<Option<String>>,
 }
 
 struct TabDocument {
@@ -48,6 +53,8 @@ struct TabDocument {
     encoding: EncodingDecision,
     newline: crate::documents::encoding::NewLinePolicy,
     document_id: String,
+    /// 文档类型(markdown/plainText;新建纯文本时与 md 区分)。
+    document_type: String,
     dirty: bool,
     /// 等待 snapshot 回包的保存会话(有 requestId 的保存)。
     pending_save: bool,
@@ -66,6 +73,7 @@ impl Default for TabDocument {
             },
             newline: crate::documents::encoding::NewLinePolicy::Lf,
             document_id: String::new(),
+            document_type: "markdown".into(),
             dirty: false,
             pending_save: false,
             recovered_markdown: None,
@@ -153,7 +161,13 @@ impl AppWindow {
         source_button.set_icon_name("view-reveal-symbolic");
         let menu_button = gtk::MenuButton::new();
         menu_button.set_icon_name("open-menu-symbolic");
-        menu_button.set_menu_model(Some(&menus::main_menu_model(&lang)));
+        let recent_for_menu: Vec<(String, String)> = settings
+            .borrow()
+            .recent_files
+            .iter()
+            .map(|entry| (entry.name.clone(), entry.path.clone()))
+            .collect();
+        menu_button.set_menu_model(Some(&menus::main_menu_model(&lang, &recent_for_menu)));
         let tr_open = crate::l10n::tr(&lang, "打开").unwrap_or_default();
         let tr_save = crate::l10n::tr(&lang, "保存").unwrap_or_default();
         let tr_source = crate::l10n::tr(&lang, "源码模式").unwrap_or_default();
@@ -218,6 +232,35 @@ impl AppWindow {
                 this_for_open.open_document_in_tab(path);
             });
         }
+        // 大纲双击 → 跳转。源码模式以标题文本为锚(scrollToSourceHeading,
+        // 对齐 macOS/Windows/Android 契约):可视化大纲的 position 是
+        // ProseMirror 偏移,比源码字符偏移小,直接当源码位置用会固定落在
+        // 标题上方。可视化模式走 scrollToPosition。
+        {
+            let this_for_outline = this.clone();
+            sidebar_for_handler.set_outline_handler(move |position, text| {
+                let Some(state) = this_for_outline.active_tab() else {
+                    return;
+                };
+                let document_id = state.document.borrow().document_id.clone();
+                let command = if state.source_mode.get() {
+                    "scrollToSourceHeading"
+                } else {
+                    "scrollToPosition"
+                };
+                let text_payload = if state.source_mode.get() {
+                    format!("{position}\t{text}")
+                } else {
+                    position.to_string()
+                };
+                state.webview.post_to_editor(&HostMessage::command_with_request(
+                    &document_id,
+                    0,
+                    serde_json::json!({ "command": command, "text": text_payload }),
+                    None,
+                ));
+            });
+        }
         this.wire_find_bar(&find_entry, &find_next, &find_prev, &find_close);
         this.install_actions(app, windows);
         this.wire_tab_view();
@@ -244,8 +287,48 @@ impl AppWindow {
     /// 会话恢复:选中指定序号的标签。
     pub fn select_tab(self: &Rc<Self>, index: usize) {
         let view = self.tabs.borrow();
-        let page = view.nth_page(index as i32);
+        let pages = view.n_pages();
+        if pages == 0 {
+            return;
+        }
+        let page = view.nth_page((index.min(pages as usize - 1)) as i32);
         view.set_selected_page(&page);
+    }
+
+    /// 会话恢复:异步读取清单内各标签,全部完成后选中 active_tab(越界钳制)。
+    /// 不复用 open_document_in_tab:恢复不应改写最近文件记录。
+    pub fn restore_tabs(self: &Rc<Self>, paths: &[String], active_tab: usize) {
+        let expected = paths.len();
+        if expected == 0 {
+            return;
+        }
+        let remaining = Rc::new(std::cell::Cell::new(expected));
+        let active = Rc::new(std::cell::Cell::new(active_tab));
+        for path_str in paths {
+            let path = PathBuf::from(path_str);
+            let this = self.clone();
+            let remaining = remaining.clone();
+            let active = active.clone();
+            let path_for_task = path.clone();
+            glib::spawn_future_local(async move {
+                match gio::spawn_blocking(move || read_document(&path_for_task)).await {
+                    Ok(Ok(snapshot)) => {
+                        this.create_tab_with_snapshot(path.clone(), snapshot, None);
+                    }
+                    Ok(Err(err)) => {
+                        log::warn!("[restore] 无法读取 {}: {err}", path.display());
+                    }
+                    Err(_) => {
+                        log::warn!("[restore] 读取任务 panic:{}", path.display());
+                    }
+                }
+                let left = remaining.get() - 1;
+                remaining.set(left);
+                if left == 0 {
+                    this.select_tab(active.get());
+                }
+            });
+        }
     }
 
     /// 根窗口(对话框 transient 用)。
@@ -275,6 +358,18 @@ impl AppWindow {
     }
 
     pub fn open_document_in_tab(self: &Rc<Self>, path: &Path) {
+        // 记录最近文件(设置持久化;菜单下次打开时刷新)。
+        {
+            let mut settings = self.settings.borrow_mut();
+            let path_str = path.display().to_string();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path_str.clone());
+            settings.remember_recent_file(&path_str, &name);
+            crate::app::persist_settings(&settings);
+        }
+
         let path = path.to_path_buf();
         // 文件读取与编码探测移出主线程(审计 Important #3);结果回主循环建标签。
         let this = self.clone();
@@ -318,6 +413,21 @@ impl AppWindow {
         snapshot: DocumentSnapshot,
         recovered_markdown: Option<String>,
     ) {
+        self.create_tab_inner(path, snapshot, recovered_markdown, "markdown")
+    }
+
+    fn create_tab_blank_with_type(self: &Rc<Self>, document_type: &str) {
+        let name = if document_type == "plainText" { "未命名.txt" } else { "未命名.md" };
+        self.create_tab_inner(PathBuf::from(name), DocumentSnapshot::default(), None, document_type)
+    }
+
+    fn create_tab_inner(
+        self: &Rc<Self>,
+        path: PathBuf,
+        snapshot: DocumentSnapshot,
+        recovered_markdown: Option<String>,
+        document_type: &str,
+    ) {
         let detection = detect(&snapshot.bytes);
         let decision = EncodingDecision::from_detection(&detection);
         let newline = detect_newline(&detection.decoded);
@@ -347,12 +457,15 @@ impl AppWindow {
                 encoding: decision,
                 newline,
                 document_id: document_id.clone(),
+                document_type: document_type.to_string(),
                 dirty: recovered_markdown.is_some(),
                 pending_save: false,
                 recovered_markdown: recovered_markdown.clone(),
             }),
             recovery_source: RefCell::new(None),
             zoom: std::cell::Cell::new(1.0),
+            source_mode: std::cell::Cell::new(false),
+            frontend_ready_id: RefCell::new(None),
         });
         self.tab_states.borrow_mut().push(state.clone());
         log::debug!("[create_tab] document_id={document_id} path={}", path.display());
@@ -387,6 +500,9 @@ impl AppWindow {
     fn send_after_ready(self: &Rc<Self>, state: &Rc<TabState>) {
         // 与冒烟同构:ready → applyStyles → loadDocument。
         // ready 回调经 TabState 的共享 RefCell 通道注册(闭包捕获 state 克隆,无借用逃逸)。
+        // ready 携带页面自生成的占位 documentId;对齐 Android:宿主采纳占位 id
+        // 重绑会话,applyStyles 用占位 id 发(页面回执才匹配;loadDocument 载荷
+        // 使页面切换到宿主 id,documentLoaded 起两边一致)。
         let pending: Rc<RefCell<bool>> = Rc::new(RefCell::new(true));
         let webview = state.webview.clone();
         let state_for_ready = state.clone();
@@ -398,8 +514,19 @@ impl AppWindow {
             }
             *flag = false;
             drop(flag);
+            let frontend_id = state_for_ready
+                .frontend_ready_id
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| state_for_ready.document.borrow().document_id.clone());
+            {
+                let mut session = state_for_ready.session.borrow_mut();
+                session.start_document(&frontend_id);
+            }
+            state_for_ready.document.borrow_mut().document_id = frontend_id.clone();
+            log::debug!("[create_tab] 采纳页面占位 document_id={frontend_id}");
             let apply = HostMessage::apply_styles(
-                &state_for_ready.document.borrow().document_id,
+                &frontend_id,
                 serde_json::json!({ "frontendFormatMenu": true }),
             );
             webview.post_to_editor(&apply);
@@ -422,9 +549,10 @@ impl AppWindow {
                 .clone()
                 .unwrap_or_else(|| detect(&document.disk.bytes).decoded);
             let initial_dirty = document.recovered_markdown.is_some();
+            let document_type = document.document_type.clone();
             let payload = serde_json::json!({
                 "markdown": markdown,
-                "documentType": "markdown",
+                "documentType": document_type,
                 "readOnly": false,
                 "initialDirty": initial_dirty,
                 "scrollTop": 0,
@@ -439,6 +567,7 @@ impl AppWindow {
         {
             let webview = state.webview.clone();
             let lang = self.lang.clone();
+            let state_for_loc = state.clone();
             let pending_loc: Rc<RefCell<bool>> = Rc::new(RefCell::new(true));
             let pending_loc_cb = pending_loc.clone();
             state.webview.connect_on_message_type(EditorMessageType::Ready, move || {
@@ -452,7 +581,8 @@ impl AppWindow {
                 let localize = HostMessage {
                     protocol_version: 1,
                     message_type: crate::bridge::messages::HostMessageType::LocalizeFindBar,
-                    document_id: String::new(),
+                    // 页面入站校验要求 documentId 非空(对齐 macOS:带会话 id)。
+                    document_id: state_for_loc.document.borrow().document_id.clone(),
                     revision: 0,
                     request_id: None,
                     payload: Some(serde_json::json!({
@@ -475,7 +605,12 @@ impl AppWindow {
         // 其余消息过门控;拒绝时 log::warn 不静默(Plan Global Constraint)。
         // ready 与空 documentId 的消息(文档加载前的前端 UI 初始化)直通,
         // 与桌面端行为一致;其余消息过会话门控。
-        if message.message_type != EditorMessageType::Ready && !message.document_id.is_empty() {
+        if message.message_type == EditorMessageType::Ready {
+            // 记录页面占位 id(send_after_ready 的 ready 回调采纳,对齐 Android)。
+            if !message.document_id.is_empty() {
+                *state.frontend_ready_id.borrow_mut() = Some(message.document_id.clone());
+            }
+        } else if !message.document_id.is_empty() {
             let decision = state.session.borrow().accept(&message);
             match decision {
                 crate::bridge::session_state::AcceptDecision::Accept => {
@@ -596,6 +731,18 @@ impl AppWindow {
                     .to_string();
                 self.set_status(&format!("错误:{text}"));
             }
+            // selectionChanged 携带 sourceMode 标志:跟踪当前标签的源码/可视化
+            // 状态,大纲跳转按此分流(对齐 macOS/Windows 宿主契约)。
+            EditorMessageType::SelectionChanged => {
+                if let Some(source_mode) = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("sourceMode"))
+                    .and_then(|v| v.as_bool())
+                {
+                    state.source_mode.set(source_mode);
+                }
+            }
             _ => {}
         }
     }
@@ -644,6 +791,14 @@ impl AppWindow {
             return;
         };
         let request_id = message.request_id.as_deref().unwrap_or("");
+        // 分享:requestId="share" → 全文写系统剪贴板(见 share_active_document)。
+        if request_id == "share" {
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(&markdown);
+            }
+            self.set_status("已复制文件内容");
+            return;
+        }
         let document = state.document.borrow();
         let document_id = document.document_id.clone();
         let encoding = document.encoding.clone();
@@ -994,6 +1149,35 @@ impl AppWindow {
         open_action.connect_activate(move |_, _| this.run_open_dialog());
         self.window.add_action(&open_action);
 
+        // 新建:Markdown / 纯文本(对齐桌面「新建」子菜单)。
+        for (action_name, doc_type) in [("newMarkdown", "markdown"), ("newPlainText", "plainText")] {
+            let this = self.clone();
+            let action = gio::SimpleAction::new(action_name, None);
+            action.connect_activate(move |_, _| this.create_tab_blank_with_type(doc_type));
+            self.window.add_action(&action);
+        }
+
+        // 最近项目:openRecent::<index>(菜单按 settings.recent_files 顺序生成)。
+        let this = self.clone();
+        let open_recent = gio::SimpleAction::new("openRecent", Some(glib::VariantTy::STRING));
+        open_recent.connect_activate(move |_, parameter| {
+            let index = parameter
+                .and_then(|v| v.str())
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
+            if let Some(entry) = this.settings.borrow().recent_files.get(index) {
+                let path = std::path::PathBuf::from(&entry.path);
+                this.open_document_in_tab(&path);
+            }
+        });
+        self.window.add_action(&open_recent);
+
+        // 分享:当前文档内容走 xdg-open 无意义;复制内容到剪贴板(桌面 shareActiveTab 等价物)。
+        let this = self.clone();
+        let share_action = gio::SimpleAction::new("share", None);
+        share_action.connect_activate(move |_, _| this.share_active_document());
+        self.window.add_action(&share_action);
+
         let this = self.clone();
         let save_action = gio::SimpleAction::new("save", None);
         save_action.connect_activate(move |_, _| this.save_active_tab());
@@ -1117,6 +1301,84 @@ impl AppWindow {
             .cloned()
     }
 
+    /// 分享当前文档:requestSnapshot(requestId="share")回包取全文写入 GDK
+    /// 系统剪贴板(Linux 桌面 shareActiveTab 等价物:无系统分享面板,复制即分享)。
+    fn share_active_document(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let document_id = state.document.borrow().document_id.clone();
+        state.webview.post_to_editor(&HostMessage::command_with_request(
+            &document_id,
+            0,
+            serde_json::json!({ "command": "requestSnapshot" }),
+            Some("share"),
+        ));
+    }
+
+    /// 代码语言声明对话框(对齐桌面 declareCodeBlockLanguage):预设下拉 + 自由输入,
+    /// 确认后发 setCodeBlockLanguage(text)。
+    #[allow(deprecated)]
+    fn show_code_language_dialog(self: &Rc<Self>) {
+        let dialog = gtk::Dialog::builder()
+            .title(crate::l10n::tr(&self.lang, "声明代码语言").unwrap_or_else(|| "声明代码语言".into()))
+            .transient_for(&self.window)
+            .modal(true)
+            .build();
+        let content = dialog.content_area();
+        let box_ = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        box_.set_margin_top(12);
+        box_.set_margin_bottom(4);
+        box_.set_margin_start(12);
+        box_.set_margin_end(12);
+        let entry = gtk::Entry::new();
+        entry.set_placeholder_text(Some("kotlin"));
+        let dropdown = gtk::DropDown::from_strings(&[
+            "swift", "c", "cpp", "objective-c", "java", "kotlin", "python",
+            "javascript", "typescript", "jsx", "tsx", "html", "css", "json",
+            "yaml", "xml", "shell", "powershell", "sql", "markdown", "go",
+            "rust", "php", "ruby", "r", "latex", "mermaid",
+        ]);
+        dropdown.connect_selected_notify({
+            let entry = entry.clone();
+            move |dd| {
+                if let Some(text) = dd.selected_item().and_then(|i| i.downcast::<gtk::StringObject>().ok()) {
+                    entry.set_text(&text.string());
+                }
+            }
+        });
+        box_.append(&entry);
+        box_.append(&dropdown);
+        content.append(&box_);
+        dialog.add_button(
+            crate::l10n::tr(&self.lang, "取消").unwrap_or_else(|| "取消".into()).as_str(),
+            gtk::ResponseType::Cancel,
+        );
+        dialog.add_button(
+            crate::l10n::tr(&self.lang, "确定").unwrap_or_else(|| "确定".into()).as_str(),
+            gtk::ResponseType::Ok,
+        );
+        let this = self.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Ok {
+                let language = entry.text().to_string();
+                if let Some(state) = this.active_tab() {
+                    let document_id = state.document.borrow().document_id.clone();
+                    state.webview.post_to_editor(&HostMessage::command_with_request(
+                        &document_id,
+                        0,
+                        serde_json::json!({ "command": "setCodeBlockLanguage", "text": language }),
+                        None,
+                    ));
+                    this.set_status(
+                        &crate::l10n::tr(&this.lang, "代码语言已更新")
+                            .unwrap_or_else(|| "代码语言已更新".into()),
+                    );
+                }
+            }
+            dialog.close();
+        });
+        dialog.present();
+    }
+
     fn save_active_tab(self: &Rc<Self>) {
         if let Some(state) = self.active_tab() {
             self.save_tab(&state);
@@ -1161,6 +1423,8 @@ impl AppWindow {
             "new" => {
                 self.create_tab_blank();
             }
+            // 声明代码语言:弹语言选择对话框(对齐桌面 declareCodeBlockLanguage)。
+            "declareCodeLanguage" => self.show_code_language_dialog(),
             // macOS 将菜单 id rotateImage 映射为内核 rotateImageClockwise(M1 审计顺延项)。
             "rotateImage" => self.send_command_to_active("rotateImageClockwise"),
             "undo" | "redo" | "toggleBold" | "toggleItalic" | "toggleUnderline" | "toggleStrike"
@@ -1185,7 +1449,7 @@ impl AppWindow {
     }
 
     /// 空白新标签(未命名文档)。
-    fn create_tab_blank(self: &Rc<Self>) {
+    pub(crate) fn create_tab_blank(self: &Rc<Self>) {
         self.create_tab_with_snapshot(
             PathBuf::from("未命名.md"),
             DocumentSnapshot::default(),

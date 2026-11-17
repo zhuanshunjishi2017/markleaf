@@ -10,7 +10,7 @@ use gdk::prelude::TextureExt;
 use gdk::prelude::TextureExtManual;
 use gtk::glib;
 use gtk::prelude::*;
-use markleaf::bridge::messages::{EditorMessage, EditorMessageType, HostMessage};
+use markleaf::bridge::messages::{EditorMessageType, HostMessage};
 use markleaf::editor::webview::{build_context, EditorWebView};
 use webkit::prelude::WebViewExt;
 use webkit::{LoadEvent, SnapshotOptions, SnapshotRegion};

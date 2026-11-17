@@ -88,17 +88,18 @@ pub fn run() -> glib::ExitCode {
                             settings.clone(),
                             windows_activate.clone(),
                         );
-                        for tab_path in &window_session.tabs {
-                            let window_for_tab = window.clone();
-                            window_for_tab.open_document_in_tab(&PathBuf::from(tab_path));
-                        }
-                        window.select_tab(window_session.active_tab);
+                        // 异步建标签,全部完成后选 active_tab(同步 select 在
+                        // TabView 空时触发 libadwaita 断言崩溃,见 restore_tabs)。
+                        window.restore_tabs(&window_session.tabs, window_session.active_tab);
                         window.present();
                         windows_activate.borrow_mut().push(window);
                     }
                 }
                 _ => {
                     let window = AppWindow::new(app, &context, settings.clone(), windows_activate.clone());
+                    // 对齐桌面 restoreSession 兜底:无任何会话/历史时新建空白文档,
+                    // 而不是开一个右侧全空的窗口。
+                    window.create_tab_blank();
                     window.present();
                     windows_activate.borrow_mut().push(window.clone());
                     prompt_recovered_documents(&window);
