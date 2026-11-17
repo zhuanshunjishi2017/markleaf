@@ -1,5 +1,6 @@
 // GtkApplication 装配:单实例、文件打开、会话恢复/保存、设置持久化。
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -174,7 +175,14 @@ fn restored_session() -> Option<SessionManifest> {
 /// 恢复 = 打开原文件并以恢复内容载入(脏);丢弃 = 删除快照。
 fn prompt_recovered_documents(window: &Rc<AppWindow>) {
     let entries = crate::data::recovery::list_recovery(&recovered_dir());
-    for entry in entries {
+    // 串行队列:一个弹窗关闭后再 present 下一个。并行弹窗全部模态叠在
+    // 同一坐标,点掉顶层立刻露出下一个一模一样的,看起来像按钮无反应。
+    let mut queue: VecDeque<crate::data::recovery::RecoveryEntry> = entries.into();
+    let window = window.clone();
+    glib::idle_add_local(move || {
+        let Some(entry) = queue.pop_front() else {
+            return glib::ControlFlow::Break;
+        };
         let path = entry.path.clone().map(PathBuf::from);
         let window = window.clone();
         let entry_id = entry.document_id.clone();
@@ -207,7 +215,8 @@ fn prompt_recovered_documents(window: &Rc<AppWindow>) {
             dialog.close();
         });
         dialog.present();
-    }
+        glib::ControlFlow::Break
+    });
 }
 
 fn entry_markdown_of(document_id: &str, dir: &std::path::Path) -> String {
