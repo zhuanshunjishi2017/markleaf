@@ -644,7 +644,12 @@ SafDocumentSource.takePersistablePermission(this, uri)
                 requestSelection = { requestSelectionText() },
                 actions = editorActions.value,
                 onCommand = { cmd, text -> bridge.post(command(cmd, text)) },
-                onLanguagePicker = { showToolbarLanguageDialog.value = true },
+                onLanguagePicker = {
+                    // 打开对话框前收起键盘：WebView 持焦时弹出的 IME 会与
+                    // 对话框窗口夺焦交替（键盘闪开即关的根源）。
+                    dismissKeyboard()
+                    showToolbarLanguageDialog.value = true
+                },
             )
             if (blockMenuVisible.value) {
                 BlockMenuSheet(
@@ -656,6 +661,7 @@ SafDocumentSource.takePersistablePermission(this, uri)
                         postCommand(command, text ?: "")
                     },
                     onLanguagePicker = {
+                        dismissKeyboard()
                         dismissBlockMenu()
                         showToolbarLanguageDialog.value = true
                     },
@@ -666,12 +672,33 @@ SafDocumentSource.takePersistablePermission(this, uri)
                     onDismissRequest = { showToolbarLanguageDialog.value = false },
                     title = { Text(L10n.t("声明代码语言")) },
                     text = {
-                        androidx.compose.material3.OutlinedTextField(
-                            value = toolbarLanguageInput,
-                            onValueChange = { toolbarLanguageInput = it },
-                            label = { Text(L10n.t("语言")) },
-                            singleLine = true,
-                        )
+                        // 与段落手柄路径的对话框完全一致：预设 chips + 可自由
+                        // 输入（列表是便利项而非白名单）。两个入口同一 UI。
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        Column {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = toolbarLanguageInput,
+                                onValueChange = { toolbarLanguageInput = it },
+                                label = { Text(L10n.t("语言")) },
+                                singleLine = true,
+                            )
+                            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                            androidx.compose.foundation.layout.FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+                            ) {
+                                COMMON_CODE_LANGUAGES.forEach { language ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = toolbarLanguageInput == language,
+                                        onClick = { toolbarLanguageInput = language },
+                                        label = { Text(language) },
+                                    )
+                                }
+                            }
+                        }
                     },
                     confirmButton = {
                         TextButton(onClick = {
