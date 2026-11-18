@@ -1,6 +1,7 @@
-import type { DocumentSnapshot, WebviewMessage } from './vscode-protocol'
+import type { DocumentSnapshot, SourceChanges, WebviewMessage } from './vscode-protocol'
 
-type EditMessage = Extract<WebviewMessage, { type: 'edit' }>
+import { preserveDocumentLineEndings } from '@markleaf/editor-core'
+import { documentReplacement } from './vscode-text-edit'
 
 /** One edit in flight, with the latest local snapshot queued behind it.
  * Acknowledgements never parse or replace the visible editor document. */
@@ -9,7 +10,9 @@ export class TextDocumentSync {
   private sequence = 0
   private acknowledged = ''
   private visible = ''
-  private inFlight?: EditMessage
+  private source = ''
+  private eol = '\n'
+  private inFlight?: { sequence: number; markdown: string; source: string }
   private composing = false
   private deferredDocument?: DocumentSnapshot
   private flushRequests = new Set<number>()
@@ -28,8 +31,23 @@ export class TextDocumentSync {
 
   get markdown(): string { return this.visible }
 
+  receiveChanges(message: SourceChanges): void {
+    const base = this.deferredDocument
+    if (message.version <= (base?.version ?? this.version)) return
+    if (message.baseVersion !== (base?.version ?? this.version)) {
+      this.callbacks.post({ type: 'requestDocument' })
+      return
+    }
+    let markdown = base?.markdown ?? this.source
+    for (const changes of message.batches) {
+      // VS Code offsets in each group refer to the same pre-change text.
+      for (const { start, end, text } of changes) markdown = markdown.slice(0, start) + text + markdown.slice(end)
+    }
+    this.receiveDocument({ ...message, type: 'document', markdown })
+  }
+
   receiveDocument(document: DocumentSnapshot): void {
-    if (document.version < this.version) return
+    if (document.version < (this.deferredDocument?.version ?? this.version)) return
     if (this.composing) {
       this.deferredDocument = document
       return
@@ -49,6 +67,8 @@ export class TextDocumentSync {
     this.inFlight = undefined
     this.deferredDocument = undefined
     this.conflict = undefined
+    this.source = document.markdown
+    this.eol = document.eol ?? (document.markdown.includes('\r\n') ? '\r\n' : '\n')
     this.version = document.version
     this.visible = this.acknowledged = rendered
     this.callbacks.status()
@@ -73,6 +93,7 @@ export class TextDocumentSync {
   accept(sequence: number, version: number): void {
     if (this.inFlight?.sequence !== sequence) return
     this.version = Math.max(this.version, version)
+    this.source = this.inFlight.source
     this.acknowledged = this.inFlight.markdown
     this.inFlight = undefined
     this.sendNext()
@@ -94,11 +115,15 @@ export class TextDocumentSync {
   private sendNext(): void {
     if (this.version >= 0 && !this.composing && !this.conflict && !this.inFlight
       && this.visible !== this.acknowledged) {
-      this.inFlight = {
-        type: 'edit', sequence: ++this.sequence,
-        baseVersion: this.version, markdown: this.visible,
+      const source = preserveDocumentLineEndings(this.visible, this.source, this.eol)
+      const change = documentReplacement(this.source, source)
+      if (change) {
+        const sequence = ++this.sequence
+        this.inFlight = { sequence, markdown: this.visible, source }
+        this.callbacks.post({ type: 'edit', sequence, baseVersion: this.version, change })
+      } else {
+        this.acknowledged = this.visible
       }
-      this.callbacks.post(this.inFlight)
     }
     this.callbacks.status()
     this.completeFlushes()

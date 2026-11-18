@@ -4,9 +4,9 @@
 
 在 VS Code 中閱讀和視覺化編輯 Markdown，重用 MarkLeaf 的 Tiptap/ProseMirror 編輯核心、KaTeX、Mermaid 和排版樣式。擴充功能由 TypeScript 編寫，使用 VS Code 提供的 API 與 Webview，沒有獨立 Electron 相依套件或桌面殼層。
 
-目前版本 **0.3.0** 提供 36 項設定和 67 項可設定快速鍵的格式操作，支援格式刷、表格、註腳、公式與圖表、圖片資源、尋找取代、大綱和閱讀偏好。現已支援 PDF、HTML、PNG/JPG 長圖、預覽和列印。
+**0.3.1 需要 VS Code 1.120 或更新版本。** 頂端依格式、編輯、檢視和匯出分組，底部可切換原始碼、編碼、行尾字元與縮放。長文件中的一般段落依變更範圍同步，公式優先繪製可見區域附近的內容，本機圖片參照會合併處理。擴充功能提供 38 項設定和 70 項可設定快速鍵的格式操作。
 
-透過工具列「视图 → 大纲」開啟文件側欄。0.3.0 對齊 Windows 桌面版的標題階層，提供搜尋、展開／摺疊、定位目前標題、鍵盤導覽與可見項目跟隨。側欄及分隔線填滿可用高度，目錄清單獨立捲動，長標題可懸停查看全文。保留既有的 markleaf.showOutline 設定。
+透過工具列「檢視 → 大綱」開啟文件側欄。大綱對齊 Windows 桌面版的標題階層，提供搜尋、展開／摺疊、定位目前標題、鍵盤導覽與可見項目跟隨。側欄及分隔線填滿可用高度，目錄清單獨立捲動，長標題可懸停查看全文。保留既有的 markleaf.showOutline 設定。
 
 工具列選單會在點擊外部、按 Escape、切換選單或焦點離開擴充功能時收起。公式與 Mermaid 原始碼面板使用適配明暗主題的不透明背景，與原生產品共用核心的浮層定位：優先在內容下方展開，空間不足時調整位置以保持可見。公式符號面板會根據可用空間調整版面。
 
@@ -34,13 +34,13 @@ PDF、圖片、預覽與列印使用已安裝的 **Chrome/Edge**，不附帶或�
 
 ## 安裝和開啟
 
-在本機建置得到 `artifacts/markleaf-vscode-0.3.0.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
+在本機建置得到 `artifacts/markleaf-vscode-0.3.1.vsix` 後，於 VS Code 擴充功能選單選擇 **Install from VSIX…**，或從儲存庫根目錄執行：
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.3.0.vsix
+code --install-extension artifacts/markleaf-vscode-0.3.1.vsix
 ```
 
-安裝並啟用後，新開啟的 `.md` 或 `.markdown` 檔案預設進入 MarkLeaf 渲染檢視，可直接閱讀與視覺化編輯。已開啟的原始碼分頁可透過 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切換，也可從檔案總管右鍵選擇 **MarkLeaf: Open Markdown**。
+0.3.1 需要 VS Code 1.120 或更新版本。Markdown 與常見別名（如 `.mdown`、`.mkd`）預設使用視覺化編輯器。檔案總管中的 **MarkLeaf: 開啟文件** 也能以原生文字編輯器開啟 JSON、原始碼、記錄檔和沒有副檔名的文字，保留原文、編碼與換行。已開啟的 Markdown 原始碼可透過 **Reopen Editor With… → MarkLeaf** 或 **Ctrl/Cmd+Shift+V** 切換。
 
 升級 VSIX 後請先儲存文件，再執行 **Developer: Reload Window**，讓目前視窗重新載入擴充功能及其設定宣告。如果設定頁仍只有舊選項，或提示「沒有註冊設定 markleaf.shortcuts」，也請重新載入整個視窗後再錄入鍵位；僅重新啟動擴充功能宿主可能留下舊的設定註冊狀態。
 
@@ -48,9 +48,11 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 
 ### Git 差異檢視
 
-在 VS Code 1.120 及以上版本，`.md` 和 `.markdown` 的 Git 工作目錄、暫存區與提交歷史比較，預設使用 VS Code 原生原始碼 diff，顯示行號、新增／刪除醒目提示及差異導覽。一般檔案仍預設使用 MarkLeaf 閱讀與編輯。
+工作目錄、暫存區與提交歷史中的 Markdown 比較預設使用 VS Code 原生文字差異檢視。左右兩側分別保留各自版本，關閉比較會回到原先的編輯分頁。這項預設涵蓋 `.md`、`.markdown` 與下列別名。
 
-擴充功能透過 `workbench.diffEditorAssociations` 提供預設值，不寫入使用者設定；既有使用者或工作區的 diff 關聯優先。若曾為 Markdown 明確指定其他 diff 編輯器，可將該設定中的 `*.md`、`*.markdown` 設為 `default`。升級後先執行 **Developer: Reload Window**，再關閉並重新開啟既有比較分頁。較舊的 VS Code 不支援這項自動關聯，可在比較分頁使用 **Reopen Editor With… → Text Editor**，或升級 VS Code。
+`.mdown`, `.mkd`, `.mkdn`, `.mdwn`, `.mdtxt`, `.mdtext`, `.markdn`
+
+擴充功能透過 `workbench.diffEditorAssociations` 提供預設值，不寫入使用者設定；既有使用者或工作區的 diff 關聯優先。若曾為 Markdown 明確指定其他 diff 編輯器，可將該設定中的 `*.md`、`*.markdown` 設為 `default`。升級後先執行 **Developer: Reload Window**，再關閉並重新開啟既有比較分頁。
 
 ## 編輯和閱讀
 
@@ -59,14 +61,14 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 | 文字與段落 | 工具列和「格式…」支援粗體、斜體、底線、刪除線、醒目提示、行內程式碼、清除格式、H1–H6、標題升降級、段落前後插入、複製和刪除、清單縮排，以及五種 GitHub 提示框。選單支援依操作名稱搜尋。 |
 | 格式刷與段落操作柄 | 選取已有格式的文字，點擊格式刷，再拖曳選取目標文字；套用一次後退出，Escape 取消。段落左側操作柄開啟目前段落的選單，操作柄位於可編輯內容外。 |
 | 表格 | 指定行列數插入、新增刪除行列、欄對齊、設定或清除表格標題、刪除表格。選單依游標位置顯示適用操作。 |
-| 公式與 Mermaid | 插入行內／獨立公式、公式編號、轉換類型、刪除；點擊選取公式或圖表後，再次點擊展開共享原始碼控制項，保留數學輸入輔助。支援 Mermaid 程式碼渲染、編輯和重新渲染。 |
+| 公式與 Mermaid | 插入行內／獨立公式、公式編號、轉換類型、刪除；點擊選取公式或圖表後，再次點擊展開共享原始碼控制項，保留數學輸入輔助。支援 Mermaid 程式碼渲染、編輯和重新渲染。 選取已繪製的 Mermaid 圖表後，可從「匯出」選單將該圖單獨儲存為 SVG 或 2× PNG。 |
 | 註腳與中繼資料 | 插入註腳、重新命名標籤、回到參照、清除參照、刪除定義；顯示或插入 YAML Front Matter。標籤不能重複占用既有定義或參照。 |
 | 程式碼 | 選擇程式碼區塊語言、複製程式碼、退出區塊，支援語法醒目提示開關。 |
 | 剪貼簿 | 「編輯」提供複製為 Markdown、純文字或 HTML 原始碼，以及貼上純文字。一般複製同時提供選取文字和 HTML；視覺模式的一般文字貼上和「貼上純文字」均依 Windows 規則解析 Markdown。原始碼編輯保留字面文字；狀態列顯示解析、格式轉換、降級原因或失敗結果。 |
 | 尋找取代 | 在渲染內容中尋找，支援大小寫、完整單字、上一處／下一處、單次和全部取代。閱讀模式可尋找，取代需要編輯模式。 |
-| 大綱與閱讀 | 「视图」（檢視）提供 H1–H6 大綱、專注目前段落、打字機捲動、縮放、排版與配色。狀態列顯示字元數、選取字元數、目前區塊及位置，懸停可查看詳細統計。 |
+| 大綱與閱讀 | 「檢視」提供 H1–H6 大綱、專注目前段落、打字機捲動、縮放、排版與配色。狀態列顯示字元數、選取字元數、目前區塊及位置，懸停可查看詳細統計。 |
 
-**阅读 / 编辑**（閱讀／編輯）按鈕切換模式。開啟文件、尋找、切換模式或顯示設定不會觸發 Markdown 回寫。閱讀模式保留複製、尋找、連結和大綱導覽，需要改動文件的操作僅在編輯模式可用。
+**閱讀 / 編輯**按鈕切換模式。開啟文件、尋找、切換模式或顯示設定不會觸發 Markdown 回寫。閱讀模式保留複製、尋找、連結和大綱導覽，需要改動文件的操作僅在編輯模式可用。
 
 開啟格式選單、圖片選擇器或輸入框後，操作仍套用到開啟時的選取範圍。如果等待期間文件已修改，會提示重新選取。若圖片已經儲存，但原選取範圍失效，提示中會保留資源路徑，方便從新位置插入。
 
@@ -74,10 +76,10 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 
 ## 圖片資源
 
-- 工具列「图片」（圖片）可一次選取多張檔案；「编辑 → 图片地址」插入相對路徑或網路 URL。支援 PNG、JPEG、GIF、WebP、SVG、BMP 和 AVIF。
+- 「編輯 → 插入圖片…」可一次選取多張檔案；「編輯 → 插入圖片網址…」插入相對路徑或網路 URL。支援 PNG、JPEG、GIF、WebP、SVG、BMP 和 AVIF。
 - 直接貼上或拖入圖片時，將圖片儲存到文件旁的 `assets` 目錄，再插入 Markdown 參照。每張圖片最多 16 MiB；未儲存文件以第一個工作區資料夾為基準，沒有工作區時須先儲存文件。
 - 檔案選擇預設複製到資源目錄，可用 `markleaf.fileImageHandling` 改為參照原檔案。資源目錄、相對路徑及 `./` 前綴均可設定，檔名會自動避免覆寫既有資源。
-- 選取圖片後透過「编辑 → 当前图片操作」取代圖片、編輯標題、旋轉、調整寬度或另存圖片；閱讀模式僅提供另存圖片。
+- 選取圖片後透過「編輯 → 圖片操作…」取代圖片、編輯標題、旋轉、調整寬度或另存圖片；閱讀模式僅提供另存圖片。
 - 圖片顯示使用 VS Code 資源位址，寫回 Markdown 的仍是原始路徑。參照工作區外圖片時，按圖片所在目錄載入資源；遠端檔案透過 VS Code 檔案系統 API 處理。
 
 ## 快速鍵與文件同步
@@ -95,7 +97,7 @@ MarkLeaf 使用 VS Code 的預設自訂編輯器宣告。若已為 Markdown 指�
 
 ### 格式快速鍵設定
 
-開啟 **视图 → 快捷键…**（檢視 → 快速鍵），或執行命令 **MarkLeaf: Configure Shortcuts / 快捷键设置**，也可從排版、主題與設定入口進入。錄鍵面板可搜尋所有格式操作、錄入、清除或恢復預設；點擊「保存键位」（儲存鍵位）後立即生效，格式選單與工具列提示同步更新。
+開啟 **檢視 → 快速鍵…**（檢視 → 快速鍵），或執行命令 **MarkLeaf: Configure Shortcuts / 快捷键设置**，也可從排版、主題與設定入口進入。錄鍵面板可搜尋所有格式操作、錄入、清除或恢復預設；點擊「保存键位」（儲存鍵位）後立即生效，格式選單與工具列提示同步更新。
 
 行內公式、獨立公式及 Mermaid 預設未綁定。為插入公式操作設定鍵位後，在渲染編輯區的游標位置按鍵即可插入，並開啟既有公式原始碼與符號輔助。表格尺寸、註腳等需要額外參數的操作仍使用既有輸入框。
 
@@ -117,7 +119,7 @@ VS Code 設定頁中的 **Markleaf: Shortcuts** 儲存同一份設定，也可�
 - 儲存範圍顯示在面板頂部：既有資料夾層級設定優先，其次工作區，否則儲存為使用者設定；不將繼承的其他鍵位複製到目前範圍。修改設定不會回寫 Markdown 文件。
 - 自訂格式鍵僅作用於目前 MarkLeaf 渲染編輯區；閱讀模式、尋找框、公式／圖表原始碼輸入框與原生 Markdown 原始碼編輯器不觸發這些操作。輸入法組字及 AltGraph 輸入保持原有行為。
 
-全部 67 項格式操作也註冊為獨立 VS Code 命令，例如 `markleaf.insertMathInline`、`markleaf.insertMathBlock`、`markleaf.setHeading1`。若需連續組合鍵等進階規則，可在 VS Code Keyboard Shortcuts 設定，並將條件限定為 `activeWebviewPanelId == markleaf.editor && markleaf.focus == document`。同一操作應在 MarkLeaf 設定中清除舊鍵，以免保留兩套入口。
+全部 70 項格式操作也註冊為獨立 VS Code 命令，例如 `markleaf.insertMathInline`、`markleaf.insertMathBlock`、`markleaf.setHeading1`。若需連續組合鍵等進階規則，可在 VS Code Keyboard Shortcuts 設定，並將條件限定為 `activeWebviewPanelId == markleaf.editor && markleaf.focus == document`。同一操作應在 MarkLeaf 設定中清除舊鍵，以免保留兩套入口。
 
 MarkLeaf 選單僅顯示 `markleaf.shortcuts` 的有效設定。VS Code 公開擴充 API 不提供解析後的全域鍵位查詢，因此無法同步顯示另外在 `keybindings.json` 設定的覆寫規則，也無法檢查其他擴充功能和系統攔截的全部組合鍵；這類衝突請使用 VS Code Keyboard Shortcuts 檢查。
 
@@ -127,11 +129,13 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 
 每個檔案允許一個 MarkLeaf 視覺化檢視，可與原生原始碼並排。隱藏檢視保留內容以保護未完成輸入。日常儲存會等待文件同步；VS Code 結束時可能略過儲存參與者，因此關閉視窗前應確認同步完成，衝突內容應先開啟為草稿。
 
+若在輸入法組字期間儲存，VS Code 可能先寫入已確認的文字。保持文件開啟，組字確認並同步後，擴充功能會自動補存一次。
+
 ## 排版和偏好
 
-透過「视图」（檢視）的排版與設定入口選擇常用選項，再選擇「全部 MarkLeaf 设置…」；也可在擴充功能詳細資料的齒輪選單選擇 **擴充功能設定 / Extension Settings**，或直接搜尋設定鍵（如 `markleaf.fontSize`）。設定與說明入口從 VS Code 取得目前的擴充功能 ID，Windows、macOS、Linux 使用相同邏輯。設定遵循既有的使用者、工作區或工作區資料夾範圍。
+透過「檢視」的排版與設定入口選擇常用選項，再選擇「全部 MarkLeaf 设置…」；也可在擴充功能詳細資料的齒輪選單選擇 **擴充功能設定 / Extension Settings**，或直接搜尋設定鍵（如 `markleaf.fontSize`）。設定與說明入口從 VS Code 取得目前的擴充功能 ID，Windows、macOS、Linux 使用相同邏輯。設定遵循既有的使用者、工作區或工作區資料夾範圍。
 
-目前套件版本為 **0.3.0**，預設發行者為 `markleaf`，ID 為 `markleaf.markleaf`。在儲存庫根目錄執行 `corepack pnpm package:vscode --publisher <發行者ID>`，可覆寫本次套件的身分，產生 `artifacts/markleaf-vscode-0.3.0-<發行者ID>.vsix`，不會改寫來源設定。預設打包仍產生 `artifacts/markleaf-vscode-0.3.0.vsix`，也可用 `--out` 指定絕對路徑或相對於擴充功能目錄的輸出路徑。設定與說明依目前安裝套件的實際 ID 開啟；如果既有 `@ext:` 篩選導致清單為空，請清除篩選後從擴充功能詳細資料重新開啟設定。`markleaf.*` 設定鍵保持不變，不必遷移既有設定。擴充功能版本來自 `apps/vscode/package.json` 的 `version`，與儲存庫套件及原生產品版本分開管理。
+目前套件版本為 **0.3.1**，預設發行者為 `markleaf`，ID 為 `markleaf.markleaf`。在儲存庫根目錄執行 `corepack pnpm package:vscode --publisher <發行者ID>`，可覆寫本次套件的身分，產生 `artifacts/markleaf-vscode-0.3.1-<發行者ID>.vsix`，不會改寫來源設定。預設打包仍產生 `artifacts/markleaf-vscode-0.3.1.vsix`，也可用 `--out` 指定絕對路徑或相對於擴充功能目錄的輸出路徑。設定與說明依目前安裝套件的實際 ID 開啟；如果既有 `@ext:` 篩選導致清單為空，請清除篩選後從擴充功能詳細資料重新開啟設定。`markleaf.*` 設定鍵保持不變，不必遷移既有設定。擴充功能版本來自 `apps/vscode/package.json` 的 `version`，與儲存庫套件及原生產品版本分開管理。
 
 匯出與快速鍵視窗固定標題及操作區，中間內容獨立捲動；窄視窗選單限制在可見區域內，公式與圖表浮層沿用共用核心的層級及定位。
 
@@ -141,12 +145,13 @@ Webview 一次只送出一項編輯，收到版本確認後再送出期間累積
 | 字型和寬度 | `fontSize` 預設 16、`fontFamily`、`lineHeight`、`maxWidth` 預設 820、`ignoreMaxWidth`、`zoom`；樣式使用的字型須已安裝於本機。 |
 | 程式碼和中西文 | `showCodeHighlight`、`sourceFontFamily` / `sourceFontSize`（公式／圖表原始碼控制項）、`cjkLanguage`、`cjkAutoSpacing`；視覺間距不會插入原始碼空格。 |
 | 檢視 | `defaultMode`、`showOutline`、`focusMode`、`typewriterMode`、`showStatusBar`、`showBlockHandle`、`autoHideScrollbars`、`ctrlWheelZoom`。 |
+| 桌面排版與表格 | `markleaf.adaptiveJustification` 為適用段落啟用自適應左右對齊，預設關閉。`markleaf.allowTableColumnResize` 預設開啟，可拖曳欄邊界，或從「格式」選單選擇依內容調整、平均分配或重設欄寬。 |
 | Markdown 編輯 | `codeFence`、`emphasisMarker`、`bulletMarker`、`exitBlockOnEmptyEnter`、`useShiftEnterHardBreak`、強調轉換與字面符號跳脫。序列化設定在實際編輯後套用。 |
 | 圖片 | `imageDirectory`、`fileImageHandling`、`useRelativeImagePaths`、`prefixImagePathsWithDot`。 |
-| 格式快速鍵 | `shortcuts`；與「视图 → 快捷键…」錄鍵面板共用設定，只作用於 VS Code 的 MarkLeaf 渲染編輯區。 |
+| 格式快速鍵 | `shortcuts`；與「檢視 → 快速鍵…」錄鍵面板共用設定，只作用於 VS Code 的 MarkLeaf 渲染編輯區。 |
 | 自訂 CSS | `customCss` 指向相對於文件或絕對路徑的 CSS 檔案；僅在受信任工作區載入，修改 CSS 後重新載入編輯器。 |
 
-一般 Markdown 原始碼的字型、縮排和快速鍵使用 VS Code 原生設定。檔案／資料夾、最近檔案、分頁、自動儲存、復原、編碼、換行、視窗配置和擴充更新也使用 VS Code 本身的能力。共享公式與圖表控制項依 VS Code 語言選擇既有的簡體中文、繁體中文、英文或日文翻譯；匯出選單、面板、命令和狀態訊息依 VS Code 語言提供簡體中文、繁體中文、英文、日文。既有編輯選單和格式命令標題仍使用中文，其他既有命令保留英文。四語種文件不代表介面已全部在地化。
+原始碼字型與縮排由 VS Code 設定管理。頂端選單、底部狀態列的主要操作、大綱與匯出支援繁體中文、簡體中文、英文及日文。部分命令名稱、設定選擇器與統計提示仍使用原有語言。
 
 ## 格式和交付範圍
 
@@ -167,7 +172,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-安裝入口依序準備核心、Webview 與擴充宿主。打包入口依序建置並產生 `artifacts/markleaf-vscode-0.3.0.vsix`。僅建置使用 `corepack pnpm build:vscode`；適配層測試單獨使用 `corepack pnpm test:vscode`。
+安裝入口依序準備核心、Webview 與擴充宿主。打包入口依序建置並產生 `artifacts/markleaf-vscode-0.3.1.vsix`。僅建置使用 `corepack pnpm build:vscode`；適配層測試單獨使用 `corepack pnpm test:vscode`。
 
 開發時可使用既有 VS Code，無需額外桌面執行環境：
 

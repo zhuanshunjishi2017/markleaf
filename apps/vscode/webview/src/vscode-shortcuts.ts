@@ -26,7 +26,8 @@ export const formatGroups: Array<{ label: string; commands: Array<[string, strin
     ['插入表格…', 'insertTable'], ['上方插入行', 'addRowBefore'], ['下方插入行', 'addRowAfter'],
     ['删除行', 'deleteRow'], ['左侧插入列', 'addColumnBefore'], ['右侧插入列', 'addColumnAfter'],
     ['删除列', 'deleteColumn'], ['当前列左对齐', 'alignTableLeft'], ['当前列居中', 'alignTableCenter'],
-    ['当前列右对齐', 'alignTableRight'], ['表格标题…', 'setTableCaption'], ['删除表格', 'deleteTable'],
+    ['当前列右对齐', 'alignTableRight'], ['按内容调整列宽', 'fitTableContents'], ['平均分配列宽', 'distributeTableColumns'], ['重置列宽', 'resetTableWidths'],
+    ['表格标题…', 'setTableCaption'], ['删除表格', 'deleteTable'],
   ] },
   { label: '公式与图表', commands: [
     ['行内公式', 'insertMathInline'], ['独立公式', 'insertMathBlock'], ['Mermaid 图表', 'insertMermaid'],

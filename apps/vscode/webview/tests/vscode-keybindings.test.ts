@@ -62,6 +62,20 @@ describe('VS Code shortcut command and focus boundary', () => {
     for (const target of [true, 'terminal', undefined]) expect(isWebviewMessage({ type: 'focus', target })).toBe(false)
   })
 
+  it('preserves both sides of an active native diff for command palette actions', async () => {
+    const { window, Uri, TabInputTextDiff } = await import('./vscode-mock')
+    const file = Uri.file('/project/note.md')
+    window.tabGroups.activeTabGroup.activeTab = { input: new TabInputTextDiff(Uri.file('/project/base.md'), file) }
+    try {
+      activate({ subscriptions } as vscode.ExtensionContext)
+      host.execute.mockClear()
+      await host.commands.get('markleaf.toggleEditor')!()
+      await host.commands.get('markleaf.open')!()
+      await host.commands.get('markleaf.open')!(file)
+      expect(host.execute).not.toHaveBeenCalled()
+    } finally { window.tabGroups.activeTabGroup.activeTab = undefined }
+  })
+
   it.each(['markleaf.markleaf', 'custom-publisher.markleaf'])('routes settings/help for %s and preserves switching, synchronization and focus', async (extensionId) => {
     const { Uri, window } = await import('vscode')
     const uri = Uri.file('/project/readme.md')

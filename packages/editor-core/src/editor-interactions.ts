@@ -11,6 +11,8 @@ export function createEditorInteractions(options: {
   getEditor(): Editor
   enabled(): boolean
   onMenu(position: number, rect: DOMRect): void
+  singleTapToEditAtoms?: boolean
+  deferBlockHandleLayout?: boolean
   label: string
   onStateChanged?(): void
   links?: DocumentLinkActions
@@ -22,13 +24,19 @@ export function createEditorInteractions(options: {
   let timer: ReturnType<typeof setTimeout> | undefined
   const enabled = () => options.enabled() && getEditor().isEditable && !composing
   const handle = createBlockHandle(mount, getEditor, enabled, options.onMenu, options.label)
+  let layoutFrame = 0
   function update(): void {
     if (!enabled()) painter.cancel()
     mount.classList.toggle('format-painter-armed', painter.isArmed)
-    handle.update()
+    if (!options.deferBlockHandleLayout || !enabled()) {
+      if (layoutFrame) { cancelAnimationFrame(layoutFrame); layoutFrame = 0 }
+      handle.update()
+    } else if (!layoutFrame) {
+      layoutFrame = requestAnimationFrame(() => { layoutFrame = 0; handle.update() })
+    }
   }
   function changed(): void { update(); options.onStateChanged?.() }
-  const unbindPointer = bindDocumentPointerInteractions(mount, getEditor, changed)
+  const unbindPointer = bindDocumentPointerInteractions(mount, getEditor, changed, options.singleTapToEditAtoms)
   const unbindLinks = options.links ? bindDocumentLinks(mount, getEditor, options.links) : undefined
   function cancel(): void { painter.cancel(); changed() }
   function arm(): boolean { if (!enabled()) return false; const result = painter.arm(getEditor()); changed(); return result }
@@ -56,6 +64,6 @@ export function createEditorInteractions(options: {
     clearHighlight: () => setBlockHighlight(getEditor(), null),
     state: () => ({ canStartFormatPainter: enabled() && captureFormat(getEditor()) !== null, formatPainterArmed: enabled() && painter.isArmed }),
     togglePainter(): boolean { if (!enabled()) return false; if (painter.isArmed) { cancel(); return true }; return arm() },
-    dispose(): void { unbindPointer(); unbindLinks?.(); clearTimeout(timer); events.abort(); painter.cancel(); mount.classList.remove('format-painter-armed'); handle.dispose() },
+    dispose(): void { cancelAnimationFrame(layoutFrame); unbindPointer(); unbindLinks?.(); clearTimeout(timer); events.abort(); painter.cancel(); mount.classList.remove('format-painter-armed'); handle.dispose() },
   }
 }

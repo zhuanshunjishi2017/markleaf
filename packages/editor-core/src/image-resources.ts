@@ -1,6 +1,7 @@
 /** A document stores Markdown paths; the host supplies loadable resource URLs. */
 export type ImageResourceResolver = {
   resolve(path: string): string
+  onPendingImage?(path: string, image: HTMLImageElement): void
   originalPath?(url: string): string | null
 }
 
@@ -10,8 +11,10 @@ export function setImageResourceResolver(resolver?: ImageResourceResolver): void
   resources = resolver
 }
 
-export function resolveImageResource(path: string): string {
-  return resources?.resolve(path) ?? path
+export function resolveImageResource(path: string, image?: HTMLImageElement): string {
+  const url = resources?.resolve(path) ?? path
+  if (!url && path && image) resources?.onPendingImage?.(path, image)
+  return url
 }
 
 export function getImageResourcePath(element: Element): string | null {

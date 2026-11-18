@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { TextDocumentSync } from '../src/vscode-sync'
 import type { DocumentSnapshot, WebviewMessage } from '../src/vscode-protocol'
-import { documentReplacement, normalizeDocumentMarkdown } from '../../src/document-edit'
+import { documentReplacement } from '../src/vscode-text-edit'
+import { preserveDocumentLineEndings } from '@markleaf/editor-core'
 
 const snapshot = (markdown: string, version = 1): DocumentSnapshot => ({ type: 'document', markdown, version, writable: true })
 function client() {
@@ -23,7 +24,7 @@ describe('VS Code document synchronization', () => {
   it('acknowledges edits without rendering or disturbing the current editor', () => {
     const { sync, messages, render } = client()
     sync.change('hello world')
-    expect(messages).toEqual([{ type: 'edit', sequence: 1, baseVersion: 1, markdown: 'hello world' }])
+    expect(messages).toEqual([{ type: 'edit', sequence: 1, baseVersion: 1, change: { start: 5, end: 5, text: ' world' } }])
     sync.accept(1, 2)
     expect(render).toHaveBeenCalledTimes(1)
     expect(sync.pending).toBe(false)
@@ -36,7 +37,7 @@ describe('VS Code document synchronization', () => {
     sync.change('hello abc')
     expect(messages).toHaveLength(1)
     sync.accept(1, 2)
-    expect(messages.at(-1)).toEqual({ type: 'edit', sequence: 2, baseVersion: 2, markdown: 'hello abc' })
+    expect(messages.at(-1)).toEqual({ type: 'edit', sequence: 2, baseVersion: 2, change: { start: 7, end: 7, text: 'bc' } })
     sync.accept(2, 3)
     expect(sync.pending).toBe(false)
   })
@@ -48,6 +49,18 @@ describe('VS Code document synchronization', () => {
     expect(render).toHaveBeenCalledTimes(3)
     expect(sync.markdown).toBe('hello')
     expect(messages).toEqual([])
+  })
+
+  it('applies grouped source changes in their original coordinate spaces and requests a snapshot on a missing version', () => {
+    const { sync, messages, render } = client()
+    sync.receiveChanges({ type: 'documentChanges', baseVersion: 1, version: 3, eol: '\r\n', writable: true,
+      batches: [[{ start: 5, end: 6, text: '\r\n' }, { start: 0, end: 1, text: 'H' }], [{ start: 5, end: 5, text: '!' }]] })
+    expect(render.mock.lastCall?.[0].markdown).toBe('Hello!\r\n')
+    sync.change('Hello!😀')
+    expect(messages.at(-1)).toMatchObject({ baseVersion: 3, change: { start: 6, end: 6, text: '😀' } })
+    sync.accept(1, 4)
+    sync.receiveChanges({ type: 'documentChanges', baseVersion: 5, version: 6, eol: '\n', writable: true, batches: [] })
+    expect(messages.at(-1)).toEqual({ type: 'requestDocument' })
   })
 
   it('keeps local typing on an external conflict and prevents stale edits from continuing', () => {
@@ -81,7 +94,7 @@ describe('VS Code document synchronization', () => {
     expect(messages).toEqual([])
     sync.change('hello 你')
     sync.setComposing(false)
-    expect(messages).toEqual([{ type: 'edit', sequence: 1, baseVersion: 1, markdown: 'hello 你' }])
+    expect(messages).toEqual([{ type: 'edit', sequence: 1, baseVersion: 1, change: { start: 5, end: 5, text: ' 你' } }])
     sync.accept(1, 2)
     expect(messages.at(-1)).toEqual({ type: 'flushed', requestId: 1, success: true })
   })
@@ -141,8 +154,8 @@ describe('VS Code text replacements', () => {
   })
 
   it('retains CRLF and an existing final newline', () => {
-    expect(normalizeDocumentMarkdown('# Title\n\nnew', '# Title\r\n\r\nold\r\n', '\r\n')).toBe('# Title\r\n\r\nnew\r\n')
-    expect(normalizeDocumentMarkdown('new', 'old', '\n')).toBe('new')
+    expect(preserveDocumentLineEndings('# Title\n\nnew', '# Title\r\n\r\nold\r\n', '\r\n')).toBe('# Title\r\n\r\nnew\r\n')
+    expect(preserveDocumentLineEndings('new', 'old', '\n')).toBe('new')
     expect(documentReplacement('same', 'same')).toBeUndefined()
   })
 })

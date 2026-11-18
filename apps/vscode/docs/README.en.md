@@ -4,9 +4,9 @@
 
 Read and visually edit Markdown in VS Code using MarkLeaf's Tiptap/ProseMirror core, KaTeX, Mermaid, and typography. The TypeScript extension uses VS Code APIs and Webviews, without adding a separate Electron dependency or desktop shell.
 
-Version **0.3.0** provides 36 settings and 67 configurable formatting actions, including a format painter, tables, footnotes, math and diagrams, image resources, find and replace, an outline, and reading preferences. PDF, HTML, PNG/JPG images, preview, and printing are now available.
+**0.3.1 requires VS Code 1.120 or later.** The top bar groups formatting, editing, view and export actions. Source, encoding, line endings and zoom are on the status bar. Edits to ordinary paragraphs in long documents sync by range. Nearby formulas render first and local image references resolve in batches. The extension provides 38 settings and 70 configurable formatting actions.
 
-Open the outline from the toolbar (视图 → 大纲). Version 0.3.0 follows the Windows desktop hierarchy and adds heading search, expand/collapse, locate current heading, keyboard navigation, and visibility tracking for expanded rows. The sidebar fills the available height and scrolls independently; hover over a truncated heading to read its full text. The existing markleaf.showOutline preference is preserved.
+Open the outline from the toolbar (**View → Outline**). The outline follows the Windows desktop hierarchy and supports heading search, expand/collapse, locate current heading, keyboard navigation, and visibility tracking for expanded rows. The sidebar fills the available height and scrolls independently; hover over a truncated heading to read its full text. The existing markleaf.showOutline preference is preserved.
 
 Toolbar menus close on an outside click, Escape, switching menus, or leaving the extension's focus. Math and Mermaid source panels have opaque backgrounds that follow light/dark themes. They use the same kernel positioning as the native products: prefer the space below the content and adjust within the viewport when space is limited. The math symbol panel adapts its layout to the available space.
 
@@ -34,13 +34,13 @@ A remote extension host can export files using its filesystem and installed brow
 
 ## Install and open
 
-Build `artifacts/markleaf-vscode-0.3.0.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
+Build `artifacts/markleaf-vscode-0.3.1.vsix`, then choose **Install from VSIX…** in VS Code, or run this from the repository root:
 
 ```bash
-code --install-extension artifacts/markleaf-vscode-0.3.0.vsix
+code --install-extension artifacts/markleaf-vscode-0.3.1.vsix
 ```
 
-After enabling the extension, newly opened `.md` and `.markdown` files use MarkLeaf by default. For an existing source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**. Explorer also offers **MarkLeaf: Open Markdown**.
+Version 0.3.1 requires VS Code 1.120 or later. Markdown and common aliases such as `.mdown` and `.mkd` open in the visual editor. Use **MarkLeaf: Open Document** in Explorer to open JSON, source code, logs and extensionless text in the native text editor with their original content, encoding and line endings. For an open Markdown source tab, choose **Reopen Editor With… → MarkLeaf** or press **Ctrl/Cmd+Shift+V**.
 
 After upgrading the VSIX, save your documents and run **Developer: Reload Window** so the window reloads the extension and its configuration declarations. If the settings page still shows only old options, or reports that `markleaf.shortcuts` is not registered, reload the entire window before recording shortcuts. Restarting only the extension host may leave the old settings registry in place.
 
@@ -48,25 +48,27 @@ MarkLeaf declares a default custom editor. If Markdown already has another defau
 
 ### Git diff views
 
-On VS Code 1.120 and later, Git comparisons for `.md` and `.markdown`, including working tree changes, staged changes, and commit history, default to the native source diff editor with line numbers, addition/deletion highlights, and change navigation. Ordinary files still default to MarkLeaf for reading and editing.
+Working tree, staged and history comparisons use VS Code’s native text diff by default. Both revisions remain visible, and closing the comparison returns to the previous editor tab. This applies to `.md`, `.markdown` and the aliases below.
 
-The extension supplies defaults through `workbench.diffEditorAssociations` without writing user settings. Existing user or workspace diff associations take precedence. If you explicitly selected another Markdown diff editor, set `*.md` and `*.markdown` to `default` in that setting. After upgrading, run **Developer: Reload Window**, then close and reopen existing diff tabs. Older VS Code versions do not support this automatic association; use **Reopen Editor With… → Text Editor** on the diff tab, or upgrade VS Code.
+`.mdown`, `.mkd`, `.mkdn`, `.mdwn`, `.mdtxt`, `.mdtext`, `.markdn`
+
+The extension supplies defaults through `workbench.diffEditorAssociations` without writing user settings. Existing user or workspace diff associations take precedence. If you explicitly selected another Markdown diff editor, set `*.md` and `*.markdown` to `default` in that setting. After upgrading, run **Developer: Reload Window**, then close and reopen existing diff tabs.
 
 ## Editing and reading
 
 | Feature | Entry points and behavior |
 | --- | --- |
-| Text and paragraphs | The toolbar and “格式…” (Format) menu offer bold, italic, underline, strikethrough, highlight, inline code, clear formatting, H1–H6, heading-level changes, insert before/after, duplicate/delete paragraph, list indentation, and five GitHub alert types. Search menus by action name. |
+| Text and paragraphs | The toolbar and **Format → All Formatting…** menu offer bold, italic, underline, strikethrough, highlight, inline code, clear formatting, H1–H6, heading-level changes, insert before/after, duplicate/delete paragraph, list indentation, and five GitHub alert types. Search menus by action name. |
 | Format painter and block handle | Select formatted text, activate the painter, then drag over the target. It exits after one application; Escape cancels. The handle beside a paragraph opens its actions and stays outside editable content. |
 | Tables | Insert with row/column counts, add/delete rows and columns, align columns, set/clear captions, and delete tables. Available actions depend on the cursor position. |
-| Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Click a formula or diagram to select it, then click again to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. |
+| Math and Mermaid | Insert inline/block math, number formulas, change formula type, or delete. Click a formula or diagram to select it, then click again to open its shared source control, including math symbol assistance. Render Mermaid code, edit diagrams, and render again. Select a rendered Mermaid diagram and use **Export** to save that diagram as SVG or 2× PNG. |
 | Footnotes and metadata | Insert footnotes, rename labels, return to references, clear references, delete definitions, and display/insert YAML Front Matter. A label cannot reuse an existing definition or reference. |
 | Code | Choose a block language, copy code, exit a block, and toggle syntax highlighting. |
-| Clipboard | “编辑” (Edit) offers copying as Markdown, plain text, or HTML source, and pasting plain text. Normal copy supplies selected text and HTML. In visual mode, both ordinary text paste and Paste Plain Text parse Markdown using the Windows rules. Source editing keeps literal text; the status bar reports parsing, formatting conversion, fallback reasons, or failure. |
+| Clipboard | **Edit** offers copying as Markdown, plain text, or HTML source, and pasting plain text. Normal copy supplies selected text and HTML. In visual mode, both ordinary text paste and Paste Plain Text parse Markdown using the Windows rules. Source editing keeps literal text; the status bar reports parsing, formatting conversion, fallback reasons, or failure. |
 | Find and replace | Search rendered text with case/whole-word matching, previous/next results, replace one, or replace all. Find works in reading mode; replacement requires editing mode. |
-| Outline and reading | “视图” (View) provides an H1–H6 outline, paragraph focus, typewriter scrolling, zoom, typography, and colors. The status bar shows character counts, selected characters, current block, and position; hover for more statistics. |
+| Outline and reading | **View** provides an H1–H6 outline, paragraph focus, typewriter scrolling, zoom, typography, and colors. The status bar shows character counts, selected characters, current block, and position; hover for more statistics. |
 
-The **阅读 / 编辑** (Read/Edit) button switches modes. Opening a document, searching, changing mode, or adjusting display settings does not write Markdown back. Reading mode allows copy, find, links, and outline navigation; document changes require editing mode.
+The **Read / Edit** button switches modes. Opening a document, searching, changing mode, or adjusting display settings does not write Markdown back. Reading mode allows copy, find, links, and outline navigation; document changes require editing mode.
 
 Menus, image pickers, and prompts retain the selection from when they opened. If the document changes while waiting, select the target again. If an image was already saved but the selection expired, the message retains its resource path so it can be inserted elsewhere.
 
@@ -74,10 +76,10 @@ Click links directly in reading mode; use **Ctrl+click** (**Cmd+click** on macOS
 
 ## Image resources
 
-- The toolbar's “图片” (Image) button selects one or more files. “编辑 → 图片地址” inserts a relative path or web URL. Supported types are PNG, JPEG, GIF, WebP, SVG, BMP, and AVIF.
+- **Edit → Insert Image…** selects one or more files. **Edit → Insert Image URL…** inserts a relative path or web URL. Supported types are PNG, JPEG, GIF, WebP, SVG, BMP, and AVIF.
 - Pasting or dropping images saves them to an `assets` directory beside the document and inserts Markdown references. Each image is limited to 16 MiB. Unsaved documents use the first workspace folder; without a workspace, save the document first.
 - File selection copies images into the resource directory by default. Set `markleaf.fileImageHandling` to reference the original file instead. The resource directory, relative paths, and `./` prefix are configurable. Generated names avoid overwriting existing resources.
-- Select an image and use “编辑 → 当前图片操作” to replace it, change its caption, rotate, resize, or save a copy. Reading mode only allows saving a copy.
+- Select an image and use **Edit → Image Actions…** to replace it, change its caption, rotate, resize, or save a copy. Reading mode only allows saving a copy.
 - Display uses VS Code resource URLs while Markdown retains the original paths. Images outside the workspace load from their containing directory. Remote files use VS Code's file system API.
 
 ## Shortcuts and document synchronization
@@ -95,7 +97,7 @@ In the find bar, Enter/Shift+Enter selects the next/previous result and Escape c
 
 ### Formatting shortcuts
 
-Open **视图 → 快捷键…** (View → Shortcuts), run **MarkLeaf: Configure Shortcuts / 快捷键设置**, or use the typography/settings picker. Search all formatting actions, record a key, clear it, or restore its default. “保存键位” (Save binding) applies the change immediately and updates menu/toolbar hints.
+Open **View → Keyboard Shortcuts…**, run **MarkLeaf: Configure Shortcuts / 快捷键设置**, or use the typography/settings picker. Search all formatting actions, record a key, clear it, or restore its default. “保存键位” (Save binding) applies the change immediately and updates menu/toolbar hints.
 
 Inline math, block math, and Mermaid are unbound by default. Bind an insert-math action to insert at the rendered editor's cursor and open the existing source/symbol assistant. Actions needing parameters, such as table dimensions or footnotes, continue to use their existing prompts.
 
@@ -117,21 +119,23 @@ Inline math, block math, and Mermaid are unbound by default. Bind an insert-math
 - The panel displays the save scope: existing folder configuration takes precedence, then workspace, otherwise user settings. Inherited bindings for other actions are not copied into that scope. Settings never rewrite Markdown.
 - Custom formatting keys only apply in the active MarkLeaf rendered editing area. They do not run in reading mode, find fields, math/diagram source inputs, or the native source editor. IME composition and AltGraph retain their behavior.
 
-All 67 formatting actions are also independent VS Code commands, such as `markleaf.insertMathInline`, `markleaf.insertMathBlock`, and `markleaf.setHeading1`. For chords or advanced rules, use VS Code Keyboard Shortcuts with the condition `activeWebviewPanelId == markleaf.editor && markleaf.focus == document`. Clear the old MarkLeaf binding for the same action to avoid keeping both entries.
+All 70 formatting actions are also independent VS Code commands, such as `markleaf.insertMathInline`, `markleaf.insertMathBlock`, and `markleaf.setHeading1`. For chords or advanced rules, use VS Code Keyboard Shortcuts with the condition `activeWebviewPanelId == markleaf.editor && markleaf.focus == document`. Clear the old MarkLeaf binding for the same action to avoid keeping both entries.
 
 MarkLeaf menus display only effective `markleaf.shortcuts` settings. The public VS Code extension API does not expose the resolved global keymap, so menu hints cannot reflect separate `keybindings.json` overrides or detect every shortcut intercepted by other extensions or the system. Check those conflicts in VS Code Keyboard Shortcuts.
 
 VS Code's `TextDocument` owns the document, saving, dirty state, and edit history. Source and side-by-side views share it. Continuous input is undone by synchronization batch; IME input synchronizes after composition commits. “已同步到 VS Code” means edits reached the text buffer; the VS Code dirty indicator determines whether they were saved to disk.
 
-The Webview submits one edit at a time and waits for its version acknowledgement before sending accumulated changes. Its own acknowledgements do not rebuild the editor. If another view changes the file, stale edits cannot overwrite the new version. Unsynchronized content stays in MarkLeaf and can be opened as a draft using “将未同步内容打开为草稿”. Once VS Code opens the draft, MarkLeaf reloads the current file; merge the draft in source view.
+The Webview submits one edit at a time and waits for its version acknowledgement before sending accumulated changes. Its own acknowledgements do not rebuild the editor. If another view changes the file, stale edits cannot overwrite the new version. Unsynchronized content stays in MarkLeaf and can be opened as a draft using **Open Unsynced Draft**. Once VS Code opens the draft, MarkLeaf reloads the current file; merge the draft in source view.
 
 Each file supports one MarkLeaf visual view alongside native source. Hidden views retain context to protect unfinished input. Normal save waits for synchronization; VS Code may skip save participants during shutdown. Confirm synchronization before closing, and open conflicting content as a draft first.
 
+If a save starts during IME composition, VS Code may write the confirmed text first. With the document open, MarkLeaf automatically saves the committed composition when synchronization finishes.
+
 ## Typography and preferences
 
-Use the typography/settings entry in “视图” (View), then choose “全部 MarkLeaf 设置…” (All MarkLeaf Settings). You can also choose **Extension Settings** from the gear menu on the extension details page, or search for a setting key such as `markleaf.fontSize`. Settings and help use the current extension ID supplied by VS Code, with the same logic on Windows, macOS, and Linux. Settings use existing user, workspace, or workspace-folder scopes.
+Use the typography/settings entry in **View**, then choose “全部 MarkLeaf 设置…” (All MarkLeaf Settings). You can also choose **Extension Settings** from the gear menu on the extension details page, or search for a setting key such as `markleaf.fontSize`. Settings and help use the current extension ID supplied by VS Code, with the same logic on Windows, macOS, and Linux. Settings use existing user, workspace, or workspace-folder scopes.
 
-The current package is **0.3.0**. The default publisher is `markleaf`, with ID `markleaf.markleaf`. From the repository root, run `corepack pnpm package:vscode --publisher <publisher-id>` to override the identity for this package and produce `artifacts/markleaf-vscode-0.3.0-<publisher-id>.vsix`, without rewriting the source configuration. Default packaging still produces `artifacts/markleaf-vscode-0.3.0.vsix`; `--out` accepts an absolute output path or one relative to the extension directory. Settings and help use the installed package's actual ID. If an existing `@ext:` filter produces an empty list, clear it and reopen settings from the extension details page. Configuration keys remain `markleaf.*`; existing settings need no migration. The extension version comes from `version` in `apps/vscode/package.json`, independently of the repository package and native products.
+The current package is **0.3.1**. The default publisher is `markleaf`, with ID `markleaf.markleaf`. From the repository root, run `corepack pnpm package:vscode --publisher <publisher-id>` to override the identity for this package and produce `artifacts/markleaf-vscode-0.3.1-<publisher-id>.vsix`, without rewriting the source configuration. Default packaging still produces `artifacts/markleaf-vscode-0.3.1.vsix`; `--out` accepts an absolute output path or one relative to the extension directory. Settings and help use the installed package's actual ID. If an existing `@ext:` filter produces an empty list, clear it and reopen settings from the extension details page. Configuration keys remain `markleaf.*`; existing settings need no migration. The extension version comes from `version` in `apps/vscode/package.json`, independently of the repository package and native products.
 
 Export and shortcut dialogs keep their titles and actions visible while the content scrolls. Menus stay inside narrow windows; math and diagram overlays use the shared kernel's stacking and positioning.
 
@@ -141,12 +145,13 @@ Export and shortcut dialogs keep their titles and actions visible while the cont
 | Fonts and width | `fontSize` (default 16), `fontFamily`, `lineHeight`, `maxWidth` (default 820), `ignoreMaxWidth`, `zoom`. Fonts used by a style must be installed locally. |
 | Code and CJK | `showCodeHighlight`, `sourceFontFamily` / `sourceFontSize` for math/diagram source, `cjkLanguage`, `cjkAutoSpacing`. Visual spacing does not insert spaces into source text. |
 | View | `defaultMode`, `showOutline`, `focusMode`, `typewriterMode`, `showStatusBar`, `showBlockHandle`, `autoHideScrollbars`, `ctrlWheelZoom`. |
+| Desktop typography and tables | `markleaf.adaptiveJustification` enables adaptive justification for eligible paragraphs (off by default). With `markleaf.allowTableColumnResize` enabled (the default), drag column edges or use **Format** to fit, distribute or reset column widths. |
 | Markdown editing | `codeFence`, `emphasisMarker`, `bulletMarker`, `exitBlockOnEmptyEnter`, `useShiftEnterHardBreak`, emphasis conversion, and literal-symbol escaping. Serialization preferences apply after actual edits. |
 | Images | `imageDirectory`, `fileImageHandling`, `useRelativeImagePaths`, `prefixImagePathsWithDot`. |
-| Formatting shortcuts | `shortcuts`, shared with the recorder under “视图 → 快捷键…”. Applies only to MarkLeaf's rendered editing area in VS Code. |
+| Formatting shortcuts | `shortcuts`, shared with the recorder under **View → Keyboard Shortcuts…**. Applies only to MarkLeaf's rendered editing area in VS Code. |
 | Custom CSS | `customCss`, a CSS path relative to the document or an absolute path. Loaded only in trusted workspaces; reload the editor after changing the CSS file. |
 
-Normal Markdown source fonts, indentation, and shortcuts use native VS Code settings. Files/folders, recent files, tabs, autosave, recovery, encoding, line endings, window layout, and extension updates also use VS Code's capabilities. Shared formula and diagram controls select existing Simplified Chinese, Traditional Chinese, English, or Japanese translations from the VS Code language. Export menus, dialogs, commands, and status messages use Simplified Chinese, Traditional Chinese, English, or Japanese according to VS Code. Existing editing menus and formatting-command titles still use Chinese; other existing command titles remain English. Four-language documentation does not imply a fully translated UI.
+VS Code manages source fonts and indentation. The top bar, main status bar controls, outline and export actions follow the VS Code language in English, Japanese, Simplified Chinese or Traditional Chinese. Some command titles, settings pickers and statistics tooltips retain their original language.
 
 ## Fidelity and delivery limits
 
@@ -167,7 +172,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.3.0.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
+The installer prepares the kernel, webview and extension host. Packaging builds them in that order and writes `artifacts/markleaf-vscode-0.3.1.vsix`. For a build without packaging use `corepack pnpm build:vscode`; run adapter tests separately with `corepack pnpm test:vscode`.
 
 Use an existing VS Code installation for development:
 

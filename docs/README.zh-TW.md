@@ -76,13 +76,13 @@ Windows 原生版支援 PDF、HTML、PNG/JPG 長圖和列印；macOS 原生版�
 
 三個宿主共享編輯核心與排版樣式。VS Code 擴充功能使用現有的 VS Code 執行環境，不引入獨立 Electron 相依套件或桌面殼層。支援閱讀與視覺化編輯、格式刷、表格、註腳、公式與 Mermaid、圖片貼上和拖放、尋找取代、大綱及排版偏好。儲存、復原重做、分頁和 Markdown 原始碼由 VS Code 管理，支援原始碼切換及並排。
 
-VS Code 擴充功能 0.3.0 提供 36 項設定和 67 項可設定快速鍵的格式操作；公式與圖表使用核心統一的選取、再次點擊展開及視窗內浮層定位行為。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
+VS Code 擴充功能 0.3.1 提供 38 項設定和 70 項可設定快速鍵的格式操作；公式與圖表使用核心統一的選取、再次點擊展開及視窗內浮層定位行為。快速鍵設定僅作用於 VS Code 中的 MarkLeaf，不改變原生應用程式的鍵位。專案與擴充功能說明均提供簡體中文、英文、日文和繁體中文；擴充功能介面尚未全部在地化，詳細入口與範圍見 [擴充功能說明](../apps/vscode/docs/README.zh-TW.md) 和 [功能對應說明（簡體中文）](../apps/vscode/docs/feature-parity.md)。
 
 三個產品的複製與貼上以 Windows 邏輯為準：「複製 HTML」取得原始碼文字；視覺編輯中的一般文字貼上和「貼上純文字」均解析 Markdown，原始碼編輯保留字面文字。貼上提示區分成功、格式轉換、純文字降級及失敗，並保留降級原因。
 
 正文渲染同樣預設使用 `minimal`（網頁·極簡），保留字型層級、留白和表格細節；已儲存的使用者或工作區排版選擇優先。
 
-在 VS Code 1.120+ 中，Markdown Git 比較預設使用原生原始碼 diff，顯示新增／刪除醒目提示；一般檔案仍預設使用 MarkLeaf。
+擴充功能 **0.3.1** 需要 **VS Code 1.120 或更新版本**。Markdown 與常見別名預設進入視覺化編輯器，Git 比較使用原生文字差異檢視。「MarkLeaf: 開啟文件」可用原生文字編輯器閱讀 JSON、記錄檔、原始碼與無副檔名的文字。
 
 ## 專案結構
 
@@ -141,7 +141,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-產物為 `artifacts/markleaf-vscode-0.3.0.vsix`。
+產物為 `artifacts/markleaf-vscode-0.3.1.vsix`。
 
 擴充功能版本由 `apps/vscode/package.json` 的 `version` 管理，與原生產品版本獨立。預設發行者為 `markleaf`，擴充功能 ID 為 `markleaf.markleaf`；在儲存庫根目錄執行 `corepack pnpm package:vscode --publisher <發行者ID>` 可覆寫本次套件的身分，且不改寫來源設定。請透過 MarkLeaf 的「全部設定」或擴充功能詳細資料中的 **擴充功能設定 / Extension Settings** 開啟設定頁；執行時會使用目前套件的 ID，避免沿用舊本機套件的搜尋條件。`markleaf.*` 設定鍵保持不變。
 
@@ -174,6 +174,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
 Windows 支援 Inno Setup 產生的 GitHub Release `.exe` 安裝程式，以及 Microsoft Store 提交用的 MSIX。MSIX 預設產生 `win-x64` 和 `win-arm64` 自包含套件，支援簡體中文、繁體中文、英語與日語資源。商店身分、簽章及建置參數見 [MSIX 說明](../apps/windows/msix/README.md)。
+
+Windows 精簡版安裝程式會在複製檔案前檢查選定的目錄。若目錄中有 `hostfxr.dll` 或 `MarkLeaf.self-contained`，請使用相同架構的 `with-runtime.exe` 升級，或選擇空目錄安裝精簡版。驗證可攜版時，可將 `with-runtime.zip` 解壓縮至新建的空目錄。
 
 ### macOS
 

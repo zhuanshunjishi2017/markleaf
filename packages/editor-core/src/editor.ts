@@ -4,14 +4,15 @@ import { resolveOutlineHeading, scrollToOutlineHeading } from './outline'
 import { resolveEditorActions, getEditorSemanticContext, type EditorActionContext } from './command-state'
 import { isHostCommandAllowed } from './host-command-policy'
 import { exportMermaidImage, type MermaidImageFormat, type MermaidImageExport } from './mermaid-image-export'
+import { documentStatistics, rangeStatistics } from './document-statistics'
 import type { EditorCommandState, EditorStatus } from './editor-state'
 export type { EditorCommandState, EditorStatus } from './editor-state'
 import { Editor, Extension, InputRule, Mark, Node, ResizableNodeView, renderNestedMarkdownContent, getMarkRange, flattenExtensions } from '@tiptap/core'
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
-import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
+import { Plugin, PluginKey, type Transaction, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { closeHistory } from '@tiptap/pm/history'
-import { DOMSerializer, type Mark as ProseMirrorMark, type NodeType } from '@tiptap/pm/model'
+import { DOMSerializer, type Mark as ProseMirrorMark, type Node as ProseMirrorNode, type NodeType } from '@tiptap/pm/model'
 import { CellSelection, TableMap, tableEditingKey, selectedRect } from '@tiptap/pm/tables'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
@@ -44,7 +45,7 @@ import { Mermaid, rerenderMermaidElement, rerenderMermaidElements, setMermaidMar
 import { preloadMathRenderer, renderMathToString } from './katex-runtime'
 import { sharedEditorStrings, type SharedEditorStrings } from './shared-editor-strings'
 import { clearDomSelection } from './native-selection'
-import { TypographyProjection, typographyPlannedParagraphRanges, typographyFallbackParagraphRanges } from './typography/projection'
+import { TypographyProjection, typographyProjectionKey, typographyPlannedParagraphRanges, typographyFallbackParagraphRanges } from './typography/projection'
 
 import { parseTableLayout, TABLE_LAYOUT_ATTRIBUTE } from './table-layout'
 import { LayoutTableRow, TableLayoutInteraction, tableShape, tableLayoutAttributes, layoutTableTokenizer, parseLayoutTable, tableLayoutMarkdownPrefix, createTableLayoutView, tableLayoutCommand, setTableLayoutEnabled, isTableLayoutEnabled, selectedTable, isResizableTable, applyTableLayoutDOM } from './table-layout-extension'
@@ -159,47 +160,55 @@ function buildMarkdownEmojiDecorations(doc: any): DecorationSet {
   return DecorationSet.create(doc, decorations)
 }
 
-function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
+const cjkSpacingKey = new PluginKey<DecorationSet>('markleaf-cjk-auto-spacing')
+const isCjkSpacingCharacter = /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u
+const isLatinSpacingCharacter = /[A-Za-z0-9]/
+
+function cjkSpacingIn(doc: ProseMirrorNode, from: number, to: number): Decoration[] {
   const decorations: Decoration[] = []
-  const fallbackRanges = typographyFallbackParagraphRanges(state)
-  const managedRanges = [...typographyPlannedParagraphRanges(state), ...fallbackRanges]
-  const hasManagedSpacing = (position: number) => managedRanges.some(
-    range => position >= range.from && position <= range.to,
-  )
-  const isCjk = (character: string): boolean => /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u.test(character)
-  const isLatinOrNumber = (character: string): boolean => /[A-Za-z0-9]/.test(character)
-
-  const visit = (node: any, position: number, insideCode: boolean, isDocument = false): void => {
-    const nodeIsCode = insideCode || node.type.name === 'codeBlock' || node.type.name === 'code'
-    const textIsCode = node.marks?.some((mark: any) => mark.type.name === 'code') === true
-    if (node.isText && !nodeIsCode && !textIsCode && node.text) {
-      const text = node.text as string
-      for (let index = 1; index < text.length; index += 1) {
-        const previous = text[index - 1]!
-        const current = text[index]!
-        if (hasManagedSpacing(position + index)
-          || !((isCjk(previous) && isLatinOrNumber(current))
-          || (isLatinOrNumber(previous) && isCjk(current)))) continue
-        // A zero-width widget inserts a real node into the text flow. WebKit
-        // can anchor a drag selection before that node and paint the previous
-        // phrase until mouseup. Space the first character on the right instead;
-        // an inline decoration does not add a separately selectable node.
-        decorations.push(Decoration.inline(
-          position + index,
-          position + index + 1,
-          { class: 'markleaf-cjk-autospace-space' },
-        ))
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name === 'codeBlock' || node.type.name === 'code') return false
+    if (!node.isText || !node.text || node.marks.some(mark => mark.type.name === 'code')) return
+    const text = node.text, end = Math.min(text.length, to - pos)
+    for (let i = Math.max(1, from - pos); i < end; i++) {
+      const left = text[i - 1]!, right = text[i]!
+      if (isCjkSpacingCharacter.test(left) && isLatinSpacingCharacter.test(right)
+        || isLatinSpacingCharacter.test(left) && isCjkSpacingCharacter.test(right)) {
+        // Inline spacing preserves a continuous DOM selection on WebKit.
+        decorations.push(Decoration.inline(pos + i, pos + i + 1, { class: 'markleaf-cjk-autospace-space' }))
       }
-      return
     }
+  })
+  return decorations
+}
 
-    if (!node.content) return
-    node.forEach((child: any, offset: number) => {
-      visit(child, position + offset + (isDocument ? 0 : 1), nodeIsCode)
+function updateCjkSpacing(tr: Transaction, previous: DecorationSet): DecorationSet {
+  if (!tr.docChanged) return previous
+  const start = tr.before.content.findDiffStart(tr.doc.content)
+  if (start === null) return previous
+  let from = start, to = tr.before.content.findDiffEnd(tr.doc.content)!.b
+  // A replace can also discard unchanged decorations inside its mapped range.
+  // Mark-only steps have empty maps, so include the semantic difference above.
+  tr.mapping.maps.forEach((map, index) => {
+    const rest = tr.mapping.slice(index + 1)
+    map.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+      from = Math.min(from, rest.map(newFrom, -1))
+      to = Math.max(to, rest.map(newTo, 1))
     })
-  }
+  })
+  from = Math.max(0, from - 1)
+  to = Math.min(tr.doc.content.size, to + 2)
+  const mapped = previous.map(tr.mapping, tr.doc)
+  const touched = mapped.find(from, to).filter(d => d.from >= from && d.from < to)
+  return mapped.remove(touched).add(tr.doc, cjkSpacingIn(tr.doc, from, to))
+}
 
-  visit(state.doc, 0, false, true)
+function projectedCjkSpacing(state: EditorState, base: DecorationSet): DecorationSet {
+  const fallbackRanges = typographyFallbackParagraphRanges(state)
+  const managed = [...typographyPlannedParagraphRanges(state), ...fallbackRanges]
+  if (!managed.length) return base
+  const removed = managed.flatMap(range => base.find(range.from, range.to).filter(d => d.from >= range.from && d.from <= range.to))
+  const decorations: Decoration[] = []
   for (const range of fallbackRanges) {
     const text = state.doc.textBetween(range.from, range.to, '', '') as string
     // Own a boundary gap on the preceding CJK character or complete Latin
@@ -217,17 +226,18 @@ function buildCjkAutoSpacingDecorations(state: any): DecorationSet {
         { class: 'markleaf-cjk-autospace-trailing-space' }))
     }
   }
-  return DecorationSet.create(state.doc, decorations)
+  return base.remove(removed).add(state.doc, decorations)
 }
 
 const MarkdownEmoji = Extension.create({
   name: 'markleafMarkdownEmoji',
   addProseMirrorPlugins() {
+    const key = new PluginKey<DecorationSet>('markleaf-markdown-emoji')
     return [new Plugin({
-      key: new PluginKey('markleaf-markdown-emoji'),
-      props: {
-        decorations: state => buildMarkdownEmojiDecorations(state.doc),
-      },
+      key,
+      state: { init: (_, state) => buildMarkdownEmojiDecorations(state.doc),
+        apply: (tr, previous) => tr.docChanged ? buildMarkdownEmojiDecorations(tr.doc) : previous },
+      props: { decorations: state => key.getState(state) },
     })]
   },
 })
@@ -235,11 +245,20 @@ const MarkdownEmoji = Extension.create({
 const CjkAutoSpacing = Extension.create({
   name: 'markleafCjkAutoSpacing',
   addProseMirrorPlugins() {
+    let viewCache: { base: DecorationSet; projection: unknown; result: DecorationSet } | undefined
     return [new Plugin({
-      key: new PluginKey('markleaf-cjk-auto-spacing'),
-      props: {
-        decorations: state => buildCjkAutoSpacingDecorations(state),
-      },
+      key: cjkSpacingKey,
+      state: { init: (_, state) => DecorationSet.create(state.doc, cjkSpacingIn(state.doc, 0, state.doc.content.size)),
+        apply: updateCjkSpacing },
+      props: { decorations: state => {
+        const base = cjkSpacingKey.getState(state)!
+        const projection = typographyProjectionKey.getState(state)
+        if (!projection?.enabled) return base
+        if (viewCache?.base === base && viewCache.projection === projection) return viewCache.result
+        const result = projectedCjkSpacing(state, base)
+        viewCache = { base, projection, result }
+        return result
+      } },
     })]
   },
 })
@@ -2438,7 +2457,7 @@ const MarkLeafImage = Image.extend({
 
       const syncImage = (attrs: Record<string, unknown>) => {
         const markdownPath = typeof attrs.src === 'string' ? attrs.src : ''
-        image.src = resolveImageResource(markdownPath)
+        image.src = resolveImageResource(markdownPath, image)
         image.setAttribute('data-markleaf-path', markdownPath)
         image.setAttribute('data-markleaf-rotation', String(normalizeImageRotation(attrs.rotation)))
         if (typeof attrs.alt === 'string') image.alt = attrs.alt
@@ -4363,10 +4382,22 @@ export function replaceEditorDocument(
  * The host must suppress its change callback while calling this function. */
 export function updateEditorMarkdown(editor: Editor, content: string): void {
   const selection = editor.state.selection
-  editor.commands.setContent(
-    protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content)),
-    { contentType: 'markdown', emitUpdate: false },
-  )
+  const source = protectFootnoteDefinitionsForVisualMarkdown(normalizeDisplayMathAfterList(content))
+  const parsed = editor.markdown?.parse(source)
+  if (parsed?.content?.length) {
+    const next = editor.schema.nodeFromJSON(parsed)
+    const before = editor.state.doc.content
+    const from = before.findDiffStart(next.content)
+    if (from !== null) {
+      const end = before.findDiffEnd(next.content)!
+      const overlap = Math.max(0, from - Math.min(end.a, end.b))
+      const transaction = editor.state.tr.replace(from, end.a + overlap, next.slice(from, end.b + overlap))
+      if (transaction.doc.eq(next)) editor.view.dispatch(transaction.setMeta('preventUpdate', true).setMeta('addToHistory', false))
+      else editor.commands.setContent(source, { contentType: 'markdown', emitUpdate: false })
+    }
+  } else {
+    editor.commands.setContent(source, { contentType: 'markdown', emitUpdate: false })
+  }
   normalizeTableCaptions(editor)
   originalListMarkdown.delete(editor)
   if (hasListFormattingThatNeedsPreservation(content)) {
@@ -5697,96 +5728,13 @@ export function getEditorCommandState(editor: Editor): EditorCommandState {
   }
 }
 
-// 文档级统计只随文档内容变化（WeakMap 以不可变 doc 对象为键，事务后自动
-// 失效并被 GC）；选区变化（拖拽/移动光标，每帧多次）只计算增量字段，
-// 避免大文档在拖拽选区时全量遍历造成卡顿。
-const documentStatsCache = new WeakMap<object, {
-  documentText: string
-  characterCount: number
-  stats: ReturnType<typeof getDocumentStatistics>
-}>()
-
 export function getEditorStatus(editor: Editor): EditorStatus {
-  const selection = editor.state.selection
-  const cached = documentStatsCache.get(editor.state.doc)
-  const documentText = cached?.documentText
-    ?? textWithoutFrontMatter(editor.state.doc, 0, editor.state.doc.content.size)
-  const selectedText = selection.empty
-    ? ''
-    : textWithoutFrontMatter(editor.state.doc, selection.from, selection.to)
-  const textBeforeCursor = textWithoutFrontMatter(editor.state.doc, 0, selection.from)
-  const lines = textBeforeCursor.split('\n')
-
-  const characterCount = cached?.characterCount ?? countVisibleCharacters(documentText)
-  let docStats = cached?.stats
-  if (!docStats) {
-    docStats = getDocumentStatistics(editor, documentText)
-    documentStatsCache.set(editor.state.doc, { documentText, characterCount, stats: docStats })
-  }
-
-  return {
-    characterCount,
-    selectedCharacterCount: countVisibleCharacters(selectedText),
-    ...docStats,
-    blockType: getCurrentBlockType(editor),
-    line: lines.length,
-    column: Array.from(lines.at(-1) ?? '').length + 1,
-  }
-}
-
-function textWithoutFrontMatter(doc: any, from: number, to: number): string {
-  const parts: string[] = []
-  doc.forEach((node: any, offset: number) => {
-    if (node.type.name === 'frontMatter') return
-    const contentStart = offset + 1
-    const contentEnd = contentStart + node.content.size
-    const localFrom = Math.max(0, from - contentStart)
-    const localTo = Math.min(node.content.size, to - contentStart)
-    if (localTo <= localFrom || to <= contentStart || from >= contentEnd) return
-    parts.push(node.textBetween(localFrom, localTo, '\n', '\n'))
-  })
-  return parts.join('\n')
-}
-
-function countVisibleCharacters(text: string): number {
-  return Array.from(text).filter(character => !/\s/u.test(character)).length
-}
-
-function getDocumentStatistics(editor: Editor, documentText: string) {
-  let formulaCount = 0
-  let codeLineCount = 0
-  let paragraphCount = 0
-
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === 'frontMatter') return false
-    if (node.type.name === 'mathInline' || node.type.name === 'mathBlock') {
-      formulaCount += 1
-    }
-    if (node.type.name === 'codeBlock' || node.type.name === 'mermaid') {
-      codeLineCount += Math.max(1, node.textContent.split('\n').length)
-    }
-    if (node.type.name === 'paragraph') {
-      paragraphCount += 1
-    }
-  })
-
-  return {
-    totalCharacterCount: Array.from(documentText).length,
-    nonWhitespaceCharacterCount: countVisibleCharacters(documentText),
-    cjkCharacterCount: countCjkCharacters(documentText),
-    westernWordCount: countWesternWords(documentText),
-    formulaCount,
-    codeLineCount,
-    paragraphCount,
-  }
-}
-
-function countCjkCharacters(text: string): number {
-  return Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length
-}
-
-function countWesternWords(text: string): number {
-  return Array.from(text.matchAll(/[\p{Script=Latin}][\p{Script=Latin}\p{Mark}'’-]*/gu)).length
+  const { doc, selection } = editor.state
+  const stats = documentStatistics(doc)
+  const cursor = rangeStatistics(doc, 0, selection.from)
+  return { ...stats, characterCount: stats.nonWhitespaceCharacterCount,
+    selectedCharacterCount: selection.empty ? 0 : rangeStatistics(doc, selection.from, selection.to).characters,
+    blockType: getCurrentBlockType(editor), line: cursor.line, column: cursor.column }
 }
 
 function parseTableSize(text?: string): { rows: number; cols: number } {

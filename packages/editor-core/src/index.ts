@@ -88,3 +88,6 @@ export { NodeSelection, Selection, TextSelection, type EditorState } from '@tipt
 export type { Editor } from '@tiptap/core'
 
 export { setTableLayoutEnabled, clearAllTableLayouts } from './table-layout-extension'
+
+export { preserveDocumentLineEndings } from './document/encoding'
+export { createTypographyCoordinator, type TypographyCoordinator } from './typography/typography-coordinator'

@@ -76,13 +76,13 @@ Windows のネイティブ版は PDF、HTML、PNG/JPG の縦長画像、印刷�
 
 3 つのホストは編集コアと組版スタイルを共有します。VS Code 拡張機能は既存の VS Code 実行環境を使い、独立した Electron 依存関係やデスクトップシェルを追加しません。閲覧とビジュアル編集、書式のコピー、表、脚注、数式と Mermaid、画像の貼り付けとドロップ、検索・置換、アウトライン、表示設定に対応します。保存、元に戻す・やり直し、タブ、Markdown ソース編集は VS Code が管理し、ソースとの切り替えや横並び表示が可能です。
 
-拡張機能 0.3.0 は 36 項目の設定と、ショートカットを設定できる 67 項目の書式操作を提供します。数式と図の選択、再クリックによるソース展開、ビューポート内の配置は共有カーネルに統一されています。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
+拡張機能 0.3.1 は 38 項目の設定と、ショートカットを設定できる 70 項目の書式操作を提供します。数式と図の選択、再クリックによるソース展開、ビューポート内の配置は共有カーネルに統一されています。ショートカット設定は VS Code 内の MarkLeaf のみに適用され、ネイティブアプリの設定には影響しません。プロジェクトと拡張機能の README は簡体字中国語、英語、日本語、繁体字中国語で提供します。拡張機能 UI の翻訳は一部のみです。詳しくは [拡張機能ガイド](../apps/vscode/docs/README.ja.md) と [機能対応表（簡体字中国語）](../apps/vscode/docs/feature-parity.md) を参照してください。
 
 3 製品のコピーと貼り付けは Windows の動作に合わせています。「HTML をコピー」はソース文字列を取得し、ビジュアル編集では通常のテキスト貼り付けとプレーンテキスト貼り付けの両方で Markdown を解析します。ソース編集では文字をそのまま挿入します。貼り付け結果には成功、書式変換、プレーンテキストへのフォールバックと理由、失敗を表示します。
 
 通常の文書表示も `minimal`（Web · 極簡）が既定です。文字の階層、余白、表の細部を保ち、既存のユーザー・ワークスペース設定を優先します。
 
-VS Code 1.120 以降では、Markdown の Git 比較に標準のソース差分エディタを既定で使用し、追加・削除を強調表示します。通常のファイルは引き続き MarkLeaf で開きます。
+拡張機能 **0.3.1** は **VS Code 1.120 以降**に対応します。Markdown とその主な別名はビジュアル表示、Git 比較は標準のテキスト差分で開きます。JSON、ログ、ソースコード、拡張子のないテキストは「MarkLeaf: ドキュメントを開く」で標準エディターに表示できます。
 
 ## プロジェクト構造
 
@@ -142,7 +142,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-生成されるパッケージは `artifacts/markleaf-vscode-0.3.0.vsix` です。
+生成されるパッケージは `artifacts/markleaf-vscode-0.3.1.vsix` です。
 
 拡張機能のバージョンは `apps/vscode/package.json` の `version` で管理し、ネイティブ製品とは独立しています。既定の発行者は `markleaf`、拡張機能 ID は `markleaf.markleaf` です。リポジトリのルートで `corepack pnpm package:vscode --publisher <発行者ID>` を実行すると、ソース設定を書き換えずに今回のパッケージの発行者を変更できます。MarkLeaf の「全部 MarkLeaf 设置…」または拡張機能詳細の **拡張機能の設定 / Extension Settings** から設定を開いてください。現在のパッケージの ID を使うため、古いローカルパッケージの検索条件を再利用する必要はありません。設定キーは `markleaf.*` のままです。
 
@@ -175,6 +175,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
 Windows では GitHub Release 用の Inno Setup `.exe` と Microsoft Store 提出用の MSIX を作成できます。MSIX は既定で `win-x64` と `win-arm64` の自己完結型パッケージを生成し、簡体字中国語、繁体字中国語、英語、日本語のリソースを含みます。ストア ID、署名、ビルド引数は [MSIX ガイド](../apps/windows/msix/README.md)を参照してください。
+
+Windows の軽量インストーラーはコピー前にインストール先を確認します。`hostfxr.dll` または `MarkLeaf.self-contained` がある場合は、同じアーキテクチャの `with-runtime.exe` で更新するか、空のフォルダーを選んで軽量版をインストールしてください。ポータブル版を試すには `with-runtime.zip` を新しい空のフォルダーに展開します。
 
 ### macOS
 

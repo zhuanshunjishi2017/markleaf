@@ -79,13 +79,13 @@ Windows 原生版支持 PDF、HTML、PNG/JPG 长图和打印；macOS 原生版�
 
 三个宿主共享编辑内核与排版样式。VS Code 扩展使用已有 VS Code 运行环境，不引入独立 Electron 依赖或桌面壳。支持阅读与可视化编辑、格式刷、表格、脚注、公式与 Mermaid、图片粘贴和拖放、查找替换、大纲及排版偏好。保存、撤销重做、标签页和原生源码由 VS Code 管理，支持源码切换及并排。
 
-VS Code 扩展 0.3.0 提供 36 项设置和 67 项可配置格式操作；公式与图表使用内核统一的选中、再次点击展开和视口内浮层定位行为。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
+VS Code 扩展 0.3.1 提供 38 项设置和 70 项可配置格式操作；公式与图表使用内核统一的选中、再次点击展开和视口内浮层定位行为。快捷键配置仅作用于 VS Code 中的 MarkLeaf，不改变原生应用的键位。项目与扩展说明均提供简体中文、英文、日文和繁体中文；扩展界面尚未全部本地化，具体入口与范围见 [扩展说明](./apps/vscode/README.md) 和 [功能对应说明](./apps/vscode/docs/feature-parity.md)。
 
 三个产品的文档交互由共享内核定义：“复制 HTML”得到源码文本；可视编辑中的普通文本粘贴和“粘贴纯文本”均解析 Markdown，源码编辑保留字面文本。粘贴提示区分成功、格式转换、纯文本降级及失败，并保留降级原因。
 
 正文渲染同样默认使用 `minimal`（网页·极简），保留字体层级、留白和表格细节；已保存的用户或工作区排版选择优先。
 
-VS Code 1.120+ 中的 Markdown Git 对比默认使用原生源码 diff，显示增删高亮；普通文件仍默认使用 MarkLeaf。
+VS Code 扩展 **0.3.1** 需要 **VS Code 1.120 或更高版本**。Markdown 和常用别名默认进入可视编辑器，Git 比较使用原生文本 diff。“MarkLeaf: 打开文档”可用原生文本编辑器阅读 JSON、日志、源码及无扩展名文本。
 
 ## 项目结构
 
@@ -148,7 +148,7 @@ corepack pnpm install:vscode
 corepack pnpm package:vscode
 ```
 
-产物为 `artifacts/markleaf-vscode-0.3.0.vsix`。
+产物为 `artifacts/markleaf-vscode-0.3.1.vsix`。
 
 扩展版本由 `apps/vscode/package.json` 的 `version` 管理，与原生产品版本独立。默认发布者为 `markleaf`，扩展 ID 为 `markleaf.markleaf`；在仓库根目录执行 `corepack pnpm package:vscode --publisher <发布者ID>` 可覆盖本次打包身份，且不改写源码配置。使用 MarkLeaf 的“全部设置”或扩展详情中的 **扩展设置 / Extension Settings** 打开设置页；运行时按当前安装包 ID 定位，避免沿用旧本地包的搜索筛选。`markleaf.*` 配置键保持不变。
 
@@ -181,6 +181,8 @@ dotnet run --project .\apps\windows\MarkLeaf\MarkLeaf.csproj
 ```
 
 <strong>Windows 发布支持两种安装包格式：Inno Setup 生成用于 GitHub Release 的</strong> `.exe`<strong>，MSIX 生成用于 Microsoft Store 的商店包。MSIX 构建默认输出</strong> `win-x64` <strong>和</strong> `win-arm64` <strong>两个自包含架构，并支持简体中文、繁体中文、英语和日语资源。</strong>
+
+Windows 精简版安装器在复制文件前检查最终安装目录。如果存在 `hostfxr.dll` 或 `MarkLeaf.self-contained`，请使用同架构的 `with-runtime.exe` 升级，或选择空目录安装精简版。验证便携版时，可将 `with-runtime.zip` 解压到新建的空目录。
 
 MSIX 的商店身份、签名与构建参数见 [MSIX 打包说明](./apps/windows/msix/README.md)。
 

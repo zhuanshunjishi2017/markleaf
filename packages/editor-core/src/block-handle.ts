@@ -45,6 +45,7 @@ export function createBlockHandle(
   button.addEventListener('mousedown', event => {
     event.preventDefault()
     event.stopPropagation()
+    update()
     if (position === null || !enabled()) return
     setBlockHighlight(getEditor(), position)
     update()

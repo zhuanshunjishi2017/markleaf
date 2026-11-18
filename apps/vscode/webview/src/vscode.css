@@ -108,7 +108,7 @@ button:disabled { opacity: .4; cursor: default; }
 #app > footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 90; display: flex; justify-content: space-between; gap: 12px; padding: 5px 16px; color: var(--text-tertiary); background: var(--bg-primary); border-top: 1px solid var(--bg-selected); font-size: 11px; }
 [hidden] { display: none !important; }
 .toolbar-menu { position: relative; }
-.toolbar-menu summary { cursor: pointer; padding: 6px; border-radius: 4px; }
+.toolbar-menu summary { list-style: none; cursor: pointer; padding: 6px; border-radius: 4px; }
 .toolbar-menu summary:hover { background: var(--bg-hover); }
 .menu-content { position: fixed; z-index: 1; width: max-content; min-width: min(190px, calc(100vw - 16px)); max-width: calc(100vw - 16px); padding: 5px; display: grid; background: var(--ml-ui-surface); border: 1px solid var(--ml-ui-border); border-radius: 6px; box-shadow: 0 8px 24px var(--ml-ui-shadow); overflow: auto; overscroll-behavior: contain; }
 .menu-content button { text-align: start; }
@@ -247,4 +247,15 @@ footer span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-height: 400px) {
   #markleaf-export .export-buttons { gap: 8px; padding-block: 8px; }
   #markleaf-export [data-result] { max-height: 15dvh; padding-block: 8px; }
+}
+
+#toolbar { flex-wrap: nowrap; min-width: 0; }
+#app > footer { align-items: center; justify-content: flex-start; gap: 4px; padding: 2px 8px; }
+footer button { flex: none; color: inherit; font: inherit; padding: 2px 4px; }
+footer #word-count { margin-inline-end: auto; }
+footer #sync-status, footer #word-count { min-width: 0; }
+@media (max-width: 460px) {
+  #toolbar { gap: 1px; padding-inline: 3px; }
+  #app > footer { gap: 1px; padding-inline: 2px; }
+  footer button { padding-inline: 2px; }
 }

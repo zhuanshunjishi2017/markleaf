@@ -7,10 +7,12 @@ namespace MarkLeaf.Services.Updates;
 
 internal sealed record GitHubReleaseInfo(
     Version Version,
-    string VersionText,
     string BuildNumber,
     string InstallerName,
-    Uri InstallerUri);
+    Uri InstallerUri)
+{
+    public string VersionText => Version.ToString();
+}
 
 internal sealed class GitHubUpdateService
 {
@@ -54,7 +56,7 @@ internal sealed class GitHubUpdateService
             .Select(name => Regex.Match(name, @"^MarkLeaf-build-(?<build>\d+)\.txt$", RegexOptions.IgnoreCase))
             .FirstOrDefault(match => match.Success)?.Groups["build"].Value ?? "?";
 
-        return new GitHubReleaseInfo(version, version.ToString(3), buildNumber, installerName, installerUri);
+        return new GitHubReleaseInfo(version, buildNumber, installerName, installerUri);
     }
 
     public async Task<string> DownloadInstallerAsync(GitHubReleaseInfo release, CancellationToken cancellationToken = default)

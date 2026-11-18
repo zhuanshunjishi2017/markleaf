@@ -2,13 +2,13 @@
   "name": "markleaf",
   "packageManager": "pnpm@11.9.0",
   "displayName": "MarkLeaf",
-  "description": "Read and visually edit Markdown with MarkLeaf, using VS Code documents and source editing.",
-  "version": "0.3.0",
+  "description": "%extension.description%",
+  "version": "0.3.1",
   "publisher": "markleaf",
   "icon": "appicon.png",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.120.0"
   },
   "categories": [
     "Other"
@@ -24,7 +24,7 @@
     "type": "git",
     "url": "https://github.com/zhuanshunjishi2017/markleaf.git"
   },
-  "homepage": "https://github.com/zhuanshunjishi2017/markleaf#readme",
+  "homepage": "https://github.com/zhuanshunjishi2017/markleaf/tree/main/apps/vscode#readme",
   "bugs": {
     "url": "https://github.com/zhuanshunjishi2017/markleaf/issues"
   },
@@ -45,7 +45,14 @@
     "configurationDefaults": {
       "workbench.diffEditorAssociations": {
         "*.md": "default",
-        "*.markdown": "default"
+        "*.markdown": "default",
+        "*.mdown": "default",
+        "*.mkd": "default",
+        "*.mkdn": "default",
+        "*.mdwn": "default",
+        "*.mdtxt": "default",
+        "*.mdtext": "default",
+        "*.markdn": "default"
       }
     },
     "customEditors": [
@@ -58,6 +65,27 @@
           },
           {
             "filenamePattern": "*.markdown"
+          },
+          {
+            "filenamePattern": "*.mdown"
+          },
+          {
+            "filenamePattern": "*.mkd"
+          },
+          {
+            "filenamePattern": "*.mkdn"
+          },
+          {
+            "filenamePattern": "*.mdwn"
+          },
+          {
+            "filenamePattern": "*.mdtxt"
+          },
+          {
+            "filenamePattern": "*.mdtext"
+          },
+          {
+            "filenamePattern": "*.markdn"
           }
         ],
         "priority": "default"
@@ -66,7 +94,7 @@
     "commands": [
       {
         "command": "markleaf.open",
-        "title": "MarkLeaf: Open Markdown"
+        "title": "%command.open%"
       },
       {
         "command": "markleaf.format",
@@ -546,6 +574,31 @@
         "command": "markleaf.exportLast",
         "title": "%command.exportLast%",
         "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.fitTableContents",
+        "title": "MarkLeaf: Fit Table to Contents",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.distributeTableColumns",
+        "title": "MarkLeaf: Distribute Table Columns",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.resetTableWidths",
+        "title": "MarkLeaf: Reset Table Column Widths",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.saveMermaidSvg",
+        "title": "MarkLeaf: Save Diagram as SVG…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
+      },
+      {
+        "command": "markleaf.saveMermaidPng",
+        "title": "MarkLeaf: Save Diagram as PNG (2×)…",
+        "enablement": "activeCustomEditorId == markleaf.editor"
       }
     ],
     "keybindings": [
@@ -553,13 +606,13 @@
         "command": "markleaf.toggleEditor",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "editorTextFocus && editorLangId == markdown"
+        "when": "editorTextFocus && editorLangId == markdown && !inDiffEditor"
       },
       {
         "command": "markleaf.toggleEditor",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus"
+        "when": "activeWebviewPanelId == markleaf.editor && markleaf.focus && !inDiffEditor"
       },
       {
         "command": "markleaf.find",
@@ -616,29 +669,54 @@
           "command": "markleaf.replace",
           "when": "webviewId == markleaf.editor && markleafCanEdit",
           "group": "markleaf@2"
+        },
+        {
+          "command": "markleaf.fitTableContents",
+          "when": "webviewId == markleaf.editor && markleafTable && markleafCanEdit",
+          "group": "markleaf@3"
+        },
+        {
+          "command": "markleaf.distributeTableColumns",
+          "when": "webviewId == markleaf.editor && markleafTable && markleafCanEdit",
+          "group": "markleaf@3"
+        },
+        {
+          "command": "markleaf.resetTableWidths",
+          "when": "webviewId == markleaf.editor && markleafTable && markleafCanEdit",
+          "group": "markleaf@3"
+        },
+        {
+          "command": "markleaf.saveMermaidSvg",
+          "when": "webviewId == markleaf.editor && markleafDiagram",
+          "group": "markleaf@3"
+        },
+        {
+          "command": "markleaf.saveMermaidPng",
+          "when": "webviewId == markleaf.editor && markleafDiagram",
+          "group": "markleaf@3"
         }
       ],
       "explorer/context": [
         {
           "command": "markleaf.open",
-          "when": "resourceExtname == .md || resourceExtname == .markdown",
+          "when": "!explorerResourceIsFolder",
           "group": "open@10"
         }
       ],
       "editor/title": [
         {
           "command": "markleaf.open",
-          "when": "editorLangId == markdown && activeCustomEditorId != markleaf.editor",
+          "when": "editorLangId == markdown && activeCustomEditorId != markleaf.editor && !inDiffEditor",
           "group": "navigation"
         },
         {
           "command": "markleaf.openSource",
-          "when": "activeCustomEditorId == markleaf.editor",
+          "when": "activeCustomEditorId == markleaf.editor && !inDiffEditor",
           "group": "navigation"
         },
         {
           "command": "markleaf.openSourceBeside",
-          "when": "activeCustomEditorId == markleaf.editor",
+          "when": "activeCustomEditorId == markleaf.editor && !inDiffEditor",
           "group": "navigation"
         }
       ]
@@ -1203,35 +1281,47 @@
           "scope": "machine",
           "default": "",
           "description": "%config.exportBrowserPath%"
+        },
+        "markleaf.adaptiveJustification": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "%config.adaptiveJustification%"
+        },
+        "markleaf.allowTableColumnResize": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "%config.allowTableColumnResize%"
         }
       }
     },
     "walkthroughs": [
       {
         "id": "markleaf.start",
-        "title": "开始使用 MarkLeaf",
-        "description": "在 VS Code 中阅读和可视化编辑 Markdown。",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
         "steps": [
           {
             "id": "open",
-            "title": "渲染编辑与源码",
-            "description": "打开 .md 或 .markdown 文件进入 MarkLeaf。Ctrl/Cmd+Shift+V 切换到 VS Code 源码；工具栏“阅读”切换只读阅读模式。",
+            "title": "%walkthrough.open.title%",
+            "description": "%walkthrough.open.description%",
             "media": {
               "markdown": "docs/welcome.md"
             }
           },
           {
             "id": "format",
-            "title": "文字、表格与特殊块",
-            "description": "工具栏“格式”或段落左侧操作柄提供完整编辑操作；点击选中公式或 Mermaid 后，再次点击展开源码编辑器。",
+            "title": "%walkthrough.format.title%",
+            "description": "%walkthrough.format.description%",
             "media": {
               "markdown": "docs/welcome.md"
             }
           },
           {
             "id": "settings",
-            "title": "阅读与偏好",
-            "description": "在“视图”菜单打开大纲、专注模式、排版主题；更多选项在 VS Code 的 MarkLeaf 设置中。",
+            "title": "%walkthrough.settings.title%",
+            "description": "%walkthrough.settings.description%",
             "media": {
               "markdown": "docs/welcome.md"
             }
@@ -1247,7 +1337,7 @@
   "devDependencies": {
     "@markleaf/editor-core": "link:../../packages/editor-core",
     "@types/node": "24.10.1",
-    "@types/vscode": "1.95.0",
+    "@types/vscode": "1.120.0",
     "@vscode/vsce": "3.6.2",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"

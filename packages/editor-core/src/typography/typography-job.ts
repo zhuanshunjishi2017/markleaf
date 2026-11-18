@@ -1,7 +1,9 @@
 import { createMeasuredPlanningTask, prepareGapSlots, typographyWorkLimits,
-  type ProjectionSnapshot, type MeasurementService, type LayoutWork, type LayoutCheckpoint,
+  type LayoutWork, type LayoutCheckpoint,
   type GapSlot, type LineMeasurement, type LineRequest, type MeasuredPlan,
-  type DiagnosticReason, type LayoutBudgetReason, type MeasuredPlanningTask } from '@markleaf/editor-core'
+  type DiagnosticReason, type LayoutBudgetReason, type MeasuredPlanningTask } from '@markleaf/typography'
+import type { ProjectionSnapshot } from './projection-snapshot'
+import type { MeasurementService } from './projection-measure'
 
 export type JobResult = { status: 'yielded' } | { status: 'cancelled' }
   | { status: 'fallback'; reason: DiagnosticReason; budgetReason?: LayoutBudgetReason }

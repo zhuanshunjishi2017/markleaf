@@ -1,5 +1,7 @@
+import { chromeLabel } from './vscode-chrome-strings'
 import type { Editor } from '@markleaf/editor-core'
 import {
+  createTypographyCoordinator, createTypographyMeasurementService, setTableLayoutEnabled,
   createReadingBehavior, getEditorStatus, rerenderMermaidElements, setAutoConvertUnsafeEmphasis, setBlockHandleVisible,
   setBlockTypeLabels, setCodeHighlightVisible, setEditorFocusMode, setEditorSharedStrings,
   setMarkdownEditingSettings, setMermaidStrings, sharedEditorStrings,
@@ -16,6 +18,11 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
   let appliedCss = ''
   let appliedLanguage = ''
   const behavior = createReadingBehavior(() => editor, headerBottom)
+  let projection: ReturnType<typeof createTypographyCoordinator> | undefined
+  const onCompositionStart = () => projection?.setComposing(true)
+  const onCompositionEnd = () => projection?.setComposing(false)
+  mount.addEventListener('compositionstart', onCompositionStart)
+  mount.addEventListener('compositionend', onCompositionEnd)
   const area = document.createElement('div')
   area.id = 'document-area'
   const outline = createOutlineView(editor, headerBottom)
@@ -32,8 +39,8 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
     const state = getEditorStatus(editor)
     const labels: Record<string, string> = { paragraph: '正文', blockquote: '引用', alert: '提示框', codeBlock: '代码块',
       bulletList: '无序列表', orderedList: '有序列表', taskList: '任务列表', table: '表格', image: '图片', footnoteDefinition: '脚注' }
-    const block = labels[state.blockType] ?? state.blockType.replace('heading', 'H')
-    count.textContent = `${state.totalCharacterCount.toLocaleString()} 字符${state.selectedCharacterCount ? ` · 已选 ${state.selectedCharacterCount}` : ''} · ${block} · ${state.line}:${state.column}`
+    const block = (/^zh/i.test(appliedLanguage) ? labels[state.blockType] : undefined) ?? state.blockType.replace('heading', 'H')
+    count.textContent = `${state.totalCharacterCount.toLocaleString()} ${chromeLabel('chars', appliedLanguage)}${state.selectedCharacterCount ? ` · ${chromeLabel('selected', appliedLanguage)} ${state.selectedCharacterCount}` : ''} · ${block} · ${state.line}:${state.column}`
     count.title = `非空白 ${state.nonWhitespaceCharacterCount} · 中日韩文字 ${state.cjkCharacterCount} · 西文单词 ${state.westernWordCount}\n公式 ${state.formulaCount} · 代码 ${state.codeLineCount} 行 · 段落 ${state.paragraphCount}`
     const focus = settings.focusMode && editor.isEditable
     if (focus !== lastFocus) { lastFocus = focus; setEditorFocusMode(editor, focus) }
@@ -52,6 +59,7 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       const diagramStyleChanged = applied && (settings.fontFamily !== next.fontFamily
         || settings.typography !== next.typography || settings.colorTheme !== next.colorTheme
         || appliedCss !== customCss || appliedLanguage !== language)
+      const previousResize = applied ? settings.allowTableColumnResize : undefined
       settings = next
       applied = true
       appliedCss = customCss
@@ -74,9 +82,17 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       custom.textContent = customCss
       editor.view.dom.style.fontFamily = next.fontFamily
       area.classList.toggle('with-outline', next.showOutline)
+      outline.setLanguage(language)
       outline.setVisible(next.showOutline)
       const footer = document.querySelector('footer')
       if (footer) footer.hidden = !next.showStatusBar
+      if (next.adaptiveJustification && !projection) {
+        projection = createTypographyCoordinator({ editor, measurement: createTypographyMeasurementService(document),
+          clock: () => performance.now(), requestFrame: cb => requestAnimationFrame(cb), cancelFrame: id => cancelAnimationFrame(id) })
+      }
+      projection?.setEnabled(next.adaptiveJustification)
+      if (next.adaptiveJustification) projection?.invalidate('style')
+      if (previousResize !== next.allowTableColumnResize) setTableLayoutEnabled(editor, next.allowTableColumnResize)
       setMarkdownEditingSettings(next)
       setAutoConvertUnsafeEmphasis(next.autoConvertUnsafeEmphasis)
       setCodeHighlightVisible(editor, next.showCodeHighlight)
@@ -92,6 +108,9 @@ export function createReadingView(editor: Editor, mount: HTMLElement, count: HTM
       if (diagramStyleChanged) rerenderMermaidElements(mount)
     },
     dispose(): void {
+      projection?.dispose()
+      mount.removeEventListener('compositionstart', onCompositionStart)
+      mount.removeEventListener('compositionend', onCompositionEnd)
       outline.dispose(); behavior.dispose()
       editor.off('selectionUpdate', cursorMoved)
       theme.remove(); typography.remove(); custom.remove()

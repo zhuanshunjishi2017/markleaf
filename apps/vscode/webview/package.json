@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/node": "24.10.1",
-    "@types/vscode": "1.95.0",
+    "@types/vscode": "1.120.0",
     "jsdom": "27.2.0",
     "typescript": "5.9.3",
     "vite": "7.2.4",

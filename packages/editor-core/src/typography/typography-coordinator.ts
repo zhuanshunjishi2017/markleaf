@@ -1,10 +1,9 @@
-import {
-  applyTypographyPlan, extractProjectionSnapshots, getTypographyProjectionDiagnostics,
-  getTypographyProjectionRevision, registerTypographySnapshots, createLayoutWork, typographyWorkLimits,
-  type Editor, type MeasurementService, type MeasuredPlan, type LineMeasurement, type MeasuredLine,
-  type TypographyProjectionDiagnostics, type ProjectionSnapshot, type LayoutCheckpoint,
-  correctTypographyLine, measureProjectedLine,
-} from '@markleaf/editor-core'
+import type { Editor } from '@tiptap/core'
+import { createLayoutWork, typographyWorkLimits, type MeasuredPlan, type LineMeasurement, type MeasuredLine, type LayoutCheckpoint } from '@markleaf/typography'
+import { applyTypographyPlan, getTypographyProjectionDiagnostics, getTypographyProjectionRevision, registerTypographySnapshots, type TypographyProjectionDiagnostics } from './projection'
+import { extractProjectionSnapshots, type ProjectionSnapshot } from './projection-snapshot'
+import type { MeasurementService } from './projection-measure'
+import { correctTypographyLine, measureProjectedLine } from './projection-correction'
 import { createTypographyJob, type TypographyJob } from './typography-job'
 
 export type TypographyCoordinator = {
@@ -27,7 +26,7 @@ type Cycle = {
 export function createTypographyCoordinator(options: {
   editor: Editor; measurement: MeasurementService; clock: () => number
   requestFrame: (callback: FrameRequestCallback) => number; cancelFrame: (id: number) => void
-  onDiagnostics: (value: TypographyProjectionDiagnostics) => void
+  onDiagnostics?: (value: TypographyProjectionDiagnostics) => void
   onTrace?: (value: Record<string, unknown>) => void
   readProjectedLine?: typeof measureProjectedLine
 }): TypographyCoordinator {
@@ -156,7 +155,7 @@ export function createTypographyCoordinator(options: {
     // Aggregate active time includes extraction and transactions. Per-snapshot
     // budgets remain the job ledger, not a share of this generation overhead.
     const activeMs = c.busyMs
-    onDiagnostics({ ...getTypographyProjectionDiagnostics(editor), reasons: c.reasons,
+    onDiagnostics?.({ ...getTypographyProjectionDiagnostics?.(editor), reasons: c.reasons,
       paragraphs: c.items.map(i => ({ id: i.snapshot.id, status: adopted.has(i.snapshot.id) ? 'planned' : 'fallback',
         reason: i.reason ?? (!adopted.has(i.snapshot.id) ? 'hard-break-group' : undefined), work: i.job.work.stats() })),
       measuredLines: stats.reduce((n, x) => n + x.uniqueMeasurements, 0), elapsedMs: activeMs,
@@ -209,7 +208,7 @@ export function createTypographyCoordinator(options: {
     if (clock() < quietUntil) { schedule(); return }
     quietUntil = 0
     if (fonts?.status === 'loading') {
-      native(); onDiagnostics({ ...getTypographyProjectionDiagnostics(editor), reasons: { 'font-pending': 1 }, measuredLines: 0, elapsedMs: 0 }); return
+      native(); onDiagnostics?.({ ...getTypographyProjectionDiagnostics?.(editor), reasons: { 'font-pending': 1 }, measuredLines: 0, elapsedMs: 0 }); return
     }
     const frameStart = clock(), deadline = frameStart + typographyWorkLimits.frameMs
     let accounting: Cycle | undefined = cycle

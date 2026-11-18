@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createEditor, getMarkdown, extractProjectionSnapshots, getTypographyProjectionRevision, createTypographyMeasurementService, type TypographyProjectionDiagnostics } from '@markleaf/editor-core'
-import { createTypographyCoordinator } from '../src/typography-coordinator'
-import * as core from '@markleaf/editor-core'
+import { createEditor, getMarkdown, extractProjectionSnapshots, getTypographyProjectionRevision, createTypographyMeasurementService, type TypographyProjectionDiagnostics } from '../src/index'
+import { createTypographyCoordinator } from '../src/typography/typography-coordinator'
+import * as core from '../src/typography/projection-snapshot'
 const disposers: Array<() => void> = []
 afterEach(() => { disposers.splice(0).forEach(f => f()); document.body.innerHTML = ''; Reflect.deleteProperty(document, 'fonts'); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 function setup(readProjectedLine?: Parameters<typeof createTypographyCoordinator>[0]['readProjectedLine'], fonts?: EventTarget, detailedTrace = true) {

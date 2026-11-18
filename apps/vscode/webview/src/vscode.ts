@@ -5,9 +5,10 @@ import './vscode.css'
 import {
   collapseSourceEditor, createEditor, executeEditorCommand, getEditorCommandPresentation, selectEditorContextAt,
   getMarkdown, getFootnoteLabels, getEditorCommandState, exportEditorSelection, pasteMarkdownTextWithResult, pasteClipboardContentWithResult, setCodeBlockControlHandlers,
-  setImageResourceResolver, refreshImageResources, updateEditorMarkdown,
-  normalizeContextMenuCaretPosition, rerenderMermaidElements,
+  setImageResourceResolver, updateEditorMarkdown,
+  exportSelectedMermaidImage, normalizeContextMenuCaretPosition, rerenderMermaidElements,
 } from '@markleaf/editor-core'
+import { chromeLabel, localizeChrome } from './vscode-chrome-strings'
 import { vscodePasteStatus } from './vscode-paste-status'
 import { createExportDialog } from './vscode-export-dialog'
 import { renderExportSnapshot } from './vscode-export'
@@ -15,6 +16,7 @@ import { exportStrings } from './vscode-export-strings'
 import { createFindBar } from './vscode-find'
 import { createReadingView } from './vscode-reading'
 import { defaultSettings, type MarkLeafSettings } from './vscode-settings'
+import { applyPlainSourceEdit, sourceForPlainEdit } from './vscode-plain-blocks'
 import { TextDocumentSync } from './vscode-sync'
 import { createEditorInteractions } from '@markleaf/editor-core'
 import { formatActions, formatCommandsWithInput, isFormatCommand, resolveShortcuts, shortcutLabel, type ShortcutSettings } from './vscode-shortcuts'
@@ -43,6 +45,9 @@ let interactions: ReturnType<typeof createEditorInteractions> | undefined
 let writable = false
 let suppressUpdate = false
 let editor: ReturnType<typeof createEditor> | undefined
+let documentEncoding: string | undefined
+let renderSource = ''
+let lastDocument: NonNullable<typeof editor>['state']['doc'] | undefined
 type PendingAction = { action: HostAction; command?: string; state?: ReturnType<typeof createEditor>['state']; context?: ActionContext; files?: ImageUpload[]; loading?: boolean }
 const pendingActions: PendingAction[] = []
 let reading: ReturnType<typeof createReadingView> | undefined
@@ -55,7 +60,6 @@ let actionState: ReturnType<typeof createEditor>['state'] | undefined
 let noticeError = ''
 let pasteResult: ReturnType<typeof pasteClipboardContentWithResult> | undefined
 let renderingFailed = false
-let restoringScroll = true
 let disposed = false
 let reportedFocus: WebviewFocus | undefined
 const mac = /Mac/i.test(navigator.platform)
@@ -66,18 +70,32 @@ const exportDialog = createExportDialog(post, updateFocus)
 const fileReaders = new Set<FileReader>()
 const imageUrls = new Map<string, string>()
 const requestedImages = new Set<string>()
+const pendingImages = new Set<string>()
+const waitingImages = new Map<string, Set<HTMLImageElement>>()
 
 function imageUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path
   const cached = imageUrls.get(path)
-  if (cached) return cached
+  if (cached !== undefined) return cached
   if (path && !requestedImages.has(path)) {
     requestedImages.add(path)
-    post({ type: 'resolveImages', paths: [path] })
+    if (!pendingImages.size) queueMicrotask(() => {
+      if (!disposed) post({ type: 'resolveImages', paths: [...pendingImages] })
+      pendingImages.clear()
+    })
+    pendingImages.add(path)
   }
   return ''
 }
-setImageResourceResolver({ resolve: imageUrl })
+setImageResourceResolver({
+  resolve: imageUrl,
+  onPendingImage(path, image) {
+    if (imageUrls.has(path)) return
+    const waiting = waitingImages.get(path) ?? new Set<HTMLImageElement>()
+    waiting.add(image)
+    waitingImages.set(path, waiting)
+  },
+})
 setCodeBlockControlHandlers({
   copyCode: text => post({ type: 'copy', text }),
   editLanguage: position => {
@@ -87,6 +105,14 @@ setCodeBlockControlHandlers({
   },
 })
 
+function updateEncodingLabel(): void {
+  const button = document.querySelector<HTMLButtonElement>('footer [data-action="changeEncoding"]')
+  if (!button) return
+  const names: Record<string, string> = { utf8: 'UTF-8', utf8bom: 'UTF-8 BOM', utf16le: 'UTF-16 LE', utf16be: 'UTF-16 BE' }
+  button.title = chromeLabel('changeEncoding', language)
+  button.textContent = documentEncoding ? names[documentEncoding] ?? documentEncoding.toUpperCase() : button.title
+}
+
 function canEditDocument(): boolean {
   return writable && mode === 'edit' && !sync.conflict && !renderingFailed
 }
@@ -94,16 +120,24 @@ function canEditDocument(): boolean {
 const sync = new TextDocumentSync({
   post,
   render(document) {
-    const scrollTop = window.scrollY
+    let restoreScroll: number | undefined
     writable = document.writable
+    documentEncoding = document.encoding
+    updateEncodingLabel()
+    const eol = window.document.querySelector<HTMLButtonElement>('footer [data-action="changeEol"]')
+    if (eol) eol.textContent = document.eol === '\r\n' ? 'CRLF' : 'LF'
     suppressUpdate = true
     try {
       if (editor) {
         interactions?.cancel()
         collapseSourceEditor(editor)
-        updateEditorMarkdown(editor, document.markdown)
+        if (!applyPlainSourceEdit(editor, renderSource, document.markdown)) {
+          restoreScroll = window.scrollY
+          updateEditorMarkdown(editor, document.markdown)
+        }
         reading?.rebuildOutline()
       } else {
+        restoreScroll = initialState?.scrollTop ?? 0
         editor = createEditor(mount, document.markdown, !canEditDocument(), {
           externalHistory: true,
           codeHighlightVisible: settings.showCodeHighlight,
@@ -123,7 +157,9 @@ const sync = new TextDocumentSync({
         editor.on('update', ({ transaction }) => {
           if (!suppressUpdate && transaction.docChanged) {
             pasteResult = undefined
-            sync.change(getMarkdown(editor!))
+            renderSource = sourceForPlainEdit(editor!, transaction, renderSource) ?? getMarkdown(editor!)
+            lastDocument = editor!.state.doc
+            sync.change(renderSource)
           }
         })
         editor.on('selectionUpdate', updateToolbar)
@@ -131,7 +167,7 @@ const sync = new TextDocumentSync({
           mac, enabled: () => !!editor?.isEditable && !sync.conflict && !renderingFailed && !actionInFlight && !shortcutDialog.isOpen && !exportDialog.isOpen,
           shortcuts: () => shortcuts, run: id => runFormatCommand(id, true),
         })
-        interactions = createEditorInteractions({ mount, getEditor: () => editor!, enabled: () => !!editor?.isEditable, onMenu: () => action('block'), label: '当前段落操作', onStateChanged: updateToolbar,
+        interactions = createEditorInteractions({ mount, deferBlockHandleLayout: true, getEditor: () => editor!, enabled: () => !!editor?.isEditable, onMenu: () => action('block'), label: '当前段落操作', onStateChanged: updateToolbar,
           links: { primaryModifier: mac ? 'meta' : 'ctrl', openLink: href => post({ type: 'openLink', href }),
             topInset: () => chrome.getBoundingClientRect().bottom } })
         findBar = createFindBar(editor, window.document.querySelector<HTMLElement>('#toolbar')!)
@@ -143,10 +179,13 @@ const sync = new TextDocumentSync({
       renderingFailed = false
       noticeError = ''
       pasteResult = undefined
-      const target = restoringScroll ? initialState?.scrollTop ?? 0 : scrollTop
-      restoringScroll = false
-      requestAnimationFrame(() => window.scrollTo(0, target))
-      return getMarkdown(editor)
+      if (restoreScroll !== undefined) {
+        const top = restoreScroll
+        requestAnimationFrame(() => window.scrollTo(0, top))
+      }
+      lastDocument = editor.state.doc
+      renderSource = document.markdown
+      return renderSource
     } finally { suppressUpdate = false }
   },
   status: updateStatus,
@@ -161,21 +200,20 @@ function updateStatus(): void {
     }
     mount.dataset.readOnly = String(!editable)
     mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editable })
-    modeButton.textContent = mode === 'read' ? '编辑' : '阅读'
+    modeButton.textContent = chromeLabel(mode === 'read' ? 'edit' : 'read', language)
     modeButton.setAttribute('aria-pressed', String(mode === 'read'))
     modeButton.disabled = !writable || !!sync.conflict || renderingFailed
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-edit]')) button.disabled = !editable
     noticeText.textContent = sync.conflict ?? noticeError
     notice.hidden = !noticeText.textContent
     recover.hidden = !sync.conflict
-    status.textContent = renderingFailed ? '文档加载失败' : sync.conflict ? '存在未同步编辑' : sync.pending ? '正在同步…' : !writable ? '文件只读' : mode === 'read' ? '阅读模式' : '已同步到 VS Code'
+    status.textContent = chromeLabel(renderingFailed ? 'failed' : sync.conflict ? 'conflict' : sync.pending ? 'syncing' : !writable ? 'readonly' : mode === 'read' ? 'readMode' : 'synced', language)
     if (pasteResult && !renderingFailed && !sync.conflict && writable && mode === 'edit') {
       status.textContent += ` · ${vscodePasteStatus(pasteResult, language)}`
     }
     reading?.update()
     findBar?.update()
     updateToolbar()
-    interactions?.update()
     runNextAction()
   }
 
@@ -194,7 +232,10 @@ function updateToolbar(): void {
   for (const [actionName, value] of [['toggleOutline', settings.showOutline], ['toggleFocus', settings.focusMode], ['toggleTypewriter', settings.typewriterMode]]) {
     document.querySelector(`[data-action="${actionName}"]`)?.setAttribute('aria-pressed', String(value))
   }
-  mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editor.isEditable, markleafImage: state.imageSelected })
+  const diagram = state.actions.saveMermaidAs?.enabled === true
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-action^="saveMermaid"]')) button.disabled = !diagram
+  mount.dataset.vscodeContext = JSON.stringify({ markleafCanEdit: editor.isEditable, markleafImage: state.imageSelected,
+    markleafDiagram: diagram, markleafTable: state.actions.fitTableContents?.enabled === true })
 }
 
 function showError(message: string): void {
@@ -219,6 +260,12 @@ function action(action: HostAction, formatCommand?: string): void {
   if (action === 'shortcuts') { closeToolbarMenus(); shortcutDialog.open(); updateFocus(); return }
   if (!editor) return
   if (shortcutDialog.isOpen || exportDialog.isOpen) return
+  if (action === 'saveMermaidSvg' || action === 'saveMermaidPng') {
+    const format = action === 'saveMermaidSvg' ? 'svg' : 'png'
+    void exportSelectedMermaidImage(editor, format).then(image => post({ type: 'saveDiagram', format, base64: image.base64 }),
+      error => showError(error instanceof Error ? error.message : String(error)))
+    return
+  }
   if (action === 'find' || action === 'replace') { findBar?.open(action === 'replace'); return }
   if (action === 'toggleRead') { modeButton.click(); return }
   const toggles = { toggleOutline: 'showOutline', toggleFocus: 'focusMode', toggleTypewriter: 'typewriterMode' } as const
@@ -413,12 +460,16 @@ toolbar.addEventListener('mousedown', event => {
 })
 toolbar.addEventListener('click', event => {
   const summary = (event.target as Element).closest('summary')
-  if (summary) closeToolbarMenus(summary.parentElement)
+  if (summary) { closeToolbarMenus(summary.parentElement); updateToolbar() }
   const button = (event.target as Element).closest<HTMLButtonElement>('button')
   if (!button || button.disabled) return
   if (button.dataset.command) command(button.dataset.command)
   if (button.dataset.action) action(button.dataset.action as HostAction)
   button.closest('details')?.removeAttribute('open')
+})
+document.querySelector('footer')?.addEventListener('click', event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('button[data-action]')
+  if (button && !button.disabled) action(button.dataset.action as HostAction)
 })
 modeButton.addEventListener('click', () => {
   if (!editor || sync.pending || sync.conflict) return
@@ -480,7 +531,11 @@ document.addEventListener('compositionend', event => {
   if (!editorInputTarget(event.target)) return
   // Let ProseMirror and expanded formula source inputs commit their final DOM.
   setTimeout(() => {
-    if (editor && !suppressUpdate) sync.change(getMarkdown(editor))
+    if (editor && !suppressUpdate && editor.state.doc !== lastDocument) {
+      lastDocument = editor.state.doc
+      renderSource = getMarkdown(editor)
+      sync.change(renderSource)
+    }
     sync.setComposing(false)
   }, 0)
 }, true)
@@ -560,6 +615,7 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
           .then(result => post({ type: 'exportRendered', requestId: message.requestId, result }),
             error => post({ type: 'exportRendered', requestId: message.requestId, error: error instanceof Error ? error.message : String(error) }))
         break
+      case 'documentChanges': sync.receiveChanges(message); break
       case 'document': sync.receiveDocument(message); break
       case 'recovered': recover.disabled = false; pendingActions.length = 0; sync.reset(message.document); break
       case 'requestAction': action(message.action); break
@@ -574,14 +630,24 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
       case 'flush': sync.flush(message.requestId); break
       case 'command': command(message.command, message.text, true); break
       case 'images':
-        for (const [path, url] of Object.entries(message.urls)) imageUrls.set(path, url)
-        refreshImageResources(mount)
+        for (const [path, url] of Object.entries(message.urls)) {
+          imageUrls.set(path, url)
+          requestedImages.delete(path)
+          for (const image of waitingImages.get(path) ?? []) {
+            if (image.dataset.markleafPath === path && url) image.src = url
+          }
+          waitingImages.delete(path)
+        }
         break
       case 'settings':
         updateShortcuts(message.shortcuts ?? { overrides: {}, scope: 'user' })
         settings = message.settings
         customCss = message.customCss ?? ''
         language = message.language ?? 'zh-Hans'
+        localizeChrome(language)
+        updateEncodingLabel()
+        const zoom = document.querySelector<HTMLButtonElement>('footer [data-action="zoomReset"]')
+        if (zoom) { zoom.textContent = settings.zoom + '%'; zoom.title = chromeLabel('zoomReset', language) }
         const exportLabels = exportStrings(language)
         for (const label of document.querySelectorAll<HTMLElement>('[data-export-label]')) label.textContent = exportLabels[label.dataset.exportLabel as keyof typeof exportLabels]
         if (!editor && !initialState?.mode) mode = settings.defaultMode
@@ -614,6 +680,7 @@ window.addEventListener('pagehide', () => {
   disposed = true
   for (const reader of fileReaders) reader.abort()
   fileReaders.clear()
+  waitingImages.clear()
   themeObserver.disconnect()
   chromeResize.disconnect()
   window.removeEventListener('resize', positionToolbarMenus)

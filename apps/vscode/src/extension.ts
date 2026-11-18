@@ -1,16 +1,22 @@
 import * as vscode from 'vscode'
 import { DocumentExports } from './exports'
-import { documentReplacement, normalizeDocumentMarkdown } from './document-edit'
+import type { TextChange } from '../webview/src/vscode-text-edit'
 import { localResourceRoots, resolveDocumentLink } from './resources'
 import { webviewHtml } from './webview'
 import { pickFormat, prepareFormatCommand } from './formatting'
 import { importImages, pickImages, saveImageAs } from './images'
 import { readSettings, updateSetting, pickPreferences, readShortcutSettings, updateShortcut } from './settings'
 import { formatActions } from '../webview/src/vscode-shortcuts'
-import { isWebviewMessage, type DocumentSnapshot, type ExtensionMessage, type HostAction, type ActionContext, type ImageUpload, type WebviewFocus, type WebviewMessage } from '../webview/src/vscode-protocol'
+import { isWebviewMessage, type SourceChanges, type DocumentSnapshot, type ExtensionMessage, type HostAction, type ActionContext, type ImageUpload, type WebviewFocus, type WebviewMessage } from '../webview/src/vscode-protocol'
 
 const viewType = 'markleaf.editor'
 type EditMessage = Extract<WebviewMessage, { type: 'edit' }>
+
+function inTextDiff(resource?: vscode.Uri): boolean {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input
+  return input instanceof vscode.TabInputTextDiff && (!resource ||
+    [input.original, input.modified].some(side => side.toString() === resource.toString()))
+}
 
 function activeResource(): vscode.Uri | undefined {
   const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input
@@ -22,7 +28,11 @@ class EditorPanel implements vscode.Disposable {
   focus: WebviewFocus = null
   private readonly exports: DocumentExports
   private readonly subscriptions: vscode.Disposable[] = []
-  private applying?: { target: string; version?: number }
+  private applying?: { change: TextChange; version?: number }
+  private observedVersion: number
+  private changes?: SourceChanges
+  private changeTimer?: ReturnType<typeof setTimeout>
+  private deferredSave?: number
   private ready = false
   private mac = false
   private disposed = false
@@ -30,6 +40,7 @@ class EditorPanel implements vscode.Disposable {
   private readonly flushes = new Map<number, { resolve(success: boolean): void; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(readonly document: vscode.TextDocument, readonly panel: vscode.WebviewPanel, private readonly updateFocus: () => void, state: vscode.Memento, private readonly extensionId: string) {
+    this.observedVersion = document.version
     this.exports = new DocumentExports(document, state, message => this.post(message), () => this.flush())
     this.subscriptions.push(
       panel.onDidChangeViewState(() => {
@@ -40,19 +51,34 @@ class EditorPanel implements vscode.Disposable {
         if (isWebviewMessage(message)) void this.receive(message).catch(error => this.report(error))
       }),
       vscode.workspace.onDidChangeTextDocument(event => {
-        if (event.document !== document || event.contentChanges.length === 0) return
-        if (this.applying?.target === document.getText()) {
-          this.applying.version = document.version
+        if (event.document !== document) return
+        const baseVersion = this.observedVersion
+        this.observedVersion = document.version
+        if (!this.ready) return
+        if (!event.contentChanges.length) {
+          if (document.version !== baseVersion) this.post(this.snapshot())
           return
         }
-        this.post(this.snapshot())
+        const [first] = event.contentChanges
+        const own = this.applying
+        if (own && own.version === undefined && event.contentChanges.length === 1 && first
+          && first.rangeOffset === own.change.start && first.rangeLength === own.change.end - own.change.start
+          && first.text === own.change.text) {
+          own.version = document.version
+          return
+        }
+        const batch = event.contentChanges.map(c => ({ start: c.rangeOffset, end: c.rangeOffset + c.rangeLength, text: c.text }))
+          .sort((a, b) => b.start - a.start)
+        if (!this.changes) this.changes = { type: 'documentChanges', baseVersion, version: document.version, batches: [], ...this.metadata() }
+        this.changes.version = document.version
+        this.changes.eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n'
+        this.changes.batches.push(batch)
+        this.changeTimer ??= setTimeout(() => this.sendChanges(), 24)
       }),
       vscode.workspace.onWillSaveTextDocument(event => {
         if (event.document === document && this.ready && !this.disposed) {
-          // VS Code also invokes this path for menu Save and Auto Save.
-          event.waitUntil(this.flush().then(success => {
-            if (!success) throw new Error('MarkLeaf has unsynchronized edits; recover the draft before saving.')
-          }))
+          // A save participant cannot veto a native save. Keep the request until IME and edits settle.
+          event.waitUntil(this.flush(true).then(() => undefined))
         }
       }),
       vscode.workspace.onDidChangeConfiguration(event => {
@@ -63,6 +89,9 @@ class EditorPanel implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true
+    clearTimeout(this.changeTimer)
+    this.changes = undefined
+    this.deferredSave = undefined
     this.exports.dispose()
     this.focus = null
     this.updateFocus()
@@ -71,9 +100,25 @@ class EditorPanel implements vscode.Disposable {
     this.flushes.clear()
   }
 
+  private metadata() {
+    return { writable: vscode.workspace.fs.isWritableFileSystem(this.document.uri.scheme) !== false,
+      eol: this.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n',
+      encoding: this.document.encoding }
+  }
+
+  private sendChanges(): void {
+    clearTimeout(this.changeTimer)
+    this.changeTimer = undefined
+    if (this.changes) this.post(this.changes)
+    this.changes = undefined
+  }
+
   private snapshot(): DocumentSnapshot {
-    return { type: 'document', version: this.document.version, markdown: this.document.getText(),
-      writable: vscode.workspace.fs.isWritableFileSystem(this.document.uri.scheme) !== false }
+    clearTimeout(this.changeTimer)
+    this.changeTimer = undefined
+    this.changes = undefined
+    this.observedVersion = this.document.version
+    return { type: 'document', version: this.document.version, markdown: this.document.getText(), ...this.metadata() }
   }
 
   private post(message: ExtensionMessage): void {
@@ -112,11 +157,16 @@ class EditorPanel implements vscode.Disposable {
     }
   }
 
-  flush(): Promise<boolean> {
+  flush(forSave = false): Promise<boolean> {
     if (!this.ready || this.disposed) return Promise.resolve(false)
     return new Promise(resolve => {
       const requestId = ++this.flushId
-      const timer = setTimeout(() => { this.flushes.delete(requestId); resolve(false) }, 1200)
+      this.sendChanges()
+      const timer = setTimeout(() => {
+        this.flushes.delete(requestId)
+        if (forSave) this.deferredSave = requestId
+        resolve(false)
+      }, 900)
       this.flushes.set(requestId, { resolve, timer })
       this.post({ type: 'flush', requestId })
     })
@@ -135,19 +185,19 @@ class EditorPanel implements vscode.Disposable {
       reject('文件版本已改变。未同步的编辑保留在此处，请打开为草稿后与源码合并。')
       return
     }
-    const before = this.document.getText()
-    const target = normalizeDocumentMarkdown(message.markdown, before, this.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
-    const replacement = documentReplacement(before, target)
-    if (!replacement) {
-      this.post({ type: 'accepted', sequence: message.sequence, version: this.document.version })
+    const replacement = message.change
+    const start = this.document.positionAt(replacement.start)
+    const end = this.document.positionAt(replacement.end)
+    if (this.document.offsetAt(start) !== replacement.start || this.document.offsetAt(end) !== replacement.end) {
+      reject('无效的文本范围。未同步内容已保留。')
       return
     }
     const edit = new vscode.WorkspaceEdit()
-    edit.replace(this.document.uri, new vscode.Range(this.document.positionAt(replacement.start), this.document.positionAt(replacement.end)), replacement.text)
-    const applying = this.applying = { target, version: undefined as number | undefined }
+    edit.replace(this.document.uri, new vscode.Range(start, end), replacement.text)
+    const applying = this.applying = { change: replacement, version: undefined as number | undefined }
     try {
       const applied = await vscode.workspace.applyEdit(edit)
-      if (!applied || applying.version !== this.document.version || this.document.getText() !== target) {
+      if (!applied || applying.version !== this.document.version) {
         reject('VS Code 未能确认此次编辑，文件可能已发生变化。未同步内容已保留，请打开为草稿。')
       } else {
         this.post({ type: 'accepted', sequence: message.sequence, version: this.document.version })
@@ -173,6 +223,12 @@ class EditorPanel implements vscode.Disposable {
       case 'undo': case 'redo':
         if (!this.panel.active) throw new Error('当前编辑器已切换，请聚焦原文档后再执行撤销或重做。')
         await vscode.commands.executeCommand(action)
+        break
+      case 'changeEncoding': case 'changeEol':
+        await this.openSource(false)
+        if (vscode.window.activeTextEditor?.document === this.document) {
+          await vscode.commands.executeCommand(action === 'changeEncoding' ? 'workbench.action.editor.changeEncoding' : 'workbench.action.editor.changeEOL')
+        }
         break
       case 'openSource': case 'openSourceBeside': await this.openSource(action === 'openSourceBeside'); break
       case 'format': case 'block': {
@@ -246,10 +302,18 @@ class EditorPanel implements vscode.Disposable {
   private async receive(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'export': await this.exports.start(message.options, message.preview); break
+      case 'saveDiagram': {
+        const ext = message.format
+        const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.joinPath(this.document.uri, '..', 'diagram.' + ext),
+          filters: { [ext.toUpperCase()]: [ext] } })
+        if (target) await vscode.workspace.fs.writeFile(target, Buffer.from(message.base64, 'base64'))
+        break
+      }
       case 'cancelExport': this.exports.cancel(); break
       case 'exportRendered': this.exports.rendered(message); break
       case 'ready': this.mac = message.mac === true; this.ready = true; try { await this.settings() } finally { this.post(this.snapshot()) }; break
       case 'focus': this.focus = this.panel.active ? message.target : null; this.updateFocus(); break
+      case 'requestDocument': this.post(this.snapshot()); break
       case 'edit': await this.edit(message); break
       case 'action':
         try { await this.action(message.action, message.context, message.files, message.command) }
@@ -267,19 +331,30 @@ class EditorPanel implements vscode.Disposable {
       case 'flushed': {
         const pending = this.flushes.get(message.requestId)
         if (pending) { clearTimeout(pending.timer); this.flushes.delete(message.requestId); pending.resolve(message.success) }
+        if (this.deferredSave === message.requestId) {
+          this.deferredSave = undefined
+          if (message.success && !this.document.isClosed && this.document.isDirty && !await this.document.save()) {
+            throw new Error('VS Code 未保存已同步的输入。')
+          }
+        }
         break
       }
       case 'resolveImages': {
         const urls: Record<string, string> = Object.create(null)
+        const roots = this.panel.webview.options.localResourceRoots ?? []
+        const directories = new Map(roots.map(uri => [uri.toString(), uri]))
         for (const path of message.paths) {
+          urls[path] = ''
           const uri = resolveDocumentLink(this.document, path)
           if (uri && !['http', 'https', 'mailto'].includes(uri.scheme)) {
             // Referenced images can live beside another document or outside
             // the workspace. Recreate their directory grants when reopening.
-            this.grantImageDirectory(vscode.Uri.joinPath(uri, '..'))
+            const parent = vscode.Uri.joinPath(uri, '..')
+            directories.set(parent.toString(), parent)
             urls[path] = this.panel.webview.asWebviewUri(uri).toString()
           }
         }
+        if (directories.size !== roots.length) this.panel.webview.options = { ...this.panel.webview.options, localResourceRoots: [...directories.values()] }
         this.post({ type: 'images', urls })
         break
       }
@@ -313,6 +388,12 @@ export function activate(context: vscode.ExtensionContext): void {
   updateFocus()
   const provider: vscode.CustomTextEditorProvider = {
     async resolveCustomTextEditor(document, panel) {
+      if (document.languageId !== 'markdown') {
+        // Direct Open With and custom user associations also enter this provider.
+        await vscode.window.showTextDocument(document, { viewColumn: panel.viewColumn, preview: false })
+        panel.dispose()
+        return
+      }
       const assets = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')
       panel.webview.options = { enableScripts: true, localResourceRoots: localResourceRoots(document, assets) }
       const editor = new EditorPanel(document, panel, updateFocus, context.globalState, context.extension.id)
@@ -328,15 +409,19 @@ export function activate(context: vscode.ExtensionContext): void {
       supportsMultipleEditorsPerDocument: false,
     }),
     vscode.commands.registerCommand('markleaf.open', async (uri?: vscode.Uri) => {
+      if (inTextDiff(uri)) return
       const resource = uri ?? activeResource()
-      if (!resource) { void vscode.window.showInformationMessage('请先打开或选择一个 Markdown 文件。'); return }
-      await vscode.commands.executeCommand('vscode.openWith', resource, viewType)
+      if (!resource) { void vscode.window.showInformationMessage('请先打开或选择一个文件。'); return }
+      const document = await vscode.workspace.openTextDocument(resource)
+      if (document.languageId === 'markdown') await vscode.commands.executeCommand('vscode.openWith', resource, viewType)
+      else await vscode.window.showTextDocument(document)
     }),
-    ...(['exportDocument', 'exportPdf', 'exportHtml', 'exportImage', 'print', 'exportLast', 'format', 'insertImage', 'insertImageUrl', 'image', 'find', 'replace', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText',
+    ...(['saveMermaidSvg', 'saveMermaidPng', 'exportDocument', 'exportPdf', 'exportHtml', 'exportImage', 'print', 'exportLast', 'format', 'insertImage', 'insertImageUrl', 'image', 'find', 'replace', 'copyMarkdown', 'copyPlainText', 'copyHtml', 'pastePlainText',
       'toggleOutline', 'toggleFocus', 'toggleTypewriter', 'toggleRead', 'zoomIn', 'zoomOut', 'zoomReset', 'preferences', 'help', 'shortcuts'] as const)
       .map(action => vscode.commands.registerCommand(`markleaf.${action}`, () => active()?.requestAction(action))),
     ...formatActions.map(({ command }) => vscode.commands.registerCommand(`markleaf.${command}`, () => active()?.requestFormatCommand(command))),
     vscode.commands.registerCommand('markleaf.toggleEditor', async () => {
+      if (inTextDiff()) return
       try {
         const visual = active()
         if (visual) await visual.openSource(false)
