@@ -28,6 +28,7 @@ pub struct Sidebar {
     /// 搜索面板。
     search_entry: SearchEntry,
     search_store: gtk::TreeStore,
+    search_view: gtk::TreeView,
     /// 大纲列表(第 0 列显示文本,第 1 列 position 字符串,第 2 列标题文本)。
     outline_store: gtk::TreeStore,
     outline_view: gtk::TreeView,
@@ -37,6 +38,8 @@ pub struct Sidebar {
     on_open_path: RefCell<OpenPathHandler>,
     /// 当前工作区根(扫描/搜索基准;None = 无工作区)。
     current_workspace_root: RefCell<Option<PathBuf>>,
+    /// 实时搜索防抖定时器(输入停顿后触发文件名搜索)。
+    search_debounce: RefCell<Option<glib::SourceId>>,
 }
 
 use std::cell::RefCell;
@@ -46,7 +49,14 @@ impl Sidebar {
     pub fn new() -> Rc<Self> {
         let stack = Stack::new();
 
-        // ---- 工作区页:搜索框 + 树 ----
+        // ---- 工作区页:头部快捷按钮 + 搜索框 + 树 ----
+        let header_box = gtk::Box::new(Orientation::Horizontal, 4);
+        let new_file_button = gtk::Button::from_icon_name("document-new-symbolic");
+        new_file_button.set_tooltip_text(Some("新建 Markdown 文档"));
+        let open_folder_button = gtk::Button::from_icon_name("folder-open-symbolic");
+        open_folder_button.set_tooltip_text(Some("打开文件夹"));
+        header_box.append(&new_file_button);
+        header_box.append(&open_folder_button);
         let search_entry = SearchEntry::new();
         let tree_store = gtk::TreeStore::new(&[glib::Type::STRING, glib::Type::STRING]);
         let tree_view = gtk::TreeView::with_model(&tree_store);
@@ -54,6 +64,7 @@ impl Sidebar {
         append_text_column(&tree_view, 0);
 
         let workspace_page = gtk::Box::new(Orientation::Vertical, 4);
+        workspace_page.append(&header_box);
         workspace_page.append(&search_entry);
         let tree_scroll = ScrolledWindow::new();
         tree_scroll.set_vexpand(true);
@@ -108,11 +119,13 @@ impl Sidebar {
             tree_view,
             search_entry,
             search_store,
+            search_view: search_view.clone(),
             outline_store,
             outline_view: outline_view.clone(),
             on_outline_activate: RefCell::new(Box::new(|_, _| {})),
             on_open_path: RefCell::new(Box::new(|_| {})),
             current_workspace_root: RefCell::new(None),
+            search_debounce: RefCell::new(None),
         });
 
         // 大纲双击 → 跳转(position + 标题文本交给窗口层;源码模式契约由窗口决定)。
@@ -156,6 +169,18 @@ impl Sidebar {
             });
         }
 
+        // 头部按钮:转发窗口的 win.* action(新建文档守卫/打开文件夹对话框在窗口层)。
+        {
+            let new_for_click = new_file_button.clone();
+            new_file_button.connect_clicked(move |_| {
+                let _ = new_for_click.activate_action("win.newMarkdown", None);
+            });
+            let folder_for_click = open_folder_button.clone();
+            open_folder_button.connect_clicked(move |_| {
+                let _ = folder_for_click.activate_action("win.openFolder", None);
+            });
+        }
+
         // 搜索回车 → 内容搜索 → 结果页。
         {
             let root_for_search = this.current_workspace_root.clone();
@@ -171,6 +196,64 @@ impl Sidebar {
                     search_workspace(&root_dir, &query, SearchMode::Content)
                 };
                 sidebar_for_search.show_search_results(&hits, &root_dir);
+            });
+        }
+
+        // 搜索实时化:输入停顿 400ms → 文件名搜索(轻量);清空即回工作区页。
+        {
+            let entry_for_debounce = this.search_entry.clone();
+            let root_for_debounce = this.current_workspace_root.clone();
+            let sidebar_for_debounce = Rc::clone(&this);
+            this.search_entry.connect_search_changed(move |entry| {
+                let query = entry.text().to_string();
+                if let Some(old) = sidebar_for_debounce.search_debounce.borrow_mut().take() {
+                    old.remove();
+                }
+                if query.is_empty() {
+                    sidebar_for_debounce.search_store.clear();
+                    sidebar_for_debounce.stack.set_visible_child_name("workspace");
+                    return;
+                }
+                let entry_for_task = entry_for_debounce.clone();
+                let root_for_task = root_for_debounce.clone();
+                let sidebar_for_task = sidebar_for_debounce.clone();
+                let query_for_task = query.clone();
+                let timeout = glib::timeout_add_local(
+                    std::time::Duration::from_millis(400),
+                    move || {
+                        // 用户可能又输入了:以当前文本为准。
+                        let query = entry_for_task.text().to_string();
+                        if query.is_empty() {
+                            return glib::ControlFlow::Break;
+                        }
+                        if let Some(root_dir) = root_for_task.borrow().clone() {
+                            let hits = search_workspace(
+                                &root_dir,
+                                &query_for_task,
+                                SearchMode::Name,
+                            );
+                            sidebar_for_task.show_search_results(&hits, &root_dir);
+                        }
+                        glib::ControlFlow::Break
+                    },
+                );
+                *sidebar_for_debounce.search_debounce.borrow_mut() = Some(timeout);
+            });
+        }
+
+        // 搜索结果双击 → 打开命中文件。
+        {
+            let store_for_hit = this.search_store.clone();
+            let open_for_hit = Rc::clone(&this);
+            this.search_view.connect_row_activated(move |_view, path, _column| {
+                let store = store_for_hit.clone();
+                if let Some(iter) = store.iter(path) {
+                    let value = store.get_value(&iter, 1);
+                    let file = value.get::<String>().unwrap_or_default();
+                    if !file.is_empty() {
+                        (open_for_hit.on_open_path.borrow())(&PathBuf::from(&file));
+                    }
+                }
             });
         }
 
@@ -235,6 +318,72 @@ impl Sidebar {
         }
         if !items.is_empty() {
             self.stack.set_visible_child_name("outline");
+        }
+    }
+
+    /// 大纲选中同步(outlineSelectionChanged 驱动):光标所在 position 向上
+    /// 就近选中标题,并把该行滚动到可视区。
+    pub fn highlight_outline_position(&self, position: i64) {
+        let store = &self.outline_store;
+        let mut best: Option<gtk::TreeIter> = None;
+        let mut best_position: i64 = i64::MIN;
+        let mut iter = store.iter_first();
+        while let Some(mut current) = iter {
+            let row_position = store
+                .get_value(&current, 1)
+                .get::<String>()
+                .ok()
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            if row_position <= position && row_position >= best_position {
+                best_position = row_position;
+                best = Some(current.clone());
+            }
+            if !store.iter_next(&mut current) {
+                break;
+            }
+        }
+        if let Some(target) = best {
+            let selection = self.outline_view.selection();
+            selection.unselect_all();
+            let path = store.path(&target);
+            self.outline_view
+                .scroll_to_cell(Some(&path), None, false, 0.0, 0.0);
+            selection.select_path(&path);
+        }
+    }
+
+    /// 打开文档时在工作区树中定位并选中(对齐 macOS revealWorkspacePath)。
+    pub fn reveal_workspace_path(&self, path: &std::path::Path) {
+        let Some(root) = self.current_workspace_root.borrow().clone() else {
+            return;
+        };
+        let Ok(relative) = path.strip_prefix(&root) else {
+            return;
+        };
+        let relative = relative.to_string_lossy().into_owned();
+        let store = &self.tree_store;
+        let mut iter = store.iter_first();
+        while let Some(mut current) = iter {
+            let row_relative = store
+                .get_value(&current, 1)
+                .get::<String>()
+                .unwrap_or_default();
+            if row_relative == relative {
+                // 展开祖先链,选中并滚动到该行。
+                let tree_path = store.path(&current);
+                self.tree_view.expand_to_path(&tree_path);
+                let selection = self.tree_view.selection();
+                selection.unselect_all();
+                self.tree_view
+                    .scroll_to_cell(Some(&tree_path), None, false, 0.0, 0.0);
+                selection.select_path(&tree_path);
+                self.stack.set_visible_child_name("workspace");
+                return;
+            }
+            if !store.iter_next(&mut current) {
+                break;
+            }
         }
     }
 

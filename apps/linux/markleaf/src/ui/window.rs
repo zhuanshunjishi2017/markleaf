@@ -573,6 +573,11 @@ impl AppWindow {
         }
         self.update_tab_title(&state);
         self.refresh_status_bar_content(&state);
+        // 打开文档时在工作区树中定位选中(对齐 macOS revealWorkspacePath)。
+        let path_for_reveal = state.document.borrow().path.clone();
+        if let Some(path) = path_for_reveal.as_deref() {
+            self.sidebar.reveal_workspace_path(path);
+        }
     }
 
     // ---- 内部 ----
@@ -850,6 +855,18 @@ impl AppWindow {
                 {
                     state.source_mode.set(source_mode);
                     self.refresh_status_bar_content(&state);
+                }
+            }
+            // outlineSelectionChanged:光标所在标题位置,侧栏大纲就近选中
+            // (对齐 macOS outlineSelectionChanged)。
+            EditorMessageType::OutlineSelectionChanged => {
+                if let Some(position) = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("position"))
+                    .and_then(|v| v.as_i64())
+                {
+                    self.sidebar.highlight_outline_position(position);
                 }
             }
             _ => {}
