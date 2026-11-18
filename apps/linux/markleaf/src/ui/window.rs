@@ -16,6 +16,7 @@ use crate::bridge::messages::{EditorMessage, EditorMessageType, HostMessage};
 use crate::bridge::session_state::EditorSessionState;
 use crate::data::recovery::{discard_recovery, save_recovery, RecoveryEntry};
 use crate::data::settings::AppSettings;
+use crate::data::settings::StatusBarCommandDisplayMode;
 use crate::documents::controller::EncodingDecision;
 use crate::documents::encoding::{apply_newline, detect_newline, detect, encode};
 use crate::documents::store::{read_document, write_document, DocumentSnapshot, WriteError};
@@ -45,6 +46,8 @@ struct TabState {
     /// 页面 ready 携带的自生成占位 documentId(handle_editor_message 捕获,
     /// send_after_ready 的 ready 回调采纳重绑会话;对齐 Android)。
     frontend_ready_id: RefCell<Option<String>>,
+    /// 最近一次 editorStatusChanged 载荷(状态栏/统计对话框数据源)。
+    last_editor_status: RefCell<Option<serde_json::Value>>,
 }
 
 struct TabDocument {
@@ -88,6 +91,17 @@ pub struct AppWindow {
     /// 标签状态按 TabPage 指针索引。
     tab_states: RefCell<Vec<Rc<TabState>>>,
     status_text: RefCell<gtk::Label>,
+    /// 临时命令状态文本的清空定时器(Temporary 模式)。
+    status_timeout: RefCell<Option<glib::SourceId>>,
+    /// 状态栏右区控件(可见性由 settings.status_bar 驱动)。
+    sidebar_toggle_button: RefCell<gtk::Button>,
+    character_count_button: RefCell<gtk::Button>,
+    block_type_label: RefCell<gtk::Label>,
+    position_label: RefCell<gtk::Label>,
+    encoding_button: RefCell<gtk::MenuButton>,
+    newline_button: RefCell<gtk::MenuButton>,
+    mode_button: RefCell<gtk::MenuButton>,
+    zoom_button: RefCell<gtk::MenuButton>,
     #[allow(dead_code)] // M4 主题接线时消费(深浅/主题 id 下发 applyStyles)
     settings: Rc<RefCell<AppSettings>>,
     /// 上下文菜单浮层(每次请求重建内容后弹出)。
@@ -111,6 +125,23 @@ pub struct AppWindow {
 /// 恢复快照防抖间隔(对齐 settings.snapshot_interval_seconds 的下限用法:脏即定时落)。
 const RECOVERY_DEBOUNCE_MS: u64 = 3_000;
 
+/// 内核 blockType → 状态栏显示名(对齐 macOS blockTypeDisplayName 精简集)。
+fn block_type_display_name(block_type: &str) -> String {
+    match block_type {
+        "paragraph" => "段落".into(),
+        "codeBlock" => "代码块".into(),
+        "heading" => "标题".into(),
+        "blockquote" => "引用".into(),
+        "listItem" | "bulletList" | "orderedList" | "taskList" => "列表".into(),
+        "table" => "表格".into(),
+        "mathBlock" => "公式".into(),
+        "mermaid" => "Mermaid".into(),
+        "frontMatter" => "Front Matter".into(),
+        "" => "—".into(),
+        other => other.into(),
+    }
+}
+
 impl AppWindow {
     pub fn new(
         app: &adw::Application,
@@ -130,11 +161,52 @@ impl AppWindow {
         // space left below the tab bar.
         tab_view.set_vexpand(true);
         let tab_bar = adw::TabBar::builder().view(&tab_view).autohide(false).build();
+
+        // 状态栏:左(侧栏按钮+命令状态文本)+弹性+右(字数/块类型/位置/编码/换行/模式/缩放)。
+        let status_bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        status_bar.set_margin_start(10);
+        status_bar.set_margin_end(10);
+        status_bar.set_margin_top(3);
+        status_bar.set_margin_bottom(3);
+
+        let sidebar_toggle_button = gtk::Button::from_icon_name("sidebar-show-symbolic");
+        sidebar_toggle_button.set_tooltip_text(Some("显示/隐藏侧栏"));
+        sidebar_toggle_button.add_css_class("flat");
         let status_label = gtk::Label::builder()
             .halign(gtk::Align::Start)
-            .margin_start(8)
             .ellipsize(pango::EllipsizeMode::End)
             .build();
+        let status_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        status_spacer.set_hexpand(true);
+
+        let character_count_button = gtk::Button::new();
+        character_count_button.add_css_class("flat");
+        character_count_button.set_tooltip_text(Some("文档统计"));
+        let block_type_label = gtk::Label::default();
+        let position_label = gtk::Label::default();
+
+        let make_menu_button = |label: &str, tip: &str| {
+            gtk::MenuButton::builder()
+                .label(label)
+                .has_frame(false)
+                .tooltip_text(tip)
+                .build()
+        };
+        let encoding_button = make_menu_button("", "编码");
+        let newline_button = make_menu_button("", "换行符");
+        let mode_button = make_menu_button("可视化", "编辑模式");
+        let zoom_button = make_menu_button("100%", "设置缩放");
+
+        status_bar.append(&sidebar_toggle_button);
+        status_bar.append(&status_label);
+        status_bar.append(&status_spacer);
+        status_bar.append(&character_count_button);
+        status_bar.append(&block_type_label);
+        status_bar.append(&position_label);
+        status_bar.append(&encoding_button);
+        status_bar.append(&newline_button);
+        status_bar.append(&mode_button);
+        status_bar.append(&zoom_button);
 
         // 查找面板:宿主侧输入,向内核发 findText/findNext/findPrev/findClose。
         let find_search_bar = gtk::SearchBar::builder().show_close_button(true).build();
@@ -198,11 +270,7 @@ impl AppWindow {
         content.append(&header);
         content.append(&find_search_bar);
         content.append(&split);
-        let scrolled_status = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        scrolled_status.append(&status_label);
-        scrolled_status.set_margin_top(2);
-        scrolled_status.set_margin_bottom(2);
-        content.append(&scrolled_status);
+        content.append(&status_bar);
         window.set_content(Some(&content));
 
         let sidebar_for_handler = sidebar.clone();
@@ -213,6 +281,15 @@ impl AppWindow {
             tabs: RefCell::new(tab_view),
             tab_states: RefCell::new(Vec::new()),
             status_text: RefCell::new(status_label),
+            status_timeout: RefCell::new(None),
+            sidebar_toggle_button: RefCell::new(sidebar_toggle_button),
+            character_count_button: RefCell::new(character_count_button),
+            block_type_label: RefCell::new(block_type_label),
+            position_label: RefCell::new(position_label),
+            encoding_button: RefCell::new(encoding_button),
+            newline_button: RefCell::new(newline_button),
+            mode_button: RefCell::new(mode_button),
+            zoom_button: RefCell::new(zoom_button),
             settings,
             context_popover,
             sidebar,
@@ -267,6 +344,7 @@ impl AppWindow {
         this.wire_find_bar(&find_entry, &find_next, &find_prev, &find_close);
         this.install_actions(app, windows);
         this.wire_tab_view();
+        this.wire_status_bar();
         this.apply_shortcuts(app);
         this.follow_dark_mode();
         this
@@ -469,6 +547,7 @@ impl AppWindow {
             zoom: std::cell::Cell::new(1.0),
             source_mode: std::cell::Cell::new(false),
             frontend_ready_id: RefCell::new(None),
+            last_editor_status: RefCell::new(None),
         });
         self.tab_states.borrow_mut().push(state.clone());
         log::debug!("[create_tab] document_id={document_id} path={}", path.display());
@@ -492,12 +571,37 @@ impl AppWindow {
                 .recovered_markdown = recovered_markdown;
         }
         self.update_tab_title(&state);
+        self.refresh_status_bar_content(&state);
     }
 
     // ---- 内部 ----
 
     fn set_status(self: &Rc<Self>, text: &str) {
-        self.status_text.borrow().set_text(text);
+        let label = self.status_text.borrow();
+        let (visible, mode) = {
+            let bar = &self.settings.borrow().status_bar;
+            (
+                bar.command_status_visible,
+                bar.command_display_mode,
+            )
+        };
+        label.set_visible(visible && mode != StatusBarCommandDisplayMode::Hidden);
+        if !visible || mode == StatusBarCommandDisplayMode::Hidden {
+            return;
+        }
+        label.set_text(text);
+        if mode == StatusBarCommandDisplayMode::Temporary {
+            // 临时显示:3 秒后清空;新消息重置计时。
+            if let Some(old) = self.status_timeout.borrow_mut().take() {
+                old.remove();
+            }
+            let label = label.clone();
+            let timeout = glib::timeout_add_local_once(
+                std::time::Duration::from_millis(3_000),
+                move || label.set_text(""),
+            );
+            *self.status_timeout.borrow_mut() = Some(timeout);
+        }
     }
 
     fn send_after_ready(self: &Rc<Self>, state: &Rc<TabState>) {
@@ -744,6 +848,7 @@ impl AppWindow {
                     .and_then(|v| v.as_bool())
                 {
                     state.source_mode.set(source_mode);
+                    self.refresh_status_bar_content(&state);
                 }
             }
             _ => {}
@@ -946,12 +1051,81 @@ impl AppWindow {
         self.set_status(&format!("缩放 {:.0}%", clamped * 100.0));
     }
 
-    fn update_status_from_editor(self: &Rc<Self>, _state: &Rc<TabState>, message: &EditorMessage) {
+    fn update_status_from_editor(self: &Rc<Self>, state: &Rc<TabState>, message: &EditorMessage) {
         let payload = message.payload.clone().unwrap_or_default();
-        let words = payload.get("words").and_then(|v| v.as_i64()).unwrap_or(0);
+        // 缓存供统计对话框读取。
+        *state.last_editor_status.borrow_mut() = Some(payload.clone());
+        let character_count = payload
+            .get("characterCount")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         let line = payload.get("line").and_then(|v| v.as_i64()).unwrap_or(0);
         let column = payload.get("column").and_then(|v| v.as_i64()).unwrap_or(0);
-        self.set_status(&format!("字数 {words} · 行 {line} 列 {column}"));
+        let block_type = payload
+            .get("blockType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        self.character_count_button
+            .borrow()
+            .set_label(&format!("{character_count} 字符"));
+        self.block_type_label
+            .borrow()
+            .set_text(&block_type_display_name(block_type));
+        self.position_label
+            .borrow()
+            .set_text(&format!("行 {line} 列 {column}"));
+        self.refresh_status_bar_content(state);
+    }
+
+    /// 文档统计对话框(对齐 macOS showStatistics 的字段)。
+    fn show_statistics_dialog(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let Some(stats) = state.last_editor_status.borrow().clone() else {
+            self.set_status("尚未加载编辑器状态");
+            return;
+        };
+        let field = |key: &str| -> i64 {
+            stats
+                .get(key)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
+        };
+        let dialog = gtk::Dialog::builder()
+            .title("文档统计")
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(320)
+            .build();
+        dialog.add_button("关闭", gtk::ResponseType::Close);
+        let area = dialog.content_area();
+        let grid = gtk::Grid::new();
+        grid.set_row_spacing(8);
+        grid.set_column_spacing(16);
+        grid.set_margin_top(12);
+        grid.set_margin_bottom(12);
+        grid.set_margin_start(16);
+        grid.set_margin_end(16);
+        let rows = [
+            ("字符数", field("characterCount")),
+            ("总字符数(含空格)", field("totalCharacterCount")),
+            ("非空白字符", field("nonWhitespaceCharacterCount")),
+            ("西文单词", field("westernWordCount")),
+            ("中日韩字符", field("cjkCharacterCount")),
+            ("段落", field("paragraphCount")),
+            ("代码行", field("codeLineCount")),
+            ("公式", field("formulaCount")),
+            ("选中字符", field("selectedCharacterCount")),
+        ];
+        for (index, (name, value)) in rows.iter().enumerate() {
+            let name_label = gtk::Label::builder().halign(gtk::Align::Start).build();
+            name_label.set_text(name);
+            let value_label = gtk::Label::builder().halign(gtk::Align::Start).build();
+            value_label.set_text(&value.to_string());
+            grid.attach(&name_label, 0, index as i32, 1, 1);
+            grid.attach(&value_label, 1, index as i32, 1, 1);
+        }
+        area.append(&grid);
+        dialog.present();
     }
 
     /// 显示查找面板;回车发 findText(query\tcase\twhole)。
@@ -1149,6 +1323,268 @@ impl AppWindow {
             }
             glib::Propagation::Proceed
         });
+    }
+
+    /// 状态栏接线:侧栏切换/统计对话框/编码/换行/模式/缩放菜单与可见性。
+    fn wire_status_bar(self: &Rc<Self>) {
+        // 侧栏切换按钮。
+        {
+            let this = self.clone();
+            self.sidebar_toggle_button
+                .borrow()
+                .connect_clicked(move |_| {
+                    let showing = this.split.shows_sidebar();
+                    this.split.set_show_sidebar(!showing);
+                });
+        }
+
+        // 字符数按钮 → 文档统计对话框。
+        {
+            let this = self.clone();
+            self.character_count_button
+                .borrow()
+                .connect_clicked(move |_| this.show_statistics_dialog());
+        }
+
+        // 编码菜单:桌面同款编码清单;选择后按编码重读当前文档并重载。
+        {
+            let button = self.encoding_button.borrow();
+            let this = self.clone();
+            let popover = gtk::Popover::new();
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let names = [
+                "UTF-8",
+                "UTF-16LE",
+                "GB18030",
+                "GBK",
+                "GB2312",
+                "Big5",
+                "Shift_JIS",
+                "US-ASCII",
+            ];
+            for name in names {
+                let item = gtk::Button::builder().label(name).has_frame(false).build();
+                let popover = popover.clone();
+                let this = this.clone();
+                item.connect_clicked(move |_| {
+                    popover.popdown();
+                    this.reload_active_tab_with_encoding(name.to_string());
+                });
+                list.append(&item);
+            }
+            list.set_margin_top(6);
+            list.set_margin_bottom(6);
+            popover.set_child(Some(&list));
+            button.set_popover(Some(&popover));
+        }
+
+        // 换行菜单:LF/CRLF/CR;切换写入 TabDocument(保存时生效)并置脏。
+        {
+            let button = self.newline_button.borrow();
+            let this = self.clone();
+            let popover = gtk::Popover::new();
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            for name in ["LF", "CRLF", "CR"] {
+                let item = gtk::Button::builder().label(name).has_frame(false).build();
+                let popover = popover.clone();
+                let this = this.clone();
+                item.connect_clicked(move |_| {
+                    popover.popdown();
+                    this.set_active_tab_newline(name);
+                });
+                list.append(&item);
+            }
+            list.set_margin_top(6);
+            list.set_margin_bottom(6);
+            popover.set_child(Some(&list));
+            button.set_popover(Some(&popover));
+        }
+
+        // 模式菜单:可视化/源码(toggleSourceMode;已在目标模式时不发)。
+        {
+            let button = self.mode_button.borrow();
+            let this = self.clone();
+            let popover = gtk::Popover::new();
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            for (label, wants_source) in [("可视化", false), ("源码", true)] {
+                let item = gtk::Button::builder().label(label).has_frame(false).build();
+                let popover = popover.clone();
+                let this = this.clone();
+                item.connect_clicked(move |_| {
+                    popover.popdown();
+                    if let Some(state) = this.active_tab() {
+                        if state.source_mode.get() != wants_source {
+                            this.send_command_to_active("toggleSourceMode");
+                        }
+                    }
+                });
+                list.append(&item);
+            }
+            list.set_margin_top(6);
+            list.set_margin_bottom(6);
+            popover.set_child(Some(&list));
+            button.set_popover(Some(&popover));
+        }
+
+        // 缩放菜单:桌面同款档位 + 重置。
+        {
+            let button = self.zoom_button.borrow();
+            let this = self.clone();
+            let popover = gtk::Popover::new();
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            for percent in [50, 75, 90, 100, 110, 125, 150, 175, 200] {
+                let item = gtk::Button::builder()
+                    .label(format!("{percent}%"))
+                    .has_frame(false)
+                    .build();
+                let popover = popover.clone();
+                let this = this.clone();
+                item.connect_clicked(move |_| {
+                    popover.popdown();
+                    this.set_active_tab_zoom(percent);
+                });
+                list.append(&item);
+            }
+            list.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+            let reset = gtk::Button::builder().label("重置为100%").has_frame(false).build();
+            let popover_for_reset = popover.clone();
+            let this = this.clone();
+            reset.connect_clicked(move |_| {
+                popover_for_reset.popdown();
+                this.set_active_tab_zoom(100);
+            });
+            list.append(&reset);
+            list.set_margin_top(6);
+            list.set_margin_bottom(6);
+            popover.set_child(Some(&list));
+            button.set_popover(Some(&popover));
+        }
+
+        self.refresh_status_bar_visibility();
+    }
+
+    /// 按设置刷新状态栏各控件可见性(设置对话框确定后与启动时调用)。
+    fn refresh_status_bar_visibility(self: &Rc<Self>) {
+        let bar = &self.settings.borrow().status_bar;
+        self.sidebar_toggle_button
+            .borrow()
+            .set_visible(bar.sidebar_toggle_visible);
+        self.status_text.borrow().set_visible(
+            bar.command_status_visible && bar.command_display_mode != StatusBarCommandDisplayMode::Hidden,
+        );
+        self.character_count_button
+            .borrow()
+            .set_visible(bar.word_count_visible);
+        self.block_type_label
+            .borrow()
+            .set_visible(bar.block_type_visible);
+        self.position_label.borrow().set_visible(bar.position_visible);
+        self.encoding_button.borrow().set_visible(bar.encoding_visible);
+        self.newline_button.borrow().set_visible(bar.new_line_visible);
+        self.mode_button.borrow().set_visible(bar.mode_toggle_visible);
+        self.zoom_button.borrow().set_visible(bar.zoom_visible);
+    }
+
+    /// 按指定编码重读当前标签文档并重载(loadDocument 原地刷新)。
+    fn reload_active_tab_with_encoding(self: &Rc<Self>, label: String) {
+        let Some(state) = self.active_tab() else { return };
+        let Some(path) = state.document.borrow().path.clone() else {
+            self.set_status("未命名文档无法切换编码");
+            return;
+        };
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let path_for_task = path.clone();
+            let snapshot = gio::spawn_blocking(move || {
+                crate::documents::store::read_document(&path_for_task)
+            })
+            .await;
+            let Ok(Ok(snapshot)) = snapshot else {
+                this.set_status("编码切换失败:无法读取文件");
+                return;
+            };
+            let encoding = encoding_rs::Encoding::for_label(label.as_bytes());
+            let Some(encoding) = encoding else {
+                this.set_status("未知编码");
+                return;
+            };
+            let (decoded, _, had_errors) = encoding.decode(&snapshot.bytes);
+            if had_errors {
+                this.set_status(&format!("用 {label} 解码存在有损字符"));
+            }
+            let decoded = decoded.into_owned();
+            {
+                let mut document = state.document.borrow_mut();
+                document.disk = snapshot;
+                document.encoding = crate::documents::controller::EncodingDecision {
+                    encoding,
+                    bom: false,
+                };
+                document.dirty = true;
+            }
+            this.update_tab_title(&state);
+            let markdown = decoded;
+            let document_id = state.document.borrow().document_id.clone();
+            let payload = serde_json::json!({
+                "markdown": markdown,
+                "documentType": state.document.borrow().document_type,
+                "readOnly": false,
+                "initialDirty": true,
+                "scrollTop": 0,
+                "restoreViewState": true,
+            });
+            state.webview.post_to_editor(&HostMessage::load_document(&document_id, payload));
+            this.refresh_status_bar_content(&state);
+        });
+    }
+
+    /// 换行符切换:写回 TabDocument(保存时经 apply_newline 生效)并置脏。
+    fn set_active_tab_newline(self: &Rc<Self>, name: &str) {
+        let Some(state) = self.active_tab() else { return };
+        let policy = match name {
+            "LF" => crate::documents::encoding::NewLinePolicy::Lf,
+            "CRLF" => crate::documents::encoding::NewLinePolicy::Crlf,
+            "CR" => crate::documents::encoding::NewLinePolicy::Cr,
+            _ => return,
+        };
+        state.document.borrow_mut().newline = policy;
+        state.document.borrow_mut().dirty = true;
+        self.update_tab_title(&state);
+        self.refresh_status_bar_content(&state);
+    }
+
+    /// 缩放:webview zoom level + 状态栏文本 + 设置持久化。
+    fn set_active_tab_zoom(self: &Rc<Self>, percent: i32) {
+        let Some(state) = self.active_tab() else { return };
+        let level = percent as f64 / 100.0;
+        state.zoom.set(level);
+        state.webview.set_zoom_level(level);
+        self.zoom_button
+            .borrow()
+            .set_label(&format!("{percent}%"));
+        {
+            let mut settings = self.settings.borrow_mut();
+            settings.zoom_percent = percent;
+        }
+        crate::app::persist_settings(&self.settings.borrow());
+    }
+
+    /// 刷新状态栏中依赖当前标签的文本(编码/换行/模式/缩放)。
+    fn refresh_status_bar_content(self: &Rc<Self>, state: &Rc<TabState>) {
+        let document = state.document.borrow();
+        let encoding_name = document.encoding.encoding.name();
+        self.encoding_button.borrow().set_label(encoding_name);
+        self.newline_button
+            .borrow()
+            .set_label(document.newline.as_str());
+        self.mode_button.borrow().set_label(if state.source_mode.get() {
+            "源码"
+        } else {
+            "可视化"
+        });
+        self.zoom_button
+            .borrow()
+            .set_label(&format!("{}%", (state.zoom.get() * 100.0).round() as i32));
     }
 
     fn install_actions(self: &Rc<Self>, app: &adw::Application, windows: Rc<RefCell<Vec<Rc<AppWindow>>>>) {
@@ -1508,13 +1944,17 @@ impl AppWindow {
         }
         let _ = &entries;
         dialog.content_area().append(&grid);
+        let status_bar_button = dialog.add_button("自定义状态栏…", gtk::ResponseType::Other(1));
+        status_bar_button.set_halign(gtk::Align::Start);
         dialog.add_button("保存", gtk::ResponseType::Apply);
         dialog.add_button(crate::l10n::tr(&self.lang, "关闭").unwrap_or_else(|| "关闭".into()).as_str(), gtk::ResponseType::Close);
 
         let this = self.clone();
         let entries_for_save = entries.iter().map(|(command, entry)| (command.clone(), entry.clone())).collect::<Vec<_>>();
         dialog.connect_response(move |dialog, response| {
-            if response == gtk::ResponseType::Apply {
+            if response == gtk::ResponseType::Other(1) {
+                this.show_status_bar_settings_dialog();
+            } else if response == gtk::ResponseType::Apply {
                 let mut settings = this.settings.borrow_mut();
                 settings.shortcuts.clear();
                 let mut table = crate::ui::shortcuts::default_table();
@@ -1540,6 +1980,113 @@ impl AppWindow {
             } else if response == gtk::ResponseType::Close || response == gtk::ResponseType::DeleteEvent {
                 dialog.close();
             }
+        });
+        dialog.present();
+    }
+
+    /// 「自定义状态栏」对话框:10 项显示开关 + 命令状态显示模式(对齐桌面)。
+    /// 确定写回 settings.status_bar 并立即刷新可见性;取消不保存。
+    #[allow(deprecated)]
+    fn show_status_bar_settings_dialog(self: &Rc<Self>) {
+        let dialog = gtk::Dialog::builder()
+            .title("自定义状态栏")
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(460)
+            .build();
+        dialog.add_button("取消", gtk::ResponseType::Cancel);
+        dialog.add_button("确定", gtk::ResponseType::Apply);
+
+        let grid = gtk::Grid::new();
+        grid.set_row_spacing(10);
+        grid.set_column_spacing(28);
+        grid.set_margin_top(12);
+        grid.set_margin_bottom(12);
+        grid.set_margin_start(16);
+        grid.set_margin_end(16);
+
+        let current = self.settings.borrow().status_bar.clone();
+        let make_check = |label: &str, on: bool| {
+            let check = gtk::CheckButton::with_label(label);
+            check.set_active(on);
+            check
+        };
+        let sidebar_toggle_check = make_check("显示侧栏切换按钮", current.sidebar_toggle_visible);
+        let command_status_check = make_check("显示命令状态", current.command_status_visible);
+        let word_count_check = make_check("显示字符数", current.word_count_visible);
+        let block_type_check = make_check("显示块类型", current.block_type_visible);
+        let position_check = make_check("显示光标位置", current.position_visible);
+        let encoding_check = make_check("显示编码", current.encoding_visible);
+        let new_line_check = make_check("显示换行符", current.new_line_visible);
+        let mode_toggle_check = make_check("显示源码/可视化切换", current.mode_toggle_visible);
+        let zoom_check = make_check("显示缩放比例", current.zoom_visible);
+
+        let command_mode_combo = gtk::ComboBoxText::new();
+        for title in ["始终显示", "临时显示", "隐藏"] {
+            command_mode_combo.append_text(title);
+        }
+        let mode_index = match current.command_display_mode {
+            StatusBarCommandDisplayMode::Always => 0,
+            StatusBarCommandDisplayMode::Temporary => 1,
+            StatusBarCommandDisplayMode::Hidden => 2,
+        };
+        command_mode_combo.set_active(Some(mode_index));
+        let command_mode_row = gtk::Label::builder()
+            .label("命令状态显示")
+            .halign(gtk::Align::Start)
+            .build();
+
+        let cells: [(&gtk::CheckButton, i32, i32); 9] = [
+            (&sidebar_toggle_check, 0, 0),
+            (&word_count_check, 1, 0),
+            (&command_status_check, 0, 1),
+            (&block_type_check, 1, 1),
+            (&position_check, 0, 2),
+            (&encoding_check, 1, 2),
+            (&new_line_check, 0, 3),
+            (&mode_toggle_check, 1, 3),
+            (&zoom_check, 0, 4),
+        ];
+        for (check, column, row) in cells {
+            check.set_halign(gtk::Align::Start);
+            grid.attach(check, column, row, 1, 1);
+        }
+        grid.attach(&command_mode_row, 0, 5, 1, 1);
+        grid.attach(&command_mode_combo, 1, 5, 1, 1);
+
+        dialog.content_area().append(&grid);
+
+        let this = self.clone();
+        let this = self.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response != gtk::ResponseType::Apply {
+                dialog.close();
+                return;
+            }
+            let mode = match command_mode_combo.active() {
+                Some(1) => StatusBarCommandDisplayMode::Temporary,
+                Some(2) => StatusBarCommandDisplayMode::Hidden,
+                _ => StatusBarCommandDisplayMode::Always,
+            };
+            {
+                let mut settings = this.settings.borrow_mut();
+                settings.status_bar = crate::data::settings::StatusBarSettings {
+                    sidebar_toggle_visible: sidebar_toggle_check.is_active(),
+                    command_status_visible: command_status_check.is_active(),
+                    command_display_mode: mode,
+                    word_count_visible: word_count_check.is_active(),
+                    block_type_visible: block_type_check.is_active(),
+                    position_visible: position_check.is_active(),
+                    encoding_visible: encoding_check.is_active(),
+                    new_line_visible: new_line_check.is_active(),
+                    mode_toggle_visible: mode_toggle_check.is_active(),
+                    zoom_visible: zoom_check.is_active(),
+                };
+                crate::app::persist_settings(&settings);
+            }
+            this.refresh_status_bar_visibility();
+            this.set_status("状态栏设置已保存");
+            dialog.close();
         });
         dialog.present();
     }

@@ -14,6 +14,71 @@ pub struct RecentEntry {
     pub at: i64,
 }
 
+/// 状态栏命令状态的显示策略(对齐 macOS StatusBarCommandDisplayMode)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StatusBarCommandDisplayMode {
+    Always,
+    Temporary,
+    Hidden,
+}
+
+/// 状态栏自定义设置(对齐 macOS StatusBarSettings 的 10 项开关)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct StatusBarSettings {
+    pub sidebar_toggle_visible: bool,
+    pub command_status_visible: bool,
+    pub command_display_mode: StatusBarCommandDisplayMode,
+    pub word_count_visible: bool,
+    pub block_type_visible: bool,
+    pub position_visible: bool,
+    pub encoding_visible: bool,
+    pub new_line_visible: bool,
+    pub mode_toggle_visible: bool,
+    pub zoom_visible: bool,
+}
+
+impl Default for StatusBarCommandDisplayMode {
+    fn default() -> Self {
+        Self::Always
+    }
+}
+
+impl Default for StatusBarSettings {
+    fn default() -> Self {
+        Self {
+            sidebar_toggle_visible: true,
+            command_status_visible: true,
+            command_display_mode: StatusBarCommandDisplayMode::Always,
+            word_count_visible: true,
+            block_type_visible: true,
+            position_visible: true,
+            encoding_visible: true,
+            new_line_visible: true,
+            mode_toggle_visible: true,
+            zoom_visible: true,
+        }
+    }
+}
+
+impl StatusBarSettings {
+    pub const fn all_on() -> Self {
+        Self {
+            sidebar_toggle_visible: true,
+            command_status_visible: true,
+            command_display_mode: StatusBarCommandDisplayMode::Always,
+            word_count_visible: true,
+            block_type_visible: true,
+            position_visible: true,
+            encoding_visible: true,
+            new_line_visible: true,
+            mode_toggle_visible: true,
+            zoom_visible: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AppSettings {
@@ -41,6 +106,8 @@ pub struct AppSettings {
     pub shortcuts: std::collections::HashMap<String, String>,
     pub recent_files: Vec<RecentEntry>,
     pub recent_folders: Vec<RecentEntry>,
+    /// 状态栏自定义(对齐 macOS StatusBarSettings)。
+    pub status_bar: StatusBarSettings,
 }
 
 impl AppSettings {
@@ -93,6 +160,7 @@ impl Default for AppSettings {
             shortcuts: Default::default(),
             recent_files: Vec::new(),
             recent_folders: Vec::new(),
+            status_bar: StatusBarSettings::all_on(),
         }
     }
 }
