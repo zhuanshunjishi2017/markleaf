@@ -1482,6 +1482,19 @@ describe('editor status synchronization', () => {
     expect(status.blockType).toBe('paragraph')
   })
 
+  it('updates Unicode word counts and cursor positions after editing one of several blocks', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = createEditor(element, '---\ntitle: ignored\n---\n\n汉 A😀\n\nhello café')
+    editors.push(editor)
+    const before = getEditorStatus(editor)
+    expect(before).toMatchObject({ totalCharacterCount: 15, nonWhitespaceCharacterCount: 12, westernWordCount: 3, cjkCharacterCount: 1 })
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' 界')
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1)
+    expect(getEditorStatus(editor)).toMatchObject({ totalCharacterCount: 17, nonWhitespaceCharacterCount: 13,
+      westernWordCount: 3, cjkCharacterCount: 2, line: 2, column: 13 })
+  })
+
   it('reports the current block and cursor line and column', () => {
     const element = document.createElement('div')
     document.body.append(element)

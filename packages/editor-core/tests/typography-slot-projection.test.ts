@@ -200,3 +200,25 @@ it('commitsHardBreakSegmentsOnlyAsAWholeParagraph', () => {
   expect(editor.view.dom.querySelector('p.markleaf-typography-v2')).not.toBeNull()
   expect(getMarkdown(editor)).toBe(before)
 })
+
+it('keeps CJK spacing equivalent to a fresh view across typing, mark changes, replacement and undo', () => {
+  const mount = document.createElement('div'); document.body.append(mount)
+  const editor = createEditor(mount, '中A文\n\n另B段')
+  cleanup.push(() => editor.destroy())
+  const spacing = (dom: HTMLElement) => [...dom.querySelectorAll('p')].map(p =>
+    [...p.querySelectorAll('.markleaf-cjk-autospace-space')].map(el => el.textContent))
+  const compare = () => {
+    const check = createEditor(document.createElement('div'), getMarkdown(editor))
+    try { expect(spacing(editor.view.dom)).toEqual(spacing(check.view.dom)) } finally { check.destroy() }
+  }
+  const sibling = mount.querySelectorAll('p')[1]!.querySelector('.markleaf-cjk-autospace-space')
+  editor.commands.insertContentAt(2, 'x中')
+  expect(mount.querySelectorAll('p')[1]!.querySelector('.markleaf-cjk-autospace-space')).toBe(sibling)
+  compare()
+  editor.chain().setTextSelection({ from: 2, to: 4 }).toggleCode().run()
+  compare()
+  editor.commands.undo()
+  compare()
+  editor.commands.setContent('新C句\n\n另B段', { contentType: 'markdown' })
+  compare()
+})

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createLayoutWork } from '../../typography/src/layout-work'
-import { createTypographyJob } from '../src/typography-job'
-import type { ProjectionSnapshot } from '@markleaf/editor-core'
+import { createTypographyJob } from '../src/typography/typography-job'
+import type { ProjectionSnapshot } from '../src/index'
 const snapshot: ProjectionSnapshot = { id: 'p', revision: 0, environmentKey: 'env', text: '中 文 中 文 中 文 中 文', width: 128,
   graphemeOffsets: Array.from({ length: 16 }, (_, i) => i), language: 'zh', direction: 'ltr', alignment: 'default',
   runs: [{ from: 0, to: 15, styleKey: 's', css: { 'font-size': '16px' } }], nodeFrom: 0, nodeTo: 17, segmentFrom: 1, segmentTo: 16, }

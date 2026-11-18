@@ -2,7 +2,7 @@ import '@markleaf/editor-core/styles.css'
 import { resolveNativeCapabilities, nativeImageResources } from './native-capabilities'
 import { setTableLayoutEnabled, clearAllTableLayouts } from '@markleaf/editor-core'
 import { handleMermaidImageExport } from './media-export-host'
-import { createTypographyCoordinator, type TypographyCoordinator } from './typography-coordinator'
+import { createTypographyCoordinator, type TypographyCoordinator } from '@markleaf/editor-core'
 import {
   Selection,
   createEditorInteractions,
@@ -335,6 +335,7 @@ document.addEventListener('focusout', () => window.setTimeout(updateCaretVisibil
 updateCaretVisibility()
 
 const interactions = createEditorInteractions({
+  singleTapToEditAtoms: isAndroidHost,
   mount: editorMount, getEditor: () => editor, enabled: () => !sourceMode && !readOnly,
   onMenu: (position, rect) => send('blockMenuRequested', { clientX: rect.left, clientY: rect.bottom + 10, position }),
   label: sharedEditorStrings('zh-Hans', hostCapabilities.primaryActivationModifier).blockHandleAria,
