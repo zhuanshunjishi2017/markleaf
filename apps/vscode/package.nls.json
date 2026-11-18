@@ -1,4 +1,5 @@
 {
+  "command.open": "MarkLeaf: Open Document",
   "command.exportDocument": "MarkLeaf: Export Document…",
   "command.exportPdf": "MarkLeaf: Export PDF…",
   "command.exportHtml": "MarkLeaf: Export HTML…",
@@ -6,5 +7,16 @@
   "command.print": "MarkLeaf: Print…",
   "command.exportLast": "MarkLeaf: Export with Last Settings",
   "config.exportBrowserPath": "Chrome/Edge executable path for PDF, images, preview and printing. Empty automatically finds an installed browser. No browser is downloaded.",
-  "config.typography": "MarkLeaf typography. Defaults to Web · Minimal; explicit user/workspace choices are preserved."
+  "config.typography": "MarkLeaf typography. Defaults to Web · Minimal; explicit user/workspace choices are preserved.",
+  "extension.description": "Read and edit Markdown visually with math, Mermaid and an outline. Compare changes in VS Code’s native text diff.",
+  "walkthrough.title": "Get started with MarkLeaf",
+  "walkthrough.description": "Open a document, edit Markdown and compare changes in VS Code.",
+  "walkthrough.open.title": "Open a document or a diff",
+  "walkthrough.open.description": "Open Markdown in MarkLeaf. Use MarkLeaf: Open Document for other readable files. Git comparisons open in the text diff editor.",
+  "walkthrough.format.title": "Tables, formulas and diagrams",
+  "walkthrough.format.description": "Set column widths in Format. Select a formula or diagram and click it again to edit its source. Use Export to save a selected diagram as SVG or 2× PNG.",
+  "walkthrough.settings.title": "Reading and source controls",
+  "walkthrough.settings.description": "Open the outline from View. Use the status bar for source, encoding, line endings and zoom.",
+  "config.adaptiveJustification": "Apply desktop adaptive justification to eligible paragraphs.",
+  "config.allowTableColumnResize": "Enable dragging and adjusting table column widths."
 }

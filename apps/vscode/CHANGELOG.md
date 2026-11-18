@@ -2,6 +2,15 @@
 
 All notable changes to the MarkLeaf VS Code extension are documented here.
 
+## [0.3.1] - 2026-11-19
+
+- Require VS Code 1.120 or newer for independent text diff associations.
+- Open Markdown aliases visually, keep other readable files in the text editor and preserve the active source diff.
+- Synchronize versioned text changes, finish delayed saves after IME composition, and retain outline state during edits.
+- Batch local image resolution and schedule formula rendering across frames.
+- Use the desktop menu groups and status bar for source, encoding, line endings and zoom. Add adaptive justification, table column sizing and single-diagram SVG or 2× PNG export.
+- Update the four-language guides, walkthrough and extension description. The default VSIX is `markleaf-vscode-0.3.1.vsix`, with extension ID `markleaf.markleaf`. A packaging-time publisher override uses that publisher's ID and a suffixed filename.
+
 ## [0.3.0] - 2026-10-08
 
 - Keep the outline sidebar and divider at the available viewport height, with independent scrolling for heading lists of any length.

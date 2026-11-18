@@ -5,7 +5,7 @@ export const defaultSettings = {
   defaultMode: 'edit' as 'edit' | 'read', fontSize: 16, maxWidth: 820, lineHeight: 1.75,
   typography: 'minimal' as typeof typographyStyles[number], colorTheme: 'vscode' as typeof colorThemes[number],
   fontFamily: '', sourceFontFamily: '', sourceFontSize: 14, cjkLanguage: 'zh-Hans',
-  cjkAutoSpacing: true, ignoreMaxWidth: false, showCodeHighlight: true, showBlockHandle: true,
+  cjkAutoSpacing: true, adaptiveJustification: false, allowTableColumnResize: true, ignoreMaxWidth: false, showCodeHighlight: true, showBlockHandle: true,
   focusMode: false, typewriterMode: false, showOutline: false, showStatusBar: true,
   zoom: 100, ctrlWheelZoom: true, autoHideScrollbars: true,
   autoConvertUnsafeEmphasis: true, exitBlockOnEmptyEnter: false, useShiftEnterHardBreak: true,

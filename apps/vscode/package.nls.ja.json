@@ -1,4 +1,5 @@
 {
+  "command.open": "MarkLeaf: ドキュメントを開く",
   "command.exportDocument": "MarkLeaf: 文書をエクスポート…",
   "command.exportPdf": "MarkLeaf: PDF をエクスポート…",
   "command.exportHtml": "MarkLeaf: HTML をエクスポート…",
@@ -6,5 +7,16 @@
   "command.print": "MarkLeaf: 印刷…",
   "command.exportLast": "MarkLeaf: 前回の設定でエクスポート",
   "config.exportBrowserPath": "PDF・画像・プレビュー・印刷に使用する Chrome/Edge 実行ファイルのパス。空欄ではインストール済みのブラウザーを検索します。ブラウザーはダウンロードしません。",
-  "config.typography": "MarkLeaf の組版。既定は Web · 極簡です。ユーザーやワークスペースで選択済みのスタイルは保持します。"
+  "config.typography": "MarkLeaf の組版。既定は Web · 極簡です。ユーザーやワークスペースで選択済みのスタイルは保持します。",
+  "extension.description": "VS Code で数式、Mermaid 図、アウトラインを含む Markdown をビジュアル編集し、変更箇所を標準のテキスト差分で確認できます。",
+  "walkthrough.title": "MarkLeaf を使い始める",
+  "walkthrough.description": "ファイルを開いて Markdown を編集し、VS Code で差分を確認します。",
+  "walkthrough.open.title": "ファイルと差分を開く",
+  "walkthrough.open.description": "Markdown は MarkLeaf で開きます。他のテキストは「MarkLeaf: ドキュメントを開く」で開けます。Git の比較は標準のテキスト差分で表示します。",
+  "walkthrough.format.title": "表・数式・図",
+  "walkthrough.format.description": "「書式」で列幅を調整できます。数式や図を選択してもう一度クリックするとソースを編集できます。「エクスポート」で選択した図を SVG または 2 倍解像度の PNG として保存できます。",
+  "walkthrough.settings.title": "閲覧とソース操作",
+  "walkthrough.settings.description": "「表示」からアウトラインを開けます。ステータスバーでソース、エンコード、改行コード、ズームを操作できます。",
+  "config.adaptiveJustification": "対象の段落でデスクトップ版と同じ自動両端揃えを使います。",
+  "config.allowTableColumnResize": "表の列幅をドラッグなどで調整できるようにします。"
 }

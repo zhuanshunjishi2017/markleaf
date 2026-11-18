@@ -1,4 +1,5 @@
 {
+  "command.open": "MarkLeaf: 打开文档",
   "command.exportDocument": "MarkLeaf: 导出文档…",
   "command.exportPdf": "MarkLeaf: 导出 PDF…",
   "command.exportHtml": "MarkLeaf: 导出 HTML…",
@@ -6,5 +7,16 @@
   "command.print": "MarkLeaf: 打印…",
   "command.exportLast": "MarkLeaf: 按上次设置导出",
   "config.exportBrowserPath": "PDF、图片、预览和打印使用的 Chrome/Edge 可执行文件路径。留空自动查找已安装浏览器，不下载浏览器。",
-  "config.typography": "MarkLeaf 排版，默认使用网页·极简；保留用户或工作区主动选择的样式。"
+  "config.typography": "MarkLeaf 排版，默认使用网页·极简；保留用户或工作区主动选择的样式。",
+  "extension.description": "在 VS Code 中可视化编辑 Markdown，阅读公式、Mermaid 图表与大纲，使用原生文本 diff 查看改动。",
+  "walkthrough.title": "开始使用 MarkLeaf",
+  "walkthrough.description": "打开文档、编辑 Markdown，并在 VS Code 中比较改动。",
+  "walkthrough.open.title": "打开文档与查看差异",
+  "walkthrough.open.description": "Markdown 默认使用 MarkLeaf。“MarkLeaf: 打开文档”也可打开其他可读文本。Git 比较默认使用原生文本 diff。",
+  "walkthrough.format.title": "表格、公式与图表",
+  "walkthrough.format.description": "在“格式”菜单调整列宽。选中公式或图表后再次点击可编辑源码。在“导出”菜单将选中的图表保存为 SVG 或 2× PNG。",
+  "walkthrough.settings.title": "阅读与源码操作",
+  "walkthrough.settings.description": "从“视图”打开大纲。底部状态栏提供源码、编码、换行符与缩放入口。",
+  "config.adaptiveJustification": "为适用段落启用桌面版自适应两端对齐。",
+  "config.allowTableColumnResize": "允许拖动和调整表格列宽。"
 }

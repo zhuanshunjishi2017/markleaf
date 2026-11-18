@@ -1,7 +1,9 @@
+import { chromeLabel, type ChromeLabel } from './vscode-chrome-strings'
 import type { Editor, OutlineHeading } from '@markleaf/editor-core'
 import { getDocumentOutline, getActiveOutlinePosition, scrollToOutlineHeading } from '@markleaf/editor-core'
 
 type OutlineItem = {
+  key: string
   heading: OutlineHeading
   parent?: OutlineItem
   children: OutlineItem[]
@@ -30,6 +32,7 @@ export function createOutlineView(editor: Editor, topInset: () => number) {
   const empty = element.querySelector<HTMLParagraphElement>('.outline-empty')!
   const locate = element.querySelector<HTMLButtonElement>('[data-outline-action="locate"]')!
   const events = new AbortController()
+  let language = 'zh-Hans'
   let outlineDocument: Editor['state']['doc'] | undefined
   let items: OutlineItem[] = []
   let byPosition = new Map<number, OutlineItem>()
@@ -83,7 +86,7 @@ export function createOutlineView(editor: Editor, topInset: () => number) {
       if (!item.row.hidden) visibleItems.push(item)
     }
     empty.hidden = visibleItems.length > 0
-    empty.textContent = items.length ? '没有匹配的标题' : '文档中没有标题'
+    empty.textContent = chromeLabel(items.length ? 'noMatch' : 'empty', language)
     setFocus(focusedItem && !focusedItem.row.hidden ? focusedItem : visibleItems.find(item => item.heading.position === activePosition) ?? visibleItems[0])
     paintCurrent(false)
   }
@@ -105,8 +108,29 @@ export function createOutlineView(editor: Editor, topInset: () => number) {
   function refresh(): void {
     if (element.hidden || outlineDocument === editor.state.doc) return
     outlineDocument = editor.state.doc
+    const headings = getDocumentOutline(editor)
+    if (headings.length === items.length && headings.every((h, i) => h.level === items[i]!.heading.level && h.text === items[i]!.heading.text)) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]!, heading = headings[i]!
+        if (item.heading.position !== heading.position) item.row.dataset.position = String(heading.position)
+        item.heading = heading
+      }
+      byPosition = new Map(items.map(item => [item.heading.position, item]))
+      activePosition = getActiveOutlinePosition(editor, 'cursor')
+      paintCurrent(false)
+      if (!items.length) render()
+      return
+    }
+    const collapsed = new Set(items.filter(item => !item.expanded).map(item => item.key))
+    const focusKey = focusedItem?.key
+    const hadFocus = list.contains(document.activeElement)
+    const occurrences = new Map<string, number>()
     const parents: OutlineItem[] = []
-    items = getDocumentOutline(editor).map(heading => {
+    items = headings.map(heading => {
+      const name = JSON.stringify([heading.level, heading.text])
+      const ordinal = occurrences.get(name) ?? 0
+      occurrences.set(name, ordinal + 1)
+      const key = name + ordinal
       while (parents.length && parents.at(-1)!.heading.level >= heading.level) parents.pop()
       const row = window.document.createElement('div')
       row.className = 'outline-item'
@@ -122,18 +146,19 @@ export function createOutlineView(editor: Editor, topInset: () => number) {
       label.className = 'outline-label'
       label.textContent = row.title
       row.append(arrow, label)
-      const item: OutlineItem = { heading, parent: parents.at(-1), depth: parents.length, children: [], expanded: true, row }
+      const item: OutlineItem = { key, heading, parent: parents.at(-1), depth: parents.length, children: [], expanded: !collapsed.has(key), row }
       item.parent?.children.push(item)
       parents.push(item)
       return item
     })
     byPosition = new Map(items.map(item => [item.heading.position, item]))
-    focusedItem = undefined
+    focusedItem = items.find(item => item.key === focusKey)
     currentItem = undefined
     pendingPosition = undefined
     activePosition = getActiveOutlinePosition(editor, 'cursor')
     list.replaceChildren(...items.map(item => item.row))
     render()
+    if (hadFocus) setFocus(focusedItem, true)
   }
 
   function revealCurrent(): void {
@@ -211,6 +236,20 @@ export function createOutlineView(editor: Editor, topInset: () => number) {
 
   return {
     element, refresh, updateCurrent,
+    setLanguage(value: string): void {
+      if (value === language) return
+      language = value
+      element.setAttribute('aria-label', chromeLabel('toggleOutline', language))
+      element.querySelector('strong')!.textContent = chromeLabel('toggleOutline', language)
+      for (const button of element.querySelectorAll<HTMLButtonElement>('[data-outline-action]')) {
+        button.textContent = button.title = chromeLabel(button.dataset.outlineAction as ChromeLabel, language)
+      }
+      search.placeholder = chromeLabel('search', language)
+      search.setAttribute('aria-label', search.placeholder)
+      list.setAttribute('aria-label', chromeLabel('toggleOutline', language))
+      element.querySelector('.outline-actions')!.setAttribute('aria-label', chromeLabel('toggleOutline', language))
+      render()
+    },
     setVisible(visible: boolean): void {
       const changed = element.hidden === visible
       element.hidden = !visible

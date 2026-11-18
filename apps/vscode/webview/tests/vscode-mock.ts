@@ -28,5 +28,9 @@ export const workspace = {
     createDirectory: vi.fn(async () => {}),
   },
 }
-export const window = { showQuickPick: vi.fn(), showInputBox: vi.fn(), showOpenDialog: vi.fn(), showSaveDialog: vi.fn() }
+export class TabInputTextDiff { constructor(readonly original: Uri, readonly modified: Uri) {} }
+export class TabInputText { constructor(readonly uri: Uri) {} }
+export class TabInputCustom { constructor(readonly uri: Uri, readonly viewType: string) {} }
+export const EndOfLine = { LF: 1, CRLF: 2 }
+export const window = { tabGroups: { activeTabGroup: { activeTab: undefined as { input: unknown } | undefined } }, showTextDocument: vi.fn(), showQuickPick: vi.fn(), showInputBox: vi.fn(), showOpenDialog: vi.fn(), showSaveDialog: vi.fn() }
 export const QuickPickItemKind = { Separator: -1 }

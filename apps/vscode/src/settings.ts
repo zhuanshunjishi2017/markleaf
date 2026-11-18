@@ -69,6 +69,7 @@ export async function pickPreferences(uri: vscode.Uri, extensionId: string): Pro
     { label: '字号…', key: 'fontSize', description: String(settings.fontSize) },
     ...([['showOutline', '大纲侧栏'], ['focusMode', '专注当前段落'], ['typewriterMode', '打字机滚动'],
       ['showCodeHighlight', '代码高亮'], ['showBlockHandle', '段落操作柄'], ['showStatusBar', '状态栏'],
+      ['adaptiveJustification', '自适应两端对齐'], ['allowTableColumnResize', '调整表格列宽'],
       ['cjkAutoSpacing', '中西文自动间距'], ['ignoreMaxWidth', '使用全部内容宽度']] as const)
       .map(([key, label]) => ({ label: `${settings[key] ? '$(check)' : '$(circle-large-outline)'} ${label}`, key })),
     { label: '全部 MarkLeaf 设置…' },

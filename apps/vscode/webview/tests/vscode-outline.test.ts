@@ -132,3 +132,16 @@ it('shows the empty-document state with no selectable heading', () => {
   expect(outline.element.querySelector<HTMLElement>('.outline-empty')!.hidden).toBe(false)
   expect(outline.element.querySelector<HTMLButtonElement>('[data-outline-action="locate"]')!.disabled).toBe(true)
 })
+
+it('retains collapsed rows and their keyboard focus across body and heading edits', () => {
+  const { editor, rows } = setup()
+  const root = rows()[0]!
+  root.querySelector<HTMLElement>('.outline-disclosure')!.click()
+  expect(root.getAttribute('aria-expanded')).toBe('false')
+  editor.commands.insertContentAt(editor.state.doc.content.size - 1, 'x')
+  expect(rows()[0]).toBe(root)
+  expect(root.getAttribute('aria-expanded')).toBe('false')
+  editor.commands.insertContentAt(editor.state.doc.content.size, { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'New' }] })
+  expect(rows()[0]?.getAttribute('aria-expanded')).toBe('false')
+  expect(rows().at(-1)?.title).toBe('New')
+})
