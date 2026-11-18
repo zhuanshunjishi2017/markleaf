@@ -58,10 +58,18 @@ impl Sidebar {
         header_box.append(&new_file_button);
         header_box.append(&open_folder_button);
         let search_entry = SearchEntry::new();
-        let tree_store = gtk::TreeStore::new(&[glib::Type::STRING, glib::Type::STRING]);
+        // 列:0 显示名,1 相对路径,2 图标名,3 字重(选中/标题层级视觉,对齐桌面)。
+        let tree_store = gtk::TreeStore::new(&[
+            glib::Type::STRING,
+            glib::Type::STRING,
+            glib::Type::STRING,
+            glib::Type::I32,
+        ]);
         let tree_view = gtk::TreeView::with_model(&tree_store);
         tree_view.set_headers_visible(false);
-        append_text_column(&tree_view, 0);
+        append_sidebar_column(&tree_view, 0, 2, 3);
+        tree_view.add_css_class("markleaf-tree");
+        install_sidebar_css();
 
         let workspace_page = gtk::Box::new(Orientation::Vertical, 4);
         workspace_page.append(&header_box);
@@ -72,14 +80,18 @@ impl Sidebar {
         workspace_page.append(&tree_scroll);
 
         // ---- 大纲页(列:显示文本 / position / 标题文本,后两者不渲染) ----
+        // 列:0 显示文本,1 position,2 标题文本,3 字重(一二级标题加粗)。
         let outline_store = gtk::TreeStore::new(&[
             glib::Type::STRING,
             glib::Type::STRING,
             glib::Type::STRING,
+            glib::Type::I32,
         ]);
         let outline_view = gtk::TreeView::with_model(&outline_store);
         outline_view.set_headers_visible(false);
-        append_text_column(&outline_view, 0);
+        append_sidebar_column(&outline_view, 0, -1, 3);
+        outline_view.add_css_class("markleaf-tree");
+        install_sidebar_css();
         let outline_scroll = ScrolledWindow::new();
         outline_scroll.set_vexpand(true);
         outline_scroll.set_child(Some(&outline_view));
@@ -93,7 +105,9 @@ impl Sidebar {
         let search_store = gtk::TreeStore::new(&[glib::Type::STRING, glib::Type::STRING]);
         let search_view = gtk::TreeView::with_model(&search_store);
         search_view.set_headers_visible(false);
-        append_text_column(&search_view, 0);
+        append_sidebar_column(&search_view, 0, -1, 3);
+        search_view.add_css_class("markleaf-tree");
+        install_sidebar_css();
         let search_scroll = ScrolledWindow::new();
         search_scroll.set_vexpand(true);
         search_scroll.set_child(Some(&search_view));
@@ -296,6 +310,13 @@ impl Sidebar {
             let iter = self.tree_store.append(parent.as_ref());
             self.tree_store.set_value(&iter, 0, &entry.display_name().to_value());
             self.tree_store.set_value(&iter, 1, &entry.relative.to_value());
+            self.tree_store.set_value(
+                &iter,
+                2,
+                &sidebar_icon_name(entry.kind == crate::workspace::model::WorkspaceKind::Folder)
+                    .to_value(),
+            );
+            self.tree_store.set_value(&iter, 3, &400.to_value());
             if entry.kind == crate::workspace::model::WorkspaceKind::Folder {
                 parent_iters.push((entry.relative, iter));
             }
@@ -315,6 +336,8 @@ impl Sidebar {
             self.outline_store.set_value(&iter, 0, &format!("{}{}", "  ".repeat(level.saturating_sub(1) as usize), text).to_value());
             self.outline_store.set_value(&iter, 1, &position.to_string().to_value());
             self.outline_store.set_value(&iter, 2, &text.to_value());
+            self.outline_store
+                .set_value(&iter, 3, &outline_weight(level).to_value());
         }
         if !items.is_empty() {
             self.stack.set_visible_child_name("outline");
@@ -404,11 +427,64 @@ impl Sidebar {
     }
 }
 
+/// 侧栏列:可选图标 + 文本(行高 26 对齐桌面),文本字重随 weight 列。
 #[allow(deprecated)]
-fn append_text_column(view: &gtk::TreeView, column_id: i32) {
-    let cell = gtk::CellRendererText::new();
+fn append_sidebar_column(
+    view: &gtk::TreeView,
+    text_col: i32,
+    icon_col: i32,
+    weight_col: i32,
+) {
     let column = gtk::TreeViewColumn::new();
-    column.pack_start(&cell, true);
-    column.add_attribute(&cell, "text", column_id);
+    if icon_col >= 0 {
+        let icon = gtk::CellRendererPixbuf::new();
+        icon.set_padding(2, 0);
+        icon.set_icon_name(Some("text-x-generic-symbolic"));
+        column.pack_start(&icon, false);
+        column.add_attribute(&icon, "icon-name", icon_col);
+    }
+    let text = gtk::CellRendererText::new();
+    text.set_ypad(5);
+    column.pack_start(&text, true);
+    column.add_attribute(&text, "text", text_col);
+    column.add_attribute(&text, "weight", weight_col);
     view.append_column(&column);
+}
+
+/// 侧栏条目图标(文件夹/文档)。
+fn sidebar_icon_name(is_folder: bool) -> &'static str {
+    if is_folder {
+        "folder-symbolic"
+    } else {
+        "text-x-generic-symbolic"
+    }
+}
+
+/// 大纲标题字重:一二级 semibold,其余 regular(对齐桌面层级视觉)。
+fn outline_weight(level: i64) -> i32 {
+    if level <= 2 {
+        600
+    } else {
+        400
+    }
+}
+
+/// 侧栏视觉:透明背景(融入侧栏底色)、行文字 13px 对齐桌面行高与留白。
+/// 幂等:provider 只挂一次。
+fn install_sidebar_css() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let css = "
+            .markleaf-tree { background: transparent; }
+            .markleaf-tree treeview.view { background: transparent; }
+        ";
+        let provider = gtk::CssProvider::new();
+        provider.load_from_data(css);
+        gtk::style_context_add_provider_for_display(
+            &gtk::gdk::Display::default().expect("display"),
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    });
 }
