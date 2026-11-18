@@ -68,6 +68,8 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
+english.SlimRuntimeConflict=The selected folder contains MarkLeaf with a bundled .NET runtime. Use the matching with-runtime installer or select an empty folder.
+chinesesimplified.SlimRuntimeConflict=所选目录包含带 .NET 运行时的 MarkLeaf。请使用同架构的 with-runtime 安装包，或选择空目录。
 chinesesimplified.AssociateMarkdownFiles=关联 .md 文件
 chinesesimplified.AssociateTextFiles=关联 .txt 文件
 chinesesimplified.CreateDesktopShortcut=创建桌面快捷方式
@@ -113,33 +115,15 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppDisplayNam
 
 [Code]
 #if SelfContained == "0"
-function RejectSlimOverSelfContained(): Boolean;
+// The wizard has resolved the final directory here, including /DIR in silent installs.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
-  Result := FileExists(ExpandConstant('{app}\MarkLeaf.self-contained'))
-    or FileExists(ExpandConstant('{app}\hostfxr.dll'));
+  Result := '';
+  if FileExists(ExpandConstant('{app}\MarkLeaf.self-contained'))
+    or FileExists(ExpandConstant('{app}\hostfxr.dll')) then
+    Result := CustomMessage('SlimRuntimeConflict');
 end;
 #endif
-
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-
-  // Both installers intentionally share an application directory. A slim
-  // upgrade over a self-contained install would leave hostfxr.dll behind but
-  // replace runtimeconfig.json with a shared-framework version, producing an
-  // incomplete local .NET root that cannot start.
-#if SelfContained == "0"
-  if RejectSlimOverSelfContained() then
-  begin
-    SuppressibleMsgBox(
-      'This computer has MarkLeaf with the bundled .NET runtime. Install the matching with-runtime package; the slim package cannot upgrade it safely.',
-      mbError,
-      MB_OK,
-      IDOK);
-    Result := False;
-  end;
-#endif
-end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin

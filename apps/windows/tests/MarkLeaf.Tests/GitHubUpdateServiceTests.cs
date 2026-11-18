@@ -7,6 +7,16 @@ namespace MarkLeaf.Tests;
 public sealed class GitHubUpdateServiceTests
 {
     [TestMethod]
+    [DataRow("1.7.8")]
+    [DataRow("1.7.8.5")]
+    public void ReleaseDisplayAndSkipKeyPreserveTheRevision(string tag)
+    {
+        Assert.IsTrue(GitHubUpdateService.TryParseVersion(tag, out var version));
+        var release = new GitHubReleaseInfo(version, "42", "installer.exe", new Uri("https://example.invalid/installer.exe"));
+        Assert.AreEqual(tag, release.VersionText);
+    }
+
+    [TestMethod]
     [DataRow("1.4.0", 1, 4, 0)]
     [DataRow("v1.5.2", 1, 5, 2)]
     [DataRow("1.6.0-beta.1", 1, 6, 0)]
