@@ -9,13 +9,22 @@ use gtk::{Orientation, ScrolledWindow, SearchEntry, Stack};
 #[allow(deprecated)]
 use gtk::prelude::TreeModelExtManual;
 
-use crate::workspace::model::{scan_workspace, WorkspaceEntry};
+use crate::workspace::model::{scan_workspace, WorkspaceEntry, WorkspaceKind};
 use crate::workspace::search::{search_workspace, SearchMode, SearchHit};
 
 // TreeView/TreeStore 在 GTK4 已 deprecated(4.10 起)但仍完整可用;
 // M5 打磨迁 ColumnView/ListView(台账已记,当前优先功能闭环)。
 #[allow(deprecated)]
 type OpenPathHandler = Box<dyn Fn(&PathBuf)>;
+type ContextCommandHandler = Box<dyn Fn(&ContextTarget, &str, &str)>;
+
+/// 右键目标类别:工作区背景 / 文件夹 / 文件。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextTarget {
+    Root,
+    Folder(String),
+    File(String),
+}
 
 #[allow(deprecated)]
 pub struct Sidebar {
@@ -40,6 +49,14 @@ pub struct Sidebar {
     current_workspace_root: RefCell<Option<PathBuf>>,
     /// 实时搜索防抖定时器(输入停顿后触发文件名搜索)。
     search_debounce: RefCell<Option<glib::SourceId>>,
+    /// 工作区条目缓存(树/列表切换与排序重建数据源)。
+    cached_entries: RefCell<Vec<WorkspaceEntry>>,
+    /// 视图模式:false = 树状(默认),true = 列表(卡片)。
+    view_list_mode: std::cell::Cell<bool>,
+    /// 排序方向:true = 名称升序,false = 降序。
+    sort_ascending: std::cell::Cell<bool>,
+    /// 右键命令回调(目标 + 动作 id + 上下文相对路径)。
+    on_context_command: RefCell<ContextCommandHandler>,
 }
 
 use std::cell::RefCell;
@@ -140,6 +157,10 @@ impl Sidebar {
             on_open_path: RefCell::new(Box::new(|_| {})),
             current_workspace_root: RefCell::new(None),
             search_debounce: RefCell::new(None),
+            cached_entries: RefCell::new(Vec::new()),
+            view_list_mode: std::cell::Cell::new(false),
+            sort_ascending: std::cell::Cell::new(true),
+            on_context_command: RefCell::new(Box::new(|_, _, _| {})),
         });
 
         // 大纲双击 → 跳转(position + 标题文本交给窗口层;源码模式契约由窗口决定)。
@@ -255,6 +276,62 @@ impl Sidebar {
             });
         }
 
+        // 工作区右键菜单(button 3):文件夹行/文件行/背景三类(对齐桌面)。
+        {
+            let this_for_menu = this.clone();
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(3);
+            let view_for_controller = this_for_menu.tree_view.clone();
+            let view_for_signal = view_for_controller.clone();
+            gesture.connect_pressed(move |gesture, _n, x, y| {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                let view = view_for_signal.clone();
+                let (bin_x, bin_y) = view.convert_widget_to_bin_window_coords(x as i32, y as i32);
+                let path = view
+                    .path_at_pos(bin_x, bin_y)
+                    .and_then(|(path, _column, _cx, _cy)| path);
+                let root = this_for_menu.current_workspace_root.borrow().clone();
+                let Some(root_dir) = root else { return };
+                let target = match path.and_then(|p| {
+                    let store = &this_for_menu.tree_store;
+                    store
+                        .iter(&p)
+                        .map(|iter| store.get_value(&iter, 1).get::<String>().unwrap_or_default())
+                }) {
+                    Some(relative) if relative.is_empty() => ContextTarget::Root,
+                    Some(relative) => {
+                        let is_folder = this_for_menu
+                            .cached_entries
+                            .borrow()
+                            .iter()
+                            .any(|entry| entry.relative == relative && entry.kind == WorkspaceKind::Folder);
+                        if is_folder {
+                            ContextTarget::Folder(relative)
+                        } else {
+                            ContextTarget::File(relative)
+                        }
+                    }
+                    None => ContextTarget::Root,
+                };
+                let menu_box = this_for_menu.build_context_menu(&target);
+                let popover = gtk::Popover::new();
+                popover.set_has_arrow(false);
+                popover.set_pointing_to(Some(&gdk::Rectangle::new(
+                    x as i32,
+                    y as i32,
+                    1,
+                    1,
+                )));
+                popover.set_child(Some(&menu_box));
+                popover.set_parent(&view);
+                popover.connect_closed(move |popover| {
+                    popover.unparent();
+                });
+                popover.popup();
+            });
+            view_for_controller.add_controller(gesture);
+        }
+
         // 搜索结果双击 → 打开命中文件。
         {
             let store_for_hit = this.search_store.clone();
@@ -289,10 +366,71 @@ impl Sidebar {
         *self.current_workspace_root.borrow_mut() = root.clone();
         self.tree_store.clear();
         let Some(root_dir) = root else {
+            *self.cached_entries.borrow_mut() = Vec::new();
             self.stack.set_visible_child_name("workspace");
             return;
         };
-        let entries: Vec<WorkspaceEntry> = scan_workspace(&root_dir);
+        let mut entries = scan_workspace(&root_dir);
+        self.apply_sort(&mut entries);
+        *self.cached_entries.borrow_mut() = entries.clone();
+        self.rebuild_store(&entries);
+        self.stack.set_visible_child_name("workspace");
+    }
+
+    /// 按排序方向翻转条目顺序(目录始终在前)。
+    fn apply_sort(&self, entries: &mut [WorkspaceEntry]) {
+        let ascending = self.sort_ascending.get();
+        entries.sort_by(|a, b| {
+            let folder_a = a.kind == WorkspaceKind::Folder;
+            let folder_b = b.kind == WorkspaceKind::Folder;
+            folder_b
+                .cmp(&folder_a)
+                .then_with(|| {
+                    if ascending {
+                        a.relative.cmp(&b.relative)
+                    } else {
+                        b.relative.cmp(&a.relative)
+                    }
+                })
+        });
+    }
+
+    /// 依当前视图模式重建树内容(树状 = 层级;列表 = 扁平卡片)。
+    fn rebuild_store(&self, entries: &[WorkspaceEntry]) {
+        self.tree_store.clear();
+        if self.view_list_mode.get() {
+            for entry in entries {
+                if entry.kind == WorkspaceKind::Folder {
+                    continue;
+                }
+                let directory = entry
+                    .relative
+                    .rsplit_once('/')
+                    .map(|(head, _)| head.to_string())
+                    .unwrap_or_else(|| "·".into());
+                let time_text = if entry.modified > 0 {
+                    glib::DateTime::from_unix_local(entry.modified)
+                        .map(|d| {
+                            d.format("%Y-%m-%d %H:%M")
+                                .map(|s| s.to_string())
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    "—".into()
+                };
+                let preview = entry.preview.clone();
+                let markup = format!(
+                    "<b>{}</b>\n<small>{directory} · {time_text}</small>\n<small>{preview}</small>",
+                    entry.display_name()
+                );
+                let iter = self.tree_store.append(None);
+                self.tree_store.set_value(&iter, 0, &markup.to_value());
+                self.tree_store.set_value(&iter, 1, &entry.relative.to_value());
+                self.tree_store.set_value(&iter, 3, &400.to_value());
+            }
+            return;
+        }
         let mut parent_iters: Vec<(String, gtk::TreeIter)> = Vec::new();
         for entry in entries {
             let depth = entry.relative.matches('/').count();
@@ -308,20 +446,19 @@ impl Sidebar {
                 })
             };
             let iter = self.tree_store.append(parent.as_ref());
-            self.tree_store.set_value(&iter, 0, &entry.display_name().to_value());
+            let escaped = glib::markup_escape_text(entry.display_name());
+            self.tree_store.set_value(&iter, 0, &escaped.to_value());
             self.tree_store.set_value(&iter, 1, &entry.relative.to_value());
             self.tree_store.set_value(
                 &iter,
                 2,
-                &sidebar_icon_name(entry.kind == crate::workspace::model::WorkspaceKind::Folder)
-                    .to_value(),
+                &sidebar_icon_name(entry.kind == WorkspaceKind::Folder).to_value(),
             );
             self.tree_store.set_value(&iter, 3, &400.to_value());
-            if entry.kind == crate::workspace::model::WorkspaceKind::Folder {
-                parent_iters.push((entry.relative, iter));
+            if entry.kind == WorkspaceKind::Folder {
+                parent_iters.push((entry.relative.clone(), iter));
             }
         }
-        self.stack.set_visible_child_name("workspace");
     }
 
     /// 大纲刷新(outlineChanged 消息驱动)。position/标题文本存隐藏列,
@@ -410,6 +547,114 @@ impl Sidebar {
         }
     }
 
+
+    /// 右键菜单(对齐桌面三类结构);视图/排序类命令 sidebar 自消化,
+    /// 其余经 on_context_command 回调交窗口层(对话框/文件系统/剪贴板)。
+    fn build_context_menu(self: &Rc<Self>, target: &ContextTarget) -> gtk::Box {
+        let list = gtk::Box::new(Orientation::Vertical, 0);
+        list.set_margin_top(6);
+        list.set_margin_bottom(6);
+        list.set_margin_start(4);
+        list.set_margin_end(4);
+        let root_dir = self.current_workspace_root.borrow().clone();
+
+        let add_item = |menu_box: &gtk::Box, label: &str, action: &str, context_relative: &str| {
+            let item = gtk::Button::builder().label(label).has_frame(false).build();
+            item.set_halign(gtk::Align::Fill);
+            let menu_box_weak = menu_box.downgrade();
+            let sidebar = self.clone();
+            let action = action.to_string();
+            let context_relative = context_relative.to_string();
+            let target = target.clone();
+            item.connect_clicked(move |_| {
+                if let Some(menu_box) = menu_box_weak.upgrade() {
+                    if let Some(popover) = menu_box.parent().and_then(|parent| parent.downcast::<gtk::Popover>().ok()) {
+                        popover.popdown();
+                    }
+                }
+                // 视图/排序类:sidebar 自消化。
+                match action.as_str() {
+                    "switchTree" => {
+                        sidebar.view_list_mode.set(false);
+                        sidebar.refresh_entries();
+                    }
+                    "switchList" => {
+                        sidebar.view_list_mode.set(true);
+                        sidebar.refresh_entries();
+                    }
+                    "sortAsc" => {
+                        sidebar.sort_ascending.set(true);
+                        sidebar.refresh_entries();
+                    }
+                    "sortDesc" => {
+                        sidebar.sort_ascending.set(false);
+                        sidebar.refresh_entries();
+                    }
+                    _ => {
+                        (sidebar.on_context_command.borrow())(&target, &action, &context_relative);
+                    }
+                }
+            });
+            menu_box.append(&item);
+        };
+
+        match target {
+            ContextTarget::Folder(relative) => {
+                add_item(&list, "新建 Markdown 文档", "newMarkdown", relative);
+                add_item(&list, "新建纯文本文件", "newPlainText", relative);
+                add_item(&list, "新建文件夹", "newFolder", relative);
+                list.append(&gtk::Separator::new(Orientation::Horizontal));
+                add_item(&list, "复制文件夹路径", "copyPath", relative);
+                add_item(&list, "重命名…", "rename", relative);
+                add_item(&list, "删除", "delete", relative);
+            }
+            ContextTarget::File(relative) => {
+                add_item(&list, "打开", "open", relative);
+                add_item(&list, "复制文件路径", "copyPath", relative);
+                add_item(&list, "复制文件内容", "copyContent", relative);
+                list.append(&gtk::Separator::new(Orientation::Horizontal));
+                add_item(&list, "重命名…", "rename", relative);
+                add_item(&list, "删除", "delete", relative);
+            }
+            ContextTarget::Root => {
+                add_item(&list, "新建 Markdown 文档", "newMarkdown", "");
+                add_item(&list, "新建纯文本文件", "newPlainText", "");
+                add_item(&list, "新建文件夹…", "newFolder", "");
+                list.append(&gtk::Separator::new(Orientation::Horizontal));
+                add_item(&list, "树状视图", "switchTree", "");
+                add_item(&list, "列表视图", "switchList", "");
+                list.append(&gtk::Separator::new(Orientation::Horizontal));
+                add_item(&list, "按名称升序", "sortAsc", "");
+                add_item(&list, "按名称降序", "sortDesc", "");
+                list.append(&gtk::Separator::new(Orientation::Horizontal));
+                add_item(&list, "刷新工作区", "refresh", "");
+                if root_dir.is_some() {
+                    add_item(&list, "关闭工作区", "closeWorkspace", "");
+                }
+            }
+        }
+        list
+    }
+
+    /// 重扫当前工作区并按视图/排序重建(右键视图/排序/刷新命令的落点)。
+    fn refresh_entries(self: &Rc<Self>) {
+        let Some(root_dir) = self.current_workspace_root.borrow().clone() else {
+            return;
+        };
+        let mut entries = scan_workspace(&root_dir);
+        self.apply_sort(&mut entries);
+        *self.cached_entries.borrow_mut() = entries.clone();
+        self.rebuild_store(&entries);
+    }
+
+    /// 注入右键命令回调(窗口层)。
+    pub fn set_context_command_handler(
+        &self,
+        handler: impl Fn(&ContextTarget, &str, &str) + 'static,
+    ) {
+        *self.on_context_command.borrow_mut() = Box::new(handler);
+    }
+
     fn show_search_results(&self, hits: &[SearchHit], root_dir: &std::path::Path) {
         self.search_store.clear();
         for hit in hits {
@@ -446,7 +691,7 @@ fn append_sidebar_column(
     let text = gtk::CellRendererText::new();
     text.set_ypad(5);
     column.pack_start(&text, true);
-    column.add_attribute(&text, "text", text_col);
+    column.add_attribute(&text, "markup", text_col);
     column.add_attribute(&text, "weight", weight_col);
     view.append_column(&column);
 }

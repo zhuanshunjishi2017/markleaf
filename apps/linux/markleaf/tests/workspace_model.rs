@@ -47,6 +47,8 @@ fn entry_display_name_from_relative() {
     let entry = WorkspaceEntry {
         relative: "sub/d.md".into(),
         kind: WorkspaceKind::Markdown,
+        modified: 0,
+        preview: String::new(),
     };
     assert_eq!(entry.display_name(), "d.md");
 }

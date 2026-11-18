@@ -312,6 +312,15 @@ impl AppWindow {
                 this_for_open.open_document_in_tab(path);
             });
         }
+        // 工作区右键命令分派(文件系统变更/剪贴板/刷新/关闭)。
+        {
+            let this_for_ctx = this.clone();
+            sidebar_for_handler.set_context_command_handler(
+                move |target: &crate::ui::sidebar::ContextTarget, action, relative| {
+                    this_for_ctx.handle_workspace_context_command(target, action, relative);
+                },
+            );
+        }
         // 大纲双击 → 跳转。源码模式以标题文本为锚(scrollToSourceHeading,
         // 对齐 macOS/Windows/Android 契约):可视化大纲的 position 是
         // ProseMirror 偏移,比源码字符偏移小,直接当源码位置用会固定落在
@@ -1865,6 +1874,221 @@ impl AppWindow {
     }
 
     /// 保存全部:遍历标签逐个保存(无路径的未命名文档弹另存为)。
+    /// 工作区右键命令分派:文件系统变更走 mutation + 重扫;剪贴板/打开直达。
+    fn handle_workspace_context_command(
+        self: &Rc<Self>,
+        target: &crate::ui::sidebar::ContextTarget,
+        action: &str,
+        relative: &str,
+    ) {
+        let Some(root) = self.workspace_root.borrow().clone() else {
+            return;
+        };
+        let refresh = || {
+            self.sidebar.set_workspace_root(Some(root.clone()));
+        };
+        match action {
+            "open" => {
+                self.open_document_in_tab(&root.join(relative));
+            }
+            "newMarkdown" | "newPlainText" => {
+                self.prompt_new_workspace_file(&root, relative, action == "newMarkdown");
+            }
+            "newFolder" => {
+                self.prompt_new_workspace_folder(&root, relative);
+            }
+            "rename" => {
+                self.prompt_rename_entry(&root, relative);
+            }
+            "delete" => {
+                self.confirm_delete_entry(&root, relative);
+            }
+            "copyPath" => {
+                self.copy_text_to_clipboard(&root.join(relative).to_string_lossy());
+                self.set_status("路径已复制");
+            }
+            "copyContent" => match crate::workspace::mutation::read_text(&root, relative) {
+                Ok(text) => {
+                    self.copy_text_to_clipboard(&text);
+                    self.set_status("文件内容已复制");
+                }
+                Err(err) => self.set_status(&format!("读取失败:{err}")),
+            },
+            "refresh" => {
+                refresh();
+            }
+            "closeWorkspace" => {
+                self.sidebar.set_workspace_root(None);
+                *self.workspace_root.borrow_mut() = None;
+                *self.watcher.borrow_mut() = None;
+                self.set_status("已关闭工作区");
+            }
+            _ => {}
+        }
+    }
+
+    /// 文本写入系统剪贴板。
+    fn copy_text_to_clipboard(self: &Rc<Self>, text: &str) {
+        self.window
+            .clipboard()
+            .set_text(text);
+    }
+
+    /// 输入对话框(单行 Entry,确认回调拿到文本)。
+    fn prompt_text_input(
+        self: &Rc<Self>,
+        title: &str,
+        initial: &str,
+        on_confirm: impl Fn(String) + 'static,
+    ) {
+        let dialog = gtk::Dialog::builder()
+            .title(title)
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(360)
+            .build();
+        dialog.add_button("取消", gtk::ResponseType::Cancel);
+        dialog.add_button("确定", gtk::ResponseType::Apply);
+        let entry = gtk::Entry::builder()
+            .text(initial)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(16)
+            .margin_end(16)
+            .build();
+        dialog.content_area().append(&entry);
+        let dialog_for_entry = dialog.clone();
+        let entry_for_activate = entry.clone();
+        entry.connect_activate(move |_| {
+            dialog_for_entry.response(gtk::ResponseType::Apply);
+        });
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Apply {
+                on_confirm(entry_for_activate.text().to_string());
+            }
+            dialog.close();
+        });
+        dialog.present();
+        entry.grab_focus();
+    }
+
+    /// 新建工作区文档(相对目录;空 = 根)。
+    fn prompt_new_workspace_file(self: &Rc<Self>, root: &Path, dir_relative: &str, markdown: bool) {
+        let root = root.to_path_buf();
+        let dir_relative = dir_relative.to_string();
+        let default_name = if markdown { "未命名.md" } else { "未命名.txt" };
+        let this = self.clone();
+        let dir_relative = dir_relative.to_string();
+        self.prompt_text_input("新建文件", default_name, move |name| {
+            if name.is_empty() {
+                return;
+            }
+            let relative_dir = if dir_relative.is_empty() {
+                String::new()
+            } else {
+                format!("{dir_relative}/")
+            };
+            let result = if markdown {
+                crate::workspace::mutation::create_markdown(&root, &relative_dir)
+            } else {
+                crate::workspace::mutation::create_plain_text(&root, &relative_dir)
+            };
+            match result {
+                Ok(path) => {
+                    this.sidebar.set_workspace_root(Some(root.to_path_buf()));
+                    this.open_document_in_tab(&path);
+                }
+                Err(err) => this.set_status(&format!("新建失败:{err}")),
+            }
+        });
+    }
+
+    /// 新建工作区文件夹(相对目录;空 = 根)。
+    fn prompt_new_workspace_folder(self: &Rc<Self>, root: &Path, dir_relative: &str) {
+        let root = root.to_path_buf();
+        let dir_relative = dir_relative.to_string();
+        let this = self.clone();
+        self.prompt_text_input("新建文件夹", "", move |name| {
+            if name.is_empty() {
+                return;
+            }
+            let relative_dir = if dir_relative.is_empty() {
+                String::new()
+            } else {
+                format!("{dir_relative}/")
+            };
+            match crate::workspace::mutation::create_folder(&root, &relative_dir, &name) {
+                Ok(_) => {
+                    this.sidebar.set_workspace_root(Some(root.to_path_buf()));
+                    this.set_status("文件夹已创建");
+                }
+                Err(err) => this.set_status(&format!("新建失败:{err}")),
+            }
+        });
+    }
+
+    /// 重命名工作区条目(Entry 预填当前名)。
+    fn prompt_rename_entry(self: &Rc<Self>, root: &Path, relative: &str) {
+        let root = root.to_path_buf();
+        let relative = relative.to_string();
+        let this = self.clone();
+        let current_name = relative
+            .rsplit('/')
+            .next()
+            .unwrap_or(relative.as_str())
+            .to_string();
+        let current_name_for_check = current_name.clone();
+        self.prompt_text_input("重命名", &current_name, move |name| {
+            if name.is_empty() || name == current_name_for_check {
+                return;
+            }
+            match crate::workspace::mutation::rename_entry(&root, &relative, &name) {
+                Ok(_) => {
+                    this.sidebar.set_workspace_root(Some(root.to_path_buf()));
+                    this.set_status("已重命名");
+                }
+                Err(err) => this.set_status(&format!("重命名失败:{err}")),
+            }
+        });
+    }
+
+    /// 删除确认(文件 remove/文件夹递归)。
+    fn confirm_delete_entry(self: &Rc<Self>, root: &Path, relative: &str) {
+        let root = root.to_path_buf();
+        let relative = relative.to_string();
+        let dialog = gtk::Dialog::builder()
+            .title("删除")
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(360)
+            .build();
+        dialog.add_button("取消", gtk::ResponseType::Cancel);
+        dialog.add_button("删除", gtk::ResponseType::Apply);
+        let label = gtk::Label::builder()
+            .label(format!("确定删除 {relative}?\n文件夹将连同内容一起删除。"))
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(16)
+            .margin_end(16)
+            .build();
+        dialog.content_area().append(&label);
+        let this = self.clone();
+        let relative = relative.to_string();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Apply {
+                match crate::workspace::mutation::delete_entry(&root, &relative) {
+                    Ok(_) => {
+                        this.sidebar.set_workspace_root(Some(root.to_path_buf()));
+                        this.set_status("已删除");
+                    }
+                    Err(err) => this.set_status(&format!("删除失败:{err}")),
+                }
+            }
+            dialog.close();
+        });
+        dialog.present();
+    }
+
     fn save_all_tabs(self: &Rc<Self>) {
         let states: Vec<_> = self.tab_states.borrow().clone();
         let mut saved = 0usize;
