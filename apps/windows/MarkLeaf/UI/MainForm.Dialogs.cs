@@ -143,17 +143,18 @@ internal sealed partial class MainForm
 
     private async Task ShowChangelogAsync()
     {
-        var changelogPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog", "changelog.md");
-        if (!File.Exists(changelogPath))
-        {
-            SetStatus(Loc.Get("changelog.notFound"));
-            return;
-        }
-
-        var cachePath = Path.Combine(_paths.DataDirectory, "Cache", "changelog.md");
+        string? cachePath;
         try
         {
-            File.Copy(changelogPath, cachePath, overwrite: true);
+            cachePath = ChangelogResource.PrepareCachedPath(
+                Path.Combine(AppContext.BaseDirectory, "Resources", "Changelog"),
+                Path.Combine(_paths.DataDirectory, "Cache"),
+                _settings.General.UiLanguage);
+            if (cachePath is null)
+            {
+                SetStatus(Loc.Get("changelog.notFound"));
+                return;
+            }
         }
         catch
         {
