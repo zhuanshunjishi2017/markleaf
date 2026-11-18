@@ -126,6 +126,9 @@ impl AppWindow {
             .build();
 
         let tab_view = adw::TabView::new();
+        // WebKit can report a zero minimum height; give the active page the
+        // space left below the tab bar.
+        tab_view.set_vexpand(true);
         let tab_bar = adw::TabBar::builder().view(&tab_view).autohide(false).build();
         let status_label = gtk::Label::builder()
             .halign(gtk::Align::Start)
