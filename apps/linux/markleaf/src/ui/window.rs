@@ -1497,14 +1497,20 @@ impl AppWindow {
 
         self.refresh_status_bar_visibility();
 
-        // 拖拽分隔条 → 记忆宽度到设置(关闭时统一写盘)。
+        // 拖拽分隔条 → 钳制最小宽度 + 记忆宽度到设置(关闭时统一写盘)。
+        // GTK 对 Paned 拖拽不强制 child minimum,这里显式钳制。
         {
             let settings_for_width = self.settings.clone();
             self.paned.connect_position_notify(move |paned| {
                 let position = paned.position();
-                if position > 0 {
-                    settings_for_width.borrow_mut().sidebar_width = position;
+                if position == 0 {
+                    return; // 隐藏态(宽度记忆切换)不干预。
                 }
+                if position < 220 {
+                    paned.set_position(220);
+                    return;
+                }
+                settings_for_width.borrow_mut().sidebar_width = position;
             });
         }
     }
