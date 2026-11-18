@@ -173,7 +173,7 @@ fn restored_session() -> Option<SessionManifest> {
 
 /// 启动恢复:发现 .recovery.json → 每条弹恢复/丢弃对话框。
 /// 恢复 = 打开原文件并以恢复内容载入(脏);丢弃 = 删除快照。
-fn prompt_recovered_documents(window: &Rc<AppWindow>) {
+pub fn prompt_recovered_documents(window: &Rc<AppWindow>) {
     let entries = crate::data::recovery::list_recovery(&recovered_dir());
     // 串行队列:一个弹窗关闭后再 present 下一个。并行弹窗全部模态叠在
     // 同一坐标,点掉顶层立刻露出下一个一模一样的,看起来像按钮无反应。

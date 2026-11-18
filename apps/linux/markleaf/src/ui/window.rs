@@ -345,6 +345,7 @@ impl AppWindow {
         this.install_actions(app, windows);
         this.wire_tab_view();
         this.wire_status_bar();
+        this.install_command_action();
         this.apply_shortcuts(app);
         this.follow_dark_mode();
         this
@@ -1463,6 +1464,20 @@ impl AppWindow {
         self.refresh_status_bar_visibility();
     }
 
+    /// 注册纯内核命令的统一入口(win.command::<id>):command_router 按桌面
+    /// 路由表分派,Passthrough 直达内核,Host 走 dispatch_host_command。
+    fn install_command_action(self: &Rc<Self>) {
+        let this = self.clone();
+        let command_action = gio::SimpleAction::new("command", Some(glib::VariantTy::STRING));
+        command_action.connect_activate(move |_, parameter| {
+            let command = parameter.and_then(|v| v.str()).unwrap_or("");
+            if !command.is_empty() {
+                this.dispatch_command(command);
+            }
+        });
+        self.window.add_action(&command_action);
+    }
+
     /// 按设置刷新状态栏各控件可见性(设置对话框确定后与启动时调用)。
     fn refresh_status_bar_visibility(self: &Rc<Self>) {
         let bar = &self.settings.borrow().status_bar;
@@ -1832,6 +1847,45 @@ impl AppWindow {
         }
     }
 
+    /// 保存全部:遍历标签逐个保存(无路径的未命名文档弹另存为)。
+    fn save_all_tabs(self: &Rc<Self>) {
+        let states: Vec<_> = self.tab_states.borrow().clone();
+        let mut saved = 0usize;
+        for state in &states {
+            if state.document.borrow().dirty {
+                self.save_tab(state);
+                saved += 1;
+            }
+        }
+        self.set_status(&format!("已保存 {saved} 个文档"));
+    }
+
+    /// 关于对话框(版本/平台;对齐桌面 showAbout 的信息子集)。
+    fn show_about_dialog(self: &Rc<Self>) {
+        let dialog = gtk::Dialog::builder()
+            .title("关于 MarkLeaf")
+            .transient_for(&self.window)
+            .modal(true)
+            .default_width(360)
+            .build();
+        dialog.add_button("关闭", gtk::ResponseType::Close);
+        let about_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        about_box.set_margin_top(20);
+        about_box.set_margin_bottom(20);
+        about_box.set_margin_start(24);
+        about_box.set_margin_end(24);
+        let name_label = gtk::Label::new(None);
+        name_label.set_markup("<big><b>MarkLeaf</b></big>");
+        let version_label = gtk::Label::new(Some(&format!(
+            "版本 {} · Linux (GTK4 + WebKitGTK)",
+            env!("CARGO_PKG_VERSION")
+        )));
+        about_box.append(&name_label);
+        about_box.append(&version_label);
+        dialog.content_area().append(&about_box);
+        dialog.present();
+    }
+
     fn save_active_tab_as(self: &Rc<Self>) {
         if let Some(state) = self.active_tab() {
             self.run_save_as_dialog(&state);
@@ -1862,7 +1916,14 @@ impl AppWindow {
         match id {
             "open" => self.run_open_dialog(),
             "save" => self.save_active_tab(),
+            "saveAll" => self.save_all_tabs(),
             "saveAs" => self.save_active_tab_as(),
+            "toggleSidebar" => {
+                let showing = self.split.shows_sidebar();
+                self.split.set_show_sidebar(!showing);
+            }
+            "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),
+            "showAbout" => self.show_about_dialog(),
             "sourceMode" => self.send_command_to_active("toggleSourceMode"),
             "find" => self.show_find_bar(),
             "showPreferences" => self.show_preferences_dialog(),
