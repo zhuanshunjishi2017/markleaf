@@ -1,6 +1,7 @@
 // GtkApplication 装配:单实例、文件打开、会话恢复/保存、设置持久化。
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -50,6 +51,8 @@ pub fn run() -> glib::ExitCode {
 
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).try_init();
 
+    ensure_desktop_integration();
+
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
@@ -64,6 +67,7 @@ pub fn run() -> glib::ExitCode {
         let settings = settings.clone();
         let context = context.clone();
         app.connect_startup(move |_app| {
+            gtk::Window::set_default_icon_name("markleaf");
             *settings.borrow_mut() = load_settings(&settings_path());
             let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor");
             *context.borrow_mut() = Some(build_context(&resources));
@@ -229,6 +233,77 @@ fn entry_markdown_of(document_id: &str, dir: &std::path::Path) -> String {
 
 pub fn persist_settings(settings: &AppSettings) {
     let _ = save_settings(&settings_path(), settings);
+}
+
+/// 桌面集成(开发跑法免安装):把 resources/icon 的多尺寸图标装进用户
+/// hicolor theme,并把 .desktop 写入用户 applications 目录(Exec 指向当前
+/// 二进制,任务栏/启动器即可显示图标并可固定启动)。幂等:已存在则跳过。
+fn ensure_desktop_integration() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Ok(home) = std::env::var("HOME") else {
+        return;
+    };
+    let icon_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/icon");
+    let hicolor = PathBuf::from(home.clone()).join(".local/share/icons/hicolor");
+
+    let sizes = [
+        ("16x16", "16"),
+        ("24x24", "24"),
+        ("32x32", "32"),
+        ("48x48", "48"),
+        ("64x64", "64"),
+        ("128x128", "128"),
+        ("256x256", "256"),
+        ("512x512", "512"),
+        ("scalable", "1024"),
+    ];
+    let mut installed = false;
+    for (dir_size, file_size) in sizes {
+        let source = icon_root.join(format!("markleaf-{file_size}.png"));
+        let Ok(bytes) = fs::read(&source) else {
+            continue;
+        };
+        let target_dir = hicolor.join(format!("{dir_size}/apps"));
+        if fs::create_dir_all(&target_dir).is_err() {
+            continue;
+        }
+        let target = target_dir.join("markleaf.png");
+        match fs::read(&target) {
+            Ok(existing) if existing == bytes => {}
+            _ => {
+                if fs::write(&target, bytes).is_ok() {
+                    installed = true;
+                }
+            }
+        }
+    }
+
+    let desktop_target = PathBuf::from(home.clone())
+        .join(".local/share/applications/com.markleaf.MarkLeaf.desktop");
+    let desktop_source =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/icon/com.markleaf.MarkLeaf.desktop");
+    if let Ok(template) = fs::read_to_string(&desktop_source) {
+        let exe_line = format!("Exec={}", exe.display());
+        let rendered = template
+            .lines()
+            .map(|line| if line.starts_with("Exec=") { exe_line.as_str() } else { line })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let needs_write = fs::read_to_string(&desktop_target)
+            .map(|existing| existing != rendered)
+            .unwrap_or(true);
+        if needs_write && fs::write(&desktop_target, rendered).is_ok() {
+            installed = true;
+        }
+    }
+
+    if installed {
+        // 刷新 icon theme 缓存(失败不致命;GTK 会在 theme 目录变化后自行重扫)。
+        let _ = fs::create_dir_all(PathBuf::from(&home).join(".local/share/applications"));
+        eprintln!("[desktop] 已安装 MarkLeaf 图标与 .desktop 到用户目录");
+    }
 }
 
 /// 默认快捷键表 + 设置中的自定义映射(供窗口注册加速键)。

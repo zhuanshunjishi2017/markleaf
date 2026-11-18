@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MarkLeaf
+Comment=Markdown 编辑器
+Exec=markleaf
+Icon=markleaf
+Terminal=false
+Categories=Office;TextEditor;Utility;
+StartupWMClass=markleaf
