@@ -108,6 +108,8 @@ pub struct AppSettings {
     pub recent_folders: Vec<RecentEntry>,
     /// 状态栏自定义(对齐 macOS StatusBarSettings)。
     pub status_bar: StatusBarSettings,
+    /// 侧栏宽度(px;Paned 分隔条可拖拽调整)。
+    pub sidebar_width: i32,
 }
 
 impl AppSettings {
@@ -161,6 +163,7 @@ impl Default for AppSettings {
             recent_files: Vec::new(),
             recent_folders: Vec::new(),
             status_bar: StatusBarSettings::all_on(),
+            sidebar_width: 280,
         }
     }
 }

@@ -108,7 +108,9 @@ pub struct AppWindow {
     context_popover: PopoverMenu,
 
     sidebar: Rc<super::sidebar::Sidebar>,
-    split: adw::OverlaySplitView,
+    paned: gtk::Paned,
+    /// 侧栏显示时记忆的宽度(隐藏切换用)。
+    sidebar_width_memory: std::cell::Cell<i32>,
     /// 界面语言(设置显式值或 glib locale 解析)。
     lang: String,
     /// 工作区根(供 watcher 重扫)。
@@ -258,23 +260,22 @@ impl AppWindow {
         let tab_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         tab_box.append(&tab_bar);
         tab_box.append(&tab_view);
-        let split = adw::OverlaySplitView::builder()
-            .sidebar(&sidebar.root)
-            .content(&tab_box)
-            .collapsed(false)
-            .show_sidebar(true)
-            .min_sidebar_width(260.0)
-            .build();
+        // Paned 分隔条可拖拽调整侧栏宽度(OverlaySplitView 不支持)。
+        let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
+        paned.set_start_child(Some(&sidebar.root));
+        paned.set_end_child(Some(&tab_box));
+        paned.set_position(settings.borrow().sidebar_width.clamp(220, 800));
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&header);
         content.append(&find_search_bar);
-        content.append(&split);
+        content.append(&paned);
         content.append(&status_bar);
         window.set_content(Some(&content));
 
         let sidebar_for_handler = sidebar.clone();
 
+        let initial_sidebar_width = settings.borrow().sidebar_width.clamp(220, 800);
         let this = Rc::new(Self {
             window,
             context: context.clone(),
@@ -293,7 +294,8 @@ impl AppWindow {
             settings,
             context_popover,
             sidebar,
-            split: split.clone(),
+            paned: paned.clone(),
+            sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
             lang,
             workspace_root: RefCell::new(None),
             watcher: RefCell::new(None),
@@ -1360,8 +1362,14 @@ impl AppWindow {
             self.sidebar_toggle_button
                 .borrow()
                 .connect_clicked(move |_| {
-                    let showing = this.split.shows_sidebar();
-                    this.split.set_show_sidebar(!showing);
+                    let current = this.paned.position();
+                    if current > 0 {
+                        this.sidebar_width_memory.set(current);
+                        this.paned.set_position(0);
+                    } else {
+                        this.paned
+                            .set_position(this.sidebar_width_memory.get().max(220));
+                    }
                 });
         }
 
@@ -1488,6 +1496,17 @@ impl AppWindow {
         }
 
         self.refresh_status_bar_visibility();
+
+        // 拖拽分隔条 → 记忆宽度到设置(关闭时统一写盘)。
+        {
+            let settings_for_width = self.settings.clone();
+            self.paned.connect_position_notify(move |paned| {
+                let position = paned.position();
+                if position > 0 {
+                    settings_for_width.borrow_mut().sidebar_width = position;
+                }
+            });
+        }
     }
 
     /// 注册纯内核命令的统一入口(win.command::<id>):command_router 按桌面
@@ -1745,11 +1764,19 @@ impl AppWindow {
         app.set_accels_for_action("win.toggleSidebar", &["<Control>backslash"]);
 
         // 侧栏开关动作。
-        let split_ref = RefCell::new(self.split.clone());
+        let paned_ref = RefCell::new(self.paned.clone());
+        let memory_ref = RefCell::new(self.sidebar_width_memory.clone());
         let toggle_sidebar_action = gio::SimpleAction::new("toggleSidebar", None);
         toggle_sidebar_action.connect_activate(move |_, _| {
-            let split = split_ref.borrow();
-            split.set_show_sidebar(!split.shows_sidebar());
+            let paned = paned_ref.borrow();
+            let memory = memory_ref.borrow();
+            let current = paned.position();
+            if current > 0 {
+                memory.set(current);
+                paned.set_position(0);
+            } else {
+                paned.set_position(memory.get().max(220));
+            }
         });
         self.window.add_action(&toggle_sidebar_action);
 
@@ -2160,8 +2187,13 @@ impl AppWindow {
             "saveAll" => self.save_all_tabs(),
             "saveAs" => self.save_active_tab_as(),
             "toggleSidebar" => {
-                let showing = self.split.shows_sidebar();
-                self.split.set_show_sidebar(!showing);
+                let current = self.paned.position();
+                if current > 0 {
+                    self.sidebar_width_memory.set(current);
+                    self.paned.set_position(0);
+                } else {
+                    self.paned.set_position(self.sidebar_width_memory.get().max(220));
+                }
             }
             "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),
             "showAbout" => self.show_about_dialog(),
