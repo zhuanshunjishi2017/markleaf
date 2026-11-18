@@ -66,14 +66,7 @@ impl Sidebar {
     pub fn new() -> Rc<Self> {
         let stack = Stack::new();
 
-        // ---- 工作区页:头部快捷按钮 + 搜索框 + 树 ----
-        let header_box = gtk::Box::new(Orientation::Horizontal, 4);
-        let new_file_button = gtk::Button::from_icon_name("document-new-symbolic");
-        new_file_button.set_tooltip_text(Some("新建 Markdown 文档"));
-        let open_folder_button = gtk::Button::from_icon_name("folder-open-symbolic");
-        open_folder_button.set_tooltip_text(Some("打开文件夹"));
-        header_box.append(&new_file_button);
-        header_box.append(&open_folder_button);
+        // ---- 工作区页:搜索框 + 树 ----
         let search_entry = SearchEntry::new();
         // 列:0 显示名,1 相对路径,2 图标名,3 字重(选中/标题层级视觉,对齐桌面)。
         let tree_store = gtk::TreeStore::new(&[
@@ -89,7 +82,6 @@ impl Sidebar {
         install_sidebar_css();
 
         let workspace_page = gtk::Box::new(Orientation::Vertical, 4);
-        workspace_page.append(&header_box);
         workspace_page.append(&search_entry);
         let tree_scroll = ScrolledWindow::new();
         tree_scroll.set_vexpand(true);
@@ -118,6 +110,30 @@ impl Sidebar {
         stack.add_titled(&workspace_page, Some("workspace"), "工作区");
         stack.add_titled(&outline_page, Some("outline"), "大纲");
 
+        // 头部:StackSwitcher(工作区/大纲)+ 新建按钮,对齐 macOS 侧栏头部。
+        let switcher = gtk::StackSwitcher::new();
+        switcher.set_stack(Some(&stack));
+        switcher.set_halign(gtk::Align::Fill);
+        switcher.set_hexpand(true);
+
+        let new_file_button = gtk::Button::from_icon_name("list-add-symbolic");
+        new_file_button.set_tooltip_text(Some("新建 Markdown 文档"));
+        new_file_button.add_css_class("flat");
+
+        let header = gtk::Box::new(Orientation::Horizontal, 8);
+        header.append(&switcher);
+        header.append(&new_file_button);
+
+        // 空态页:暂未打开工作区(含打开文件夹按钮)。
+        let empty_state = gtk::Box::new(Orientation::Vertical, 10);
+        empty_state.set_valign(gtk::Align::Center);
+        empty_state.set_halign(gtk::Align::Center);
+        let empty_label = gtk::Label::new(Some("暂未打开工作区"));
+        let open_folder_button = gtk::Button::with_label("打开文件夹");
+        empty_state.append(&empty_label);
+        empty_state.append(&open_folder_button);
+
+
         // ---- 搜索结果页(有结果时推到前台) ----
         let search_store = gtk::TreeStore::new(&[glib::Type::STRING, glib::Type::STRING]);
         let search_view = gtk::TreeView::with_model(&search_store);
@@ -128,10 +144,8 @@ impl Sidebar {
         let search_scroll = ScrolledWindow::new();
         search_scroll.set_vexpand(true);
         search_scroll.set_child(Some(&search_view));
-        stack.add_titled(&search_scroll, Some("search"), "搜索结果");
-
-        let switcher = gtk::StackSwitcher::new();
-        switcher.set_stack(Some(&stack));
+        stack.add_named(&search_scroll, Some("search"));
+        stack.add_named(&empty_state, Some("empty"));
 
         let root = gtk::Box::new(Orientation::Vertical, 6);
         root.set_margin_top(6);
@@ -140,7 +154,8 @@ impl Sidebar {
         // 固定侧栏宽度:不设的话页签组会把自然宽度撑到约 1/3 窗口(实机验收反馈)。
         root.set_size_request(280, -1);
         root.set_hexpand(false);
-        root.append(&switcher);
+        root.append(&header);
+        root.append(&search_entry);
         root.append(&stack);
 
         let this = Rc::new(Self {
@@ -204,12 +219,16 @@ impl Sidebar {
             });
         }
 
-        // 头部按钮:转发窗口的 win.* action(新建文档守卫/打开文件夹对话框在窗口层)。
+        // 新建按钮(tab 行右侧)转发 win.newMarkdown。
         {
             let new_for_click = new_file_button.clone();
             new_file_button.connect_clicked(move |_| {
                 let _ = new_for_click.activate_action("win.newMarkdown", None);
             });
+        }
+
+        // 空态「打开文件夹」按钮转发 win.openFolder。
+        {
             let folder_for_click = open_folder_button.clone();
             open_folder_button.connect_clicked(move |_| {
                 let _ = folder_for_click.activate_action("win.openFolder", None);
@@ -246,7 +265,12 @@ impl Sidebar {
                 }
                 if query.is_empty() {
                     sidebar_for_debounce.search_store.clear();
-                    sidebar_for_debounce.stack.set_visible_child_name("workspace");
+                    let has_workspace = sidebar_for_debounce.current_workspace_root.borrow().is_some();
+                    sidebar_for_debounce.stack.set_visible_child_name(if has_workspace {
+                        "workspace"
+                    } else {
+                        "empty"
+                    });
                     return;
                 }
                 let entry_for_task = entry_for_debounce.clone();
@@ -365,9 +389,11 @@ impl Sidebar {
     pub fn set_workspace_root(self: &Rc<Self>, root: Option<PathBuf>) {
         *self.current_workspace_root.borrow_mut() = root.clone();
         self.tree_store.clear();
+        // 搜索框可用性联动(macOS syncSearchAvailability)。
+        self.search_entry.set_sensitive(root.is_some());
         let Some(root_dir) = root else {
             *self.cached_entries.borrow_mut() = Vec::new();
-            self.stack.set_visible_child_name("workspace");
+            self.stack.set_visible_child_name("empty");
             return;
         };
         let mut entries = scan_workspace(&root_dir);
