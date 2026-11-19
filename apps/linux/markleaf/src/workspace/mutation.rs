@@ -14,7 +14,7 @@ fn resolve(root: &Path, relative: &str) -> PathBuf {
     root.join(safe)
 }
 
-fn unique_path(target: &Path) -> PathBuf {
+pub fn unique_path(target: &Path) -> PathBuf {
     // 同名去重:未命名.md → 未命名-2.md → 未命名-3.md(保留扩展名)。
     if !target.exists() {
         return target.to_path_buf();

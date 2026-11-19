@@ -1,6 +1,6 @@
 // 侧栏:工作区树(ListView)+ 搜索面板 + 大纲。
 // 数据源:workspace::model 扫描 / outlineChanged 消息;双击打开文档。
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gtk::glib;
@@ -61,6 +61,8 @@ pub struct Sidebar {
     sort_ascending: std::cell::Cell<bool>,
     /// 右键命令回调(目标 + 动作 id + 上下文相对路径)。
     on_context_command: RefCell<ContextCommandHandler>,
+    /// 树内拖拽移动回调(旧相对路径, 目标目录相对路径)。
+    on_move_entry: RefCell<Box<dyn Fn(&str, &str)>>,
 }
 
 use std::cell::RefCell;
@@ -185,6 +187,7 @@ impl Sidebar {
             view_list_mode: std::cell::Cell::new(false),
             sort_ascending: std::cell::Cell::new(true),
             on_context_command: RefCell::new(Box::new(|_, _, _| {})),
+            on_move_entry: RefCell::new(Box::new(|_, _| {})),
         });
 
         this.wire_outline_filter(&outline_filter_entry);
@@ -364,6 +367,129 @@ impl Sidebar {
                 popover.popup();
             });
             view_for_controller.add_controller(gesture);
+        }
+
+        // 树内拖拽移动(左键按下拖到目标文件夹/背景松开)。
+        {
+            let this_for_drag = this.clone();
+            let drag = gtk::GestureDrag::new();
+            drag.set_button(1);
+            let start: Rc<RefCell<Option<(f64, f64, String)>>> = Rc::new(RefCell::new(None));
+            let this_for_begin = this_for_drag.clone();
+            let start_for_begin = start.clone();
+            let this_for_end = this_for_drag.clone();
+            drag.connect_drag_begin(move |gesture, x, y| {
+                let view = &this_for_begin.tree_view;
+                let (bin_x, bin_y) = view.convert_widget_to_bin_window_coords(x as i32, y as i32);
+                let row_path = view.path_at_pos(bin_x, bin_y).and_then(|(path, _c, _x, _y)| path);
+                let relative = row_path.and_then(|path| {
+                    let store = &this_for_begin.tree_store;
+                    store.iter(&path).map(|iter| {
+                        store.get_value(&iter, 1).get::<String>().unwrap_or_default()
+                    })
+                });
+                let mut start_cell = start_for_begin.borrow_mut();
+                match relative {
+                    Some(relative) if !relative.is_empty() => {
+                        *start_cell = Some((x, y, relative));
+                    }
+                    _ => *start_cell = None,
+                }
+            });
+            drag.connect_drag_end(move |gesture, _x_drag, _y_drag| {
+                let Some((start_x, start_y, source_relative)) = start.borrow_mut().take() else {
+                    return;
+                };
+                let (end_x, end_y) = gesture.offset().unwrap_or((start_x, start_y));
+                let (end_x, end_y) = (start_x + end_x, start_y + end_y);
+                let view = &this_for_end.tree_view;
+                let (bin_x, bin_y) = view.convert_widget_to_bin_window_coords(end_x as i32, end_y as i32);
+                let row_path = view.path_at_pos(bin_x, bin_y).and_then(|(path, _c, _x, _y)| path);
+                // 落点:文件夹行 = 其下;文件行/背景 = 其所在目录(默认根)。
+                let target_dir = row_path.and_then(|path| {
+                    let store = &this_for_end.tree_store;
+                    store.iter(&path).map(|iter| {
+                        store.get_value(&iter, 1).get::<String>().unwrap_or_default()
+                    })
+                });
+                let name = source_relative.rsplit('/').next().unwrap_or(&source_relative);
+                let target_dir = match target_dir {
+                    Some(mut hit) => {
+                        let is_folder = this_for_end
+                            .cached_entries
+                            .borrow()
+                            .iter()
+                            .any(|entry| entry.relative == hit && entry.kind == WorkspaceKind::Folder);
+                        if is_folder {
+                            if source_relative == hit
+                                || hit.starts_with(&format!("{source_relative}/"))
+                            {
+                                return; // 拖进自身或自身子目录:忽略。
+                            }
+                            if let Some(parent) = source_relative.rsplit_once('/') {
+                                if parent.0 == hit {
+                                    return; // 同目录:忽略。
+                                }
+                            }
+                            hit
+                        } else {
+                            match hit.rsplit_once('/') {
+                                Some((parent, _)) => parent.to_string(),
+                                None => String::new(),
+                            }
+                        }
+                    }
+                    None => String::new(),
+                };
+                let same_dir = source_relative.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("")
+                    == target_dir;
+                if same_dir || source_relative == target_dir {
+                    return;
+                }
+                (this_for_end.on_move_entry.borrow())(&source_relative, &target_dir);
+                let _ = name;
+            });
+            this_for_drag.tree_view.add_controller(drag);
+        }
+
+        // 外部文件拖入(DropTarget):.md/.txt 拷贝到工作区根。
+        {
+            let this_for_drop = this.clone();
+            let this_for_drop_signal = this_for_drop.clone();
+            let drop_target = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
+            drop_target.connect_drop(move |drop_target, value, _x, _y| {
+                let Ok(file_list) = value.get::<gdk::FileList>() else {
+                    return false;
+                };
+                let Some(root_dir) = this_for_drop_signal.current_workspace_root.borrow().clone() else {
+                    return false;
+                };
+                let mut copied = 0usize;
+                for file in file_list.files() {
+                    let Some(path) = file.path() else { continue };
+                    let ext = path
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    if ext != "md" && ext != "markdown" && ext != "txt" {
+                        continue;
+                    }
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| format!("import.{ext}"));
+                    let target = crate::workspace::mutation::unique_path(&root_dir.join(&name));
+                    if std::fs::copy(&path, &target).is_ok() {
+                        copied += 1;
+                    }
+                }
+                if copied > 0 {
+                    sidebar_refresh_signal(&this_for_drop_signal);
+                    return true;
+                }
+                false
+            });
+            this_for_drop.tree_view.add_controller(drop_target);
         }
 
         // 搜索结果双击 → 打开命中文件。
@@ -711,6 +837,11 @@ impl Sidebar {
         self.rebuild_store(&entries);
     }
 
+    /// 注入树内拖拽移动回调(窗口层执行文件系统移动与标签同步)。
+    pub fn set_move_entry_handler(&self, handler: impl Fn(&str, &str) + 'static) {
+        *self.on_move_entry.borrow_mut() = Box::new(handler);
+    }
+
     /// 注入右键命令回调(窗口层)。
     pub fn set_context_command_handler(
         &self,
@@ -737,6 +868,20 @@ impl Sidebar {
 }
 
 /// 侧栏列:可选图标 + 文本(行高 26 对齐桌面),文本字重随 weight 列。
+/// 刷新信号:委托右键命令回调走窗口层 refresh(refresh 动作已在窗口实现)。
+fn sidebar_refresh_signal(sidebar: &Rc<Sidebar>) {
+    (sidebar.on_context_command.borrow())(
+        &ContextTarget::Root,
+        "refresh",
+        "",
+    );
+}
+
+/// 工作区根下唯一化文件名(复用 mutation::unique_path)。
+fn unique_in_dir(root: &Path, name: &str) -> PathBuf {
+    crate::workspace::mutation::unique_path(&root.join(name))
+}
+
 #[allow(deprecated)]
 fn append_sidebar_column(
     view: &gtk::TreeView,

@@ -327,6 +327,35 @@ impl AppWindow {
                 },
             );
         }
+        // 树内拖拽移动:文件系统移动 + 已打开标签同步(path/标题/恢复快照)。
+        {
+            let this_for_move = this.clone();
+            let root_for_move = this_for_move.workspace_root.clone();
+            sidebar_for_handler.set_move_entry_handler(move |source_relative, target_dir| {
+                let Some(root) = root_for_move.borrow().clone() else {
+                    return;
+                };
+                let name = source_relative.rsplit('/').next().unwrap_or(source_relative);
+                let new_relative = if target_dir.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{target_dir}/{name}")
+                };
+                let old_abs = root.join(source_relative);
+                match crate::workspace::mutation::rename_entry(&root, source_relative, &new_relative) {
+                    Ok(_) => {
+                        this_for_move.sidebar.set_workspace_root(Some(root.clone()));
+                        let new_abs = root.join(&new_relative);
+                        this_for_move.sync_tabs_after_rename(&old_abs, &new_abs);
+                        this_for_move.set_status(&format!(
+                            "已移动到 {}",
+                            if target_dir.is_empty() { "工作区根".into() } else { target_dir.to_string() }
+                        ));
+                    }
+                    Err(err) => this_for_move.set_status(&format!("移动失败:{err}")),
+                }
+            });
+        }
         // 大纲双击 → 跳转。源码模式以标题文本为锚(scrollToSourceHeading,
         // 对齐 macOS/Windows/Android 契约):可视化大纲的 position 是
         // ProseMirror 偏移,比源码字符偏移小,直接当源码位置用会固定落在
