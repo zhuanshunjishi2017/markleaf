@@ -30,13 +30,14 @@ const HOST_COMMANDS: &[&str] = &[
     "toggleFollowSystemTheme", "toggleCodeHighlight", "toggleEditorFocusMode",
     "toggleTypewriterMode",
     // 插入/对象宿主侧(选文件/URL/对话框)
+    // 数学/脚注/Mermaid/代码块切换等内核自带无参实现:透传(不在此集合)。
     "insertLink", "insertImage", "insertImageFromUrl", "changeImage",
-    "saveImageAs", "saveMermaidAs", "insertMathInline", "insertMathBlock",
-    "insertFootnote", "resetFootnoteLabel", "goToFootnoteReference",
-    "clearFootnoteReferences", "deleteFootnote", "insertMermaid", "editMermaid",
-    "rerenderMermaid", "rerenderAllMermaid", "deleteMermaid",
+    "saveImageAs", "saveMermaidAs",
+    "resetFootnoteLabel", "goToFootnoteReference",
+    "clearFootnoteReferences", "deleteFootnote", "editMermaid",
+    "rerenderMermaid", "deleteMermaid",
     "declareCodeLanguage", "copyCodeBlock", "editMath", "setMathNumber",
-    "editTableCaption", "editImageCaption", "toggleCodeBlock",
+    "editTableCaption", "editImageCaption",
     // 导出/打印
     "export", "exportWithLastSettings", "print",
     // 工作区/文件系统

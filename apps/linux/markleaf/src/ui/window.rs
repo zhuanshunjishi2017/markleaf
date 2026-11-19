@@ -796,10 +796,15 @@ impl AppWindow {
             EditorMessageType::BlockMenuRequested => self.show_context_menu(state, &message),
             EditorMessageType::CommandStateChanged => { /* M4:驱动按钮启用态 */ }
             EditorMessageType::OutlineChanged => {
+                // 内核发 {headings:[...]};兼容旧键 items。
                 let items = message
                     .payload
                     .as_ref()
-                    .and_then(|payload| payload.get("items"))
+                    .and_then(|payload| {
+                        payload
+                            .get("headings")
+                            .or_else(|| payload.get("items"))
+                    })
                     .and_then(|v| v.as_array())
                     .cloned()
                     .unwrap_or_default();
@@ -835,8 +840,13 @@ impl AppWindow {
                 });
             }
             EditorMessageType::OpenLink => {
-                if let Some(url) = message.payload.as_ref().and_then(|payload| payload.get("url")).and_then(|v| v.as_str()) {
-                    open_uri(url);
+                if let Some(url) = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("url"))
+                    .and_then(|v| v.as_str())
+                {
+                    self.open_link(url);
                 }
             }
             EditorMessageType::ZoomWheel => {
@@ -2339,6 +2349,131 @@ impl AppWindow {
         }
     }
 
+    /// 链接打开:http(s)/mailto 走系统浏览器;相对路径按文档目录解析,
+    /// Markdown/纯文本在工作区内打开为新标签,其余交给系统默认应用。
+    fn open_link(self: &Rc<Self>, url: &str) {
+        let lower = url.to_lowercase();
+        if lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("mailto:")
+        {
+            open_uri(url);
+            return;
+        }
+        // 相对/绝对本地路径:先按文档所在目录解析,再回退工作区目录。
+        let Some(state) = self.active_tab() else { return };
+        let document_dir = state
+            .document
+            .borrow()
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        let workspace = self.workspace_root.borrow().clone();
+        let candidates = [
+            document_dir.as_ref().map(|d| d.join(url)),
+            workspace.as_ref().map(|w| w.join(url)),
+        ];
+        for candidate in candidates.iter().flatten() {
+            if candidate.is_file() {
+                let ext = candidate
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if ext == "md" || ext == "markdown" || ext == "txt" {
+                    self.open_document_in_tab(candidate);
+                } else {
+                    open_uri(&candidate.to_string_lossy());
+                }
+                return;
+            }
+        }
+        open_uri(url);
+    }
+
+    /// 本地图片插入:文件对话框选择 → 拷贝到文档目录 assets/ →
+    /// 发 insertImage(相对路径 + 提示文本)命令(对齐 macOS copyToAssets)。
+    fn insert_local_image(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let Some(document_path) = state.document.borrow().path.clone() else {
+            self.set_status("请先将文档保存到磁盘后再插入图片");
+            return;
+        };
+        let dialog = gtk::FileDialog::new();
+        let this = self.clone();
+        dialog.open(Some(&self.window), None::<&gio::Cancellable>, move |result| {
+            let Ok(file) = result else { return };
+            let Some(source) = file.path() else { return };
+            let Some(target) = this.copy_image_to_assets(&document_path, &source) else {
+                return;
+            };
+            let Some(relative) = target
+                .strip_prefix(
+                    document_path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .as_deref()
+                        .unwrap_or(Path::new(".")),
+                )
+                .map(|p| p.to_string_lossy().into_owned())
+                .ok()
+            else {
+                return;
+            };
+            let Some(state) = this.active_tab() else { return };
+            let document_id = state.document.borrow().document_id.clone();
+            state.webview.post_to_editor(&HostMessage::command_with_request(
+                &document_id,
+                0,
+                serde_json::json!({ "command": "insertImage", "text": format!("{relative}\n图片") }),
+                None,
+            ));
+            this.set_status("图片已插入文档");
+        });
+    }
+
+    /// 拷贝图片到文档同目录 assets/ 下,返回目标路径(无法定位文档目录时
+    /// 返回 None 并提示)。
+    fn copy_image_to_assets(
+        self: &Rc<Self>,
+        document_path: &Path,
+        source: &Path,
+    ) -> Option<PathBuf> {
+        let assets_dir = document_path.parent()?.join("assets");
+        let _ = std::fs::create_dir_all(&assets_dir);
+        let file_name = source
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| format!("image-{}", glib::uuid_string_random()));
+        let mut target = assets_dir.join(&file_name);
+        let mut index = 2;
+        while target.exists() {
+            let stem = Path::new(&file_name)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let ext = source
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            target = assets_dir.join(format!("{stem}-{index}{ext}"));
+            index += 1;
+        }
+        match std::fs::copy(source, &target) {
+            Ok(_) => Some(target),
+            Err(err) => {
+                self.set_status(&format!("复制图片失败:{err}"));
+                None
+            }
+        }
+    }
+
+    /// WebKit 原生编辑命令(剪切/拷贝/粘贴):作用于编辑器当前选区,
+    /// 与 macOS 转发第一响应者的剪贴板行为等价。
+    fn exec_editing_command(self: &Rc<Self>, command: &str) {
+        let Some(state) = self.active_tab() else { return };
+        state.webview.widget().execute_editing_command(command);
+    }
+
     fn send_command_to_active(self: &Rc<Self>, command: &str) {
         if let Some(state) = self.active_tab() {
             let document_id = state.document.borrow().document_id.clone();
@@ -2385,12 +2520,28 @@ impl AppWindow {
             }
             // 声明代码语言:弹语言选择对话框(对齐桌面 declareCodeBlockLanguage)。
             "declareCodeLanguage" => self.show_code_language_dialog(),
+            // 本地图片:文件对话框选择后拷入文档目录 assets 并插入相对引用。
+            "insertImage" => self.insert_local_image(),
+            "insertImageFromUrl" => {
+                self.set_status("从互联网插入图片在 Linux 版尚未支持");
+            }
             // macOS 将菜单 id rotateImage 映射为内核 rotateImageClockwise(M1 审计顺延项)。
             "rotateImage" => self.send_command_to_active("rotateImageClockwise"),
             "undo" | "redo" | "toggleBold" | "toggleItalic" | "toggleUnderline" | "toggleStrike"
             | "toggleHighlight" | "toggleBlockquote" | "promoteHeading" | "demoteHeading"
             | "selectAll" | "exitCode" | "insertTable" | "insertHorizontalRule"
             | "insertLineBefore" | "insertLineAfter" | "clearFormat" | "setParagraph" => {
+                self.send_command_to_active(id)
+            }
+            // 剪贴板:WebKit 原生编辑命令(作用于编辑器选区)。
+            "cut" => self.exec_editing_command("cut"),
+            "copy" => self.exec_editing_command("copy"),
+            "paste" => self.exec_editing_command("paste"),
+            "pastePlainText" => self.exec_editing_command("paste-plain-text"),
+            // 插入类命令内核自带无参实现:透传。
+            "toggleCodeBlock" | "insertMathInline" | "insertMathBlock" | "insertMermaid"
+            | "insertFootnote" | "showFrontMatter" | "rerenderAllMermaid" | "formatPainter"
+            | "formatCodeBlock" | "duplicateParagraph" | "deleteParagraph" => {
                 self.send_command_to_active(id)
             }
             // Linux 首发未映射的宿主命令:显式提示,不静默。
