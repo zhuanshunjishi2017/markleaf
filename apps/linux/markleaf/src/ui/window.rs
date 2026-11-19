@@ -88,6 +88,11 @@ impl Default for TabDocument {
     }
 }
 
+struct SidebarAnimation {
+    source: glib::SourceId,
+    opening: bool,
+}
+
 pub struct AppWindow {
     window: adw::ApplicationWindow,
     context: WebContext,
@@ -115,8 +120,7 @@ pub struct AppWindow {
     paned: gtk::Paned,
     /// 侧栏显示时记忆的宽度(隐藏切换用)。
     sidebar_width_memory: std::cell::Cell<i32>,
-    /// 侧栏开合动画进行中标志(钳制跳过用)。
-    sidebar_animating: std::cell::Cell<bool>,
+    sidebar_animation: RefCell<Option<SidebarAnimation>>,
     /// 界面语言(设置显式值或 glib locale 解析)。
     lang: String,
     /// 工作区根(供 watcher 重扫)。
@@ -302,7 +306,7 @@ impl AppWindow {
             sidebar,
             paned: paned.clone(),
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
-            sidebar_animating: std::cell::Cell::new(false),
+            sidebar_animation: RefCell::new(None),
             lang,
             workspace_root: RefCell::new(None),
             watcher: RefCell::new(None),
@@ -1601,16 +1605,7 @@ impl AppWindow {
             let this = self.clone();
             self.sidebar_toggle_button
                 .borrow()
-                .connect_clicked(move |_| {
-                    let current = this.paned.position();
-                    if current > 0 {
-                        this.sidebar_width_memory.set(current);
-                        this.paned.set_position(0);
-                    } else {
-                        this.paned
-                            .set_position(this.sidebar_width_memory.get().max(this.sidebar.min_width()));
-                    }
-                });
+                .connect_clicked(move |_| this.animate_sidebar_toggle());
         }
 
         // 字符数按钮 → 文档统计对话框。
@@ -1737,43 +1732,28 @@ impl AppWindow {
 
         self.refresh_status_bar_visibility();
 
-        // [临时诊断] 每 700ms 打印 Paned 位置与侧栏最小宽度。
-        {
-            let paned_log = self.paned.clone();
-            let root_log = self.sidebar.root.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(700), move || {
-                let position = paned_log.position();
-                let (root_min, _nat, _b1, _b2) =
-                    root_log.measure(gtk::Orientation::Horizontal, -1);
-                eprintln!("[sidebar-debug] paned.position={position} root_min={root_min}");
-                glib::ControlFlow::Continue
-            });
-        }
-
         // 拖拽分隔条 → 钳制最小宽度 + 记忆宽度到设置(关闭时统一写盘)。
         // GTK 对 Paned 拖拽不强制 child minimum(分配小于内容最小宽度时
         // 内容居中裁切、文案溢出窗口外),这里按内容实测最小宽度动态钳制。
         {
-            let settings_for_width = self.settings.clone();
-            let sidebar_for_clamp = self.sidebar.clone();
-            let animating_for_clamp = self.sidebar_animating.clone();
+            let window = Rc::downgrade(self);
             self.paned.connect_position_notify(move |paned| {
-                // 开合动画进行中跳过钳制(中间帧低于最小宽度属预期)。
-                if animating_for_clamp.get() {
+                let Some(window) = window.upgrade() else { return };
+                // 中间帧允许低于最小宽度，也不应保存为用户设置。
+                if window.sidebar_animation.borrow().is_some() {
                     return;
                 }
                 let position = paned.position();
                 if position == 0 {
                     return; // 隐藏态(宽度记忆切换)不干预。
                 }
-                let min_width = sidebar_for_clamp.min_width();
-                // 最大:520px 与编辑器保留区(paned-320)取小,再不低于最小。
-                let max_width = (paned.width() - 320).min(520).max(min_width);
-                if position != position.clamp(min_width, max_width) {
-                    paned.set_position(position.clamp(min_width, max_width));
+                let clamped = window.clamp_sidebar_width(position);
+                if position != clamped {
+                    paned.set_position(clamped);
                     return;
                 }
-                settings_for_width.borrow_mut().sidebar_width = position;
+                window.sidebar_width_memory.set(position);
+                window.settings.borrow_mut().sidebar_width = position;
             });
         }
     }
@@ -2250,41 +2230,56 @@ impl AppWindow {
         }
     }
 
-    /// 侧栏开合(带滑动动画):开 = 记忆宽度,关 = 0。
+    fn clamp_sidebar_width(&self, width: i32) -> i32 {
+        let min_width = self.sidebar.min_width();
+        let max_width = (self.paned.width() - 320).min(520).max(min_width);
+        width.clamp(min_width, max_width)
+    }
+
     fn animate_sidebar_toggle(self: &Rc<Self>) {
         let current = self.paned.position();
-        let target = if current > 0 {
-            self.sidebar_width_memory
-                .set(current.max(self.sidebar.min_width()));
-            0
+        let previous = self.sidebar_animation.borrow_mut().take();
+        let opening = if let Some(animation) = previous {
+            animation.source.remove();
+            !animation.opening
         } else {
-            self.sidebar_width_memory.get().max(self.sidebar.min_width())
+            if current > 0 {
+                self.sidebar_width_memory.set(self.clamp_sidebar_width(current));
+            }
+            current == 0
         };
-        // GTK 帧时钟在部分虚拟化环境(X11+Xwayland)只调度首尾帧,AdwAnimation
-        // 表现为瞬变。改用 timeout 插值(EaseOutCubic,180ms/12 步),不依赖帧时钟。
-        let steps = 12usize;
-        let start = current as f64;
-        let target_f = target as f64;
-        let paned_for_anim = self.paned.clone();
-        let animating_for_anim = self.sidebar_animating.clone();
-        let mut step = 0usize;
-        animating_for_anim.set(true);
-        let source = glib::timeout_add_local(
-            std::time::Duration::from_millis(15),
-            move || {
-                step += 1;
-                let t = (step as f64 / steps as f64).min(1.0);
-                let eased = 1.0 - (1.0 - t).powi(3);
-                paned_for_anim
-                    .set_position((start + (target_f - start) * eased).round() as i32);
-                if step >= steps {
-                    animating_for_anim.set(false);
-                    glib::ControlFlow::Break
-                } else {
-                    glib::ControlFlow::Continue
-                }
-            },
-        );
+        let target = if opening {
+            self.clamp_sidebar_width(self.sidebar_width_memory.get())
+        } else {
+            0
+        };
+        if current == target {
+            return;
+        }
+        if !self.paned.settings().is_gtk_enable_animations() {
+            self.paned.set_position(target);
+            return;
+        }
+
+        // 虚拟机中的帧时钟可能停顿，用主循环定时更新，并按实际耗时插值。
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let duration = Duration::from_millis(180);
+        let window = Rc::downgrade(self);
+        let source = glib::timeout_add_local(Duration::from_millis(15), move || {
+            let Some(window) = window.upgrade() else { return glib::ControlFlow::Break };
+            let progress = (start.elapsed().as_secs_f64() / duration.as_secs_f64()).min(1.0);
+            let eased = 1.0 - (1.0 - progress).powi(3);
+            let position = current as f64 + (target - current) as f64 * eased;
+            window.paned.set_position(position.round() as i32);
+            if progress >= 1.0 {
+                window.sidebar_animation.borrow_mut().take();
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+        self.sidebar_animation.replace(Some(SidebarAnimation { source, opening }));
     }
 
     /// 只读模式切换:内核 setReadOnly(1/0);状态写 TabDocument.read_only。
@@ -2730,15 +2725,7 @@ impl AppWindow {
             "save" => self.save_active_tab(),
             "saveAll" => self.save_all_tabs(),
             "saveAs" => self.save_active_tab_as(),
-            "toggleSidebar" => {
-                let current = self.paned.position();
-                if current > 0 {
-                    self.sidebar_width_memory.set(current.max(self.sidebar.min_width()));
-                    self.paned.set_position(0);
-                } else {
-                    self.paned.set_position(self.sidebar_width_memory.get().max(self.sidebar.min_width()));
-                }
-            }
+            "toggleSidebar" => self.animate_sidebar_toggle(),
             "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),
             "toggleReadOnlyMode" => self.toggle_read_only_mode(),
             "showAbout" => self.show_about_dialog(),
