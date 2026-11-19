@@ -115,6 +115,8 @@ pub struct AppWindow {
     paned: gtk::Paned,
     /// 侧栏显示时记忆的宽度(隐藏切换用)。
     sidebar_width_memory: std::cell::Cell<i32>,
+    /// 侧栏开合动画(保活至完成;新动画替换旧的)。
+    sidebar_animation: RefCell<Option<adw::TimedAnimation>>,
     /// 界面语言(设置显式值或 glib locale 解析)。
     lang: String,
     /// 工作区根(供 watcher 重扫)。
@@ -300,6 +302,7 @@ impl AppWindow {
             sidebar,
             paned: paned.clone(),
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
+            sidebar_animation: RefCell::new(None),
             lang,
             workspace_root: RefCell::new(None),
             watcher: RefCell::new(None),
@@ -2060,21 +2063,11 @@ impl AppWindow {
         app.set_accels_for_action("win.openFolder", &["<Control><Shift>o"]);
         app.set_accels_for_action("win.toggleSidebar", &["<Control>backslash"]);
 
-        // 侧栏开关动作。
-        let paned_ref = RefCell::new(self.paned.clone());
-        let memory_ref = RefCell::new(self.sidebar_width_memory.clone());
-        let sidebar_for_toggle = self.sidebar.clone();
+        // 侧栏开关动作(动画开合)。
+        let this_for_toggle = self.clone();
         let toggle_sidebar_action = gio::SimpleAction::new("toggleSidebar", None);
         toggle_sidebar_action.connect_activate(move |_, _| {
-            let paned = paned_ref.borrow();
-            let memory = memory_ref.borrow();
-            let current = paned.position();
-            if current > 0 {
-                memory.set(current.max(sidebar_for_toggle.min_width()));
-                paned.set_position(0);
-            } else {
-                paned.set_position(memory.get().max(sidebar_for_toggle.min_width()));
-            }
+            this_for_toggle.animate_sidebar_toggle();
         });
         self.window.add_action(&toggle_sidebar_action);
 
@@ -2250,6 +2243,32 @@ impl AppWindow {
             }
             _ => {}
         }
+    }
+
+    /// 侧栏开合(带滑动动画):开 = 记忆宽度,关 = 0。
+    fn animate_sidebar_toggle(self: &Rc<Self>) {
+        let current = self.paned.position();
+        let target = if current > 0 {
+            self.sidebar_width_memory
+                .set(current.max(self.sidebar.min_width()));
+            0
+        } else {
+            self.sidebar_width_memory.get().max(self.sidebar.min_width())
+        };
+        let paned_for_frames = self.paned.clone();
+        let animation_target = adw::CallbackAnimationTarget::new(move |value| {
+            paned_for_frames.set_position(value as i32);
+        });
+        let animation = adw::TimedAnimation::new(
+            &self.paned,
+            current as f64,
+            target as f64,
+            220,
+            animation_target,
+        );
+        animation.set_easing(adw::Easing::EaseOutCubic);
+        animation.play();
+        *self.sidebar_animation.borrow_mut() = Some(animation);
     }
 
     /// 只读模式切换:内核 setReadOnly(1/0);状态写 TabDocument.read_only。
