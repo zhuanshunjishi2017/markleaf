@@ -787,6 +787,7 @@ fn install_sidebar_css() {
         let css = "
             .markleaf-tree { background: transparent; }
             .markleaf-tree treeview.view { background: transparent; }
+            .markleaf-tree treeview.view:selected { font-weight: 700; }
         ";
         let provider = gtk::CssProvider::new();
         provider.load_from_data(css);

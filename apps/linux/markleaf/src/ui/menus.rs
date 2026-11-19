@@ -55,6 +55,7 @@ pub fn main_menu_model(lang: &str, recent: &[(String, String)]) -> gio::Menu {
     let file_export = section(&file);
     let export = gio::Menu::new();
     export.append(Some(&label(lang, "导出 HTML")), Some("win.exportHtml"));
+    export.append(Some(&label(lang, "导出选区为 HTML…")), Some("win.command::exportSelection"));
     export.append(Some(&label(lang, "导出长图")), Some("win.exportImage"));
     export.append(Some(&label(lang, "打印")), Some("win.print"));
     file_export.append_submenu(Some(&label(lang, "导出")), &export);
