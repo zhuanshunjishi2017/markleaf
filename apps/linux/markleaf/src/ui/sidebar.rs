@@ -41,6 +41,10 @@ pub struct Sidebar {
     /// 大纲列表(第 0 列显示文本,第 1 列 position 字符串,第 2 列标题文本)。
     outline_store: gtk::TreeStore,
     outline_view: gtk::TreeView,
+    /// 大纲条目缓存(过滤重建数据源)。
+    outline_cache: RefCell<Vec<(String, i64, String, i32)>>,
+    /// 大纲过滤文本(小写;空 = 不过滤)。
+    outline_filter: RefCell<String>,
     /// 大纲条目激活回调(窗口注入;参数 = position, 标题文本)。
     on_outline_activate: RefCell<Box<dyn Fn(i64, String)>>,
     /// 双击打开回调(窗口注入)。
@@ -101,10 +105,13 @@ impl Sidebar {
         append_sidebar_column(&outline_view, 0, -1, 3);
         outline_view.add_css_class("markleaf-tree");
         install_sidebar_css();
+        let outline_filter_entry = SearchEntry::new();
+        outline_filter_entry.set_placeholder_text(Some("过滤标题"));
         let outline_scroll = ScrolledWindow::new();
         outline_scroll.set_vexpand(true);
         outline_scroll.set_child(Some(&outline_view));
-        let outline_page = gtk::Box::new(Orientation::Vertical, 0);
+        let outline_page = gtk::Box::new(Orientation::Vertical, 4);
+        outline_page.append(&outline_filter_entry);
         outline_page.append(&outline_scroll);
 
         stack.add_titled(&workspace_page, Some("workspace"), "工作区");
@@ -168,6 +175,8 @@ impl Sidebar {
             search_view: search_view.clone(),
             outline_store,
             outline_view: outline_view.clone(),
+            outline_cache: RefCell::new(Vec::new()),
+            outline_filter: RefCell::new(String::new()),
             on_outline_activate: RefCell::new(Box::new(|_, _| {})),
             on_open_path: RefCell::new(Box::new(|_| {})),
             current_workspace_root: RefCell::new(None),
@@ -178,6 +187,7 @@ impl Sidebar {
             on_context_command: RefCell::new(Box::new(|_, _, _| {})),
         });
 
+        this.wire_outline_filter(&outline_filter_entry);
         // 大纲双击 → 跳转(position + 标题文本交给窗口层;源码模式契约由窗口决定)。
         {
             let this_for_outline = Rc::clone(&this);
@@ -490,21 +500,49 @@ impl Sidebar {
     /// 大纲刷新(outlineChanged 消息驱动)。position/标题文本存隐藏列,
     /// 供激活回调发起跳转(可视化 scrollToPosition / 源码 scrollToSourceHeading)。
     pub fn set_outline(&self, items: &[serde_json::Value]) {
-        self.outline_store.clear();
+        let mut cache: Vec<(String, i64, String, i32)> = Vec::new();
         for item in items {
             let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
             let level = item.get("level").and_then(|v| v.as_i64()).unwrap_or(1);
             let position = item.get("position").and_then(|v| v.as_i64()).unwrap_or(0);
-            let iter = self.outline_store.append(None);
-            self.outline_store.set_value(&iter, 0, &format!("{}{}", "  ".repeat(level.saturating_sub(1) as usize), text).to_value());
-            self.outline_store.set_value(&iter, 1, &position.to_string().to_value());
-            self.outline_store.set_value(&iter, 2, &text.to_value());
-            self.outline_store
-                .set_value(&iter, 3, &outline_weight(level).to_value());
+            let indent = "  ".repeat(level.saturating_sub(1) as usize);
+            cache.push((
+                format!("{indent}{}", glib::markup_escape_text(text)),
+                position,
+                text.to_string(),
+                outline_weight(level),
+            ));
         }
+        *self.outline_cache.borrow_mut() = cache;
+        self.rebuild_outline();
         if !items.is_empty() {
             self.stack.set_visible_child_name("outline");
         }
+    }
+
+    /// 按过滤文本重建大纲(小写子串匹配标题)。
+    fn rebuild_outline(&self) {
+        let filter = self.outline_filter.borrow().to_lowercase();
+        self.outline_store.clear();
+        for (display, position, text, weight) in self.outline_cache.borrow().iter() {
+            if !filter.is_empty() && !text.to_lowercase().contains(&filter) {
+                continue;
+            }
+            let iter = self.outline_store.append(None);
+            self.outline_store.set_value(&iter, 0, &display.to_value());
+            self.outline_store.set_value(&iter, 1, &position.to_string().to_value());
+            self.outline_store.set_value(&iter, 2, &text.to_value());
+            self.outline_store.set_value(&iter, 3, &(*weight).to_value());
+        }
+    }
+
+    /// 接线大纲过滤输入框(实时过滤)。
+    pub fn wire_outline_filter(self: &Rc<Self>, entry: &SearchEntry) {
+        let sidebar = Rc::clone(self);
+        entry.connect_search_changed(move |entry| {
+            *sidebar.outline_filter.borrow_mut() = entry.text().to_lowercase();
+            sidebar.rebuild_outline();
+        });
     }
 
     /// 大纲选中同步(outlineSelectionChanged 驱动):光标所在 position 向上

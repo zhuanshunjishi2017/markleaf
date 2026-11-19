@@ -132,6 +132,7 @@ pub fn main_menu_model(lang: &str, recent: &[(String, String)]) -> gio::Menu {
     let view = gio::Menu::new();
     view.append(Some(&label(lang, "源码模式")), Some("win.sourceMode"));
     command_item(&view, lang, "显示侧栏", "toggleSidebar");
+    command_item(&view, lang, "只读模式", "toggleReadOnlyMode");
     let view_zoom = section(&view);
     command_item(&view_zoom, lang, "放大", "zoomIn");
     command_item(&view_zoom, lang, "缩小", "zoomOut");

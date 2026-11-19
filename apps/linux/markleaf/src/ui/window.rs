@@ -50,6 +50,8 @@ struct TabState {
     last_editor_status: RefCell<Option<serde_json::Value>>,
     /// 关闭确认已通过:close-page 信号直接放行。
     force_close: std::cell::Cell<bool>,
+    /// 只读模式(宿主切换;内核状态以 readOnly 面板字段为准)。
+    read_only: std::cell::Cell<bool>,
 }
 
 struct TabDocument {
@@ -563,6 +565,7 @@ impl AppWindow {
             frontend_ready_id: RefCell::new(None),
             last_editor_status: RefCell::new(None),
             force_close: std::cell::Cell::new(false),
+            read_only: std::cell::Cell::new(false),
         });
         self.tab_states.borrow_mut().push(state.clone());
         log::debug!("[create_tab] document_id={document_id} path={}", path.display());
@@ -1066,12 +1069,31 @@ impl AppWindow {
             message.payload.as_ref().and_then(|p| p.get("clientX")).and_then(|v| v.as_f64()).unwrap_or(0.0),
             message.payload.as_ref().and_then(|p| p.get("clientY")).and_then(|v| v.as_f64()).unwrap_or(0.0),
         );
-        let menu = menus::context_menu_model(&self.lang.clone());
-        self.context_popover.set_menu_model(Some(&menu));
+        let read_only = message
+            .payload
+            .as_ref()
+            .and_then(|p| p.get("readOnly"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // 按对象定制:对象上下文来自最近一次 commandStateChanged 缓存
+        // (inTable/imageSelected/link/codeBlock/hasSelection 等)。
+        let context = state.last_editor_status.borrow().clone();
+        let flag = |key: &str| -> bool {
+            context
+                .as_ref()
+                .and_then(|payload| payload.get(key))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        };
+        let link = context
+            .as_ref()
+            .and_then(|payload| payload.get("linkHref"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
 
         // WebView 坐标 → 窗口坐标(考虑缩放)。
         let zoom = state.zoom.get();
-        // 4.12+ 用 compute_point;坐标含缩放换算。
         let origin_point = graphene::Point::new((x * zoom) as f32, (y * zoom) as f32);
         let (origin_x, origin_y) = state
             .webview
@@ -1080,8 +1102,119 @@ impl AppWindow {
             .map(|point| (point.x() as i32 as f64, point.y() as i32 as f64))
             .unwrap_or((0.0, 0.0));
         let rect = gdk::Rectangle::new(origin_x as i32, origin_y as i32, 1, 1);
-        self.context_popover.set_pointing_to(Some(&rect));
-        self.context_popover.popup();
+
+        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        menu_box.set_margin_top(6);
+        menu_box.set_margin_bottom(6);
+        menu_box.set_margin_start(4);
+        menu_box.set_margin_end(4);
+        // 菜单项点击 → dispatch_command(路由器按 Host/透传分派)。
+        let add = |menu_box: &gtk::Box, label: &str, command: &str, this: &Rc<Self>, state: &Rc<TabState>| {
+            let item = gtk::Button::builder()
+                .label(label)
+                .has_frame(false)
+                .halign(gtk::Align::Fill)
+                .build();
+            let popover_weak = menu_box.downgrade();
+            let this = this.clone();
+            let state = state.clone();
+            let command = command.to_string();
+            item.connect_clicked(move |_| {
+                if let Some(menu_box) = popover_weak.upgrade() {
+                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
+                        popover.popdown();
+                    }
+                }
+                this.dispatch_command(&command);
+                let _ = &state;
+            });
+            menu_box.append(&item);
+        };
+        let add_separator = |menu_box: &gtk::Box| {
+            menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        };
+
+        // 上下文分区(对象优先,后通用编辑)。
+        if let Some(link_href) = link.clone() {
+            let this = self.clone();
+            let href = link_href.clone();
+            let item = gtk::Button::builder()
+                .label("打开链接")
+                .has_frame(false)
+                .halign(gtk::Align::Fill)
+                .build();
+            let popover_weak = menu_box.downgrade();
+            item.connect_clicked(move |_| {
+                if let Some(menu_box) = popover_weak.upgrade() {
+                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
+                        popover.popdown();
+                    }
+                }
+                this.open_link(&href);
+            });
+            menu_box.append(&item);
+            add(&menu_box, "复制链接地址", "copyLinkAddress", &self, &state);
+            add(&menu_box, "编辑链接…", "insertLink", &self, &state);
+            add_separator(&menu_box);
+        }
+        if flag("imageSelected") {
+            add(&menu_box, "拷贝图片", "copy", &self, &state);
+            add(&menu_box, "更改图片…", "changeImage", &self, &state);
+            add_separator(&menu_box);
+        }
+        if flag("codeBlock") {
+            add(&menu_box, "声明代码语言…", "declareCodeLanguage", &self, &state);
+            add(&menu_box, "格式化代码块", "formatCodeBlock", &self, &state);
+            add(&menu_box, "拷贝代码块", "copyCodeBlock", &self, &state);
+            add_separator(&menu_box);
+        }
+        if flag("inTable") {
+            add(&menu_box, "上方插入行", "addRowBefore", &self, &state);
+            add(&menu_box, "下方插入行", "addRowAfter", &self, &state);
+            add(&menu_box, "左侧插入列", "addColumnBefore", &self, &state);
+            add(&menu_box, "右侧插入列", "addColumnAfter", &self, &state);
+            add(&menu_box, "删除行", "deleteRow", &self, &state);
+            add(&menu_box, "删除列", "deleteColumn", &self, &state);
+            add(&menu_box, "删除表格", "deleteTable", &self, &state);
+            add(&menu_box, "平均分配列宽", "fitTableContents", &self, &state);
+            add_separator(&menu_box);
+        }
+        if flag("mathBlock") || flag("mathInline") {
+            add(&menu_box, "拷贝公式", "copy", &self, &state);
+            add(&menu_box, "删除公式", "deleteMath", &self, &state);
+            add_separator(&menu_box);
+        }
+        if flag("mermaid") {
+            add(&menu_box, "重新渲染图表", "rerenderMermaid", &self, &state);
+            add(&menu_box, "删除图表", "deleteMermaid", &self, &state);
+            add_separator(&menu_box);
+        }
+        if !read_only {
+            add(&menu_box, "剪切", "cut", &self, &state);
+            add(&menu_box, "拷贝", "copy", &self, &state);
+            add(&menu_box, "粘贴", "paste", &self, &state);
+            add_separator(&menu_box);
+            add(&menu_box, "加粗", "toggleBold", &self, &state);
+            add(&menu_box, "斜体", "toggleItalic", &self, &state);
+            add(&menu_box, "高亮", "toggleHighlight", &self, &state);
+            add(&menu_box, "清除格式", "clearFormat", &self, &state);
+            add_separator(&menu_box);
+        } else {
+            add(&menu_box, "拷贝", "copy", &self, &state);
+            add(&menu_box, "全选", "selectAll", &self, &state);
+            add_separator(&menu_box);
+        }
+        add(&menu_box, "查找与替换", "find", &self, &state);
+
+        let popover = gtk::Popover::new();
+        popover.set_has_arrow(false);
+        popover.set_pointing_to(Some(&rect));
+        popover.set_child(Some(&menu_box));
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+        });
+        popover.set_parent(&self.window);
+        popover.popup();
     }
 
     fn adjust_zoom(self: &Rc<Self>, state: &Rc<TabState>, delta_y: f64) {
@@ -2072,6 +2205,21 @@ impl AppWindow {
         }
     }
 
+    /// 只读模式切换:内核 setReadOnly(1/0);状态写 TabDocument.read_only。
+    fn toggle_read_only_mode(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let next = !state.read_only.get();
+        state.read_only.set(next);
+        let document_id = state.document.borrow().document_id.clone();
+        state.webview.post_to_editor(&HostMessage::command_with_request(
+            &document_id,
+            0,
+            serde_json::json!({ "command": "setReadOnly", "text": if next { "1" } else { "0" } }),
+            None,
+        ));
+        self.set_status(if next { "已开启只读模式" } else { "已关闭只读模式" });
+    }
+
     /// 文本写入系统剪贴板。
     fn copy_text_to_clipboard(self: &Rc<Self>, text: &str) {
         self.window
@@ -2510,7 +2658,18 @@ impl AppWindow {
                 }
             }
             "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),
+            "toggleReadOnlyMode" => self.toggle_read_only_mode(),
             "showAbout" => self.show_about_dialog(),
+            "openLink" => {
+                // 右键菜单"打开链接":链接地址取自最近 commandState 缓存。
+                let href = self
+                    .active_tab()
+                    .and_then(|state| state.last_editor_status.borrow().clone())
+                    .and_then(|payload| payload.get("linkHref").and_then(|v| v.as_str()).map(str::to_string));
+                if let Some(href) = href {
+                    self.open_link(&href);
+                }
+            }
             "sourceMode" => self.send_command_to_active("toggleSourceMode"),
             "find" => self.show_find_bar(),
             "showPreferences" => self.show_preferences_dialog(),
@@ -2522,6 +2681,7 @@ impl AppWindow {
             "declareCodeLanguage" => self.show_code_language_dialog(),
             // 本地图片:文件对话框选择后拷入文档目录 assets 并插入相对引用。
             "insertImage" => self.insert_local_image(),
+            "changeImage" => self.insert_local_image(),
             "insertImageFromUrl" => {
                 self.set_status("从互联网插入图片在 Linux 版尚未支持");
             }
