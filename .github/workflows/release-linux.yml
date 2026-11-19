@@ -21,7 +21,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.9.0
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -35,10 +35,10 @@ jobs:
 
       - name: Build editor web bundle
         run: |
-          corepack pnpm --dir packages/editor-core install --frozen-lockfile
-          corepack pnpm --dir packages/editor-web install --frozen-lockfile
-          corepack pnpm --dir packages/editor-core build:renderer
-          corepack pnpm --dir packages/editor-web build
+          pnpm --dir packages/editor-core install --frozen-lockfile
+          pnpm --dir packages/editor-web install --frozen-lockfile
+          pnpm --dir packages/editor-core build:renderer
+          pnpm --dir packages/editor-web build
 
       - name: Assemble editor resources
         run: MARKLEAF_USE_BUILT_EDITOR_WEB=1 apps/linux/script/prepare_resources.sh
@@ -47,11 +47,17 @@ jobs:
         working-directory: apps/linux
         run: cargo build --release --bin markleaf
 
-      - name: Smoke (release binary)
+      - name: Smoke (render diagnostic on installed layout)
         working-directory: apps/linux
         env:
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
-        run: timeout 60 xvfb-run -a -s "-screen 0 1024x768x24" ./target/release/markleaf --version
+        run: |
+          # 真实编辑器页渲染冒烟:diag 加载 markleaf://editor 页面 + 文档,
+          # 对像素采样输出色数;经 AppDir 同款相对查找链定位资源。
+          timeout 90 xvfb-run -a -s "-screen 0 1024x768x24" \
+            cargo run --release --bin diag 2>&1 | tee diag-output.txt
+          grep -q "\[diag\] 编辑器页" diag-output.txt
+          ! grep -qE "\[diag\] 编辑器页.*采样 1 种" diag-output.txt
 
       - name: Prepare AppDir
         run: bash apps/linux/script/appimage/build.sh artifacts/linux

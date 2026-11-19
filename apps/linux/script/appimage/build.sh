@@ -9,13 +9,13 @@ ARCH="${ARCH:-x86_64}"
 OUT="${1:-$REPO_DIR/artifacts/linux}"
 APPDIR="$OUT/AppDir"
 
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/usr/share/metainfo" "$APPDIR/share/markleaf"
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/usr/share/metainfo" "$APPDIR/usr/share/markleaf"
 
 install -m755 "$REPO_DIR/apps/linux/target/release/markleaf" "$APPDIR/usr/bin/markleaf"
 install -m644 "$REPO_DIR/apps/linux/markleaf/data/com.markleaf.MarkLeaf.desktop" "$APPDIR/usr/share/applications/"
 install -m644 "$REPO_DIR/apps/linux/markleaf/data/com.markleaf.MarkLeaf.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/"
 install -m644 "$REPO_DIR/apps/linux/markleaf/data/com.markleaf.MarkLeaf.appdata.xml" "$APPDIR/usr/share/metainfo/"
-cp -R "$REPO_DIR/apps/linux/markleaf/resources/editor" "$APPDIR/share/markleaf/editor"
+cp -R "$REPO_DIR/apps/linux/markleaf/resources/editor" "$APPDIR/usr/share/markleaf/editor"
 install -m644 "$REPO_DIR/apps/linux/markleaf/data/com.markleaf.MarkLeaf.desktop" "$APPDIR/"
 
 echo "[appimage] 运行 linuxdeploy 捆绑运行时(需在 Linux 容器内执行):"

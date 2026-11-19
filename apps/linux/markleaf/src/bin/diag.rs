@@ -18,10 +18,7 @@ use webkit::{LoadEvent, SnapshotOptions, SnapshotRegion};
 const DEADLINE_SECONDS: u32 = 60;
 
 fn editor_root() -> PathBuf {
-    if let Ok(root) = std::env::var("MARKLEAF_EDITOR_ROOT") {
-        return PathBuf::from(root);
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor")
+    markleaf::app::editor_resources_root()
 }
 
 fn analyze(texture: &gdk::Texture, label: &str) {

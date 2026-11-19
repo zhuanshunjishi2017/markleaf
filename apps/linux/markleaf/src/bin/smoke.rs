@@ -30,10 +30,7 @@ enum Phase {
 }
 
 fn editor_root() -> PathBuf {
-    if let Ok(root) = std::env::var("MARKLEAF_EDITOR_ROOT") {
-        return PathBuf::from(root);
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor")
+    markleaf::app::editor_resources_root()
 }
 
 fn main() {

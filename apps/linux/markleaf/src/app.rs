@@ -69,7 +69,7 @@ pub fn run() -> glib::ExitCode {
         app.connect_startup(move |_app| {
             gtk::Window::set_default_icon_name("markleaf");
             *settings.borrow_mut() = load_settings(&settings_path());
-            let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor");
+            let resources = editor_resources_root();
             *context.borrow_mut() = Some(build_context(&resources));
         });
     }
@@ -233,6 +233,34 @@ fn entry_markdown_of(document_id: &str, dir: &std::path::Path) -> String {
 
 pub fn persist_settings(settings: &AppSettings) {
     let _ = save_settings(&settings_path(), settings);
+}
+
+/// 编辑器静态资源根查找链(发布链路核心):
+/// 1. MARKLEAF_EDITOR_ROOT 环境变量(诊断/CI 显式指定)
+/// 2. 可执行文件相对安装布局:AppImage(exe 在 usr/bin,资源在 share/markleaf/
+///    editor)与 Flatpak(exe 在 /app/bin,资源在 /app/share/markleaf/editor)
+///    共用 ../../share/markleaf/editor;另探 ../share/markleaf/editor 兼容
+///    exe 与 share 同级的布局
+/// 3. 开发目录(CARGO_MANIFEST_DIR/resources/editor,编译期路径)
+/// 判定依据:index.html 存在。
+pub fn editor_resources_root() -> PathBuf {
+    if let Ok(root) = std::env::var("MARKLEAF_EDITOR_ROOT") {
+        let root = PathBuf::from(root);
+        if root.join("index.html").exists() {
+            return root;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bin_dir) = exe.parent() {
+            for relative in ["../../share/markleaf/editor", "../share/markleaf/editor"] {
+                let candidate = bin_dir.join(relative);
+                if candidate.join("index.html").exists() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/editor")
 }
 
 /// 桌面集成(开发跑法免安装):把 resources/icon 的多尺寸图标装进用户
