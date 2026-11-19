@@ -1759,8 +1759,10 @@ impl AppWindow {
                     return; // 隐藏态(宽度记忆切换)不干预。
                 }
                 let min_width = sidebar_for_clamp.min_width();
-                if position < min_width {
-                    paned.set_position(min_width);
+                // 最大:编辑器区至少保留 320px。
+                let max_width = (paned.width() - 320).max(min_width);
+                if position != position.clamp(min_width, max_width) {
+                    paned.set_position(position.clamp(min_width, max_width));
                     return;
                 }
                 settings_for_width.borrow_mut().sidebar_width = position;
