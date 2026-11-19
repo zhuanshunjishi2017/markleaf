@@ -48,6 +48,8 @@ struct TabState {
     frontend_ready_id: RefCell<Option<String>>,
     /// 最近一次 editorStatusChanged 载荷(状态栏/统计对话框数据源)。
     last_editor_status: RefCell<Option<serde_json::Value>>,
+    /// 关闭确认已通过:close-page 信号直接放行。
+    force_close: std::cell::Cell<bool>,
 }
 
 struct TabDocument {
@@ -560,6 +562,7 @@ impl AppWindow {
             source_mode: std::cell::Cell::new(false),
             frontend_ready_id: RefCell::new(None),
             last_editor_status: RefCell::new(None),
+            force_close: std::cell::Cell::new(false),
         });
         self.tab_states.borrow_mut().push(state.clone());
         log::debug!("[create_tab] document_id={document_id} path={}", path.display());
@@ -1330,28 +1333,90 @@ impl AppWindow {
     fn wire_tab_view(self: &Rc<Self>) {
         let this = self.clone();
         self.tabs.borrow().connect_close_page(move |_view, page| {
-            // 找到状态,取消恢复定时器并清理恢复快照。
-            // 外层借用必须先释放:闭包体内还要 borrow_mut 同一 RefCell
-            // (retain 移除),嵌套借用在关闭第一个标签时即 panic。
             let matched = this
                 .tab_states
                 .borrow()
                 .iter()
                 .find(|s| s.page == *page)
                 .cloned();
-            if let Some(state) = matched {
-                if let Some(source) = state.recovery_source.borrow_mut().take() {
-                    source.remove();
-                }
-                let document_id = state.document.borrow().document_id.clone();
-                let (_config, state_dir) = crate::app::storage_dirs();
-                discard_recovery(&state_dir.join("recovery"), &document_id);
-                this.tab_states
-                    .borrow_mut()
-                    .retain(|candidate| !Rc::ptr_eq(candidate, &state));
+            let Some(state) = matched else {
+                return glib::Propagation::Proceed;
+            };
+            // 关闭确认已通过(保存并关闭/不保存):放行,清理在 page-detached。
+            if state.force_close.get() {
+                return glib::Propagation::Proceed;
             }
-            glib::Propagation::Proceed
+            if !state.document.borrow().dirty {
+                state.force_close.set(true);
+                return glib::Propagation::Proceed;
+            }
+            // 脏文档关闭需确认(对齐桌面):保存并关闭 / 不保存 / 取消。
+            let name = state
+                .document
+                .borrow()
+                .path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "未命名".into());
+            let dialog = adw::MessageDialog::builder()
+                .heading(&format!("是否保存对“{name}”的更改?"))
+                .body("不保存将丢弃本次编辑内容。")
+                .transient_for(&this.window)
+                .modal(true)
+                .build();
+            dialog.add_response("cancel", "取消");
+            dialog.add_response("discard", "不保存");
+            dialog.add_response("save", "保存并关闭");
+            dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+            dialog.set_close_response("cancel");
+            let this = this.clone();
+            let state = state.clone();
+            dialog.connect_response(None, move |dialog, response| {
+                dialog.close();
+                match response {
+                    "save" => {
+                        // 保存闭环由 state Rc 驱动在后台完成;页面先行关闭。
+                        this.save_tab(&state);
+                        state.force_close.set(true);
+                        this.tabs.borrow().close_page(&state.page);
+                    }
+                    "discard" => {
+                        let (_config, state_dir) = crate::app::storage_dirs();
+                        discard_recovery(
+                            &state_dir.join("recovery"),
+                            &state.document.borrow().document_id,
+                        );
+                        state.force_close.set(true);
+                        this.tabs.borrow().close_page(&state.page);
+                    }
+                    _ => {}
+                }
+            });
+            dialog.present();
+            glib::Propagation::Stop
         });
+
+        // 页面移除(确认关闭/正常关闭):取消恢复定时器并从标签表摘除。
+        {
+            let this = self.clone();
+            self.tabs.borrow().connect_page_detached(move |_view, page, _position| {
+                let matched = this
+                    .tab_states
+                    .borrow()
+                    .iter()
+                    .find(|s| s.page == *page)
+                    .cloned();
+                if let Some(state) = matched {
+                    if let Some(source) = state.recovery_source.borrow_mut().take() {
+                        source.remove();
+                    }
+                    this.tab_states
+                        .borrow_mut()
+                        .retain(|candidate| !Rc::ptr_eq(candidate, &state));
+                }
+            });
+        }
     }
 
     /// 状态栏接线:侧栏切换/统计对话框/编码/换行/模式/缩放菜单与可见性。
@@ -1503,6 +1568,7 @@ impl AppWindow {
             let settings_for_width = self.settings.clone();
             self.paned.connect_position_notify(move |paned| {
                 let position = paned.position();
+                eprintln!("[paned] notify position={position}");
                 if position == 0 {
                     return; // 隐藏态(宽度记忆切换)不干预。
                 }
@@ -1552,10 +1618,46 @@ impl AppWindow {
     }
 
     /// 按指定编码重读当前标签文档并重载(loadDocument 原地刷新)。
+    /// 脏文档先确认:切换编码以磁盘内容为基准,未保存修改将被丢弃。
     fn reload_active_tab_with_encoding(self: &Rc<Self>, label: String) {
         let Some(state) = self.active_tab() else { return };
         let Some(path) = state.document.borrow().path.clone() else {
             self.set_status("未命名文档无法切换编码");
+            return;
+        };
+        if state.document.borrow().dirty {
+            let dialog = adw::MessageDialog::builder()
+                .heading("切换编码将重读文件")
+                .body("当前文档有未保存的修改,切换编码会以磁盘内容重新载入,未保存的修改将丢失。")
+                .transient_for(&self.window)
+                .modal(true)
+                .build();
+            dialog.add_response("cancel", "取消");
+            dialog.add_response("discard", "放弃修改并切换");
+            dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+            let this = self.clone();
+            let state = state.clone();
+            let label = label.clone();
+            dialog.connect_response(None, move |dialog, response| {
+                dialog.close();
+                if response == "discard" {
+                    let state = state.clone();
+                    let label = label.clone();
+                    this.reload_active_tab_with_encoding_now(state, label);
+                }
+            });
+            dialog.present();
+            return;
+        }
+        self.reload_active_tab_with_encoding_now(state, label);
+    }
+
+    fn reload_active_tab_with_encoding_now(
+        self: &Rc<Self>,
+        state: Rc<TabState>,
+        label: String,
+    ) {
+        let Some(path) = state.document.borrow().path.clone() else {
             return;
         };
         let this = self.clone();
@@ -2005,6 +2107,45 @@ impl AppWindow {
         entry.grab_focus();
     }
 
+    /// 重命名后同步已打开标签:路径、磁盘基线、标题、恢复快照 path 字段。
+    fn sync_tabs_after_rename(self: &Rc<Self>, old_abs: &Path, new_abs: &Path) {
+        let states: Vec<_> = self.tab_states.borrow().clone();
+        for state in &states {
+            let matches = state
+                .document
+                .borrow()
+                .path
+                .as_ref()
+                .map(|p| p == old_abs)
+                .unwrap_or(false);
+            if !matches {
+                continue;
+            }
+            {
+                let mut document = state.document.borrow_mut();
+                document.path = Some(new_abs.to_path_buf());
+                document.disk.path = new_abs.to_path_buf();
+            }
+            self.update_tab_title(state);
+            // 恢复快照(若存在)同步 path,避免还原时打开旧路径。
+            let document_id = state.document.borrow().document_id.clone();
+            let (_config, state_dir) = crate::app::storage_dirs();
+            let recovery_dir = state_dir.join("recovery");
+            for entry in crate::data::recovery::list_recovery(&recovery_dir) {
+                if entry.document_id == document_id {
+                    let updated = crate::data::recovery::RecoveryEntry {
+                        document_id: entry.document_id,
+                        path: Some(new_abs.to_string_lossy().into_owned()),
+                        markdown: entry.markdown,
+                        revision: entry.revision,
+                        saved_at: entry.saved_at,
+                    };
+                    let _ = crate::data::recovery::save_recovery(&recovery_dir, &updated);
+                }
+            }
+        }
+    }
+
     /// 新建工作区文档(相对目录;空 = 根)。
     fn prompt_new_workspace_file(self: &Rc<Self>, root: &Path, dir_relative: &str, markdown: bool) {
         let root = root.to_path_buf();
@@ -2075,10 +2216,16 @@ impl AppWindow {
             if name.is_empty() || name == current_name_for_check {
                 return;
             }
+            let old_abs = root.join(&relative);
             match crate::workspace::mutation::rename_entry(&root, &relative, &name) {
-                Ok(_) => {
+                Ok(new_relative) => {
+                    let new_abs = root.join(&new_relative);
                     this.sidebar.set_workspace_root(Some(root.to_path_buf()));
-                    this.set_status("已重命名");
+                    this.sync_tabs_after_rename(&old_abs, &new_abs);
+                    this.set_status(&format!(
+                        "已重命名为 {}",
+                        new_abs.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                    ));
                 }
                 Err(err) => this.set_status(&format!("重命名失败:{err}")),
             }
@@ -2122,16 +2269,42 @@ impl AppWindow {
         dialog.present();
     }
 
+    /// 保存全部:遍历脏标签逐个发起保存;未命名文档走另存为(逐个弹框)。
+    /// 保存为异步闭环,这里统计请求状态而非落盘结果(落盘失败各自报状态栏)。
     fn save_all_tabs(self: &Rc<Self>) {
         let states: Vec<_> = self.tab_states.borrow().clone();
-        let mut saved = 0usize;
+        let mut requested = 0usize;
+        let mut prompted = 0usize;
+        let mut clean = 0usize;
         for state in &states {
-            if state.document.borrow().dirty {
+            let dirty = state.document.borrow().dirty;
+            let has_path = state.document.borrow().path.is_some();
+            if !dirty {
+                clean += 1;
+                continue;
+            }
+            if has_path {
                 self.save_tab(state);
-                saved += 1;
+                requested += 1;
+            } else {
+                self.save_tab(state);
+                prompted += 1;
             }
         }
-        self.set_status(&format!("已保存 {saved} 个文档"));
+        let mut parts = Vec::new();
+        if requested > 0 {
+            parts.push(format!("已请求保存 {requested} 个"));
+        }
+        if prompted > 0 {
+            parts.push(format!("{prompted} 个新文档请逐个选择保存位置"));
+        }
+        if clean > 0 && requested == 0 && prompted == 0 {
+            parts.push(format!("{clean} 个文档均无更改"));
+        }
+        if parts.is_empty() {
+            parts.push("没有打开的文档".into());
+        }
+        self.set_status(&format!("保存全部:{}", parts.join(";")));
     }
 
     /// 关于对话框(版本/平台;对齐桌面 showAbout 的信息子集)。
