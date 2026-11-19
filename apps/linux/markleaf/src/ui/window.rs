@@ -268,7 +268,7 @@ impl AppWindow {
         let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
         paned.set_start_child(Some(&sidebar.root));
         paned.set_end_child(Some(&tab_box));
-        paned.set_position(settings.borrow().sidebar_width.clamp(220, 800));
+        paned.set_position(settings.borrow().sidebar_width.clamp(232, 800));
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&header);
@@ -279,7 +279,7 @@ impl AppWindow {
 
         let sidebar_for_handler = sidebar.clone();
 
-        let initial_sidebar_width = settings.borrow().sidebar_width.clamp(220, 800);
+        let initial_sidebar_width = settings.borrow().sidebar_width.clamp(232, 800);
         let this = Rc::new(Self {
             window,
             context: context.clone(),
@@ -1605,7 +1605,7 @@ impl AppWindow {
                         this.paned.set_position(0);
                     } else {
                         this.paned
-                            .set_position(this.sidebar_width_memory.get().max(220));
+                            .set_position(this.sidebar_width_memory.get().max(232));
                     }
                 });
         }
@@ -1740,12 +1740,12 @@ impl AppWindow {
             let settings_for_width = self.settings.clone();
             self.paned.connect_position_notify(move |paned| {
                 let position = paned.position();
-                eprintln!("[paned] notify position={position}");
                 if position == 0 {
                     return; // 隐藏态(宽度记忆切换)不干预。
                 }
-                if position < 220 {
-                    paned.set_position(220);
+                // 低于最小宽度会触发 GTK 居中裁切(内容溢出窗口外)。
+                if position < 232 {
+                    paned.set_position(232);
                     return;
                 }
                 settings_for_width.borrow_mut().sidebar_width = position;
@@ -2052,10 +2052,10 @@ impl AppWindow {
             let memory = memory_ref.borrow();
             let current = paned.position();
             if current > 0 {
-                memory.set(current);
+                memory.set(current.max(232));
                 paned.set_position(0);
             } else {
-                paned.set_position(memory.get().max(220));
+                paned.set_position(memory.get().max(232));
             }
         });
         self.window.add_action(&toggle_sidebar_action);
@@ -2680,10 +2680,10 @@ impl AppWindow {
             "toggleSidebar" => {
                 let current = self.paned.position();
                 if current > 0 {
-                    self.sidebar_width_memory.set(current);
+                    self.sidebar_width_memory.set(current.max(232));
                     self.paned.set_position(0);
                 } else {
-                    self.paned.set_position(self.sidebar_width_memory.get().max(220));
+                    self.paned.set_position(self.sidebar_width_memory.get().max(232));
                 }
             }
             "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),

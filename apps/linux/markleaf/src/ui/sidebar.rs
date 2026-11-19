@@ -161,7 +161,8 @@ impl Sidebar {
         root.set_margin_start(6);
         root.set_margin_end(6);
         // 固定侧栏宽度:不设的话页签组会把自然宽度撑到约 1/3 窗口(实机验收反馈)。
-        root.set_size_request(280, -1);
+        // 最小 220:与窗口层 Paned 拖拽钳制值一致(避免分配<最小值时内容居中溢出)。
+        root.set_size_request(220, -1);
         root.set_hexpand(false);
         root.append(&header);
         root.append(&stack);
