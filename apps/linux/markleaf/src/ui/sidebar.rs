@@ -164,7 +164,6 @@ impl Sidebar {
         root.set_size_request(280, -1);
         root.set_hexpand(false);
         root.append(&header);
-        root.append(&search_entry);
         root.append(&stack);
 
         let this = Rc::new(Self {
