@@ -1605,7 +1605,7 @@ impl AppWindow {
                         this.paned.set_position(0);
                     } else {
                         this.paned
-                            .set_position(this.sidebar_width_memory.get().max(232));
+                            .set_position(this.sidebar_width_memory.get().max(this.sidebar.min_width()));
                     }
                 });
         }
@@ -1734,18 +1734,33 @@ impl AppWindow {
 
         self.refresh_status_bar_visibility();
 
+        // [临时诊断] 每 700ms 打印 Paned 位置与侧栏最小宽度。
+        {
+            let paned_log = self.paned.clone();
+            let root_log = self.sidebar.root.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(700), move || {
+                let position = paned_log.position();
+                let (root_min, _nat, _b1, _b2) =
+                    root_log.measure(gtk::Orientation::Horizontal, -1);
+                eprintln!("[sidebar-debug] paned.position={position} root_min={root_min}");
+                glib::ControlFlow::Continue
+            });
+        }
+
         // 拖拽分隔条 → 钳制最小宽度 + 记忆宽度到设置(关闭时统一写盘)。
-        // GTK 对 Paned 拖拽不强制 child minimum,这里显式钳制。
+        // GTK 对 Paned 拖拽不强制 child minimum(分配小于内容最小宽度时
+        // 内容居中裁切、文案溢出窗口外),这里按内容实测最小宽度动态钳制。
         {
             let settings_for_width = self.settings.clone();
+            let sidebar_for_clamp = self.sidebar.clone();
             self.paned.connect_position_notify(move |paned| {
                 let position = paned.position();
                 if position == 0 {
                     return; // 隐藏态(宽度记忆切换)不干预。
                 }
-                // 低于最小宽度会触发 GTK 居中裁切(内容溢出窗口外)。
-                if position < 232 {
-                    paned.set_position(232);
+                let min_width = sidebar_for_clamp.min_width();
+                if position < min_width {
+                    paned.set_position(min_width);
                     return;
                 }
                 settings_for_width.borrow_mut().sidebar_width = position;
@@ -2046,16 +2061,17 @@ impl AppWindow {
         // 侧栏开关动作。
         let paned_ref = RefCell::new(self.paned.clone());
         let memory_ref = RefCell::new(self.sidebar_width_memory.clone());
+        let sidebar_for_toggle = self.sidebar.clone();
         let toggle_sidebar_action = gio::SimpleAction::new("toggleSidebar", None);
         toggle_sidebar_action.connect_activate(move |_, _| {
             let paned = paned_ref.borrow();
             let memory = memory_ref.borrow();
             let current = paned.position();
             if current > 0 {
-                memory.set(current.max(232));
+                memory.set(current.max(sidebar_for_toggle.min_width()));
                 paned.set_position(0);
             } else {
-                paned.set_position(memory.get().max(232));
+                paned.set_position(memory.get().max(sidebar_for_toggle.min_width()));
             }
         });
         self.window.add_action(&toggle_sidebar_action);
@@ -2680,10 +2696,10 @@ impl AppWindow {
             "toggleSidebar" => {
                 let current = self.paned.position();
                 if current > 0 {
-                    self.sidebar_width_memory.set(current.max(232));
+                    self.sidebar_width_memory.set(current.max(self.sidebar.min_width()));
                     self.paned.set_position(0);
                 } else {
-                    self.paned.set_position(self.sidebar_width_memory.get().max(232));
+                    self.paned.set_position(self.sidebar_width_memory.get().max(self.sidebar.min_width()));
                 }
             }
             "recoverUnsavedFiles" => crate::app::prompt_recovered_documents(self),

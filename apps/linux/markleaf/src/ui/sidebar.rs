@@ -837,6 +837,13 @@ impl Sidebar {
         self.rebuild_store(&entries);
     }
 
+    /// 侧栏最小宽度:内容实测值与保底 232 取大(供 Paned 拖拽钳制)。
+    pub fn min_width(&self) -> i32 {
+        let (min_w, _nat, _b1, _b2) =
+            self.root.measure(gtk::Orientation::Horizontal, -1);
+        min_w.max(232)
+    }
+
     /// 注入树内拖拽移动回调(窗口层执行文件系统移动与标签同步)。
     pub fn set_move_entry_handler(&self, handler: impl Fn(&str, &str) + 'static) {
         *self.on_move_entry.borrow_mut() = Box::new(handler);
