@@ -115,8 +115,8 @@ pub struct AppWindow {
     paned: gtk::Paned,
     /// 侧栏显示时记忆的宽度(隐藏切换用)。
     sidebar_width_memory: std::cell::Cell<i32>,
-    /// 侧栏开合动画(保活至完成;新动画替换旧的)。
-    sidebar_animation: RefCell<Option<adw::TimedAnimation>>,
+    /// 侧栏开合动画进行中标志(钳制跳过用)。
+    sidebar_animating: std::cell::Cell<bool>,
     /// 界面语言(设置显式值或 glib locale 解析)。
     lang: String,
     /// 工作区根(供 watcher 重扫)。
@@ -302,7 +302,7 @@ impl AppWindow {
             sidebar,
             paned: paned.clone(),
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
-            sidebar_animation: RefCell::new(None),
+            sidebar_animating: std::cell::Cell::new(false),
             lang,
             workspace_root: RefCell::new(None),
             watcher: RefCell::new(None),
@@ -1756,7 +1756,12 @@ impl AppWindow {
         {
             let settings_for_width = self.settings.clone();
             let sidebar_for_clamp = self.sidebar.clone();
+            let animating_for_clamp = self.sidebar_animating.clone();
             self.paned.connect_position_notify(move |paned| {
+                // 开合动画进行中跳过钳制(中间帧低于最小宽度属预期)。
+                if animating_for_clamp.get() {
+                    return;
+                }
                 let position = paned.position();
                 if position == 0 {
                     return; // 隐藏态(宽度记忆切换)不干预。
@@ -2255,20 +2260,31 @@ impl AppWindow {
         } else {
             self.sidebar_width_memory.get().max(self.sidebar.min_width())
         };
-        let paned_for_frames = self.paned.clone();
-        let animation_target = adw::CallbackAnimationTarget::new(move |value| {
-            paned_for_frames.set_position(value as i32);
-        });
-        let animation = adw::TimedAnimation::new(
-            &self.paned,
-            current as f64,
-            target as f64,
-            220,
-            animation_target,
+        // GTK 帧时钟在部分虚拟化环境(X11+Xwayland)只调度首尾帧,AdwAnimation
+        // 表现为瞬变。改用 timeout 插值(EaseOutCubic,180ms/12 步),不依赖帧时钟。
+        let steps = 12usize;
+        let start = current as f64;
+        let target_f = target as f64;
+        let paned_for_anim = self.paned.clone();
+        let animating_for_anim = self.sidebar_animating.clone();
+        let mut step = 0usize;
+        animating_for_anim.set(true);
+        let source = glib::timeout_add_local(
+            std::time::Duration::from_millis(15),
+            move || {
+                step += 1;
+                let t = (step as f64 / steps as f64).min(1.0);
+                let eased = 1.0 - (1.0 - t).powi(3);
+                paned_for_anim
+                    .set_position((start + (target_f - start) * eased).round() as i32);
+                if step >= steps {
+                    animating_for_anim.set(false);
+                    glib::ControlFlow::Break
+                } else {
+                    glib::ControlFlow::Continue
+                }
+            },
         );
-        animation.set_easing(adw::Easing::EaseOutCubic);
-        animation.play();
-        *self.sidebar_animation.borrow_mut() = Some(animation);
     }
 
     /// 只读模式切换:内核 setReadOnly(1/0);状态写 TabDocument.read_only。
