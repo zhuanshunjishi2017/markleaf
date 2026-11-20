@@ -25,6 +25,147 @@ use webkit::prelude::WebViewExt;
 use webkit::{PrintOperation, SnapshotOptions, SnapshotRegion};
 use crate::ui::menus;
 
+fn install_tab_bar_actions(tab_bar: &adw::TabBar, view: &adw::TabView, lang: &str) {
+    let new_tab_label = crate::l10n::tr(lang, "新建标签").unwrap_or_else(|| "新建标签".into());
+    let new_tab = gtk::Button::from_icon_name("list-add-symbolic");
+    new_tab.add_css_class("flat");
+    new_tab.set_tooltip_text(Some(&new_tab_label));
+    new_tab.update_property(&[gtk::accessible::Property::Label(&new_tab_label)]);
+    new_tab.set_action_name(Some("win.newMarkdown"));
+
+    let label = crate::l10n::tr(lang, "所有标签").unwrap_or_else(|| "所有标签".into());
+    let button = gtk::MenuButton::builder()
+        .direction(gtk::ArrowType::Down)
+        .has_frame(false)
+        .tooltip_text(&label)
+        .build();
+    button.update_property(&[gtk::accessible::Property::Label(&label)]);
+
+    let popover = gtk::Popover::new();
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .build();
+    list.add_css_class("navigation-sidebar");
+    list.bind_model(Some(&view.pages()), |item| {
+        let page = item.downcast_ref::<adw::TabPage>().expect("tab view page");
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let check = gtk::Image::from_icon_name("object-select-symbolic");
+        page.bind_property("selected", &check, "opacity")
+            .transform_to(|_, selected: bool| Some(if selected { 1.0 } else { 0.0 }))
+            .sync_create()
+            .build();
+        let title = gtk::Label::builder()
+            .xalign(0.0)
+            .hexpand(true)
+            .ellipsize(pango::EllipsizeMode::End)
+            .max_width_chars(36)
+            .build();
+        page.bind_property("title", &title, "label").sync_create().build();
+        row.append(&check);
+        row.append(&title);
+        row.upcast()
+    });
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .min_content_width(220)
+        .max_content_height(360)
+        .propagate_natural_width(true)
+        .propagate_natural_height(true)
+        .child(&list)
+        .build();
+    popover.set_child(Some(&scroll));
+    let weak_view = view.downgrade();
+    let weak_popover = popover.downgrade();
+    list.connect_row_activated(move |_, row| {
+        if let Some(view) = weak_view.upgrade() {
+            view.set_selected_page(&view.nth_page(row.index()));
+        }
+        if let Some(popover) = weak_popover.upgrade() {
+            popover.popdown();
+        }
+    });
+    button.set_popover(Some(&popover));
+    tab_bar.bind_property("is-overflowing", &button, "visible").sync_create().build();
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    actions.append(&new_tab);
+    actions.append(&button);
+    tab_bar.set_end_action_widget(Some(&actions));
+}
+
+fn install_status_choice_menu(
+    button: &gtk::MenuButton,
+    options: &[&'static str],
+    reset: Option<(&'static str, &'static str)>,
+    show_other_value: bool,
+    select: impl Fn(&str) + 'static,
+) {
+    let popover = gtk::Popover::new();
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    list.set_margin_top(6);
+    list.set_margin_bottom(6);
+    let select = Rc::new(select);
+    let mut markers = Vec::new();
+
+    let current = gtk::Label::new(None);
+    let current_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    current_row.append(&gtk::Image::from_icon_name("object-select-symbolic"));
+    current_row.append(&current);
+    current_row.set_margin_start(8);
+    current_row.set_margin_end(8);
+    current_row.set_margin_top(6);
+    current_row.set_margin_bottom(6);
+    current_row.set_visible(false);
+    if show_other_value {
+        list.append(&current_row);
+    }
+
+    for (label, value, track) in options
+        .iter()
+        .map(|&value| (value, value, true))
+        .chain(reset.map(|(label, value)| (label, value, false)))
+    {
+        if !track {
+            list.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        }
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let check = gtk::Image::from_icon_name("object-select-symbolic");
+        check.set_opacity(0.0);
+        row.append(&check);
+        row.append(&gtk::Label::new(Some(label)));
+        if track {
+            markers.push((value, check));
+        }
+        let item = gtk::Button::builder().has_frame(false).child(&row).build();
+        item.update_property(&[gtk::accessible::Property::Label(label)]);
+        let weak_button = button.downgrade();
+        let select = select.clone();
+        item.connect_clicked(move |_| {
+            if let Some(button) = weak_button.upgrade() {
+                button.popdown();
+                if button.label().as_deref() != Some(value) {
+                    select(value);
+                }
+            }
+        });
+        list.append(&item);
+    }
+    button.connect_label_notify(move |button| {
+        let label = button.label();
+        let mut matched = false;
+        for (value, check) in &markers {
+            let selected = label.as_deref() == Some(*value);
+            check.set_opacity(if selected { 1.0 } else { 0.0 });
+            matched |= selected;
+        }
+        let label = label.as_deref().unwrap_or("");
+        current.set_text(label);
+        current_row.set_visible(show_other_value && !matched && !label.is_empty());
+    });
+    popover.set_child(Some(&list));
+    button.set_popover(Some(&popover));
+    button.notify("label");
+}
+
 /// 会话清单条目(退出时由 app 层汇总)。
 pub struct WindowSnapshot {
     pub tabs: Vec<String>,
@@ -35,6 +176,7 @@ pub struct WindowSnapshot {
 struct TabState {
     page: adw::TabPage,
     webview: EditorWebView,
+    startup_cover: gtk::Box,
     session: Rc<RefCell<EditorSessionState>>,
     document: RefCell<TabDocument>,
     /// dirty 后恢复快照防抖(glib 定时源 id;标签关闭时移除)。
@@ -48,8 +190,7 @@ struct TabState {
     frontend_ready_id: RefCell<Option<String>>,
     /// 最近一次 editorStatusChanged 载荷(状态栏/统计对话框数据源)。
     last_editor_status: RefCell<Option<serde_json::Value>>,
-    /// 关闭确认已通过:close-page 信号直接放行。
-    force_close: std::cell::Cell<bool>,
+    close_after_save: std::cell::Cell<bool>,
     /// 只读模式(宿主切换;内核状态以 readOnly 面板字段为准)。
     read_only: std::cell::Cell<bool>,
 }
@@ -109,12 +250,12 @@ pub struct AppWindow {
     position_label: RefCell<gtk::Label>,
     encoding_button: RefCell<gtk::MenuButton>,
     newline_button: RefCell<gtk::MenuButton>,
-    mode_button: RefCell<gtk::MenuButton>,
+    mode_button: RefCell<gtk::Button>,
     zoom_button: RefCell<gtk::MenuButton>,
     #[allow(dead_code)] // M4 主题接线时消费(深浅/主题 id 下发 applyStyles)
     settings: Rc<RefCell<AppSettings>>,
     /// 上下文菜单浮层(每次请求重建内容后弹出)。
-    context_popover: PopoverMenu,
+    context_popover: RefCell<Option<PopoverMenu>>,
 
     sidebar: Rc<super::sidebar::Sidebar>,
     paned: gtk::Paned,
@@ -169,6 +310,7 @@ impl AppWindow {
             .build();
 
         let tab_view = adw::TabView::new();
+        tab_view.add_css_class("view");
         // WebKit can report a zero minimum height; give the active page the
         // space left below the tab bar.
         tab_view.set_vexpand(true);
@@ -206,7 +348,9 @@ impl AppWindow {
         };
         let encoding_button = make_menu_button("", "编码");
         let newline_button = make_menu_button("", "换行符");
-        let mode_button = make_menu_button("可视化", "编辑模式");
+        let mode_button = gtk::Button::with_label("可视化");
+        mode_button.add_css_class("flat");
+        mode_button.set_tooltip_text(Some("切换编辑模式"));
         let zoom_button = make_menu_button("100%", "设置缩放");
 
         status_bar.append(&sidebar_toggle_button);
@@ -233,12 +377,9 @@ impl AppWindow {
         find_box.append(&find_close);
         find_search_bar.set_child(Some(&find_box));
 
-        // 上下文菜单浮层(挂在窗口上,弹出于编辑坐标)。
-        let context_popover = PopoverMenu::builder().has_arrow(false).build();
-        context_popover.set_parent(&window);
-
         // 界面语言:设置显式值或 glib locale 解析(菜单/工具提示/状态文案用)。
         let lang = crate::l10n::resolve_language(&settings.borrow().display_language);
+        install_tab_bar_actions(&tab_bar, &tab_view, &lang);
 
         // HeaderBar:打开/保存/菜单/源码切换/缩放。
         let header = gtk::HeaderBar::new();
@@ -266,7 +407,7 @@ impl AppWindow {
         header.pack_start(&source_button);
         header.pack_end(&menu_button);
 
-        let sidebar = super::sidebar::Sidebar::new();
+        let sidebar = super::sidebar::Sidebar::new(&lang);
         let tab_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         tab_box.append(&tab_bar);
         tab_box.append(&tab_view);
@@ -302,7 +443,7 @@ impl AppWindow {
             mode_button: RefCell::new(mode_button),
             zoom_button: RefCell::new(zoom_button),
             settings,
-            context_popover,
+            context_popover: RefCell::new(None),
             sidebar,
             paned: paned.clone(),
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
@@ -511,7 +652,10 @@ impl AppWindow {
         glib::spawn_future_local(async move {
             // JoinHandle::Output = Result<T, Panic>;双层解包(任务 panic 视为读失败)。
             match gio::spawn_blocking(move || read_document(&path_for_task)).await {
-                Ok(Ok(snapshot)) => this.create_tab_with_snapshot(path.clone(), snapshot, None),
+                Ok(Ok(snapshot)) => {
+                    let page = this.create_tab_with_snapshot(path, snapshot, None);
+                    this.tabs.borrow().set_selected_page(&page);
+                }
                 Ok(Err(err)) => {
                     log::warn!("[window] 无法读取 {}: {err}", path_for_msg.display());
                     this.set_status(&format!("无法读取 {}: {err}", path_for_msg.display()));
@@ -525,7 +669,17 @@ impl AppWindow {
     }
 
     /// 以恢复内容打开:文件存在则以恢复 markdown 载入并置脏(保留快照至下次保存)。
-    pub fn open_document_recovered(self: &Rc<Self>, path: &Path, markdown: String) {
+    pub fn open_document_recovered(self: &Rc<Self>, path: Option<&Path>, markdown: String) {
+        let Some(path) = path else {
+            let page = self.create_tab_inner(
+                None,
+                DocumentSnapshot::default(),
+                Some(markdown),
+                "markdown",
+            );
+            self.tabs.borrow().set_selected_page(&page);
+            return;
+        };
         let path = path.to_path_buf();
         let path_for_task = path.clone();
         let this = self.clone();
@@ -545,36 +699,48 @@ impl AppWindow {
         path: PathBuf,
         snapshot: DocumentSnapshot,
         recovered_markdown: Option<String>,
-    ) {
-        self.create_tab_inner(path, snapshot, recovered_markdown, "markdown")
+    ) -> adw::TabPage {
+        self.create_tab_inner(Some(path), snapshot, recovered_markdown, "markdown")
     }
 
     fn create_tab_blank_with_type(self: &Rc<Self>, document_type: &str) {
-        let name = if document_type == "plainText" { "未命名.txt" } else { "未命名.md" };
-        self.create_tab_inner(PathBuf::from(name), DocumentSnapshot::default(), None, document_type)
+        let page = self.create_tab_inner(None, DocumentSnapshot::default(), None, document_type);
+        self.tabs.borrow().set_selected_page(&page);
     }
 
     fn create_tab_inner(
         self: &Rc<Self>,
-        path: PathBuf,
+        path: Option<PathBuf>,
         snapshot: DocumentSnapshot,
         recovered_markdown: Option<String>,
         document_type: &str,
-    ) {
+    ) -> adw::TabPage {
         let detection = detect(&snapshot.bytes);
         let decision = EncodingDecision::from_detection(&detection);
         let newline = detect_newline(&detection.decoded);
         let document_id = glib::uuid_string_random().to_string();
 
         let webview = EditorWebView::new(&self.context);
+        // Keep an opaque native surface over the WebView until the editor has
+        // loaded the document. The view still receives its viewport while loading.
+        let content = gtk::Overlay::new();
+        content.set_child(Some(webview.widget()));
+        let startup_cover = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        startup_cover.add_css_class("view");
+        content.add_overlay(&startup_cover);
+        #[allow(deprecated)] // Named GTK colors are available on the supported GTK versions.
+        if let Some(background) = self.window.style_context().lookup_color("view_bg_color") {
+            webview.widget().set_background_color(&background);
+        }
         let page = {
             let view = self.tabs.borrow();
-            view.append(webview.widget())
+            view.append(&content)
         };
         let tab_name = path
-            .file_name()
+            .as_deref()
+            .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .unwrap_or_else(|| "未命名".into());
         page.set_title(tab_name.as_str());
 
         let session = Rc::new(RefCell::new(EditorSessionState::new()));
@@ -583,9 +749,10 @@ impl AppWindow {
         let state = Rc::new(TabState {
             page,
             webview: webview.clone(),
+            startup_cover,
             session,
             document: RefCell::new(TabDocument {
-                path: Some(path.clone()),
+                path: path.clone(),
                 disk: snapshot,
                 encoding: decision,
                 newline,
@@ -600,11 +767,11 @@ impl AppWindow {
             source_mode: std::cell::Cell::new(false),
             frontend_ready_id: RefCell::new(None),
             last_editor_status: RefCell::new(None),
-            force_close: std::cell::Cell::new(false),
+            close_after_save: std::cell::Cell::new(false),
             read_only: std::cell::Cell::new(false),
         });
         self.tab_states.borrow_mut().push(state.clone());
-        log::debug!("[create_tab] document_id={document_id} path={}", path.display());
+        log::debug!("[create_tab] document_id={document_id} path={path:?}");
 
         {
             let this = self.clone();
@@ -616,7 +783,9 @@ impl AppWindow {
 
         webview.load_editor_page();
         if recovered_markdown.is_none() {
-            self.set_status(&format!("已打开 {}", path.display()));
+            if let Some(path) = &path {
+                self.set_status(&format!("已打开 {}", path.display()));
+            }
         } else {
             // 恢复载入:载入恢复内容并置脏(载入 payload 在 stylesApplied 回调读取)。
             state
@@ -631,6 +800,7 @@ impl AppWindow {
         if let Some(path) = path_for_reveal.as_deref() {
             self.sidebar.reveal_workspace_path(path);
         }
+        state.page.clone()
     }
 
     // ---- 内部 ----
@@ -693,7 +863,7 @@ impl AppWindow {
             log::debug!("[create_tab] 采纳页面占位 document_id={frontend_id}");
             let apply = HostMessage::apply_styles(
                 &frontend_id,
-                serde_json::json!({ "frontendFormatMenu": true }),
+                serde_json::json!({ "frontendFormatMenu": false }),
             );
             webview.post_to_editor(&apply);
         });
@@ -806,6 +976,7 @@ impl AppWindow {
             EditorMessageType::DocumentLoaded => {
                 let document_id = message.document_id.clone();
                 if document_id == state.document.borrow().document_id {
+                    state.startup_cover.set_visible(false);
                     self.set_status(&format!(
                         "已加载 {}",
                         state
@@ -833,7 +1004,18 @@ impl AppWindow {
             EditorMessageType::Snapshot => self.handle_snapshot(state, &message),
             EditorMessageType::ContextMenuRequested => self.show_context_menu(state, &message),
             EditorMessageType::BlockMenuRequested => self.show_context_menu(state, &message),
-            EditorMessageType::CommandStateChanged => { /* M4:驱动按钮启用态 */ }
+            EditorMessageType::CommandStateChanged => {
+                if let Some(source_mode) = message
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("sourceMode"))
+                    .and_then(|v| v.as_bool())
+                {
+                    if state.source_mode.replace(source_mode) != source_mode {
+                        self.refresh_status_bar_content(state);
+                    }
+                }
+            }
             EditorMessageType::OutlineChanged => {
                 // 内核发 {headings:[...]};兼容旧键 items。
                 let items = message
@@ -906,19 +1088,6 @@ impl AppWindow {
                     .unwrap_or("未知错误")
                     .to_string();
                 self.set_status(&format!("错误:{text}"));
-            }
-            // selectionChanged 携带 sourceMode 标志:跟踪当前标签的源码/可视化
-            // 状态,大纲跳转按此分流(对齐 macOS/Windows 宿主契约)。
-            EditorMessageType::SelectionChanged => {
-                if let Some(source_mode) = message
-                    .payload
-                    .as_ref()
-                    .and_then(|payload| payload.get("sourceMode"))
-                    .and_then(|v| v.as_bool())
-                {
-                    state.source_mode.set(source_mode);
-                    self.refresh_status_bar_content(&state);
-                }
             }
             // outlineSelectionChanged:光标所在标题位置,侧栏大纲就近选中
             // (对齐 macOS outlineSelectionChanged)。
@@ -1015,7 +1184,7 @@ impl AppWindow {
             return;
         }
 
-        if !pending_save {
+        if !pending_save || request_id != "save" {
             return;
         }
         if message.document_id != document_id {
@@ -1030,6 +1199,8 @@ impl AppWindow {
             Some(path) => write_document(path, &bytes, &disk_snapshot).map(|_| path.clone()),
             None => Err(WriteError::Io(std::io::Error::other("无目标路径"))),
         };
+        state.document.borrow_mut().pending_save = false;
+        let saved = result.is_ok();
         match result {
             Ok(path) => {
                 // 更新磁盘基线,回 markSaved,清恢复快照。
@@ -1037,7 +1208,6 @@ impl AppWindow {
                     state.document.borrow_mut().disk = fresh;
                 }
                 state.document.borrow_mut().dirty = false;
-                state.document.borrow_mut().pending_save = false;
                 state
                     .webview
                     .post_to_editor(&HostMessage::mark_saved(&document_id, message.revision));
@@ -1051,6 +1221,12 @@ impl AppWindow {
             }
             Err(WriteError::Io(err)) => {
                 self.set_status(&format!("保存失败:{err}"));
+            }
+        }
+        if state.close_after_save.replace(false) {
+            state.webview.widget().set_sensitive(true);
+            if saved {
+                self.tabs.borrow().close_page(&state.page);
             }
         }
     }
@@ -1070,21 +1246,28 @@ impl AppWindow {
 
     fn run_save_as_dialog(self: &Rc<Self>, state: &Rc<TabState>) {
         let dialog = gtk::FileDialog::new();
-        dialog.set_initial_name(Some("未命名.md"));
+        let initial_name = if state.document.borrow().document_type == "plainText" {
+            "未命名.txt"
+        } else {
+            "未命名.md"
+        };
+        dialog.set_initial_name(Some(initial_name));
         let this = self.clone();
         let state = state.clone();
         dialog.save(Some(&self.window), None::<&gio::Cancellable>, move |result| {
-            if let Ok(file) = result {
-                if let Some(path) = file.path() {
-                    // 另存:切换目标路径后走保存闭环。
-                    {
-                        let mut document = state.document.borrow_mut();
-                        document.path = Some(path.clone());
-                        document.disk = DocumentSnapshot::default();
-                    }
-                    this.save_tab(&state);
+            let Some(path) = result.ok().and_then(|file| file.path()) else {
+                if state.close_after_save.replace(false) {
+                    state.webview.widget().set_sensitive(true);
                 }
+                return;
+            };
+            // 另存:切换目标路径后走保存闭环。
+            {
+                let mut document = state.document.borrow_mut();
+                document.path = Some(path);
+                document.disk = DocumentSnapshot::default();
             }
+            this.save_tab(&state);
         });
     }
 
@@ -1100,156 +1283,197 @@ impl AppWindow {
         });
     }
 
-    fn show_context_menu(self: &Rc<Self>, state: &Rc<TabState>, message: &EditorMessage) {
-        let (x, y) = (
-            message.payload.as_ref().and_then(|p| p.get("clientX")).and_then(|v| v.as_f64()).unwrap_or(0.0),
-            message.payload.as_ref().and_then(|p| p.get("clientY")).and_then(|v| v.as_f64()).unwrap_or(0.0),
-        );
-        let read_only = message
-            .payload
-            .as_ref()
-            .and_then(|p| p.get("readOnly"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+    fn dismiss_context_menu(&self) {
+        if let Some(popover) = self.context_popover.take() {
+            popover.popdown();
+        }
+    }
 
-        // 按对象定制:对象上下文来自最近一次 commandStateChanged 缓存
-        // (inTable/imageSelected/link/codeBlock/hasSelection 等)。
-        let context = state.last_editor_status.borrow().clone();
-        let flag = |key: &str| -> bool {
-            context
-                .as_ref()
-                .and_then(|payload| payload.get(key))
-                .and_then(|v| v.as_bool())
+    fn show_context_menu(self: &Rc<Self>, state: &Rc<TabState>, message: &EditorMessage) {
+        let payload = message.payload.as_ref();
+        let end_session = payload
+            .and_then(|value| value.get("menuSessionId"))
+            .and_then(|value| value.as_u64())
+            .map(|session_id| HostMessage::command_with_request(
+                &message.document_id,
+                0,
+                serde_json::json!({ "command": "endContextMenu", "menuSessionId": session_id }),
+                None,
+            ));
+        if self.tabs.borrow().selected_page().as_ref() != Some(&state.page) {
+            if let Some(end_session) = end_session {
+                state.webview.post_to_editor(&end_session);
+            }
+            return;
+        }
+
+        let coordinate = |key| {
+            payload
+                .and_then(|value| value.get(key))
+                .and_then(|value| value.as_f64())
+                .unwrap_or(0.0)
+        };
+        let request_flag = |key: &str| {
+            payload
+                .and_then(|value| value.get(key))
+                .and_then(|value| value.as_bool())
                 .unwrap_or(false)
         };
-        let link = context
+        let context = state.last_editor_status.borrow();
+        let flag = |key: &str| {
+            context
+                .as_ref()
+                .and_then(|value| value.get(key))
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+        };
+
+        // GTK owns the menu and its outside-click and Escape handling.
+        let menu = gio::Menu::new();
+        let add_section = |items: &[(&str, &str)]| {
+            let section = gio::Menu::new();
+            for (title, command) in items {
+                let label = crate::l10n::tr(&self.lang, title).unwrap_or_else(|| title.to_string());
+                section.append(Some(&label), Some(&format!("context.command::{command}")));
+            }
+            menu.append_section(None, &section);
+        };
+        if context
             .as_ref()
-            .and_then(|payload| payload.get("linkHref"))
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-
-        // WebView 坐标 → 窗口坐标(考虑缩放)。
-        let zoom = state.zoom.get();
-        let origin_point = graphene::Point::new((x * zoom) as f32, (y * zoom) as f32);
-        let (origin_x, origin_y) = state
-            .webview
-            .widget()
-            .compute_point(&self.window, &origin_point)
-            .map(|point| (point.x() as i32 as f64, point.y() as i32 as f64))
-            .unwrap_or((0.0, 0.0));
-        let rect = gdk::Rectangle::new(origin_x as i32, origin_y as i32, 1, 1);
-
-        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        menu_box.set_margin_top(6);
-        menu_box.set_margin_bottom(6);
-        menu_box.set_margin_start(4);
-        menu_box.set_margin_end(4);
-        // 菜单项点击 → dispatch_command(路由器按 Host/透传分派)。
-        let add = |menu_box: &gtk::Box, label: &str, command: &str, this: &Rc<Self>, state: &Rc<TabState>| {
-            let item = gtk::Button::builder()
-                .label(label)
-                .has_frame(false)
-                .halign(gtk::Align::Fill)
-                .build();
-            let popover_weak = menu_box.downgrade();
-            let this = this.clone();
-            let state = state.clone();
-            let command = command.to_string();
-            item.connect_clicked(move |_| {
-                if let Some(menu_box) = popover_weak.upgrade() {
-                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
-                        popover.popdown();
-                    }
-                }
-                this.dispatch_command(&command);
-                let _ = &state;
-            });
-            menu_box.append(&item);
-        };
-        let add_separator = |menu_box: &gtk::Box| {
-            menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        };
-
-        // 上下文分区(对象优先,后通用编辑)。
-        if let Some(link_href) = link.clone() {
-            let this = self.clone();
-            let href = link_href.clone();
-            let item = gtk::Button::builder()
-                .label("打开链接")
-                .has_frame(false)
-                .halign(gtk::Align::Fill)
-                .build();
-            let popover_weak = menu_box.downgrade();
-            item.connect_clicked(move |_| {
-                if let Some(menu_box) = popover_weak.upgrade() {
-                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
-                        popover.popdown();
-                    }
-                }
-                this.open_link(&href);
-            });
-            menu_box.append(&item);
-            add(&menu_box, "复制链接地址", "copyLinkAddress", &self, &state);
-            add(&menu_box, "编辑链接…", "insertLink", &self, &state);
-            add_separator(&menu_box);
+            .and_then(|value| value.get("linkHref"))
+            .and_then(|value| value.as_str())
+            .is_some()
+        {
+            add_section(&[
+                ("打开链接", "openLink"),
+                ("复制链接地址", "copyLinkAddress"),
+                ("编辑链接…", "insertLink"),
+            ]);
         }
         if flag("imageSelected") {
-            add(&menu_box, "拷贝图片", "copy", &self, &state);
-            add(&menu_box, "更改图片…", "changeImage", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[("拷贝图片", "copy"), ("更改图片…", "changeImage")]);
         }
         if flag("codeBlock") {
-            add(&menu_box, "声明代码语言…", "declareCodeLanguage", &self, &state);
-            add(&menu_box, "格式化代码块", "formatCodeBlock", &self, &state);
-            add(&menu_box, "拷贝代码块", "copyCodeBlock", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[
+                ("声明代码语言…", "declareCodeLanguage"),
+                ("格式化代码块", "formatCodeBlock"),
+                ("拷贝代码块", "copyCodeBlock"),
+            ]);
         }
         if flag("inTable") {
-            add(&menu_box, "上方插入行", "addRowBefore", &self, &state);
-            add(&menu_box, "下方插入行", "addRowAfter", &self, &state);
-            add(&menu_box, "左侧插入列", "addColumnBefore", &self, &state);
-            add(&menu_box, "右侧插入列", "addColumnAfter", &self, &state);
-            add(&menu_box, "删除行", "deleteRow", &self, &state);
-            add(&menu_box, "删除列", "deleteColumn", &self, &state);
-            add(&menu_box, "删除表格", "deleteTable", &self, &state);
-            add(&menu_box, "平均分配列宽", "fitTableContents", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[
+                ("上方插入行", "addRowBefore"),
+                ("下方插入行", "addRowAfter"),
+                ("左侧插入列", "addColumnBefore"),
+                ("右侧插入列", "addColumnAfter"),
+                ("删除行", "deleteRow"),
+                ("删除列", "deleteColumn"),
+                ("删除表格", "deleteTable"),
+                ("平均分配列宽", "fitTableContents"),
+            ]);
         }
         if flag("mathBlock") || flag("mathInline") {
-            add(&menu_box, "拷贝公式", "copy", &self, &state);
-            add(&menu_box, "删除公式", "deleteMath", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[("拷贝公式", "copy"), ("删除公式", "deleteMath")]);
         }
         if flag("mermaid") {
-            add(&menu_box, "重新渲染图表", "rerenderMermaid", &self, &state);
-            add(&menu_box, "删除图表", "deleteMermaid", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[("重新渲染图表", "rerenderMermaid"), ("删除图表", "deleteMermaid")]);
         }
-        if !read_only {
-            add(&menu_box, "剪切", "cut", &self, &state);
-            add(&menu_box, "拷贝", "copy", &self, &state);
-            add(&menu_box, "粘贴", "paste", &self, &state);
-            add_separator(&menu_box);
-            add(&menu_box, "加粗", "toggleBold", &self, &state);
-            add(&menu_box, "斜体", "toggleItalic", &self, &state);
-            add(&menu_box, "高亮", "toggleHighlight", &self, &state);
-            add(&menu_box, "清除格式", "clearFormat", &self, &state);
-            add_separator(&menu_box);
+        if request_flag("readOnly") {
+            add_section(&[("拷贝", "copy"), ("全选", "selectAll")]);
         } else {
-            add(&menu_box, "拷贝", "copy", &self, &state);
-            add(&menu_box, "全选", "selectAll", &self, &state);
-            add_separator(&menu_box);
+            add_section(&[("剪切", "cut"), ("拷贝", "copy"), ("粘贴", "paste")]);
+            if !state.source_mode.get() && !request_flag("sourceMode") {
+                let mut format = vec![
+                    ("加粗", "toggleBold"),
+                    ("斜体", "toggleItalic"),
+                    ("下划线", "toggleUnderline"),
+                    ("删除线", "toggleStrike"),
+                    ("高亮", "toggleHighlight"),
+                ];
+                if request_flag("canStartFormatPainter") || request_flag("formatPainterArmed") {
+                    format.push(("格式刷", "formatPainter"));
+                }
+                format.push(("清除格式", "clearFormat"));
+                add_section(&format);
+            }
         }
-        add(&menu_box, "查找与替换", "find", &self, &state);
+        add_section(&[("查找与替换", "find")]);
+        drop(context);
 
-        let popover = gtk::Popover::new();
+        let zoom = state.zoom.get();
+        let origin = graphene::Point::new(
+            (coordinate("clientX") * zoom) as f32,
+            (coordinate("clientY") * zoom) as f32,
+        );
+        let Some(point) = state.webview.widget().compute_point(&self.window, &origin) else {
+            if let Some(end_session) = end_session {
+                state.webview.post_to_editor(&end_session);
+            }
+            return;
+        };
+
+        self.dismiss_context_menu();
+        let popover = PopoverMenu::from_model(Some(&menu));
         popover.set_has_arrow(false);
-        popover.set_pointing_to(Some(&rect));
-        popover.set_child(Some(&menu_box));
+        popover.set_pointing_to(Some(&gdk::Rectangle::new(
+            point.x() as i32, point.y() as i32, 1, 1,
+        )));
+        let action_changed_focus = Rc::new(std::cell::Cell::new(false));
+        let actions = gio::SimpleActionGroup::new();
+        let command_action = gio::SimpleAction::new("command", Some(glib::VariantTy::STRING));
+        let window = Rc::downgrade(self);
+        let changed_focus = action_changed_focus.clone();
+        command_action.connect_activate(move |_, parameter| {
+            if let (Some(window), Some(command)) =
+                (window.upgrade(), parameter.and_then(|value| value.str()))
+            {
+                let previous = gtk::prelude::GtkWindowExt::focus(&window.window);
+                window.dispatch_command(command);
+                changed_focus.set(gtk::prelude::GtkWindowExt::focus(&window.window) != previous);
+            }
+        });
+        actions.add_action(&command_action);
+        popover.insert_action_group("context", Some(&actions));
+
+        let window = Rc::downgrade(self);
+        let webview = state.webview.clone();
+        let page = state.page.clone();
         popover.connect_closed(move |popover| {
-            popover.unparent();
+            if let Some(window) = window.upgrade() {
+                let mut active = window.context_popover.borrow_mut();
+                if active.as_ref() == Some(popover) {
+                    active.take();
+                }
+            }
+            let popover = popover.clone();
+            let webview = webview.clone();
+            let end_session = end_session.clone();
+            let window = window.clone();
+            let page = page.clone();
+            let action_changed_focus = action_changed_focus.clone();
+            // GTK can dispatch the selected action after emitting "closed".
+            glib::idle_add_local_once(move || {
+                let restore_focus = window.upgrade().is_some_and(|window| {
+                    !action_changed_focus.get()
+                        && window.context_popover.borrow().is_none()
+                        && window.tabs.borrow().selected_page().as_ref() == Some(&page)
+                });
+                if popover.parent().is_some() {
+                    popover.unparent();
+                }
+                if restore_focus {
+                    webview.widget().grab_focus();
+                }
+                if let Some(mut message) = end_session {
+                    if let Some(payload) = message.payload.as_mut() {
+                        payload["refocusEditor"] = restore_focus.into();
+                    }
+                    webview.post_to_editor(&message);
+                }
+            });
         });
         popover.set_parent(&self.window);
+        self.context_popover.replace(Some(popover.clone()));
         popover.popup();
     }
 
@@ -1259,6 +1483,7 @@ impl AppWindow {
         let clamped = next.clamp(0.3, 3.0);
         state.zoom.set(clamped);
         state.webview.set_zoom_level(clamped);
+        self.refresh_status_bar_content(state);
         self.set_status(&format!("缩放 {:.0}%", clamped * 100.0));
     }
 
@@ -1336,6 +1561,9 @@ impl AppWindow {
             grid.attach(&value_label, 1, index as i32, 1, 1);
         }
         area.append(&grid);
+        dialog.connect_response(move |dialog, _response| {
+            dialog.close();
+        });
         dialog.present();
     }
 
@@ -1511,7 +1739,7 @@ impl AppWindow {
 
     fn wire_tab_view(self: &Rc<Self>) {
         let this = self.clone();
-        self.tabs.borrow().connect_close_page(move |_view, page| {
+        self.tabs.borrow().connect_close_page(move |view, page| {
             let matched = this
                 .tab_states
                 .borrow()
@@ -1521,12 +1749,7 @@ impl AppWindow {
             let Some(state) = matched else {
                 return glib::Propagation::Proceed;
             };
-            // 关闭确认已通过(保存并关闭/不保存):放行,清理在 page-detached。
-            if state.force_close.get() {
-                return glib::Propagation::Proceed;
-            }
             if !state.document.borrow().dirty {
-                state.force_close.set(true);
                 return glib::Propagation::Proceed;
             }
             // 脏文档关闭需确认(对齐桌面):保存并关闭 / 不保存 / 取消。
@@ -1550,26 +1773,34 @@ impl AppWindow {
             dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
             dialog.set_close_response("cancel");
             let this = this.clone();
-            let state = state.clone();
-            dialog.connect_response(None, move |dialog, response| {
-                dialog.close();
+            let view = view.clone();
+            dialog.connect_response(None, move |_, response| {
                 match response {
                     "save" => {
-                        // 保存闭环由 state Rc 驱动在后台完成;页面先行关闭。
+                        // 保存成功后再关闭。先解除原请求，保存期间仍可重试关闭。
+                        view.close_page_finish(&state.page, false);
+                        state.close_after_save.set(true);
+                        state.webview.widget().set_sensitive(false);
                         this.save_tab(&state);
-                        state.force_close.set(true);
-                        this.tabs.borrow().close_page(&state.page);
                     }
                     "discard" => {
+                        state.close_after_save.set(false);
+                        let document_id = {
+                            let mut document = state.document.borrow_mut();
+                            document.dirty = false;
+                            document.pending_save = false;
+                            document.document_id.clone()
+                        };
                         let (_config, state_dir) = crate::app::storage_dirs();
-                        discard_recovery(
-                            &state_dir.join("recovery"),
-                            &state.document.borrow().document_id,
-                        );
-                        state.force_close.set(true);
-                        this.tabs.borrow().close_page(&state.page);
+                        discard_recovery(&state_dir.join("recovery"), &document_id);
+                        view.close_page_finish(&state.page, true);
                     }
-                    _ => {}
+                    _ => {
+                        if state.close_after_save.replace(false) {
+                            state.webview.widget().set_sensitive(true);
+                        }
+                        view.close_page_finish(&state.page, false);
+                    }
                 }
             });
             dialog.present();
@@ -1587,6 +1818,9 @@ impl AppWindow {
                     .find(|s| s.page == *page)
                     .cloned();
                 if let Some(state) = matched {
+                    if state.startup_cover.is_visible() && !state.document.borrow().pending_save {
+                        state.webview.widget().stop_loading();
+                    }
                     if let Some(source) = state.recovery_source.borrow_mut().take() {
                         source.remove();
                     }
@@ -1616,121 +1850,56 @@ impl AppWindow {
                 .connect_clicked(move |_| this.show_statistics_dialog());
         }
 
-        // 编码菜单:桌面同款编码清单;选择后按编码重读当前文档并重载。
-        {
-            let button = self.encoding_button.borrow();
-            let this = self.clone();
-            let popover = gtk::Popover::new();
-            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            let names = [
-                "UTF-8",
-                "UTF-16LE",
-                "GB18030",
-                "GBK",
-                "GB2312",
-                "Big5",
-                "Shift_JIS",
-                "US-ASCII",
-            ];
-            for name in names {
-                let item = gtk::Button::builder().label(name).has_frame(false).build();
-                let popover = popover.clone();
-                let this = this.clone();
-                item.connect_clicked(move |_| {
-                    popover.popdown();
-                    this.reload_active_tab_with_encoding(name.to_string());
-                });
-                list.append(&item);
+        let window = Rc::downgrade(self);
+        install_status_choice_menu(
+            &self.encoding_button.borrow(),
+            &["UTF-8", "UTF-16LE", "GB18030", "GBK", "GB2312", "Big5", "Shift_JIS", "US-ASCII"],
+            None,
+            true,
+            move |value| {
+                if let Some(window) = window.upgrade() {
+                    window.reload_active_tab_with_encoding(value.to_string());
+                }
+            },
+        );
+        let window = Rc::downgrade(self);
+        install_status_choice_menu(
+            &self.newline_button.borrow(), &["LF", "CRLF"], None, false,
+            move |value| {
+                if let Some(window) = window.upgrade() {
+                    window.set_active_tab_newline(value);
+                }
+            },
+        );
+        let window = Rc::downgrade(self);
+        self.mode_button.borrow().connect_clicked(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.send_command_to_active("toggleSourceMode");
             }
-            list.set_margin_top(6);
-            list.set_margin_bottom(6);
-            popover.set_child(Some(&list));
-            button.set_popover(Some(&popover));
-        }
+        });
+        let window = Rc::downgrade(self);
+        install_status_choice_menu(
+            &self.zoom_button.borrow(),
+            &["50%", "75%", "90%", "100%", "110%", "125%", "150%", "175%", "200%"],
+            Some(("重置为100%", "100%")),
+            true,
+            move |value| {
+                if let (Some(window), Ok(percent)) =
+                    (window.upgrade(), value.trim_end_matches('%').parse())
+                {
+                    window.set_active_tab_zoom(percent);
+                }
+            },
+        );
 
-        // 换行菜单:LF/CRLF/CR;切换写入 TabDocument(保存时生效)并置脏。
-        {
-            let button = self.newline_button.borrow();
-            let this = self.clone();
-            let popover = gtk::Popover::new();
-            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            for name in ["LF", "CRLF", "CR"] {
-                let item = gtk::Button::builder().label(name).has_frame(false).build();
-                let popover = popover.clone();
-                let this = this.clone();
-                item.connect_clicked(move |_| {
-                    popover.popdown();
-                    this.set_active_tab_newline(name);
-                });
-                list.append(&item);
+        let window = Rc::downgrade(self);
+        self.tabs.borrow().connect_selected_page_notify(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.dismiss_context_menu();
+                window.refresh_status_bar_selection();
             }
-            list.set_margin_top(6);
-            list.set_margin_bottom(6);
-            popover.set_child(Some(&list));
-            button.set_popover(Some(&popover));
-        }
-
-        // 模式菜单:可视化/源码(toggleSourceMode;已在目标模式时不发)。
-        {
-            let button = self.mode_button.borrow();
-            let this = self.clone();
-            let popover = gtk::Popover::new();
-            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            for (label, wants_source) in [("可视化", false), ("源码", true)] {
-                let item = gtk::Button::builder().label(label).has_frame(false).build();
-                let popover = popover.clone();
-                let this = this.clone();
-                item.connect_clicked(move |_| {
-                    popover.popdown();
-                    if let Some(state) = this.active_tab() {
-                        if state.source_mode.get() != wants_source {
-                            this.send_command_to_active("toggleSourceMode");
-                        }
-                    }
-                });
-                list.append(&item);
-            }
-            list.set_margin_top(6);
-            list.set_margin_bottom(6);
-            popover.set_child(Some(&list));
-            button.set_popover(Some(&popover));
-        }
-
-        // 缩放菜单:桌面同款档位 + 重置。
-        {
-            let button = self.zoom_button.borrow();
-            let this = self.clone();
-            let popover = gtk::Popover::new();
-            let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            for percent in [50, 75, 90, 100, 110, 125, 150, 175, 200] {
-                let item = gtk::Button::builder()
-                    .label(format!("{percent}%"))
-                    .has_frame(false)
-                    .build();
-                let popover = popover.clone();
-                let this = this.clone();
-                item.connect_clicked(move |_| {
-                    popover.popdown();
-                    this.set_active_tab_zoom(percent);
-                });
-                list.append(&item);
-            }
-            list.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-            let reset = gtk::Button::builder().label("重置为100%").has_frame(false).build();
-            let popover_for_reset = popover.clone();
-            let this = this.clone();
-            reset.connect_clicked(move |_| {
-                popover_for_reset.popdown();
-                this.set_active_tab_zoom(100);
-            });
-            list.append(&reset);
-            list.set_margin_top(6);
-            list.set_margin_bottom(6);
-            popover.set_child(Some(&list));
-            button.set_popover(Some(&popover));
-        }
-
-        self.refresh_status_bar_visibility();
+        });
+        self.refresh_status_bar_selection();
 
         // 拖拽分隔条 → 钳制最小宽度 + 记忆宽度到设置(关闭时统一写盘)。
         // GTK 对 Paned 拖拽不强制 child minimum(分配小于内容最小宽度时
@@ -1772,8 +1941,9 @@ impl AppWindow {
         self.window.add_action(&command_action);
     }
 
-    /// 按设置刷新状态栏各控件可见性(设置对话框确定后与启动时调用)。
+    /// 按当前标签和设置刷新状态栏各控件可见性。
     fn refresh_status_bar_visibility(self: &Rc<Self>) {
+        let has_document = self.tabs.borrow().selected_page().is_some();
         let bar = &self.settings.borrow().status_bar;
         self.sidebar_toggle_button
             .borrow()
@@ -1783,21 +1953,26 @@ impl AppWindow {
         );
         self.character_count_button
             .borrow()
-            .set_visible(bar.word_count_visible);
+            .set_visible(has_document && bar.word_count_visible);
         self.block_type_label
             .borrow()
-            .set_visible(bar.block_type_visible);
-        self.position_label.borrow().set_visible(bar.position_visible);
-        self.encoding_button.borrow().set_visible(bar.encoding_visible);
-        self.newline_button.borrow().set_visible(bar.new_line_visible);
-        self.mode_button.borrow().set_visible(bar.mode_toggle_visible);
-        self.zoom_button.borrow().set_visible(bar.zoom_visible);
+            .set_visible(has_document && bar.block_type_visible);
+        self.position_label.borrow().set_visible(has_document && bar.position_visible);
+        self.encoding_button.borrow().set_visible(has_document && bar.encoding_visible);
+        self.newline_button.borrow().set_visible(has_document && bar.new_line_visible);
+        self.mode_button.borrow().set_visible(has_document && bar.mode_toggle_visible);
+        self.zoom_button.borrow().set_visible(has_document && bar.zoom_visible);
     }
 
     /// 按指定编码重读当前标签文档并重载(loadDocument 原地刷新)。
     /// 脏文档先确认:切换编码以磁盘内容为基准,未保存修改将被丢弃。
     fn reload_active_tab_with_encoding(self: &Rc<Self>, label: String) {
         let Some(state) = self.active_tab() else { return };
+        if encoding_rs::Encoding::for_label(label.as_bytes())
+            == Some(state.document.borrow().encoding.encoding)
+        {
+            return;
+        }
         let Some(path) = state.document.borrow().path.clone() else {
             self.set_status("未命名文档无法切换编码");
             return;
@@ -1889,9 +2064,11 @@ impl AppWindow {
         let policy = match name {
             "LF" => crate::documents::encoding::NewLinePolicy::Lf,
             "CRLF" => crate::documents::encoding::NewLinePolicy::Crlf,
-            "CR" => crate::documents::encoding::NewLinePolicy::Cr,
             _ => return,
         };
+        if state.document.borrow().newline == policy {
+            return;
+        }
         state.document.borrow_mut().newline = policy;
         state.document.borrow_mut().dirty = true;
         self.update_tab_title(&state);
@@ -1904,9 +2081,7 @@ impl AppWindow {
         let level = percent as f64 / 100.0;
         state.zoom.set(level);
         state.webview.set_zoom_level(level);
-        self.zoom_button
-            .borrow()
-            .set_label(&format!("{percent}%"));
+        self.refresh_status_bar_content(&state);
         {
             let mut settings = self.settings.borrow_mut();
             settings.zoom_percent = percent;
@@ -1914,22 +2089,44 @@ impl AppWindow {
         crate::app::persist_settings(&self.settings.borrow());
     }
 
+    fn refresh_status_bar_selection(self: &Rc<Self>) {
+        self.refresh_status_bar_visibility();
+        if let Some(state) = self.active_tab() {
+            self.refresh_status_bar_content(&state);
+        } else {
+            self.character_count_button.borrow().set_label("");
+            self.block_type_label.borrow().set_text("");
+            self.position_label.borrow().set_text("");
+            self.encoding_button.borrow().set_sensitive(false);
+            self.newline_button.borrow().set_sensitive(false);
+            self.mode_button.borrow().set_sensitive(false);
+            self.zoom_button.borrow().set_sensitive(false);
+        }
+    }
+
     /// 刷新状态栏中依赖当前标签的文本(编码/换行/模式/缩放)。
     fn refresh_status_bar_content(self: &Rc<Self>, state: &Rc<TabState>) {
+        if self.tabs.borrow().selected_page().as_ref() != Some(&state.page) {
+            return;
+        }
         let document = state.document.borrow();
         let encoding_name = document.encoding.encoding.name();
         self.encoding_button.borrow().set_label(encoding_name);
+        self.encoding_button.borrow().set_sensitive(true);
         self.newline_button
             .borrow()
             .set_label(document.newline.as_str());
+        self.newline_button.borrow().set_sensitive(true);
         self.mode_button.borrow().set_label(if state.source_mode.get() {
             "源码"
         } else {
             "可视化"
         });
+        self.mode_button.borrow().set_sensitive(document.document_type != "plainText");
         self.zoom_button
             .borrow()
             .set_label(&format!("{}%", (state.zoom.get() * 100.0).round() as i32));
+        self.zoom_button.borrow().set_sensitive(true);
     }
 
     fn install_actions(self: &Rc<Self>, app: &adw::Application, windows: Rc<RefCell<Vec<Rc<AppWindow>>>>) {
@@ -2047,6 +2244,11 @@ impl AppWindow {
         self.window.add_action(&open_folder_action);
         app.set_accels_for_action("win.openFolder", &["<Control><Shift>o"]);
         app.set_accels_for_action("win.toggleSidebar", &["<Control>backslash"]);
+
+        let this = self.clone();
+        let new_workspace_file = gio::SimpleAction::new("newWorkspaceMarkdown", None);
+        new_workspace_file.connect_activate(move |_, _| this.create_markdown_from_sidebar());
+        self.window.add_action(&new_workspace_file);
 
         // 侧栏开关动作(动画开合)。
         let this_for_toggle = self.clone();
@@ -2204,7 +2406,7 @@ impl AppWindow {
                 self.prompt_rename_entry(&root, relative);
             }
             "delete" => {
-                self.confirm_delete_entry(&root, relative);
+                self.confirm_delete_entry(&root, target);
             }
             "copyPath" => {
                 self.copy_text_to_clipboard(&root.join(relative).to_string_lossy());
@@ -2381,6 +2583,24 @@ impl AppWindow {
         }
     }
 
+    fn create_markdown_from_sidebar(self: &Rc<Self>) {
+        let Some(root) = self.workspace_root.borrow().clone() else {
+            if let Some(open_folder) = self.window.lookup_action("openFolder") {
+                open_folder.activate(None);
+            }
+            return;
+        };
+        let directory = self.active_tab().and_then(|tab| {
+            let document = tab.document.borrow();
+            let path = document.path.as_deref()?;
+            path.strip_prefix(&root).ok()?;
+            path.parent().map(Path::to_path_buf)
+        });
+        let directory = directory.as_deref().unwrap_or(&root);
+        let result = crate::workspace::mutation::create_markdown(directory, "");
+        self.finish_workspace_file_creation(&root, result);
+    }
+
     /// 新建工作区文档(相对目录;空 = 根)。
     fn prompt_new_workspace_file(self: &Rc<Self>, root: &Path, dir_relative: &str, markdown: bool) {
         let root = root.to_path_buf();
@@ -2402,14 +2622,18 @@ impl AppWindow {
             } else {
                 crate::workspace::mutation::create_plain_text(&root, &relative_dir)
             };
-            match result {
-                Ok(path) => {
-                    this.sidebar.set_workspace_root(Some(root.to_path_buf()));
-                    this.open_document_in_tab(&path);
-                }
-                Err(err) => this.set_status(&format!("新建失败:{err}")),
-            }
+            this.finish_workspace_file_creation(&root, result);
         });
+    }
+
+    fn finish_workspace_file_creation(self: &Rc<Self>, root: &Path, result: std::io::Result<PathBuf>) {
+        match result {
+            Ok(path) => {
+                self.sidebar.set_workspace_root(Some(root.to_path_buf()));
+                self.open_document_in_tab(&path);
+            }
+            Err(err) => self.set_status(&format!("新建失败:{err}")),
+        }
     }
 
     /// 新建工作区文件夹(相对目录;空 = 根)。
@@ -2468,9 +2692,15 @@ impl AppWindow {
     }
 
     /// 删除确认(文件 remove/文件夹递归)。
-    fn confirm_delete_entry(self: &Rc<Self>, root: &Path, relative: &str) {
+    fn confirm_delete_entry(self: &Rc<Self>, root: &Path, target: &crate::ui::sidebar::ContextTarget) {
+        use crate::ui::sidebar::ContextTarget;
+        let (relative, detail) = match target {
+            ContextTarget::File(relative) => (relative, ""),
+            ContextTarget::Folder(relative) => (relative, "\n文件夹将连同内容一起删除。"),
+            ContextTarget::Root => return,
+        };
         let root = root.to_path_buf();
-        let relative = relative.to_string();
+        let relative = relative.clone();
         let dialog = gtk::Dialog::builder()
             .title("删除")
             .transient_for(&self.window)
@@ -2480,7 +2710,7 @@ impl AppWindow {
         dialog.add_button("取消", gtk::ResponseType::Cancel);
         dialog.add_button("删除", gtk::ResponseType::Apply);
         let label = gtk::Label::builder()
-            .label(format!("确定删除 {relative}?\n文件夹将连同内容一起删除。"))
+            .label(format!("确定删除 {relative}?{detail}"))
             .margin_top(12)
             .margin_bottom(12)
             .margin_start(16)
@@ -2790,11 +3020,7 @@ impl AppWindow {
 
     /// 空白新标签(未命名文档)。
     pub(crate) fn create_tab_blank(self: &Rc<Self>) {
-        self.create_tab_with_snapshot(
-            PathBuf::from("未命名.md"),
-            DocumentSnapshot::default(),
-            None,
-        );
+        self.create_tab_blank_with_type("markdown");
     }
 
     /// 设置对话框(v1):快捷键自定义(核心命令) + 设置文件路径。

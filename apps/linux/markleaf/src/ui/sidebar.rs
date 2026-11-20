@@ -1,5 +1,6 @@
 // 侧栏:工作区树(ListView)+ 搜索面板 + 大纲。
 // 数据源:workspace::model 扫描 / outlineChanged 消息;双击打开文档。
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -31,7 +32,7 @@ pub struct Sidebar {
     pub root: gtk::Box,
     /// 工作区/大纲两页切换。
     stack: Stack,
-    /// 工作区树模型(重建即刷新;展开状态由 GTK 默认收拢,M3 基线)。
+    /// 工作区树模型。
     tree_store: gtk::TreeStore,
     tree_view: gtk::TreeView,
     /// 搜索面板。
@@ -69,7 +70,7 @@ use std::cell::RefCell;
 
 #[allow(deprecated)]
 impl Sidebar {
-    pub fn new() -> Rc<Self> {
+    pub fn new(lang: &str) -> Rc<Self> {
         let stack = Stack::new();
 
         // ---- 工作区页:搜索框 + 树 ----
@@ -126,8 +127,18 @@ impl Sidebar {
         switcher.set_hexpand(true);
 
         let new_file_button = gtk::Button::from_icon_name("list-add-symbolic");
-        new_file_button.set_tooltip_text(Some("新建 Markdown 文档"));
+        let new_file_label = crate::l10n::tr(lang, "新建 Markdown 文件")
+            .unwrap_or_else(|| "新建 Markdown 文件".into());
+        new_file_button.set_tooltip_text(Some(&new_file_label));
+        new_file_button.update_property(&[gtk::accessible::Property::Label(&new_file_label)]);
         new_file_button.add_css_class("flat");
+        new_file_button.set_action_name(Some("win.newWorkspaceMarkdown"));
+        let weak_new_file_button = new_file_button.downgrade();
+        stack.connect_visible_child_name_notify(move |stack| {
+            if let Some(button) = weak_new_file_button.upgrade() {
+                button.set_visible(stack.visible_child_name().as_deref() != Some("outline"));
+            }
+        });
 
         let header = gtk::Box::new(Orientation::Horizontal, 8);
         header.append(&switcher);
@@ -229,14 +240,6 @@ impl Sidebar {
                         (open_for_activate.on_open_path.borrow())(&root_dir.join(relative));
                     }
                 }
-            });
-        }
-
-        // 新建按钮(tab 行右侧)转发 win.newMarkdown。
-        {
-            let new_for_click = new_file_button.clone();
-            new_file_button.connect_clicked(move |_| {
-                let _ = new_for_click.activate_action("win.newMarkdown", None);
             });
         }
 
@@ -523,20 +526,26 @@ impl Sidebar {
 
     /// 注入工作区根(设置后扫描;None = 无工作区)。
     pub fn set_workspace_root(self: &Rc<Self>, root: Option<PathBuf>) {
+        let same_workspace = *self.current_workspace_root.borrow() == root;
         *self.current_workspace_root.borrow_mut() = root.clone();
-        self.tree_store.clear();
         // 搜索框可用性联动(macOS syncSearchAvailability)。
         self.search_entry.set_sensitive(root.is_some());
         let Some(root_dir) = root else {
-            *self.cached_entries.borrow_mut() = Vec::new();
+            self.tree_store.clear();
+            self.cached_entries.borrow_mut().clear();
             self.stack.set_visible_child_name("empty");
             return;
         };
         let mut entries = scan_workspace(&root_dir);
         self.apply_sort(&mut entries);
-        *self.cached_entries.borrow_mut() = entries.clone();
-        self.rebuild_store(&entries);
-        self.stack.set_visible_child_name("workspace");
+        if same_workspace && *self.cached_entries.borrow() == entries {
+            return;
+        }
+        self.rebuild_store(&entries, same_workspace);
+        *self.cached_entries.borrow_mut() = entries;
+        if !same_workspace {
+            self.stack.set_visible_child_name("workspace");
+        }
     }
 
     /// 按排序方向翻转条目顺序(目录始终在前)。
@@ -557,8 +566,76 @@ impl Sidebar {
         });
     }
 
-    /// 依当前视图模式重建树内容(树状 = 层级;列表 = 扁平卡片)。
-    fn rebuild_store(&self, entries: &[WorkspaceEntry]) {
+    fn rebuild_store(&self, entries: &[WorkspaceEntry], preserve_view: bool) {
+        if !preserve_view {
+            self.populate_store(entries);
+            return;
+        }
+        let relative_at = |path: &gtk::TreePath| {
+            let iter = self.tree_store.iter(path)?;
+            self.tree_store.get_value(&iter, 1).get::<String>().ok()
+        };
+        let mut expanded = HashSet::new();
+        self.tree_view.map_expanded_rows(|_, path| {
+            if let Some(relative) = relative_at(path) {
+                expanded.insert(relative);
+            }
+        });
+        let selected = self.tree_view.selection().selected().and_then(|(model, iter)| {
+            model.get_value(&iter, 1).get::<String>().ok()
+        });
+        let anchor = self.tree_view.visible_range().and_then(|(top, _)| {
+            let bounds = self.tree_view.background_area(Some(&top), None);
+            // A partially visible row at the top needs a negative offset.
+            // Use the first full row so GTK can restore a positive alignment.
+            let row = if bounds.y() < 0 {
+                let next_y = (bounds.y() + bounds.height()).max(0) + 1;
+                self.tree_view
+                    .path_at_pos(0, next_y)
+                    .and_then(|(path, _, _, _)| path)
+                    .unwrap_or(top)
+            } else {
+                top
+            };
+            let bounds = self.tree_view.background_area(Some(&row), None);
+            let room = (self.tree_view.visible_rect().height() - bounds.height()).max(1);
+            let align = (bounds.y() as f32 / room as f32).clamp(0.0, 1.0);
+            Some((relative_at(&row)?, align))
+        });
+
+        self.populate_store(entries);
+
+        let mut folders_to_expand = Vec::new();
+        let mut selection_path = None;
+        let mut anchor_path = None;
+        self.tree_store.foreach(|model, path, iter| {
+            let Ok(relative) = model.get_value(iter, 1).get::<String>() else {
+                return false;
+            };
+            if expanded.contains(&relative) {
+                folders_to_expand.push(path.clone());
+            }
+            if selected.as_ref() == Some(&relative) {
+                selection_path = Some(path.clone());
+            }
+            if let Some((_, align)) = anchor.as_ref().filter(|(entry, _)| entry == &relative) {
+                anchor_path = Some((path.clone(), *align));
+            }
+            false
+        });
+        for path in folders_to_expand {
+            self.tree_view.expand_row(&path, false);
+        }
+        if let Some(path) = selection_path {
+            self.tree_view.selection().select_path(&path);
+        }
+        if let Some((path, align)) = anchor_path {
+            self.tree_view.scroll_to_cell(Some(&path), None, true, align, 0.0);
+        }
+    }
+
+    /// 依当前视图模式填充树内容(树状 = 层级;列表 = 扁平卡片)。
+    fn populate_store(&self, entries: &[WorkspaceEntry]) {
         self.tree_store.clear();
         if self.view_list_mode.get() {
             for entry in entries {
@@ -711,30 +788,28 @@ impl Sidebar {
         let Ok(relative) = path.strip_prefix(&root) else {
             return;
         };
-        let relative = relative.to_string_lossy().into_owned();
-        let store = &self.tree_store;
-        let mut iter = store.iter_first();
-        while let Some(mut current) = iter {
+        let relative = relative.to_string_lossy();
+        let mut found = None;
+        self.tree_store.foreach(|store, tree_path, iter| {
             let row_relative = store
-                .get_value(&current, 1)
+                .get_value(iter, 1)
                 .get::<String>()
                 .unwrap_or_default();
-            if row_relative == relative {
-                // 展开祖先链,选中并滚动到该行。
-                let tree_path = store.path(&current);
-                self.tree_view.expand_to_path(&tree_path);
-                let selection = self.tree_view.selection();
-                selection.unselect_all();
-                self.tree_view
-                    .scroll_to_cell(Some(&tree_path), None, false, 0.0, 0.0);
-                selection.select_path(&tree_path);
-                self.stack.set_visible_child_name("workspace");
-                return;
+            if row_relative == relative.as_ref() {
+                found = Some(tree_path.clone());
             }
-            if !store.iter_next(&mut current) {
-                break;
-            }
-        }
+            found.is_some()
+        });
+        let Some(tree_path) = found else {
+            return;
+        };
+        self.tree_view.expand_to_path(&tree_path);
+        let selection = self.tree_view.selection();
+        selection.unselect_all();
+        self.tree_view
+            .scroll_to_cell(Some(&tree_path), None, false, 0.0, 0.0);
+        selection.select_path(&tree_path);
+        self.stack.set_visible_child_name("workspace");
     }
 
 
@@ -833,8 +908,8 @@ impl Sidebar {
         };
         let mut entries = scan_workspace(&root_dir);
         self.apply_sort(&mut entries);
-        *self.cached_entries.borrow_mut() = entries.clone();
-        self.rebuild_store(&entries);
+        self.rebuild_store(&entries, true);
+        *self.cached_entries.borrow_mut() = entries;
     }
 
     /// 侧栏最小宽度:内容实测值与保底 232 取大(供 Paned 拖拽钳制)。

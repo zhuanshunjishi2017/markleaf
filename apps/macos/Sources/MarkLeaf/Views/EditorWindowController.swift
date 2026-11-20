@@ -1473,7 +1473,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
 
         configureStatusButton(modeButton, title: "")
         modeButton.target = self
-        modeButton.action = #selector(showEditorModeMenu)
+        modeButton.action = #selector(toggleEditorModeFromStatusBar)
         modeButton.setContentHuggingPriority(.required, for: .horizontal)
         modeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -1699,27 +1699,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         activeSession.showDocumentStatistics()
     }
 
-    @objc private func showEditorModeMenu() {
-        let menu = NSMenu(title: L10n.t("编辑模式"))
-        let visualItem = NSMenuItem(title: L10n.t("可视化"), action: #selector(selectEditorMode(_:)), keyEquivalent: "")
-        visualItem.target = self
-        visualItem.representedObject = "visual"
-        visualItem.state = activeSession.isSourceMode ? .off : .on
-        menu.addItem(visualItem)
-
-        let sourceItem = NSMenuItem(title: L10n.t("源码"), action: #selector(selectEditorMode(_:)), keyEquivalent: "")
-        sourceItem.target = self
-        sourceItem.representedObject = "source"
-        sourceItem.state = activeSession.isSourceMode ? .on : .off
-        sourceItem.isEnabled = !activeSession.isPlainText
-        menu.addItem(sourceItem)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: modeButton.bounds.height), in: modeButton)
-    }
-
-    @objc private func selectEditorMode(_ sender: NSMenuItem) {
-        guard let mode = sender.representedObject as? String else { return }
-        let wantsSource = mode == "source"
-        guard wantsSource != activeSession.isSourceMode, !(wantsSource && activeSession.isPlainText) else { return }
+    @objc private func toggleEditorModeFromStatusBar() {
         activeSession.toggleSourceMode()
     }
 

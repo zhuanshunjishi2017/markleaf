@@ -1823,6 +1823,7 @@ async function handleMessage(value: unknown): Promise<void> {
         clientX?: unknown
         clientY?: unknown
         menuSessionId?: unknown
+        refocusEditor?: unknown
       }
       if (typeof payload?.command === 'string') {
         if (payload.menuSessionId != null && payload.menuSessionId !== activeMenuSessionId) {
@@ -1864,6 +1865,10 @@ async function handleMessage(value: unknown): Promise<void> {
         }
         if (payload.command === 'endContextMenu') {
           endContextMenuSession()
+          if (payload.refocusEditor === true) {
+            if (sourceMode) sourceEditor?.focus()
+            else editor.view.focus()
+          }
           if (message.requestId) send('commandResult', { success: true }, message.requestId)
           break
         }

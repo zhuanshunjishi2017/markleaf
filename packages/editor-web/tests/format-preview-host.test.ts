@@ -106,6 +106,23 @@ it('clears the native hover preview when the host ends the menu session', async 
   expect(editorDom.querySelector('.markleaf-format-preview')).toBeNull()
 })
 
+it.each([false, true])('restores editor focus on menu close only when requested (%s)', async (refocusEditor) => {
+  const { editorDom, send } = await createHarness()
+  const otherControl = document.createElement('input')
+  document.body.append(otherControl)
+  otherControl.focus()
+
+  send({
+    protocolVersion: 1,
+    type: 'command',
+    documentId: 'format-preview-host-test',
+    revision: 0,
+    payload: { command: 'endContextMenu', refocusEditor },
+  })
+
+  expect(document.activeElement).toBe(refocusEditor ? editorDom : otherControl)
+})
+
 it('does not install an independent HTML formatting surface on macOS', async () => {
   await createHarness('macOS')
   expect(document.querySelector('#format-menu')).toBeNull()

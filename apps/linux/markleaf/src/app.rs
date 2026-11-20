@@ -209,9 +209,7 @@ pub fn prompt_recovered_documents(window: &Rc<AppWindow>) {
         dialog.set_response_appearance("restore", adw::ResponseAppearance::Suggested);
         dialog.connect_response(Some("restore"), move |dialog, _response| {
             let markdown = entry_markdown_of(&entry_id, &recovered_dir());
-            if let Some(path) = &path {
-                window.open_document_recovered(path, markdown);
-            }
+            window.open_document_recovered(path.as_deref(), markdown);
             dialog.close();
         });
         dialog.connect_response(Some("discard"), move |dialog, _response| {

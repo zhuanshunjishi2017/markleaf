@@ -4,7 +4,8 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use notify::{Event, RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode};
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 
 pub struct WorkspaceWatcher {
     // notify Watcher 需存活以维持 inotify 订阅。
@@ -17,6 +18,13 @@ impl WorkspaceWatcher {
         let (tx, rx) = mpsc::channel::<Event>();
         let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
             if let Ok(event) = result {
+                if let EventKind::Access(access) = event.kind {
+                    // Scans read directories and document previews. Their
+                    // access notifications must not schedule another scan.
+                    if access != AccessKind::Close(AccessMode::Write) {
+                        return;
+                    }
+                }
                 let _ = tx.send(event);
             }
         })?;

@@ -44,6 +44,9 @@ impl EditorWebView {
             .web_context(context)
             .user_content_manager(&content_manager)
             .build();
+        // The editor sends its context menu request to the GTK host. A second
+        // popup from WebKit would compete for the Wayland input grab.
+        webview.connect_context_menu(|_, _, _| true);
 
         Self {
             webview,
