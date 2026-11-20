@@ -256,6 +256,8 @@ pub struct AppWindow {
     settings: Rc<RefCell<AppSettings>>,
     /// 上下文菜单浮层(每次请求重建内容后弹出)。
     context_popover: RefCell<Option<PopoverMenu>>,
+    /// 当前打开的动态右键 Popover(防消息多播导致重复弹出)。
+    active_context_popover: RefCell<Option<gtk::Popover>>,
 
     sidebar: Rc<super::sidebar::Sidebar>,
     paned: gtk::Paned,
@@ -444,6 +446,7 @@ impl AppWindow {
             zoom_button: RefCell::new(zoom_button),
             settings,
             context_popover: RefCell::new(None),
+            active_context_popover: RefCell::new(None),
             sidebar,
             paned: paned.clone(),
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
@@ -458,12 +461,11 @@ impl AppWindow {
         });
 
         {
-            let this_for_open = this.clone();
-            let windows_for_open = windows.clone();
+            let window = Rc::downgrade(&this);
             sidebar_for_handler.set_open_handler(move |path| {
-                let window_for_open = this_for_open.clone();
-                windows_for_open.borrow_mut().push(window_for_open.clone());
-                this_for_open.open_document_in_tab(path);
+                if let Some(window) = window.upgrade() {
+                    window.open_document_in_tab(path);
+                }
             });
         }
         // 工作区右键命令分派(文件系统变更/剪贴板/刷新/关闭)。
@@ -1290,190 +1292,352 @@ impl AppWindow {
     }
 
     fn show_context_menu(self: &Rc<Self>, state: &Rc<TabState>, message: &EditorMessage) {
-        let payload = message.payload.as_ref();
-        let end_session = payload
-            .and_then(|value| value.get("menuSessionId"))
-            .and_then(|value| value.as_u64())
-            .map(|session_id| HostMessage::command_with_request(
-                &message.document_id,
-                0,
-                serde_json::json!({ "command": "endContextMenu", "menuSessionId": session_id }),
-                None,
-            ));
-        if self.tabs.borrow().selected_page().as_ref() != Some(&state.page) {
-            if let Some(end_session) = end_session {
-                state.webview.post_to_editor(&end_session);
-            }
-            return;
-        }
+        let (x, y) = (
+            message.payload.as_ref().and_then(|p| p.get("clientX")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+            message.payload.as_ref().and_then(|p| p.get("clientY")).and_then(|v| v.as_f64()).unwrap_or(0.0),
+        );
+        let read_only = message
+            .payload
+            .as_ref()
+            .and_then(|p| p.get("readOnly"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
-        let coordinate = |key| {
-            payload
-                .and_then(|value| value.get(key))
-                .and_then(|value| value.as_f64())
-                .unwrap_or(0.0)
-        };
-        let request_flag = |key: &str| {
-            payload
-                .and_then(|value| value.get(key))
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false)
-        };
-        let context = state.last_editor_status.borrow();
-        let flag = |key: &str| {
+        // 对象上下文:最近一次 commandStateChanged 缓存(对齐 macOS editorMenuState)。
+        let context = state.last_editor_status.borrow().clone();
+        let flag = |key: &str| -> bool {
             context
                 .as_ref()
-                .and_then(|value| value.get(key))
-                .and_then(|value| value.as_bool())
+                .and_then(|p| p.get(key))
+                .and_then(|v| v.as_bool())
                 .unwrap_or(false)
         };
-
-        // GTK owns the menu and its outside-click and Escape handling.
-        let menu = gio::Menu::new();
-        let add_section = |items: &[(&str, &str)]| {
-            let section = gio::Menu::new();
-            for (title, command) in items {
-                let label = crate::l10n::tr(&self.lang, title).unwrap_or_else(|| title.to_string());
-                section.append(Some(&label), Some(&format!("context.command::{command}")));
-            }
-            menu.append_section(None, &section);
-        };
-        if context
+        let semantic = context
             .as_ref()
-            .and_then(|value| value.get("linkHref"))
-            .and_then(|value| value.as_str())
-            .is_some()
-        {
-            add_section(&[
-                ("打开链接", "openLink"),
-                ("复制链接地址", "copyLinkAddress"),
-                ("编辑链接…", "insertLink"),
-            ]);
-        }
-        if flag("imageSelected") {
-            add_section(&[("拷贝图片", "copy"), ("更改图片…", "changeImage")]);
-        }
-        if flag("codeBlock") {
-            add_section(&[
-                ("声明代码语言…", "declareCodeLanguage"),
-                ("格式化代码块", "formatCodeBlock"),
-                ("拷贝代码块", "copyCodeBlock"),
-            ]);
-        }
-        if flag("inTable") {
-            add_section(&[
-                ("上方插入行", "addRowBefore"),
-                ("下方插入行", "addRowAfter"),
-                ("左侧插入列", "addColumnBefore"),
-                ("右侧插入列", "addColumnAfter"),
-                ("删除行", "deleteRow"),
-                ("删除列", "deleteColumn"),
-                ("删除表格", "deleteTable"),
-                ("平均分配列宽", "fitTableContents"),
-            ]);
-        }
-        if flag("mathBlock") || flag("mathInline") {
-            add_section(&[("拷贝公式", "copy"), ("删除公式", "deleteMath")]);
-        }
-        if flag("mermaid") {
-            add_section(&[("重新渲染图表", "rerenderMermaid"), ("删除图表", "deleteMermaid")]);
-        }
-        if request_flag("readOnly") {
-            add_section(&[("拷贝", "copy"), ("全选", "selectAll")]);
-        } else {
-            add_section(&[("剪切", "cut"), ("拷贝", "copy"), ("粘贴", "paste")]);
-            if !state.source_mode.get() && !request_flag("sourceMode") {
-                let mut format = vec![
-                    ("加粗", "toggleBold"),
-                    ("斜体", "toggleItalic"),
-                    ("下划线", "toggleUnderline"),
-                    ("删除线", "toggleStrike"),
-                    ("高亮", "toggleHighlight"),
-                ];
-                if request_flag("canStartFormatPainter") || request_flag("formatPainterArmed") {
-                    format.push(("格式刷", "formatPainter"));
-                }
-                format.push(("清除格式", "clearFormat"));
-                add_section(&format);
-            }
-        }
-        add_section(&[("查找与替换", "find")]);
-        drop(context);
+            .and_then(|p| p.get("semanticContext"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("ordinaryBlock")
+            .to_string();
+        let link_href = context
+            .as_ref()
+            .and_then(|p| p.get("linkHref"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let footnote_label = context
+            .as_ref()
+            .and_then(|p| p.get("footnoteReferenceLabel"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let math_block = flag("mathBlock");
+        let actions = context.as_ref().and_then(|p| p.get("actions")).cloned();
 
+        // WebView 坐标 → 窗口坐标(考虑缩放)。
         let zoom = state.zoom.get();
-        let origin = graphene::Point::new(
-            (coordinate("clientX") * zoom) as f32,
-            (coordinate("clientY") * zoom) as f32,
-        );
-        let Some(point) = state.webview.widget().compute_point(&self.window, &origin) else {
-            if let Some(end_session) = end_session {
-                state.webview.post_to_editor(&end_session);
-            }
-            return;
+        let origin_point = graphene::Point::new((x * zoom) as f32, (y * zoom) as f32);
+        let (origin_x, origin_y) = state
+            .webview
+            .widget()
+            .compute_point(&self.window, &origin_point)
+            .map(|point| (point.x() as i32 as f64, point.y() as i32 as f64))
+            .unwrap_or((0.0, 0.0));
+        let rect = gdk::Rectangle::new(origin_x as i32, origin_y as i32, 1, 1);
+
+        // 菜单构建器:条目启用态读 actions 表(灰化对齐桌面)。
+        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        menu_box.set_margin_top(6);
+        menu_box.set_margin_bottom(6);
+        menu_box.set_margin_start(4);
+        menu_box.set_margin_end(4);
+        let command_enabled = |command: &str| -> bool {
+            actions
+                .as_ref()
+                .and_then(|a| a.get(command))
+                .and_then(|c| c.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true)
+        };
+        let add_item = |menu_box: &gtk::Box, label: &str, command: &str, this: &Rc<Self>, state: &Rc<TabState>| {
+            let enabled = command_enabled(command);
+            let item = gtk::Button::builder()
+                .label(label)
+                .has_frame(false)
+                .halign(gtk::Align::Fill)
+                .sensitive(enabled)
+                .build();
+            let popover_weak = menu_box.downgrade();
+            let this = this.clone();
+            let state = state.clone();
+            let command = command.to_string();
+            item.connect_clicked(move |_| {
+                if let Some(menu_box) = popover_weak.upgrade() {
+                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
+                        popover.popdown();
+                    }
+                }
+                this.dispatch_command(&command);
+                let _ = &state;
+            });
+            menu_box.append(&item);
+        };
+        let add_clip_item = |menu_box: &gtk::Box, label: &str, command: &str, this: &Rc<Self>, state: &Rc<TabState>| {
+            let item = gtk::Button::builder()
+                .label(label)
+                .has_frame(false)
+                .halign(gtk::Align::Fill)
+                .build();
+            let popover_weak = menu_box.downgrade();
+            let this = this.clone();
+            let state = state.clone();
+            let command = command.to_string();
+            item.connect_clicked(move |_| {
+                if let Some(menu_box) = popover_weak.upgrade() {
+                    if let Some(popover) = menu_box.parent().and_then(|p| p.downcast::<gtk::Popover>().ok()) {
+                        popover.popdown();
+                    }
+                }
+                this.exec_editing_command(&command);
+            });
+            menu_box.append(&item);
+        };
+        let add_separator = |menu_box: &gtk::Box| {
+            menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        };
+        // 子菜单:MenuButton(标签)指向子 Box;返回子 Box 供继续填充。
+        let add_submenu = |menu_box: &gtk::Box, label: &str| -> gtk::Box {
+            let sub_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            sub_box.set_margin_top(6);
+            sub_box.set_margin_bottom(6);
+            sub_box.set_margin_start(4);
+            sub_box.set_margin_end(4);
+            let button = gtk::MenuButton::builder()
+                .label(label)
+                .has_frame(false)
+                .halign(gtk::Align::Fill)
+                .build();
+            button.set_popover(Some(&Self::popover_from_box(&sub_box)));
+            menu_box.append(&button);
+            sub_box
         };
 
-        self.dismiss_context_menu();
-        let popover = PopoverMenu::from_model(Some(&menu));
-        popover.set_has_arrow(false);
-        popover.set_pointing_to(Some(&gdk::Rectangle::new(
-            point.x() as i32, point.y() as i32, 1, 1,
-        )));
-        let action_changed_focus = Rc::new(std::cell::Cell::new(false));
-        let actions = gio::SimpleActionGroup::new();
-        let command_action = gio::SimpleAction::new("command", Some(glib::VariantTy::STRING));
-        let window = Rc::downgrade(self);
-        let changed_focus = action_changed_focus.clone();
-        command_action.connect_activate(move |_, parameter| {
-            if let (Some(window), Some(command)) =
-                (window.upgrade(), parameter.and_then(|value| value.str()))
-            {
-                let previous = gtk::prelude::GtkWindowExt::focus(&window.window);
-                window.dispatch_command(command);
-                changed_focus.set(gtk::prelude::GtkWindowExt::focus(&window.window) != previous);
-            }
-        });
-        actions.add_action(&command_action);
-        popover.insert_action_group("context", Some(&actions));
+        let mut used_ordinary_layout = false;
 
-        let window = Rc::downgrade(self);
-        let webview = state.webview.clone();
-        let page = state.page.clone();
-        popover.connect_closed(move |popover| {
-            if let Some(window) = window.upgrade() {
-                let mut active = window.context_popover.borrow_mut();
-                if active.as_ref() == Some(popover) {
-                    active.take();
-                }
+        // ---- 语义分区(对齐 macOS buildEditorContextMenu) ----
+        if read_only && semantic == "math" {
+            add_item(&menu_box, "查看公式源码", "viewMathSource", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+        } else if semantic == "footnoteDefinition" {
+            add_item(&menu_box, "转到引用", "goToFootnoteReference", &self, state);
+            add_item(&menu_box, "更改脚注标识…", "resetFootnoteLabel", &self, state);
+            add_item(&menu_box, "删除全部引用", "clearFootnoteReferences", &self, state);
+            add_item(&menu_box, "删除脚注及全部引用", "deleteFootnote", &self, state);
+            add_separator(&menu_box);
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+        } else if semantic == "frontMatter" {
+            add_item(&menu_box, "复制元数据", "copyCodeBlock", &self, state);
+            if !read_only {
+                add_separator(&menu_box);
+                add_item(&menu_box, "移到元数据之后", "exitCode", &self, state);
             }
-            let popover = popover.clone();
-            let webview = webview.clone();
-            let end_session = end_session.clone();
-            let window = window.clone();
-            let page = page.clone();
-            let action_changed_focus = action_changed_focus.clone();
-            // GTK can dispatch the selected action after emitting "closed".
-            glib::idle_add_local_once(move || {
-                let restore_focus = window.upgrade().is_some_and(|window| {
-                    !action_changed_focus.get()
-                        && window.context_popover.borrow().is_none()
-                        && window.tabs.borrow().selected_page().as_ref() == Some(&page)
-                });
-                if popover.parent().is_some() {
-                    popover.unparent();
-                }
-                if restore_focus {
-                    webview.widget().grab_focus();
-                }
-                if let Some(mut message) = end_session {
-                    if let Some(payload) = message.payload.as_mut() {
-                        payload["refocusEditor"] = restore_focus.into();
-                    }
-                    webview.post_to_editor(&message);
-                }
-            });
+            add_separator(&menu_box);
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+            add_clip_item(&menu_box, "全选", "selectAll", &self, state);
+        } else if semantic == "table" {
+            add_item(&menu_box, "编辑表格标题", "editTableCaption", &self, state);
+            add_separator(&menu_box);
+            add_item(&menu_box, "在上方添加行", "addRowBefore", &self, state);
+            add_item(&menu_box, "在下方添加行", "addRowAfter", &self, state);
+            add_item(&menu_box, "删除当前行", "deleteRow", &self, state);
+            add_separator(&menu_box);
+            add_item(&menu_box, "在左侧添加列", "addColumnBefore", &self, state);
+            add_item(&menu_box, "在右侧添加列", "addColumnAfter", &self, state);
+            add_item(&menu_box, "删除当前列", "deleteColumn", &self, state);
+            add_separator(&menu_box);
+            let widths = add_submenu(&menu_box, "调整列宽");
+            add_item(&widths, "根据内容调整列宽", "fitTableContents", &self, state);
+            add_item(&widths, "平均分配列宽", "distributeTableColumns", &self, state);
+            add_item(&widths, "恢复自动列宽", "resetTableWidths", &self, state);
+            let align = add_submenu(&menu_box, "对齐");
+            add_item(&align, "左对齐", "alignTableLeft", &self, state);
+            add_item(&align, "居中对齐", "alignTableCenter", &self, state);
+            add_item(&align, "右对齐", "alignTableRight", &self, state);
+            add_separator(&menu_box);
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+            add_separator(&menu_box);
+            add_item(&menu_box, "删除表格", "deleteTable", &self, state);
+        } else if semantic == "mermaid" {
+            if read_only {
+                add_item(&menu_box, "查看图表源码", "viewMermaidSource", &self, state);
+                add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            } else {
+                add_item(&menu_box, "编辑 Mermaid 源码", "editMermaid", &self, state);
+                add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            }
+            add_item(&menu_box, "重新渲染 Mermaid 图表", "rerenderMermaid", &self, state);
+            add_item(&menu_box, "将图表另存为图片", "saveMermaidAs", &self, state);
+            if !read_only {
+                add_separator(&menu_box);
+                add_item(&menu_box, "删除 Mermaid 图表", "deleteMermaid", &self, state);
+            }
+        } else if semantic == "image" {
+            // 顺序对齐 Windows ImageContextMenu:更换/标题/缩放/旋转/另存为 + 剪贴板。
+            add_item(&menu_box, "更换图片…", "changeImage", &self, state);
+            add_item(&menu_box, "编辑图片标题", "editImageCaption", &self, state);
+            let resize = add_submenu(&menu_box, "调整图片大小");
+            add_item(&resize, "50%", "resizeImage50", &self, state);
+            add_item(&resize, "75%", "resizeImage75", &self, state);
+            add_item(&resize, "90%", "resizeImage90", &self, state);
+            add_item(&resize, "100%", "resizeImage100", &self, state);
+            add_item(&menu_box, "顺时针旋转图片", "rotateImage", &self, state);
+            add_item(&menu_box, "将图片另存为…", "saveImageAs", &self, state);
+            add_separator(&menu_box);
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+        } else if semantic == "math" {
+            // 公式:编辑/编号(块级)/互转/删除。
+            add_item(&menu_box, "编辑公式源码", "editMath", &self, state);
+            if math_block {
+                add_item(&menu_box, "公式编号…", "setMathNumber", &self, state);
+            }
+            add_item(
+                &menu_box,
+                if math_block { "转为行内公式" } else { "转为块级公式" },
+                "convertMath",
+                &self,
+                state,
+            );
+            add_separator(&menu_box);
+            add_item(&menu_box, "删除公式", "deleteMath", &self, state);
+        } else if semantic == "codeBlock" {
+            // 代码块:[撤销/重做] 声明代码语言 格式化 复制整段代码 | 转为正文 | 剪贴板/全选。
+            if !read_only {
+                add_item(&menu_box, "撤销", "undo", &self, state);
+                add_item(&menu_box, "重做", "redo", &self, state);
+                add_separator(&menu_box);
+            }
+            add_item(&menu_box, "声明代码语言…", "declareCodeLanguage", &self, state);
+            let format_label = if command_enabled("copy") {
+                "格式化选中行"
+            } else {
+                "格式化代码块"
+            };
+            add_item(&menu_box, format_label, "formatCodeBlock", &self, state);
+            add_item(&menu_box, "复制整段代码", "copyCodeBlock", &self, state);
+            add_separator(&menu_box);
+            if !read_only {
+                add_item(&menu_box, "转为正文", "exitCode", &self, state);
+                add_separator(&menu_box);
+            }
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+            add_clip_item(&menu_box, "全选", "selectAll", &self, state);
+        } else if read_only {
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+        } else {
+            used_ordinary_layout = true;
+            // 普通段落(对齐 macOS 默认分支):整理行内代码/历史/剪贴板/插入/段落。
+            if command_enabled("normalizeInlineCode") {
+                add_item(&menu_box, "整理行内代码", "normalizeInlineCode", &self, state);
+                add_separator(&menu_box);
+            }
+            add_item(&menu_box, "撤销", "undo", &self, state);
+            add_item(&menu_box, "重做", "redo", &self, state);
+            add_separator(&menu_box);
+            add_clip_item(&menu_box, "剪切", "cut", &self, state);
+            add_clip_item(&menu_box, "拷贝", "copy", &self, state);
+            add_clip_item(&menu_box, "粘贴", "paste", &self, state);
+            add_clip_item(&menu_box, "粘贴为纯文本", "pastePlainText", &self, state);
+            add_separator(&menu_box);
+            add_item(&menu_box, "行内代码", "toggleCode", &self, state);
+            add_item(&menu_box, "行内公式", "insertMathInline", &self, state);
+            add_item(&menu_box, "插入超链接…", "insertLink", &self, state);
+            let images = add_submenu(&menu_box, "插入图片");
+            add_item(&images, "插入本地图片…", "insertImage", &self, state);
+            let paragraph = add_submenu(&menu_box, "段落");
+            add_item(&paragraph, "正文", "setParagraph", &self, state);
+            let headings = add_submenu(&paragraph, "标题");
+            add_item(&headings, "一级标题", "setHeading1", &self, state);
+            add_item(&headings, "二级标题", "setHeading2", &self, state);
+            add_item(&headings, "三级标题", "setHeading3", &self, state);
+            add_item(&headings, "四级标题", "setHeading4", &self, state);
+            add_item(&headings, "五级标题", "setHeading5", &self, state);
+            add_item(&headings, "六级标题", "setHeading6", &self, state);
+            add_item(&paragraph, "引用", "toggleBlockquote", &self, state);
+            add_item(&paragraph, "块级公式", "insertMathBlock", &self, state);
+            add_item(&paragraph, "代码块", "toggleCodeBlock", &self, state);
+            add_item(&paragraph, "水平线", "insertHorizontalRule", &self, state);
+            let alerts = add_submenu(&paragraph, "提示框");
+            add_item(&alerts, "备注", "insertAlertNote", &self, state);
+            add_item(&alerts, "提示", "insertAlertTip", &self, state);
+            add_item(&alerts, "重要", "insertAlertImportant", &self, state);
+            add_item(&alerts, "警告", "insertAlertWarning", &self, state);
+            add_item(&alerts, "注意", "insertAlertCaution", &self, state);
+            let tables = add_submenu(&paragraph, "表格");
+            add_item(&tables, "插入 3×3 表格", "insertTable", &self, state);
+            let lists = add_submenu(&paragraph, "列表");
+            add_item(&lists, "无序列表", "toggleBulletList", &self, state);
+            add_item(&lists, "有序列表", "toggleOrderedList", &self, state);
+            add_item(&lists, "任务列表", "toggleTaskList", &self, state);
+            add_separator(&lists);
+            add_item(&lists, "增加列表缩进", "indentListItem", &self, state);
+            add_item(&lists, "减少列表缩进", "outdentListItem", &self, state);
+            add_item(&paragraph, "插入脚注", "insertFootnote", &self, state);
+            add_separator(&paragraph);
+            add_item(&paragraph, "段前插入行", "insertLineBefore", &self, state);
+            add_item(&paragraph, "段后插入行", "insertLineAfter", &self, state);
+            add_separator(&paragraph);
+            add_item(&paragraph, "重复该段", "duplicateParagraph", &self, state);
+            add_item(&paragraph, "删除该段", "deleteParagraph", &self, state);
+        }
+
+        // ---- 尾区(对齐 macOS):链接/脚注引用/取消提示块 ----
+        if link_href.is_some() {
+            add_separator(&menu_box);
+            add_item(&menu_box, "打开链接", "openLink", &self, state);
+            add_item(&menu_box, "复制链接地址", "copyLinkAddress", &self, state);
+            if !read_only {
+                add_item(&menu_box, "编辑链接…", "insertLink", &self, state);
+                add_item(&menu_box, "移除链接", "removeLink", &self, state);
+            }
+        }
+        if footnote_label.is_some() {
+            add_separator(&menu_box);
+            add_item(&menu_box, "转到脚注正文", "goToFootnoteDefinition", &self, state);
+            if !read_only {
+                add_item(&menu_box, "删除此引用", "deleteFootnoteReference", &self, state);
+            }
+        }
+        if command_enabled("cancelAlert") {
+            add_separator(&menu_box);
+            add_item(&menu_box, "取消提示块", "cancelAlert", &self, state);
+        }
+        let _ = used_ordinary_layout;
+
+        // 消息多播会让本函数在一次右键里被调用多次:弹新前关旧,只留一个。
+        if let Some(old) = self.active_context_popover.take() {
+            old.popdown();
+            old.unparent();
+        }
+        let popover = gtk::Popover::new();
+        popover.set_has_arrow(false);
+        popover.set_pointing_to(Some(&rect));
+        popover.set_child(Some(&menu_box));
+        let popover_for_closed = popover.clone();
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+            let _ = popover_for_closed;
         });
         popover.set_parent(&self.window);
-        self.context_popover.replace(Some(popover.clone()));
+        *self.active_context_popover.borrow_mut() = Some(popover.clone());
         popover.popup();
     }
 
@@ -2803,6 +2967,12 @@ impl AppWindow {
             self.run_save_as_dialog(&state);
         }
     }
+
+fn popover_from_box(child: &gtk::Box) -> gtk::Popover {
+    let popover = gtk::Popover::new();
+    popover.set_child(Some(child));
+    popover
+}
 
     /// 链接打开:http(s)/mailto 走系统浏览器;相对路径按文档目录解析,
     /// Markdown/纯文本在工作区内打开为新标签,其余交给系统默认应用。
