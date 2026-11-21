@@ -5,6 +5,7 @@
 ### Changed
 
 - When dragging text to the editor's top or bottom edge, auto-scroll speed now changes progressively based on pointer distance from the edge, avoiding an abrupt jump from slow to fast.
+- The status bar Visual / Source mode button now toggles directly on click instead of showing a menu.
 
 ### Fixed
 
@@ -12,6 +13,8 @@
 - Fixed macOS text drag selections showing different colors while dragging and after release because the native selection and editor highlight were painted together.
 - Improved selection cleanup and focus-restoration timing to reduce flicker and duplicate highlighting when a selection is released.
 - Fixed local folder links in documents failing to open with Command-click and tooltips incorrectly identifying them as files.
+- Fixed the Windows Document Statistics window being too short, causing the last row to overlap the Close button.
+- Fixed the Windows editor static-resources error message being vague; it now gives detailed guidance and probes common install locations automatically.
 
 ## 1.7.8.5 — 2026-11-6
 
