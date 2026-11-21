@@ -391,13 +391,27 @@ impl AppWindow {
         source_button.set_icon_name("view-reveal-symbolic");
         let menu_button = gtk::MenuButton::new();
         menu_button.set_icon_name("open-menu-symbolic");
-        let recent_for_menu: Vec<(String, String)> = settings
+        let workspace_root: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
+        let workspace_root_for_menu = workspace_root.clone();
+        let recent_files_for_menu: Vec<(String, String)> = settings
             .borrow()
             .recent_files
             .iter()
             .map(|entry| (entry.name.clone(), entry.path.clone()))
             .collect();
-        menu_button.set_menu_model(Some(&menus::main_menu_model(&lang, &recent_for_menu)));
+        let recent_folders_for_menu: Vec<(String, String)> = settings
+            .borrow()
+            .recent_folders
+            .iter()
+            .map(|entry| (entry.name.clone(), entry.path.clone()))
+            .collect();
+        let has_workspace_for_menu = workspace_root_for_menu.borrow().is_some();
+        menu_button.set_menu_model(Some(&menus::main_menu_model(
+            &lang,
+            &recent_files_for_menu,
+            &recent_folders_for_menu,
+            has_workspace_for_menu,
+        )));
         let tr_open = crate::l10n::tr(&lang, "打开").unwrap_or_default();
         let tr_save = crate::l10n::tr(&lang, "保存").unwrap_or_default();
         let tr_source = crate::l10n::tr(&lang, "源码模式").unwrap_or_default();
@@ -452,7 +466,7 @@ impl AppWindow {
             sidebar_width_memory: std::cell::Cell::new(initial_sidebar_width),
             sidebar_animation: RefCell::new(None),
             lang,
-            workspace_root: RefCell::new(None),
+            workspace_root,
             watcher: RefCell::new(None),
             needs_rescan: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             find_bar: find_search_bar.clone(),
@@ -1152,6 +1166,13 @@ impl AppWindow {
         };
         let request_id = message.request_id.as_deref().unwrap_or("");
         // 分享:requestId="share" → 全文写系统剪贴板(见 share_active_document)。
+        if request_id == "copy-contents" {
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(&markdown);
+            }
+            self.set_status("文件内容已复制");
+            return;
+        }
         if request_id == "share" {
             if let Some(display) = gtk::gdk::Display::default() {
                 display.clipboard().set_text(&markdown);
@@ -2325,6 +2346,27 @@ impl AppWindow {
         });
         self.window.add_action(&open_recent);
 
+        // 菜单分组标题占位(GIO 菜单项必须指向 action 才渲染文本)。
+        let disabled_placeholder = gio::SimpleAction::new("disabled-placeholder", None);
+        self.window.add_action(&disabled_placeholder);
+
+        // 最近文件夹:openRecentFolder::<index>(按 settings.recent_folders 顺序)。
+        let this = self.clone();
+        let open_recent_folder =
+            gio::SimpleAction::new("openRecentFolder", Some(glib::VariantTy::STRING));
+        open_recent_folder.connect_activate(move |_, parameter| {
+            let index = parameter
+                .and_then(|v| v.str())
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
+            if let Some(entry) = this.settings.borrow().recent_folders.get(index) {
+                let path = std::path::PathBuf::from(&entry.path);
+                this.sidebar.set_workspace_root(Some(path.clone()));
+                this.start_workspace_watcher(&path);
+            }
+        });
+        self.window.add_action(&open_recent_folder);
+
         // 分享:当前文档内容走 xdg-open 无意义;复制内容到剪贴板(桌面 shareActiveTab 等价物)。
         let this = self.clone();
         let share_action = gio::SimpleAction::new("share", None);
@@ -2397,6 +2439,18 @@ impl AppWindow {
                             sidebar.set_workspace_root(Some(path.clone()));
                             if let Some(this) = holder_for_cb.borrow().as_ref() {
                                 this.start_workspace_watcher(&path);
+                                {
+                                    let name = path
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().into_owned())
+                                        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                                    let mut settings = this.settings.borrow_mut();
+                                    settings.remember_recent_folder(
+                                        path.to_string_lossy().as_ref(),
+                                        &name,
+                                    );
+                                }
+                                crate::app::persist_settings(&this.settings.borrow());
                             }
                         }
                     }
@@ -3092,6 +3146,133 @@ fn popover_from_box(child: &gtk::Box) -> gtk::Popover {
         }
     }
 
+    /// 以只读方式打开:选择文件后以 readOnly=true 载入新标签。
+    fn run_open_read_only_dialog(self: &Rc<Self>) {
+        let dialog = gtk::FileDialog::new();
+        let this = self.clone();
+        dialog.open(Some(&self.window), None::<&gio::Cancellable>, move |result| {
+            if let Ok(file) = result {
+                if let Some(path) = file.path() {
+                    this.open_document_in_tab_read_only(&path);
+                }
+            }
+        });
+    }
+
+    /// 在新窗口中打开:选择文件后创建新窗口并在其中载入。
+    fn run_open_in_new_window_dialog(self: &Rc<Self>) {
+        let dialog = gtk::FileDialog::new();
+        let this = self.clone();
+        dialog.open(Some(&self.window), None::<&gio::Cancellable>, move |result| {
+            if let Ok(file) = result {
+                if let Some(path) = file.path() {
+                    let window = this.create_window();
+                    window.open_document_in_tab(&path);
+                }
+            }
+        });
+    }
+
+    /// 打开文档为只读标签(工具提示与保存命令受 read_only 标志约束)。
+    fn open_document_in_tab_read_only(self: &Rc<Self>, path: &Path) {
+        self.open_document_in_tab(path);
+        if let Some(state) = self.tab_states.borrow().last().cloned() {
+            state.read_only.set(true);
+            let document_id = state.document.borrow().document_id.clone();
+            state.webview.post_to_editor(&HostMessage::command_with_request(
+                &document_id,
+                0,
+                serde_json::json!({ "command": "setReadOnly", "text": "1" }),
+                None,
+            ));
+            self.set_status(&format!("以只读方式打开 {}", path.display()));
+        }
+    }
+
+    /// 在工作区定位:侧栏树中选中当前文档(菜单入口)。
+    fn reveal_active_tab_in_workspace(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else {
+            self.set_status("没有打开的文档");
+            return;
+        };
+        let path_for_reveal = state.document.borrow().path.clone();
+        let Some(path) = path_for_reveal.as_deref() else {
+            self.set_status("未命名文档无法在工作区定位");
+            return;
+        };
+        self.sidebar.reveal_workspace_path(path);
+    }
+
+    /// 复制当前标签文件路径到剪贴板。
+    fn copy_active_tab_path(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let Some(path) = state.document.borrow().path.clone() else {
+            self.set_status("未命名文档没有路径");
+            return;
+        };
+        self.window
+            .clipboard()
+            .set_text(path.to_string_lossy().as_str());
+        self.set_status("文件路径已复制");
+    }
+
+    /// 复制当前标签文件内容到剪贴板(请求内核快照,requestId=copy-contents)。
+    fn copy_active_file_contents(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let document_id = state.document.borrow().document_id.clone();
+        state
+            .webview
+            .post_to_editor(&HostMessage::request_snapshot(&document_id, 0, "copy-contents"));
+    }
+
+    /// 重命名当前文档(文件菜单入口):输入对话框 + 原地重命名 + 标签同步。
+    fn prompt_rename_active_tab(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        let Some(path) = state.document.borrow().path.clone() else {
+            self.set_status("未命名文档请使用「另存为」");
+            return;
+        };
+        let this = self.clone();
+        let current_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.prompt_text_input("重命名", &current_name, move |name| {
+            if name.is_empty() || name == current_name {
+                return;
+            }
+            let Some(parent) = path.parent().map(|p| p.to_path_buf()) else {
+                return;
+            };
+            let new_abs = parent.join(&name);
+            if new_abs.exists() {
+                this.set_status(&format!("{} 已存在", name));
+                return;
+            }
+            match std::fs::rename(&path, &new_abs) {
+                Ok(_) => {
+                    this.sync_tabs_after_rename(&path, &new_abs);
+                    this.set_status(&format!("已重命名为 {name}"));
+                }
+                Err(err) => this.set_status(&format!("重命名失败:{err}")),
+            }
+        });
+    }
+
+    /// 关闭当前标签页:走 close_page 信号(脏文档触发确认链)。
+    fn close_current_tab(self: &Rc<Self>) {
+        let Some(state) = self.active_tab() else { return };
+        self.tabs.borrow().close_page(&state.page);
+    }
+
+    /// 关闭工作区(文件菜单入口):清侧栏/监视器与根记录。
+    fn close_workspace(self: &Rc<Self>) {
+        self.sidebar.set_workspace_root(None);
+        *self.workspace_root.borrow_mut() = None;
+        *self.watcher.borrow_mut() = None;
+        self.set_status("已关闭工作区");
+    }
+
     /// WebKit 原生编辑命令(剪切/拷贝/粘贴):作用于编辑器当前选区,
     /// 与 macOS 转发第一响应者的剪贴板行为等价。
     fn exec_editing_command(self: &Rc<Self>, command: &str) {
@@ -3122,6 +3303,14 @@ fn popover_from_box(child: &gtk::Box) -> gtk::Popover {
     fn dispatch_host_command(self: &Rc<Self>, id: &str) {
         match id {
             "open" => self.run_open_dialog(),
+            "openReadOnly" => self.run_open_read_only_dialog(),
+            "openInNewWindow" => self.run_open_in_new_window_dialog(),
+            "revealActiveTabInWorkspace" => self.reveal_active_tab_in_workspace(),
+            "copyActiveTabPath" => self.copy_active_tab_path(),
+            "copyActiveFileContents" => self.copy_active_file_contents(),
+            "renameActiveTab" => self.prompt_rename_active_tab(),
+            "closeCurrentTab" => self.close_current_tab(),
+            "closeFolder" => self.close_workspace(),
             "save" => self.save_active_tab(),
             "saveAll" => self.save_all_tabs(),
             "saveAs" => self.save_active_tab_as(),

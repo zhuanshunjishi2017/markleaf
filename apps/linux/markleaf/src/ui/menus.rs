@@ -21,12 +21,17 @@ fn section(parent: &gio::Menu) -> gio::Menu {
     section
 }
 
-/// 主菜单:文件/编辑/插入/格式/视图/帮助(对齐桌面七组结构的可实现子集)。
-/// recent:最近文件条目((name, "win.openRecent::<index>");按 settings.recent_files 顺序)。
-pub fn main_menu_model(lang: &str, recent: &[(String, String)]) -> gio::Menu {
+/// 主菜单:文件/编辑/插入/格式/视图/帮助(对齐桌面七组结构)。
+/// recent:最近文件与文件夹条目(按 settings 顺序;菜单层分「最近文件」「最近文件夹」两组渲染)。
+pub fn main_menu_model(
+    lang: &str,
+    recent_files: &[(String, String)],
+    recent_folders: &[(String, String)],
+    workspace_open: bool,
+) -> gio::Menu {
     let menu = gio::Menu::new();
 
-    // ---- 文件 ----
+    // ---- 文件(对齐 macOS fileMenu / Windows BuildFileMenu) ----
     let file = gio::Menu::new();
     let new_doc = gio::Menu::new();
     new_doc.append(Some(&label(lang, "Markdown 文档")), Some("win.newMarkdown"));
@@ -34,34 +39,80 @@ pub fn main_menu_model(lang: &str, recent: &[(String, String)]) -> gio::Menu {
     file.append_submenu(Some(&label(lang, "新建")), &new_doc);
     file.append(Some(&label(lang, "新建窗口")), Some("win.command::newWindow"));
     file.append(Some(&label(lang, "打开")), Some("win.open"));
-    if !recent.is_empty() {
-        let recent_menu = gio::Menu::new();
-        for (index, (name, _)) in recent.iter().enumerate() {
-            recent_menu.append(
-                Some(&format!("{}  {}", index + 1, name)),
-                Some(&format!("win.openRecent::{index}")),
-            );
+    file.append(Some(&label(lang, "以只读方式打开…")), Some("win.command::openReadOnly"));
+    file.append(Some(&label(lang, "在新窗口中打开…")), Some("win.command::openInNewWindow"));
+    file.append(Some(&label(lang, "打开文件夹…")), Some("win.openFolder"));
+
+    // 最近项目:文件组 + 文件夹组(常显;空态显示占位文本,对齐桌面)。
+    let recent_menu = gio::Menu::new();
+    if recent_files.is_empty() && recent_folders.is_empty() {
+        recent_menu
+            .append(Some(&label(lang, "没有最近项目")), Some("win.disabled-placeholder"));
+    } else {
+        if !recent_files.is_empty() {
+            let files_section = gio::Menu::new();
+            files_section.append(Some(&label(lang, "最近文件")), Some("win.disabled-placeholder"));
+            for (index, (name, _)) in recent_files.iter().enumerate() {
+                files_section.append(
+                    Some(&format!("{}  {}", index + 1, name)),
+                    Some(&format!("win.openRecent::{index}")),
+                );
+            }
+            recent_menu.append_section(None, &files_section);
         }
-        file.append_submenu(Some(&label(lang, "最近项目")), &recent_menu);
-        file.append(
-            Some(&label(lang, "恢复未保存的文件…")),
-            Some("win.command::recoverUnsavedFiles"),
-        );
+        if !recent_folders.is_empty() {
+            let folders_section = gio::Menu::new();
+            folders_section.append(Some(&label(lang, "最近文件夹")), Some("win.disabled-placeholder"));
+            for (index, (name, _)) in recent_folders.iter().enumerate() {
+                folders_section.append(
+                    Some(&format!("{}  {}", index + 1, name)),
+                    Some(&format!("win.openRecentFolder::{index}")),
+                );
+            }
+            recent_menu.append_section(None, &folders_section);
+        }
     }
+    file.append_submenu(Some(&label(lang, "最近项目")), &recent_menu);
+    file.append(
+        Some(&label(lang, "恢复未保存的文件…")),
+        Some("win.command::recoverUnsavedFiles"),
+    );
+
     let file_save = section(&file);
     file_save.append(Some(&label(lang, "保存")), Some("win.save"));
     file_save.append(Some(&label(lang, "保存全部")), Some("win.command::saveAll"));
     file_save.append(Some(&label(lang, "另存为")), Some("win.saveAs"));
+
     let file_export = section(&file);
     let export = gio::Menu::new();
     export.append(Some(&label(lang, "导出 HTML")), Some("win.exportHtml"));
     export.append(Some(&label(lang, "导出选区为 HTML…")), Some("win.command::exportSelection"));
     export.append(Some(&label(lang, "导出长图")), Some("win.exportImage"));
-    export.append(Some(&label(lang, "打印")), Some("win.print"));
     file_export.append_submenu(Some(&label(lang, "导出")), &export);
+    file_export.append(Some(&label(lang, "打印")), Some("win.print"));
+
+    let file_workspace = section(&file);
+    let has_workspace = workspace_open;
+    file_workspace.append(
+        Some(&label(lang, "在工作区定位")),
+        Some("win.command::revealActiveTabInWorkspace"),
+    );
+    file_workspace.append(Some(&label(lang, "复制文件路径")), Some("win.command::copyActiveTabPath"));
+    file_workspace.append(
+        Some(&label(lang, "复制文件内容")),
+        Some("win.command::copyActiveFileContents"),
+    );
+    file_workspace.append(Some(&label(lang, "重命名…")), Some("win.command::renameActiveTab"));
+    file_workspace.append(Some(&label(lang, "分享")), Some("win.share"));
+
     let file_close = section(&file);
-    file_close.append(Some(&label(lang, "分享")), Some("win.share"));
-    file_close.append(Some(&label(lang, "关闭")), Some("win.close-window"));
+    file_close.append(
+        Some(&label(lang, "关闭当前标签页")),
+        Some("win.command::closeCurrentTab"),
+    );
+    if has_workspace {
+        file_close.append(Some(&label(lang, "关闭文件夹")), Some("win.command::closeFolder"));
+    }
     menu.append_submenu(Some(&label(lang, "文件")), &file);
 
     // ---- 编辑 ----

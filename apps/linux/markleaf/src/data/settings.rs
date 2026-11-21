@@ -129,6 +129,31 @@ impl AppSettings {
         );
         self.recent_files.truncate(10);
     }
+
+    /// 记录最近文件夹(对齐桌面 recentFolders 语义)。
+    pub fn remember_recent_folder(&mut self, path: &str, name: &str) {
+        if !self.record_recent_folders {
+            return;
+        }
+        self.recent_folders.retain(|entry| entry.path != path);
+        self.recent_folders.insert(
+            0,
+            RecentEntry {
+                path: path.to_string(),
+                name: name.to_string(),
+                at: chrono_time_secs(),
+            },
+        );
+        self.recent_folders.truncate(10);
+    }
+
+    /// 最近项目子菜单条目构造参数(文件与文件夹两组,供菜单层渲染)。
+    pub fn recent_menu_entries(&self) -> (Vec<RecentEntry>, Vec<RecentEntry>) {
+        (
+            self.recent_files.clone(),
+            self.recent_folders.clone(),
+        )
+    }
 }
 
 fn chrono_time_secs() -> i64 {
