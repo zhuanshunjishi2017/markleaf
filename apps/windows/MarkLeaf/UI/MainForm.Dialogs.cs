@@ -1378,7 +1378,7 @@ internal sealed partial class MainForm
             MinimizeBox = false,
             MaximizeBox = false,
             ShowInTaskbar = false,
-            ClientSize = new Size(this.ScaleForDpi(320), this.ScaleForDpi(230)),
+            ClientSize = new Size(this.ScaleForDpi(320), this.ScaleForDpi(280)),
         };
 
         var grid = new TableLayoutPanel
