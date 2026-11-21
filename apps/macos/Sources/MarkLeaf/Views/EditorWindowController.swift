@@ -1443,7 +1443,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         encodingButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         configureStatusButton(newLineButton, title: "")
         newLineButton.target = self
-        newLineButton.action = #selector(toggleNewLineFromStatusBar)
+        newLineButton.action = #selector(showNewLineMenu)
         newLineButton.setContentHuggingPriority(.required, for: .horizontal)
         newLineButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         configureStatusButton(zoomButton, title: "100%")
@@ -1725,17 +1725,6 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     @objc private func selectZoom(_ sender: NSMenuItem) {
         guard let percent = sender.representedObject as? Int else { return }
         activeSession.setZoom(percent)
-    }
-
-    /// 状态栏换行符按钮:单击在 LF ↔ CRLF 间直切(对齐模式按钮的直切交互;
-    /// Mixed 是检测结果,不在直切目标内)。只读时忽略。
-    @objc private func toggleNewLineFromStatusBar() {
-        let session = activeSession
-        guard !session.isReadOnly else { return }
-        let next: DocumentNewLineStyle = session.documentNewLine == DocumentNewLineStyle.crlf.rawValue
-            ? .lf
-            : .crlf
-        session.setDocumentNewLine(next)
     }
 
     @objc private func showNewLineMenu() {
