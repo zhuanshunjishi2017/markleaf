@@ -51,6 +51,7 @@ internal sealed class EditorLoadingView : TableLayoutPanel
             Font = new Font("Segoe UI", 9F, FontStyle.Regular),
             ForeColor = SystemColors.GrayText,
             Visible = false,
+            MaximumSize = new Size(560, 0),
         };
         _retryButton = new Button
         {

@@ -28,12 +28,10 @@
   "common.retry": "Retry",
   "common.unnamed": "Untitled",
   "common.unnamedDocument": "Untitled Document",
-
   "language.zh-CN": "简体中文",
   "language.zh-TW": "繁體中文",
   "language.en-US": "English",
   "language.ja-JP": "日本語",
-
   "menu.file.label": "&File",
   "menu.file.new": "&New",
   "menu.file.newWindow": "New &Window",
@@ -56,7 +54,6 @@
   "menu.file.recoverUnsaved": "Recover &Unsaved Files",
   "menu.file.closeFolder": "&Close Folder\tCtrl+Q",
   "menu.file.exit": "E&xit\tAlt+F4",
-
   "menu.edit.label": "&Edit",
   "menu.edit.undo": "&Undo\tCtrl+Z",
   "menu.edit.redo": "&Redo\tCtrl+Y",
@@ -72,7 +69,6 @@
   "menu.edit.find": "Find and &Replace\tCtrl+F",
   "menu.edit.replace": "&Replace\tCtrl+H",
   "menu.edit.selectAll": "Select &All\tCtrl+A",
-
   "menu.paragraph.label": "&Paragraph Style",
   "menu.insert.label": "&Insert",
   "menu.format.paragraphOperations": "Paragraph Actions",
@@ -123,7 +119,6 @@
   "menu.paragraph.alignCenter": "Align Center",
   "menu.paragraph.alignRight": "Align Right",
   "menu.paragraph.deleteTable": "&Delete Table",
-
   "menu.format.label": "F&ormat",
   "menu.format.bold": "&Bold\tCtrl+B",
   "menu.format.italic": "&Italic\tCtrl+I",
@@ -141,7 +136,6 @@
   "menu.format.resizeImage": "Resi&ze Image",
   "menu.format.saveImageAs": "Save Image &As",
   "menu.format.clearFormat": "&Clear Formatting",
-
   "menu.view.label": "&View",
   "menu.view.toggleSidebar": "Toggle Side&bar\tCtrl+Alt+Z",
   "menu.view.sidebarSettings": "Sidebar Settin&gs",
@@ -177,7 +171,6 @@
   "menu.view.zoomOut": "Zoom &Out\tCtrl+Alt+-",
   "menu.view.zoomReset": "&Reset to 100%\tCtrl+Alt+R",
   "menu.view.restartEditor": "Restart &Editor",
-
   "menu.help.label": "&Help",
   "menu.help.checkForUpdates": "Check for &Updates",
   "menu.help.learnMarkdown": "&Learn Markdown...",
@@ -207,7 +200,6 @@
   "dialog.themeSettings.missingFonts": "The current theme has fonts that are not installed",
   "menu.help.preferences": "&Preferences...",
   "menu.help.about": "&About MarkLeaf",
-
   "contextMenu.bold": "&Bold",
   "contextMenu.italic": "&Italic",
   "contextMenu.paragraphGroup": "Paragraph &Formatting",
@@ -268,7 +260,6 @@
   "contextMenu.footnote.resetLabel": "Change Footnote &Identifier…",
   "contextMenu.footnote.clearReferences": "Delete &All References",
   "contextMenu.footnote.delete": "&Delete Footnote and All References",
-
   "workspaceMenu.newFile": "&New File",
   "workspaceMenu.new": "Ne&w",
   "workspaceMenu.newTextFile": "New &Text File",
@@ -285,7 +276,6 @@
   "workspaceMenu.sortDescending": "&Descending",
   "workspaceMenu.refresh": "R&efresh",
   "workspaceMenu.closeFolder": "&Close Folder",
-
   "workspaceEntry.open": "Open",
   "workspaceEntry.openInNewWindow": "Open in New Window",
   "workspaceEntry.newFile": "New File",
@@ -294,7 +284,6 @@
   "workspaceEntry.openLocation": "Open File Location",
   "workspaceEntry.rename": "Rename",
   "workspaceEntry.delete": "Move to Recycle Bin",
-
   "statusBar.preparing": "Preparing editor...",
   "statusBar.wordCount": "{0} words",
   "statusBar.wordCountWithSelection": "{0} words ({1} selected)",
@@ -326,7 +315,6 @@
   "statusBar.mode.visual": "Visual",
   "statusBar.mode.source": "Source",
   "statusBar.mode.exitSource": "Exit Source Mode",
-
   "status.snapshotSaved": "Snapshot saved at {0}",
   "status.workspaceOpened": "Workspace opened: {0}",
   "status.workspaceClosed": "Workspace closed",
@@ -398,7 +386,6 @@
   "status.commandExecuted": "Executed: {0}",
   "status.exportComplete": "Document exported",
   "status.exportCompleteWithPath": "{0}\nExported to:\n{1}",
-
   "editor.initializing": "Initializing WebView2",
   "editor.loadingPage": "Loading editor page",
   "editor.waitingReady": "Waiting for editor to be ready",
@@ -418,7 +405,6 @@
   "editor.pageLoadFailed": "Editor page failed to load: {0}",
   "editor.processCrashed": "WebView2 process terminated unexpectedly: {0}",
   "editor.readyTimeout": "Editor page did not become ready in time.",
-
   "document.untitledMd": "Untitled.md",
   "document.untitledTxt": "Untitled.txt",
   "document.untitledMdWithIndex": "Untitled ({0}).md",
@@ -460,7 +446,6 @@
   "document.recoveryTempFile": "Recoverable temp file:",
   "document.externalChangeDirtyMessage": "The file on disk has been modified by another program. MarkLeaf will not auto-overwrite or reload because the current window also has unsaved changes. Use \"Save\" to resolve the conflict, or \"Save As\" to preserve your version.",
   "document.externalChangeReloadClean": "The file on disk has been modified by another program. Reload?",
-
   "export.title": "Export — {0}",
   "export.pdfTitle": "Export as PDF - {0}",
   "export.ok": "Export",
@@ -525,7 +510,6 @@
   "export.open": "Open",
   "export.openFolder": "Open Containing Folder",
   "export.failed": "Export failed.",
-
   "dialog.selectWorkspace": "Select MarkLeaf Workspace Folder",
   "dialog.openDocument": "Open Markdown Document",
   "dialog.openReadOnly": "Open Markdown Document Read-Only",
@@ -612,7 +596,6 @@
   "dialog.languageRestart": "The language change will take effect the next time you start MarkLeaf.",
   "dialog.imageDirChangeWarn": "Changing the directory will break all existing image links. Continue?",
   "dialog.imageDirChangeTitle": "Change Default Image Directory",
-
   "shortcut.new": "New Document",
   "shortcut.open": "Open Document",
   "shortcut.save": "Save Document",
@@ -683,7 +666,6 @@
   "shortcut.switchToPreviousDocumentTab": "Previous Tab",
   "shortcut.closeCurrentDocumentTab": "Close Current Tab",
   "shortcut.closeOtherDocumentTabs": "Close Other Tabs",
-
   "cmd.undo": "Undo",
   "cmd.redo": "Redo",
   "cmd.paragraph": "Paragraph",
@@ -723,7 +705,6 @@
   "cmd.deleteTable": "Delete Table",
   "cmd.formatPainter": "Format Painter",
   "cmd.operation": "Operation",
-
   "sidebar.openFolder": "Open Folder",
   "sidebar.workspace": "File",
   "sidebar.outline": "Outline",
@@ -735,12 +716,10 @@
   "sidebar.searchPlaceholder": "Search in \"{0}\"",
   "sidebar.searchOutline": "Search outline",
   "sidebar.noSearchResults": "No results found",
-
   "fileFilter.markdown": "Markdown Files (*.md;*.markdown)|*.md;*.markdown|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
   "fileFilter.images": "Image Files (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|All Files (*.*)|*.*",
   "fileFilter.css": "CSS Files|*.css|All Files|*.*",
   "fileFilter.pdfHtml": "PDF Files|*.pdf|HTML Files|*.html",
-
   "workspace.newFolder": "New Folder",
   "workspace.untitledFolder": "Untitled Folder",
   "workspace.newFile": "New File",
@@ -762,24 +741,18 @@
   "workspace.sortFileNameDescending": "File name (descending)",
   "workspace.sortModifiedTimeAscending": "Modified time (ascending)",
   "workspace.sortModifiedTimeDescending": "Modified time (descending)",
-
   "image.unsupportedFormat": "Unsupported image format: {0}. Supported: {1}.",
   "image.tooLarge": "Image exceeds the 50 MiB size limit.",
   "image.downloadEmpty": "Downloaded image content is empty.",
   "image.urlOnly": "Only HTTP/HTTPS image URLs are supported.",
-
   "fileAssociation.description": "MarkLeaf Markdown Document",
-
   "startup.failed": "MarkLeaf failed to start. Details have been written to the log.",
-
   "tooltip.expandSidebar": "Expand Sidebar",
   "tooltip.collapseSidebar": "Collapse Sidebar",
   "tooltip.switchView": "Switch View",
-
   "time.today": "Today {0}",
   "time.yesterday": "Yesterday {0}",
   "time.monthDay": "{0}/{1}",
-
   "prefs.title": "Preferences",
   "prefs.tab.file": "File",
   "prefs.tab.appearance": "Appearance",
@@ -951,11 +924,9 @@
   "prefs.images.useRelativePaths": "Use &relative paths when possible",
   "prefs.images.prefixWithDotSlash": "Prefix relative paths with &./",
   "prefs.images.selectDefaultDir": "Select Default Image Directory",
-
   "folder.themes": "Theme Styles",
   "folder.cache": "Cache",
   "folder.logs": "Logs",
-
   "error.themeFolderNotFound": "Theme styles folder not found.",
   "error.copyThemeFailed": "Failed to copy theme file: {0}",
   "error.fileAssociationFailed": "Failed to update file associations.",
@@ -963,7 +934,6 @@
   "error.openDocumentFailed": "Cannot open this document.",
   "error.openDocumentFailedTitle": "Open Failed",
   "error.workspaceOperationFailed": "Workspace operation failed.",
-
   "changelog.notFound": "Changelog file not found.",
   "changelog.openFailed": "Unable to open changelog file.",
   "welcome.notFound": "Welcome document not found.",
@@ -972,7 +942,6 @@
   "update.available": "An update is available: {0} (Build {1}). Download it now?",
   "update.downloading": "Downloading update...",
   "update.failed": "Failed to check for or download the update.",
-
   "findBar.find": "Find",
   "findBar.findLabel": "Find",
   "findBar.replaceWith": "Replace with",
@@ -988,7 +957,6 @@
   "findBar.replaced": "Replaced {0} occurrences",
   "findBar.noResults": "0/0",
   "findBar.title": "Find and Replace",
-
   "outlineMenu.expandAll": "Expand All Sections",
   "outlineMenu.collapseAll": "Collapse All Sections",
   "outlineMenu.locateCurrent": "Locate Current Section",
@@ -998,10 +966,8 @@
   "documentTabMenu.locate": "Reveal in Workspace(&L)",
   "documentTabMenu.copyPath": "Copy File Path(&P)",
   "documentTabMenu.showInExplorer": "Open File Location(&E)",
-
   "formatMenu.promoteHeading": "H+",
   "formatMenu.demoteHeading": "H-",
-
   "dialog.unsafeEmphasisTitle": "Asterisk Markup",
   "dialog.unsafeEmphasisBold": "According to CommonMark rules, this asterisk markup will not be interpreted as bold.",
   "dialog.unsafeEmphasisItalic": "According to CommonMark rules, this asterisk markup will not be interpreted as italic.",
@@ -1070,5 +1036,6 @@
   "contextMenu.table.fitContents": "AutoFit to Contents",
   "contextMenu.table.distributeColumns": "Distribute Columns Evenly",
   "contextMenu.table.resetWidths": "Reset to Automatic Widths",
-  "contextMenu.table.widths": "Adjust Column Widths"
+  "contextMenu.table.widths": "Adjust Column Widths",
+  "editor.resourceMissingDetail": "The EditorWeb directory is missing next to the app executable. It should contain index.html and assets/. When running from source, build packages/editor-web first and copy the output there, or set the MARKLEAF_EDITOR_WEB_ROOT environment variable to the resources directory explicitly."
 }

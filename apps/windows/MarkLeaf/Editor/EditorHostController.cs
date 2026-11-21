@@ -190,8 +190,31 @@ internal sealed class EditorHostController : IDisposable
 
         if (!File.Exists(Path.Combine(_editorWebPath, "index.html")))
         {
-            Fail(Loc.Get("editor.resourceMissing"), null);
-            return;
+            // 开发/便携运行常见错位:资源在 exe 上级目录的 EditorWeb 里。
+            // 探测到即自愈切换;找不到则给出带路径的详细指引。
+            var fallback = Path.GetFullPath(Path.Combine(_editorWebPath, "..", "EditorWeb"));
+            if (!File.Exists(Path.Combine(fallback, "index.html")))
+            {
+                fallback = Path.GetFullPath(Path.Combine(
+                    AppContext.BaseDirectory, "..", "..", "..", "EditorWeb"));
+            }
+            if (File.Exists(Path.Combine(fallback, "index.html")))
+            {
+                _editorWebPath = fallback;
+                _editorUri = CreateVersionedEditorUri(_editorWebPath);
+                _logger.Info($"EditorWeb found at fallback path: {fallback}");
+            }
+            else
+            {
+                Fail(
+                    Loc.Get("editor.resourceMissing")
+                    + Environment.NewLine
+                    + Loc.Get("editor.resourceMissingDetail")
+                    + Environment.NewLine
+                    + $"Searched: {_editorWebPath}",
+                    null);
+                return;
+            }
         }
 
         _initializationTimer.Restart();

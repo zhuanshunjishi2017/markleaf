@@ -55,7 +55,9 @@ internal sealed partial class MainForm
             loadingView,
             _editorSession,
             _logger,
-            _options.EditorWebRoot ?? Path.Combine(AppContext.BaseDirectory, "EditorWeb"),
+            _options.EditorWebRoot
+                ?? Environment.GetEnvironmentVariable("MARKLEAF_EDITOR_WEB_ROOT")
+                ?? Path.Combine(AppContext.BaseDirectory, "EditorWeb"),
             _paths.WebView2UserDataDirectory,
             OnEditorStateChanged);
         _editorHost.Ready += (_, _) =>

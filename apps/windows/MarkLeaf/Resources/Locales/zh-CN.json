@@ -28,12 +28,10 @@
   "common.retry": "重试",
   "common.unnamed": "未命名",
   "common.unnamedDocument": "未命名文档",
-
   "language.zh-CN": "简体中文",
   "language.zh-TW": "繁體中文",
   "language.en-US": "English",
   "language.ja-JP": "日本語",
-
   "menu.file.label": "文件(&F)",
   "menu.file.new": "新建(&N)",
   "menu.file.newWindow": "新建窗口(&W)",
@@ -56,7 +54,6 @@
   "menu.file.recoverUnsaved": "恢复未保存的文件(&U)",
   "menu.file.closeFolder": "关闭文件夹(&C)\tCtrl+Q",
   "menu.file.exit": "退出(&X)\tAlt+F4",
-
   "menu.edit.label": "编辑(&E)",
   "menu.edit.undo": "撤销(&U)\tCtrl+Z",
   "menu.edit.redo": "重做(&R)\tCtrl+Y",
@@ -72,7 +69,6 @@
   "menu.edit.find": "查找与替换(&F)\tCtrl+F",
   "menu.edit.replace": "替换(&H)\tCtrl+H",
   "menu.edit.selectAll": "全选(&A)\tCtrl+A",
-
   "menu.paragraph.label": "段落样式(&P)",
   "menu.insert.label": "插入(&I)",
   "menu.format.paragraphOperations": "段落操作",
@@ -123,7 +119,6 @@
   "menu.paragraph.alignCenter": "居中对齐",
   "menu.paragraph.alignRight": "右对齐",
   "menu.paragraph.deleteTable": "删除表格(&D)",
-
   "menu.format.label": "格式(&O)",
   "menu.format.bold": "加粗(&B)\tCtrl+B",
   "menu.format.italic": "斜体(&I)\tCtrl+I",
@@ -141,7 +136,6 @@
   "menu.format.resizeImage": "重设图片大小(&Z)",
   "menu.format.saveImageAs": "将图片另存为…(&A)",
   "menu.format.clearFormat": "清除格式(&C)",
-
   "menu.view.label": "视图(&V)",
   "menu.view.toggleSidebar": "显示侧栏(&B)\tCtrl+Alt+Z",
   "menu.view.sidebarSettings": "侧栏设置(&D)",
@@ -177,7 +171,6 @@
   "menu.view.zoomOut": "缩小(&S)\tCtrl+Alt+-",
   "menu.view.zoomReset": "重置为100%(&R)\tCtrl+Alt+R",
   "menu.view.restartEditor": "重启编辑器(&E)",
-
   "menu.help.label": "帮助(&H)",
   "menu.help.checkForUpdates": "检查更新(&U)",
   "menu.help.learnMarkdown": "学习 Markdown...(&L)",
@@ -207,7 +200,6 @@
   "dialog.themeSettings.missingFonts": "当前主题存在未安装的字体",
   "menu.help.preferences": "首选项(&P)...",
   "menu.help.about": "关于 MarkLeaf(&A)",
-
   "contextMenu.bold": "粗体(&B)",
   "contextMenu.italic": "斜体(&I)",
   "contextMenu.paragraphGroup": "段落格式(&D)",
@@ -268,7 +260,6 @@
   "contextMenu.footnote.resetLabel": "更改脚注标识…(&R)",
   "contextMenu.footnote.clearReferences": "删除全部引用(&C)",
   "contextMenu.footnote.delete": "删除脚注及全部引用(&D)",
-
   "workspaceMenu.newFile": "新建文件(&N)",
   "workspaceMenu.new": "新建(&N)",
   "workspaceMenu.newTextFile": "新建纯文本(&T)",
@@ -285,7 +276,6 @@
   "workspaceMenu.sortDescending": "降序(&D)",
   "workspaceMenu.refresh": "刷新(&E)",
   "workspaceMenu.closeFolder": "关闭文件夹(&C)",
-
   "workspaceEntry.open": "打开(O)",
   "workspaceEntry.openInNewWindow": "在新窗口中打开(W)",
   "workspaceEntry.newFile": "新建文件(N)",
@@ -294,7 +284,6 @@
   "workspaceEntry.openLocation": "打开文件所在的位置(L)",
   "workspaceEntry.rename": "重命名(R)",
   "workspaceEntry.delete": "移至回收站(D)",
-
   "statusBar.preparing": "正在准备编辑器",
   "statusBar.wordCount": "字数 {0}",
   "statusBar.wordCountWithSelection": "字数 {0}（已选 {1}）",
@@ -326,7 +315,6 @@
   "statusBar.mode.visual": "可视化",
   "statusBar.mode.source": "源码",
   "statusBar.mode.exitSource": "退出源码模式",
-
   "status.snapshotSaved": "快照已于 {0} 保存",
   "status.workspaceOpened": "已打开工作区：{0}",
   "status.workspaceClosed": "工作区已关闭",
@@ -398,7 +386,6 @@
   "status.commandExecuted": "已执行：{0}",
   "status.exportComplete": "文档已导出",
   "status.exportCompleteWithPath": "{0}\n已导出到：\n{1}",
-
   "editor.initializing": "正在初始化 WebView2",
   "editor.loadingPage": "正在加载编辑器页面",
   "editor.waitingReady": "正在等待编辑器就绪",
@@ -418,7 +405,6 @@
   "editor.pageLoadFailed": "编辑器页面加载失败：{0}",
   "editor.processCrashed": "WebView2 进程异常终止：{0}",
   "editor.readyTimeout": "编辑器页面未在规定时间内就绪。",
-
   "document.untitledMd": "未命名.md",
   "document.untitledTxt": "未命名.txt",
   "document.untitledMdWithIndex": "未命名 ({0}).md",
@@ -460,7 +446,6 @@
   "document.recoveryTempFile": "可恢复临时文件：",
   "document.externalChangeDirtyMessage": "磁盘上的当前文件已被其他程序修改。MarkLeaf 不会自动覆盖或重新加载，因为当前窗口也有未保存修改。请使用\"保存\"处理冲突，或使用\"另存为\"保留当前版本。",
   "document.externalChangeReloadClean": "磁盘上的当前文件已被其他程序修改。是否重新加载？",
-
   "export.title": "导出 - {0}",
   "export.pdfTitle": "导出为PDF - {0}",
   "export.ok": "导出",
@@ -525,7 +510,6 @@
   "export.open": "打开",
   "export.openFolder": "打开所在文件夹",
   "export.failed": "导出失败。",
-
   "dialog.selectWorkspace": "选择 MarkLeaf 工作区文件夹",
   "dialog.openDocument": "打开 Markdown 文档",
   "dialog.openReadOnly": "以只读方式打开 Markdown 文档",
@@ -612,7 +596,6 @@
   "dialog.languageRestart": "语言设置将在下次启动 MarkLeaf 时生效。",
   "dialog.imageDirChangeWarn": "若更换目录，所有链接到此处的图片将失效。是否继续？",
   "dialog.imageDirChangeTitle": "更换默认图片目录",
-
   "shortcut.new": "新建文档",
   "shortcut.open": "打开文档",
   "shortcut.save": "保存文档",
@@ -683,7 +666,6 @@
   "shortcut.switchToPreviousDocumentTab": "上一个标签页",
   "shortcut.closeCurrentDocumentTab": "关闭当前标签页",
   "shortcut.closeOtherDocumentTabs": "关闭其他标签页",
-
   "cmd.undo": "撤销",
   "cmd.redo": "重做",
   "cmd.paragraph": "正文",
@@ -723,7 +705,6 @@
   "cmd.deleteTable": "删除表格",
   "cmd.formatPainter": "格式刷",
   "cmd.operation": "操作",
-
   "sidebar.openFolder": "打开文件夹",
   "sidebar.workspace": "文件",
   "sidebar.outline": "大纲",
@@ -735,12 +716,10 @@
   "sidebar.searchPlaceholder": "在\"{0}\"中搜索",
   "sidebar.searchOutline": "搜索大纲",
   "sidebar.noSearchResults": "未找到匹配结果",
-
   "fileFilter.markdown": "Markdown 文件 (*.md;*.markdown)|*.md;*.markdown|文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
   "fileFilter.images": "图片文件 (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.svg|所有文件 (*.*)|*.*",
   "fileFilter.css": "CSS 文件|*.css|所有文件|*.*",
   "fileFilter.pdfHtml": "PDF 文件|*.pdf|HTML 文件|*.html",
-
   "workspace.newFolder": "新建文件夹",
   "workspace.untitledFolder": "未命名文件夹",
   "workspace.newFile": "新建文件",
@@ -762,24 +741,18 @@
   "workspace.sortFileNameDescending": "文件名降序",
   "workspace.sortModifiedTimeAscending": "修改时间升序",
   "workspace.sortModifiedTimeDescending": "修改时间降序",
-
   "image.unsupportedFormat": "不支持的图片格式：{0}。支持 {1}。",
   "image.tooLarge": "图片超过 50 MiB 大小限制。",
   "image.downloadEmpty": "下载的图片内容为空。",
   "image.urlOnly": "仅支持 HTTP/HTTPS 图片地址。",
-
   "fileAssociation.description": "MarkLeaf Markdown 文档",
-
   "startup.failed": "MarkLeaf 无法启动。详细信息已写入日志。",
-
   "tooltip.expandSidebar": "展开侧栏",
   "tooltip.collapseSidebar": "收起侧栏",
   "tooltip.switchView": "切换视图",
-
   "time.today": "今天 {0}",
   "time.yesterday": "昨天 {0}",
   "time.monthDay": "{0}月{1}日",
-
   "prefs.title": "首选项",
   "prefs.tab.file": "文件",
   "prefs.tab.appearance": "外观",
@@ -951,14 +924,11 @@
   "prefs.images.useRelativePaths": "在可用时使用相对路径(&R)",
   "prefs.images.prefixWithDotSlash": "相对路径前加\"./\"(&S)",
   "prefs.images.selectDefaultDir": "选择默认图片目录",
-
   "dialog.settingsFileNotCreated": "配置文件尚未生成。",
   "error.cannotOpenSettingsFile": "无法打开配置文件。",
-
   "folder.themes": "主题样式文件夹",
   "folder.cache": "缓存目录",
   "folder.logs": "日志目录",
-
   "error.themeFolderNotFound": "未找到主题样式文件夹。",
   "error.copyThemeFailed": "无法复制主题文件：{0}",
   "error.fileAssociationFailed": "无法更新文件关联。",
@@ -966,7 +936,6 @@
   "error.openDocumentFailed": "无法打开该文档。",
   "error.openDocumentFailedTitle": "打开失败",
   "error.workspaceOperationFailed": "工作区操作失败。",
-
   "changelog.notFound": "未找到更新内容文件。",
   "changelog.openFailed": "无法打开更新内容文件。",
   "welcome.notFound": "未找到欢迎文档。",
@@ -975,7 +944,6 @@
   "update.available": "有更新版本 {0}（构建号 {1}），是否下载更新？",
   "update.downloading": "正在下载更新...",
   "update.failed": "检查或下载更新失败。",
-
   "findBar.find": "查找",
   "findBar.findLabel": "查找内容",
   "findBar.replaceWith": "替换为",
@@ -991,7 +959,6 @@
   "findBar.replaced": "已替换 {0} 处",
   "findBar.noResults": "0/0",
   "findBar.title": "查找与替换",
-
   "outlineMenu.expandAll": "展开所有章节",
   "outlineMenu.collapseAll": "收起所有章节",
   "outlineMenu.locateCurrent": "定位当前章节",
@@ -1001,10 +968,8 @@
   "documentTabMenu.locate": "在工作区定位(&L)",
   "documentTabMenu.copyPath": "复制文件路径(&P)",
   "documentTabMenu.showInExplorer": "打开文件所在的位置(&E)",
-
   "formatMenu.promoteHeading": "标+",
   "formatMenu.demoteHeading": "标-",
-
   "dialog.unsafeEmphasisTitle": "星号标记提示",
   "dialog.unsafeEmphasisBold": "根据 CommonMark 规则，该星号标记将不被解释为加粗。",
   "dialog.unsafeEmphasisItalic": "根据 CommonMark 规则，该星号标记将不被解释为斜体。",
@@ -1073,5 +1038,6 @@
   "contextMenu.table.fitContents": "根据内容调整列宽",
   "contextMenu.table.distributeColumns": "平均分配列宽",
   "contextMenu.table.resetWidths": "恢复自动列宽",
-  "contextMenu.table.widths": "调整列宽"
+  "contextMenu.table.widths": "调整列宽",
+  "editor.resourceMissingDetail": "缺少编辑器静态资源目录 EditorWeb。该目录应位于应用 exe 同级，包含 index.html 与 assets/。若从源码运行，请先执行 packages/editor-web 的构建并确认产物已拷贝到该位置；或用 MARKLEAF_EDITOR_WEB_ROOT 环境变量显式指定资源目录。"
 }
